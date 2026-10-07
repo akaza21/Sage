@@ -157,6 +157,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
                 residency: crate::acp::contract::Residency::Hot,
                 runtime_epoch: Some(owner.runtime_epoch),
                 next_runtime_epoch: None,
+                permission_requests: false,
                 capabilities,
                 revision: EntityRevision::ZERO,
                 projection_revision: ProjectionRevision::ZERO,
@@ -241,4 +242,37 @@ fn stale_config_owner_does_not_recover_the_current_owner() {
     assert_eq!(page.session_config, overlay);
     assert_eq!(page.sessions.as_slice()[0].capabilities.config_count, 1);
     service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn fatal_config_transport_errors_retain_recovery_that_releases_capacity() {
+    for error in [
+        HostError::Unavailable,
+        HostError::Closed,
+        HostError::Deadline,
+        HostError::DeliveryUnknown,
+        HostError::RecoveryRequired,
+    ] {
+        let (service, intent, _) = fixture(error.clone());
+        assert_eq!(service.configure_session(intent.clone()), Err(error));
+        assert!(matches!(
+            service.runtime.for_owner(&intent.owner),
+            Err(RuntimeSlotError::Recovery)
+        ));
+
+        assert!(
+            service
+                .reclaim_zero_process_capacity(
+                    std::time::Instant::now() + std::time::Duration::from_secs(1)
+                )
+                .unwrap()
+        );
+        let next = RuntimeOwner {
+            runtime_epoch: RuntimeEpoch::new(intent.owner.runtime_epoch.get() + 1).unwrap(),
+            ..intent.owner
+        };
+        service.runtime.reserve_start(next.clone()).unwrap();
+        service.runtime.abandon_start(&next).unwrap();
+        service.shutdown_blocking().unwrap();
+    }
 }

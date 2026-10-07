@@ -1,0 +1,414 @@
+#[cfg(test)]
+use std::fs;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Webview, WebviewBuilder,
+    WebviewUrl, webview::NewWindowResponse,
+};
+use url::Url;
+
+#[cfg(test)]
+use crate::launch_profile::LaunchProfile;
+
+mod admission;
+pub(crate) mod bounds;
+pub(crate) mod clear_data;
+pub(crate) mod devtools;
+pub(crate) mod downloads;
+mod favicon;
+mod history;
+pub(crate) mod ipc_guard;
+pub(crate) mod lifecycle;
+pub(crate) mod navigation;
+pub(crate) mod page_context;
+pub(crate) mod page_controls;
+mod popups;
+mod profile;
+mod shortcuts;
+pub(crate) mod site_permissions;
+mod state_init;
+pub(crate) mod state_query;
+mod teardown;
+
+#[cfg(test)]
+use admission::MAX_BROWSER_URL_BYTES;
+use admission::admit_url;
+use history::BrowserHistory;
+#[cfg(test)]
+use history::MAX_BROWSER_HISTORY;
+#[cfg(test)]
+#[path = "clear_conformance_tests.rs"]
+mod clear_conformance_tests;
+#[cfg(test)]
+#[path = "policy_conformance_tests.rs"]
+mod policy_conformance_tests;
+use popups::popup_target;
+#[cfg(test)]
+use profile::browser_profile_dir;
+
+const MAX_BROWSER_TABS: usize = 8;
+
+pub(crate) struct BrowserState {
+    profile_dir: PathBuf,
+    tabs: Mutex<BrowserTabs<Webview>>,
+    downloads: Mutex<downloads::DownloadRegistry>,
+    permissions: Mutex<site_permissions::SitePermissions>,
+    clearing_data: AtomicBool,
+}
+
+impl BrowserState {
+    pub(crate) fn webview_for_tab(&self, label: &str) -> Option<Webview> {
+        self.tabs.lock().ok()?.handle(label).cloned()
+    }
+
+    pub(crate) fn clear_teardown_after_window_destroy(&self) {
+        if let Ok(tabs) = self.tabs.lock() {
+            tabs.teardown.clear_after_window_destroy();
+        }
+    }
+
+    pub(crate) fn quarantine_failed_close(&self, label: &str) {
+        if let Ok(tabs) = self.tabs.lock()
+            && tabs.teardown.begin(label).is_ok()
+        {
+            tabs.teardown.mark_failed(label);
+        }
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn close_for_shutdown(&self, label: &str) -> Result<(), String> {
+        let webview = self
+            .webview_for_tab(label)
+            .ok_or("browser tab unavailable")?;
+        webview.close().map_err(|error| error.to_string())?;
+        self.tabs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .entries
+            .remove(label);
+        Ok(())
+    }
+}
+
+struct BrowserTab<T> {
+    handle: T,
+    loading: bool,
+    title: Option<String>,
+    favicon: Option<String>,
+    zoom_percent: u16,
+    navigation_id: Option<u64>,
+    revision: u64,
+    committed_url: Option<String>,
+    history: BrowserHistory,
+    fallback_url: Option<String>,
+    last_error: Option<&'static str>,
+}
+
+#[derive(Clone)]
+struct BrowserSnapshot {
+    loading: bool,
+    title: Option<String>,
+    favicon: Option<String>,
+    zoom_percent: u16,
+    navigation_id: Option<u64>,
+    revision: u64,
+    committed_url: Option<String>,
+    error: Option<&'static str>,
+    can_go_back: bool,
+    can_go_forward: bool,
+}
+
+struct BrowserTabs<T> {
+    next_number: u64,
+    entries: BTreeMap<String, BrowserTab<T>>,
+    opening: BTreeSet<String>,
+    closing: BTreeSet<String>,
+    teardown: lifecycle::TeardownQuarantine,
+}
+
+impl<T> BrowserTabs<T> {
+    fn new() -> Self {
+        Self {
+            next_number: 1,
+            entries: BTreeMap::new(),
+            opening: BTreeSet::new(),
+            closing: BTreeSet::new(),
+            teardown: lifecycle::TeardownQuarantine::default(),
+        }
+    }
+
+    fn reserve_label(&mut self) -> Result<String, String> {
+        if self.entries.len() >= MAX_BROWSER_TABS {
+            return Err("browser tab limit reached".into());
+        }
+        let number = self.next_number;
+        self.next_number = number
+            .checked_add(1)
+            .ok_or("browser tab labels exhausted")?;
+        Ok(format!("browser-{number}"))
+    }
+
+    fn reserve_open_label(&mut self) -> Result<String, String> {
+        if self.slot_count() >= MAX_BROWSER_TABS {
+            return Err("browser tab limit reached".into());
+        }
+        let label = self.reserve_label()?;
+        self.opening.insert(label.clone());
+        Ok(label)
+    }
+
+    fn slot_count(&self) -> usize {
+        self.entries.len()
+            + self
+                .opening
+                .iter()
+                .filter(|label| !self.entries.contains_key(*label))
+                .count()
+            + self
+                .closing
+                .iter()
+                .filter(|label| {
+                    !self.entries.contains_key(*label) && !self.opening.contains(*label)
+                })
+                .count()
+    }
+
+    fn insert(&mut self, label: String, handle: T, loading: bool) {
+        self.entries.insert(
+            label,
+            BrowserTab {
+                handle,
+                loading,
+                title: None,
+                favicon: None,
+                zoom_percent: 100,
+                navigation_id: None,
+                revision: 0,
+                committed_url: None,
+                history: BrowserHistory::default(),
+                fallback_url: None,
+                last_error: None,
+            },
+        );
+    }
+
+    #[cfg(test)]
+    fn contains(&self, label: &str) -> bool {
+        self.entries.contains_key(label)
+    }
+
+    fn handle(&self, label: &str) -> Option<&T> {
+        self.entries.get(label).map(|tab| &tab.handle)
+    }
+
+    fn snapshot(&self, label: &str) -> Option<BrowserSnapshot> {
+        self.entries.get(label).map(|tab| BrowserSnapshot {
+            loading: tab.loading,
+            title: tab.title.clone(),
+            favicon: tab.favicon.clone(),
+            zoom_percent: tab.zoom_percent,
+            navigation_id: tab.navigation_id,
+            revision: tab.revision,
+            committed_url: if tab.last_error.is_none() {
+                tab.committed_url.clone()
+            } else {
+                None
+            },
+            error: tab.last_error,
+            can_go_back: tab.history.bounds().0,
+            can_go_forward: tab.history.bounds().1,
+        })
+    }
+
+    fn openable_url(&self, label: &str) -> Result<String, String> {
+        let tab = self.entries.get(label).ok_or("browser tab unavailable")?;
+        if tab.loading {
+            return Err("browser page is still loading".into());
+        }
+        if tab.last_error.is_some() {
+            return Err("browser page navigation failed".into());
+        }
+        tab.committed_url
+            .clone()
+            .ok_or_else(|| "browser page has no committed URL".into())
+    }
+
+    fn start_navigation(&mut self, label: &str, navigation_id: u64, url: &str) -> bool {
+        let Some(tab) = self.entries.get_mut(label) else {
+            return false;
+        };
+        if tab
+            .navigation_id
+            .is_some_and(|current| navigation_id <= current)
+        {
+            return false;
+        }
+        tab.navigation_id = Some(navigation_id);
+        tab.history.start(navigation_id, url);
+        tab.loading = true;
+        tab.title = None;
+        tab.favicon = None;
+        tab.last_error = None;
+        tab.revision = tab.revision.wrapping_add(1);
+        true
+    }
+
+    fn finish_navigation(&mut self, label: &str, navigation_id: u64, url: Option<&str>) -> bool {
+        let Some(tab) = self.entries.get_mut(label) else {
+            return false;
+        };
+        if tab.navigation_id != Some(navigation_id) || !tab.loading {
+            return false;
+        }
+        if url.is_some_and(|url| admit_url(url).is_err()) {
+            return false;
+        }
+        tab.fallback_url = tab.history.finish(navigation_id, url);
+        if tab.history.take_failure() {
+            tab.last_error = Some("Back or Forward could not reach the saved page");
+            tab.loading = false;
+        } else if tab.fallback_url.is_none() {
+            tab.committed_url = url.map(str::to_owned);
+            tab.loading = false;
+        }
+        tab.revision = tab.revision.wrapping_add(1);
+        true
+    }
+
+    fn set_zoom_percent(&mut self, label: &str, percent: u16) -> bool {
+        let Some(tab) = self.entries.get_mut(label) else {
+            return false;
+        };
+        tab.zoom_percent = percent;
+        tab.revision = tab.revision.wrapping_add(1);
+        true
+    }
+
+    fn set_document_title(&mut self, label: &str, url: &str, raw: &str) -> bool {
+        let Some(tab) = self.entries.get_mut(label) else {
+            return false;
+        };
+        if tab.loading || tab.last_error.is_some() || tab.committed_url.as_deref() != Some(url) {
+            return false;
+        }
+        let title = raw
+            .chars()
+            .take(256)
+            .filter(|character| {
+                !matches!(character, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+            })
+            .map(|character| if character.is_control() { ' ' } else { character })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(80)
+            .collect::<String>();
+        let title = if title.is_empty() { None } else { Some(title) };
+        if tab.title == title {
+            return false;
+        }
+        tab.title = title;
+        tab.revision = tab.revision.wrapping_add(1);
+        true
+    }
+
+    #[cfg(test)]
+    fn history_len(&self, label: &str) -> Option<usize> {
+        self.entries.get(label).map(|tab| tab.history.len())
+    }
+
+    fn traverse(&mut self, label: &str, direction: i8) -> Result<String, String> {
+        let tab = self
+            .entries
+            .get_mut(label)
+            .ok_or("browser tab unavailable")?;
+        if tab.loading {
+            return Err("browser navigation is busy".into());
+        }
+        tab.history.traverse(direction)
+    }
+
+    fn cancel_traversal(&mut self, label: &str) {
+        if let Some(tab) = self.entries.get_mut(label) {
+            tab.history.cancel_traversal();
+        }
+    }
+
+    fn native_history_aligned(&self, label: &str) -> bool {
+        self.entries
+            .get(label)
+            .is_some_and(|tab| tab.history.native_aligned())
+    }
+
+    fn mark_native_history_diverged(&mut self, label: &str) {
+        if let Some(tab) = self.entries.get_mut(label) {
+            tab.history.mark_native_diverged();
+        }
+    }
+
+    fn take_fallback(&mut self, label: &str) -> Option<String> {
+        self.entries.get_mut(label)?.fallback_url.take()
+    }
+
+    fn abort_fallback(&mut self, label: &str) {
+        if let Some(tab) = self.entries.get_mut(label) {
+            tab.history.cancel_traversal();
+            tab.loading = false;
+            tab.last_error = Some("Back or Forward could not reach the saved page");
+            tab.revision = tab.revision.wrapping_add(1);
+        }
+    }
+
+    fn source_changed(&mut self, label: &str, url: &str) -> bool {
+        if admit_url(url).is_err() {
+            return false;
+        }
+        let Some(tab) = self.entries.get_mut(label) else {
+            return false;
+        };
+        if (tab.loading && !tab.history.pending_target_is(url))
+            || tab.last_error.is_some()
+            || tab.committed_url.is_none()
+            || tab.committed_url.as_deref() == Some(url)
+        {
+            return false;
+        }
+        tab.fallback_url = tab.history.same_document(url);
+        if tab.history.take_failure() {
+            tab.last_error = Some("Back or Forward could not reach the saved page");
+            tab.loading = false;
+        } else if tab.fallback_url.is_none() {
+            tab.committed_url = Some(url.to_owned());
+            tab.loading = false;
+        } else {
+            tab.loading = true;
+        }
+        tab.revision = tab.revision.wrapping_add(1);
+        true
+    }
+
+    #[cfg(test)]
+    fn close_with(
+        &mut self,
+        label: &str,
+        close: impl FnOnce(&T) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let tab = self.entries.get(label).ok_or("browser tab unavailable")?;
+        close(&tab.handle)?;
+        self.entries.remove(label);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

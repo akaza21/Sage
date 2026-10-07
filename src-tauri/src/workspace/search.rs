@@ -28,6 +28,13 @@ mod tests {
     };
     use crate::workspace::Workspace;
 
+    fn test_limits() -> SearchLimits {
+        SearchLimits {
+            max_duration: crate::test_wait::BUDGET,
+            ..SearchLimits::default()
+        }
+    }
+
     fn fixture_root() -> (PathBuf, SearchRoot) {
         let path = std::env::temp_dir().join(format!("sage-search-{}", Uuid::new_v4()));
         fs::create_dir_all(path.join("src")).unwrap();
@@ -75,7 +82,7 @@ mod tests {
         .unwrap();
         fs::write(path.join("src").join("main.rs"), "const needle = true;\n").unwrap();
 
-        let result = SearchEngine::new(SearchLimits::default())
+        let result = SearchEngine::new(test_limits())
             .search(request("needle"), vec![root])
             .unwrap();
 
@@ -87,7 +94,7 @@ mod tests {
     #[test]
     fn finds_a_literal_with_a_canonical_resource_identity() {
         let (path, root) = fixture_root();
-        let result = SearchEngine::new(SearchLimits::default())
+        let result = SearchEngine::new(test_limits())
             .search(request("hello sage"), vec![root])
             .unwrap();
 
@@ -108,7 +115,7 @@ mod tests {
             "needle needles needle_value NEEDLE (needle)\n",
         )
         .unwrap();
-        let result = SearchEngine::new(SearchLimits::default())
+        let result = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     whole_word: true,
@@ -135,7 +142,7 @@ mod tests {
         fs::write(path.join("src").join("ignored.rs"), "needle\n").unwrap();
         fs::write(path.join("notes.txt"), "needle\n").unwrap();
 
-        let result = SearchEngine::new(SearchLimits::default())
+        let result = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     include_patterns: vec!["src/**/*.rs".into()],
@@ -160,7 +167,7 @@ mod tests {
             vec!["C:/drive".into()],
             vec!["line\nbreak".into()],
         ] {
-            let error = SearchEngine::new(SearchLimits::default())
+            let error = SearchEngine::new(test_limits())
                 .search(
                     WorkspaceSearchRequest {
                         include_patterns,
@@ -186,7 +193,7 @@ mod tests {
         fs::write(path.join("large.txt"), "needle is beyond the bound").unwrap();
         let limits = SearchLimits {
             max_file_bytes: 8,
-            ..SearchLimits::default()
+            ..test_limits()
         };
         let result = SearchEngine::new(limits)
             .search(request("needle"), vec![root])
@@ -207,7 +214,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let result_limited = SearchEngine::new(SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         })
         .search(request("needle"), vec![root])
         .unwrap();
@@ -228,35 +235,35 @@ mod tests {
             (
                 SearchLimits {
                     max_files: 1,
-                    ..SearchLimits::default()
+                    ..test_limits()
                 },
                 super::types::SearchLimitReason::FileCount,
             ),
             (
                 SearchLimits {
                     max_total_bytes: 1,
-                    ..SearchLimits::default()
+                    ..test_limits()
                 },
                 super::types::SearchLimitReason::Bytes,
             ),
             (
                 SearchLimits {
                     max_entries: 1,
-                    ..SearchLimits::default()
+                    ..test_limits()
                 },
                 super::types::SearchLimitReason::Entries,
             ),
             (
                 SearchLimits {
                     max_depth: 0,
-                    ..SearchLimits::default()
+                    ..test_limits()
                 },
                 super::types::SearchLimitReason::Depth,
             ),
             (
                 SearchLimits {
                     max_duration: Duration::ZERO,
-                    ..SearchLimits::default()
+                    ..test_limits()
                 },
                 super::types::SearchLimitReason::Time,
             ),
@@ -280,7 +287,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let limits = SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         };
         let first = SearchEngine::new(limits)
             .search(request("needle"), vec![root])
@@ -312,7 +319,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let first = SearchEngine::new(SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         })
         .search(request("needle"), vec![root])
         .unwrap();
@@ -322,7 +329,7 @@ mod tests {
                 continued.index_generation = 1;
             }
             let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
-            let error = SearchEngine::new(SearchLimits::default())
+            let error = SearchEngine::new(test_limits())
                 .search(
                     continued,
                     vec![SearchRoot {
@@ -347,7 +354,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let first = SearchEngine::new(SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         })
         .search(
             WorkspaceSearchRequest {
@@ -358,7 +365,7 @@ mod tests {
         )
         .unwrap();
         let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
-        let error = SearchEngine::new(SearchLimits::default())
+        let error = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: first.continuation_token,
@@ -385,7 +392,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let first = SearchEngine::new(SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         })
         .search(
             WorkspaceSearchRequest {
@@ -396,7 +403,7 @@ mod tests {
         )
         .unwrap();
         let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
-        let error = SearchEngine::new(SearchLimits::default())
+        let error = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: first.continuation_token,
@@ -423,13 +430,13 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let first = SearchEngine::new(SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         })
         .search(request("needle"), vec![root])
         .unwrap();
         fs::remove_file(path.join("another.txt")).unwrap();
         let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
-        let error = SearchEngine::new(SearchLimits::default())
+        let error = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: first.continuation_token,
@@ -453,7 +460,7 @@ mod tests {
     #[test]
     fn malformed_continuation_token_is_invalid() {
         let (path, root) = fixture_root();
-        let error = SearchEngine::new(SearchLimits::default())
+        let error = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: Some("not-json".into()),
@@ -473,7 +480,7 @@ mod tests {
     #[test]
     fn oversize_continuation_token_is_invalid() {
         let (path, root) = fixture_root();
-        let error = SearchEngine::new(SearchLimits::default())
+        let error = SearchEngine::new(test_limits())
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: Some("x".repeat(1025)),
@@ -511,7 +518,7 @@ mod tests {
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();
         let limits = SearchLimits {
             max_results: 1,
-            ..SearchLimits::default()
+            ..test_limits()
         };
         let first = SearchEngine::new(limits)
             .search(request("needle"), vec![root])
@@ -550,7 +557,7 @@ mod tests {
             return;
         }
 
-        let result = SearchEngine::new(SearchLimits::default())
+        let result = SearchEngine::new(test_limits())
             .search(request("outside-only-needle"), vec![root])
             .unwrap();
         assert!(result.matches.is_empty());

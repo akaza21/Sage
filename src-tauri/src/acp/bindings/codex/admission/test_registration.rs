@@ -50,6 +50,19 @@ impl CodexBindingRegistration {
     }
 
     #[cfg(all(test, windows))]
+    pub(crate) fn admitted_for_observed_steer_journey_test(
+        case_ids: &'static [&'static str],
+    ) -> Self {
+        Self {
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
+                    authenticate_tests::admitted_observed_steer_journey_fixture(case_ids),
+                ))),
+            }),
+        }
+    }
+
+    #[cfg(all(test, windows))]
     pub(crate) fn induce_drift_for_test(&self) {
         let binding = match &*self.lock_state() {
             CodexRegistrationState::Admitted(binding) => Arc::clone(binding),

@@ -168,12 +168,7 @@ impl CodexOperationGate {
         self: &Arc<Self>,
         prepared: &PreparedCodexOperation,
     ) -> Result<ActiveCodexOperation, CodexDiscoveryRunError> {
-        if !self.is_current(prepared.invalidation_epoch) {
-            return Err(CodexDiscoveryRunError::Drift);
-        }
-        if self.shutting_down.load(Ordering::Acquire) {
-            return Err(CodexDiscoveryRunError::Unavailable);
-        }
+        self.validate_admission(prepared)?;
         let mut active = self
             .active
             .lock()
@@ -200,6 +195,23 @@ impl CodexOperationGate {
         RuntimeEpoch::new(epoch).map_err(|_| CodexDiscoveryRunError::Transport)
     }
 
+    pub(super) fn validate_admission(
+        &self,
+        prepared: &PreparedCodexOperation,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        self.validate_epoch(prepared.invalidation_epoch)
+    }
+
+    pub(super) fn validate_epoch(&self, expected: u64) -> Result<(), CodexDiscoveryRunError> {
+        if !self.is_current(expected) {
+            return Err(CodexDiscoveryRunError::Drift);
+        }
+        if self.shutting_down.load(Ordering::Acquire) {
+            return Err(CodexDiscoveryRunError::Unavailable);
+        }
+        Ok(())
+    }
+
     pub(super) fn is_current(&self, expected: u64) -> bool {
         self.invalidation_epoch.load(Ordering::Acquire) == expected
     }
@@ -208,7 +220,6 @@ impl CodexOperationGate {
         prepared.invalidation_epoch
     }
 
-    #[cfg(test)]
     pub(super) fn current_epoch(&self) -> u64 {
         self.invalidation_epoch.load(Ordering::Acquire)
     }

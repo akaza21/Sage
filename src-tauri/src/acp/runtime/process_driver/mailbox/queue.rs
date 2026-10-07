@@ -19,6 +19,11 @@ pub(super) fn pop_driver_message(
     {
         return Some(message);
     }
+    if let Some(message) =
+        queue.pop_control_if(|message| matches!(message, ControlMessage::ProcessExit(_)))
+    {
+        return Some(message);
+    }
     queue.pop()
 }
 

@@ -101,6 +101,7 @@ it("shows one prioritized trailing state per chat and keeps actions separate", (
   expect(focused).toHaveAttribute("aria-current", "page");
   expect(focused).toHaveAttribute("data-chat-id", "chat:a");
   const focusedRow = focused.closest(".project-chat-row");
+  expect(focusedRow).toHaveClass("project-chat-row--active");
   expect(focusedRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
   expect(focusedRow?.querySelector(".project-chat__state")).toHaveTextContent(
     "Working…",
@@ -108,6 +109,7 @@ it("shows one prioritized trailing state per chat and keeps actions separate", (
   const betaRow = screen
     .getByTitle("Open chat Beta")
     .closest(".project-chat-row");
+  expect(betaRow).not.toHaveClass("project-chat-row--active");
   expect(betaRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
   expect(betaRow?.querySelector(".project-chat__state")).toHaveTextContent(
     "Unread",

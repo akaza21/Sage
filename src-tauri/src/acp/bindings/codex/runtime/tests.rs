@@ -16,11 +16,14 @@ use crate::acp::{
         SageRootId,
     },
     intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
+    lifecycle::ItemLifecycle,
     runtime::permissions::PermissionDecision,
     transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::project_registry::ProjectRootAuthority;
 use crate::{error::AppError, persistence::Database, state::AppState};
+
+mod browser_mcp_tests;
 
 struct Mapper;
 
@@ -257,6 +260,7 @@ fn running_turn(runtime: &mut CodexRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-1").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let id = request_id(&egress);
@@ -274,6 +278,133 @@ fn running_turn(runtime: &mut CodexRuntime) {
             &Mapper,
         )
         .expect("turn start");
+}
+
+#[test]
+#[cfg(windows)]
+fn steer_targets_only_the_active_codex_turn() {
+    use std::{fs, sync::Arc};
+
+    let path = std::env::temp_dir().join(format!(
+        "sage-observed-codex-steer-{}.cmd",
+        uuid::Uuid::new_v4()
+    ));
+    fs::write(&path, "@echo off\r\n").unwrap();
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+        path.clone(),
+        "codex-cli 0.146.0".into(),
+    )
+    .unwrap();
+    let mut runtime = CodexRuntime::from_admitted_binding(
+        Arc::new(binding),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
+        RuntimeEpoch::new(24).unwrap(),
+        SageAgentSessionId::parse("session-observed-steer").unwrap(),
+    )
+    .unwrap();
+    let init = runtime.command(AdapterCommand::Initialize).unwrap();
+    let init_id = request_id(&init);
+    runtime
+        .resolve_egress(init.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let initialized = runtime
+        .ingest(
+            &frame(json!({"id":init_id,"result":{
+                "userAgent":"Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "codexHome":r"C:\Users\test\.codex",
+                "platformFamily":"windows","platformOs":"windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let [AdapterEvent::Initialized { capabilities }] = initialized.events() else {
+        panic!("observed initialize publishes capabilities");
+    };
+    assert!(capabilities.active_turn_steer);
+    runtime
+        .resolve_egress(
+            initialized.egress()[0].token().clone(),
+            EgressResolution::Queued,
+        )
+        .unwrap();
+    let session = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&session),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    running_turn(&mut runtime);
+    let steer = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "Change direction").unwrap(),
+            client_message_id: RequiredText::new("client", "steer-1").unwrap(),
+        })
+        .expect("active turn steer");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(steer.frame().payload()).unwrap(),
+        json!({"id":request_id(&steer),"method":"turn/steer","params":{
+            "threadId":"thread-1","expectedTurnId":"turn-1",
+            "clientUserMessageId":"steer-1",
+            "input":[{"type":"text","text":"Change direction"}]
+        }})
+    );
+    let accepted = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&steer),"result":{"turnId":"turn-1"}})),
+            &Mapper,
+        )
+        .expect("steer response");
+    assert!(matches!(
+        accepted.events(),
+        [AdapterEvent::SteerResponse { request_id: id, accepted: true }]
+            if *id == request_id(&steer)
+    ));
+    let rejected = runtime
+        .command(AdapterCommand::Steer {
+            prompt: Prompt::new("prompt", "Rejected direction").unwrap(),
+            client_message_id: RequiredText::new("client", "steer-rejected").unwrap(),
+        })
+        .expect("second steer request");
+    let refusal = runtime
+        .ingest(
+            &frame(
+                json!({"id":request_id(&rejected),"error":{"code":-32602,"message":"stale turn"}}),
+            ),
+            &Mapper,
+        )
+        .expect("asynchronous steer rejection");
+    assert!(refusal.events().iter().any(|event| matches!(
+        event,
+        AdapterEvent::SteerResponse { request_id: id, accepted: false }
+            if *id == request_id(&rejected)
+    )));
+    runtime
+        .ingest(
+            &frame(json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(
+        runtime
+            .command(AdapterCommand::Steer {
+                prompt: Prompt::new("prompt", "Too late").unwrap(),
+                client_message_id: RequiredText::new("client", "steer-2").unwrap(),
+            })
+            .is_err()
+    );
+    fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -309,6 +440,7 @@ fn notification_first_turn_start_ignores_the_late_response_state_regression() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "notification-first").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let id = request_id(&egress);
@@ -345,6 +477,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Run one bounded command").unwrap(),
             client_message_id: RequiredText::new("client", "first-command").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let first_id = request_id(&first);
@@ -379,6 +512,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Follow up without editing").unwrap(),
             client_message_id: RequiredText::new("client", "second-follow-up").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let second_id = request_id(&second);
@@ -424,6 +558,103 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
 }
 
 #[test]
+fn learned_child_thread_turn_start_does_not_reject_parent_session() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"spawn-1","type":"collabAgentToolCall","status":"completed",
+                    "tool":"spawnAgent","senderThreadId":"thread-1",
+                    "receiverThreadIds":["child-1"],
+                    "agentsStates":{"child-1":{"status":"running"}}
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("spawn item");
+
+    let child = runtime.ingest(
+        &frame(json!({"method":"turn/started","params":{
+            "threadId":"child-1","turn":{"id":"child-turn-1","status":"inProgress"}
+        }})),
+        &Mapper,
+    );
+    assert!(matches!(
+        child.unwrap().events(),
+        [AdapterEvent::IgnoredLate]
+    ));
+    runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"activity-1","type":"subAgentActivity",
+                    "agentThreadId":"child-2","agentPath":"Worker","kind":"started"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("subagent activity");
+    let activity_child = runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"child-2","turn":{"id":"child-turn-2","status":"inProgress"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        activity_child.events(),
+        [AdapterEvent::IgnoredLate]
+    ));
+    let child_thread = runtime
+        .ingest(
+            &frame(json!({"method":"thread/started","params":{
+                "thread":{"id":"child-2"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(child_thread.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[test]
+fn oldest_child_notification_after_more_than_32_children_keeps_parent_alive() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    for index in 1..=34 {
+        runtime
+            .ingest(
+                &frame(json!({"method":"item/completed","params":{
+                    "threadId":"thread-1","turnId":"turn-1","item":{
+                        "id":format!("activity-{index}"),"type":"subAgentActivity",
+                        "agentThreadId":format!("child-{index}"),
+                        "agentPath":"Worker","kind":"started"
+                    }
+                }})),
+                &Mapper,
+            )
+            .expect("child activity");
+    }
+    let oldest = runtime
+        .ingest(
+            &frame(json!({"method":"turn/started","params":{
+                "threadId":"child-1","turn":{"id":"child-turn-1","status":"inProgress"}
+            }})),
+            &Mapper,
+        )
+        .expect("oldest child must not tear down the parent");
+    assert!(matches!(oldest.events(), [AdapterEvent::IgnoredLate]));
+    assert!(matches!(
+        runtime.ingest(&frame(json!({"id":999,"result":{}})), &Mapper),
+        Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
 fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
     let mut prompt_failed = fixture_runtime();
     ready(&mut prompt_failed);
@@ -431,6 +662,7 @@ fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Never replay").unwrap(),
             client_message_id: RequiredText::new("client", "failed-prompt").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = request_id(&prompt);
@@ -563,7 +795,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
 
     let initialized = runtime.ingest(
         &frame(json!({"id": id, "result": {
-            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
+            "userAgent": "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
             "codexHome": r"C:\Users\test\.codex",
             "platformFamily": "windows",
             "platformOs": "windows"
@@ -574,6 +806,79 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
     assert!(matches!(
         initialized.unwrap().events(),
         [AdapterEvent::Initialized { .. }]
+    ));
+    fs::remove_file(path).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() {
+    use std::{fs, sync::Arc};
+
+    let path = std::env::temp_dir().join(format!(
+        "sage-observed-codex-identity-{}.cmd",
+        uuid::Uuid::new_v4()
+    ));
+    fs::write(&path, "@echo off\r\n").unwrap();
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+        path.clone(),
+        "codex-cli 0.146.0".into(),
+    )
+    .unwrap();
+
+    let admitted = binding.capability_ceiling().unwrap();
+    assert_eq!(
+        admitted.protocol_version.as_str(),
+        "codex-app-server-observed-0.146.0"
+    );
+    assert_ne!(
+        admitted.protocol_version.as_str(),
+        "codex-app-server-0.145.0-7b0ab167"
+    );
+
+    let mut runtime = CodexRuntime::from_admitted_binding(
+        Arc::new(binding),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
+        RuntimeEpoch::new(23).unwrap(),
+        SageAgentSessionId::parse("session-observed-identity").unwrap(),
+    )
+    .unwrap();
+    let egress = runtime.command(AdapterCommand::Initialize).unwrap();
+    let id = request_id(&egress);
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Queued)
+        .unwrap();
+
+    let initialized = runtime
+        .ingest(
+            &frame(json!({"id": id, "result": {
+                "userAgent": "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "codexHome": r"C:\Users\test\.codex",
+                "platformFamily": "windows",
+                "platformOs": "windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+
+    let [AdapterEvent::Initialized { capabilities }] = initialized.events() else {
+        panic!("observed initialize publishes a capability snapshot");
+    };
+    assert_eq!(
+        capabilities.protocol_version.as_str(),
+        "codex-app-server-observed-0.146.0"
+    );
+    assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
+    assert!(!capabilities.load_session);
+    assert!(matches!(
+        runtime.command(AdapterCommand::LoadSession {
+            external_session_id: ExternalId::new("external", "thread-1").unwrap(),
+        }),
+        Err(AdapterRuntimeError::Operation)
     ));
     fs::remove_file(path).unwrap();
 }
@@ -627,6 +932,7 @@ fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "active-status").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let notification = runtime
@@ -661,6 +967,54 @@ fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
 }
 
 #[test]
+fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_down_the_session() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Reply with PONG").expect("prompt"),
+            client_message_id: RequiredText::new("client", "system-error").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .expect("prompt");
+
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "emittedAtMs": 1_790_173_669_835_u64,
+                "method": "thread/status/changed",
+                "params": {
+                    "status": { "type": "systemError" },
+                    "threadId": "thread-1"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("system errors end the pending turn");
+
+    assert!(matches!(
+        notification.events(),
+        [
+            AdapterEvent::Error(_),
+            AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Failed,
+                ..
+            }
+        ]
+    ));
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "Retry with PONG").expect("prompt"),
+                client_message_id: RequiredText::new("client", "system-error-retry")
+                    .expect("client"),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
+            .is_ok()
+    );
+}
+
+#[test]
 fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
@@ -678,17 +1032,30 @@ fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
 }
 
 #[test]
-fn unrecognized_goal_notification_is_rejected() {
+fn goal_updates_are_ignored_for_the_live_thread_and_rejected_for_a_foreign_one() {
     let mut runtime = fixture_runtime();
-    let notification = runtime.ingest(
-        &frame(json!({
-            "method": "thread/goal/updated",
-            "params": { "threadId": "thread-observed", "goal": {} }
-        })),
-        &Mapper,
-    );
+    ready(&mut runtime);
+    let notification = runtime
+        .ingest(
+            &frame(json!({
+                "method": "thread/goal/updated",
+                "params": { "threadId": "thread-1", "goal": {} }
+            })),
+            &Mapper,
+        )
+        .expect("Codex-owned goal state must not tear the runtime down");
 
-    assert!(matches!(notification, Err(AdapterRuntimeError::Frame)));
+    assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({
+                "method": "thread/goal/updated",
+                "params": { "threadId": "thread-foreign", "goal": {} }
+            })),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Operation)
+    ));
 }
 
 #[test]
@@ -792,6 +1159,80 @@ fn observed_mcp_cancelled_status_notification_is_ignored_during_activation() {
     );
 
     assert!(notification.is_ok());
+}
+
+#[test]
+fn failed_optional_browser_mcp_does_not_abort_chat_activation() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let _request = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({
+                "method": "mcpServer/startupStatus/updated",
+                "params": {
+                    "error": "Stale browser helper failed",
+                    "failureReason": null,
+                    "name": "sage-browser",
+                    "status": "failed",
+                    "threadId": "foreign-thread"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("pre-bind foreign failure remains bounded");
+    let notification = runtime.ingest(
+        &frame(json!({
+            "method": "mcpServer/startupStatus/updated",
+            "params": {
+                "error": "MCP client for `sage-browser` failed to start",
+                "failureReason": null,
+                "name": "sage-browser",
+                "status": "failed",
+                "threadId": "thread-observed"
+            }
+        })),
+        &Mapper,
+    );
+
+    assert!(
+        notification.is_ok(),
+        "optional browser failure must not fail activation"
+    );
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"thread/started","params":{
+                "thread":{"id":"thread-observed"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        started.events(),
+        [AdapterEvent::SessionReady { .. }, AdapterEvent::Error(NormalizedPayload::Error { code, .. })]
+            if code.as_str() == "browserMcpUnavailable"
+    ));
+    let repeated = runtime
+        .ingest(
+            &frame(json!({
+                "method": "mcpServer/startupStatus/updated",
+                "params": {
+                    "error": "MCP client for `sage-browser` failed to start",
+                    "failureReason": null,
+                    "name": "sage-browser",
+                    "status": "failed",
+                    "threadId": "thread-observed"
+                }
+            })),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(repeated.events(), [AdapterEvent::IgnoredLate]));
 }
 
 #[test]
@@ -1060,7 +1501,7 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
     assert!(matches!(
         tool.events(),
         [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolUpdateResult { .. },
+            payload: NormalizedPayload::ToolCall { .. },
             ..
         }]
     ));
@@ -1154,7 +1595,6 @@ fn sparse_command_updates_preserve_and_explicitly_clear_typed_fields_on_one_item
     assert!(matches!(
         payload,
         NormalizedPayload::ToolCall {
-            input_summary: None,
             output_summary: Some(output),
             locations,
             ..
@@ -1189,7 +1629,6 @@ fn sparse_command_updates_preserve_and_explicitly_clear_typed_fields_on_one_item
     assert!(matches!(
         payload,
         NormalizedPayload::ToolCall {
-            input_summary: None,
             output_summary: Some(output),
             locations,
             ..
@@ -1214,7 +1653,6 @@ fn sparse_command_updates_preserve_and_explicitly_clear_typed_fields_on_one_item
     assert!(matches!(
         payload,
         NormalizedPayload::ToolCall {
-            input_summary: None,
             output_summary: Some(output),
             locations,
             ..
@@ -1246,9 +1684,104 @@ fn sparse_command_updates_preserve_and_explicitly_clear_typed_fields_on_one_item
     assert_eq!(first_id, cleared_id, "clear patches the same command item");
     assert!(matches!(
         payload,
-        NormalizedPayload::ToolCall { input_summary: None, locations, .. }
+        NormalizedPayload::ToolCall { locations, .. }
             if locations.as_slice().is_empty()
     ));
+}
+
+#[test]
+fn command_start_and_completion_share_one_tool_call_item() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-one","type":"commandExecution","status":"inProgress"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("command start");
+    let completed = runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-one","type":"commandExecution","status":"completed",
+                    "aggregatedOutput":"done"
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("command completion");
+
+    let [
+        AdapterEvent::Item {
+            id: started_id,
+            lifecycle: ItemLifecycle::Started,
+            payload: NormalizedPayload::ToolCall { .. },
+            ..
+        },
+    ] = started.events()
+    else {
+        panic!("typed command start")
+    };
+    let [
+        AdapterEvent::Item {
+            id: completed_id,
+            lifecycle: ItemLifecycle::Completed,
+            payload: NormalizedPayload::ToolCall { .. },
+            ..
+        },
+    ] = completed.events()
+    else {
+        panic!("typed command completion")
+    };
+    assert_eq!(started_id, completed_id);
+}
+
+#[test]
+fn a_started_command_carries_its_redacted_command_line_within_a_bounded_label() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+
+    let command_line = format!(
+        "{}--token sk-live-secret",
+        "cargo test --package sage-long-package-name ".repeat(20)
+    );
+    let started = runtime
+        .ingest(
+            &frame(json!({"method":"item/started","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"command-label","type":"commandExecution","status":"inProgress",
+                    "command":command_line
+                }
+            }})),
+            &Mapper,
+        )
+        .expect("labelled command");
+    let AdapterEvent::Item {
+        payload:
+            NormalizedPayload::ToolCall {
+                label,
+                input_summary,
+                ..
+            },
+        ..
+    } = &started.events()[0]
+    else {
+        panic!("started command call")
+    };
+    assert!(label.as_str().chars().count() <= 201);
+    assert!(label.as_str().ends_with('…'));
+    assert!(label.as_str().starts_with("cargo test --package"));
+    let input = input_summary.as_ref().expect("retained command line");
+    assert!(input.as_str().len() > label.as_str().len());
+    assert!(!input.as_str().contains("sk-live-secret"));
+    assert!(input.as_str().contains("[redacted]"));
 }
 
 #[test]
@@ -1302,6 +1835,7 @@ fn command_snapshots_reject_foreign_or_retired_turns_without_borrowing_prior_con
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Start a separate turn").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-2").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("next turn");
     let next_id = request_id(&next);
@@ -1324,7 +1858,7 @@ fn command_snapshots_reject_foreign_or_retired_turns_without_borrowing_prior_con
     assert!(matches!(
         next_item.events(),
         [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolCall { input_summary: None, locations, .. },
+            payload: NormalizedPayload::ToolCall { locations, .. },
             ..
         }] if locations.as_slice().is_empty()
     ));
@@ -1372,7 +1906,7 @@ fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal
         prefix.events(),
         [AdapterEvent::Item {
             id,
-            payload: NormalizedPayload::ToolUpdateResult { output_summary: None, locations, .. },
+            payload: NormalizedPayload::ToolCall { output_summary: None, locations, .. },
             ..
         }] if id == command_id && locations.as_slice().len() == 1
     ));
@@ -1626,10 +2160,7 @@ fn permission_request_waits_for_a_later_deny_and_never_emits_ingress_egress() {
     };
     assert_eq!(item_id.external_id.as_str(), "tool-1");
     assert_eq!(external_request_id.as_str(), "string:approval-1");
-    assert_eq!(
-        summary.as_str(),
-        "Codex requested additional authority; awaiting your decision"
-    );
+    assert_eq!(summary.as_str(), "Run a command");
     assert!(batch.egress().is_empty());
     assert!(batch.actual_bytes() <= 262_144);
 
@@ -1716,6 +2247,243 @@ fn allow_once_on_codex_does_not_emit_denial_and_records_resolved_allowed() {
         .ingest(&request, &Mapper)
         .expect("resolved duplicate");
     assert!(resolved_duplicate.egress().is_empty());
+}
+
+#[test]
+fn codex_unknown_command_decisions_offer_reject_only() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "id":"unknown-command","method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"unknown-tool",
+                    "availableDecisions":["futureDecision",42]
+                }
+            })),
+            &Mapper,
+        )
+        .expect("unknown decisions permission");
+    let AdapterEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert_eq!(
+        kinds.as_slice(),
+        &[crate::acp::intent::PermissionOptionKind::RejectOnce]
+    );
+}
+
+#[test]
+fn codex_always_allow_uses_session_decision_only_for_supported_requests() {
+    let mut limited = fixture_runtime();
+    ready(&mut limited);
+    running_turn(&mut limited);
+    let batch = limited
+        .ingest(
+            &frame(json!({
+                "id":"limited-command","method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"limited-tool",
+                    "availableDecisions":["decline","accept"]
+                }
+            })),
+            &Mapper,
+        )
+        .expect("limited permission");
+    let AdapterEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert_eq!(
+        kinds.as_slice(),
+        &[
+            crate::acp::intent::PermissionOptionKind::RejectOnce,
+            crate::acp::intent::PermissionOptionKind::AllowOnce,
+        ]
+    );
+    assert!(
+        limited
+            .command(AdapterCommand::ResolvePermission {
+                request_id: crate::acp::contract::SageServerRequestId::parse(
+                    "string:limited-command"
+                )
+                .unwrap(),
+                decision: PermissionDecision::AllowAlways,
+            })
+            .is_err()
+    );
+
+    let malformed = limited
+        .ingest(
+            &frame(json!({
+                "id":"malformed-command","method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"malformed-tool",
+                    "availableDecisions":"acceptForSession"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("malformed decisions permission");
+    let AdapterEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &malformed.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert_eq!(
+        kinds.as_slice(),
+        &[crate::acp::intent::PermissionOptionKind::RejectOnce]
+    );
+    assert!(
+        limited
+            .command(AdapterCommand::ResolvePermission {
+                request_id: crate::acp::contract::SageServerRequestId::parse(
+                    "string:malformed-command"
+                )
+                .unwrap(),
+                decision: PermissionDecision::AllowAlways,
+            })
+            .is_err()
+    );
+
+    let ordered = limited
+        .ingest(
+            &frame(json!({
+                "id":"ordered-command","method":"item/commandExecution/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"ordered-tool",
+                    "availableDecisions":["decline","acceptForSession","accept"]
+                }
+            })),
+            &Mapper,
+        )
+        .expect("ordered permission");
+    let AdapterEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &ordered.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert_eq!(
+        kinds.as_slice(),
+        &[
+            crate::acp::intent::PermissionOptionKind::RejectOnce,
+            crate::acp::intent::PermissionOptionKind::AllowAlways,
+            crate::acp::intent::PermissionOptionKind::AllowOnce,
+        ]
+    );
+
+    for (method, null_decisions) in [
+        ("item/commandExecution/requestApproval", false),
+        ("item/commandExecution/requestApproval", true),
+        ("item/fileChange/requestApproval", false),
+    ] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        running_turn(&mut runtime);
+        let mut request = json!({
+            "id":"approval-session","method":method,"params":{
+                "threadId":"thread-1","turnId":"turn-1","itemId":"tool-session"
+            }
+        });
+        if null_decisions {
+            request["params"]["availableDecisions"] = serde_json::Value::Null;
+        }
+        let request = frame(request);
+        let batch = runtime.ingest(&request, &Mapper).expect("permission");
+        let AdapterEvent::PermissionRequest {
+            payload:
+                NormalizedPayload::PermissionRequest {
+                    offered_option_kinds: Some(kinds),
+                    ..
+                },
+            ..
+        } = &batch.events()[0]
+        else {
+            panic!("permission options")
+        };
+        assert!(
+            kinds
+                .as_slice()
+                .contains(&crate::acp::intent::PermissionOptionKind::AllowAlways)
+        );
+        let reply = runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: crate::acp::contract::SageServerRequestId::parse(
+                    "string:approval-session",
+                )
+                .unwrap(),
+                decision: PermissionDecision::AllowAlways,
+            })
+            .expect("session approval");
+        let response: serde_json::Value = serde_json::from_slice(reply.frame().payload()).unwrap();
+        assert_eq!(response["result"]["decision"], "acceptForSession");
+    }
+
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "id":"approval-profile","method":"item/permissions/requestApproval","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"tool-profile"
+                }
+            })),
+            &Mapper,
+        )
+        .expect("permission");
+    let AdapterEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert!(
+        !kinds
+            .as_slice()
+            .contains(&crate::acp::intent::PermissionOptionKind::AllowAlways)
+    );
+    assert!(
+        runtime
+            .command(AdapterCommand::ResolvePermission {
+                request_id: crate::acp::contract::SageServerRequestId::parse(
+                    "string:approval-profile"
+                )
+                .unwrap(),
+                decision: PermissionDecision::AllowAlways,
+            })
+            .is_err()
+    );
 }
 
 #[test]
@@ -1868,7 +2636,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             &Mapper,
         )
         .expect("unknown event");
-    assert!(matches!(unknown.events(), [AdapterEvent::Unsupported(_)]));
+    assert!(matches!(unknown.events(), [AdapterEvent::IgnoredLate]));
 
     initialize(&mut runtime);
     for _ in 0..16 {
@@ -1887,6 +2655,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-first").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     rollback
@@ -1897,6 +2666,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "second").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-second").expect("client"),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -1907,6 +2677,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-zero").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     let token = first.token().clone();
@@ -1921,6 +2692,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "retry").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-retry").expect("client"),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -1931,6 +2703,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "possibly written").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-unknown").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     uncertain
@@ -1940,6 +2713,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         uncertain.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-no-replay").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));
@@ -1989,5 +2763,4 @@ fn harness_neutral_batches_enforce_count_and_actual_byte_limits() {
     ));
 }
 
-#[path = "cancel_contract_tests.rs"]
 mod cancel_contract_tests;

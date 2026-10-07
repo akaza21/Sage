@@ -6,9 +6,13 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { preferredModelId } from "../features/harnesses/modelSelection";
 import { acpDesktop } from "../services/acpDesktop";
 import { desktop } from "../services/desktop";
+import {
+  cachedHarnessModels,
+  harnessModelIdentity,
+  rememberHarnessModels,
+} from "./harnessModelCache";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
@@ -21,6 +25,17 @@ export type HarnessDiscoveryPhase =
   | "ready"
   | "error";
 
+export function preferredModelId(
+  models: ModelOption[],
+  previousModelId: string | null,
+): string | null {
+  return models.length === 0
+    ? null
+    : previousModelId && models.some((model) => model.id === previousModelId)
+      ? previousModelId
+      : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null);
+}
+
 export interface HarnessSlice {
   harnesses: HarnessDefinition[];
   selectedHarnessId: string | null;
@@ -30,6 +45,7 @@ export interface HarnessSlice {
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
   selectHarness: (harnessId: string) => Promise<void>;
+  applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
   loadHarnessModelsForProjection: (
     harnessId: string,
     selectedModelId: string | null,
@@ -60,6 +76,33 @@ export const createHarnessSlice: StateCreator<
     get().harnessRequestGeneration === requestGeneration &&
     get().selectedHarnessId === harnessId;
 
+  const revalidate = (
+    harnessId: string,
+    identity: string | null,
+    generation: number,
+    projectId: string,
+    requestGeneration: number,
+  ) => {
+    desktop
+      .listHarnessModels(harnessId)
+      .then((models) => {
+        rememberHarnessModels(identity, models);
+        if (!current(generation, projectId, requestGeneration, harnessId)) {
+          return;
+        }
+        const selected = get().selectedModelId;
+        set({
+          models,
+          selectedModelId: models.some((model) => model.id === selected)
+            ? selected
+            : null,
+          harnessDiscoveryPhase: "ready",
+          harnessDiscoveryError: null,
+        });
+      })
+      .catch(() => undefined);
+  };
+
   const load = async (
     harnessId: string,
     previousModelId: string | null,
@@ -74,14 +117,30 @@ export const createHarnessSlice: StateCreator<
     );
     const usesAccountModelDiscovery =
       harness?.transport === "acp" && harness.accountModelDiscovery;
+    const detecting = harness?.installState === "detecting";
+    const identity = usesAccountModelDiscovery
+      ? null
+      : harnessModelIdentity(harness);
+    const cached = cachedHarnessModels(identity);
     set({
       selectedHarnessId: harnessId,
-      models: [],
-      selectedModelId: null,
+      models: cached ?? [],
+      selectedModelId: cached
+        ? preferredModelId(cached, previousModelId)
+        : null,
       harnessRequestGeneration: requestGeneration,
-      harnessDiscoveryPhase: usesAccountModelDiscovery ? "checking" : "idle",
+      harnessDiscoveryPhase: cached
+        ? "ready"
+        : detecting || usesAccountModelDiscovery
+          ? "checking"
+          : "idle",
       harnessDiscoveryError: null,
     });
+    if (detecting) return;
+    if (cached) {
+      revalidate(harnessId, identity, generation, projectId, requestGeneration);
+      return;
+    }
     try {
       if (usesAccountModelDiscovery) {
         if (harness.installState !== "available" || !harness.bindingId) {
@@ -130,6 +189,7 @@ export const createHarnessSlice: StateCreator<
       }
 
       const models = await desktop.listHarnessModels(harnessId);
+      rememberHarnessModels(identity, models);
       if (current(generation, projectId, requestGeneration, harnessId)) {
         set({
           models,
@@ -166,6 +226,30 @@ export const createHarnessSlice: StateCreator<
       const previous =
         get().selectedHarnessId === harnessId ? get().selectedModelId : null;
       await load(harnessId, previous, generation, projectId);
+    },
+    applyHarnessDiscovery: async (harnesses) => {
+      set({ harnesses });
+      const projectId = get().project?.id;
+      if (!projectId || get().projectTransitioning) return;
+      const generation = get().projectGeneration;
+      const selectable = harnesses.filter(
+        (candidate) =>
+          candidate.transport === "acp" &&
+          candidate.installState === "available",
+      );
+      const selected = get().selectedHarnessId;
+      const next =
+        selectable.find((candidate) => candidate.id === selected) ??
+        selectable[0];
+      if (!next) return;
+      const retained = next.id === selected;
+      if (retained && get().harnessDiscoveryPhase === "ready") return;
+      await load(
+        next.id,
+        retained ? get().selectedModelId : null,
+        generation,
+        projectId,
+      );
     },
     loadHarnessModelsForProjection: async (
       harnessId,

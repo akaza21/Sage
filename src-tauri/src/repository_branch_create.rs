@@ -1,8 +1,6 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository,
+    git_budget, repository,
     repository_branches::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, MAX_LOCAL_BRANCHES, list_local_branches,
         valid_branch_name,
@@ -10,7 +8,6 @@ use crate::{
     workspace::Workspace,
 };
 
-const GIT_CREATE_BRANCH_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_GIT_CREATE_BRANCH_OUTPUT_BYTES: usize = 64 * 1024;
 
 pub(crate) fn admit_unlisted_local_branch_create<'a>(
@@ -50,7 +47,7 @@ pub(crate) async fn create_unlisted_local_branch(
     create_unlisted_local_branch_with_policy(
         workspace,
         requested,
-        repository::GitProcessPolicy::mutation(GIT_CREATE_BRANCH_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }

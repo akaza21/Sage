@@ -2,8 +2,74 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::{
     acp::intent::CapabilitySnapshotV1,
+    domain::{BootstrapSnapshot, ProjectListItem, ProjectRepositoryStatus},
     error::{AppError, AppResult},
+    persistence::Database,
+    project_registry::MAX_PROJECTS,
+    workbench_restore::MAX_RESTORED_TABS,
 };
+
+impl Database {
+    pub(crate) fn next_browser_tab_number(&self) -> AppResult<u64> {
+        let limit = MAX_PROJECTS * MAX_RESTORED_TABS as i64;
+        let connection = self.connection();
+        let mut statement = connection.prepare(
+            "SELECT CASE WHEN length(CAST(id AS BLOB)) > 28 THEN '' ELSE id END
+             FROM workbench_tabs WHERE kind='browser' LIMIT ?1",
+        )?;
+        let mut rows = statement.query([limit + 1])?;
+        let mut count = 0_i64;
+        let mut maximum = 0_u64;
+        while let Some(row) = rows.next()? {
+            count += 1;
+            if count > limit {
+                return Err(AppError::ResourceLimit(
+                    "persisted browser tab count exceeds its limit".into(),
+                ));
+            }
+            let id: String = row.get(0)?;
+            let number = id
+                .strip_prefix("browser-")
+                .and_then(|value| value.parse::<u64>().ok())
+                .filter(|value| *value > 0 && format!("browser-{value}") == id)
+                .ok_or_else(|| {
+                    AppError::InvalidRequest(
+                        "persisted browser tab has a malformed identity".into(),
+                    )
+                })?;
+            maximum = maximum.max(number);
+        }
+        maximum
+            .checked_add(1)
+            .ok_or_else(|| AppError::ResourceLimit("browser tab labels exhausted".into()))
+    }
+}
+
+pub(super) fn empty_snapshot(projects: Vec<ProjectListItem>) -> BootstrapSnapshot {
+    BootstrapSnapshot {
+        transition_epoch: 0,
+        projects,
+        project: None,
+        tabs: Vec::new(),
+        archived_chats: Vec::new(),
+        active_tab_id: None,
+        selected_root_id: None,
+        selected_resource: None,
+        harnesses: Vec::new(),
+        session_id: None,
+        selected_harness_id: None,
+        selected_model_id: None,
+        messages: Vec::new(),
+        repositories: ProjectRepositoryStatus {
+            roots: Vec::new(),
+            truncated: false,
+            elapsed_ms: 0,
+        },
+        turn_changes: Vec::new(),
+        recovered_buffers: Vec::new(),
+        recovery_notice: None,
+    }
+}
 
 pub(super) fn active_project_in(
     transaction: &rusqlite::Transaction<'_>,

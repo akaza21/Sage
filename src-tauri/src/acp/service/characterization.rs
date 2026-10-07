@@ -258,6 +258,7 @@ impl AcpService {
             publisher: Arc::clone(&self.publisher),
             clock,
             mailbox,
+            session_recovery: Some(self.sessions.clone()),
             zero_sequence: AtomicU64::new(0),
         };
         if runner
@@ -297,7 +298,10 @@ impl AcpService {
             .for_owner(&owner)
             .map_err(map_slot)
             .map_err(super::PromptSendError::not_started)?
-            .send(HostPromptIntent { command })
+            .send(HostPromptIntent {
+                command,
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
             .map_err(|error| {
                 super::PromptSendError::unknown(map_host_error(&self.runtime, &owner, error))
             })

@@ -32,12 +32,15 @@ fn reopen_pair_batch_for_root(
 ) -> AdapterInboundBatchCommand {
     let mut metadata = item(owner, key);
     metadata.payload = NormalizedPayload::file_admitted(
-        SafeResourceLocation::Resource {
-            resource: SafeResourceRef::new(root_id.clone(), "src/lib.rs").unwrap(),
+        crate::acp::intent::FileChangeFacts {
+            resource: SafeResourceLocation::Resource {
+                resource: SafeResourceRef::new(root_id.clone(), "src/lib.rs").unwrap(),
+            },
+            summary: SafeText::new("summary", "File changed").unwrap(),
+            additions: Some(1),
+            deletions: Some(1),
+            operation: crate::acp::intent::FileChangeOperation::Updated,
         },
-        SafeText::new("summary", "File changed").unwrap(),
-        Some(1),
-        Some(1),
         0,
         (old.len() as u64, new.len() as u64),
         pair_digest(old.as_bytes(), new.as_bytes()),

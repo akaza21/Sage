@@ -1,0 +1,142 @@
+{
+  "scenario": "tool-kinds",
+  "harness": "cursor-agent",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "turn", "state": "running" },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "chunks": 5
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "chunks": 19
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-0\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_0",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "read",
+      "label": "Read File"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-0\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_0",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "read",
+      "label": "Read File"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-1\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_1",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "execute",
+      "label": "`node -e \"console.log(2+2)\"`"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-1\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_1",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "execute",
+      "label": "`node -e \"console.log(2+2)\"`"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-2\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_2",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "edit",
+      "label": "Edit File"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-2\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_2",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "edit",
+      "label": "Edit File"
+    },
+    {
+      "event": "item",
+      "externalItemId": "permission:0",
+      "kind": "permissionRequest",
+      "lifecycle": "streaming",
+      "toolState": "waitingForApproval"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-0\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_0",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "read",
+      "label": "Read File"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-2\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_2",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "edit",
+      "label": "Edited file"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-2\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_2:diff:0",
+      "kind": "fileChangeDiff",
+      "lifecycle": "completed"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call-7bebbf65-4e59-4c8a-84c2-2592458873f2-1\nfc_8ea916e2-982a-98a1-88de-34e38ae43c6c_1",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "execute",
+      "label": "`node -e \"console.log(2+2)\"`"
+    },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "chunks": 2
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "chunks": 2
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "One turn exercising all three tool categories against a real cursor-agent 2026.08.11-e8db854 over ACP: a read, a shell execute and an edit. Captured with scripts/capture-acp-trace.mjs, never hand-written.",
+    "All three cursor tool call ids embed a literal newline between the call id and the fc_ segment. Asserting them verbatim proves the contract carries that identity intact instead of splitting it.",
+    "The three tools are opened before any of them completes, and they complete in a different order than they started: read, then edit, then execute. The translator must key on tool identity rather than on arrival order.",
+    "cursor-agent omits kind on every completing tool_call_update, so the category asserted on each completed event is the one retained from tool start.",
+    "The edit produces a separate fileChangeDiff item keyed to the edit tool id with a :diff:0 suffix, so a single edit tool yields both a toolCall item and a distinct diff item.",
+    "cursor-agent asks for permission mid-turn, while all three tools are still open, and the edit is the tool it asks about. The permission request arrives as a server-initiated request carrying both an id and a method, so it is routed to translate_permission_request_value and observed as a permissionRequest item in waitingForApproval, not as a notification.",
+    "Neither this trace nor the opencode one contains a single fs/read_text_file, fs/write_text_file or terminal request. Both harnesses read and edited through their own tools even though the capture client advertised fs.readTextFile. The client filesystem capability is therefore not exercised by any captured trace, and no clientRequest event is asserted here."
+  ]
+}

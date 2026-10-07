@@ -16,6 +16,8 @@ const MAX_PROJECT_ROOTS: usize = MAX_ROOTS_PER_PROJECT as usize;
 const MAX_ROOT_PATH_BYTES_TOTAL: usize =
     MAX_PROJECT_ROOTS * LIMITS.wire.absolute_path_bytes_native_only as usize;
 
+mod missing_display;
+
 /// Native-only configuration input. Absolute paths never cross the IPC or
 /// durable normalized-item boundary.
 pub(crate) struct ConfiguredResourceRoot {
@@ -170,15 +172,7 @@ impl NativeResourceMapper {
             return Err(ResourceMapError::PathNotCanonical);
         }
 
-        let mut selected = None;
-        for (index, root) in self.roots.iter().enumerate() {
-            if actual.strip_prefix(&root.native_root).is_ok() && selected.replace(index).is_some() {
-                return Err(ResourceMapError::AmbiguousRoot);
-            }
-        }
-        let root = selected
-            .map(|index| &self.roots[index])
-            .ok_or(ResourceMapError::ForeignPath)?;
+        let root = self.root_for(&actual)?;
         let relative = actual
             .strip_prefix(&root.native_root)
             .map_err(|_| ResourceMapError::ForeignPath)?;
@@ -253,6 +247,18 @@ impl NativeResourceMapper {
         }
         Ok(())
     }
+
+    fn root_for(&self, actual: &Path) -> Result<&CanonicalRoot, ResourceMapError> {
+        let mut selected = None;
+        for (index, root) in self.roots.iter().enumerate() {
+            if actual.strip_prefix(&root.native_root).is_ok() && selected.replace(index).is_some() {
+                return Err(ResourceMapError::AmbiguousRoot);
+            }
+        }
+        selected
+            .map(|index| &self.roots[index])
+            .ok_or(ResourceMapError::ForeignPath)
+    }
 }
 
 impl ResourceMapper for NativeResourceMapper {
@@ -262,6 +268,10 @@ impl ResourceMapper for NativeResourceMapper {
     ) -> Result<SafeResourceRef, UnavailableResourceReason> {
         self.try_map_existing(absolute_path)
             .map_err(ResourceMapError::unavailable_reason)
+    }
+
+    fn map_missing_display(&self, absolute_path: &str) -> Option<SafeResourceRef> {
+        self.try_map_missing_display(absolute_path).ok()
     }
 }
 

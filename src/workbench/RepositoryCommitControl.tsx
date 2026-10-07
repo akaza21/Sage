@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
 import {
   canAbortGitSequence,
   canCommitRepository,
@@ -181,7 +182,7 @@ export function RepositoryCommitControl({
             clearError(repository.rootId);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            if (matchesKeymapChord(keymapBinding("commit"), event)) {
               event.preventDefault();
               void submitCommit();
             }

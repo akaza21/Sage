@@ -2,11 +2,120 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import { safeItem } from "../../../services/acpDesktopResponseItems";
 import { CollaborationItem } from "./CollaborationItem";
 
 afterEach(cleanup);
 
 describe("CollaborationItem", () => {
+  it("shows a verified spawn as a compact working row without exposing thread IDs", () => {
+    const item = {
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: "activity-1",
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: [],
+        operation: "spawnAgent",
+        agentKey: null,
+        agentKeys: ["secret-thread-id"],
+        agentStates: [["secret-thread-id", "running"]],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("Subagent started working")).toBeInTheDocument();
+    expect(screen.queryByText(/secret-thread-id/)).toBeNull();
+  });
+
+  it("does not claim a failed or unverified spawn started working", () => {
+    for (const state of ["errored", "notFound", "shutdown", "interrupted"]) {
+      const item = {
+        kind: "collaboration",
+        lifecycle: "completed",
+        payload: {
+          activityId: "activity-1",
+          label: "spawnAgent",
+          summary: "",
+          receiverLabels: [],
+          operation: "spawnAgent",
+          agentKeys: ["thread-1"],
+          agentStates: [["thread-1", state]],
+        },
+      } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+      const { unmount } = render(<CollaborationItem item={item} />);
+      expect(screen.queryByText(/started working/)).toBeNull();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /failed to start|stopped/,
+      );
+      unmount();
+    }
+  });
+
+  it("shows an interrupted child as stopped", () => {
+    const item = {
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: "activity-1",
+        label: "Code review",
+        summary: "",
+        receiverLabels: [],
+        operation: "interrupted",
+        agentKey: "thread-1",
+        agentKeys: [],
+        agentStates: [],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("Subagent stopped")).toBeInTheDocument();
+  });
+
+  it("groups verified completions with available display names", () => {
+    const item = safeItem({
+      id: "wait-1",
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      turnId: "turn-1",
+      runtimeEpoch: "1",
+      ordinal: 1,
+      origin: "primary",
+      activityId: null,
+      lifecycle: "completed",
+      revision: "1",
+      createdAt: 1,
+      updatedAt: 2,
+      terminalAt: 2,
+      kind: "collaboration",
+      toolState: null,
+      payload: {
+        activityId: "activity-2",
+        label: "wait",
+        summary: "",
+        receiverLabels: ["A", "B", "C"],
+        operation: "wait",
+        agentKeys: ["id-a", "id-b", "id-c"],
+        agentStates: [
+          ["id-a", "completed"],
+          ["id-b", "completed"],
+          ["id-c", "completed"],
+        ],
+      },
+    });
+    if (item?.kind !== "collaboration")
+      throw new Error("Projected completion was rejected.");
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("A, B and C finished")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "A, B and C finished" }),
+    ).toHaveClass("acp-subagent-row");
+    expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
+      3,
+    );
+    expect(screen.queryByText(/id-a/)).toBeNull();
+  });
+
   it("projects harness-owned collaboration without creating Sage controls", () => {
     const label =
       "Coordinate the independent accessibility review across every visible workbench surface";

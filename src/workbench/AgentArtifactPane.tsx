@@ -1,4 +1,4 @@
-import { Files, PanelRightClose } from "lucide-react";
+import { ExternalLink, Files, PanelRightClose, Plus } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -36,7 +36,10 @@ import {
   useHarnessBrowseOwner,
   useHarnessBrowseSession,
 } from "../features/preview/useHarnessBrowseSession";
-import { renderFileOrDiffCanvas } from "./surfaceRegistry";
+import {
+  renderFileOrDiffCanvas,
+  renderRegisteredCanvas,
+} from "./surfaceRegistry";
 import {
   agentArtifactOwnerKey,
   type AgentArtifactOwner,
@@ -57,6 +60,7 @@ export function AgentArtifactPane({
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
+  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const availableResourceKeys = useRef(new Set<string>());
   const paneRef = useRef<HTMLElement | null>(null);
   const [canvasNode, setCanvasNode] = useState<HTMLElement | null>(null);
@@ -131,9 +135,11 @@ export function AgentArtifactPane({
   const availableTargets = useMemo<AgentArtifactTarget[]>(
     () => [
       ...artifacts.map((tab) => ({ kind: "tab" as const, tabId: tab.id })),
-      ...(focusedOwner !== null ? [{ kind: "preview" as const }] : []),
+      ...(focusedOwner !== null && previewOpen
+        ? [{ kind: "preview" as const }]
+        : []),
     ],
-    [artifacts, focusedOwner],
+    [artifacts, focusedOwner, previewOpen],
   );
   const record = agentArtifactFollowRecordFor(followRecords, focusedOwner);
   const activeWorkbenchArtifact = artifacts.find(
@@ -193,7 +199,7 @@ export function AgentArtifactPane({
     focusedOwner,
   });
 
-  const hasResources = artifacts.length > 0 || focusedOwner !== null;
+  const hasResources = artifacts.length > 0 || previewOpen;
   const resourceKeys = useMemo(
     () =>
       new Set([
@@ -227,7 +233,7 @@ export function AgentArtifactPane({
     return (
       <>
         <AgentArtifactCollapsedPane
-          count={artifacts.length + (focusedOwner ? 1 : 0)}
+          count={artifacts.length + (previewOpen ? 1 : 0)}
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
           paneRef={paneRef}
@@ -243,7 +249,7 @@ export function AgentArtifactPane({
         ref={paneRef}
         className={`agent-artifact-pane${
           hasResources ? "" : " agent-artifact-pane--empty"
-        }${activeArtifact ? " agent-artifact-pane--with-header" : ""}`}
+        }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}`}
         aria-label="Agent artifacts"
         data-owner-project-id={focusedOwner?.projectId}
         data-owner-chat-id={focusedOwner?.chatId}
@@ -257,6 +263,49 @@ export function AgentArtifactPane({
         }}
       >
         <header className="agent-artifact-pane__header">
+          {hasResources ? (
+            <AgentArtifactTabStrip
+              artifacts={artifacts}
+              selectedTarget={selectedTarget}
+              focusedOwner={focusedOwner}
+              focusedPage={focusedPage}
+              previewSelected={previewSelected}
+              previewOpen={previewOpen}
+              record={record}
+              availableTargets={availableTargets}
+              activateTab={activateTab}
+              closeTab={closeTab}
+            />
+          ) : (
+            <strong>Files, changes, and preview</strong>
+          )}
+          <button
+            className="agent-artifact-pane__collapse"
+            type="button"
+            aria-label="New browser tab"
+            title="New browser tab"
+            disabled={!project}
+            onClick={() => void openBrowser()}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </button>
+          <button
+            className="agent-artifact-pane__collapse"
+            type="button"
+            aria-label="Pop out active tab"
+            title="Open active tab in Editor"
+            disabled={
+              !activeArtifact ||
+              activeArtifact.kind === "browser" ||
+              !onOpenInEditor
+            }
+            onClick={() => {
+              if (activeArtifact && activeArtifact.kind !== "browser")
+                onOpenInEditor?.(activeArtifact.id);
+            }}
+          >
+            <ExternalLink size={16} aria-hidden="true" />
+          </button>
           <button
             className="agent-artifact-pane__collapse"
             type="button"
@@ -266,23 +315,8 @@ export function AgentArtifactPane({
           >
             <PanelRightClose size={16} aria-hidden="true" />
           </button>
-          {hasResources ? (
-            <AgentArtifactTabStrip
-              artifacts={artifacts}
-              selectedTarget={selectedTarget}
-              focusedOwner={focusedOwner}
-              focusedPage={focusedPage}
-              previewSelected={previewSelected}
-              record={record}
-              availableTargets={availableTargets}
-              activateTab={activateTab}
-              closeTab={closeTab}
-            />
-          ) : (
-            <strong>Files, changes, and preview</strong>
-          )}
         </header>
-        {activeArtifact ? (
+        {activeArtifact && activeArtifact.kind !== "browser" ? (
           <AgentArtifactHeader
             key={activeArtifact.id}
             tab={activeArtifact}
@@ -296,7 +330,9 @@ export function AgentArtifactPane({
         ) : null}
         <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
           {!previewSelected && activeArtifact
-            ? renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+            ? activeArtifact.kind === "browser"
+              ? renderRegisteredCanvas("browser", activeArtifact)
+              : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
             : null}
           {!previewSelected && !activeArtifact ? (
             <section

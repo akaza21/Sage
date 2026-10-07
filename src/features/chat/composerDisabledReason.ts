@@ -5,6 +5,7 @@ interface ComposerAvailability {
   activeTurn: boolean;
   availableBinding: boolean;
   canPrompt: boolean;
+  chatLoadFailed: boolean;
   harnessAvailable: boolean;
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   projectTransitioning: boolean;
@@ -17,6 +18,7 @@ export function composerDisabledReason({
   activeTurn,
   availableBinding,
   canPrompt,
+  chatLoadFailed,
   harnessAvailable,
   harnessDiscoveryPhase,
   projectTransitioning,
@@ -35,6 +37,8 @@ export function composerDisabledReason({
   if (!harnessAvailable) return "The selected Harness is unavailable.";
   if (useNativeAcp && !availableBinding)
     return "No reviewed local binding is available for this Harness.";
+  if (chatLoadFailed)
+    return "This Chat failed to load. Retry to send a prompt.";
   if (!canPrompt)
     return "The selected Harness cannot accept prompts in this session.";
   return null;

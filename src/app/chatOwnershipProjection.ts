@@ -3,6 +3,7 @@ import {
   MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES,
   MAX_CHAT_OWNERSHIP_ENTRIES,
   type ChatOwnershipEntry,
+  type QueuedChatPrompt,
 } from "../domain/chatOwnership";
 import type { BootstrapSnapshot } from "../domain/workbench";
 import { nextProjectGeneration } from "./projectIntent";
@@ -14,6 +15,7 @@ export function emptyChatOwnershipEntry(): ChatOwnershipEntry {
     attachedContext: [],
     sending: false,
     error: null,
+    errorKind: null,
     modeError: null,
     modeErrorOwner: null,
     modeChanging: false,
@@ -52,6 +54,7 @@ export function projectChatOwnership(
   state: WorkbenchState,
   snapshot: BootstrapSnapshot,
   preserve: boolean,
+  restoredQueues: Record<string, QueuedChatPrompt[]> = {},
 ) {
   const ids = knownChatIds(snapshot);
   const retained: Record<string, ChatOwnershipEntry> = {};
@@ -72,7 +75,16 @@ export function projectChatOwnership(
     retained[id] =
       preserve && sameProject
         ? (previous[id] ?? emptyChatOwnershipEntry())
-        : emptyChatOwnershipEntry();
+        : {
+            ...emptyChatOwnershipEntry(),
+            queuedPrompts: (restoredQueues[id] ?? []).map((prompt) => ({
+              ...prompt,
+              status:
+                prompt.status === "outcomeUnknown"
+                  ? ("outcomeUnknown" as const)
+                  : ("blocked" as const),
+            })),
+          };
   }
   const active = snapshot.tabs.find(
     (tab) => tab.id === snapshot.activeTabId && tab.kind === "chat",

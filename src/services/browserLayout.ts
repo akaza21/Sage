@@ -17,6 +17,7 @@ const TAB_KINDS = new Set<TabKind>([
   "problems",
   "output",
   "settings",
+  "browser",
 ]);
 
 function assertResourceShape(resource: ResourceRef) {

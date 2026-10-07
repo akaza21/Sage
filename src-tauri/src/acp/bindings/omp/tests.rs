@@ -319,6 +319,51 @@ fn initialize(translator: &mut OmpTranslator, load: bool) {
     );
 }
 
+#[test]
+fn omp_mcp_wire_keeps_empty_array_and_gates_unadvertised_transport() {
+    let mut empty = translator(1);
+    initialize(&mut empty, false);
+    let wire = empty
+        .begin(Operation::NewSession {
+            native_cwd: r"C:\fixture".into(),
+            root_count: 1,
+        })
+        .unwrap()
+        .remove(0)
+        .line;
+    assert!(wire.contains("\"mcpServers\":[]"), "{wire}");
+
+    let (curated, candidate) = admitted_candidate(true);
+    let binding = curated.validate_candidate(&candidate).unwrap();
+    let admission = crate::acp::mcp::McpAdmission::for_test(vec![
+        crate::acp::mcp::McpServerDescriptor::stdio_for_test(
+            "files",
+            r"C:\tools\mcp.exe",
+            &[],
+            vec![],
+        ),
+        crate::acp::mcp::McpServerDescriptor::sse_for_test("remote", "https://example.com/events"),
+    ])
+    .unwrap();
+    let mut injected = OmpTranslator::with_mcp(2, binding.capabilities(), admission);
+    initialize(&mut injected, false);
+    let wire = injected
+        .begin(Operation::NewSession {
+            native_cwd: r"C:\fixture".into(),
+            root_count: 1,
+        })
+        .unwrap()
+        .remove(0)
+        .line;
+    let value: Value = serde_json::from_str(&wire).unwrap();
+    assert_eq!(
+        value["params"]["mcpServers"],
+        json!([{
+            "name":"files","command":r"C:\tools\mcp.exe","args":[],"env":[]
+        }])
+    );
+}
+
 fn new_session(translator: &mut OmpTranslator) {
     let request = translator
         .begin(Operation::NewSession {
@@ -613,6 +658,209 @@ fn permission_denial_waits_for_durable_commit_and_is_idempotent() {
 }
 
 #[test]
+fn permission_receipt_names_the_typed_tool_operation() {
+    let mut translator = translator(400);
+    initialize(&mut translator, false);
+    new_session(&mut translator);
+    begin_prompt(&mut translator);
+    let request = br#"{"jsonrpc":"2.0","id":17,"method":"session/request_permission","params":{"sessionId":"omp-session-1","toolCall":{"toolCallId":"tool-permission","kind":"execute","title":"PowerShell","rawInput":{"command":"Get-Location"}},"options":[]}}"#;
+    let events = translator.ingest(request, &FixtureResources).unwrap();
+    assert!(events.iter().any(|event| matches!(event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::PermissionRequest { category: ToolCategory::Execute, summary, .. }, ..
+        } if summary.as_str() == "Run command: Get-Location"
+    )));
+}
+
+#[test]
+fn permission_command_summaries_redact_sensitive_forms() {
+    for (index, (command, private)) in [
+        ("API_KEY=hunter2", "hunter2"),
+        ("MY_SECRET=hunter2", "hunter2"),
+        ("--auth-token=abc123", "abc123"),
+        ("--password abc123", "abc123"),
+        ("-Password abc123", "abc123"),
+        ("--pass abc123", "abc123"),
+        ("--pw=abc123", "abc123"),
+        ("AUTH=Bearer abc123", "abc123"),
+        ("Bearer abc123", "abc123"),
+        ("Bearer:abc123", "abc123"),
+        ("Basic abc123", "abc123"),
+        ("Basic:abc123", "abc123"),
+        ("mysql -u x -p secret", "secret"),
+        ("mysql -psecret", "secret"),
+        ("sshpass -p secret", "secret"),
+        ("-H 'Authorization: Token abc123'", "abc123"),
+        ("Authorization: abc123", "abc123"),
+        ("Proxy-Authorization: abc123", "abc123"),
+        ("Cookie: abc123", "abc123"),
+        ("X-Api-Key: abc123", "abc123"),
+        ("X-Auth-Token: abc123", "abc123"),
+        ("Authorization: 'abc123'", "abc123"),
+        ("X-Api-Key: \"abc123\"", "abc123"),
+        ("Authorization : 'abc123'", "abc123"),
+        ("mysql -p\"my secret\"", "my secret"),
+        ("mysql -pmy\\ secret", "my\\ secret"),
+        ("mysql -pmy` secret", "my` secret"),
+        ("curl -u user:pass https://example.test", "user:pass"),
+        ("curl --user user:pass https://example.test", "user:pass"),
+        (
+            "curl --proxy-user user:pass https://example.test",
+            "user:pass",
+        ),
+        ("curl -uuser:pass https://example.test", "user:pass"),
+        ("curl --user=user:pass https://example.test", "user:pass"),
+        ("$env:API_KEY = 'hunter2'", "hunter2"),
+        ("export API_KEY = hunter2", "hunter2"),
+        (
+            "--password 'mixed \"quote\" secret'",
+            "mixed \"quote\" secret",
+        ),
+        ("sk-abc123", "sk-abc123"),
+        ("ghp_abc123", "ghp_abc123"),
+        ("xoxb-abc123", "xoxb-abc123"),
+        ("https://user:pass@example.com/", "user:pass"),
+        ("git clone https://tok@host.test/repo", "tok"),
+        ("git clone https://x-access-token:abc@host.test/repo", "abc"),
+        ("git clone https://oauth2:abc@host.test/repo", "abc"),
+        ("--with-token < secret.txt", "secret.txt"),
+        ("$env:API_KEY='hunter2'", "hunter2"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut translator = translator(500 + index as u64);
+        initialize(&mut translator, false);
+        new_session(&mut translator);
+        begin_prompt(&mut translator);
+        let frame = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "id":index + 1, "method":"session/request_permission",
+            "params":{"sessionId":"omp-session-1","toolCall":{
+                "toolCallId":"tool-permission", "kind":"execute", "title":"PowerShell",
+                "rawInput":{"command":command}
+            },"options":[]}
+        }))
+        .unwrap();
+        let events = translator.ingest(&frame, &FixtureResources).unwrap();
+        let shown = events
+            .iter()
+            .find_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::PermissionRequest { summary, .. },
+                    ..
+                } => Some(summary.as_str()),
+                _ => None,
+            })
+            .expect("permission summary");
+        assert!(!shown.contains(private), "{command}: {shown}");
+        assert!(shown.contains("[redacted]"), "{command}: {shown}");
+    }
+    let mut translator = translator(600);
+    initialize(&mut translator, false);
+    new_session(&mut translator);
+    begin_prompt(&mut translator);
+    let request = serde_json::to_vec(&json!({
+        "jsonrpc":"2.0", "id":99, "method":"session/request_permission",
+        "params":{"sessionId":"omp-session-1","toolCall":{
+            "toolCallId":"tool-bidi", "kind":"execute", "title":"PowerShell",
+            "rawInput":{"command":"Get-\u{202e}Content\u{2069}"}
+        },"options":[]}
+    }))
+    .unwrap();
+    let events = translator.ingest(&request, &FixtureResources).unwrap();
+    assert!(events.iter().any(|event| matches!(event,
+        AdapterEvent::Item { payload: NormalizedPayload::PermissionRequest { summary, .. }, .. }
+        if summary.as_str() == "Run command: Get-Content"
+    )));
+}
+
+#[test]
+fn embedded_absolute_paths_do_not_reach_omp_permission_summaries() {
+    for (index, command) in [
+        "file:///C:/secret",
+        "note:/home/secret",
+        "mysql -p'unbalanced",
+        "cat <<EOF\nhunter2\nEOF",
+        "cat <<'EOF'\nhunter2\nEOF",
+        "@'hunter2'@",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut translator = translator(700 + index as u64);
+        initialize(&mut translator, false);
+        new_session(&mut translator);
+        begin_prompt(&mut translator);
+        let frame = serde_json::to_vec(&json!({
+            "jsonrpc":"2.0", "id":index + 1, "method":"session/request_permission",
+            "params":{"sessionId":"omp-session-1","toolCall":{
+                "toolCallId":"tool-permission", "kind":"execute", "title":"PowerShell",
+                "rawInput":{"command":command}
+            },"options":[]}
+        }))
+        .unwrap();
+        let events = translator.ingest(&frame, &FixtureResources).unwrap();
+        let shown = events
+            .iter()
+            .find_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::PermissionRequest { summary, .. },
+                    ..
+                } => Some(summary.as_str()),
+                _ => None,
+            })
+            .expect("permission summary");
+        assert!(!shown.contains("secret"), "{command}: {shown}");
+        assert!(!shown.contains("/home/"), "{command}: {shown}");
+        assert_eq!(
+            shown,
+            "command hidden: contains content Sage will not display; review before approving"
+        );
+    }
+}
+
+#[test]
+fn permission_without_command_keeps_its_title_but_admits_missing_details() {
+    let mut translator = translator(401);
+    initialize(&mut translator, false);
+    new_session(&mut translator);
+    begin_prompt(&mut translator);
+    let request = br#"{"jsonrpc":"2.0","id":18,"method":"session/request_permission","params":{"sessionId":"omp-session-1","toolCall":{"toolCallId":"tool-edit","kind":"edit","title":"Write README"},"options":[]}}"#;
+    let events = translator.ingest(request, &FixtureResources).unwrap();
+    assert!(events.iter().any(|event| matches!(event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::PermissionRequest { summary, .. }, ..
+        } if summary.as_str() == "Write README requested permission; operation details unavailable"
+    )));
+}
+
+#[test]
+fn harness_refusal_has_a_visible_reason() {
+    let mut translator = translator(402);
+    initialize(&mut translator, false);
+    new_session(&mut translator);
+    let prompt_id = begin_prompt(&mut translator);
+    let events = translator
+        .ingest(
+            &rpc_result(&prompt_id, json!({ "stopReason": "refusal" })),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert!(events.iter().any(|event| matches!(event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::Error { message, .. }, ..
+        } if message.as_str() == "Declined by OpenCode"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::TurnTerminal {
+            terminal: PromptTerminal::Failed,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn cancellation_terminal_duplicates_and_late_updates_are_race_safe() {
     let mut translator = translator(5);
     initialize(&mut translator, false);
@@ -810,7 +1058,7 @@ fn typed_tool_categories_and_errors_exclude_raw_arguments() {
     begin_prompt(&mut translator);
     let cases = [
         ("search", "Search", ToolCategory::Search),
-        ("fetch", "Browser", ToolCategory::Web),
+        ("fetch", "Browser", ToolCategory::Fetch),
         ("other", "MCP provider", ToolCategory::Mcp),
         ("other", "subagent", ToolCategory::Subagent),
     ];
@@ -866,7 +1114,7 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
         event,
         AdapterEvent::Item {
             tool_state: Some(ToolState::Completed),
-            payload: NormalizedPayload::ToolUpdateResult { .. },
+            payload: NormalizedPayload::ToolCall { .. },
             ..
         }
     )));
@@ -903,8 +1151,8 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
 #[test]
 fn file_and_diff_tools_project_protocol_locations_on_calls_and_updates() {
     let cases = [
-        ("read", "Read file", ToolCategory::File),
-        ("other", "Apply diff", ToolCategory::Diff),
+        ("read", "Read file", ToolCategory::Read),
+        ("other", "Apply diff", ToolCategory::Edit),
     ];
     for (index, (kind, title, expected)) in cases.into_iter().enumerate() {
         let mut adapter = translator(170 + index as u64);
@@ -949,7 +1197,7 @@ fn file_and_diff_tools_project_protocol_locations_on_calls_and_updates() {
         assert!(matches!(
             events.as_slice(),
             [AdapterEvent::Item {
-                payload: NormalizedPayload::ToolUpdateResult { category, locations, .. },
+                payload: NormalizedPayload::ToolCall { category, locations, .. },
                 ..
             }] if *category == expected
                 && matches!(
@@ -973,7 +1221,7 @@ fn file_and_diff_tools_project_protocol_locations_on_calls_and_updates() {
         assert!(matches!(
             events.as_slice(),
             [AdapterEvent::Item {
-                payload: NormalizedPayload::ToolUpdateResult { category, locations, .. },
+                payload: NormalizedPayload::ToolCall { category, locations, .. },
                 ..
             }] if *category == expected && locations.as_slice().is_empty()
         ));
@@ -1069,6 +1317,7 @@ fn tool_protocol_locations_are_bounded_malformed_safe_and_exclude_web() {
             [SafeResourceLocation::Unavailable {
                 reason: UnavailableResourceReason::Foreign,
                 label,
+                ..
             }] if label.as_str() == "Path is outside the active project roots"
         )
     )));
@@ -1087,7 +1336,7 @@ fn tool_protocol_locations_are_bounded_malformed_safe_and_exclude_web() {
         event,
         AdapterEvent::Item {
             payload: NormalizedPayload::ToolCall {
-                category: ToolCategory::Web,
+                category: ToolCategory::Fetch,
                 locations,
                 ..
             },
@@ -1185,7 +1434,7 @@ fn command_protocol_locations_replace_snapshot_locations_and_sparse_updates_reta
     assert!(matches!(
         protocol_update.as_slice(),
         [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolUpdateResult { locations, .. },
+            payload: NormalizedPayload::ToolCall { locations, .. },
             ..
         }] if matches!(
             locations.as_slice(),
@@ -1199,7 +1448,7 @@ fn command_protocol_locations_replace_snapshot_locations_and_sparse_updates_reta
     assert!(matches!(
         sparse_update.as_slice(),
         [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolUpdateResult { locations, .. },
+            payload: NormalizedPayload::ToolCall { locations, .. },
             ..
         }] if matches!(
             locations.as_slice(),
@@ -1237,7 +1486,7 @@ fn command_tool_initial_and_sparse_updates_use_the_tracked_command_category() {
         AdapterEvent::Item {
             tool_state: Some(ToolState::Pending),
             payload: NormalizedPayload::ToolCall {
-                category: ToolCategory::Command,
+                category: ToolCategory::Execute,
                 output_summary: Some(output),
                 locations,
                 ..
@@ -1273,8 +1522,8 @@ fn command_tool_initial_and_sparse_updates_use_the_tracked_command_category() {
         update.as_slice(),
         [AdapterEvent::Item {
             tool_state: Some(ToolState::InProgress),
-            payload: NormalizedPayload::ToolUpdateResult {
-                category: ToolCategory::Command,
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Execute,
                 output_summary: Some(output),
                 locations,
                 ..
@@ -1305,8 +1554,8 @@ fn command_tool_initial_and_sparse_updates_use_the_tracked_command_category() {
     assert!(matches!(
         patched.as_slice(),
         [AdapterEvent::Item {
-            payload: NormalizedPayload::ToolUpdateResult {
-                category: ToolCategory::Command,
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Execute,
                 output_summary: Some(output),
                 locations,
                 ..
@@ -1344,8 +1593,8 @@ fn command_tool_initial_and_sparse_updates_use_the_tracked_command_category() {
         clear.as_slice(),
         [AdapterEvent::Item {
             tool_state: Some(ToolState::Completed),
-            payload: NormalizedPayload::ToolUpdateResult {
-                category: ToolCategory::Command,
+            payload: NormalizedPayload::ToolCall {
+                category: ToolCategory::Execute,
                 output_summary: None,
                 locations,
                 ..

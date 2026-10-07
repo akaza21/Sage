@@ -1,62 +1,81 @@
-import { useEffect, useRef } from "react";
-
-import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
+import { useContext, useEffect, useRef, type ReactNode } from "react";
+import {
+  AgentSessionChromeContext,
+  usePinnedAgentChatOwner,
+} from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import { ChatTranscript } from "./ChatTranscript";
 import {
   terminalTurnStates,
+  permissionRequestsAvailable,
+  latestRetryPrompt,
   useAcpChatActions,
   useAcpChatHistory,
-  useAcpChatProjection,
   useAcpRetentionIncomplete,
+  useAcpChatLoadFailure,
   useRendererRecreationFocus,
 } from "./acp";
-import { useBoundChatComposer } from "./useBoundChatComposer";
+import {
+  useBoundChatComposer,
+  useQueuedPromptDrain,
+} from "./useBoundChatComposer";
+import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-
-export function ChatSurface({ chatId }: { chatId?: string } = {}) {
+export function ChatSurface({
+  chatId,
+  paneHeader,
+}: { chatId?: string; paneHeader?: ReactNode } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
+  const setAgentSessionChrome = useContext(AgentSessionChromeContext);
   const messages = useWorkbenchStore((state) => state.messages);
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const selectedHarnessId = useWorkbenchStore(
-    (state) => state.selectedHarnessId,
-  );
-  const selectedModelId = useWorkbenchStore((state) => state.selectedModelId);
-  const harnessDiscoveryPhase = useWorkbenchStore(
-    (state) => state.harnessDiscoveryPhase,
-  );
+  const {
+    page: acpPage,
+    selectedHarnessId,
+    selectedModelId,
+    harnessDefinition: selectedHarnessDefinition,
+    discoveryPhase,
+    chooseHarness,
+    chooseModel,
+  } = useChatHarnessSelection(chatId);
   const {
     composerText,
     attachedContext,
+    queuedPrompts,
+    queuedTurnBarrier,
+    knownTurnOrder,
     sending,
     chatError,
     setComposerText,
     removeAttachedContext,
     attachedContextKey,
     sendPrompt,
+    queuePrompt,
+    updateQueuedPrompt,
+    steerQueuedPrompt,
+    setQueuedTurnBarrier,
+    rememberTurnOrder,
   } = useBoundChatComposer(chatId);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
-  // This preliminary selector only chooses the ACP subscription.  All
-  // presentation/action derivation lives in the named model below.
-  const selectedTransport = harnesses.find(
-    (harness) => harness.id === selectedHarnessId,
-  )?.transport;
-  const acpPage = useAcpChatProjection(selectedTransport === "acp", chatId);
   const acpRetentionIncomplete = useAcpRetentionIncomplete(chatId);
+  const acpLoadFailure = useAcpChatLoadFailure(chatId);
   const acpActions = useAcpChatActions(chatId);
   const acpHistory = useAcpChatHistory(chatId);
   const surfaceRef = useRef<HTMLElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const transcriptContentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
@@ -77,40 +96,112 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     activeAcpTurn,
     workingTurnCount,
     canCloseSession,
+    canEndSession,
     canPrompt,
+    sessionHarnessId,
+    sessionModelId,
+    sessionPromptUnavailable,
     usage,
     composerEnabled,
+    queueAvailable,
     composerHotkeyEnabled,
     disabledReason,
     submit,
     closeSession,
+    endSession,
     cancelTurn,
+    steerAvailable,
     openResource,
   } = useChatSurfaceModel({
     harnesses,
     selectedHarnessId,
     selectedModelId,
     page: acpPage,
-    discoveryPhase: harnessDiscoveryPhase,
+    discoveryPhase,
     composerText,
     attachedContext,
     sending,
     chatError,
+    chatLoadFailed: Boolean(acpLoadFailure.error),
     projectTransitioning,
     focused,
     acpActions,
     sendPrompt,
+    queuePrompt,
+    queuedPromptCount: queuedPrompts.length,
+    queueSavePending: queuedPrompts.some(
+      (prompt) => prompt.status === "saving",
+    ),
   });
+  useQueuedPromptDrain({
+    queuedPrompts,
+    queuedTurnBarrier,
+    knownTurnOrder,
+    activeTurn: Boolean(activeAcpTurn),
+    actionBusy,
+    projectTransitioning,
+    canPrompt,
+    useNativeAcp,
+    page: acpPage ?? null,
+    submit: acpActions.submit,
+    updateQueuedPrompt,
+    setQueuedTurnBarrier,
+    rememberTurnOrder,
+  });
+  const sessionActions = useRef({
+    closeSession,
+    endSession,
+    focusComposer: () => composerRef.current?.focus(),
+  });
+  useEffect(() => {
+    sessionActions.current = {
+      closeSession,
+      endSession,
+      focusComposer: () => composerRef.current?.focus(),
+    };
+  }, [closeSession, endSession]);
+  useEffect(() => {
+    if (!setAgentSessionChrome || !chatId || !focused) return;
+    setAgentSessionChrome({
+      chatId,
+      harnessStatus,
+      canCloseSession,
+      canEndSession,
+      busy: actionBusy || Boolean(activeAcpTurn) || projectTransitioning,
+      acpPage: useNativeAcp ? acpPage : null,
+      messages,
+      actions: sessionActions,
+    });
+    return () => setAgentSessionChrome(null);
+  }, [
+    setAgentSessionChrome,
+    chatId,
+    focused,
+    harnessStatus,
+    canCloseSession,
+    canEndSession,
+    actionBusy,
+    activeAcpTurn,
+    projectTransitioning,
+    useNativeAcp,
+    acpPage,
+    messages,
+  ]);
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
-
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
-
   const { followingEnd, updateFollowEnd, jumpToLatest } = useFollowEnd({
     ownerKey: chatId ?? "primary",
     revision: `${messages.length}:${acpPage?.projectionRevision ?? ""}`,
     transcriptRef: messageListRef,
+    contentRef: transcriptContentRef,
     endRef,
   });
+  const retryLastTurn = () => {
+    if (!acpPage || actionBusy || activeAcpTurn) return;
+    const retry = latestRetryPrompt(acpPage);
+    if (retry)
+      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
+  };
 
   useEffect(() => {
     const priorId = priorActiveTurnId.current;
@@ -151,46 +242,69 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   ]);
 
   return (
-    <section ref={surfaceRef} className="chat-surface" aria-label="Agent chat">
-      <header className="surface-header">
-        <SessionWorkingPill
-          count={workingTurnCount}
-          hidden={projectTransitioning}
-        />
-        <div className="session-controls">
-          <ChatHandoffControl
-            acpPage={useNativeAcp ? acpPage : null}
-            messages={messages}
-            busy={actionBusy || Boolean(activeAcpTurn)}
-            onCommitted={() =>
-              queueMicrotask(() => composerRef.current?.focus())
-            }
+    <section
+      ref={surfaceRef}
+      className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
+      aria-label="Agent chat"
+    >
+      {!setAgentSessionChrome ? (
+        <header className="surface-header">
+          {paneHeader}
+          <SessionWorkingPill
+            count={workingTurnCount}
+            hidden={projectTransitioning}
           />
-          {canCloseSession ? (
-            <button
-              className="button button--compact"
-              type="button"
-              aria-label="Close session"
-              disabled={actionBusy || projectTransitioning}
-              onClick={closeSession}
-            >
-              Close session
-            </button>
-          ) : null}
-          <div
-            className="session-state"
-            aria-label={`Harness status: ${harnessStatus}`}
-          >
-            {harnessStatus === "Live" ? (
-              <span className="session-state__dot" />
+          <div className="session-controls">
+            <ChatHandoffControl
+              acpPage={useNativeAcp ? acpPage : null}
+              messages={messages}
+              busy={actionBusy || Boolean(activeAcpTurn)}
+              onCommitted={() =>
+                queueMicrotask(() => composerRef.current?.focus())
+              }
+            />
+            {canCloseSession ? (
+              <button
+                className="button button--compact"
+                type="button"
+                aria-label="Close session"
+                disabled={actionBusy || projectTransitioning}
+                onClick={closeSession}
+              >
+                Close session
+              </button>
             ) : null}
-            {harnessStatus}
+            {canEndSession ? (
+              <button
+                className="button button--compact"
+                type="button"
+                aria-label="End session"
+                disabled={actionBusy || projectTransitioning}
+                onClick={endSession}
+              >
+                End session
+              </button>
+            ) : null}
+            <div
+              className="session-state"
+              aria-label={`Harness status: ${harnessStatus}`}
+            >
+              {harnessStatus === "Live" ? (
+                <span className="session-state__dot" />
+              ) : null}
+              {harnessStatus}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
+      <HarnessDiscoveryNotice
+        harness={selectedHarnessDefinition}
+        discoveryPhase={discoveryPhase}
+      />
 
       <ChatTranscript
         transcriptRef={messageListRef}
+        contentRef={transcriptContentRef}
         endRef={endRef}
         onScroll={updateFollowEnd}
         projectTransitioning={projectTransitioning}
@@ -206,6 +320,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onLoadEarlier={acpHistory.loadEarlier}
         messages={messages}
         developmentSimulator={selectedHarness?.source === "development"}
+        onRetry={
+          useNativeAcp && !projectTransitioning && !actionBusy && !activeAcpTurn
+            ? retryLastTurn
+            : undefined
+        }
         followingEnd={followingEnd}
         onJumpToLatest={jumpToLatest}
       />
@@ -213,22 +332,40 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       <ChatComposerRegion
         composerRef={composerRef}
         fieldId={composerFieldId}
+        dictationScope={chatId ?? activeTabId ?? ""}
         descriptionId={composerDescriptionId}
         disabledReasonId={composerDisabledReasonId}
         text={composerText}
         attachedContext={attachedContext}
         enabled={composerEnabled}
         actionBusy={actionBusy}
+        activeTurn={Boolean(activeAcpTurn)}
+        queueAvailable={queueAvailable}
+        queuedPrompts={queuedPrompts}
+        steerAvailable={steerAvailable}
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
+        discoveryPhase={discoveryPhase}
+        sessionHarnessId={sessionHarnessId}
+        sessionModelId={sessionModelId}
+        selectedHarnessId={selectedHarnessId}
+        selectedModelId={selectedModelId}
+        sessionPromptUnavailable={sessionPromptUnavailable}
         sessionConfig={acpPage?.sessionConfig ?? null}
+        permissionRequests={permissionRequestsAvailable(
+          useNativeAcp ? (acpPage ?? null) : null,
+          selectedHarnessDefinition,
+        )}
         modePending={modeChanging}
         modeError={modeError}
         focused={focused}
         onSetSessionMode={acpActions.setSessionMode}
+        onSetSessionConfigOption={acpActions.setSessionConfigOption}
+        onSelectHarness={chooseHarness}
+        onSelectModel={chooseModel}
         missingBindingNotice={
           useNativeAcp &&
           !availableBinding &&
@@ -238,9 +375,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             "consent",
             "waiting",
             "error",
-          ].includes(harnessDiscoveryPhase)
+          ].includes(discoveryPhase)
         }
         disabledReason={disabledReason}
+        onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={project}
         usage={usage}
         onSubmit={submit}
@@ -249,6 +387,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           removeAttachedContext(attachedContextKey(context))
         }
         onCancelTurn={cancelTurn}
+        onDeleteQueuedPrompt={(id) => updateQueuedPrompt(id, "deleted")}
+        onRetryQueuedPrompt={(id) => updateQueuedPrompt(id, "queued")}
+        onSteerQueuedPrompt={(id) => steerQueuedPrompt(id, acpActions.steer)}
       />
     </section>
   );

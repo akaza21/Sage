@@ -18,13 +18,11 @@ use crate::acp::bindings::codex::{
     },
 };
 
-#[path = "windows/targets.rs"]
 mod targets;
 
 use targets::{require_absent, require_present, target_exists, validate_root_closure};
 
 #[cfg(test)]
-#[path = "windows/test_failpoint.rs"]
 mod test_failpoint;
 
 const STAGE_NAME: &str = ".sage-codex-0.145.0-stage";

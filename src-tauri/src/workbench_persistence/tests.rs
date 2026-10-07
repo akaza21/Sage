@@ -21,6 +21,58 @@ fn database_with_project() -> (Database, String, String) {
     (database, project.id, chat_id)
 }
 
+#[test]
+fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
+    let base = std::env::temp_dir().join(format!("sage-browser-layout-{}", Uuid::new_v4()));
+    fs::create_dir_all(&base).unwrap();
+    let root = base.join("root");
+    fs::create_dir_all(&root).unwrap();
+    let path = base.join("sage.db");
+    let database = Database::open(&path).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let initial = database.bootstrap_snapshot().unwrap();
+    let chat_id = initial.active_tab_id.unwrap();
+    let mut tabs = initial.tabs;
+    tabs.push(crate::domain::WorkbenchTab {
+        id: "browser-1".into(),
+        kind: "browser".into(),
+        title: "Browser".into(),
+        position: tabs.len() as i64,
+        pinned: false,
+        dirty: false,
+        status: None,
+        updated_at: None,
+        resource: None,
+        repository: None,
+        diff_ref: None,
+    });
+    database
+        .persist_project_layout(&ProjectLayoutRequest {
+            project_id: project.id,
+            tabs,
+            active_tab_id: Some("browser-1".into()),
+            selected_root_id: Some(project.roots[0].id.clone()),
+            selected_resource: None,
+        })
+        .unwrap();
+    drop(database);
+
+    let reopened = Database::open(&path).unwrap();
+    let snapshot = reopened.bootstrap_snapshot().unwrap();
+    assert_eq!(snapshot.active_tab_id.as_deref(), Some("browser-1"));
+    assert!(snapshot.tabs.iter().any(|tab| {
+        tab.kind == "browser" && tab.id == "browser-1" && tab.status.as_deref() == Some("closed")
+    }));
+    assert_eq!(snapshot.session_id, None);
+    assert_eq!(snapshot.messages.len(), 1);
+    assert_eq!(
+        snapshot.messages[0].session_id,
+        durable_welcome_session(&reopened, &chat_id)
+    );
+    drop(reopened);
+    fs::remove_dir_all(base).unwrap();
+}
+
 fn insert_empty_chat(database: &Database, project_id: &str, chat_id: &str, ordinal: i64) {
     database
         .connection()

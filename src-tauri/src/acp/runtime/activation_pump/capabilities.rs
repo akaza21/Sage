@@ -10,11 +10,16 @@ pub(super) fn intersect(
     if curated.schema_version != SchemaVersionV1
         || advertised.schema_version != SchemaVersionV1
         || policy.schema_version != SchemaVersionV1
-        || curated.protocol_version != advertised.protocol_version
-        || advertised.protocol_version != policy.protocol_version
         || advertised.protocol_version.as_str() == "pending"
     {
         return Err(ActivationPumpError::Intent);
+    }
+    if curated.protocol_version != advertised.protocol_version
+        || advertised.protocol_version != policy.protocol_version
+    {
+        return Err(ActivationPumpError::RefusedVersion(
+            advertised.protocol_version.clone(),
+        ));
     }
     let extension = match (
         &curated.multi_root_extension_schema_id,
@@ -65,4 +70,44 @@ pub(super) fn intersect(
         return Err(ActivationPumpError::Capacity);
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::acp::{
+        contract::{RequiredText, SchemaVersionV1},
+        intent::CapabilitySnapshotV1,
+    };
+
+    use super::intersect;
+    use crate::acp::runtime::ActivationPumpError;
+
+    fn snapshot(version: &str) -> CapabilitySnapshotV1 {
+        CapabilitySnapshotV1 {
+            schema_version: SchemaVersionV1,
+            protocol_version: RequiredText::new("protocolVersion", version).unwrap(),
+            new_session: true,
+            resume_session: true,
+            load_session: true,
+            close_session: true,
+            prompt: true,
+            cancel: true,
+            native_session_fork: false,
+            active_turn_steer: false,
+            child_conversation_projection: false,
+            child_transcript_read: false,
+            collaboration_event_projection: false,
+            multi_root_extension_schema_id: None,
+            model_count: 0,
+            config_count: 0,
+        }
+    }
+
+    #[test]
+    fn a_refused_version_retains_the_exact_advertised_value() {
+        assert!(matches!(
+            intersect(&snapshot("acp-1"), &snapshot("acp-9"), &snapshot("acp-1")),
+            Err(ActivationPumpError::RefusedVersion(observed)) if observed.as_str() == "acp-9"
+        ));
+    }
 }

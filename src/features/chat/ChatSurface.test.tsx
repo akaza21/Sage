@@ -10,20 +10,25 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAcp04Ui } from "../../../scripts/source-functional-acp04-live-probe.mjs";
 import {
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
 } from "../../app/acpProjectionRegistry";
+import { useAgentArtifactAdmissionStore } from "../../app/agentArtifactAdmissionStore";
 import {
+  AgentSessionChromeContext,
   clearAgentChatOwner,
   pinAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useAcpProjectionStore } from "../../app/acpProjectionStore";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
+import { desktop } from "../../services/desktop";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import type * as AcpModule from "./acp";
 
 const hooks = vi.hoisted(() => ({
@@ -31,8 +36,10 @@ const hooks = vi.hoisted(() => ({
   actions: {
     busy: false,
     error: null as string | null,
+    errorKind: null as string | null,
     cancellableTurnId: null as string | null,
     submit: vi.fn(),
+    steer: vi.fn(),
     cancel: vi.fn(),
     close: vi.fn(),
     setSessionMode: vi.fn(),
@@ -54,6 +61,14 @@ vi.mock("./acp", async () => {
 import { ChatSurface } from "./ChatSurface";
 
 const initialState = useWorkbenchStore.getState();
+
+function openComposerOptions() {
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+}
+
+function openComposerModel() {
+  fireEvent.click(screen.getByRole("button", { name: "Model and effort" }));
+}
 
 function itemBase(id: string) {
   return {
@@ -84,7 +99,7 @@ function projection(): AcpChatPage {
       toolState: "inProgress",
       payload: {
         presentation: {
-          kind: "file",
+          kind: "read",
           label: "Read file",
           resources: [
             {
@@ -149,6 +164,35 @@ function projection(): AcpChatPage {
   } as unknown as AcpChatPage;
 }
 
+function matchConfiguredSession() {
+  hooks.page = {
+    ...hooks.page!,
+    sessions: [
+      {
+        id: "session-a",
+        ordinal: 0,
+        runtimeEpoch: "1",
+        state: "active",
+        legacy: false,
+        bindingId: "codex-app-server",
+        modelId: useWorkbenchStore.getState().selectedModelId,
+        capabilities: { prompt: true, closeSession: true },
+      },
+    ] as never,
+  };
+}
+
+function measureTranscript({ scrollTop }: { scrollTop: number }): Element {
+  const transcript = document.querySelector(".message-list");
+  expect(transcript).not.toBeNull();
+  Object.defineProperties(transcript!, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 1_000 },
+    scrollTop: { configurable: true, value: scrollTop, writable: true },
+  });
+  return transcript!;
+}
+
 function setTurnState(state: AcpChatPage["turns"][number]["state"]) {
   const page = hooks.page!;
   hooks.page = {
@@ -174,15 +218,30 @@ function setTurnState(state: AcpChatPage["turns"][number]["state"]) {
   };
 }
 
+async function expandReadActivity() {
+  const disclosure = await waitFor(() => {
+    const found = document.querySelector<HTMLDetailsElement>(
+      '.acp-tool-rollup[data-activity-kind="read"]',
+    );
+    if (!found) throw new Error("Expected the read activity disclosure");
+    return found;
+  });
+  const summary = disclosure.querySelector("summary");
+  if (!summary) throw new Error("Expected the read activity summary");
+  if (!disclosure.open) fireEvent.click(summary);
+}
+
 beforeEach(() => {
   useAcpProjectionStore.setState({ retentionIncomplete: false });
   hooks.page = projection();
   hooks.actions.busy = false;
   hooks.actions.error = null;
+  hooks.actions.errorKind = null;
   hooks.actions.cancellableTurnId = null;
   hooks.actions.modeError = null;
   hooks.actions.modeChanging = false;
   Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.scrollTo = vi.fn();
   useWorkbenchStore.setState({
     harnesses: [
       {
@@ -212,9 +271,983 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("opens an earlier-session assistant file link in its owning Chat", async () => {
+    const resource = { rootId: "root-a", relativePath: "README.md" };
+    vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
+      resource,
+      lineNumber: null,
+    });
+    const openFile = vi.fn().mockResolvedValue(undefined);
+    hooks.page = {
+      ...projection(),
+      currentSessionId: "session-new" as never,
+      sessions: [
+        { id: "session-a", ordinal: 0 },
+        { id: "session-new", ordinal: 1 },
+      ] as never,
+      turns: [
+        {
+          ...projection().turns[0],
+          state: "completed",
+          items: [
+            {
+              ...itemBase("earlier-link"),
+              kind: "text",
+              payload: {
+                role: "assistant",
+                text: "See [README.md](README.md)",
+              },
+            } as AcpItem,
+          ],
+        },
+      ],
+    };
+    useWorkbenchStore.setState({
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      projectGeneration: 0,
+      projectTransitioning: false,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "file:readme",
+          kind: "file",
+          title: "README.md",
+          position: 1,
+          pinned: false,
+          dirty: false,
+          resource,
+        },
+      ],
+      activeTabId: "chat-a",
+      openFile,
+    });
+    acpProjectionStoreFor("chat-a").setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+      } as never,
+      page: hooks.page,
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    await settleLazyModules();
+    fireEvent.click(screen.getByRole("button", { name: "Open README.md" }));
+
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith(resource));
+    expect(useAgentArtifactAdmissionStore.getState().admissions).toContainEqual(
+      {
+        owner: {
+          projectId: "project-a",
+          chatId: "chat-a",
+          sessionId: "session-new",
+        },
+        tabId: "file:readme",
+      },
+    );
+  });
+
+  it("keeps assistant file links inert when the Chat has no Project root", async () => {
+    const resolve = vi.spyOn(acpDesktop, "resolveChatFileReference");
+    hooks.page = {
+      ...projection(),
+      turns: [
+        {
+          ...projection().turns[0],
+          items: [
+            {
+              ...itemBase("rootless-link"),
+              kind: "text",
+              payload: {
+                role: "assistant",
+                text: "See [README.md](README.md)",
+              },
+            } as AcpItem,
+          ],
+        },
+      ],
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    expect(await screen.findByText("See README.md")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open README.md" })).toBeNull();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("queues a message during a turn and sends it when the turn finishes", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Follow up" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveValue(""),
+    );
+    expect(screen.getByText("Follow up")).toBeInTheDocument();
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+
+    setTurnState("completed");
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() =>
+      expect(hooks.actions.submit).toHaveBeenCalledWith(
+        "Follow up",
+        [],
+        "codex-app-server",
+        null,
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
+  });
+
+  it("keeps one send-slot control while a cancellable Turn can queue by Enter", async () => {
+    hooks.actions.cancellableTurnId = "turn-a";
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    expect(composer).toHaveAccessibleDescription(
+      /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
+    );
+    expect(composer).toHaveAttribute("placeholder", "Enter to queue a message");
+    fireEvent.change(composer, { target: { value: "Follow up" } });
+    const stop = screen.getByRole("button", { name: "Cancel turn" });
+    expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
+      1,
+    );
+    expect(screen.queryByRole("button", { name: "Queue message" })).toBeNull();
+
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => expect(screen.getByText("Follow up")).toBeVisible());
+    expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
+      1,
+    );
+    expect(stop).toBeEnabled();
+    fireEvent.click(stop);
+    expect(hooks.actions.cancel).toHaveBeenCalledWith("turn-a");
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a queued draft until native persistence acknowledges it", async () => {
+    let acknowledge!: () => void;
+    const persistence = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    const save = vi
+      .spyOn(getWorkbenchPorts().project, "replaceChatQueuedPrompts")
+      .mockReturnValue(persistence);
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    fireEvent.change(composer, { target: { value: "Follow up" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+
+    expect(save).toHaveBeenCalledWith("project-a", "chat-a", [
+      expect.objectContaining({ text: "Follow up", status: "queued" }),
+    ]);
+    expect(composer).toHaveValue("Follow up");
+    expect(screen.getByText("Saving…")).toBeVisible();
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+
+    acknowledge();
+    await waitFor(() => expect(composer).toHaveValue(""));
+    expect(screen.getByText("Queued")).toBeVisible();
+  });
+
+  it("cannot send a draft again when its queue save outlives the active Turn", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    let acknowledge!: () => void;
+    vi.spyOn(
+      getWorkbenchPorts().project,
+      "replaceChatQueuedPrompts",
+    ).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      }),
+    );
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    const view = render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    fireEvent.change(composer, { target: { value: "Once only" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    setTurnState("completed");
+    view.rerender(<ChatSurface chatId="chat-a" />);
+
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+    acknowledge();
+    await waitFor(() => expect(composer).toHaveValue(""));
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps the draft and reports an error when queue persistence fails", async () => {
+    vi.spyOn(
+      getWorkbenchPorts().project,
+      "replaceChatQueuedPrompts",
+    ).mockRejectedValueOnce(new Error("disk full"));
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    fireEvent.change(composer, { target: { value: "Keep this" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Could not save queued message.")).toBeVisible(),
+    );
+    expect(composer).toHaveValue("Keep this");
+    expect(
+      screen.queryByRole("img", { name: /Queued attachment preview/ }),
+    ).toBeNull();
+    expect(screen.queryByText("Saving…")).toBeNull();
+  });
+
+  it("keeps a queued row visible until native deletion is durable", async () => {
+    let acknowledgeDelete!: () => void;
+    const deletion = new Promise<void>((resolve) => {
+      acknowledgeDelete = resolve;
+    });
+    const save = vi
+      .spyOn(getWorkbenchPorts().project, "replaceChatQueuedPrompts")
+      .mockResolvedValueOnce()
+      .mockReturnValueOnce(deletion);
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    fireEvent.change(composer, { target: { value: "Remove me" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() => expect(composer).toHaveValue(""));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete queued message: Remove me" }),
+    );
+    expect(save).toHaveBeenLastCalledWith("project-a", "chat-a", []);
+    expect(screen.getByText("Remove me")).toBeVisible();
+    acknowledgeDelete();
+    await waitFor(() => expect(screen.queryByText("Remove me")).toBeNull());
+  });
+
+  it("keeps a queued row for retry when native deletion fails", async () => {
+    vi.spyOn(getWorkbenchPorts().project, "replaceChatQueuedPrompts")
+      .mockResolvedValueOnce()
+      .mockRejectedValueOnce(new Error("disk full"));
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Keep this row" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() => expect(screen.getByText("Queued")).toBeVisible());
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Delete queued message: Keep this row",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Could not remove queued message."),
+      ).toBeVisible(),
+    );
+    expect(screen.getByText("Keep this row")).toBeVisible();
+    expect(screen.getByText("Needs retry")).toBeVisible();
+  });
+
+  it("does not apply a stale delete failure to a replacement Chat owner", async () => {
+    let rejectDelete!: (error: Error) => void;
+    vi.spyOn(getWorkbenchPorts().project, "replaceChatQueuedPrompts")
+      .mockResolvedValueOnce()
+      .mockReturnValueOnce(
+        new Promise<void>((_resolve, reject) => {
+          rejectDelete = reject;
+        }),
+      );
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+
+    const view = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Old queue row" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() => expect(screen.getByText("Queued")).toBeVisible());
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Delete queued message: Old queue row",
+      }),
+    );
+    const oldState = useWorkbenchStore.getState();
+    const replacementQueue = [
+      {
+        ...oldState.chatUiById["chat-a"].queuedPrompts![0],
+        status: "queued" as const,
+        text: "New owner row",
+      },
+    ];
+    view.unmount();
+    useWorkbenchStore.setState({
+      chatOwnershipEpoch: oldState.chatOwnershipEpoch + 1,
+      chatUiById: {
+        ...oldState.chatUiById,
+        "chat-a": {
+          ...oldState.chatUiById["chat-a"],
+          queuedPrompts: replacementQueue,
+          error: null,
+        },
+      },
+    });
+    await act(async () => rejectDelete(new Error("old write failed")));
+    expect(
+      useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
+    ).toEqual(replacementQueue);
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"].error).toBeNull();
+  });
+
+  it("offers Steer only for an active capable session and retains a rejected row", async () => {
+    let rejectSteer!: (value: "rejected") => void;
+    const delayedRejection = new Promise<"rejected">((resolve) => {
+      rejectSteer = resolve;
+    });
+    hooks.actions.steer
+      .mockReturnValueOnce(delayedRejection)
+      .mockResolvedValueOnce("applied");
+    matchConfiguredSession();
+    hooks.page = {
+      ...hooks.page!,
+      sessions: hooks.page!.sessions.map((session) => ({
+        ...session,
+        capabilities: { ...session.capabilities, activeTurnSteer: true },
+      })),
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Change direction" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveValue(""),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Steer queued message: Change direction",
+      }),
+    );
+    expect(screen.getByText("Change direction")).toBeVisible();
+    expect(screen.queryByText("Needs retry")).toBeNull();
+    rejectSteer("rejected");
+    await waitFor(() => expect(screen.getByText("Needs retry")).toBeVisible());
+    expect(screen.getByText("Change direction")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Steer queued message: Change direction",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("Change direction")).toBeNull(),
+    );
+    expect(hooks.actions.steer).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+
+  it("keeps a Steer timeout row queued with an explicit retry cue", async () => {
+    hooks.actions.steer.mockResolvedValueOnce("outcomeUnknown");
+    const persist = vi
+      .spyOn(getWorkbenchPorts().project, "replaceChatQueuedPrompts")
+      .mockResolvedValue(undefined);
+    matchConfiguredSession();
+    hooks.page = {
+      ...hooks.page!,
+      sessions: hooks.page!.sessions.map((session) => ({
+        ...session,
+        capabilities: { ...session.capabilities, activeTurnSteer: true },
+      })),
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Check the result" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveValue(""),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Steer queued message: Check the result",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("May have been delivered")).toBeVisible(),
+    );
+    expect(screen.getByText("Check the result")).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: "Steer queued message: Check the result",
+      }),
+    ).toHaveAttribute("title", "Retry Steer with the same message ID");
+    const queuedId =
+      useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts![0].id;
+    expect(hooks.actions.steer).toHaveBeenCalledWith(
+      "Check the result",
+      [],
+      queuedId,
+    );
+    expect(persist).toHaveBeenCalledWith("project-a", "chat-a", [
+      expect.objectContaining({ id: queuedId, status: "outcomeUnknown" }),
+    ]);
+  });
+
+  it("drains queued messages in order across successive turns", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    for (const message of ["First", "Second"]) {
+      fireEvent.change(composer, { target: { value: message } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() => expect(composer).toHaveValue(""));
+    }
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
+
+    setTurnState("completed");
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
+    expect(hooks.actions.submit.mock.calls[0]?.[0]).toBe("First");
+    view.unmount();
+    const completedPage = hooks.page;
+    hooks.page = null;
+    const returned = render(<ChatSurface chatId="chat-a" />);
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    hooks.page = completedPage;
+    returned.rerender(<ChatSurface chatId="chat-a" />);
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    hooks.page = {
+      ...hooks.page!,
+      turns: [
+        ...hooks.page!.turns,
+        {
+          ...hooks.page!.turns[0],
+          id: "turn-b" as never,
+          ordinal: 1,
+          state: "running",
+        },
+      ],
+    };
+    returned.rerender(<ChatSurface chatId="chat-a" />);
+    hooks.page = {
+      ...hooks.page!,
+      turns: hooks.page!.turns.map((turn) =>
+        turn.id === "turn-b" ? { ...turn, state: "completed" } : turn,
+      ),
+    };
+    returned.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(2));
+    expect(hooks.actions.submit.mock.calls[1]?.[0]).toBe("Second");
+  });
+
+  it("does not treat a returning old Turn as the new queued Turn", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    const historicalTurns = Array.from({ length: 18 }, (_, ordinal) => ({
+      ...projection().turns[0],
+      id: `turn-${ordinal}` as never,
+      ordinal,
+      state: ordinal === 17 ? ("running" as const) : ("completed" as const),
+    }));
+    hooks.page = { ...hooks.page!, turns: historicalTurns };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    for (const message of ["First", "Second"]) {
+      fireEvent.change(composer, { target: { value: message } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() => expect(composer).toHaveValue(""));
+    }
+    hooks.page = { ...hooks.page!, turns: [] };
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
+    expect(hooks.actions.submit.mock.calls[0]?.[0]).toBe("First");
+    view.unmount();
+    const returned = render(<ChatSurface chatId="chat-a" />);
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    hooks.page = {
+      ...hooks.page!,
+      turns: [{ ...historicalTurns[0], state: "completed" }],
+    };
+    returned.rerender(<ChatSurface chatId="chat-a" />);
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    hooks.page = {
+      ...hooks.page!,
+      turns: [
+        ...hooks.page!.turns,
+        {
+          ...projection().turns[0],
+          id: "new-turn" as never,
+          ordinal: 18,
+          state: "completed",
+        },
+      ],
+    };
+    returned.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(2));
+    expect(hooks.actions.submit.mock.calls[1]?.[0]).toBe("Second");
+  });
+
+  it("blocks the next queued prompt if an accepted send never starts a Turn", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    for (const message of ["First", "Second"]) {
+      fireEvent.change(composer, { target: { value: message } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() => expect(composer).toHaveValue(""));
+    }
+    setTurnState("completed");
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
+    now.mockReturnValue(31_001);
+    view.unmount();
+    render(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(screen.getByText("Needs retry")).toBeVisible());
+    expect(screen.getByText("Second")).toBeVisible();
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    now.mockRestore();
+  });
+
+  it("caps the per-Chat queue at eight and lets the user delete a message", async () => {
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(<ChatSurface chatId="chat-a" />);
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    for (let index = 1; index <= 8; index += 1) {
+      fireEvent.change(composer, { target: { value: `Message ${index}` } });
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() => expect(composer).toHaveValue(""));
+    }
+    expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
+    expect(composer).toBeDisabled();
+    expect(screen.getByText("Queue is full (8 messages).")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete queued message: Message 1" }),
+    );
+    await waitFor(() => expect(screen.queryByText("Message 1")).toBeNull());
+    expect(composer).toBeEnabled();
+    expect(hooks.actions.submit).not.toHaveBeenCalled();
+  });
+
+  it("shows bounded attachment previews for captured queued context", () => {
+    const browserPage = {
+      kind: "browserPage" as const,
+      tabId: "browser-1",
+      url: "https://example.com/report",
+      title: "Report",
+      text: "Summary",
+    };
+    const diffComment = {
+      kind: "diffLineComment" as const,
+      diffRef: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        sessionId: "session-a",
+        runtimeEpoch: "1",
+        turnId: "turn-a",
+        itemId: "item-a",
+        diffOrdinal: 0,
+        snapshotRevision: "1",
+        rootId: "root-a",
+        relativePath: "src/AgentView.tsx",
+        contentDigest: "a".repeat(64),
+      } as never,
+      side: "new" as const,
+      startLine: "27",
+      endLine: "27",
+      note: "Keep it explicit",
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          queuedPrompts: [
+            {
+              id: "file",
+              text: "Review this",
+              attachedContext: [diffComment, browserPage],
+              bindingId: "codex-app-server",
+              modelId: null,
+              status: "blocked",
+            },
+            {
+              id: "page",
+              text: "Summarize page",
+              attachedContext: [browserPage],
+              bindingId: "codex-app-server",
+              modelId: null,
+              status: "blocked",
+            },
+          ],
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+    });
+
+    render(<ChatSurface chatId="chat-a" />);
+
+    expect(
+      screen.getByRole("img", {
+        name: "Queued attachment preview: AgentView.tsx (2 attachments)",
+      }),
+    ).toHaveTextContent("AgentView.tsx");
+    expect(
+      screen.getByRole("img", {
+        name: "Queued attachment preview: example.com (1 attachment)",
+      }),
+    ).toHaveTextContent("example.com");
+  });
+
+  it("keeps a rejected queued message available for retry", async () => {
+    hooks.actions.submit
+      .mockResolvedValueOnce("rejected")
+      .mockResolvedValueOnce("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Try again" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    setTurnState("completed");
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(screen.getByText("Needs retry")).toBeVisible());
+    expect(screen.getByText("Try again")).toBeVisible();
+    expect(hooks.actions.submit).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByLabelText("More options for queued message: Try again"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry when ready" }));
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Try again")).toBeNull());
+  });
+
+  it("retains a queued message while its Chat surface is unmounted", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "After return" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    view.unmount();
+    expect(
+      useWorkbenchStore.getState().chatUiById["chat-a"]?.queuedPrompts,
+    ).toHaveLength(1);
+    setTurnState("completed");
+    render(<ChatSurface chatId="chat-a" />);
+    await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
+    expect(hooks.actions.submit.mock.calls[0]?.[0]).toBe("After return");
+  });
+
+  it("publishes session controls to the Agent header without a second row", () => {
+    const publish = vi.fn();
+    pinAgentChatOwner("chat-a");
+    render(
+      <AgentSessionChromeContext.Provider value={publish}>
+        <ChatSurface chatId="chat-a" />
+      </AgentSessionChromeContext.Provider>,
+    );
+    expect(screen.queryByRole("button", { name: "Hand off chat" })).toBeNull();
+    expect(screen.queryByLabelText(/^Harness status:/)).toBeNull();
+    expect(document.querySelector(".surface-header")).toBeNull();
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: "chat-a" }),
+    );
+  });
+
   it("renders only provider-advertised session modes and preserves their order", () => {
     hooks.page = {
       ...hooks.page!,
+      turns: [],
       sessionConfig: {
         sageAgentSessionId: "session-a",
         runtimeEpoch: "1",
@@ -229,7 +1262,9 @@ describe("ChatSurface ACP resource integration", () => {
         configOptions: [],
       },
     } as AcpChatPage;
+    matchConfiguredSession();
     render(<ChatSurface />);
+    openComposerOptions();
 
     const trigger = screen.getByRole("button", { name: "Session mode" });
     expect(trigger).toHaveTextContent("Review changes");
@@ -243,7 +1278,260 @@ describe("ChatSurface ACP resource integration", () => {
 
   it("does not render a session mode picker without advertised modes", () => {
     render(<ChatSurface />);
+    openComposerOptions();
     expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
+  });
+
+  it("renders advertised config options without restating the mode picker", () => {
+    hooks.page = {
+      ...hooks.page!,
+      turns: [],
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "default",
+          availableModes: [
+            { id: "default", name: "Manual" },
+            { id: "plan", name: "Plan" },
+          ],
+        },
+        configOptions: [
+          {
+            id: "mode",
+            name: "Mode",
+            type: "select",
+            currentValue: "default",
+            options: [
+              { value: "default", name: "Manual" },
+              { value: "plan", name: "Plan" },
+            ],
+          },
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: "sonnet",
+            options: [
+              { value: "sonnet", name: "Sonnet 5" },
+              { value: "haiku", name: "Haiku 4.5" },
+            ],
+          },
+          {
+            id: "fast",
+            name: "Fast mode",
+            type: "boolean",
+            currentValue: false,
+          },
+        ],
+      },
+    } as AcpChatPage;
+    matchConfiguredSession();
+    render(<ChatSurface />);
+    openComposerOptions();
+
+    expect(screen.getByRole("button", { name: "Session mode" })).toBeTruthy();
+    expect(
+      screen.queryAllByRole("button", { name: "Session mode" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("checkbox", { name: "Session fast mode" }),
+    ).not.toBeChecked();
+    openComposerModel();
+    expect(screen.getByRole("button", { name: "Session model" })).toBeTruthy();
+  });
+
+  it("shows an unsupported config option as a read-only chip with no settable control", () => {
+    hooks.page = {
+      ...hooks.page!,
+      turns: [],
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        configOptions: [
+          {
+            id: "budget",
+            name: "Thinking budget",
+            type: "unsupported",
+            kind: "integer",
+          },
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            currentValue: "sonnet",
+            options: [{ value: "sonnet", name: "Sonnet 5" }],
+          },
+        ],
+      },
+    } as AcpChatPage;
+    matchConfiguredSession();
+    render(<ChatSurface />);
+    openComposerOptions();
+
+    const chip = screen.getByText("Thinking budget");
+    expect(chip.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      screen.queryByRole("button", { name: "Session thinking budget" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: "Session thinking budget" }),
+    ).toBeNull();
+    openComposerModel();
+    expect(screen.getByRole("button", { name: "Session model" })).toBeTruthy();
+  });
+
+  it("lets a prompt-capable harness without a model catalog use its own default", () => {
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          bindingId: "claude-agent-acp",
+          modelId: null,
+          state: "active",
+          capabilities: { prompt: true },
+        },
+      ],
+    } as unknown as AcpChatPage;
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      models: [],
+      selectedHarnessId: "claude-code",
+      selectedModelId: null,
+    });
+
+    render(<ChatSurface />);
+    openComposerOptions();
+
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Harness" })).toBeEnabled();
+  });
+
+  it("treats an available selected harness without a session as startable", () => {
+    hooks.page = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+    } as AcpChatPage;
+    useWorkbenchStore.setState({
+      models: [{ id: "gpt-6-astra", name: "GPT-6-Astra" }],
+      selectedModelId: "gpt-6-astra",
+    });
+
+    render(<ChatSurface />);
+
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText(
+        "Choose an available harness before starting a session",
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        "The selected Harness cannot accept prompts in this session.",
+      ),
+    ).toBeNull();
+  });
+
+  it("explains when the selected ready session cannot accept prompts", () => {
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "ready",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: null,
+          capabilities: { prompt: false, closeSession: false },
+          revision: "1",
+          projectionRevision: "2",
+        },
+      ],
+    } as unknown as AcpChatPage;
+
+    render(<ChatSurface />);
+
+    expect(screen.getByLabelText("Harness status: Ready")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toHaveAttribute("placeholder", "This session cannot accept prompts.");
+    expect(
+      screen.getByText(
+        "The selected Harness cannot accept prompts in this session.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the selected harness even when the current session uses another", () => {
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "active",
+          residency: "hot",
+          legacy: false,
+          bindingId: "claude-agent-acp",
+          modelId: null,
+          capabilities: { prompt: true, closeSession: true },
+          revision: "1",
+          projectionRevision: "2",
+        },
+      ],
+    } as unknown as AcpChatPage;
+    useWorkbenchStore.setState({
+      harnesses: [
+        ...useWorkbenchStore.getState().harnesses,
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+    });
+
+    render(<ChatSurface />);
+    expect(screen.getByRole("button", { name: "Harness" })).toHaveTextContent(
+      "Codex",
+    );
   });
 
   it("removes a withdrawn session mode picker and returns focus to the composer", async () => {
@@ -261,7 +1549,9 @@ describe("ChatSurface ACP resource integration", () => {
         configOptions: [],
       },
     } as AcpChatPage;
+    matchConfiguredSession();
     const { rerender } = render(<ChatSurface />);
+    openComposerOptions();
     const trigger = screen.getByRole("button", { name: "Session mode" });
     fireEvent.click(trigger);
     const modeInput = screen.getByRole("combobox", { name: "Session mode" });
@@ -337,6 +1627,7 @@ describe("ChatSurface ACP resource integration", () => {
   it("renders pending mode state and errors beside the mode picker", () => {
     hooks.page = {
       ...hooks.page!,
+      turns: [],
       sessionConfig: {
         sageAgentSessionId: "session-a",
         runtimeEpoch: "1",
@@ -351,10 +1642,12 @@ describe("ChatSurface ACP resource integration", () => {
         configOptions: [],
       },
     } as AcpChatPage;
+    matchConfiguredSession();
     hooks.actions.modeChanging = true;
     hooks.actions.modeError = "Mode change was rejected";
     hooks.actions.error = "Prompt dispatch failed";
     render(<ChatSurface />);
+    openComposerOptions();
 
     const modeTrigger = screen.getByRole("button", { name: "Session mode" });
     expect(modeTrigger).toHaveTextContent("Review changes");
@@ -368,6 +1661,35 @@ describe("ChatSurface ACP resource integration", () => {
       "composer__error",
     );
     expect(screen.getByText("Mode change was rejected")).toBeInTheDocument();
+  });
+
+  it("explains how to recover from a nonfatal Claude sign-in refusal", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+          signIn: { command: "claude", hint: "Use /login." },
+        },
+      ],
+      selectedHarnessId: "claude-code",
+      harnessDiscoveryPhase: "ready",
+    });
+    hooks.actions.error =
+      "The harness requires sign-in before it can continue.";
+    hooks.actions.errorKind = "signInRequired";
+
+    render(<ChatSurface />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Claude Code requires sign-in before it can continue. Run claude. Use /login. Then try again.",
+    );
   });
 
   it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
@@ -410,18 +1732,16 @@ describe("ChatSurface ACP resource integration", () => {
         </section>
       </main>,
     );
+    openComposerOptions();
 
-    await waitFor(() => {
-      expect(
-        Function(`return ${createAcp04Ui("codex 0.146.0").codexReady}`)(),
-      ).toBe(true);
-    });
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
   });
 
   it("follows an advancing ACP streaming projection to its latest content", () => {
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const scrollTo = vi.mocked(Element.prototype.scrollTo);
     const { rerender } = render(<ChatSurface />);
-    scrollIntoView.mockClear();
+    measureTranscript({ scrollTop: 600 });
+    scrollTo.mockClear();
 
     hooks.page = {
       ...hooks.page!,
@@ -443,10 +1763,7 @@ describe("ChatSurface ACP resource integration", () => {
     };
     rerender(<ChatSurface />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "end",
-    });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 600 });
   });
 
   it("follows without smooth motion when reduced motion is requested", () => {
@@ -459,9 +1776,10 @@ describe("ChatSurface ACP resource integration", () => {
           }) as MediaQueryList,
       ),
     );
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const scrollTo = vi.mocked(Element.prototype.scrollTo);
     const { rerender } = render(<ChatSurface />);
-    scrollIntoView.mockClear();
+    measureTranscript({ scrollTop: 600 });
+    scrollTo.mockClear();
 
     hooks.page = {
       ...hooks.page!,
@@ -469,10 +1787,7 @@ describe("ChatSurface ACP resource integration", () => {
     };
     rerender(<ChatSurface />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "auto",
-      block: "end",
-    });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 600 });
   });
 
   it("stops following when the reader scrolls away and offers a return to latest", () => {
@@ -480,33 +1795,24 @@ describe("ChatSurface ACP resource integration", () => {
       callback(0);
       return 1;
     });
-    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    const scrollTo = vi.mocked(Element.prototype.scrollTo);
     const { rerender } = render(<ChatSurface />);
-    const transcript = document.querySelector(".message-list");
-    expect(transcript).not.toBeNull();
-    Object.defineProperties(transcript!, {
-      clientHeight: { configurable: true, value: 400 },
-      scrollHeight: { configurable: true, value: 1_000 },
-      scrollTop: { configurable: true, value: 100, writable: true },
-    });
+    const transcript = measureTranscript({ scrollTop: 100 });
 
-    fireEvent.scroll(transcript!);
-    scrollIntoView.mockClear();
+    fireEvent.scroll(transcript);
+    scrollTo.mockClear();
     hooks.page = {
       ...hooks.page!,
       projectionRevision: "4" as never,
     };
     rerender(<ChatSurface />);
 
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
     const returnToLatest = screen.getByRole("button", {
       name: "Jump to latest",
     });
     fireEvent.click(returnToLatest);
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "end",
-    });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 600 });
   });
 
   it("coalesces a scroll burst and cancels pending follow work on owner change or unmount", () => {
@@ -586,21 +1892,24 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
+    openComposerOptions();
 
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach context" })).toBeNull();
-    expect(screen.queryByText("Read-only policy")).toBeNull();
     const harness = screen.getByRole("button", { name: "Harness" });
+    expect(
+      screen.queryByRole("button", { name: "Permission mode" }),
+    ).toBeNull();
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(2);
+    expect(options).toHaveLength(5);
     expect(options[0]).toHaveTextContent("Codex — not installed");
     expect(options[0]).toBeDisabled();
-    expect(options[1]).toHaveTextContent("Simulator — test only");
-    expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "Claude Code" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "Oh My Pi" })).toBeNull();
+    expect(options[1]).toHaveTextContent("Pi — not installed");
+    expect(options[2]).toHaveTextContent("Claude Code — not installed");
+    expect(options[3]).toHaveTextContent("Oh My Pi — not installed");
+    expect(options[4]).toHaveTextContent("Simulator — test only");
   });
 
   it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
@@ -642,15 +1951,16 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
+    openComposerOptions();
 
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent("Codex — unavailable");
+    expect(options).toHaveLength(3);
+    expect(options[0]).toHaveTextContent("Codex — installed but not drivable");
     expect(options[0]).toBeDisabled();
-    expect(options[1]).toHaveTextContent("Simulator — test only");
-    expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
+    expect(options[1]).toHaveTextContent("Pi — not installed");
+    expect(options[2]).toHaveTextContent("Simulator — test only");
   });
 
   it("keeps the available development fallback visible when the selected harness is absent", () => {
@@ -682,14 +1992,15 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
+    openComposerOptions();
 
     expect(screen.getByText("No harness")).toBeInTheDocument();
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("Simulator — test only");
-    expect(screen.queryByRole("option", { name: "Pi" })).toBeNull();
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveTextContent("Pi — not installed");
+    expect(options[1]).toHaveTextContent("Simulator — test only");
   });
 
   it("marks the development simulator as test-only without policy claims", () => {
@@ -719,7 +2030,9 @@ describe("ChatSurface ACP resource integration", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Phase 0 has started")).toBeNull();
-    expect(screen.queryByText("Read-only policy")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Permission mode" }),
+    ).toBeNull();
     expect(
       screen.queryByText(
         "No reviewed local binding is available for this harness.",
@@ -728,12 +2041,205 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("shows an available ACP binding as ready before a session starts", () => {
+    hooks.page = { ...hooks.page!, turns: [] };
     render(<ChatSurface />);
+    openComposerOptions();
 
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
-    expect(screen.getByText("Read-only policy")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Permission mode" }),
+    ).toHaveTextContent("Read-only");
   });
+
+  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", () => {
+    hooks.page = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+    };
+    useSessionAccessModeStore.setState({
+      mode: "readOnly",
+      ready: true,
+      error: null,
+    });
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+          boundVersion: "0.146.0",
+          characterisation: "characterised",
+        },
+      ],
+      selectedHarnessId: "codex",
+    });
+
+    render(<ChatSurface />);
+    openComposerOptions();
+    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    const ask = screen.getByRole("option", { name: /Ask each time/ });
+    expect(ask).toHaveAttribute("aria-disabled", "true");
+    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+  });
+
+  it("shows effective Read-only for saved Ask across observed and pinned Codex", async () => {
+    hooks.page = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+    };
+    hooks.actions.submit.mockResolvedValue("applied");
+    useSessionAccessModeStore.setState({
+      mode: "ask",
+      ready: true,
+      error: null,
+    });
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex observed",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+          boundVersion: "0.146.0",
+          characterisation: "characterised",
+        },
+        {
+          id: "pinned-codex",
+          name: "Codex pinned",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+          boundVersion: "0.145.0",
+          characterisation: "characterised",
+        },
+      ],
+      selectedHarnessId: "codex",
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    render(<ChatSurface />);
+    expect(screen.getByText("Read-only")).toBeVisible();
+
+    act(() =>
+      useWorkbenchStore.setState({ selectedHarnessId: "pinned-codex" }),
+    );
+    expect(screen.getByText("Read-only")).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "Inspect safely" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() =>
+      expect(hooks.actions.submit).toHaveBeenCalledWith(
+        "Inspect safely",
+        [],
+        "codex-app-server",
+        null,
+      ),
+    );
+    expect(useSessionAccessModeStore.getState().mode).toBe("ask");
+  });
+
+  it.each([
+    [
+      "pinned Codex 0.145",
+      {
+        id: "codex",
+        bindingId: "codex-app-server",
+        boundVersion: "0.145.0",
+        characterisation: "characterised",
+      },
+    ],
+    [
+      "uncharacterised Codex 0.146",
+      {
+        id: "codex",
+        bindingId: "codex-app-server",
+        boundVersion: "0.146.0",
+        characterisation: "uncharacterised",
+      },
+    ],
+    [
+      "Claude",
+      {
+        id: "claude",
+        bindingId: "claude-acp",
+        boundVersion: "0.146.0",
+        characterisation: "characterised",
+      },
+    ],
+    [
+      "OpenCode",
+      {
+        id: "opencode",
+        bindingId: "opencode-acp",
+        boundVersion: "0.146.0",
+        characterisation: "characterised",
+      },
+    ],
+  ] as const)(
+    "keeps Ask unavailable before the first prompt for %s",
+    (_label, identity) => {
+      hooks.page = {
+        ...projection(),
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+      };
+      useSessionAccessModeStore.setState({
+        mode: "readOnly",
+        ready: true,
+        error: null,
+      });
+      useWorkbenchStore.setState({
+        harnesses: [
+          {
+            name: identity.id,
+            description: "ACP",
+            installState: "available",
+            source: "builtIn",
+            accountModelDiscovery: true,
+            transport: "acp",
+            ...identity,
+          },
+        ],
+        selectedHarnessId: identity.id,
+      });
+
+      render(<ChatSurface />);
+      openComposerOptions();
+      fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+      expect(
+        screen.getByRole("option", { name: /Ask each time/ }),
+      ).toHaveAttribute("aria-disabled", "true");
+    },
+  );
 
   it("does not project an active session onto a different selected model or binding", () => {
     hooks.page = {
@@ -1229,27 +2735,29 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Git index is locked")).toBeNull();
   });
 
-  it("separates active Turn prompting from the optional Cancel capability", () => {
+  it("offers queueing during a running Turn alongside optional Cancel", () => {
     useWorkbenchStore.setState({ composerText: "Follow up" });
     const { rerender } = render(<ChatSurface />);
     expect(document.querySelector(".message-list")).not.toHaveAttribute(
       "aria-live",
     );
-    const composer = screen.getByRole("textbox", {
-      name: "Message agent",
-      description:
-        /Send a message to the selected harness and model.*active Turn/i,
-    });
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
 
-    expect(composer).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveAccessibleDescription(
+      /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
+    );
+    expect(screen.getByRole("button", { name: "Queue message" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Cancel turn" })).toBeNull();
 
     hooks.actions.cancellableTurnId = "turn-a";
     rerender(<ChatSurface />);
-    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Queue message" })).toBeNull();
     const cancel = screen.getByRole("button", { name: "Cancel turn" });
     expect(cancel).toBeEnabled();
+    expect(composer).toHaveAccessibleDescription(
+      /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
+    );
     fireEvent.click(cancel);
     expect(hooks.actions.cancel).toHaveBeenCalledWith("turn-a");
 
@@ -1406,6 +2914,7 @@ describe("ChatSurface ACP resource integration", () => {
   it("keeps model selection and prompting disabled while Codex discovery checks", async () => {
     const selectHarness = vi.fn();
     const selectModel = vi.fn();
+    hooks.page = { ...hooks.page!, turns: [] } as AcpChatPage;
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -1442,10 +2951,10 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — unavailableHarness is unavailable.",
+        name: "Unavailable harness — installed but not drivableSage did not admit this harness and will not start it.",
       }),
     ).toBeDisabled();
-    fireEvent.click(screen.getByRole("option", { name: "Codex" }));
+    fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));
     expect(selectHarness).toHaveBeenCalledExactlyOnceWith("codex");
     act(() =>
       useWorkbenchStore.setState({
@@ -1454,12 +2963,18 @@ describe("ChatSurface ACP resource integration", () => {
       }),
     );
     expect(
-      screen.getByText(/Checking Codex account and available models/),
+      screen.getByText(/Checking the Codex account and available models/),
     ).toBeVisible();
+    openComposerModel();
     expect(screen.getByLabelText("Model")).toBeDisabled();
     expect(
-      screen.getByText("Select a ready harness to load models."),
-    ).toBeVisible();
+      screen.queryByText(
+        "Wait for the active Turn to finish, or cancel it when available.",
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Select a ready harness to load models."),
+    ).toBeNull();
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     const freshModels = Array.from({ length: 128 }, (_, index) => ({
@@ -1491,6 +3006,78 @@ describe("ChatSurface ACP resource integration", () => {
     expect(selectModel).toHaveBeenCalledExactlyOnceWith("fresh-model-2");
   });
 
+  it("annotates an uncharacterised harness without disabling it", () => {
+    const selectHarness = vi.fn();
+    hooks.page = { ...hooks.page!, turns: [] } as AcpChatPage;
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+          version: "2.1.270",
+          boundVersion: "0.99.0",
+          characterisation: "uncharacterised",
+        },
+      ],
+      selectedHarnessId: "claude-code",
+      harnessDiscoveryPhase: "idle",
+      models: [],
+      selectedModelId: null,
+      selectHarness,
+    });
+
+    render(<ChatSurface />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    const option = screen.getByRole("option", {
+      name: "Claude Code — 2.1.270 — available — uncharacterised",
+    });
+    expect(option).toBeEnabled();
+    fireEvent.click(option);
+    expect(selectHarness).toHaveBeenCalledExactlyOnceWith("claude-code");
+  });
+
+  it("keeps a present harness selectable while its version is checking", () => {
+    const selectHarness = vi.fn();
+    hooks.page = { ...hooks.page!, turns: [] } as AcpChatPage;
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+          versionChecking: true,
+        },
+      ],
+      selectedHarnessId: "claude-code",
+      harnessDiscoveryPhase: "idle",
+      models: [],
+      selectedModelId: null,
+      selectHarness,
+    });
+
+    render(<ChatSurface />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    const option = screen.getByRole("option", {
+      name: "Claude Code — version checking…",
+    });
+    expect(option).toBeEnabled();
+    fireEvent.click(option);
+    expect(selectHarness).toHaveBeenCalledExactlyOnceWith("claude-code");
+  });
+
   it("requires consent before starting bounded browser sign-in", () => {
     const start = vi
       .spyOn(acpDesktop, "startCodexAuth")
@@ -1505,12 +3092,17 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(
-      screen.getByText(/sign in to chatgpt to load models/i),
+      screen.getByText(/sign in to the account required by codex/i),
     ).toBeVisible();
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(screen.getByText(/official openai sign-in page/i)).toBeVisible();
-    expect(screen.getByText(/does not receive or retain them/i)).toBeVisible();
+    expect(
+      screen.getByText(
+        /Sage will open this harness's official sign-in page in your browser\./,
+      ),
+    ).toHaveTextContent(
+      "Sage will open this harness's official sign-in page in your browser. Codex stores credentials; Sage does not receive or retain them.",
+    );
     expect(screen.getByRole("button", { name: "Continue" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
 
@@ -1596,6 +3188,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     const { rerender } = render(<ChatSurface />);
+    await expandReadActivity();
     fireEvent.click(
       await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
@@ -1655,6 +3248,7 @@ describe("ChatSurface ACP resource integration", () => {
       page: refreshed,
     });
     rerender(<ChatSurface />);
+    await expandReadActivity();
     fireEvent.click(
       await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
@@ -1680,6 +3274,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
     const { ChatSurface: CapturingChatSurface } = await import("./ChatSurface");
     const { rerender } = render(<CapturingChatSurface />);
+    await expandReadActivity();
     const oldButton = await screen.findByRole("button", {
       name: "Open file src/main.ts",
     });
@@ -1720,6 +3315,7 @@ describe("ChatSurface ACP resource integration", () => {
     oldHandler();
     await Promise.resolve();
     expect(openAgentArtifact).not.toHaveBeenCalled();
+    await expandReadActivity();
     const freshButton = await screen.findByRole("button", {
       name: "Open file src/main.ts",
     });
@@ -1851,6 +3447,427 @@ describe("ChatSurface ACP resource integration", () => {
 });
 
 describe("ChatSurface per-chat composer", () => {
+  it("keeps harness selection and prompt routing with the owning mounted Chat", async () => {
+    vi.spyOn(desktop, "listHarnessModels").mockImplementation(
+      async (harnessId) =>
+        harnessId === "claude"
+          ? [{ id: "claude-model", name: "Claude model", isDefault: true }]
+          : [{ id: "codex-model", name: "Codex model", isDefault: true }],
+    );
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      chatOwnershipEpoch: 0,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: null,
+          modelId: null,
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+        "chat-b": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: null,
+          modelId: null,
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      composerText: "",
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+        {
+          id: "claude",
+          name: "Claude",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      selectedHarnessId: "codex",
+      selectedModelId: "codex-model",
+      models: [{ id: "codex-model", name: "Codex model", isDefault: true }],
+      harnessDiscoveryPhase: "ready",
+    });
+    hooks.page = { ...projection(), turns: [] };
+    render(
+      <>
+        <ChatSurface chatId="chat-a" />
+        <ChatSurface chatId="chat-b" />
+      </>,
+    );
+    const [left, right] = screen.getAllByRole("region", {
+      name: "Agent chat",
+    });
+    if (!left || !right) throw new Error("Missing mounted Chats");
+
+    fireEvent.click(
+      within(right).getByRole("button", { name: "Composer options" }),
+    );
+    fireEvent.click(within(right).getByRole("button", { name: "Harness" }));
+    fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
+    await waitFor(() =>
+      expect(
+        within(right).getByRole("button", { name: "Harness" }),
+      ).toHaveTextContent("Claude"),
+    );
+    fireEvent.click(
+      within(left).getByRole("button", { name: "Composer options" }),
+    );
+    expect(
+      within(left).getByRole("button", { name: "Harness" }),
+    ).toHaveTextContent("Codex");
+
+    fireEvent.change(
+      within(left).getByRole("textbox", { name: "Message agent" }),
+      {
+        target: { value: "left only" },
+      },
+    );
+    fireEvent.click(within(left).getByRole("button", { name: "Send message" }));
+    expect(hooks.actions.submit).toHaveBeenCalledWith(
+      "left only",
+      [],
+      "codex-app-server",
+      "codex-model",
+    );
+  });
+
+  it("keeps an existing account-backed session selected while its models load", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: null,
+          modelId: null,
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+      ],
+      selectedHarnessId: "codex",
+      selectedModelId: null,
+      models: [],
+      harnessDiscoveryPhase: "checking",
+    });
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          runtimeEpoch: "1",
+          nextRuntimeEpoch: null,
+          state: "active",
+          residency: "hot",
+          legacy: false,
+          bindingId: "codex-app-server",
+          modelId: "gpt-x",
+          capabilities: { prompt: true, closeSession: true },
+          revision: "1",
+          projectionRevision: "1",
+        },
+      ],
+    } as unknown as AcpChatPage;
+    render(<ChatSurface chatId="chat-a" />);
+
+    expect(screen.getByLabelText("Harness status: Live")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Message agent"), {
+      target: { value: "continue the existing session" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(hooks.actions.submit).toHaveBeenCalledWith(
+      "continue the existing session",
+      [],
+      "codex-app-server",
+      "gpt-x",
+    );
+  });
+
+  it("adopts the chosen harness model after sign-in completes", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: "claude",
+          modelId: null,
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      harnesses: [
+        {
+          id: "claude",
+          name: "Claude",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      selectedHarnessId: "claude",
+      selectedModelId: null,
+      models: [],
+      harnessDiscoveryPhase: "signInRequired",
+    });
+    hooks.page = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+    } as AcpChatPage;
+    render(<ChatSurface chatId="chat-a" />);
+
+    act(() =>
+      useWorkbenchStore.setState({
+        selectedModelId: "claude-model",
+        models: [{ id: "claude-model", name: "Claude model" }],
+        harnessDiscoveryPhase: "ready",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().chatUiById["chat-a"]?.modelId).toBe(
+        "claude-model",
+      ),
+    );
+    fireEvent.change(screen.getByLabelText("Message agent"), {
+      target: { value: "start after sign-in" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(hooks.actions.submit).toHaveBeenCalledWith(
+      "start after sign-in",
+      [],
+      "claude-agent-acp",
+      "claude-model",
+    );
+  });
+
+  it("does not borrow a global model when the owning Chat has none", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: "codex",
+          modelId: null,
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+        {
+          id: "claude",
+          name: "Claude",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      selectedHarnessId: "claude",
+      selectedModelId: "claude-model",
+      models: [{ id: "claude-model", name: "Claude model" }],
+      harnessDiscoveryPhase: "ready",
+    });
+    hooks.page = { ...projection(), turns: [] };
+    render(<ChatSurface chatId="chat-a" />);
+
+    fireEvent.change(screen.getByLabelText("Message agent"), {
+      target: { value: "use the harness default" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(hooks.actions.submit).toHaveBeenCalledWith(
+      "use the harness default",
+      [],
+      "codex-app-server",
+      null,
+    );
+  });
+
+  it("keeps an unrelated Chat ready while another harness needs sign-in", () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {
+        "chat-a": {
+          composerText: "",
+          attachedContext: [],
+          harnessId: "codex",
+          modelId: "codex-model",
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      harnesses: [
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+        {
+          id: "claude",
+          name: "Claude",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      selectedHarnessId: "claude",
+      selectedModelId: null,
+      models: [],
+      harnessDiscoveryPhase: "signInRequired",
+    });
+    hooks.page = { ...projection(), turns: [] };
+    render(<ChatSurface chatId="chat-a" />);
+
+    expect(screen.getByLabelText("Harness status: Ready")).toBeInTheDocument();
+    expect(screen.getByLabelText("Message agent")).toBeEnabled();
+    expect(
+      screen.queryByText(/sign in to the account required by claude/i),
+    ).toBeNull();
+  });
+
   it("keeps each mounted Chat composer bound to its chat id", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
@@ -1882,6 +3899,7 @@ describe("ChatSurface per-chat composer", () => {
           attachedContext: [],
           sending: false,
           error: null,
+          errorKind: null,
           requestGeneration: 0,
         },
         "chat-b": {
@@ -1889,6 +3907,7 @@ describe("ChatSurface per-chat composer", () => {
           attachedContext: [],
           sending: false,
           error: null,
+          errorKind: null,
           requestGeneration: 0,
         },
       },
@@ -1914,9 +3933,7 @@ describe("ChatSurface per-chat composer", () => {
         <ChatSurface chatId="chat-b" />
       </>,
     );
-    const composers = screen.getAllByPlaceholderText(
-      "Ask Sage to build, investigate, or explain…",
-    );
+    const composers = screen.getAllByPlaceholderText("Do anything");
     fireEvent.change(composers[0], { target: { value: "Draft A" } });
     fireEvent.change(composers[1], { target: { value: "Draft B" } });
     expect(composers[0]).toHaveValue("Draft A");
@@ -2100,18 +4117,9 @@ describe("ChatSurface composer focus hotkey", () => {
     expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /Attach files:/ }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: /Mention context:/ }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: /Insert slash command:/ }),
-    ).toBeDisabled();
-    expect(composer).toHaveAttribute(
-      "placeholder",
-      "Ask Sage to build, investigate, or explain…",
-    );
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeVisible();
+    expect(composer).toHaveAttribute("placeholder", "Do anything");
     composer.blur();
     expect(composer).not.toHaveFocus();
     fireEvent.keyDown(window, { key: "l", ctrlKey: true });
@@ -2194,6 +4202,7 @@ describe("ChatSurface attached context", () => {
           ],
           sending: false,
           error: null,
+          errorKind: null,
           requestGeneration: 0,
         },
       },
@@ -2218,6 +4227,295 @@ describe("ChatSurface attached context", () => {
 });
 
 describe("ChatSurface composer context", () => {
+  it("keeps the composer hook order when speech support disappears", () => {
+    class FakeRecognition {}
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    const view = render(<ChatSurface chatId="chat-a" />);
+    expect(
+      screen.getByRole("button", { name: "Start dictation" }),
+    ).toBeVisible();
+    vi.stubGlobal("webkitSpeechRecognition", undefined);
+    expect(() => view.rerender(<ChatSurface chatId="chat-a" />)).not.toThrow();
+    expect(
+      screen.getByRole("button", { name: "Voice input unavailable" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps the microphone affordance visible when speech recognition is unavailable", () => {
+    vi.stubGlobal("SpeechRecognition", undefined);
+    vi.stubGlobal("webkitSpeechRecognition", undefined);
+    render(<ChatSurface chatId="chat-a" />);
+    expect(
+      screen.getByRole("button", { name: "Voice input unavailable" }),
+    ).toBeDisabled();
+  });
+  it("cancels active dictation on a chat switch and ignores late speech", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      composerText: "First draft",
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "chat-b",
+          kind: "chat",
+          title: "B",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    class FakeRecognition {
+      static current: FakeRecognition;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      stop = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.current = this;
+      }
+    }
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    render(<ChatSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    const listening = FakeRecognition.current;
+    expect(listening.start).toHaveBeenCalledOnce();
+    act(() =>
+      useWorkbenchStore.setState({
+        activeTabId: "chat-b",
+        composerText: "Second draft",
+      }),
+    );
+    expect(listening.abort).toHaveBeenCalledOnce();
+    act(() =>
+      listening.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " late speech" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Second draft");
+  });
+
+  it("aborts active dictation on unmount and ignores late speech", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      composerText: "Draft",
+    });
+    class FakeRecognition {
+      static current: FakeRecognition;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      stop = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.current = this;
+      }
+    }
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    const view = render(<ChatSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    const listening = FakeRecognition.current;
+    expect(listening.start).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(listening.abort).toHaveBeenCalledOnce();
+    act(() =>
+      listening.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " late speech" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Draft");
+  });
+
+  it("shows dictation only when supported and adds final speech to the draft", async () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      composerText: "Start",
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<ChatSurface />);
+    expect(
+      screen.queryByRole("button", { name: "Start dictation" }),
+    ).toBeNull();
+
+    class FakeRecognition {
+      static current: FakeRecognition;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      start = vi.fn();
+      stop = vi.fn();
+      abort = vi.fn();
+      constructor() {
+        FakeRecognition.current = this;
+      }
+    }
+    vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
+    view.rerender(<ChatSurface />);
+    const mic = screen.getByRole("button", { name: "Start dictation" });
+    const mouseDown = createEvent.mouseDown(mic);
+    fireEvent(mic, mouseDown);
+    expect(mouseDown.defaultPrevented).toBe(true);
+    expect(mic).toHaveAttribute(
+      "title",
+      expect.stringMatching(/online service/i),
+    );
+    fireEvent.click(mic);
+    expect(FakeRecognition.current.start).toHaveBeenCalledOnce();
+    act(() =>
+      FakeRecognition.current.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " hello world" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
+    expect(
+      screen.getByRole("button", { name: "Stop dictation" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Stop dictation" }));
+    expect(FakeRecognition.current.stop).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("button", { name: "Start dictation" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    const disabling = FakeRecognition.current;
+    useWorkbenchStore.setState({ projectTransitioning: true });
+    view.rerender(<ChatSurface />);
+    await waitFor(() => expect(disabling.abort).toHaveBeenCalledOnce());
+    act(() =>
+      disabling.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " ignored" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
+    useWorkbenchStore.setState({ projectTransitioning: false });
+    view.rerender(<ChatSurface />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Start dictation" }),
+      ).toBeVisible(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    const previous = FakeRecognition.current;
+    act(() =>
+      previous.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: "😀".repeat(5000) } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
+    expect(screen.getByRole("alert")).toHaveTextContent(/too long/i);
+    view.rerender(<ChatSurface chatId="chat-b" />);
+    expect(previous.abort).toHaveBeenCalledOnce();
+    act(() =>
+      previous.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " late" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe("Start hello world");
+    view.rerender(<ChatSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    const sending = FakeRecognition.current;
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Send message" }).closest("form")!,
+    );
+    expect(sending.abort).toHaveBeenCalledOnce();
+    const sentDraft = useWorkbenchStore.getState().composerText;
+    act(() =>
+      sending.onresult?.({
+        resultIndex: 0,
+        results: [{ isFinal: true, 0: { transcript: " stale" } }],
+      }),
+    );
+    expect(useWorkbenchStore.getState().composerText).toBe(sentDraft);
+  });
+  it("shows only the compact plus action when no context chips are attached", () => {
+    const chatId = "chat-empty-context";
+    hooks.page = { ...projection(), chatId: chatId as never };
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: chatId,
+          kind: "chat",
+          title: "Context",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: chatId,
+      project: { id: "project-a", name: "A", roots: [] },
+    });
+
+    render(<ChatSurface chatId={chatId} />);
+
+    expect(document.querySelector(".composer__attachment-row")).toBeNull();
+    expect(screen.queryByLabelText("Composer actions")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeVisible();
+  });
+
   it("names the active project in the composer scope control", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "  micrograd  ", roots: [] },
@@ -2236,11 +4534,13 @@ describe("ChatSurface composer context", () => {
       selectedHarnessId: "sage-simulator",
     });
     render(<ChatSurface />);
+    openComposerOptions();
 
     const scope = document.querySelector(".project-scope");
+    expect(scope).not.toBeNull();
     expect(scope).toHaveTextContent("micrograd");
-    expect(scope).toHaveAttribute("title", "Project switching is unavailable");
-    expect(screen.getByLabelText("Composer context")).toBeEmptyDOMElement();
+    expect(scope).toHaveAttribute("title", "No other projects available");
+    expect(screen.queryByLabelText("Composer context")).toBeNull();
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

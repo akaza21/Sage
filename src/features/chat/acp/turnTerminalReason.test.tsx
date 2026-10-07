@@ -1,0 +1,133 @@
+import { cleanup, render, within } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import type { TurnTerminalReason } from "../../../domain/acp";
+import { settleLazyModules } from "../../../test/settleLazyModules";
+import { AcpChatProjection } from "./AcpChatProjection";
+import { page } from "./acpProjection.fixture";
+import { turnTerminalReasonLabels } from "./statusSemantics";
+
+async function renderTurn(
+  state: "failed" | "cancelled" | "completed",
+  reason?: {
+    kind: TurnTerminalReason;
+    message?: string;
+    remediation?: string;
+  },
+) {
+  const result = render(
+    <AcpChatProjection page={page(state, reason)} active />,
+  );
+  await settleLazyModules();
+  return result;
+}
+
+function header(): HTMLElement {
+  const found = document.querySelector(".acp-turn__header");
+  if (!(found instanceof HTMLElement))
+    throw new Error("Turn header was unavailable");
+  return found;
+}
+
+afterEach(cleanup);
+
+describe("turn terminal reason", () => {
+  it("names every reason the decoder can admit", () => {
+    const kinds: TurnTerminalReason[] = [
+      "authRequired",
+      "harnessExited",
+      "protocolError",
+      "cancelledByUser",
+      "refusedVersion",
+      "timeout",
+      "other",
+    ];
+    expect(Object.keys(turnTerminalReasonLabels).sort()).toEqual(
+      [...kinds].sort(),
+    );
+    for (const kind of kinds)
+      expect(turnTerminalReasonLabels[kind].length).toBeGreaterThan(0);
+  });
+
+  it("renders the reason beside the failed status chip", async () => {
+    await renderTurn("failed", { kind: "harnessExited" });
+
+    const chip = within(header()).getByRole("status");
+    expect(chip).toHaveTextContent("Failed");
+    const reason = within(header()).getByText("Harness exited");
+    expect(reason).toHaveAttribute("data-turn-reason", "harnessExited");
+    expect(chip.compareDocumentPosition(reason)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("renders a cancelled turn reason in the user's terms", async () => {
+    await renderTurn("cancelled", { kind: "cancelledByUser" });
+
+    expect(within(header()).getByText("Cancelled by you")).toHaveAttribute(
+      "data-turn-reason",
+      "cancelledByUser",
+    );
+  });
+
+  it("renders nothing when the turn carries no reason", async () => {
+    await renderTurn("failed");
+
+    expect(header().querySelector("[data-turn-reason]")).toBeNull();
+    expect(within(header()).getByRole("status")).toHaveTextContent("Failed");
+  });
+
+  it("shows a harness message as visible text beside the label", async () => {
+    await renderTurn("failed", {
+      kind: "protocolError",
+      message: "Unsupported sessionUpdate variant",
+    });
+
+    expect(within(header()).getByText("Protocol error")).toBeTruthy();
+    const detail = within(header()).getByText(
+      "Unsupported sessionUpdate variant",
+    );
+    expect(detail).toHaveAttribute("data-turn-reason-message", "");
+    expect(header().querySelector("[data-turn-reason-remediation]")).toBeNull();
+  });
+
+  it("shows the Sage remediation for a sign-in failure", async () => {
+    await renderTurn("failed", {
+      kind: "authRequired",
+      remediation: "Sign in by running claude and completing /login.",
+    });
+
+    expect(within(header()).getByText("Not signed in")).toBeTruthy();
+    const remediation = within(header()).getByText(
+      "Sign in by running claude and completing /login.",
+    );
+    expect(remediation).toHaveAttribute("data-turn-reason-remediation", "");
+    expect(header().querySelector("[data-turn-reason-message]")).toBeNull();
+  });
+
+  it("keeps a message and a remediation as two separate blocks", async () => {
+    await renderTurn("failed", {
+      kind: "authRequired",
+      message: "authentication required",
+      remediation: "Sign in with your Claude account",
+    });
+
+    const message = within(header()).getByText("authentication required");
+    const remediation = within(header()).getByText(
+      "Sign in with your Claude account",
+    );
+    expect(message).not.toBe(remediation);
+    expect(message.compareDocumentPosition(remediation)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(header().textContent).not.toContain("—");
+  });
+
+  it("offers no reason detail when the turn carries neither text", async () => {
+    await renderTurn("failed", { kind: "timeout" });
+
+    expect(header().querySelector("[data-turn-reason-message]")).toBeNull();
+    expect(header().querySelector("[data-turn-reason-remediation]")).toBeNull();
+    expect(within(header()).getByText("Timed out")).toBeTruthy();
+  });
+});

@@ -10,7 +10,7 @@ use crate::{
         BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
     },
     error::{AppError, AppResult},
-    harnesses::{HarnessCatalog, SIMULATOR_ID},
+    harnesses::HarnessCatalog,
     persistence::{Database, now_millis},
     project_registry::MAX_PROJECTS,
     workbench_restore::{
@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-use self::bootstrap::{active_project_in, load_chat_id, load_session};
+use self::bootstrap::{active_project_in, empty_snapshot, load_chat_id, load_session};
 
 mod bootstrap;
 
@@ -86,7 +86,7 @@ impl Database {
                         )
                     })?,
             ),
-            None => Some(SIMULATOR_ID.into()),
+            None => harnesses.default_selected_harness_id(),
         };
         Ok(BootstrapSnapshot {
             transition_epoch: 0,
@@ -168,32 +168,6 @@ impl Database {
         )?;
         transaction.commit()?;
         Ok(())
-    }
-}
-
-fn empty_snapshot(projects: Vec<crate::domain::ProjectListItem>) -> BootstrapSnapshot {
-    BootstrapSnapshot {
-        transition_epoch: 0,
-        projects,
-        project: None,
-        tabs: Vec::new(),
-        archived_chats: Vec::new(),
-        active_tab_id: None,
-        selected_root_id: None,
-        selected_resource: None,
-        harnesses: Vec::new(),
-        session_id: None,
-        selected_harness_id: None,
-        selected_model_id: None,
-        messages: Vec::new(),
-        repositories: ProjectRepositoryStatus {
-            roots: Vec::new(),
-            truncated: false,
-            elapsed_ms: 0,
-        },
-        turn_changes: Vec::new(),
-        recovered_buffers: Vec::new(),
-        recovery_notice: None,
     }
 }
 
@@ -353,7 +327,15 @@ pub(crate) fn validate_layout(
         }
         if !matches!(
             tab.kind.as_str(),
-            "chat" | "file" | "diff" | "terminal" | "search" | "problems" | "output" | "settings"
+            "chat"
+                | "file"
+                | "diff"
+                | "terminal"
+                | "search"
+                | "problems"
+                | "output"
+                | "settings"
+                | "browser"
         ) {
             return Err(AppError::InvalidRequest(
                 "project layout contains an unsupported tab kind".into(),

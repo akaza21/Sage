@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use serde_json::Value;
-
 use crate::acp::{
     bindings::adapter::{AdapterEvent, HarnessAdapter, ResourceMapper},
     runtime::{
@@ -10,6 +8,7 @@ use crate::acp::{
         JournalHandle, PrepareDispatch, PrepareRecovery, ProjectIntentAuthority,
         ProjectionPublisher, RecoveryActivationParts, SendCoordinator, SessionPumpIntent,
         SessionTreeLease, SqliteAdapterBatchJournal, TeardownActivationParts,
+        is_available_commands_update,
     },
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
@@ -52,36 +51,42 @@ where
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
-        let mut config_rejected = false;
+        let mut nonfatal_refusal = None;
         loop {
             if let Some(frame) = frame {
                 if validate_structure(&frame).is_err() {
                     log_idle_frame_rejection(&frame, "invalid-structure");
                     return Err(AdapterPumpError::Frame);
                 }
-                match self.parts.ingest_idle_frame(&frame) {
-                    Ok(batch) => {
-                        let (events, egress) = batch.into_parts();
-                        if !egress.is_empty()
-                            || !events.iter().all(|event| {
-                                matches!(
-                                    event,
-                                    AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
-                                )
-                            })
-                        {
-                            log_idle_frame_rejection(&frame, "non-ignorable-event");
+                if !is_available_commands_update(
+                    &frame,
+                    self.parts.session().external_session_id.as_str(),
+                ) {
+                    match self.parts.ingest_idle_frame(&frame) {
+                        Ok(batch) => {
+                            let (events, egress) = batch.into_parts();
+                            if !egress.is_empty()
+                                || !events.iter().all(|event| {
+                                    matches!(
+                                        event,
+                                        AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
+                                    )
+                                })
+                            {
+                                log_idle_frame_rejection(&frame, "non-ignorable-event");
+                                return Err(AdapterPumpError::Frame);
+                            }
+                        }
+                        Err(
+                            crate::acp::bindings::adapter::AdapterRuntimeError::ConfigMutationRejected,
+                        ) => {
+                            nonfatal_refusal =
+                                Some(crate::acp::runtime::NonfatalRefusal::ConfigMutation);
+                        }
+                        Err(_) => {
+                            log_idle_frame_rejection(&frame, "adapter-rejected");
                             return Err(AdapterPumpError::Frame);
                         }
-                    }
-                    Err(
-                        crate::acp::bindings::adapter::AdapterRuntimeError::ConfigMutationRejected,
-                    ) => {
-                        config_rejected = true;
-                    }
-                    Err(_) => {
-                        log_idle_frame_rejection(&frame, "adapter-rejected");
-                        return Err(AdapterPumpError::Frame);
                     }
                 }
             }
@@ -90,30 +95,28 @@ where
                 .drain_pending()
                 .map_err(|_| AdapterPumpError::Frame)?;
             if frame.is_none() {
-                return if config_rejected {
-                    Err(AdapterPumpError::ConfigMutationRejected)
-                } else {
-                    Ok(())
-                };
+                return nonfatal_refusal.map_or(Ok(()), |nonfatal_refusal| {
+                    Err(AdapterPumpError::Refused(nonfatal_refusal))
+                });
             }
         }
     }
 }
 
 fn log_idle_frame_rejection(frame: &crate::acp::transport::Frame, reason: &'static str) {
-    let value = serde_json::from_slice::<Value>(frame.as_bytes()).ok();
-    let object = value.as_ref().and_then(Value::as_object);
+    let value = serde_json::from_slice::<serde_json::Value>(frame.as_bytes()).ok();
+    let object = value.as_ref().and_then(serde_json::Value::as_object);
     let method = object
         .and_then(|object| object.get("method"))
-        .and_then(Value::as_str);
+        .and_then(serde_json::Value::as_str);
     let response_id = object
         .and_then(|object| object.get("id"))
-        .and_then(Value::as_u64);
+        .and_then(serde_json::Value::as_u64);
     let error_code = object
         .and_then(|object| object.get("error"))
-        .and_then(Value::as_object)
+        .and_then(serde_json::Value::as_object)
         .and_then(|error| error.get("code"))
-        .and_then(Value::as_i64);
+        .and_then(serde_json::Value::as_i64);
     tracing::warn!(
         activation_checkpoint = "activation.idle_stdout",
         idle_frame_reason = reason,

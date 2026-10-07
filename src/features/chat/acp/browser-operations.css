@@ -1,0 +1,56 @@
+.acp-browser-operations {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.acp-browser-operations__earlier {
+  margin: var(--space-1) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-browser-operation > summary {
+  display: flex;
+  min-height: var(--row-height-compact);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) ease;
+}
+
+.acp-browser-operation > summary > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-browser-operation .acp-state {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+}
+
+.acp-activity-card--browser[data-activity-state="outcomeUnknown"] {
+  border-left-color: var(--color-warning);
+}
+
+.acp-activity-card--browser[data-activity-state="started"] {
+  border-left-color: var(--color-accent);
+}
+
+.acp-activity-card--browser[data-activity-state="denied"] {
+  border-left-color: var(--color-warning);
+}
+
+.acp-activity-card--browser[data-activity-state="outcomeUnknown"] .acp-state,
+.acp-activity-card--browser[data-activity-state="denied"] .acp-state {
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
+}
+
+.acp-browser-operation[open] .acp-browser-operation__detail {
+  animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
+}

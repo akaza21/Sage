@@ -1,4 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
+import { harnessUnavailableReason } from "./harness";
 import type { HarnessDefinition, ModelOption } from "./harness";
 
 it("keeps native executable paths out of the WebView harness DTO", () => {
@@ -46,4 +47,13 @@ it("distinguishes a known model context window from an unknown one", () => {
   expect(known.contextWindow).toBe(272_000);
   expect("contextWindow" in unknown).toBe(false);
   expect(unknown.contextWindow).toBeUndefined();
+});
+
+it("uses the admission refusal text for unavailable harness controls", () => {
+  expect(harnessUnavailableReason("nodeEngineMismatch")).toBe(
+    "The installed Node.js is older than this harness requires.",
+  );
+  expect(harnessUnavailableReason("unknown" as never)).toBe(
+    "Sage did not admit this harness and will not start it.",
+  );
 });

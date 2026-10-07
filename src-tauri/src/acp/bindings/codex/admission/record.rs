@@ -39,6 +39,8 @@ impl AdmittedCodexBinding {
             binding_digest_hex: BINDING_DIGEST_HEX.into(),
             artifact_digest,
             harness_version,
+            characterisation:
+                crate::acp::bindings::characterisation::Characterisation::Characterised,
             #[cfg(all(test, windows))]
             journey_test_entrypoint: None,
             #[cfg(all(test, windows))]
@@ -66,6 +68,8 @@ impl AdmittedCodexBinding {
         let artifact_digest = sha256_hex(entrypoint.sha256);
         let binding_digest_hex = sha256_hex(binding_digest);
         let environment = observed_environment(&entrypoint.path)?;
+        let characterisation =
+            crate::acp::bindings::characterisation::codex_characterisation(&version);
         Ok(Self {
             packet,
             reproduced: None,
@@ -77,6 +81,7 @@ impl AdmittedCodexBinding {
             binding_digest_hex,
             artifact_digest,
             harness_version: version,
+            characterisation,
             #[cfg(all(test, windows))]
             journey_test_entrypoint: None,
             #[cfg(all(test, windows))]

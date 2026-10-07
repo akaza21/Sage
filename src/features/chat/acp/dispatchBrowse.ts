@@ -6,7 +6,7 @@ import {
 import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
 
 function toolBrowseUrl(item: AcpItem): string | null {
-  if (item.kind !== "toolCall" && item.kind !== "toolUpdateResult") {
+  if (item.kind !== "toolCall") {
     return null;
   }
   const payload = item.payload;

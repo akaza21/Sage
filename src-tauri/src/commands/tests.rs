@@ -31,7 +31,8 @@ use crate::{
 
 #[cfg(windows)]
 use super::acp::{
-    activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner, send_acp_turn_inner,
+    activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner,
+    end_acp_session_inner, send_acp_turn_inner,
 };
 #[cfg(windows)]
 use crate::acp::{
@@ -42,21 +43,21 @@ use crate::acp::{
     },
     runtime::{
         HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
-        RuntimeHost,
+        RuntimeHost, RuntimeShutdownRecovery,
     },
     scheduler::RuntimeOwner,
     store::{
         ActivateSessionCommand, AdapterTurnCursor, BeginCancelCommand, CompleteActivationCommand,
-        FinalizeCloseCommand, PrepareTurnCommand, SendObservation, TurnMutationCommand,
-        activate_session, begin_cancel, begin_send, close_session, complete_activation,
-        finalize_close_after_zero_process, prepare_turn, record_send_observation,
+        FinalizeCloseCommand, PrepareTurnCommand, SendObservation, StartSessionCommand,
+        TurnMutationCommand, activate_session, begin_cancel, begin_send, close_session,
+        complete_activation, finalize_close_after_zero_process, prepare_turn,
+        record_send_observation,
     },
 };
 #[cfg(windows)]
 use std::sync::Mutex;
 
 #[cfg(windows)]
-#[path = "tests/attached_context.rs"]
 mod attached_context;
 
 pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
@@ -91,11 +92,111 @@ fn state_with_unavailable_codex_project() -> (AppState, String, String, std::pat
         settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
         acp,
         harnesses: crate::harnesses::HarnessCatalog::with_codex_registration(codex),
+        harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
         editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
+        terminals: crate::user_terminal::TerminalSessionPort::desktop(),
     };
     (state, project.id, chat_id, root)
+}
+
+#[cfg(windows)]
+fn state_with_internal_opencode_registry() -> (AppState, String, String, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!("sage-opencode-command-{}", Uuid::new_v4()));
+    let npm = root.join("npm");
+    let shim = npm.join("opencode.cmd");
+    let executable = npm
+        .join("node_modules")
+        .join("opencode-ai")
+        .join("bin")
+        .join("opencode.exe");
+    fs::create_dir_all(executable.parent().unwrap()).unwrap();
+    fs::write(&shim, "@echo off\r\necho 1.18.21\r\n").unwrap();
+    fs::write(&executable, b"native-opencode").unwrap();
+    fs::write(
+        npm.join("node_modules")
+            .join("opencode-ai")
+            .join("package.json"),
+        r#"{"name":"opencode-ai","version":"1.18.21","bin":{"opencode":"./bin/opencode.exe"}}"#,
+    )
+    .unwrap();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let chat_id = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    let registry = Arc::new(
+        crate::acp::bindings::registry::BindingRegistry::new_with_opencode_for_test(
+            crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
+            crate::acp::bindings::claude::ClaudeBindingRegistration::absent_for_test(),
+            crate::acp::bindings::standard_acp::OpenCodeBindingRegistration::admitted_for_test(
+                &shim, "1.18.21",
+            ),
+        ),
+    );
+    let acp = crate::acp::service::AcpService::new_with_registry_for_test(
+        database.clone(),
+        Arc::clone(&registry),
+    )
+    .unwrap();
+    let state = AppState {
+        database,
+        settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
+        acp,
+        harnesses: crate::harnesses::HarnessCatalog::with_registry(registry),
+        harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
+        editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
+        project_transitions: tokio::sync::Mutex::new(0),
+        startup_recovery_notice: None,
+        terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+    };
+    (state, project.id, chat_id, root)
+}
+
+#[cfg(windows)]
+async fn seed_internal_opencode_session(
+    state: &AppState,
+    project_id: &SageProjectId,
+    chat_id: &SageChatId,
+) -> SageAgentSessionId {
+    let context = state
+        .lock_active_project(project_id, ProjectGeneration::ZERO)
+        .await
+        .unwrap();
+    let admitted = state
+        .acp
+        .binding_registry()
+        .resolve("opencode-acp")
+        .unwrap();
+    let project_root = admitted.project_root(&state.database, &context).unwrap();
+    drop(context);
+    let page = state
+        .acp
+        .load_chat_page(project_id.clone(), chat_id.clone(), None)
+        .unwrap();
+    state
+        .acp
+        .start_session(
+            admitted,
+            &project_root,
+            StartSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "opencode-acp").unwrap(),
+                binding_digest: String::new(),
+                harness_version: None,
+                model_id: None,
+                now_millis: crate::persistence::now_millis(),
+            },
+        )
+        .await
+        .unwrap()
+        .session_id
 }
 
 #[cfg(windows)]
@@ -118,9 +219,11 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
         settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
         acp,
         harnesses: crate::harnesses::HarnessCatalog::with_codex_registration(codex),
+        harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
         editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
+        terminals: crate::user_terminal::TerminalSessionPort::desktop(),
     };
     (state, project.id, chat_id, root)
 }
@@ -151,9 +254,11 @@ fn state_with_registry_test_binding_project() -> (AppState, String, String, std:
         settings: crate::settings_store::SettingsStore::in_memory().unwrap(),
         acp,
         harnesses: crate::harnesses::HarnessCatalog::with_registry(registry),
+        harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
         editor_operations: crate::editor_coordination::EditorOperationCoordinator::default(),
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
+        terminals: crate::user_terminal::TerminalSessionPort::desktop(),
     };
     (state, project.id, chat_id, root)
 }
@@ -173,6 +278,19 @@ struct CommandHostEngine {
     turn_id: Option<SageTurnId>,
     prompts: Option<Arc<Mutex<Vec<String>>>>,
     fail_dispatch: bool,
+}
+
+#[cfg(windows)]
+struct CommandShutdownRecovery(u64);
+
+#[cfg(windows)]
+impl RuntimeShutdownRecovery for CommandShutdownRecovery {
+    fn shutdown_recovery_before(
+        &self,
+        _: std::time::Instant,
+    ) -> Result<crate::acp::process::ZeroProcessToken, HostError> {
+        Ok(crate::acp::process::ZeroProcessToken::for_test(self.0))
+    }
 }
 
 // Database's connection mutex is deliberately non-reentrant. Keep every
@@ -357,6 +475,7 @@ fn install_command_host(
     chat_id: &SageChatId,
     session_id: &SageAgentSessionId,
     mode: CommandHostMode,
+    close_unproven: bool,
 ) -> (RuntimeOwner, Arc<Mutex<Vec<&'static str>>>) {
     let binding = state.acp.codex_registration().refresh().unwrap();
     let owner = RuntimeOwner {
@@ -387,6 +506,10 @@ fn install_command_host(
         )
         .unwrap()
     };
+    let mut capabilities = binding.capability_ceiling().unwrap();
+    if close_unproven {
+        capabilities.close_session = false;
+    }
     {
         let mut connection = state.database.connection();
         complete_activation(
@@ -403,8 +526,7 @@ fn install_command_host(
                     "thread-command-route",
                 )
                 .unwrap(),
-                capabilities_json: serde_json::to_string(&binding.capability_ceiling().unwrap())
-                    .unwrap(),
+                capabilities_json: serde_json::to_string(&capabilities).unwrap(),
                 now_millis: crate::persistence::now_millis(),
             },
         )
@@ -412,14 +534,17 @@ fn install_command_host(
     }
     let calls = Arc::new(Mutex::new(Vec::new()));
     let host = Arc::new(
-        RuntimeHost::start(CommandHostEngine {
-            database: state.database.clone(),
-            owner: owner.clone(),
-            calls: Arc::clone(&calls),
-            turn_id: None,
-            prompts: None,
-            fail_dispatch: false,
-        })
+        RuntimeHost::start_with_shutdown_recovery(
+            CommandHostEngine {
+                database: state.database.clone(),
+                owner: owner.clone(),
+                calls: Arc::clone(&calls),
+                turn_id: None,
+                prompts: None,
+                fail_dispatch: false,
+            },
+            Arc::new(CommandShutdownRecovery(owner.runtime_epoch.get())),
+        )
         .unwrap(),
     );
     host.activate(owner.clone()).unwrap();
@@ -441,6 +566,7 @@ fn install_command_host(
                 prompt: Prompt::new("prompt", "seed turn").unwrap(),
                 now_millis: crate::persistence::now_millis(),
             },
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
         calls.lock().unwrap().clear();
@@ -649,13 +775,156 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
 }
 
 #[test]
+fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtime() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, _chat, root) = state_with_unavailable_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let live = state.acp.hold_live_operation_for_test();
+        let request = GetCodexDiscoveryRequest {
+            project_id: project,
+            project_generation: ProjectGeneration::ZERO,
+            binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
+        };
+
+        let result = get_codex_discovery_inner(&state, request).await;
+
+        assert!(
+            !matches!(result, Err(AcpIpcError::Capacity { .. })),
+            "{result:?}"
+        );
+        let expected_reason = AcpUnavailableReason::BindingUnavailable;
+        assert!(
+            matches!(
+                result,
+                Err(AcpIpcError::Unavailable { reason, .. }) if reason == expected_reason
+            ),
+            "{result:?}"
+        );
+        drop(live);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+async fn seed_codex_discovery_catalog(
+    state: &AppState,
+    project: &SageProjectId,
+    model: crate::acp::intent::ModelId,
+) {
+    let context = state
+        .lock_active_project(project, ProjectGeneration::ZERO)
+        .await
+        .unwrap();
+    let authority = state
+        .database
+        .codex_project_root_authority(&context)
+        .unwrap();
+    drop(context);
+    let binding = state.acp.codex_registration().refresh().unwrap();
+    state
+        .acp
+        .codex_discovery_manager()
+        .seed_session_validation_for_test(&authority, binding.binding_digest(), Some(model));
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_runtime() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, _chat, root) = state_with_admitted_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let model = crate::acp::intent::ModelId::new("modelId", "gpt-5-codex").unwrap();
+        seed_codex_discovery_catalog(&state, &project, model.clone()).await;
+        let live = state.acp.hold_live_operation_for_test();
+        let request = GetCodexDiscoveryRequest {
+            project_id: project.clone(),
+            project_generation: ProjectGeneration::ZERO,
+            binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
+                .unwrap(),
+        };
+
+        let result = get_codex_discovery_inner(&state, request).await;
+
+        let response = result.expect("an admitted cached catalog is served under a live session");
+        assert_eq!(response.project_id, project);
+        assert_eq!(
+            response
+                .models
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect::<Vec<_>>(),
+            vec![model]
+        );
+        assert!(matches!(
+            response.account,
+            crate::acp::intent::CodexDiscoveryAccount::ManagedChatgpt
+        ));
+        drop(live);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn codex_discovery_refuses_an_uncached_admitted_catalog_while_a_live_session_holds_the_runtime() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, _chat, root) = state_with_admitted_codex_project();
+        let project = SageProjectId::parse(project).unwrap();
+        let live = state.acp.hold_live_operation_for_test();
+        let request = GetCodexDiscoveryRequest {
+            project_id: project,
+            project_generation: ProjectGeneration::ZERO,
+            binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
+                .unwrap(),
+        };
+        let started = std::time::Instant::now();
+
+        let result = get_codex_discovery_inner(&state, request).await;
+
+        assert!(
+            matches!(
+                result,
+                Err(AcpIpcError::Capacity {
+                    resource: crate::acp::intent::AcpCapacityResource::Queue,
+                    limit: 1,
+                    ..
+                })
+            ),
+            "{result:?}"
+        );
+        assert!(
+            started.elapsed()
+                < std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.spawn),
+            "a cache miss under a live session must refuse without launching a runtime"
+        );
+        drop(live);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
 fn codex_discovery_cleanup_deadline_requests_teardown_without_waiting_for_worker_exit() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let timed_out = Arc::new(AtomicBool::new(false));
         let timeout_signal = Arc::clone(&timed_out);
-        let started = std::time::Instant::now();
-        let task = tauri::async_runtime::spawn_blocking(|| {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        let gate = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let worker_gate = Arc::clone(&gate);
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            let (released, ready) = &*worker_gate;
+            let mut released = released.lock().unwrap();
+            while !*released {
+                let (next, timed) = ready
+                    .wait_timeout(released, crate::test_wait::HANG_GUARD)
+                    .unwrap();
+                released = next;
+                assert!(
+                    !timed.timed_out() || *released,
+                    "the codex discovery worker was never released by its test"
+                );
+            }
             Err(crate::acp::bindings::codex::CodexDiscoveryRunError::Timeout)
         });
 
@@ -669,7 +938,10 @@ fn codex_discovery_cleanup_deadline_requests_teardown_without_waiting_for_worker
         )
         .await;
 
-        assert!(started.elapsed() < std::time::Duration::from_millis(75));
+        let (released, ready) = &*gate;
+        *released.lock().unwrap() = true;
+        ready.notify_all();
+
         assert!(timed_out.load(Ordering::Acquire));
         assert!(matches!(
             result,
@@ -896,6 +1168,157 @@ fn unknown_requested_binding_is_rejected_before_any_durable_mutation() {
             )
             .unwrap();
         assert_eq!(after, before);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn an_admitted_opencode_binding_starts_a_durable_session() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_internal_opencode_registry();
+        let project = SageProjectId::parse(project).unwrap();
+        let chat = SageChatId::parse(chat).unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project.clone(), chat.clone(), None)
+            .unwrap();
+        let before: (i64, i64, i64) = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM agent_sessions),
+                        (SELECT COUNT(*) FROM session_facts),
+                        (SELECT projection_revision FROM chats WHERE id=?1)",
+                [chat.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        let result = start_acp_session_inner(
+            &state,
+            StartAcpSessionRequest {
+                project_id: project,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("bindingId", "opencode-acp").unwrap(),
+                model_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(result.projection.current_session_id.is_some());
+        let after: (i64, i64, i64) = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM agent_sessions),
+                        (SELECT COUNT(*) FROM session_facts),
+                        (SELECT projection_revision FROM chats WHERE id=?1)",
+                [chat.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(after.0, before.0 + 1);
+        assert!(after.2 > before.2);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_binding() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_internal_opencode_registry();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let session_id = seed_internal_opencode_session(&state, &project_id, &chat_id).await;
+        let binding_id = BindingId::new("bindingId", "opencode-acp").unwrap();
+        assert!(state.acp.resolve_session_binding(&binding_id).is_ok());
+        assert!(state.acp.binding_registry().resolve("opencode-acp").is_ok());
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let runtime_epoch = RuntimeEpoch::new(1).unwrap();
+
+        let activation = activate_acp_session_inner(
+            &state,
+            ActivateAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch,
+            },
+        )
+        .await;
+        assert!(
+            activation.is_err(),
+            "the fixture OpenCode artifact must fail closed at launch"
+        );
+
+        let turn = state.acp.dispatch_session_turn(
+            &binding_id,
+            HostPromptIntent {
+                command: PrepareTurnCommand {
+                    project_id: project_id.clone(),
+                    project_generation: ProjectGeneration::ZERO,
+                    chat_id: chat_id.clone(),
+                    session_id: session_id.clone(),
+                    runtime_epoch,
+                    expected_projection_revision: page.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    prompt: Prompt::new("prompt", "must not dispatch").unwrap(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            },
+        );
+        assert!(matches!(
+            turn,
+            Err(crate::acp::service::PromptSendError { error, .. })
+                if !matches!(error, crate::acp::service::SessionDispatchError::Binding)
+        ));
+
+        let owner = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: session_id.clone(),
+            runtime_epoch,
+        };
+        assert!(matches!(
+            state.acp.dispatch_session_cancel(
+                &binding_id,
+                HostCancelIntent {
+                    owner,
+                turn_id: SageTurnId::parse("turn-opencode-dormant").unwrap(),
+                client_intent_id: ClientIntentId::new(),
+                now_millis: crate::persistence::now_millis(),
+                },
+            ),
+            Err(reason) if !matches!(reason, crate::acp::service::SessionDispatchError::Binding)
+        ));
+        assert!(matches!(
+            state.acp.dispatch_session_close(
+                &binding_id,
+                crate::acp::store::CloseSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: page.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id,
+                    runtime_epoch,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            ),
+            Err(reason) if !matches!(reason, crate::acp::service::SessionDispatchError::Binding)
+        ));
         drop(state);
         fs::remove_dir_all(root).unwrap();
     });
@@ -1193,16 +1616,19 @@ fn test_binding_activation_uses_the_registry_factory_path() {
         );
         let dispatch = state.acp.dispatch_session_turn(
             &BindingId::new("bindingId", crate::acp::bindings::registry::TEST_BINDING_ID).unwrap(),
-            PrepareTurnCommand {
-                project_id,
-                project_generation: ProjectGeneration::ZERO,
-                chat_id,
-                session_id,
-                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-                expected_projection_revision: started.projection.projection_revision,
-                client_intent_id: ClientIntentId::new(),
-                prompt: Prompt::new("prompt", "test dispatch").unwrap(),
-                now_millis: crate::persistence::now_millis(),
+            HostPromptIntent {
+                command: PrepareTurnCommand {
+                    project_id,
+                    project_generation: ProjectGeneration::ZERO,
+                    chat_id,
+                    session_id,
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    expected_projection_revision: started.projection.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    prompt: Prompt::new("prompt", "test dispatch").unwrap(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             },
         );
         assert!(dispatch.is_err(), "test dispatch must fail closed");
@@ -1438,6 +1864,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
             &chat_id,
             &session_id,
             CommandHostMode::Idle,
+            false,
         );
         let page = state
             .acp
@@ -1514,6 +1941,7 @@ fn admitted_codex_cancel_command_routes_only_the_current_turn_owner() {
             &chat_id,
             &session_id,
             CommandHostMode::Running,
+            false,
         );
         let page = state
             .acp
@@ -1589,6 +2017,105 @@ fn admitted_codex_cancel_command_routes_only_the_current_turn_owner() {
 
 #[cfg(windows)]
 #[test]
+fn admitted_codex_cancel_command_accepts_a_turn_advanced_by_ingress() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let session_id = start_admitted_command_session(&state, &project_id, &chat_id).await;
+        let (owner, calls) = install_command_host(
+            &state,
+            &project_id,
+            &chat_id,
+            &session_id,
+            CommandHostMode::Idle,
+            false,
+        );
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let sent = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                prompt: Prompt::new("prompt", "cancel after ingress").unwrap(),
+                attached_context: Default::default(),
+            },
+        )
+        .await
+        .unwrap();
+        let turn = sent
+            .projection
+            .turns
+            .as_slice()
+            .iter()
+            .find(|turn| turn.session_id == session_id)
+            .unwrap()
+            .clone();
+        assert_eq!(turn.state, TurnState::Sending);
+        {
+            let mut connection = state.database.connection();
+            record_send_observation(
+                &mut connection,
+                TurnMutationCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    session_id: session_id.clone(),
+                    runtime_epoch: owner.runtime_epoch,
+                    turn_id: turn.id.clone(),
+                    expected_revision: turn.revision,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                SendObservation::Correlated,
+            )
+            .unwrap();
+        }
+        calls.lock().unwrap().clear();
+
+        let result = cancel_acp_turn_inner(
+            &state,
+            CancelAcpTurnRequest {
+                project_id,
+                project_generation: ProjectGeneration::ZERO,
+                chat_id,
+                expected_projection_revision: sent.projection.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id,
+                runtime_epoch: owner.runtime_epoch,
+                turn_id: turn.id.clone(),
+                expected_turn_state: turn.state,
+                expected_turn_revision: turn.revision,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            result
+                .projection
+                .turns
+                .as_slice()
+                .iter()
+                .find(|candidate| candidate.id == turn.id)
+                .unwrap()
+                .state,
+            TurnState::Cancelling
+        );
+        assert_eq!(*calls.lock().unwrap(), ["cancel-begin", "cancel-dispatch"]);
+        state.acp.shutdown_blocking().unwrap();
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
 fn admitted_codex_close_command_routes_and_rejects_a_foreign_session() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, chat, root) = state_with_admitted_codex_project();
@@ -1601,6 +2128,7 @@ fn admitted_codex_close_command_routes_and_rejects_a_foreign_session() {
             &chat_id,
             &session_id,
             CommandHostMode::Idle,
+            false,
         );
         let page = state
             .acp
@@ -1645,6 +2173,70 @@ fn admitted_codex_close_command_routes_and_rejects_a_foreign_session() {
         assert_eq!(
             *calls.lock().unwrap(),
             ["close-begin", "close-zero", "close-finalize", "shutdown"]
+        );
+        state.acp.shutdown_blocking().unwrap();
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn native_end_command_recovers_the_exact_owner_when_cancel_is_available() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (state, project, chat, root) = state_with_admitted_codex_project();
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let session_id = start_admitted_command_session(&state, &project_id, &chat_id).await;
+        let (owner, calls) = install_command_host(
+            &state,
+            &project_id,
+            &chat_id,
+            &session_id,
+            CommandHostMode::Running,
+            true,
+        );
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+
+        let result = end_acp_session_inner(
+            &state,
+            CloseAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(result.projection.current_session_id.is_none());
+        assert_eq!(*calls.lock().unwrap(), ["shutdown"]);
+        let durable: (String, String, String, Option<String>) = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT s.state,s.residency,e.state,e.exit_kind FROM agent_sessions s
+                 JOIN session_runtime_epochs e ON e.session_id=s.id
+                 WHERE s.id=?1 AND e.runtime_epoch=?2",
+                [session_id.as_str(), &owner.runtime_epoch.get().to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            durable,
+            (
+                "failed".into(),
+                "cold".into(),
+                "failed".into(),
+                Some("restartRecovery".into())
+            )
         );
         state.acp.shutdown_blocking().unwrap();
         drop(state);

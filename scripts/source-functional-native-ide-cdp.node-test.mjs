@@ -164,6 +164,27 @@ test("tolerates ambient discovery keys and accepts a legal remote description", 
   await cdp.close(Date.now() + 1_000);
 });
 
+test("accepts Chromium's nullable primitive subtype metadata", async () => {
+  const { client: cdp, socket } = await client();
+  const value = cdp.evaluate("true", Date.now() + 1_000);
+  respond(socket, 1, {
+    result: { type: "boolean", subtype: null, value: true },
+  });
+  assert.equal(await value, true);
+  await cdp.close(Date.now() + 1_000);
+});
+
+test("accepts Chromium's null exception-details sentinel for a successful evaluation", async () => {
+  const { client: cdp, socket } = await client();
+  const value = cdp.evaluate("true", Date.now() + 1_000);
+  respond(socket, 1, {
+    result: { type: "boolean", value: true },
+    exceptionDetails: null,
+  });
+  assert.equal(await value, true);
+  await cdp.close(Date.now() + 1_000);
+});
+
 test("captures only canonical bounded PNG base64", async () => {
   const { client: cdp, socket } = await client();
   const shot = cdp.screenshot(Date.now() + 1_000);

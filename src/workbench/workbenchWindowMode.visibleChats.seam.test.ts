@@ -11,6 +11,31 @@ import {
 } from "./workbenchWindowMode";
 
 describe("Agent visible chat selection", () => {
+  it("collects and selects the last native-admitted tab", () => {
+    const tabs: AgentCenterScanTab[] = Array.from(
+      { length: 63 },
+      (_, index) => ({
+        id: `file:${index}`,
+        kind: "file",
+      }),
+    );
+    tabs.push({ id: "chat:late", kind: "chat" });
+    expect(collectChatTabIds(tabs)).toEqual(["chat:late"]);
+    expect(selectVisibleChatIds(["chat:late"], [], "chat:late")).toEqual([
+      "chat:late",
+    ]);
+    const manyChats: AgentCenterScanTab[] = Array.from(
+      { length: 64 },
+      (_, index) => ({ id: `chat:${index}`, kind: "chat" }),
+    );
+    const ids = collectChatTabIds(manyChats);
+    expect(ids).toHaveLength(64);
+    expect(selectVisibleChatIds(ids, ["chat:0", "chat:1"], "chat:63")).toEqual([
+      "chat:1",
+      "chat:63",
+    ]);
+  });
+
   it("caps concurrent visible chats at two", () => {
     expect(MAX_AGENT_VISIBLE_CHATS).toBe(2);
   });

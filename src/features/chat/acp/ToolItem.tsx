@@ -1,4 +1,18 @@
 import { useId } from "react";
+import {
+  ArrowRightLeft,
+  Bot,
+  Brain,
+  FilePen,
+  FileSymlink,
+  FileText,
+  Globe,
+  Plug,
+  Search,
+  Terminal,
+  Trash2,
+  Wrench,
+} from "lucide-react";
 
 import { useAgentArtifactFollowStore } from "../../../app/agentArtifactFollowStore";
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
@@ -11,17 +25,36 @@ import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
+import { toolDurationLabel } from "./toolActivityRollup";
 
-type ToolProjectionItem = Extract<
-  AcpItem,
-  { kind: "toolCall" | "toolUpdateResult" }
->;
+type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
 export type OpenResourceTarget = "file" | "diff";
 
+type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
+
+const toolKindIcons: Record<ToolKind, typeof FileText> = {
+  read: FileText,
+  edit: FilePen,
+  delete: Trash2,
+  move: FileSymlink,
+  search: Search,
+  execute: Terminal,
+  fetch: Globe,
+  think: Brain,
+  switchMode: ArrowRightLeft,
+  mcp: Plug,
+  subagent: Bot,
+  other: Wrench,
+};
+
+function ToolKindIcon({ kind }: { kind: ToolKind }) {
+  const Icon = toolKindIcons[kind];
+  return <Icon aria-hidden="true" size={14} data-tool-kind-icon={kind} />;
+}
+
 interface ToolItemProps {
   item: ToolProjectionItem;
-  linkedResult?: Extract<AcpItem, { kind: "toolUpdateResult" }>;
   allowBrowse?: boolean;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
 }
@@ -61,7 +94,9 @@ function ResourceLocations({
             )
           ) : (
             <span className="acp-resource-unavailable">
-              {location.label} · unavailable
+              {location.reason === "missing"
+                ? "File location unavailable"
+                : `${location.label} · unavailable`}
             </span>
           )}
         </li>
@@ -82,10 +117,10 @@ function Presentation({
 }) {
   const presentation = item.payload.presentation;
   switch (presentation.kind) {
-    case "file":
-    case "diff":
-      // Tool locations admit file reads only. Saved Diff authority comes from
-      // the separate file-change projection carrying its immutable DiffRef.
+    case "read":
+    case "edit":
+    case "delete":
+    case "move":
       return (
         <ResourceLocations
           locations={presentation.resources}
@@ -98,26 +133,20 @@ function Presentation({
         <>
           <p>{presentation.querySummary}</p>
           <ResourceLocations
-            locations={presentation.resources.map((resource) => ({
-              kind: "resource" as const,
-              resource,
-            }))}
+            locations={presentation.resources}
             target="file"
             onOpenResource={onOpenResource}
           />
         </>
       );
     case "mcp":
-      return (
-        <p>
-          {presentation.serverLabel} · {presentation.toolLabel}
-        </p>
-      );
+      return null;
     case "subagent":
       return <p>Harness-owned activity</p>;
-    case "web": {
+    case "fetch": {
       const payload = item.payload;
       const browse =
+        extractAdmittedBrowseUrl(presentation.url ?? "") ??
         extractAdmittedBrowseUrl(presentation.summary ?? "") ??
         extractAdmittedBrowseUrl(
           "inputSummary" in payload ? (payload.inputSummary ?? "") : "",
@@ -161,10 +190,26 @@ function Presentation({
         </>
       );
     }
-    case "command": {
+    case "execute": {
       const output = outputSummary;
+      const commandPayload = item.payload;
+      const candidateLine =
+        presentation.summary ??
+        ("inputSummary" in commandPayload ? commandPayload.inputSummary : null);
+      const commandLine =
+        candidateLine && candidateLine.trim() === presentation.label.trim()
+          ? null
+          : candidateLine;
       return (
         <>
+          {commandLine ? (
+            <pre
+              className="acp-tool-command acp-tool-command--line"
+              aria-label="Command line"
+            >
+              {commandLine}
+            </pre>
+          ) : null}
           {output ? (
             <div className="acp-tool-command-frame">
               <p className="acp-tool-command__disclosure" role="note">
@@ -187,40 +232,56 @@ function Presentation({
         </>
       );
     }
-    case "generic":
+    case "think":
       return presentation.summary ? <p>{presentation.summary}</p> : null;
+    case "switchMode":
+      return presentation.modeLabel ? <p>{presentation.modeLabel}</p> : null;
+    case "other":
+      return (
+        <>
+          {presentation.rawKind &&
+          presentation.rawKind.trim() !== presentation.label.trim() ? (
+            <span className="acp-tool-card__raw-kind">
+              {presentation.rawKind}
+            </span>
+          ) : null}
+          {presentation.summary ? <p>{presentation.summary}</p> : null}
+        </>
+      );
   }
 }
 
 export function ToolItem({
   item,
-  linkedResult,
   allowBrowse = true,
   onOpenResource,
 }: ToolItemProps) {
   const descriptionId = useId();
-  const callOutput =
-    "outputSummary" in item.payload
-      ? (item.payload.outputSummary ?? null)
-      : null;
-  const outputSummary =
-    callOutput ?? linkedResult?.payload.outputSummary ?? null;
-  const inputSummary =
-    item.kind === "toolCall" ? item.payload.inputSummary : null;
+  const outputSummary = item.payload.outputSummary ?? null;
+  const inputSummary = item.payload.inputSummary;
+  const kind = item.payload.presentation.kind;
   const detail =
-    item.payload.presentation.kind === "command"
-      ? outputSummary
-      : (outputSummary ?? inputSummary);
-  const commandOutput =
-    item.payload.presentation.kind === "command" && outputSummary !== null;
-  const callTerminal = terminalToolStates.has(item.toolState);
-  const visualState = callTerminal
-    ? item.toolState
-    : (linkedResult?.toolState ?? item.toolState);
-  const label = item.payload.presentation.label;
+    kind === "mcp"
+      ? null
+      : kind === "execute"
+        ? outputSummary
+        : (outputSummary ?? inputSummary);
+  const visualState = item.toolState;
+  const presentation = item.payload.presentation;
+  const label =
+    presentation.kind === "mcp"
+      ? presentation.serverLabel === "MCP"
+        ? presentation.toolLabel
+        : `${presentation.serverLabel} · ${presentation.toolLabel}`
+      : presentation.label;
   const status = toolStateLabels[visualState];
   const terminal = terminalToolStates.has(visualState);
-  const kind = item.payload.presentation.kind;
+  const toolOutput =
+    kind === "execute" || kind === "fetch" ? null : outputSummary;
+  const inlineOutput = kind === "fetch" ? false : outputSummary !== null;
+  const duration = terminal
+    ? toolDurationLabel(item.createdAt, item.terminalAt ?? null)
+    : null;
   return (
     <article
       className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${visualState}`}
@@ -230,15 +291,18 @@ export function ToolItem({
       data-activity-kind={kind}
       data-activity-state={visualState}
       data-acp-item-id={item.id}
-      data-tool-result-id={linkedResult?.id}
     >
-      {detail && !commandOutput ? (
+      {detail && !inlineOutput ? (
         <span className="sr-only" id={descriptionId}>
           {detail}
         </span>
       ) : null}
       <header className="acp-activity-card__header acp-tool-card__header">
+        <ToolKindIcon kind={kind} />
         <strong>{label}</strong>
+        {duration ? (
+          <span className="acp-tool-card__duration">{duration}</span>
+        ) : null}
         <span
           className="acp-state"
           role="status"
@@ -256,7 +320,21 @@ export function ToolItem({
         onOpenResource={onOpenResource}
         descriptionId={descriptionId}
       />
-      {detail && !commandOutput ? (
+      {toolOutput !== null ? (
+        <details className="acp-tool-command-frame acp-tool-output" open>
+          <summary className="acp-tool-command__disclosure">
+            Tool output
+          </summary>
+          <pre
+            id={descriptionId}
+            className="acp-tool-command acp-tool-command--output"
+            aria-label="Tool output"
+          >
+            {toolOutput}
+          </pre>
+        </details>
+      ) : null}
+      {detail && !inlineOutput ? (
         <details className="acp-details">
           <summary>Tool details</summary>
           <p>{detail}</p>

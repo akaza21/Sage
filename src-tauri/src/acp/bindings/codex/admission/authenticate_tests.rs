@@ -25,6 +25,8 @@ impl AdmittedCodexBinding {
             binding_digest_hex: BINDING_DIGEST_HEX.into(),
             artifact_digest,
             harness_version,
+            characterisation:
+                crate::acp::bindings::characterisation::Characterisation::Characterised,
             journey_test_entrypoint: None,
             journey_test_cases: None,
             _cleanup: Some(cleanup),
@@ -54,6 +56,18 @@ pub(super) fn admitted_journey_binding_fixture(
 ) -> AdmittedCodexBinding {
     let mut binding = admitted_binding_fixture();
     binding.journey_test_entrypoint = Some(journey_fixture_entrypoint());
+    binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
+    binding
+}
+
+pub(super) fn admitted_observed_steer_journey_fixture(
+    case_ids: &'static [&'static str],
+) -> AdmittedCodexBinding {
+    let entrypoint = journey_fixture_entrypoint();
+    let mut binding =
+        AdmittedCodexBinding::admit_observed(entrypoint.path.clone(), "codex 0.146.0".into())
+            .expect("observed fixture admission");
+    binding.journey_test_entrypoint = Some(entrypoint);
     binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
     binding
 }
@@ -266,6 +280,7 @@ fn authenticate_signed_installed_role_rejects_a_mismatched_artifact_role() {
             rejected_registration.clone(),
             crate::acp::bindings::codex::CodexHostPresence::Absent,
         )
+        .settled_for_test()
         .definitions()
         .remove(0)
         .install_state,
@@ -283,6 +298,7 @@ fn authenticate_signed_installed_role_rejects_a_mismatched_artifact_role() {
     assert!(Arc::ptr_eq(&admitted, &registration.refresh().unwrap()));
     assert_eq!(
         crate::harnesses::HarnessCatalog::with_codex_registration(registration.clone())
+            .settled_for_test()
             .definitions()
             .remove(0)
             .install_state,

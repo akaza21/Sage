@@ -5,19 +5,30 @@ import {
   composerPromptPlaceholder,
   composerShortcutLabel,
   isComposerFocusChord,
+  shortcutLabel,
 } from "./composerChrome";
 
 describe("composer prompt placeholder", () => {
   it("uses the target prompt independently of the focus shortcut", () => {
-    expect(composerPromptPlaceholder(true)).toBe(COMPOSER_PROMPT_PLACEHOLDER);
+    expect(composerPromptPlaceholder(true)).toBe("Do anything");
+    expect(COMPOSER_PROMPT_PLACEHOLDER).toBe("Do anything");
     expect(composerPromptPlaceholder(false)).toBe(
       "Choose an available harness before starting a session",
+    );
+    expect(composerPromptPlaceholder(false, true)).toBe(
+      "This session cannot accept prompts.",
     );
   });
 
   it("labels the Windows chord Ctrl+L and the Mac chord ⌘L", () => {
     expect(composerShortcutLabel(false)).toBe("Ctrl+L");
     expect(composerShortcutLabel(true)).toBe("⌘L");
+  });
+
+  it("writes any chord with the platform modifier and an upper case key", () => {
+    expect(shortcutLabel("n", true)).toBe("⌘N");
+    expect(shortcutLabel("n", false)).toBe("Ctrl+N");
+    expect(shortcutLabel("k", true)).toBe("⌘K");
   });
 
   it("admits only Ctrl/Cmd+L without alt or shift", () => {

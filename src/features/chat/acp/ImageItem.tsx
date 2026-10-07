@@ -17,10 +17,22 @@ export function ImageItem({ item }: { item: ImageProjectionItem }) {
   // The key makes every projection identity transition a child unmount. Dialog
   // state can therefore never resurrect an earlier admitted image on A→B→A.
   const admissionKey = `${item.id}\u0000${admitted.dataUrl}`;
-  return <AdmittedImageItem key={admissionKey} admitted={admitted} />;
+  return (
+    <AdmittedImageItem
+      key={admissionKey}
+      admitted={admitted}
+      source={item.payload.source}
+    />
+  );
 }
 
-function AdmittedImageItem({ admitted }: { admitted: AdmittedImage }) {
+function AdmittedImageItem({
+  admitted,
+  source,
+}: {
+  admitted: AdmittedImage;
+  source?: "user" | "agent";
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -35,12 +47,18 @@ function AdmittedImageItem({ admitted }: { admitted: AdmittedImage }) {
         ref={triggerRef}
         type="button"
         className="acp-image__trigger"
-        aria-label="Open image viewer"
+        aria-label={
+          source === "user" ? "Open attached image" : "Open image viewer"
+        }
         onClick={() => setOpen(true)}
       >
         <img
           className="acp-image__src"
-          alt="Image provided by the agent"
+          alt={
+            source === "user"
+              ? "Image attached by you"
+              : "Image provided by the agent"
+          }
           src={admitted.dataUrl}
         />
       </button>
@@ -52,14 +70,20 @@ function AdmittedImageItem({ admitted }: { admitted: AdmittedImage }) {
         >
           <section className="acp-image__viewer">
             <header>
-              <h2 id={titleId}>Agent image</h2>
+              <h2 id={titleId}>
+                {source === "user" ? "Attached image" : "Agent image"}
+              </h2>
               <button type="button" onClick={dismiss}>
                 Close image viewer
               </button>
             </header>
             <img
               className="acp-image__expanded"
-              alt="Image provided by the agent"
+              alt={
+                source === "user"
+                  ? "Image attached by you"
+                  : "Image provided by the agent"
+              }
               src={admitted.dataUrl}
             />
           </section>

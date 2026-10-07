@@ -68,9 +68,11 @@ export function FileSurfaceContent({
   goTo,
   languageNavigationStatus,
   path,
+  projectName,
   previewing,
   transitioning,
   readOnly = false,
+  agentMarkdown = false,
   onCaretOffset,
   onEditorChange,
   onSurfaceKeyDown,
@@ -84,9 +86,11 @@ export function FileSurfaceContent({
   goTo: FileSurfaceGoToView | null;
   languageNavigationStatus: string;
   path: string;
+  projectName?: string;
   previewing: boolean;
   transitioning: boolean;
   readOnly?: boolean;
+  agentMarkdown?: boolean;
   onCaretOffset: (offset: number) => void;
   onEditorChange: (content: string) => void;
   onSurfaceKeyDown: KeyboardEventHandler<HTMLElement>;
@@ -101,6 +105,7 @@ export function FileSurfaceContent({
     >
       <FileEditorHeader
         path={path}
+        projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
         persisting={editor.persisting}
@@ -109,6 +114,7 @@ export function FileSurfaceContent({
         transitioning={transitioning}
         canPreview={canPreviewMarkdown(path) || canPreviewDiagram(path)}
         previewing={previewing}
+        agentMarkdown={agentMarkdown}
         onTogglePreview={onTogglePreview}
       />
       <FileEditorNotices

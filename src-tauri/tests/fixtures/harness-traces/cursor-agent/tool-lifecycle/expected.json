@@ -1,0 +1,77 @@
+{
+  "scenario": "tool-lifecycle",
+  "harness": "cursor-agent",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "toolCallId": "call-98fc79df-e1f3-4bef-8df7-b01cec8e0fa4-0\nfc_2f34589c-2f13-9b7d-a509-58a49716544b_0",
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "turn", "state": "running" },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "updateMode": "append",
+      "chunks": 3
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "updateMode": "append",
+      "chunks": 13
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "read",
+      "updateMode": "replace"
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "read",
+      "updateMode": "replace"
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "read",
+      "updateMode": "replace"
+    },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "updateMode": "append",
+      "chunks": 2
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "updateMode": "append",
+      "chunks": 2
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "This is the golden case for contract rule 4. All three tool frames keep kind toolCall under one external id, varying only lifecycle and toolState.",
+    "Rule 4 now holds: every adapter emits toolCall for a tool's whole life, so the three frames land on one durable item instead of a toolCall plus a separate toolUpdateResult.",
+    "The wire kind is read, which maps 1:1 onto ToolCategory::Read. Categories are never collapsed into a coarser file bucket.",
+    "cursor-agent tool call ids embed a newline. The contract must tolerate that without splitting the identity."
+  ]
+}

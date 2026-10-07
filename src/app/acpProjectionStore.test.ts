@@ -5,7 +5,6 @@ import type {
   AcpItem,
   AcpPageCursor,
   AcpProjectionChangedEvent,
-  AgentSessionProjection,
   EntityRevision,
   ProjectGeneration,
   ProjectionRevision,
@@ -23,6 +22,10 @@ import {
   MAX_RETAINED_TURNS,
   useAcpProjectionStore,
 } from "./acpProjectionStore";
+import {
+  agentSessionFixture,
+  capabilitySetFixture,
+} from "../domain/acpProjection.fixture";
 
 const projectId = "project-a" as SageProjectId;
 const chatId = "chat-a" as SageChatId;
@@ -30,24 +33,7 @@ const sessionId = "session-a" as SageAgentSessionId;
 const generation = "7" as ProjectGeneration;
 const scope = { projectId, projectGeneration: generation, chatId };
 
-const capabilities: AgentSessionProjection["capabilities"] = {
-  schemaVersion: 1,
-  protocolVersion: "fixture-v1",
-  newSession: true,
-  resumeSession: false,
-  loadSession: false,
-  closeSession: true,
-  prompt: true,
-  cancel: true,
-  nativeSessionFork: false,
-  activeTurnSteer: false,
-  childConversationProjection: false,
-  childTranscriptRead: false,
-  collaborationEventProjection: false,
-  multiRootExtensionSchemaId: null,
-  modelCount: 1,
-  configCount: 0,
-};
+const capabilities = capabilitySetFixture();
 
 function item(turn: number, ordinal: number, text = "bounded"): AcpItem {
   return {
@@ -84,6 +70,8 @@ function turn(ordinal: number, items = [item(ordinal, 0)]): TurnProjection {
     terminalAt: ordinal,
     items,
     activities: [],
+    browserOperations: [],
+    browserOperationsCollapsed: 0,
   };
 }
 
@@ -95,20 +83,12 @@ function page(revision: string, turns: TurnProjection[]): AcpChatPage {
     projectionRevision: revision as ProjectionRevision,
     currentSessionId: sessionId,
     sessions: [
-      {
+      agentSessionFixture({
         id: sessionId,
-        ordinal: 0,
-        bindingId: "binding-a" as AgentSessionProjection["bindingId"],
-        modelId: null,
         state: "closed",
-        residency: "cold",
-        runtimeEpoch: null,
-        nextRuntimeEpoch: null,
         capabilities,
-        revision: "1" as EntityRevision,
         projectionRevision: revision as ProjectionRevision,
-        legacy: false,
-      },
+      }),
     ],
     turns,
     nextCursor: null,

@@ -13,6 +13,9 @@ use super::{
 };
 
 mod cancel;
+mod steer;
+
+use steer::PendingSteer;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PreparedWriteError {
@@ -48,11 +51,13 @@ where
 {
     pub(crate) turn: PreparedDriverTurn<A, J, R, T, C>,
     prompt: Prompt,
+    access_mode: crate::settings_store::SessionAccessMode,
     fence: WriteFence,
     cancel_intent: Option<HostCancelIntent>,
     cancel_wire: CancelWireState,
     cancel_attempts: u8,
     durable_mutation_unknown: bool,
+    pending_steer: Option<PendingSteer>,
 }
 
 impl<A, J, R, T, C> PreparedProcessWrite<A, J, R, T, C>
@@ -63,7 +68,11 @@ where
     T: StdinTransport,
     C: ProcessTreeControl,
 {
-    pub(crate) fn new(turn: PreparedDriverTurn<A, J, R, T, C>, prompt: Prompt) -> Self {
+    pub(crate) fn new(
+        turn: PreparedDriverTurn<A, J, R, T, C>,
+        prompt: Prompt,
+        access_mode: crate::settings_store::SessionAccessMode,
+    ) -> Self {
         let turn_id = turn.dispatch.turn_id();
         debug_assert_ne!(
             turn.driver.runtime_owner().runtime_epoch,
@@ -73,10 +82,12 @@ where
             fence: WriteFence::bound(turn_id.clone()),
             turn,
             prompt,
+            access_mode,
             cancel_intent: None,
             cancel_wire: CancelWireState::NotAttempted,
             cancel_attempts: 0,
             durable_mutation_unknown: false,
+            pending_steer: None,
         }
     }
 
@@ -161,10 +172,11 @@ where
                     }));
                 }
             };
-        let result = self
-            .turn
-            .driver
-            .dispatch_prompt(self.prompt.clone(), client_message_id);
+        let result = self.turn.driver.dispatch_prompt_with_access_mode(
+            self.prompt.clone(),
+            client_message_id,
+            self.access_mode,
+        );
         let write = match result {
             Ok(progress) if progress.written_frames == 1 && progress.zero_byte_failures == 0 => {
                 LiveWrite::Complete
@@ -205,7 +217,12 @@ where
             }));
         }
         let turn_id = self.turn.dispatch.turn_id().clone();
-        let durable = self.turn.dispatch.observe(observation, now_millis).await;
+        let terminal_reason = self.turn.driver.terminal_outcome();
+        let durable = self
+            .turn
+            .dispatch
+            .observe(observation, terminal_reason, now_millis)
+            .await;
         if let Err(error) = durable {
             return Err(Box::new(PreparedWriteFailure {
                 state: self,
@@ -293,11 +310,13 @@ where
         let Self {
             turn,
             prompt,
+            access_mode,
             fence,
             cancel_intent,
             cancel_wire,
             cancel_attempts,
             durable_mutation_unknown,
+            pending_steer,
         } = self;
         let PreparedDriverTurn { driver, dispatch } = turn;
         match driver.try_complete_turn(mailbox) {
@@ -308,11 +327,13 @@ where
                     state: Self {
                         turn: PreparedDriverTurn { driver, dispatch },
                         prompt,
+                        access_mode,
                         fence,
                         cancel_intent,
                         cancel_wire,
                         cancel_attempts,
                         durable_mutation_unknown,
+                        pending_steer,
                     },
                     error: PreparedWriteError::Driver(error),
                 }))
@@ -329,10 +350,11 @@ where
     }
 
     pub(crate) fn has_durable_terminal(&self) -> bool {
-        self.turn
-            .driver
-            .latest_durable_turn_cursor()
-            .is_some_and(|cursor| cursor.state().is_terminal())
+        self.turn.dispatch.is_terminal()
+    }
+
+    pub(crate) fn durable_turn_state(&self) -> crate::acp::lifecycle::TurnState {
+        self.turn.dispatch.state()
     }
 
     pub(crate) fn close_stdin(&mut self) {

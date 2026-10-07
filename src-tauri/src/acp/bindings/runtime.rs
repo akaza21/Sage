@@ -13,7 +13,7 @@ use crate::acp::{
 
 use super::adapter::{
     AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-    EgressToken, HarnessAdapter, ResourceMapper,
+    EgressToken, HarnessAdapter, RefusalDetail, ResourceMapper,
 };
 
 pub(crate) trait RuntimeFactory {
@@ -60,6 +60,9 @@ impl NativeRuntime {
 impl HarnessAdapter for NativeRuntime {
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.0.session_config()
+    }
+    fn refusal_detail(&self) -> Option<RefusalDetail> {
+        self.0.refusal_detail()
     }
     fn config_pending(&self) -> bool {
         self.0.config_pending()

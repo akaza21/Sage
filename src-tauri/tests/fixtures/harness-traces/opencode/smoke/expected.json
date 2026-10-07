@@ -1,0 +1,36 @@
+{
+  "scenario": "smoke",
+  "harness": "opencode",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "turn", "state": "running" },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "chunks": 3
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "synthetic final"
+    },
+    {
+      "event": "usage",
+      "inputTokens": 5,
+      "outputTokens": 1,
+      "contextWindow": 4096
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "Synthetic shape fixture derived from the live OpenCode ACP smoke observation; it is not a retained raw trace.",
+    "The six session updates preserve one available-commands update, three thought chunks, one assistant-message chunk, and one usage update.",
+    "All identifiers, text, token counts, and the permitted fixture path are fixed placeholders."
+  ]
+}

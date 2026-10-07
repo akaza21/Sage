@@ -1,7 +1,6 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
+    git_budget,
     repository::{self, RepositoryBoundary},
     workspace::Workspace,
 };
@@ -11,8 +10,6 @@ const MAX_GIT_IDENTITY_BYTES: usize = 512;
 const MAX_GIT_CONNECTIVITY_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GIT_OID_BYTES: usize = 128;
 const MAX_GIT_REF_BYTES: usize = 4 * 1024;
-const GIT_COMMIT_TIMEOUT: Duration = Duration::from_secs(3);
-
 struct PreparedCommit {
     head_ref: String,
     parent_oid: Option<String>,
@@ -23,7 +20,7 @@ pub(crate) async fn commit_staged(workspace: &Workspace, message: &str) -> AppRe
     commit_staged_with_policy(
         workspace,
         message,
-        repository::GitProcessPolicy::mutation(GIT_COMMIT_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }
@@ -32,7 +29,7 @@ pub(crate) async fn commit_staged(workspace: &Workspace, message: &str) -> AppRe
 pub(crate) async fn commit_staged_with_timeout(
     workspace: &Workspace,
     message: &str,
-    mutation_timeout: Duration,
+    mutation_timeout: std::time::Duration,
 ) -> AppResult<()> {
     // A zero test deadline must fail before any preflight can consume a fresh
     // mutation budget. This keeps the containment regression deterministic
@@ -64,7 +61,7 @@ pub(crate) async fn commit_staged_with_policy(
             "Git commit requires a Project root that equals the repository top level".into(),
         ));
     }
-    let pre_ref_policy = process_policy.pre_ref_mutation(GIT_COMMIT_TIMEOUT);
+    let pre_ref_policy = process_policy.pre_ref_mutation(git_budget::MUTATION);
     let head_ref = symbolic_head_ref(workspace).await?;
     reject_unfinished_history(workspace).await?;
     let unmerged =

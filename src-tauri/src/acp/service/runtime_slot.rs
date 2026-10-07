@@ -420,5 +420,4 @@ impl RuntimeSlot {
 }
 
 #[cfg(test)]
-#[path = "runtime_slot/tests.rs"]
 mod tests;

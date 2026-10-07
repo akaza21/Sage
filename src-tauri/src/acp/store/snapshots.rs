@@ -41,6 +41,7 @@ pub(super) fn apply_pair_in(
         old_bytes,
         new_bytes,
         content_digest,
+        operation,
         ..
     } = &item.payload
     else {
@@ -59,10 +60,13 @@ pub(super) fn apply_pair_in(
     let existing = rows::lookup(transaction, item)?;
     let mut command = item.clone();
     let summary_only = NormalizedPayload::file_summary_only(
-        resource.clone(),
-        summary.clone(),
-        *additions,
-        *deletions,
+        crate::acp::intent::FileChangeFacts {
+            resource: resource.clone(),
+            summary: summary.clone(),
+            additions: *additions,
+            deletions: *deletions,
+            operation: *operation,
+        },
         true,
     );
     let PairAdmission::Admitted {
@@ -87,10 +91,13 @@ pub(super) fn apply_pair_in(
         None => rows::next_revision(transaction, existing.as_ref())?,
     };
     command.payload = NormalizedPayload::file_admitted(
-        resource.clone(),
-        summary.clone(),
-        *additions,
-        *deletions,
+        crate::acp::intent::FileChangeFacts {
+            resource: resource.clone(),
+            summary: summary.clone(),
+            additions: *additions,
+            deletions: *deletions,
+            operation: *operation,
+        },
         revision,
         (old_bytes as u64, new_bytes as u64),
         digest,

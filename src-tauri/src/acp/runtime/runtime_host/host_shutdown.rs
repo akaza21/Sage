@@ -42,7 +42,11 @@ impl RuntimeHost {
             HostCommand::BeginPark,
             deadline.saturating_duration_since(Instant::now()),
         ) {
-            Ok(_) | Err(HostError::Closed | HostError::State | HostError::Intent) => {}
+            Ok(_) | Err(HostError::Closed | HostError::State) => {}
+            Err(HostError::Intent) => {
+                self.record_shutdown_phase("begin_park_intent");
+                return self.shutdown_before(deadline);
+            }
             Err(error) => return Err(error),
         }
         self.record_shutdown_phase("finish_park");

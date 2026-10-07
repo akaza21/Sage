@@ -1,0 +1,19 @@
+{
+  "raw": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "write-new",
+    "kind": "edit",
+    "title": "Write file",
+    "status": "completed",
+    "content": [
+      {
+        "type": "diff",
+        "path": "C:\\fixture\\src\\new.ts",
+        "oldText": null,
+        "newText": "first\nsecond\n"
+      }
+    ]
+  },
+  "resource": { "rootId": "fixture-root", "relativePath": "src/new.ts" },
+  "expected": { "label": "Created src/new.ts" }
+}

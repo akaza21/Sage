@@ -197,6 +197,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                     dispatch.turn_id().as_str().to_owned(),
                 )
                 .unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         adapter
@@ -212,7 +213,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
             .unwrap();
         let terminal = tokio::time::timeout(
             deadline.operation_before_cleanup(),
-            dispatch.observe(SendObservation::PossibleBytes, now + 5),
+            dispatch.observe(SendObservation::PossibleBytes, None, now + 5),
         )
             .await
             .expect("partial-write fixture observation timed out")

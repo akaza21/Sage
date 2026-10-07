@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createServer } from "node:net";
 import test from "node:test";
 import { PassThrough } from "node:stream";
 
@@ -1585,20 +1586,35 @@ test("native IDE journey attaches one persistent raw CDP transport", async () =>
     stats: { connectionCount: 1, maxInFlight: 1, requestCount: 1 },
   };
   const connections = [];
-  const started = Date.now();
-  const deadline = started + 90_000;
-  const actual = await attachCdp(admitted, deadline, {
-    connectCdp: async (options) => {
-      connections.push(options);
-      return expectedClient;
-    },
-  });
+  const realNow = Date.now;
+  let clock = realNow.call(Date);
+  Date.now = () => {
+    clock += 25;
+    return clock;
+  };
+  let started;
+  let deadline;
+  let actual;
+  let settled;
+  try {
+    started = Date.now();
+    deadline = started + 90_000;
+    actual = await attachCdp(admitted, deadline, {
+      connectCdp: async (options) => {
+        connections.push(options);
+        return expectedClient;
+      },
+    });
+    settled = Date.now();
+  } finally {
+    Date.now = realNow;
+  }
   assert.equal(actual, expectedClient);
   assert.equal(connections.length, 1);
   assert.equal(connections[0].target, admitted);
   assert.equal(connections[0].deadline, deadline);
-  assert.ok(connections[0].openDeadline >= started);
-  assert.ok(connections[0].openDeadline <= started + 10_000);
+  assert.ok(connections[0].openDeadline >= started + 10_000);
+  assert.ok(connections[0].openDeadline <= settled + 10_000);
   assert.ok(connections[0].openDeadline < deadline);
 });
 
@@ -2610,13 +2626,13 @@ test("Windows ProcessIdentity bridge cleans an authenticated disposable root and
     "v1.0",
     "powershell.exe",
   );
-  const source = `const {spawn}=require('node:child_process');spawn(${JSON.stringify(powershell)},['-NoProfile','-Command','Start-Sleep -Seconds 30']);setTimeout(()=>{},30000);`;
+  const source = `const {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(powershell)},['-NoProfile','-Command','Start-Sleep -Seconds 30']);child.once('spawn',()=>process.stdout.write('ready\\n'));setTimeout(()=>{},30000);`;
   const owned = spawn(process.execPath, ["-e", source], {
     windowsHide: true,
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "ignore"],
   });
   try {
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await waitForText(owned.stdout, "ready", 5000);
     const identity = processIdentityHelper("capture", owned.pid);
     assert.ok(identity.remembered.length >= 2);
     const cleanup = processIdentityHelper("cleanup", identity);
@@ -3314,8 +3330,9 @@ test("Windows resolver PID and creation mismatches fail deterministically withou
   }
 });
 
-test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup", () => {
+test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-runtime-"));
+  const port = await availableLoopbackPort();
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3363,7 +3380,7 @@ test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=Resolve-FrontendPortContract ${quote(path.resolve("."))};$runtime=$null;$cleanup=$null;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$script:ownedViteClock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$script:ownedViteClock.ElapsedMilliseconds};$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Start-Sleep -Milliseconds 200;$alive=@($ownedIds|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and $null -eq $cleanup){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${functions.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$runtime=$null;$cleanup=$null;$startupDeadline=[DateTime]::UtcNow.AddSeconds(12);$script:ownedViteClock=[Diagnostics.Stopwatch]::StartNew();$monotonic={return [long]$script:ownedViteClock.ElapsedMilliseconds};$deadlineMilliseconds=[long](&$monotonic)+12000;try{$runtime=Start-OwnedVite ${quote(root)} $contract ${quote(root)} $deadlineMilliseconds $monotonic;$ready=Wait-OwnedFrontendReady $runtime $contract $startupDeadline;$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Start-Sleep -Milliseconds 200;$alive=@($ownedIds|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count;[ordered]@{port=$contract.port;mode=$ready.mode;frontendReady=$ready.frontendReady;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and $null -eq $cleanup){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}}}`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -3372,14 +3389,14 @@ test("Windows owned Vite fixture becomes ready and reaches terminal-zero cleanup
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const observed = JSON.parse(result.stdout.trim());
-    assert.equal(observed.port, 1420);
+    assert.equal(observed.port, port);
     assert.equal(observed.mode, "tauri-dev-split");
     assert.equal(observed.frontendReady, true);
     assert.ok(observed.identityCount >= 2);
     assert.equal(observed.identityLost, false);
     assert.equal(observed.remainingCount, 0);
     assert.equal(observed.alive, 0);
-    assertWindowsPortFree(1420);
+    assertWindowsPortFree(port);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -3453,6 +3470,7 @@ test("Windows readiness requires one unchanged injected listener identity", () =
 });
 
 test("Windows Vite port preoccupation is rejected before ownership", async () => {
+  const port = await availableLoopbackPort();
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3468,7 +3486,7 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
     process.execPath,
     [
       "-e",
-      `require("node:http").createServer((_q,r)=>r.end("ambient")).listen(1420,"127.0.0.1",()=>process.stdout.write("ready\\n"))`,
+      `require("node:http").createServer((_q,r)=>r.end("ambient")).listen(${port},"127.0.0.1",()=>process.stdout.write("ready\\n"))`,
     ],
     { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -3478,7 +3496,7 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
     await waitForText(occupied.stdout, "ready", 5000);
     occupiedIdentity = processIdentityHelper("capture", occupied.pid);
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Resolve-FrontendPortContract','Assert-FrontendPortAvailable')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=Resolve-FrontendPortContract ${quote(path.resolve("."))};Assert-FrontendPortAvailable $contract`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Assert-FrontendPortAvailable')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};Assert-FrontendPortAvailable ([ordered]@{port=${port};origin='http://127.0.0.1:${port}/'})`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -3498,7 +3516,7 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
       failures.push(error);
     }
     try {
-      assertWindowsPortFree(1420);
+      assertWindowsPortFree(port);
     } catch (error) {
       failures.push(error);
     }
@@ -3510,6 +3528,7 @@ test("Windows Vite port preoccupation is rejected before ownership", async () =>
 
 test("Windows frontend readiness rejects an ambient listener race outside the owned tree", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-ambient-race-"));
+  const port = await availableLoopbackPort();
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3530,7 +3549,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
     process.execPath,
     [
       "-e",
-      `require("node:http").createServer((_q,r)=>r.end("ambient")).listen(1420,"127.0.0.1",()=>process.stdout.write("ready\\n"))`,
+      `require("node:http").createServer((_q,r)=>r.end("ambient")).listen(${port},"127.0.0.1",()=>process.stdout.write("ready\\n"))`,
     ],
     { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -3554,7 +3573,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=Resolve-FrontendPortContract ${quote(path.resolve("."))};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;try{$rejected=$false;try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)))}catch{$rejected=$_.Exception.Message -match 'not owned'};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{rejected=$rejected;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;try{$rejected=$false;try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)))}catch{$rejected=$_.Exception.Message -match 'not owned'};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{rejected=$rejected;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}}`;
     const result = spawnSync(
       powershell,
       [
@@ -3579,7 +3598,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       failures.push(error);
     }
     try {
-      assertWindowsPortFree(1420);
+      assertWindowsPortFree(port);
     } catch (error) {
       failures.push(error);
     }
@@ -4117,6 +4136,17 @@ function waitForText(stream, expected, timeoutMs) {
       resolve();
     };
     stream.on("data", onData);
+  });
+}
+
+function availableLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close((error) => (error ? reject(error) : resolve(port)));
+    });
   });
 }
 

@@ -47,6 +47,7 @@ pub(crate) struct ArtifactExpectation {
     pub(crate) sha256: [u8; 32],
     pub(crate) byte_len: u64,
     pub(crate) entrypoint_kind: EntryPointKind,
+    pub(crate) manifest: Option<super::manifest::ManifestExpectation>,
 }
 
 impl ArtifactExpectation {
@@ -63,7 +64,16 @@ impl ArtifactExpectation {
             sha256,
             byte_len,
             entrypoint_kind: EntryPointKind::NativeExecutable,
+            manifest: None,
         })
+    }
+
+    pub(crate) fn with_manifest(
+        mut self,
+        manifest: Option<super::manifest::ManifestExpectation>,
+    ) -> Self {
+        self.manifest = manifest;
+        self
     }
 
     pub(crate) fn windows_batch_launcher(
@@ -86,6 +96,7 @@ impl ArtifactExpectation {
             sha256,
             byte_len,
             entrypoint_kind: EntryPointKind::WindowsBatchLauncher,
+            manifest: None,
         })
     }
 }
@@ -413,7 +424,7 @@ impl SupervisorLifecycle {
     }
 }
 
-fn validate_absolute_normalized(path: &Path) -> Result<(), LaunchError> {
+pub(super) fn validate_absolute_normalized(path: &Path) -> Result<(), LaunchError> {
     if !path.is_absolute()
         || path.components().any(|part| match part {
             Component::CurDir | Component::ParentDir => true,

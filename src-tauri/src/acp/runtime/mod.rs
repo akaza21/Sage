@@ -24,12 +24,13 @@ pub(crate) use activation_pump::{
     ActivationMode, ActivationPump, ActivationPumpError, ActivationReceipt, ActivationTransport,
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
     IdleActivationParts, RecoveryActivationParts, TeardownActivationParts,
+    is_available_commands_update,
 };
 #[allow(unused_imports)]
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpAdmission, AdapterPumpError,
     CompletedPumpParts, DurableAdapterEvent, EgressTransport, FlushDisposition, JournalReceipt,
-    PumpIntent, PumpJournalError, QueueDisposition, SessionPumpIntent, TurnScope,
+    NonfatalRefusal, PumpIntent, PumpJournalError, QueueDisposition, SessionPumpIntent, TurnScope,
     normalized_payload_bytes,
 };
 #[allow(unused_imports)]
@@ -45,6 +46,7 @@ pub(crate) use process_driver::{
 mod projection_publisher;
 mod runtime_host;
 mod session_coordinator;
+mod terminal_detail;
 
 #[allow(unused_imports)]
 pub(crate) use coordinator::{
@@ -92,8 +94,8 @@ pub(crate) use projection_publisher::{
 #[allow(unused_imports)]
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostState, PromptWrite, RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery,
-    TerminalNotification,
+    HostPromptIntent, HostState, HostSteerIntent, PromptWrite, RuntimeEngine, RuntimeHost,
+    RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
 };
 #[allow(unused_imports)]
 pub(crate) use session_coordinator::{

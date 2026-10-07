@@ -171,7 +171,7 @@ export const SourceChangeRow = memo(function SourceChangeRow({
               disabled={controlsDisabled}
               onClick={() => setConfirmingDiscard(true)}
             >
-              <RotateCcw size={13} aria-hidden="true" />
+              <RotateCcw size={14} aria-hidden="true" />
             </button>
           ) : null}
           {canStage ? (
@@ -185,7 +185,7 @@ export const SourceChangeRow = memo(function SourceChangeRow({
                 void mutateRepositoryFile(change.resource, "stage")
               }
             >
-              <Plus size={13} aria-hidden="true" />
+              <Plus size={14} aria-hidden="true" />
             </button>
           ) : null}
           {canUnstage ? (
@@ -199,7 +199,7 @@ export const SourceChangeRow = memo(function SourceChangeRow({
                 void mutateRepositoryFile(change.resource, "unstage")
               }
             >
-              <Minus size={13} aria-hidden="true" />
+              <Minus size={14} aria-hidden="true" />
             </button>
           ) : null}
         </span>

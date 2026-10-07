@@ -149,6 +149,142 @@ async function expectComposerControlsLaidOut(page: Page) {
   }
 }
 
+async function expectArtifactConstrainedComposer(
+  page: Page,
+  width: number,
+  expectedLabels: readonly string[],
+) {
+  const state = await page
+    .locator("form.composer")
+    .first()
+    .evaluate((form) => {
+      const controls = form.querySelector<HTMLElement>(".composer__controls");
+      const affordances = form.querySelector<HTMLElement>(
+        ".composer__affordances",
+      );
+      const send = form.querySelector<HTMLElement>(".send-button");
+      const toolbar = form.querySelector<HTMLElement>(".composer__toolbar");
+      const chips = [
+        ...form.querySelectorAll<HTMLElement>(
+          ".composer__controls > .select-control",
+        ),
+      ];
+      if (!controls || chips.length === 0) return null;
+      return {
+        chips: chips.map((chip) => {
+          const chipBox = chip.getBoundingClientRect();
+          const trigger = chip.querySelector<HTMLElement>(
+            ".searchable-picker__trigger",
+          );
+          const triggerBox = trigger?.getBoundingClientRect();
+          const label = chip.querySelector<HTMLElement>(
+            ".searchable-picker__trigger-label",
+          );
+          return {
+            containsTrigger:
+              triggerBox !== undefined &&
+              triggerBox.left >= chipBox.left &&
+              triggerBox.right <= chipBox.right &&
+              triggerBox.top >= chipBox.top &&
+              triggerBox.bottom <= chipBox.bottom,
+            overflow: chip.scrollWidth > chip.clientWidth,
+            label: label?.textContent?.trim() ?? "",
+            labelVisible:
+              label !== null && label.scrollWidth <= label.clientWidth,
+            top: chipBox.top,
+            triggerWidth: triggerBox?.width ?? 0,
+            width: chipBox.width,
+          };
+        }),
+        affordancesBottom: affordances
+          ? affordances.getBoundingClientRect().bottom
+          : null,
+        toolbarTop: toolbar ? toolbar.getBoundingClientRect().top : null,
+        controlsCentre:
+          controls.getBoundingClientRect().top +
+          controls.getBoundingClientRect().height / 2,
+        controlsWidth: controls.clientWidth,
+        controlsOverflow: controls.scrollWidth > controls.clientWidth,
+        items: [...controls.children]
+          .filter(
+            (child): child is HTMLElement =>
+              child instanceof HTMLElement && child.checkVisibility(),
+          )
+          .map((child) => {
+            const box = child.getBoundingClientRect();
+            return { top: box.top, width: box.width };
+          }),
+        gap: Number.parseFloat(getComputedStyle(controls).columnGap),
+        sendCenter: send
+          ? send.getBoundingClientRect().top +
+            send.getBoundingClientRect().height / 2
+          : null,
+        formOverflow: form.scrollWidth > form.clientWidth,
+      };
+    });
+  expect(state).not.toBeNull();
+  if (!state) return;
+  expect(state.chips, `${width}px Chat column chips`).not.toHaveLength(0);
+  expect(state.chips, `${width}px Chat column chips`).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ containsTrigger: true, overflow: false }),
+    ]),
+  );
+  expect(
+    state.chips.every((chip) => chip.containsTrigger && !chip.overflow),
+    `${width}px Chat column chips`,
+  ).toBe(true);
+  expect(
+    state.chips.every((chip) => chip.triggerWidth >= 44),
+    `${width}px Chat column triggers`,
+  ).toBe(true);
+  expect(
+    state.chips.map((chip) => chip.label),
+    `${width}px Chat column labels`,
+  ).toEqual(expectedLabels);
+  expect(
+    state.chips.every((chip) => chip.labelVisible),
+    `${width}px Chat column label visibility`,
+  ).toBe(true);
+  expect(state.controlsOverflow, `${width}px Chat column`).toBe(false);
+  const rows: { top: number; items: (typeof state.items)[number][] }[] = [];
+  for (const item of [...state.items].sort((a, b) => a.top - b.top)) {
+    const row = rows.at(-1);
+    if (row !== undefined && item.top - row.top <= 2) {
+      row.items.push(item);
+      continue;
+    }
+    rows.push({ top: item.top, items: [item] });
+  }
+  for (let index = 1; index < rows.length; index += 1) {
+    const previousRow = rows[index - 1]?.items ?? [];
+    const nextRow = rows[index]?.items ?? [];
+    const previousWidth = previousRow.reduce(
+      (total, item) => total + item.width,
+      0,
+    );
+    expect(
+      previousWidth + state.gap * previousRow.length + (nextRow[0]?.width ?? 0),
+      `${width}px Chat column wrapping`,
+    ).toBeGreaterThan(state.controlsWidth);
+  }
+  expect(
+    state.affordancesBottom,
+    `${width}px composer affordances`,
+  ).not.toBeNull();
+  expect(state.toolbarTop, `${width}px composer toolbar`).not.toBeNull();
+  expect(state.sendCenter, `${width}px send action`).not.toBeNull();
+  expect(
+    state.affordancesBottom ?? 0,
+    `${width}px composer affordances`,
+  ).toBeLessThanOrEqual((state.toolbarTop ?? 0) + 1);
+  expect(
+    Math.abs((state.sendCenter ?? 0) - state.controlsCentre),
+    `${width}px send action`,
+  ).toBeLessThanOrEqual(1);
+  expect(state.formOverflow, `${width}px Chat column`).toBe(false);
+}
+
 test.describe("Wave 2 canonical visual states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
 
@@ -156,6 +292,7 @@ test.describe("Wave 2 canonical visual states", () => {
     (scenario) =>
       AGENT_VISUAL_SCENARIOS.includes(scenario.name) &&
       ![
+        "agent-command-rollup",
         "agent-picker-harness-model",
         "agent-picker-handoff",
         "agent-composer-narrow",
@@ -200,6 +337,99 @@ test.describe("Tool activity rollup disclosure", () => {
   });
 });
 
+test.describe("Tool activity rollup summary containment", () => {
+  test.use({ viewport: { width: 640, height: 720 } });
+
+  test("keeps the rollup label on one line in a narrow Chat pane", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-command-rollup", "agent");
+    await settleTranscriptAtEnd(page);
+
+    const rollup = page.locator(".acp-tool-rollup");
+    await expect(rollup).toHaveCount(1);
+    const label = rollup.locator(".acp-tool-rollup__label");
+    await expect(label).toHaveText("Ran 2 commands");
+    const lead = rollup.locator(".acp-tool-rollup__lead");
+    await expect(lead).toBeVisible();
+    await expect(lead).toHaveAttribute(
+      "title",
+      "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
+    );
+
+    const geometry = await rollup.evaluate((node) => {
+      const labelNode = node.querySelector(".acp-tool-rollup__label");
+      const leadNode = node.querySelector(".acp-tool-rollup__lead");
+      const summaryNode = node.querySelector("summary");
+      if (!(labelNode instanceof HTMLElement)) return null;
+      if (!(leadNode instanceof HTMLElement)) return null;
+      if (!(summaryNode instanceof HTMLElement)) return null;
+      const style = getComputedStyle(labelNode);
+      const parsedLineHeight = Number.parseFloat(style.lineHeight);
+      const lineHeight = Number.isFinite(parsedLineHeight)
+        ? parsedLineHeight
+        : Number.parseFloat(style.fontSize) * 1.5;
+      return {
+        labelLines: labelNode.getClientRects().length,
+        labelHeight: labelNode.getBoundingClientRect().height,
+        leadWidth: leadNode.getBoundingClientRect().width,
+        leadLines: leadNode.getClientRects().length,
+        leadClipped: leadNode.scrollWidth - leadNode.clientWidth,
+        leadTextOverflow: getComputedStyle(leadNode).textOverflow,
+        leadTitle: leadNode.getAttribute("title") ?? "",
+        leadText: leadNode.textContent ?? "",
+        lineHeight,
+        summaryHeight: summaryNode.getBoundingClientRect().height,
+        summaryWidth: summaryNode.getBoundingClientRect().width,
+        cardOverflow: node.scrollWidth - node.clientWidth,
+      };
+    });
+
+    expect(geometry, "the rollup summary is measurable").not.toBeNull();
+    if (!geometry) return;
+    expect(
+      geometry.summaryWidth,
+      "the Chat pane is narrow enough to squeeze the summary row",
+    ).toBeLessThan(520);
+    expect(
+      geometry.labelLines,
+      "the rollup label renders as a single line box",
+    ).toBe(1);
+    expect(
+      geometry.labelHeight,
+      "the rollup label never grows past one text line",
+    ).toBeLessThanOrEqual(geometry.lineHeight * 1.5);
+    expect(
+      geometry.summaryHeight,
+      "the summary row stays a compact single-line row",
+    ).toBeLessThanOrEqual(geometry.lineHeight * 2);
+    expect(
+      geometry.cardOverflow,
+      "the summary row does not overflow its card",
+    ).toBeLessThanOrEqual(1);
+    expect(
+      geometry.leadWidth,
+      "the lead detail keeps a readable share of the row",
+    ).toBeGreaterThan(40);
+    expect(
+      geometry.leadLines,
+      "the lead detail stays on the label's line",
+    ).toBe(1);
+    expect(
+      geometry.leadClipped,
+      "the lead detail is the part that truncates",
+    ).toBeGreaterThan(0);
+    expect(
+      geometry.leadTextOverflow,
+      "the truncated lead detail ends in an ellipsis",
+    ).toBe("ellipsis");
+    expect(
+      geometry.leadTitle,
+      "the full command stays available as the lead title",
+    ).toBe(geometry.leadText);
+  });
+});
+
 test.describe("ED02 picker visual states", () => {
   test("captures the ready harness and model picker state", async ({
     page,
@@ -215,15 +445,10 @@ test.describe("ED02 picker visual states", () => {
     const listbox = page.getByRole("listbox", { name: "Harness" });
     await expect(input).toBeFocused();
     await expect(
-      listbox.getByRole("option", {
-        name: /Unavailable Codex.*Harness is unavailable/,
-      }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
-    ).toBeVisible();
+    ).toHaveAttribute("aria-selected", "true");
     const unavailable = listbox.getByRole("option", {
-      name: /Unavailable Codex.*Harness is unavailable/,
+      name: /Unavailable Codex.*Sage did not admit this harness and will not start it\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
     await input.fill("Unavailable");
@@ -236,7 +461,7 @@ test.describe("ED02 picker visual states", () => {
     ).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await expect(trigger).toHaveText("Codex — test only");
+    await expect(trigger).toHaveText("Codex");
     await expect(trigger).toHaveAttribute("data-selected-id", "visual-acp");
     await expect(page.locator("html")).toHaveAttribute(
       "data-visual-harness-selection-count",
@@ -245,7 +470,7 @@ test.describe("ED02 picker visual states", () => {
     const modelTrigger = page.getByRole("button", { name: "Model" });
     await expect(modelTrigger).toBeDisabled();
     await expect(
-      page.getByText("Select a ready harness to load models."),
+      page.getByText("Wait while Sage checks the selected Harness."),
     ).toBeVisible();
     expect(
       await page.evaluate(() => {
@@ -268,7 +493,11 @@ test.describe("ED02 picker visual states", () => {
         name: "Fresh advertised model 1",
         exact: true,
       }),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toBeVisible();
+    await expect(
+      modelListbox.locator('[role="option"][aria-selected="true"]'),
+      "choosing a harness clears the model, so the list opens unselected",
+    ).toHaveCount(0);
     await expect(
       modelListbox.getByRole("option", { name: "Old advertised model" }),
     ).toHaveCount(0);
@@ -402,6 +631,48 @@ test.describe("ED02 picker visual states", () => {
   });
 });
 
+test.describe("Artifact-constrained composer", () => {
+  test("keeps picker chips legible across constrained Chat widths", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(page, "agent-session-mode-closed", "agent");
+    await page.getByRole("button", { name: /Show preview/ }).click();
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const state = useWorkbenchStore.getState();
+      useWorkbenchStore.setState({
+        harnesses: state.harnesses.map((harness) =>
+          harness.id === "visual-acp"
+            ? { ...harness, name: "Claude Code" }
+            : harness,
+        ),
+        models: state.models.map((model) => ({
+          ...model,
+          name: "Claude Opus 4.8 (1M context)",
+        })),
+      });
+    });
+
+    for (const width of [560, 589, 590, 630, 720, 721, 775] as const) {
+      await page.locator(".workbench__body").evaluate((body, centerWidth) => {
+        body.style.gridTemplateColumns = `224px 8px ${centerWidth}px 8px minmax(0, 1fr)`;
+      }, width);
+      await expect(page.locator(".agent-chat-pane")).toHaveCSS(
+        "width",
+        `${width}px`,
+      );
+      await expectArtifactConstrainedComposer(page, width, [
+        "Claude Code",
+        "Claude Opus 4.8 (1M context)",
+        "Review changes",
+        "Read-only",
+      ]);
+      await expectNoViewportOverflow(page);
+    }
+  });
+});
+
 test.describe("V2-4 session mode picker", () => {
   test("captures closed, open, narrow, and forced-color mode states", async ({
     page,
@@ -418,7 +689,7 @@ test.describe("V2-4 session mode picker", () => {
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Harness", exact: true }),
       "Harness",
-      "Codex — test only",
+      "Codex",
     );
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
@@ -556,6 +827,21 @@ test.describe("V6 Composer context meter", () => {
       "aria-valuetext",
       "6,000 / 272,000 tokens used",
     );
+    expect(
+      await knownContext.evaluate((node) =>
+        Boolean(node.closest(".composer__input-area")),
+      ),
+    ).toBe(true);
+    const knownContextBox = await knownContext.boundingBox();
+    const knownToolbarBox = await page
+      .locator("form.composer .composer__toolbar")
+      .first()
+      .boundingBox();
+    expect(knownContextBox).not.toBeNull();
+    expect(knownToolbarBox).not.toBeNull();
+    expect(
+      (knownContextBox?.y ?? 0) + (knownContextBox?.height ?? 0),
+    ).toBeLessThanOrEqual((knownToolbarBox?.y ?? 0) + 1);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(
       knownWorkbench,
@@ -745,10 +1031,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await openScenario(page, "agent-dual", "agent");
 
     const panes = page.locator(".agent-chat-pane");
-    const paneHeaders = page.locator(".agent-chat-pane__header");
+    const paneIdentities = page.locator(".agent-chat-pane__identity");
     const actionRows = page.locator(".agent-chat-pane .surface-header");
     await expect(panes).toHaveCount(2);
-    await expect(paneHeaders).toHaveCount(2);
+    await expect(paneIdentities).toHaveCount(2);
     await expect(actionRows).toHaveCount(2);
     const sidebarSplitter = page.locator(".workbench-sidebar-splitter");
     const chatSplitter = page.getByRole("separator", {
@@ -803,11 +1089,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     ).toEqual({ focusVisible: true, lineWidth: "1px" });
     await chatSplitter.evaluate((node) => (node as HTMLElement).blur());
     expect(
-      await paneHeaders.evaluateAll((headers) =>
-        headers.map((header) => header.getBoundingClientRect().height),
-      ),
-    ).toEqual([32, 32]);
-    expect(
       await actionRows.evaluateAll((rows) =>
         rows.every((row) => row.getBoundingClientRect().height <= 36),
       ),
@@ -826,25 +1107,164 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     for (let index = 0; index < 2; index += 1) {
       await expect(splitPolicies.nth(index)).toBeHidden();
     }
+    await page.evaluate(async () => {
+      const { acpProjectionStoreFor } =
+        await import("/src/app/acpProjectionRegistry.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      for (const chatId of ["visual-chat-primary", "visual-chat-secondary"]) {
+        const store = acpProjectionStoreFor(chatId as never);
+        const current = store.getState();
+        if (!current.page || !current.scope) throw new Error("Missing Chat");
+        current.applyAuthoritativePage(current.scope, {
+          ...current.page,
+          sessionConfig: {
+            sageAgentSessionId: "visual-session",
+            runtimeEpoch: "7",
+            configRevision: "1",
+            modes: {
+              currentModeId: "review",
+              availableModes: [
+                {
+                  id: "review",
+                  name: "Review changes",
+                  description: "Analyze changes without applying them.",
+                },
+              ],
+            },
+            configOptions: [],
+          },
+        });
+      }
+      const workbench = useWorkbenchStore.getState();
+      const secondary = workbench.chatUiById["visual-chat-secondary"];
+      useWorkbenchStore.setState({
+        chatUiById: {
+          ...workbench.chatUiById,
+          "visual-chat-secondary": {
+            ...secondary,
+            modeError: "Mode update conflicted",
+            modeErrorOwner: {
+              sessionId: "visual-session",
+              runtimeEpoch: "7",
+            },
+          },
+        },
+      });
+    });
+    await chatSplitter.focus();
+    await page.keyboard.press("End");
+    await expect(chatSplitter).toHaveAttribute("aria-valuenow", "70");
+    const controlRails = panes.locator(".composer__controls");
+    await expect(controlRails).toHaveCount(2);
     for (let index = 0; index < 2; index += 1) {
       const pane = panes.nth(index);
-      const controls = await Promise.all(
+      const railDimensions = await controlRails.nth(index).evaluate((node) => ({
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
+      }));
+      expect(railDimensions.scrollHeight).toBeLessThanOrEqual(
+        railDimensions.clientHeight + 1,
+      );
+      const measure = (control: Locator) =>
+        control.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            bottom: box.bottom,
+            centre: box.y + box.height / 2,
+            top: box.y,
+          };
+        });
+      const pickerBoxes = await Promise.all(
         [
           pane.getByRole("button", { name: "Harness" }),
           pane.getByRole("button", { name: "Model" }),
-          pane.locator(".send-button"),
-        ].map((control) =>
-          control.evaluate((node) => {
-            const box = node.getBoundingClientRect();
-            return box.y + box.height / 2;
-          }),
-        ),
+          pane.getByRole("button", { name: "Session mode" }),
+        ].map(measure),
       );
+      const sendBox = await measure(pane.locator(".send-button"));
+      const pickerRows: { bottom: number; centres: number[] }[] = [];
+      for (const box of [...pickerBoxes].sort((a, b) => a.top - b.top)) {
+        const row = pickerRows.at(-1);
+        if (row !== undefined && box.top < row.bottom - 1) {
+          row.centres.push(box.centre);
+          row.bottom = Math.max(row.bottom, box.bottom);
+          continue;
+        }
+        pickerRows.push({ bottom: box.bottom, centres: [box.centre] });
+      }
+      const identity = `pane ${index}, ${pickerRows.length} picker rows`;
+      pickerRows.forEach((row, rowIndex) => {
+        expect(
+          Math.max(...row.centres) - Math.min(...row.centres),
+          `${identity}, row ${rowIndex}`,
+        ).toBeLessThan(2);
+      });
+      const lastPickerRow = pickerRows.at(-1);
+      if (lastPickerRow === undefined) {
+        throw new Error(`${identity}: no picker rows were measured`);
+      }
       // Centre lines, not top edges: send is deliberately the taller
       // emphasized square, so equal tops would mean it was NOT centred
       // against the shorter pickers.
-      expect(Math.max(...controls) - Math.min(...controls)).toBeLessThan(2);
+      if (pickerRows.length === 1) {
+        expect(
+          Math.abs(sendBox.centre - lastPickerRow.centres[0]),
+          `${identity}, send centre`,
+        ).toBeLessThan(2);
+      } else {
+        expect(
+          Math.abs(sendBox.bottom - lastPickerRow.bottom),
+          `${identity}, send baseline`,
+        ).toBeLessThanOrEqual(1);
+      }
     }
+    const narrowPane = panes.nth(1);
+    const composerError = narrowPane.getByRole("alert");
+    await expect(composerError).toHaveText("Mode update conflicted");
+    const narrowRailBounds = await controlRails.nth(1).evaluate((node) => {
+      const rail = node.getBoundingClientRect();
+      const contains = (child: DOMRect) =>
+        child.left >= rail.left - 1 && child.right <= rail.right + 1;
+      const chips = [
+        ...node.querySelectorAll<HTMLElement>(".select-control"),
+      ].filter((chip) => chip.checkVisibility());
+      const alert = node.querySelector<HTMLElement>('[role="alert"]');
+      return {
+        alertContained:
+          alert === null || contains(alert.getBoundingClientRect()),
+        chipsContained: chips.map((chip) =>
+          contains(chip.getBoundingClientRect()),
+        ),
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      };
+    });
+    expect(narrowRailBounds.scrollWidth).toBeLessThanOrEqual(
+      narrowRailBounds.clientWidth + 1,
+    );
+    expect(narrowRailBounds.chipsContained).not.toHaveLength(0);
+    expect(narrowRailBounds.chipsContained).not.toContain(false);
+    expect(narrowRailBounds.alertContained).toBe(true);
+    expect(
+      await composerError.evaluate((node) => {
+        const error = node.getBoundingClientRect();
+        const composer = node.closest<HTMLElement>(".composer");
+        const bounds = composer?.getBoundingClientRect();
+        return bounds !== undefined && error.bottom <= bounds.bottom;
+      }),
+    ).toBe(true);
+    const sessionMode = narrowPane.getByRole("button", {
+      name: "Session mode",
+    });
+    await sessionMode.click();
+    await expect(
+      page.getByRole("combobox", { name: "Session mode" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(sessionMode).toBeFocused();
+    expect(
+      await sessionMode.evaluate((node) => node.matches(":focus-visible")),
+    ).toBe(true);
 
     const before = await panes.evaluateAll((items) =>
       items.map((item) => {
@@ -1053,8 +1473,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const workbench = await openScenario(page, "agent-single", "agent");
 
     const focusedPaneHeader = page.locator(
-      ".agent-chat-pane--focused .agent-chat-pane__header",
+      ".agent-chat-pane--focused .surface-header",
     );
+    await expect(focusedPaneHeader).toHaveCount(1);
     const forcedFocus = await focusedPaneHeader.evaluate((node) => {
       const transparentProbe = document.createElement("span");
       transparentProbe.style.color = "transparent";
@@ -1080,8 +1501,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const composerSelector =
       'textarea[aria-label="Message agent"]:not(:disabled)';
     const composerTextarea = page.locator(composerSelector);
-    await page.keyboard.press("Tab");
     await expect(composerTextarea).toBeEnabled();
+    await page.keyboard.press("ControlOrMeta+L");
     await expect(composerTextarea).toBeFocused();
     await expect(composerTextarea).toBeVisible();
     expect(

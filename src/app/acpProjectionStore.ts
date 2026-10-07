@@ -64,7 +64,9 @@ interface AcpProjectionState {
   ) => ProjectionNoticeDisposition;
   takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
   error: string | null;
+  loadNonce: number;
   activateScope: (scope: AcpProjectionScope) => void;
+  requestReload: () => void;
   beginPageLoad: (cursor: AcpPageCursor | null) => AcpPageLoadIntent;
   completePageLoad: (
     intent: AcpPageLoadIntent,
@@ -206,6 +208,7 @@ const initialState = {
   pendingChange: null,
   pendingConfigChange: null,
   error: null,
+  loadNonce: 0,
 } satisfies Pick<
   AcpProjectionState,
   | "scope"
@@ -217,6 +220,7 @@ const initialState = {
   | "pendingChange"
   | "pendingConfigChange"
   | "error"
+  | "loadNonce"
 >;
 
 export function createAcpProjectionStore() {
@@ -225,7 +229,16 @@ export function createAcpProjectionStore() {
 
     activateScope: (scope) => {
       if (sameScope(get().scope, scope)) return;
-      set({ ...initialState, scope, requestSequence: get().requestSequence });
+      set({
+        ...initialState,
+        scope,
+        requestSequence: get().requestSequence,
+        loadNonce: get().loadNonce,
+      });
+    },
+
+    requestReload: () => {
+      set({ error: null, loadNonce: get().loadNonce + 1 });
     },
 
     beginPageLoad: (cursor) => {

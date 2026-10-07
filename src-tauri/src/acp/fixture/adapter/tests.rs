@@ -177,6 +177,7 @@ fn cancel_after_activation_uses_the_next_request_identity() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "fixture cancel setup").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         },
     );
 
@@ -279,6 +280,7 @@ fn streaming_adapter() -> FixtureAdapter {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "fixture cold cycle").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         },
     );
 
@@ -377,6 +379,7 @@ fn resume_failure_cannot_issue_a_second_resume_or_prompt() {
         adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "must not replay").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));

@@ -54,6 +54,7 @@ export function agentArtifactVisible(input: {
   focusedOwner: AgentArtifactOwner | null;
   hasFocusedChatStats: boolean;
 }): boolean {
+  if (input.kind === "browser") return true;
   if (input.kind !== "file" && input.kind !== "diff") return false;
   return (
     agentArtifactAdmitted(input.admissions, input.focusedOwner, input.tabId) ||

@@ -343,5 +343,4 @@ impl From<CodexAuthError> for CodexDiscoveryRunError {
 }
 
 #[cfg(test)]
-#[path = "runner_tests.rs"]
 mod tests;

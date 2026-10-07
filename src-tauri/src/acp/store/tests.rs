@@ -50,6 +50,16 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(
+            "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
+        )
+        .unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE acp_turn_terminal_reasons(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,kind TEXT,message TEXT,remediation TEXT,created_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
+        )
+        .unwrap();
+    connection
 }
 
 pub(super) fn command(prompt: &str) -> PrepareTurnCommand {

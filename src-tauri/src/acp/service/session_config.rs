@@ -33,7 +33,7 @@ impl AcpService {
                 | crate::acp::runtime::HostError::DeliveryUnknown
                 | crate::acp::runtime::HostError::RecoveryRequired)
         ) {
-            let _ = self.runtime.mark_recovery(&intent.owner);
+            self.retain_config_effect_recovery(intent.owner.clone(), host);
         }
         result.map(|_| ())
     }

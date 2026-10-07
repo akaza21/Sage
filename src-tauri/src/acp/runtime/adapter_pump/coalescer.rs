@@ -153,21 +153,28 @@ impl PendingIngress {
         self.actual_bytes = 0;
     }
 
-    // Usage notifications are latest-value snapshots just like replace-mode
-    // items. Coalescing them preserves one update per turn without losing the
-    // notification's exact session/epoch/turn identity.
     fn replaceable_index(&self, event: &DurableAdapterEvent) -> Option<usize> {
-        let (external_item_id, payload) = match event {
+        let external_item_id = match event {
             DurableAdapterEvent::Item {
                 external_item_id,
                 payload,
                 ..
-            } => (external_item_id, payload),
-            DurableAdapterEvent::RuntimePayload {
-                external_item_id,
-                payload: payload @ NormalizedPayload::Usage { .. },
-                ..
-            } => (external_item_id, payload),
+            } => {
+                if is_pair_anchor(payload) {
+                    return None;
+                }
+                external_item_id
+            }
+            DurableAdapterEvent::UsageSnapshot { scope, .. } => {
+                return self.facts.iter().enumerate().rev().take_while(|(_, pending)| {
+                    !matches!(&pending.fact.event, DurableAdapterEvent::Turn { .. })
+                }).find_map(|(index, pending)| matches!(&pending.fact.event,
+                    DurableAdapterEvent::UsageSnapshot { scope: candidate, .. }
+                    if candidate.project_id == scope.project_id && candidate.chat_id == scope.chat_id
+                        && candidate.session_id == scope.session_id && candidate.runtime_epoch == scope.runtime_epoch
+                        && candidate.turn_id == scope.turn_id
+                ).then_some(index));
+            }
             _ => return None,
         };
         self.facts
@@ -177,22 +184,17 @@ impl PendingIngress {
             .take_while(|(_, pending)| {
                 !matches!(&pending.fact.event, DurableAdapterEvent::Turn { .. })
             })
-            .find_map(|(index, pending)| {
-                let (candidate, candidate_payload) = match &pending.fact.event {
-                    DurableAdapterEvent::Item {
-                        external_item_id,
-                        payload,
-                        ..
-                    } => (external_item_id, payload),
-                    DurableAdapterEvent::RuntimePayload {
-                        external_item_id,
-                        payload: payload @ NormalizedPayload::Usage { .. },
-                        ..
-                    } => (external_item_id, payload),
-                    _ => return None,
-                };
-                (candidate == external_item_id && candidate_payload.kind() == payload.kind())
-                    .then_some(index)
+            .find_map(|(index, pending)| match &pending.fact.event {
+                DurableAdapterEvent::Item {
+                    external_item_id: candidate,
+                    payload,
+                    ..
+                } if candidate == external_item_id && !is_pair_anchor(payload) => Some(index),
+                _ => None,
             })
     }
+}
+
+fn is_pair_anchor(payload: &NormalizedPayload) -> bool {
+    matches!(payload, NormalizedPayload::FileChangeDiff { .. })
 }

@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -21,16 +21,16 @@ import type { WorkbenchState } from "../app/store";
 
 const srcRoot = path.resolve(import.meta.dirname, "..");
 
-async function featureProductionFiles(): Promise<string[]> {
+function featureProductionFiles(): string[] {
   const files: string[] = [];
-  async function walk(relative: string) {
-    const entries = await readdir(path.join(srcRoot, relative), {
+  function walk(relative: string) {
+    const entries = readdirSync(path.join(srcRoot, relative), {
       withFileTypes: true,
     });
     for (const entry of entries) {
       const next = `${relative}/${entry.name}`;
       if (entry.isDirectory()) {
-        await walk(next);
+        walk(next);
         continue;
       }
       if (
@@ -41,7 +41,7 @@ async function featureProductionFiles(): Promise<string[]> {
       }
     }
   }
-  await walk("features");
+  walk("features");
   return files;
 }
 
@@ -110,12 +110,17 @@ describe("S0.3 workbench port seam", () => {
       "restoreChat",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.agent).toEqual([
+      "listHarnesses",
       "listHarnessModels",
       "sendPrompt",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.settings).toEqual([
       "getEditorAppearance",
+      "getSessionAccessMode",
+      "getUiAppearance",
       "setEditorAppearance",
+      "setSessionAccessMode",
+      "setUiAppearance",
     ]);
   });
 
@@ -207,12 +212,12 @@ describe("S0.3 workbench port seam", () => {
     expect(selectEditorDocument(state)?.resource.relativePath).toBe("a.ts");
   });
 
-  it("keeps feature production files off the aggregate desktop object", async () => {
-    const files = await featureProductionFiles();
+  it("keeps feature production files off the aggregate desktop object", () => {
+    const files = featureProductionFiles();
     expect(files.length).toBeGreaterThan(0);
     const offenders: string[] = [];
     for (const file of files) {
-      const source = await readFile(path.join(srcRoot, file), "utf8");
+      const source = readFileSync(path.join(srcRoot, file), "utf8");
       if (
         /from ["'](?:\.\.\/)+services\/desktop["']/.test(source) ||
         /from ["']@?\/?src\/services\/desktop["']/.test(source)

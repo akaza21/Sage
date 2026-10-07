@@ -1,19 +1,16 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository, repository_branches, repository_conflict, repository_remotes,
+    git_budget, repository, repository_branches, repository_conflict, repository_remotes,
     workspace::Workspace,
 };
 
-const GIT_REMOTE_TRANSPORT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
 
 pub(crate) async fn fetch_listed_remote(workspace: &Workspace, requested: &str) -> AppResult<()> {
     fetch_listed_remote_with_policy(
         workspace,
         requested,
-        repository::GitProcessPolicy::mutation(GIT_REMOTE_TRANSPORT_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::REMOTE),
     )
     .await
 }
@@ -22,7 +19,7 @@ pub(crate) async fn push_listed_remote(workspace: &Workspace, requested: &str) -
     push_listed_remote_with_policy(
         workspace,
         requested,
-        repository::GitProcessPolicy::mutation(GIT_REMOTE_TRANSPORT_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::REMOTE),
     )
     .await
 }

@@ -42,6 +42,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: 10,
         },
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
     }
 }
 

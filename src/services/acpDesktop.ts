@@ -6,14 +6,15 @@ import type {
   AcpProjectionChangedEvent,
   ActivateAcpSessionRequest,
   CancelAcpTurnRequest,
+  SteerAcpTurnRequest,
   CloseAcpSessionRequest,
+  EndAcpSessionRequest,
   CodexDiscoveryResponse,
   CodexAuthResponse,
   CodexAuthScope,
   GetAcpChatPageRequest,
   GetCodexDiscoveryRequest,
   ResolvePermissionDecisionRequest,
-  ResolvePermissionDecisionResponse,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
 } from "../domain/acp";
@@ -22,10 +23,11 @@ import type {
   AgentDiffSnapshot,
   GetAgentDiffRequest,
 } from "../domain/agentDiff";
-import { utf8ByteLength } from "../domain/text";
 import { invokeNative } from "../ports/nativeInvoke";
+import type { ResourceRef } from "../domain/workbench";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
+import { resolvePermissionDecision } from "./acpDesktopPermission";
 import {
   isOneOf,
   isRecord,
@@ -33,78 +35,13 @@ import {
   safeCodexDiscovery,
   safeCounter,
   safeIdentifier,
+  safeMessage,
 } from "./acpDesktopResponses";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-function safeMessage(value: unknown): string | null {
-  if (typeof value !== "string" || value.length === 0 || value.length > 8192) {
-    return null;
-  }
-  return utf8ByteLength(value) <= 8192 ? value : null;
-}
-
-function safePermissionDecision(
-  value: unknown,
-  request: ResolvePermissionDecisionRequest,
-): ResolvePermissionDecisionResponse | null {
-  if (!isRecord(value)) return null;
-  const projectId = safeIdentifier(value.projectId);
-  const chatId = safeIdentifier(value.chatId);
-  const sessionId = safeIdentifier(value.sessionId);
-  const turnId = safeIdentifier(value.turnId);
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  const requestId = safeIdentifier(value.requestId);
-  const expectedState = {
-    ask: "asked",
-    allowOnce: "allowPending",
-    deny: "declinePending",
-  }[request.decision];
-  if (
-    !projectId ||
-    !chatId ||
-    !sessionId ||
-    !turnId ||
-    !runtimeEpoch ||
-    !requestId ||
-    projectId !== request.projectId ||
-    chatId !== request.chatId ||
-    sessionId !== request.sessionId ||
-    turnId !== request.turnId ||
-    runtimeEpoch !== request.runtimeEpoch ||
-    requestId !== request.requestId ||
-    value.decision !== request.decision ||
-    value.state !== expectedState ||
-    !isOneOf(value.decision, ["ask", "allowOnce", "deny"] as const) ||
-    !isOneOf(value.state, [
-      "received",
-      "asked",
-      "allowPending",
-      "allowCommitted",
-      "declinePending",
-      "declineCommitted",
-      "responseQueued",
-      "resolvedAllowed",
-      "resolvedDeclined",
-      "cancelled",
-    ] as const)
-  ) {
-    return null;
-  }
-  return {
-    projectId,
-    chatId,
-    sessionId,
-    turnId,
-    runtimeEpoch,
-    requestId,
-    decision: value.decision,
-    state: value.state,
-  } as ResolvePermissionDecisionResponse;
 }
 
 function safeCodexAuth(value: unknown): CodexAuthResponse | null {
@@ -203,6 +140,7 @@ export function safeFailure(value: unknown): AcpCommandFailure {
         "turnState",
         "turnRevision",
         "clientIntent",
+        "steerOutcomeUnknown",
       ])
     ) {
       return { kind, resource: value.resource, message };
@@ -227,6 +165,9 @@ export function safeFailure(value: unknown): AcpCommandFailure {
         limit: value.limit as number,
         message,
       };
+    }
+    if (kind === "signInRequired" && message) {
+      return { kind, message };
     }
     if (
       (kind === "invalidRequest" ||
@@ -292,6 +233,34 @@ import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
 
 export const acpDesktop = {
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
+  async resolveChatFileReference(
+    projectId: string,
+    destination: string,
+  ): Promise<{ resource: ResourceRef; lineNumber: number | null } | null> {
+    const value = await invokeAcp<
+      unknown,
+      { projectId: string; destination: string }
+    >("resolve_chat_file_reference", { projectId, destination });
+    if (value === null) return null;
+    if (!isRecord(value) || !isRecord(value.resource)) return null;
+    const rootId = safeIdentifier(value.resource.rootId);
+    const relativePath = value.resource.relativePath;
+    const lineNumber = value.lineNumber;
+    if (
+      !rootId ||
+      typeof relativePath !== "string" ||
+      relativePath.length === 0 ||
+      relativePath.length > 16_384 ||
+      !(
+        lineNumber === null ||
+        (Number.isSafeInteger(lineNumber) &&
+          typeof lineNumber === "number" &&
+          lineNumber > 0)
+      )
+    )
+      return null;
+    return { resource: { rootId, relativePath }, lineNumber };
+  },
   async getFileSnapshot(
     request: GetAgentDiffRequest,
   ): Promise<AgentDiffSnapshot> {
@@ -365,26 +334,28 @@ export const acpDesktop = {
     return invokeAcpMutation("cancel_acp_turn", request);
   },
 
+  steerTurn(request: SteerAcpTurnRequest): Promise<AcpMutationResult> {
+    return invokeAcpMutation("steer_acp_turn", request);
+  },
+
   closeSession(request: CloseAcpSessionRequest): Promise<AcpMutationResult> {
     return invokeAcpMutation("close_acp_session", request);
   },
 
-  async resolvePermissionDecision(
-    request: ResolvePermissionDecisionRequest,
-  ): Promise<ResolvePermissionDecisionResponse> {
-    const response = await invokeAcp<unknown, ResolvePermissionDecisionRequest>(
-      "resolve_permission_decision",
-      request,
-    );
-    const safe = safePermissionDecision(response, request);
-    if (!safe) {
-      throw new AcpDesktopError({
-        kind: "internal",
-        message: "Permission decision returned an invalid bounded response.",
-      });
-    }
-    return safe;
+  endSession(request: EndAcpSessionRequest): Promise<AcpMutationResult> {
+    return invokeAcpMutation("end_acp_session", request);
   },
+
+  resolvePermissionDecision: (request: ResolvePermissionDecisionRequest) =>
+    resolvePermissionDecision(
+      request,
+      invokeAcp,
+      () =>
+        new AcpDesktopError({
+          kind: "internal",
+          message: "Permission decision returned an invalid bounded response.",
+        }),
+    ),
 
   async recordAgentEditDisposition(
     request: AgentEditDisposition,

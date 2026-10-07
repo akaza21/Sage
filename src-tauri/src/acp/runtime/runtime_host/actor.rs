@@ -11,13 +11,15 @@ mod actor_close;
 mod actor_park;
 #[path = "actor_session_config.rs"]
 mod actor_session_config;
+#[path = "actor_steer.rs"]
+mod actor_steer;
 
 use super::{
     mailbox::{HostMailbox, HostMessage},
     types::{
         CancelPhase, HostCancelIntent, HostCommand, HostError, HostOutcome, HostPromptIntent,
-        HostReply, HostState, PendingCancel, PendingClose, PendingHostConfig, PendingTerminal,
-        PromptWrite, RuntimeEngine,
+        HostReply, HostState, PendingCancel, PendingClose, PendingHostConfig, PendingHostSteer,
+        PendingTerminal, PromptWrite, RuntimeEngine,
     },
 };
 
@@ -32,6 +34,8 @@ pub(super) struct Actor<E> {
     pub(super) pending_close: Option<PendingClose>,
     pub(super) pending_config: Option<PendingHostConfig>,
     pub(super) next_config_operation: u64,
+    pub(super) pending_steer: Option<PendingHostSteer>,
+    pub(super) next_steer_operation: u64,
 }
 
 impl<E: RuntimeEngine> Actor<E> {
@@ -47,31 +51,61 @@ impl<E: RuntimeEngine> Actor<E> {
             pending_close: None,
             pending_config: None,
             next_config_operation: 0,
+            pending_steer: None,
+            next_steer_operation: 0,
         }
     }
 
     pub(super) fn run(mut self, mailbox: Arc<HostMailbox>) {
-        while let Some(message) =
-            mailbox.wait_next(self.pending_config.as_ref().map(|pending| pending.deadline))
-        {
+        while let Some(message) = mailbox.wait_next(
+            [
+                self.pending_config.as_ref().map(|pending| pending.deadline),
+                self.pending_steer.as_ref().map(|pending| pending.deadline),
+            ]
+            .into_iter()
+            .flatten()
+            .min(),
+        ) {
             match message {
                 HostMessage::ConfigCompletion(completion) => {
                     self.complete_config(completion);
                 }
-                HostMessage::ConfigDeadline => {
-                    if let Some(deadline) =
-                        self.pending_config.as_ref().map(|pending| pending.deadline)
+                HostMessage::SteerCompletion(completion) => self.complete_steer(completion),
+                HostMessage::OperationDeadline => {
+                    if self
+                        .pending_config
+                        .as_ref()
+                        .is_some_and(|pending| Instant::now() >= pending.deadline)
                     {
+                        let deadline = self.pending_config.as_ref().unwrap().deadline;
                         self.engine.abandon_configuration(deadline);
+                        self.fail_pending_config(HostError::Deadline);
                     }
-                    self.fail_pending_config(HostError::Deadline);
+                    if self
+                        .pending_steer
+                        .as_ref()
+                        .is_some_and(|pending| Instant::now() >= pending.deadline)
+                    {
+                        self.settle_pending_steer(HostError::SteerOutcomeUnknown);
+                    }
                 }
                 HostMessage::Command(envelope) => {
                     if matches!(envelope.command, HostCommand::ConfigureSession(_)) {
                         self.begin_configure_session(envelope, &mailbox);
                         continue;
                     }
+                    if matches!(envelope.command, HostCommand::Steer(_)) {
+                        self.begin_steer(envelope, &mailbox);
+                        continue;
+                    }
                     let stop = matches!(&envelope.command, HostCommand::Shutdown);
+                    let ends_steer = matches!(
+                        &envelope.command,
+                        HostCommand::Cancel(_)
+                            | HostCommand::Terminal { .. }
+                            | HostCommand::BeginClose(_)
+                            | HostCommand::Shutdown
+                    );
                     let abandons_config = matches!(
                         &envelope.command,
                         HostCommand::BeginClose(_) | HostCommand::BeginPark | HostCommand::Shutdown
@@ -90,9 +124,13 @@ impl<E: RuntimeEngine> Actor<E> {
                     };
                     let stopped =
                         stop && matches!(result, Ok(HostReply::Outcome(HostOutcome::Shutdown)));
+                    if ends_steer && result.is_ok() {
+                        self.settle_pending_steer(HostError::Intent);
+                    }
                     let _ = envelope.reply.send(result);
                     if stopped {
                         self.fail_pending_config(HostError::Closed);
+                        self.settle_pending_steer(HostError::Closed);
                         mailbox.close();
                         return;
                     }
@@ -100,6 +138,7 @@ impl<E: RuntimeEngine> Actor<E> {
             }
         }
         self.fail_pending_config(HostError::Closed);
+        self.settle_pending_steer(HostError::Closed);
         // Engine ownership must never be leaked: dropping the process driver
         // retains the platform supervisor's bounded emergency teardown path.
         let _ = self.engine.shutdown(
@@ -123,6 +162,7 @@ impl<E: RuntimeEngine> Actor<E> {
             HostCommand::Activate(owner) => self.activate(owner),
             HostCommand::PreparePrompt(intent) => self.prepare_prompt(intent),
             HostCommand::DispatchPrompt { owner, turn_id } => self.dispatch_prompt(owner, turn_id),
+            HostCommand::Steer(intent) => self.steer(intent),
             HostCommand::Cancel(intent) => self.cancel(intent),
             HostCommand::Terminal { owner, cursor } => self.terminal(owner, cursor),
             HostCommand::ProjectSwitched(_) => {
@@ -308,6 +348,19 @@ impl<E: RuntimeEngine> Actor<E> {
         self.pending_cancel = None;
         self.state = HostState::Running;
         Ok(HostReply::Outcome(HostOutcome::CancelQueued))
+    }
+
+    fn steer(&mut self, intent: super::types::HostSteerIntent) -> Result<HostReply, HostError> {
+        if self.state != HostState::Running
+            || !self.matches_owner(&intent.owner)
+            || self.active_turn.as_ref() != Some(&intent.turn_id)
+            || self.pending_prompt
+            || self.pending_cancel.is_some()
+        {
+            return Err(HostError::Intent);
+        }
+        self.engine.dispatch_steer(&intent)?;
+        Ok(HostReply::Outcome(HostOutcome::SteerQueued))
     }
 
     fn terminal(

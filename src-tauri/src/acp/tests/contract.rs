@@ -12,8 +12,9 @@ use crate::acp::{
         AcpIpcError, ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
         CapabilitySnapshotV1, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
         IntentSnapshot, NormalizedPayload, ProjectionChangedV1, PromptDispatch, SafeResourceRef,
-        SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
-        validate_cancel_intent, validate_session_intent,
+        SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, SteerAcpTurnRequest,
+        validate_base_intent, validate_cancel_intent, validate_session_intent,
+        validate_steer_intent,
     },
     limits::LIMITS,
     projection::{
@@ -187,6 +188,50 @@ fn protocol_contract_turn_transitions_match_the_rust_lifecycle() {
 }
 
 #[test]
+fn protocol_contract_item_kinds_match_the_rust_wire_set() {
+    use crate::acp::contract::ItemKind;
+    let contract: Value = serde_json::from_str(include_str!(
+        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/protocol-contract-v1.json"
+    ))
+    .unwrap();
+    let kinds = [
+        ItemKind::Text,
+        ItemKind::ThoughtSummary,
+        ItemKind::Plan,
+        ItemKind::ToolCall,
+        ItemKind::FileChangeDiff,
+        ItemKind::Image,
+        ItemKind::Usage,
+        ItemKind::PermissionRequest,
+        ItemKind::Error,
+        ItemKind::Unsupported,
+        ItemKind::Collaboration,
+    ];
+    for kind in kinds {
+        match kind {
+            ItemKind::Text
+            | ItemKind::ThoughtSummary
+            | ItemKind::Plan
+            | ItemKind::ToolCall
+            | ItemKind::FileChangeDiff
+            | ItemKind::Image
+            | ItemKind::Usage
+            | ItemKind::PermissionRequest
+            | ItemKind::Error
+            | ItemKind::Unsupported
+            | ItemKind::Collaboration => {}
+        }
+    }
+    let declared = contract["itemKinds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(declared, kinds.map(ItemKind::as_str).to_vec());
+}
+
+#[test]
 fn sqlite_rejects_every_cross_wait_turn_transition() {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
@@ -257,10 +302,13 @@ fn normalized_payloads_admit_only_canonical_resource_refs() {
     let root_id = SageRootId::parse("root-a").unwrap();
     let resource = SafeResourceRef::new(root_id, "src/main.rs").unwrap();
     let payload = NormalizedPayload::file_summary_only(
-        crate::acp::intent::SafeResourceLocation::Resource { resource },
-        SafeText::new("summary", "one file changed").unwrap(),
-        Some(2),
-        Some(1),
+        crate::acp::intent::FileChangeFacts {
+            resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+            summary: SafeText::new("summary", "one file changed").unwrap(),
+            additions: Some(2),
+            deletions: Some(1),
+            operation: crate::acp::intent::FileChangeOperation::Updated,
+        },
         false,
     );
     assert_eq!(
@@ -298,6 +346,24 @@ fn image_payloads_use_the_image_kind_and_reject_unknown_media_types() {
             .unwrap();
     assert_eq!(payload.kind(), crate::acp::contract::ItemKind::Image);
     assert_eq!(payload.kind().as_str(), "image");
+    let legacy = serde_json::from_value::<NormalizedPayload>(json!({
+        "kind": "image",
+        "payload": { "mediaType": "image/png", "data": PNG }
+    }))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(legacy).unwrap()["payload"]["source"],
+        "agent"
+    );
+    let user_image = ItemContent::Image {
+        media_type: crate::acp::intent::ImageMediaType::Png,
+        data_url: SafeText::new("dataUrl", format!("data:image/png;base64,{PNG}")).unwrap(),
+        source: crate::acp::intent::ImageSource::User,
+    };
+    assert_eq!(
+        serde_json::to_value(user_image).unwrap()["payload"]["source"],
+        "user"
+    );
     assert!(
         serde_json::from_value::<NormalizedPayload>(json!({
             "kind": "image",
@@ -524,13 +590,13 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
     .unwrap();
     assert_eq!(validate_cancel_intent(&cancel, &current), Ok(()));
     stale = current.clone();
-    stale.turn_state = Some(TurnState::WaitingModel);
+    stale.turn_state = Some(TurnState::Completed);
     assert_eq!(
         validate_cancel_intent(&cancel, &stale),
         Err(IntentError::UnexpectedTurnState)
     );
     stale = current.clone();
-    stale.turn_revision = Some(EntityRevision::new(6).unwrap());
+    stale.turn_revision = Some(EntityRevision::new(4).unwrap());
     assert_eq!(
         validate_cancel_intent(&cancel, &stale),
         Err(IntentError::StaleTurnRevision)
@@ -548,19 +614,21 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
 }
 
 #[test]
-fn cancel_intent_tolerates_only_past_projection_revisions() {
+fn cancel_intent_accepts_current_cancellable_turn_progress() {
     let current = snapshot();
     let cancel: CancelAcpTurnRequest = serde_json::from_value(with(
         request_base(),
         json!({
             "sessionId": "session-a", "runtimeEpoch": "2", "turnId": "turn-a",
-            "expectedTurnState": "running", "expectedTurnRevision": "5"
+            "expectedTurnState": "sending", "expectedTurnRevision": "5"
         }),
     ))
     .unwrap();
 
     let mut advanced = current.clone();
     advanced.projection_revision = ProjectionRevision::new(8).unwrap();
+    advanced.turn_state = Some(TurnState::Running);
+    advanced.turn_revision = Some(EntityRevision::new(6).unwrap());
     assert_eq!(validate_cancel_intent(&cancel, &advanced), Ok(()));
 
     let mut future_projection = cancel.clone();
@@ -571,6 +639,12 @@ fn cancel_intent_tolerates_only_past_projection_revisions() {
     );
 
     let mut drifted = advanced.clone();
+    drifted.turn_state = Some(TurnState::Queued);
+    assert_eq!(
+        validate_cancel_intent(&cancel, &drifted),
+        Err(IntentError::UnexpectedTurnState)
+    );
+    drifted = advanced.clone();
     drifted.project_id = SageProjectId::parse("project-other").unwrap();
     assert_eq!(
         validate_cancel_intent(&cancel, &drifted),
@@ -607,16 +681,53 @@ fn cancel_intent_tolerates_only_past_projection_revisions() {
         Err(IntentError::ForeignTurn)
     );
     drifted = advanced.clone();
-    drifted.turn_state = Some(TurnState::WaitingModel);
+    drifted.turn_state = Some(TurnState::Completed);
     assert_eq!(
         validate_cancel_intent(&cancel, &drifted),
         Err(IntentError::UnexpectedTurnState)
     );
     drifted = advanced.clone();
-    drifted.turn_revision = Some(EntityRevision::new(6).unwrap());
+    drifted.turn_revision = Some(EntityRevision::new(4).unwrap());
     assert_eq!(
         validate_cancel_intent(&cancel, &drifted),
         Err(IntentError::StaleTurnRevision)
+    );
+}
+
+#[test]
+fn steer_intent_requires_the_exact_live_turn_and_bounded_prompt() {
+    let request = with(
+        request_base(),
+        json!({
+            "sessionId": "session-a", "runtimeEpoch": "2", "turnId": "turn-a",
+            "expectedTurnRevision": "5", "prompt": "Change direction"
+        }),
+    );
+    let steer: SteerAcpTurnRequest = serde_json::from_value(request.clone()).unwrap();
+    let current = snapshot();
+    assert_eq!(validate_steer_intent(&steer, &current), Ok(()));
+    let mut stale = current.clone();
+    stale.turn_id = Some(SageTurnId::parse("turn-other").unwrap());
+    assert_eq!(
+        validate_steer_intent(&steer, &stale),
+        Err(IntentError::ForeignTurn)
+    );
+    stale = current;
+    stale.turn_state = Some(TurnState::Completed);
+    assert_eq!(
+        validate_steer_intent(&steer, &stale),
+        Err(IntentError::UnexpectedTurnState)
+    );
+    assert!(
+        serde_json::from_value::<SteerAcpTurnRequest>(with(
+            request.clone(),
+            json!({"prompt": "x".repeat(100_001)})
+        ))
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<SteerAcpTurnRequest>(with(request, json!({"rawFrame": {}})))
+            .is_err()
     );
 }
 
@@ -680,8 +791,12 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         created_at: 10,
         updated_at: 11,
         terminal_at: Some(11),
+        usage: None,
+        terminal_reason: None,
         items: BoundedVec::new("items", vec![item]).unwrap(),
         activities: BoundedVec::new("activities", vec![]).unwrap(),
+        browser_operations: BoundedVec::new("browserOperations", vec![]).unwrap(),
+        browser_operations_collapsed: 0,
     };
     let session = SessionProjection {
         id: session_id.clone(),
@@ -692,6 +807,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         residency: Residency::Cold,
         runtime_epoch: None,
         next_runtime_epoch: None,
+        permission_requests: false,
         capabilities: CapabilitySnapshotV1 {
             schema_version: SchemaVersionV1,
             protocol_version: RequiredText::new("protocolVersion", "fixture-v1").unwrap(),

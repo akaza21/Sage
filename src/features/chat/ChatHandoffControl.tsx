@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
 } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -26,6 +27,9 @@ interface ChatHandoffControlProps {
   messages: readonly ChatMessage[];
   busy: boolean;
   onCommitted: () => void;
+  menuItem?: boolean;
+  onOpen?: () => void;
+  returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }
 
 function sourceContext(
@@ -49,6 +53,9 @@ export function ChatHandoffControl({
   messages,
   busy,
   onCommitted,
+  menuItem = false,
+  onOpen,
+  returnFocusRef,
 }: ChatHandoffControlProps) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
@@ -105,16 +112,20 @@ export function ChatHandoffControl({
         setIntent(null);
         setSaving(false);
         setHandoffError(null);
-        queueMicrotask(() => triggerRef.current?.focus());
+        queueMicrotask(() =>
+          (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+        );
       }
     });
-  }, [intent]);
+  }, [intent, returnFocusRef]);
 
   const close = () => {
     setIntent(null);
     setSaving(false);
     setHandoffError(null);
-    queueMicrotask(() => triggerRef.current?.focus());
+    queueMicrotask(() =>
+      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+    );
   };
   const chooseTarget = useCallback(
     (targetChatId: string) => {
@@ -139,6 +150,7 @@ export function ChatHandoffControl({
         ),
       });
       setHandoffError(null);
+      onOpen?.();
     } catch (error) {
       setHandoffError(error instanceof Error ? error.message : String(error));
     }
@@ -166,16 +178,19 @@ export function ChatHandoffControl({
       setIntent(null);
       setHandoffError(error instanceof Error ? error.message : String(error));
     }
-    queueMicrotask(() => triggerRef.current?.focus());
+    queueMicrotask(() =>
+      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+    );
   };
 
   return (
     <div className="handoff-control">
       <button
         ref={triggerRef}
-        className="button button--compact"
+        className={menuItem ? "menu-item" : "button button--compact"}
         type="button"
         aria-label="Hand off chat"
+        role={menuItem ? "menuitem" : undefined}
         disabled={disabled || targets.length === 0}
         onClick={open}
       >

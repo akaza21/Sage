@@ -1,5 +1,6 @@
 pub(crate) mod attached_context;
 pub(crate) mod bindings;
+pub mod browser;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;
 pub(crate) mod command_output;
@@ -13,6 +14,7 @@ pub mod intent;
 mod ipc;
 mod lifecycle;
 pub mod limits;
+pub(crate) mod mcp;
 pub(crate) mod migration;
 pub(crate) mod package_manifest;
 pub(crate) mod page_admission;

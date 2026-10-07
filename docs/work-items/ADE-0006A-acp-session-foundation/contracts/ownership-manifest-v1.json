@@ -147,10 +147,26 @@
   ],
   "rules": [
     {
+      "owner": "bf3d-bf3e-native-devtools",
+      "prefixes": ["src-tauri/src/browser/devtools/"],
+      "files": []
+    },
+    {
+      "owner": "bf3-browser-capability-contract",
+      "prefixes": ["src-tauri/src/acp/browser/"],
+      "files": ["src-tauri/src/acp/limits/browser.rs"]
+    },
+    {
+      "owner": "mcp-injection-seam",
+      "prefixes": ["src-tauri/src/acp/mcp/"],
+      "files": ["src-tauri/src/acp/mcp.rs"]
+    },
+    {
       "owner": "c0-contract-and-migration",
       "prefixes": [
         "docs/work-items/ADE-0006A-acp-session-foundation/",
         "src-tauri/src/acp/migration/",
+        "src-tauri/src/acp/projection/",
         "src-tauri/src/acp/resource_mapper/",
         "src-tauri/src/acp/tests/"
       ],
@@ -167,6 +183,8 @@
         "src-tauri/src/acp/bindings/adapter.rs",
         "src-tauri/src/acp/bindings/adapter/batch_builder.rs",
         "src-tauri/src/acp/bindings/adapter/byte_count.rs",
+        "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",
+        "src-tauri/src/acp/bindings/command_summary.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",
@@ -176,8 +194,12 @@
         "src-tauri/src/acp/fixture_protocol.rs",
         "src-tauri/src/acp/image_admit.rs",
         "src-tauri/src/acp/intent.rs",
+        "src-tauri/src/acp/intent/capability.rs",
+        "src-tauri/src/acp/intent/file_change.rs",
+        "src-tauri/src/acp/intent/tool_category.rs",
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",
+        "src-tauri/src/acp/limits/fixture.rs",
         "src-tauri/src/acp/limits/preview.rs",
         "src-tauri/src/acp/package_manifest.rs",
         "src-tauri/src/acp/projection.rs",
@@ -208,6 +230,7 @@
         "src-tauri/src/workbench_persistence/"
       ],
       "files": [
+        "src-tauri/src/acp/session_config/kind.rs",
         "src-tauri/src/acp/session_config/mod.rs",
         "src-tauri/src/acp/session_config/overlay.rs",
         "src-tauri/src/acp/session_config/tests.rs",
@@ -256,6 +279,11 @@
         "src-tauri/testdata/acp/omp/"
       ],
       "files": []
+    },
+    {
+      "owner": "h5-standard-acp-admission",
+      "prefixes": ["src-tauri/src/acp/bindings/standard_acp/"],
+      "files": ["src-tauri/src/acp/bindings/registry/opencode.rs"]
     },
     {
       "owner": "serialized-final-integration",
@@ -342,12 +370,14 @@
         "scripts/validate-ade0006a-c0b-plan.mjs",
         "scripts/validate-ade0006a-c0b-results.mjs",
         "scripts/validate-ade0006a-c0b.node-test.mjs",
+        "src-tauri/src/acp/bindings/characterisation.rs",
         "src-tauri/src/acp/bindings/mod.rs",
         "src-tauri/src/acp/bindings/registry/claude.rs",
         "src-tauri/src/acp/bindings/registry/codex.rs",
         "src-tauri/src/acp/bindings/registry/record.rs",
         "src-tauri/src/acp/bindings/registry/test_support.rs",
         "src-tauri/src/acp/ipc.rs",
+        "src-tauri/src/acp/ipc/intent_validation.rs",
         "src-tauri/src/acp/mod.rs",
         "src-tauri/src/commands.rs",
         "src-tauri/src/editor_persistence.rs",

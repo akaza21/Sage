@@ -6,6 +6,7 @@ import { utf8ByteLength } from "./text";
 export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
+export const MAX_BROWSER_PAGE_TEXT_BYTES = 4 * 1024;
 
 export type DiffLineSide = "old" | "new";
 
@@ -31,6 +32,54 @@ export interface DiffLineCommentContext {
   startLine: string;
   endLine: string;
   note: string;
+}
+
+export interface BrowserPageContext {
+  kind: "browserPage";
+  tabId: string;
+  url: string;
+  title: string;
+  text: string;
+}
+
+export type AttachedContext = DiffLineCommentContext | BrowserPageContext;
+
+export function parseBrowserPageContext(
+  value: unknown,
+): BrowserPageContext | null {
+  if (!isRecord(value) || value.kind !== "browserPage") return null;
+  const { tabId, url, title, text } = value;
+  if (
+    typeof tabId !== "string" ||
+    !/^browser-[1-9]\d*$/.test(tabId) ||
+    typeof url !== "string" ||
+    utf8ByteLength(url) > 2048 ||
+    typeof title !== "string" ||
+    utf8ByteLength(title) > 256 ||
+    typeof text !== "string" ||
+    utf8ByteLength(text) > MAX_BROWSER_PAGE_TEXT_BYTES ||
+    [...title].some(unsafeDisplayCharacter) ||
+    [...text].some(
+      (character) => character !== "\n" && unsafeDisplayCharacter(character),
+    )
+  )
+    return null;
+  try {
+    const parsed = new URL(url);
+    if (
+      !["http:", "https:"].includes(parsed.protocol) ||
+      parsed.username ||
+      parsed.password
+    )
+      return null;
+  } catch {
+    return null;
+  }
+  return { kind: "browserPage", tabId, url, title, text };
+}
+
+export function parseAttachedContext(value: unknown): AttachedContext | null {
+  return parseBrowserPageContext(value) ?? parseDiffLineCommentContext(value);
 }
 
 function parseAttachedAgentDiffRef(value: unknown): AgentDiffRef | null {
@@ -120,17 +169,37 @@ export function parseDiffLineCommentContext(
   };
 }
 
+export function queuedAttachmentCue(context: AttachedContext): {
+  kind: "file" | "page";
+  label: string;
+} {
+  if (context.kind === "browserPage") {
+    const parsed = parseBrowserPageContext(context);
+    return {
+      kind: "page",
+      label: parsed ? new URL(parsed.url).host.slice(0, 64) : "Page",
+    };
+  }
+  const parsed = parseDiffLineCommentContext(context);
+  return {
+    kind: "file",
+    label: parsed
+      ? (parsed.diffRef.relativePath.split("/").at(-1) ?? "File").slice(0, 64)
+      : "File",
+  };
+}
+
 export function validateAttachedContexts(
-  values: readonly DiffLineCommentContext[],
-): readonly DiffLineCommentContext[] {
+  values: readonly AttachedContext[],
+): readonly AttachedContext[] {
   if (values.length > MAX_ATTACHED_CONTEXTS_PER_TURN) {
     throw new Error(
       `Attached context entries exceed ${MAX_ATTACHED_CONTEXTS_PER_TURN}`,
     );
   }
   return values.map((value) => {
-    const parsed = parseDiffLineCommentContext(value);
-    if (!parsed) throw new Error("Attached diff context is invalid");
+    const parsed = parseAttachedContext(value);
+    if (!parsed) throw new Error("Attached context is invalid");
     return parsed;
   });
 }
@@ -154,7 +223,16 @@ export function diffLineCommentContext(
   return parsed;
 }
 
-export function attachedContextKey(context: DiffLineCommentContext): string {
+export function attachedContextKey(context: AttachedContext): string {
+  if (context.kind === "browserPage") {
+    return JSON.stringify([
+      context.kind,
+      context.tabId,
+      context.url,
+      context.title,
+      context.text,
+    ]);
+  }
   const ref = context.diffRef;
   return JSON.stringify([
     ref.projectId,
@@ -176,8 +254,8 @@ export function attachedContextKey(context: DiffLineCommentContext): string {
 }
 
 export function attachedContextsEqual(
-  left: readonly DiffLineCommentContext[],
-  right: readonly DiffLineCommentContext[],
+  left: readonly AttachedContext[],
+  right: readonly AttachedContext[],
 ): boolean {
   return (
     left.length === right.length &&

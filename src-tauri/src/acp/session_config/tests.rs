@@ -119,7 +119,107 @@ fn initial_and_replacement_config_preserve_v1_forms() {
             .len(),
         2
     );
-    assert!(SessionConfig::from_wire(&grouped, false).is_err());
+    let demoted = SessionConfig::from_wire(&grouped, false).unwrap();
+    assert_eq!(demoted.config_options.as_slice().len(), 2);
+    let ConfigKind::Unsupported { kind } = &demoted.config_options.as_slice()[1].kind else {
+        panic!("an unnegotiated boolean must survive as an unsupported option")
+    };
+    assert_eq!(kind.as_str(), "boolean");
+    assert!(matches!(
+        demoted.config_options.as_slice()[0].kind,
+        ConfigKind::Select { .. }
+    ));
+}
+
+#[test]
+fn a_demoted_boolean_projects_as_unsupported_and_never_as_a_raw_boolean() {
+    let wire =
+        json!({"configOptions":[{"id":"flag","name":"Flag","type":"boolean","currentValue":true}]});
+    let projected = serde_json::to_value(SessionConfig::from_wire(&wire, false).unwrap()).unwrap();
+    let option = &projected["configOptions"][0];
+    assert_eq!(option["type"], json!("unsupported"));
+    assert_eq!(option["kind"], json!("boolean"));
+    assert_eq!(option["id"], json!("flag"));
+    assert_eq!(option["name"], json!("Flag"));
+    assert!(option.get("currentValue").is_none());
+}
+
+#[test]
+fn a_projected_unsupported_option_reparses_with_its_original_kind() {
+    let wire =
+        json!({"configOptions":[{"id":"flag","name":"Flag","type":"boolean","currentValue":true}]});
+    let projected = serde_json::to_value(SessionConfig::from_wire(&wire, false).unwrap()).unwrap();
+    let reparsed = SessionConfig::from_wire(&projected, false).unwrap();
+    let ConfigKind::Unsupported { kind } = &reparsed.config_options.as_slice()[0].kind else {
+        panic!("a projected unsupported option must reparse as unsupported")
+    };
+    assert_eq!(kind.as_str(), "boolean");
+}
+
+#[test]
+fn an_unknown_option_type_degrades_without_discarding_its_neighbours() {
+    let unknown =
+        json!({"id":"x","name":"X","type":"text","currentValue":"a","placeholder":"type here"});
+    let config =
+        SessionConfig::from_wire(&json!({"configOptions":[select(), unknown.clone()]}), true)
+            .unwrap();
+    assert!(matches!(
+        config.config_options.as_slice()[0].kind,
+        ConfigKind::Select { .. }
+    ));
+    let option = &config.config_options.as_slice()[1];
+    let ConfigKind::Unsupported { kind, .. } = &option.kind else {
+        panic!("an unknown option type must degrade rather than fail the config")
+    };
+    assert_eq!(kind.as_str(), "text");
+    assert_eq!(
+        serde_json::to_value(option).unwrap(),
+        json!({"id":"x","name":"X","type":"unsupported","kind":"text"})
+    );
+}
+
+#[test]
+fn an_unsupported_option_is_never_settable() {
+    let config = SessionConfig::from_wire(
+        &json!({"configOptions":[{"id":"x","name":"X","type":"text","currentValue":"a"}]}),
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        config.validate_value(
+            "x",
+            &ConfigValue::Select {
+                value: ConfigId::new("value", "a").unwrap()
+            }
+        ),
+        Err("session config value not advertised".into())
+    );
+}
+
+#[test]
+fn opencode_session_configuration_decodes_from_its_captured_response() {
+    let frames =
+        include_str!("../../../tests/fixtures/harness-traces/opencode/tool-kinds/frames.jsonl");
+    let response = frames
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|frame| frame["frame"]["id"] == json!(2) && frame["frame"]["result"].is_object())
+        .expect("opencode session/new response");
+    let config = SessionConfig::from_wire(&response["frame"]["result"], true).unwrap();
+    let ids = config
+        .config_options
+        .as_slice()
+        .iter()
+        .map(|option| option.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["model", "mode"]);
+    assert!(
+        config
+            .config_options
+            .as_slice()
+            .iter()
+            .all(|option| matches!(option.kind, ConfigKind::Select { .. }))
+    );
 }
 
 #[test]
@@ -127,7 +227,6 @@ fn malformed_duplicate_and_over_budget_config_fail_closed() {
     for value in [
         json!({"modes":{"currentModeId":"missing","availableModes":[{"id":"ask","name":"Ask"}]}}),
         json!({"configOptions":[select(),select()]}),
-        json!({"configOptions":[{"id":"x","name":"X","type":"text","currentValue":"a"}]}),
         json!({"configOptions":[{"id":"x","name":"X","type":"select","currentValue":"a","options":[{"value":"b","name":"B"}]}]}),
         json!({"configOptions":[{"id":"x","name":"X","type":"select","currentValue":"a","options":[{"value":"a","name":"A"},{"value":"a","name":"Again"}]}]}),
         json!({"configOptions":[{"id":"x","name":"X","type":"select","currentValue":"a","options":[{"value":"a","name":"A"},{"group":"g","name":"G","options":[]}]}]}),

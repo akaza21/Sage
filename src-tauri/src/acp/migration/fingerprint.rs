@@ -20,6 +20,10 @@ const V7: &str = include_str!("../../../migrations/007_acp_activation_abort.sql"
 const V8: &str = include_str!("../../../migrations/008_permission_decisions.sql");
 const V9: &str = include_str!("../../../migrations/009_cancelled_permissions.sql");
 const V10: &str = include_str!("../../../migrations/010_acp_file_change_snapshots.sql");
+const V11: &str = include_str!("../../../migrations/011_turn_usage_snapshots.sql");
+const V12: &str = include_str!("../../../migrations/012_browser_tabs.sql");
+const V13: &str = include_str!("../../../migrations/013_chat_queued_prompts.sql");
+pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -39,6 +43,10 @@ pub(super) enum SchemaClass {
     CurrentV8,
     CurrentV9,
     CurrentV10,
+    CurrentV10LegacySessionEvents,
+    CurrentV11,
+    CurrentV12,
+    CurrentV13,
 }
 
 impl SchemaClass {
@@ -61,6 +69,10 @@ impl SchemaClass {
                 | Self::CurrentV7
                 | Self::CurrentV8
                 | Self::CurrentV9
+                | Self::CurrentV10
+                | Self::CurrentV10LegacySessionEvents
+                | Self::CurrentV11
+                | Self::CurrentV12
         )
     }
 }
@@ -106,11 +118,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 10")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 14")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 10
+        || versions.len() > 13
         || versions
             .iter()
             .enumerate()
@@ -128,10 +140,13 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
     let class = class_for_version(version)?;
     let actual = schema_fingerprint(connection)?;
     let expected = expected_schema_fingerprint(version)?;
-    if actual != expected {
-        return invalid("Sage schema objects do not match the exact declared version");
+    if actual == expected {
+        return Ok(class);
     }
-    Ok(class)
+    if version == 10 && actual == expected_legacy_v10_session_events_fingerprint()? {
+        return Ok(SchemaClass::CurrentV10LegacySessionEvents);
+    }
+    invalid("Sage schema objects do not match the exact declared version")
 }
 
 pub(super) fn database_fingerprint(connection: &Connection) -> AppResult<DatabaseFingerprint> {
@@ -233,6 +248,16 @@ fn table_columns(connection: &Connection, quoted_table: &str) -> AppResult<Vec<S
 }
 
 fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
+    schema_fingerprint(&expected_schema_connection(version)?)
+}
+
+fn expected_legacy_v10_session_events_fingerprint() -> AppResult<String> {
+    let expected = expected_schema_connection(10)?;
+    expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
+    schema_fingerprint(&expected)
+}
+
+fn expected_schema_connection(version: u32) -> AppResult<Connection> {
     let mut expected = Connection::open_in_memory()?;
     expected.execute_batch(INITIAL)?;
     if version >= 2 {
@@ -293,7 +318,33 @@ fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
         )?;
         expected.pragma_update(None, "user_version", 10)?;
     }
-    schema_fingerprint(&expected)
+    if version >= 11 {
+        expected.pragma_update(None, "foreign_keys", "OFF")?;
+        expected.execute_batch(V11)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 11)?;
+    }
+    if version >= 12 {
+        expected.pragma_update(None, "foreign_keys", "OFF")?;
+        expected.execute_batch(V12)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 12)?;
+    }
+    if version >= 13 {
+        expected.execute_batch(V13)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 13)?;
+    }
+    Ok(expected)
 }
 
 fn class_for_version(version: u32) -> AppResult<SchemaClass> {
@@ -308,6 +359,9 @@ fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         8 => SchemaClass::CurrentV8,
         9 => SchemaClass::CurrentV9,
         10 => SchemaClass::CurrentV10,
+        11 => SchemaClass::CurrentV11,
+        12 => SchemaClass::CurrentV12,
+        13 => SchemaClass::CurrentV13,
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

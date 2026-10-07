@@ -18,6 +18,7 @@ use super::CodexRuntime;
 pub(crate) struct CodexRuntimeFactory {
     binding: Arc<AdmittedCodexBinding>,
     project_root: CodexProjectRootAuthority,
+    mcp: crate::acp::mcp::McpAdmission,
 }
 
 impl CodexRuntimeFactory {
@@ -25,9 +26,18 @@ impl CodexRuntimeFactory {
         binding: Arc<AdmittedCodexBinding>,
         project_root: CodexProjectRootAuthority,
     ) -> Self {
+        Self::with_mcp(binding, project_root, Default::default())
+    }
+
+    pub(crate) fn with_mcp(
+        binding: Arc<AdmittedCodexBinding>,
+        project_root: CodexProjectRootAuthority,
+        mcp: crate::acp::mcp::McpAdmission,
+    ) -> Self {
         Self {
             binding,
             project_root,
+            mcp,
         }
     }
 }
@@ -38,11 +48,12 @@ impl RuntimeFactory for CodexRuntimeFactory {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<NativeRuntime, AdapterRuntimeError> {
-        CodexRuntime::from_admitted_binding(
+        CodexRuntime::from_admitted_binding_with_mcp(
             self.binding,
             self.project_root,
             runtime_epoch,
             session_id,
+            self.mcp,
         )
         .map(NativeRuntime::new)
     }

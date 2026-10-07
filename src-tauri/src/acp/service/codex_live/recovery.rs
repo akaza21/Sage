@@ -1,6 +1,5 @@
 use super::*;
 
-#[path = "recovery/pending.rs"]
 mod pending;
 pub(in crate::acp::service) use pending::PendingCodexRecovery;
 
@@ -22,11 +21,16 @@ impl AcpService {
         &self,
         deadline: Instant,
     ) -> Result<bool, crate::acp::runtime::HostError> {
-        let recovery = self
-            .codex_recovery
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+        let recovery = {
+            let mut retained = self
+                .codex_recovery
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !matches!(retained.as_ref(), Some(PendingCodexRecovery::Runner { .. })) {
+                return Ok(false);
+            }
+            retained.take()
+        };
         let Some(recovery) = recovery else {
             return Ok(false);
         };
@@ -49,15 +53,45 @@ impl AcpService {
         }
     }
 
+    pub(in crate::acp::service) fn reclaim_zero_process_capacity(
+        &self,
+        deadline: Instant,
+    ) -> Result<bool, crate::acp::runtime::HostError> {
+        if self.reclaim_zero_process_runner_capacity(deadline)? {
+            return Ok(true);
+        }
+        self.shutdown_codex_recovery(deadline)
+    }
+
     pub(in crate::acp::service) fn shutdown_codex_recovery(
         &self,
         deadline: Instant,
     ) -> Result<bool, crate::acp::runtime::HostError> {
-        let recovery = self
-            .codex_recovery
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+        if let Some(owner) = self.native_end_recovery_owner()? {
+            return self
+                .end_session_natively(owner)
+                .map(|()| true)
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired);
+        }
+        if let Some(reclaimed) = self.shutdown_retained_live_host_recovery(deadline)? {
+            return Ok(reclaimed);
+        }
+        let recovery = {
+            let mut retained = self
+                .codex_recovery
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if matches!(
+                retained.as_ref(),
+                Some(
+                    PendingCodexRecovery::LiveHost(_)
+                        | PendingCodexRecovery::LiveHostInFlight { .. }
+                )
+            ) {
+                return Err(crate::acp::runtime::HostError::RecoveryRequired);
+            }
+            retained.take()
+        };
         let Some(recovery) = recovery else {
             return Ok(false);
         };
@@ -176,8 +210,8 @@ impl AcpService {
                     claimed,
                 }),
             },
-            PendingCodexRecovery::LiveHost(recovery) => {
-                self.shutdown_live_host_recovery(recovery, deadline)
+            PendingCodexRecovery::LiveHost(_) | PendingCodexRecovery::LiveHostInFlight { .. } => {
+                unreachable!()
             }
             PendingCodexRecovery::Driver {
                 abort,

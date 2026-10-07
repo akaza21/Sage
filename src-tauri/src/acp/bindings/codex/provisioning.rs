@@ -15,15 +15,12 @@ use super::{
 };
 
 #[cfg(windows)]
-#[path = "provisioning/windows.rs"]
 mod windows;
 
-#[path = "provisioning/digest.rs"]
 mod digest;
 
 pub(super) use digest::{hash_native_path, hex, source_proof_digest};
 
-#[path = "provisioning/helper.rs"]
 mod helper;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
@@ -427,5 +424,4 @@ fn verified_source(
 }
 
 #[cfg(all(test, windows))]
-#[path = "provisioning/tests.rs"]
 mod tests;

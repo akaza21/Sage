@@ -31,6 +31,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "ade0006a-package-source-stage.node-test.mjs",
   "ade0006a-package-tree-set.node-test.mjs",
   "ade0006a-package-tree.node-test.mjs",
+  "app-smoke-server.node-test.mjs",
   "beta0001-acceptance-contract.node-test.mjs",
   "beta0001-acp05-pairing-receipt.node-test.mjs",
   "beta0001-candidate-campaign.node-test.mjs",
@@ -39,12 +40,21 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
   "budget-lanes.node-test.mjs",
+  "check-harness-trace-privacy.node-test.mjs",
+  "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
   "ci-rust-phase.node-test.mjs",
   "css-highlight-policy.node-test.mjs",
   "css-hygiene-policy.node-test.mjs",
   "generate-source-manifest.node-test.mjs",
   "gate.node-test.mjs",
+  "hr6-access-mode.node-test.mjs",
+  "hr6-cancel-evidence.node-test.mjs",
+  "hr6-chat-scope.node-test.mjs",
+  "hr6-diff-evidence.node-test.mjs",
+  "hr6-harness-selection.node-test.mjs",
+  "hr6-permission-evidence.node-test.mjs",
+  "hr6-tool-evidence.node-test.mjs",
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
@@ -57,10 +67,12 @@ export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
   "acp05-owned-launcher.node-test.mjs",
   "ade0006a-c0b-campaign-launch.node-test.mjs",
   "ade0006a-c0b-collector-provenance.node-test.mjs",
+  "app-smoke-cli.node-test.mjs",
   "beta0001-installed-smoke-settlement.node-test.mjs",
   "beta0001-installed-smoke.node-test.mjs",
   "beta0001-windows-locked-loader.node-test.mjs",
   "check-lanes.native-windows.node-test.mjs",
+  "hr6-live-run.node-test.mjs",
   "installed-smoke-identity.node-test.mjs",
   "process-identity-cleanup.node-test.mjs",
   "source-functional-acp04-live-probe.node-test.mjs",
@@ -358,6 +370,26 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
       "Inventory/migration assertion for the explicit lane manifest; portable pure discovery logic.",
   },
   {
+    file: "check-harness-trace-privacy.node-test.mjs",
+    reason:
+      "Portable harness-trace privacy guard regression tests inspect JSON values without native capabilities.",
+  },
+  {
+    file: "check-policy.node-test.mjs",
+    reason:
+      "Portable exact-main-WebView ACL permission regression for Sage app commands; no native capability required.",
+  },
+  {
+    file: "app-smoke-server.node-test.mjs",
+    reason:
+      "Portable dev-server lifecycle proofs for the smoke harness; spawn, TCP probes, and process liveness only, with no native capability.",
+  },
+  {
+    file: "app-smoke-cli.node-test.mjs",
+    reason:
+      "Browser-dependent smoke CLI regression lane; drives the real app-smoke entrypoint with bundled Playwright Chromium and asserts exit status, dev-server PID death, and port release.",
+  },
+  {
     file: "check-lanes.portable.node-test.mjs",
     reason:
       "Portable successor lane for the 21 plan/parser/stream/dependency-injected check-lanes cases.",
@@ -406,6 +438,46 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "gate.node-test.mjs",
     reason:
       "Portable gate environment contract proves the deterministic Vitest worker defaults and explicit operator overrides.",
+  },
+  {
+    file: "hr6-chat-scope.node-test.mjs",
+    reason:
+      "Portable HR-6 focused-Chat selector regression uses an in-memory DOM and source contract without native process control.",
+  },
+  {
+    file: "hr6-live-run.node-test.mjs",
+    reason:
+      "Native-Windows HR-6 live-run proof launches PowerShell receipt, stream, and cleanup fixtures.",
+  },
+  {
+    file: "hr6-tool-evidence.node-test.mjs",
+    reason:
+      "Portable HR-6 tool-evidence regression uses in-memory projections and source contracts without native process control.",
+  },
+  {
+    file: "hr6-cancel-evidence.node-test.mjs",
+    reason:
+      "Portable HR-6 running-tool cancellation regression uses an in-memory DOM, bounded projections, and source contracts without native process control.",
+  },
+  {
+    file: "hr6-access-mode.node-test.mjs",
+    reason:
+      "Portable HR-6 session access-mode picker regression uses an in-memory DOM and source contracts without native process control.",
+  },
+  {
+    file: "hr6-diff-evidence.node-test.mjs",
+    reason:
+      "Portable HR-6 diff and file-chip evidence regression uses an in-memory DOM and bounded projections without native process control.",
+  },
+  {
+    file: "hr6-permission-evidence.node-test.mjs",
+    reason:
+      "Portable HR-6 permission-card evidence regression uses an in-memory DOM, bounded projections, and source contracts without native process control.",
+  },
+  {
+    file: "hr6-harness-selection.node-test.mjs",
+    reason:
+      "Portable HR-6 harness selection outcome and opt-in flag regression evaluates pure classification functions without native process control.",
   },
 ]);
 
@@ -687,7 +759,30 @@ export function laneGate(lane, platform = process.platform) {
   return fail("unknown-lane", lane);
 }
 
-function runNodeTests(files, directory, { testNamePattern } = {}) {
+export function environmentForBudgetLane(environment = process.env) {
+  if (process.platform !== "win32") return environment;
+  const systemRoot = environment.SystemRoot ?? environment.SYSTEMROOT;
+  if (!systemRoot || !path.isAbsolute(systemRoot)) return environment;
+  const inboxModules = path.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "Modules",
+  );
+  const modulePaths = (environment.PSModulePath ?? "")
+    .split(path.delimiter)
+    .filter((candidate) => candidate.length > 0);
+  const retained = modulePaths.filter(
+    (candidate) => candidate.toLowerCase() !== inboxModules.toLowerCase(),
+  );
+  return {
+    ...environment,
+    PSModulePath: [inboxModules, ...retained].join(path.delimiter),
+  };
+}
+
+function runNodeTests(files, directory, { testNamePattern, environment } = {}) {
   // Lane tests assume the repository root as cwd (repo-relative evidence,
   // manifest, and Cargo paths); the file arguments stay absolute.
   const root = path.dirname(directory);
@@ -698,6 +793,7 @@ function runNodeTests(files, directory, { testNamePattern } = {}) {
   args.push(...files.map((file) => path.join(directory, file)));
   const result = spawnSync(process.execPath, args, {
     cwd: root,
+    env: environment,
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -719,7 +815,10 @@ export function runBudgetLane(lane, { directory = scriptsDirectory() } = {}) {
   process.stdout.write(
     `budget lane ${lane}: inventory ${inventory.discovered} discovered (${inventory.portable} portable/${inventory.windows} windows/${inventory.posix} posix), ${inventory.origins} origins to ${inventory.successors} successors, ${inventory.justified} lane records${patternNote}.\n`,
   );
-  const status = runNodeTests(files, directory, { testNamePattern: pattern });
+  const status = runNodeTests(files, directory, {
+    testNamePattern: pattern,
+    environment: lane === "windows" ? environmentForBudgetLane() : undefined,
+  });
   return { status, inventory, lane, verified: status === 0 };
 }
 

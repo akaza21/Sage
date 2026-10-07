@@ -9,6 +9,7 @@ impl ClaudeRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         match command {
+            AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::Initialize
                 if self.capabilities.is_none()
                     && !self
@@ -28,7 +29,7 @@ impl ClaudeRuntime {
                 }
                 let root = RequiredText::<16_384>::new("nativeRoot", native_root)
                     .map_err(|_| AdapterRuntimeError::Operation)?;
-                self.reserve(PendingRequest::NewSession, "session/new", json!({"cwd":root.as_str(),"mcpServers":[]}))
+                self.reserve(PendingRequest::NewSession, "session/new", json!({"cwd":root.as_str(),"mcpServers":self.mcp.wire(self.mcp_capabilities)}))
             }
             AdapterCommand::ResumeSession { external_session_id, native_root, model } => {
                 self.require_capability(|value| value.resume_session)?;
@@ -37,7 +38,7 @@ impl ClaudeRuntime {
                 }
                 let root = RequiredText::<16_384>::new("nativeRoot", native_root)
                     .map_err(|_| AdapterRuntimeError::Operation)?;
-                self.reserve(PendingRequest::ResumeSession(external_session_id.clone()), "session/resume", json!({"sessionId":external_session_id.as_str(),"cwd":root.as_str(),"mcpServers":[]}))
+                self.reserve(PendingRequest::ResumeSession(external_session_id.clone()), "session/resume", json!({"sessionId":external_session_id.as_str(),"cwd":root.as_str(),"mcpServers":self.mcp.wire(self.mcp_capabilities)}))
             }
             AdapterCommand::LoadSession { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::CloseSession => {
@@ -45,8 +46,15 @@ impl ClaudeRuntime {
                 let session_id = self.active.as_ref().ok_or(AdapterRuntimeError::Operation)?.external_id.clone();
                 self.reserve(PendingRequest::CloseSession, "session/close", json!({"sessionId":session_id.as_str()}))
             }
-            AdapterCommand::Prompt { prompt, client_message_id } => {
+            AdapterCommand::Prompt {
+                prompt,
+                client_message_id,
+                ..
+            } => {
                 self.require_capability(|value| value.prompt)?;
+                if !self.auth.permits_prompt() {
+                    return Err(AdapterRuntimeError::SignInRequired);
+                }
                 let id = self.next_request_id.checked_add(1).filter(|id| *id <= i64::MAX as u64).ok_or(AdapterRuntimeError::Operation)?;
                 let active = self.active.as_mut().ok_or(AdapterRuntimeError::Operation)?;
                 if active.turn.is_some() {
@@ -102,8 +110,16 @@ impl ClaudeRuntime {
                         return Err(AdapterRuntimeError::Operation);
                     }
                     PermissionDecision::AllowOnce => {
+                        let option_id = record.allow_once_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, option_id)?;
                         record.reply = PermissionReply::AllowOnce;
-                        permission_selected(&record.wire_id, &record.allow_once_option_id)?
+                        selected
+                    }
+                    PermissionDecision::AllowAlways => {
+                        let option_id = record.allow_always_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, option_id)?;
+                        record.reply = PermissionReply::AllowAlways;
+                        selected
                     }
                     PermissionDecision::Deny => {
                         record.reply = PermissionReply::Deny;

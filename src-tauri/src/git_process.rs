@@ -13,7 +13,10 @@ use tokio::{
     time::timeout,
 };
 
-use crate::error::{AppError, AppResult};
+use crate::{
+    error::{AppError, AppResult},
+    git_budget,
+};
 
 mod containment;
 mod root_authority;
@@ -24,8 +27,6 @@ pub(crate) use root_authority::GitRootAuthority;
 #[cfg(test)]
 pub(crate) use test_support::GitProcessTestHarness;
 
-const GIT_ADMISSION_TIMEOUT: Duration = Duration::from_secs(1);
-const GIT_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -62,8 +63,8 @@ impl GitProcessPolicy {
     pub(crate) fn mutation(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            admission_timeout: git_budget::ADMISSION,
+            reap_timeout: Some(git_budget::REAP),
             mutation: true,
             visible_effect: true,
             #[cfg(test)]
@@ -88,8 +89,8 @@ impl GitProcessPolicy {
     pub(crate) fn read(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            admission_timeout: git_budget::ADMISSION,
+            reap_timeout: Some(git_budget::REAP),
             mutation: false,
             visible_effect: false,
             #[cfg(test)]
@@ -115,7 +116,7 @@ impl GitProcessPolicy {
         Self {
             command_timeout,
             admission_timeout: self.admission_timeout,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            reap_timeout: Some(git_budget::REAP),
             mutation: true,
             visible_effect: false,
             #[cfg(test)]

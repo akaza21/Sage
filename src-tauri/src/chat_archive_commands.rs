@@ -29,13 +29,27 @@ async fn archive_chat_inner(
     request: ChatLifecycleRequest,
     expected_transition_epoch: u64,
 ) -> ProjectTransitionResult {
-    execute_chat_transition(
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    let result = execute_chat_transition(
         state,
         expected_transition_epoch,
         "project changed before the requested Chat archive",
         move |database| database.archive_chat(&request),
     )
-    .await
+    .await;
+    if result.committed
+        && let (Ok(project), Ok(chat)) = (
+            crate::acp::contract::SageProjectId::parse(project_id),
+            crate::acp::contract::SageChatId::parse(chat_id),
+        )
+    {
+        if let Err(error) = state.terminals.close_chat(&project, &chat) {
+            tracing::warn!(?error, "terminal Chat-close cleanup remains unsettled");
+        }
+        state.acp.revoke_browser_chat(&project, &chat);
+    }
+    result
 }
 
 async fn restore_chat_inner(
@@ -59,7 +73,11 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{domain::ProjectLayoutRequest, persistence::Database};
+    use crate::{
+        acp::contract::{SageChatId, SageProjectId},
+        domain::ProjectLayoutRequest,
+        persistence::Database,
+    };
 
     #[test]
     fn native_archive_and_restore_are_epoch_checked_transitions() {
@@ -94,8 +112,32 @@ mod tests {
             };
             let state = AppState::new(database);
 
+            let browser_project = SageProjectId::parse(project.id.clone()).unwrap();
+            let browser_chat = SageChatId::parse(first_chat_id.clone()).unwrap();
+            state
+                .acp
+                .attach_browser_tab(
+                    browser_project.clone(),
+                    browser_chat.clone(),
+                    "browser-7",
+                    "https://example.com",
+                    1,
+                )
+                .unwrap();
+            let browser_lease = state
+                .acp
+                .browser_attachment(&browser_project, &browser_chat)
+                .unwrap();
+
             let archived = archive_chat_inner(&state, request.clone(), 0).await;
             assert!(archived.committed);
+            assert!(!browser_lease.is_live());
+            assert!(
+                state
+                    .acp
+                    .browser_attachment(&browser_project, &browser_chat)
+                    .is_none()
+            );
             assert_eq!(archived.transition_epoch, 1);
             let archived_snapshot = archived.snapshot.unwrap();
             assert_eq!(archived_snapshot.archived_chats[0].id, first_chat_id);

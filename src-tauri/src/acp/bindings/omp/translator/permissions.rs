@@ -1,8 +1,9 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
+    bindings::command_summary::{CommandSummaryError, sanitize_command_summary},
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
-    intent::{ExternalId, NormalizedPayload},
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
     limits::LIMITS,
 };
 
@@ -14,6 +15,8 @@ use crate::acp::bindings::omp::{
 };
 
 const MAX_PERMISSION_REQUESTS: usize = 8;
+const COMMAND_HIDDEN: &str =
+    "command hidden: contains content Sage will not display; review before approving";
 
 #[derive(Debug)]
 pub(super) struct PermissionIntent {
@@ -132,7 +135,38 @@ impl OmpTranslator {
                 raw_request_id,
             },
         );
-        let category = tool_category(tool);
+        let category =
+            self.adopt_permission_category(tool_call_id.as_str(), tool_category(tool))?;
+        let fallback_name = tool
+            .get("title")
+            .and_then(Value::as_str)
+            .filter(|title| !title.trim().is_empty())
+            .filter(|title| title.len() <= 512)
+            .and_then(|title| sanitize_command_summary(title).ok())
+            .filter(|title| !title.as_str().trim().is_empty())
+            .map(|title| title.as_str().to_owned())
+            .unwrap_or_else(|| category_label(category).to_owned());
+        let summary = tool
+            .get("rawInput")
+            .and_then(Value::as_object)
+            .and_then(|input| input.get("command"))
+            .and_then(Value::as_str)
+            .filter(|command| !command.trim().is_empty())
+            .and_then(|command| {
+                let shown = match sanitize_command_summary(command) {
+                    Ok(summary) => format!("Run command: {}", summary.as_str()),
+                    Err(CommandSummaryError::Hidden) => COMMAND_HIDDEN.to_owned(),
+                    Err(_) => return None,
+                };
+                SafeText::new("permissionSummary", shown).ok()
+            })
+            .unwrap_or_else(|| {
+                SafeText::new(
+                    "permissionSummary",
+                    format!("{fallback_name} requested permission; operation details unavailable"),
+                )
+                .expect("bounded title or fixed category label")
+            });
         Ok(vec![
             AdapterEvent::Item {
                 external_key: RequiredText::new(
@@ -143,13 +177,8 @@ impl OmpTranslator {
                 tool_state: Some(ToolState::WaitingForApproval),
                 payload: NormalizedPayload::PermissionRequest {
                     category,
-                    summary: SafeText::new(
-                        "permissionSummary",
-                        format!(
-                            "{} permission requested; Sage policy requires denial",
-                            category_label(category)
-                        ),
-                    )?,
+                    summary,
+                    offered_option_kinds: None,
                 },
                 update_mode: ItemUpdateMode::Replace,
             },
@@ -158,6 +187,23 @@ impl OmpTranslator {
                 tool_call_id,
             },
         ])
+    }
+
+    fn adopt_permission_category(
+        &mut self,
+        tool_call_id: &str,
+        requested: ToolCategory,
+    ) -> Result<ToolCategory, TranslationError> {
+        let active = self.active.as_mut().ok_or(TranslationError::StaleIntent)?;
+        if requested == ToolCategory::Other
+            && let Some(tracked) = active.tool_categories.get(tool_call_id).copied()
+        {
+            return Ok(tracked);
+        }
+        active
+            .tool_categories
+            .insert(tool_call_id.to_owned(), requested);
+        Ok(requested)
     }
 
     /// Construct the deny response only after the durable decline fact commits.
@@ -190,6 +236,16 @@ impl OmpTranslator {
         active
             .tools
             .insert(intent.tool_call_id.as_str().to_owned(), ToolState::Declined);
+        let category = active
+            .tool_categories
+            .get(intent.tool_call_id.as_str())
+            .copied()
+            .unwrap_or(ToolCategory::Other);
+        let locations = active
+            .tool_snapshots
+            .get(intent.tool_call_id.as_str())
+            .map(|snapshot| snapshot.1.clone())
+            .unwrap_or_default();
         let response_line = decline_line(&intent.raw_request_id)?;
         if self.resolved_permissions.len() == MAX_PERMISSION_REQUESTS
             && let Some(oldest) = self.resolved_permissions.keys().next().cloned()
@@ -213,11 +269,13 @@ impl OmpTranslator {
                 external_key: intent.tool_call_id,
                 lifecycle: ItemLifecycle::Completed,
                 tool_state: Some(ToolState::Declined),
-                payload: NormalizedPayload::ToolUpdateResult {
-                    category: crate::acp::intent::ToolCategory::Other,
-                    label: SafeText::new("toolLabel", "OMP tool")?,
+                payload: NormalizedPayload::ToolCall {
+                    execution: Default::default(),
+                    category,
+                    label: SafeText::new("toolLabel", category_label(category))?,
+                    input_summary: None,
                     output_summary: Some(SafeText::new("toolOutput", "Permission declined")?),
-                    locations: Default::default(),
+                    locations,
                     command_activity: Default::default(),
                 },
                 update_mode: ItemUpdateMode::Replace,

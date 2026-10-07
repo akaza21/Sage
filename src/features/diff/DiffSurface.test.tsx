@@ -1,4 +1,10 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -25,6 +31,74 @@ afterEach(() => {
 });
 
 describe("DiffSurface resource states", () => {
+  it("refreshes the current diff and opens its file from the review toolbar", () => {
+    const loadDiff = vi.fn(async () => undefined);
+    const openFile = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      repositories: { roots: [], truncated: false, elapsedMs: 0 },
+      diffs: {
+        [cacheKey]: {
+          phase: "ready",
+          value: { resource, binary: false, truncated: false, hunks: [] },
+        },
+      },
+      loadDiff,
+      openFile,
+    });
+
+    render(<DiffSurface tab={tab} />);
+    expect(
+      screen.getByText("Changes since HEAD (or initial tree)"),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Unstaged" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh diff" }));
+    expect(loadDiff).toHaveBeenCalledTimes(2);
+    expect(useWorkbenchStore.getState().diffs[cacheKey]).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+    expect(openFile).toHaveBeenCalledWith(resource);
+  });
+  it.each([
+    ["created", ["added", "added"], "+2", "-0"],
+    ["deleted", ["removed", "removed"], "+0", "-2"],
+  ] as const)(
+    "shows %s file counts from a complete saved diff",
+    (_, kinds, additions, deletions) => {
+      useWorkbenchStore.setState({
+        tabs: [tab],
+        activeTabId: tab.id,
+        repositories: { roots: [], truncated: false, elapsedMs: 0 },
+        diffs: {
+          [cacheKey]: {
+            phase: "ready",
+            value: {
+              resource,
+              binary: false,
+              truncated: false,
+              hunks: [
+                {
+                  header: "@@",
+                  lines: kinds.map((kind, index) => ({
+                    kind,
+                    oldLine: kind === "removed" ? index + 1 : null,
+                    newLine: kind === "added" ? index + 1 : null,
+                    text: `line ${index + 1}`,
+                  })),
+                },
+              ],
+            },
+          },
+        },
+        loadDiff: vi.fn(async () => undefined),
+      });
+
+      const { container } = render(<DiffSurface tab={tab} />);
+      expect(container.querySelector(".diff-header__counts")).toHaveTextContent(
+        `${additions}${deletions}`,
+      );
+    },
+  );
   it("moves from an announced load through an alert to a ready read-only diff", () => {
     const loadDiff = vi.fn(async () => undefined);
     useWorkbenchStore.setState({

@@ -6,23 +6,19 @@ import { ComposerContext } from "./ComposerContext";
 
 afterEach(cleanup);
 
-function usage(totalTokens: number | null, contextWindow?: number): ChatUsage {
+function usage(totalTokens: number, contextWindow?: number): ChatUsage {
   return {
     inputTokens: totalTokens,
-    outputTokens: null,
-    cachedInputTokens: null,
+    outputTokens: 0,
     totalTokens,
     ...(contextWindow === undefined ? {} : { contextWindow }),
   };
 }
 
 describe("ComposerContext", () => {
-  it("keeps unknown context capacity as a localized bare token count", () => {
+  it("hides context when capacity is unknown", () => {
     render(<ComposerContext usage={usage(6_000)} />);
-
-    expect(screen.getByLabelText("Composer context")).toHaveTextContent(
-      `Reported usage · ${(6_000).toLocaleString()} tokens`,
-    );
+    expect(screen.queryByLabelText("Composer context")).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
@@ -35,7 +31,9 @@ describe("ComposerContext", () => {
     expect(
       document.querySelector(".composer__context-usage-label"),
     ).toHaveTextContent("6K context");
-    const meter = screen.getByRole("progressbar", { name: "Reported usage" });
+    const meter = screen.getByRole("progressbar", {
+      name: "6,000 used / 272,000 total tokens",
+    });
     expect(meter).toHaveAttribute("aria-valuemin", "0");
     expect(meter).toHaveAttribute("aria-valuemax", "272000");
     expect(meter).toHaveAttribute("aria-valuenow", "6000");
@@ -43,7 +41,12 @@ describe("ComposerContext", () => {
       "aria-valuetext",
       `${(6_000).toLocaleString()} / ${(272_000).toLocaleString()} tokens used`,
     );
-    expect(meter).toHaveAttribute("title", "6,000 / 272,000 tokens");
+    expect(meter).toHaveAttribute("title", "6,000 used / 272,000 total tokens");
+    expect(meter).toHaveAttribute("tabindex", "0");
+    expect(meter).toHaveAttribute(
+      "aria-label",
+      "6,000 used / 272,000 total tokens",
+    );
     expect(meter).not.toHaveTextContent("%");
   });
 
@@ -56,29 +59,30 @@ describe("ComposerContext", () => {
     expect(
       document.querySelector(".composer__context-usage-label"),
     ).toHaveTextContent("300K context");
-    const meter = screen.getByRole("progressbar", { name: "Reported usage" });
+    const meter = screen.getByRole("progressbar", {
+      name: "300,000 used / 272,000 total tokens",
+    });
     expect(meter).toHaveAttribute("aria-valuenow", "272000");
     expect(meter).toHaveAttribute(
       "aria-valuetext",
       `${(300_000).toLocaleString()} / ${(272_000).toLocaleString()} tokens used`,
     );
-    expect(meter).toHaveAttribute("title", "300,000 / 272,000 tokens");
+    expect(meter).toHaveAttribute(
+      "title",
+      "300,000 used / 272,000 total tokens",
+    );
     expect(meter).toHaveStyle({ "--composer-context-usage": "100%" });
   });
 
   it("does not render a meter for invalid in-memory capacity", () => {
     render(<ComposerContext usage={usage(6_000, 0)} />);
 
-    expect(screen.getByLabelText("Composer context")).toHaveTextContent(
-      `Reported usage · ${(6_000).toLocaleString()} tokens`,
-    );
+    expect(screen.queryByLabelText("Composer context")).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
   it("does not render usage or a meter without a reported total", () => {
-    const { rerender } = render(
-      <ComposerContext usage={usage(null, 272_000)} />,
-    );
+    const { rerender } = render(<ComposerContext usage={null} />);
 
     expect(screen.queryByText(/Reported usage/)).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();

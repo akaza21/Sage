@@ -1,5 +1,5 @@
 import { validateAttachedContexts } from "../../../domain/attachedContext";
-import type { DiffLineCommentContext } from "../../../domain/attachedContext";
+import type { AttachedContext } from "../../../domain/attachedContext";
 import type {
   AcpChatPage,
   AcpMutationResult,
@@ -16,7 +16,7 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
-import { createAcpSessionActions } from "./acpSessionActions";
+import { createAcpSessionActions, currentSession } from "./acpSessionActions";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
@@ -49,7 +49,9 @@ export interface AcpActionCommands {
   activateSession: typeof acpDesktop.activateSession;
   sendTurn: typeof acpDesktop.sendTurn;
   cancelTurn: typeof acpDesktop.cancelTurn;
+  steerTurn?: typeof acpDesktop.steerTurn;
   closeSession: typeof acpDesktop.closeSession;
+  endSession: typeof acpDesktop.endSession;
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
 }
@@ -57,6 +59,8 @@ export interface AcpActionCommands {
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
   getContext: () => AcpActionContext | null;
+  onUnscopedRefusal?: (message: string) => void;
+  settleAccessMode?: () => Promise<boolean>;
   applyAuthoritativePage: (
     scope: AcpProjectionScope,
     page: AcpChatPage,
@@ -65,17 +69,18 @@ interface AcpActionDependencies {
   clearComposer?: (
     context: AcpActionContext,
     prompt: string,
-    attachedContext: readonly DiffLineCommentContext[],
+    attachedContext: readonly AttachedContext[],
   ) => void;
   restoreComposer?: (
     context: AcpActionContext,
     prompt: string,
-    attachedContext: readonly DiffLineCommentContext[],
+    attachedContext: readonly AttachedContext[],
   ) => void;
   createIntentId?: () => ClientIntentId;
 }
 
-export type AcpActionOutcome = "applied" | "ignoredStale" | "rejected";
+export type AcpActionOutcome =
+  "applied" | "ignoredStale" | "rejected" | "outcomeUnknown";
 type AcpActionPresentation = Pick<
   AcpActionState,
   "busy" | "cancellingTurnId" | "error"
@@ -125,14 +130,6 @@ function scopeKey(context: AcpActionContext): string {
     context.scope.chatId,
     context.ownershipEpoch,
   ]);
-}
-
-function currentSession(page: AcpChatPage): AgentSessionProjection | null {
-  if (!page.currentSessionId) return null;
-  return (
-    page.sessions.find((session) => session.id === page.currentSessionId) ??
-    null
-  );
 }
 
 function sessionById(
@@ -248,13 +245,13 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
 
   const submit = (
     prompt: string,
-    attachedContext: readonly DiffLineCommentContext[],
+    attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
-    let boundedContext: readonly DiffLineCommentContext[];
+    let boundedContext: readonly AttachedContext[];
     try {
       boundedContext = validateAttachedContexts(attachedContext);
     } catch (error) {
@@ -271,7 +268,20 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       }
       return Promise.resolve("rejected");
     }
-    if (!captured || !normalizedPrompt) return Promise.resolve("rejected");
+    if (!captured) {
+      dependencies.onUnscopedRefusal?.(
+        "This Chat is not ready to send. Reload it and try again.",
+      );
+      return Promise.resolve("rejected");
+    }
+    if (!normalizedPrompt) {
+      emitState(captured, "chat", {
+        busy: false,
+        cancellingTurnId: null,
+        error: localFailure("Enter a message before sending."),
+      });
+      return Promise.resolve("rejected");
+    }
     if (currentNonterminalTurn(captured.page)) {
       emitState(captured, "chat", {
         busy: false,
@@ -286,6 +296,14 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       let page = dependencies.getContext()?.page ?? captured.page;
       let promptCallStarted = false;
       try {
+        if (dependencies.settleAccessMode) {
+          const settled = await dependencies.settleAccessMode();
+          if (!settled) {
+            throw localFailure(
+              "The permission mode could not be confirmed, so nothing was sent.",
+            );
+          }
+        }
         let session = currentSession(page);
         if (
           session &&
@@ -380,7 +398,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     });
   };
 
-  const { cancel, close, setSessionMode, setSessionConfigOption } =
+  const { steer, cancel, close, end, setSessionMode, setSessionConfigOption } =
     createAcpSessionActions({
       getContext: dependencies.getContext,
       enqueue,
@@ -388,10 +406,20 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       sameScope,
       nextIntentId,
       cancelTurn: commands.cancelTurn,
+      steerTurn: commands.steerTurn ?? acpDesktop.steerTurn,
       closeSession: commands.closeSession,
+      endSession: commands.endSession,
       setSessionMode: commands.setSessionMode,
       setSessionConfigOption: commands.setSessionConfigOption,
     });
 
-  return { submit, cancel, close, setSessionMode, setSessionConfigOption };
+  return {
+    submit,
+    steer,
+    cancel,
+    close,
+    end,
+    setSessionMode,
+    setSessionConfigOption,
+  };
 }

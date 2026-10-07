@@ -2,12 +2,68 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_ARTIFACT_WIDTH,
+  AGENT_CHAT_MIN_WIDTH,
   AGENT_LEFT_RAIL_WIDTH,
   EDITOR_TOOL_RAIL_WIDTH,
+  fitAgentDesktopSidebarWidths,
+  initialAgentArtifactWidth,
+  initialAgentDesktopSidebarWidths,
+  initialAgentLeftRailWidth,
   resizeWorkbenchSidebar,
 } from "./workbenchSidebarResize";
 
 describe("resizeWorkbenchSidebar", () => {
+  it("opens the icon rail and project sidebar at Codex reference width", () => {
+    expect(initialAgentLeftRailWidth(1936)).toBe(385);
+    expect(initialAgentArtifactWidth(1936)).toBe(1045);
+    expect(initialAgentDesktopSidebarWidths(1380)).toEqual({
+      leftRailWidth: 385,
+      artifactWidth: 619,
+    });
+  });
+  it("opens the desktop Agent rail and artifact pane at the reference proportions", () => {
+    expect(initialAgentLeftRailWidth(1672)).toBe(385);
+    expect(initialAgentArtifactWidth(1672)).toBe(903);
+    expect(initialAgentLeftRailWidth(1380)).toBe(385);
+    expect(initialAgentArtifactWidth(1380)).toBe(745);
+  });
+
+  it("keeps a usable Chat column when either desktop splitter reaches its end", () => {
+    const artifactFirst = fitAgentDesktopSidebarWidths({
+      viewportWidth: 900,
+      leftRailWidth: AGENT_LEFT_RAIL_WIDTH.minWidth,
+      artifactWidth: AGENT_ARTIFACT_WIDTH.maxWidth,
+      prioritize: "artifact",
+    });
+    const railFirst = fitAgentDesktopSidebarWidths({
+      viewportWidth: 900,
+      leftRailWidth: AGENT_LEFT_RAIL_WIDTH.maxWidth,
+      artifactWidth: AGENT_ARTIFACT_WIDTH.minWidth,
+      prioritize: "left",
+    });
+
+    for (const widths of [artifactFirst, railFirst]) {
+      expect(
+        900 - widths.leftRailWidth - widths.artifactWidth - 16,
+      ).toBeGreaterThanOrEqual(AGENT_CHAT_MIN_WIDTH);
+    }
+  });
+
+  it("caps initial Agent proportions without resetting a dragged width on resize", () => {
+    expect(initialAgentDesktopSidebarWidths(800)).toEqual({
+      leftRailWidth: 180,
+      artifactWidth: 244,
+    });
+    expect(
+      fitAgentDesktopSidebarWidths({
+        viewportWidth: 1500,
+        leftRailWidth: 320,
+        artifactWidth: 500,
+        prioritize: "artifact",
+      }),
+    ).toEqual({ leftRailWidth: 320, artifactWidth: 500 });
+  });
+
   it("keeps each resizable workbench column within its usable width bounds", () => {
     expect(
       resizeWorkbenchSidebar(AGENT_LEFT_RAIL_WIDTH, { pointerOffset: 90 }),
@@ -17,13 +73,13 @@ describe("resizeWorkbenchSidebar", () => {
     ).toBe(314);
     expect(
       resizeWorkbenchSidebar(AGENT_ARTIFACT_WIDTH, { pointerOffset: 800 }),
-    ).toBe(460);
+    ).toBe(800);
   });
 
   it("uses keyboard steps and Home or End within the same bounds", () => {
     expect(
       resizeWorkbenchSidebar(AGENT_LEFT_RAIL_WIDTH, { key: "ArrowRight" }),
-    ).toBe(256);
+    ).toBe(393);
     expect(
       resizeWorkbenchSidebar(EDITOR_TOOL_RAIL_WIDTH, {
         key: "ArrowLeft",
@@ -34,7 +90,7 @@ describe("resizeWorkbenchSidebar", () => {
       280,
     );
     expect(resizeWorkbenchSidebar(AGENT_ARTIFACT_WIDTH, { key: "End" })).toBe(
-      460,
+      1200,
     );
   });
 });

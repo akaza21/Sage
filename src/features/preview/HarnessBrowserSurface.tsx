@@ -115,7 +115,7 @@ export function HarnessBrowserSurface({
               if (owner) browseBack(owner);
             }}
           >
-            <ChevronLeft size={13} aria-hidden="true" />
+            <ChevronLeft size={14} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -126,7 +126,7 @@ export function HarnessBrowserSurface({
               if (owner) browseForward(owner);
             }}
           >
-            <ChevronRight size={13} aria-hidden="true" />
+            <ChevronRight size={14} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -135,7 +135,7 @@ export function HarnessBrowserSurface({
             disabled={!session}
             onClick={() => setFrameEpoch((epoch) => epoch + 1)}
           >
-            <RotateCw size={13} aria-hidden="true" />
+            <RotateCw size={14} aria-hidden="true" />
           </button>
           {session && owner ? (
             <button
@@ -144,7 +144,7 @@ export function HarnessBrowserSurface({
               title="Close browser"
               onClick={closeBrowser}
             >
-              <X size={13} aria-hidden="true" />
+              <X size={14} aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -158,7 +158,7 @@ export function HarnessBrowserSurface({
           title="Preview controls"
           onClick={() => setControlsOpen((open) => !open)}
         >
-          <MoreHorizontal size={15} aria-hidden="true" />
+          <MoreHorizontal size={16} aria-hidden="true" />
         </button>
         <form className="harness-browser__address" onSubmit={submitAddress}>
           <input

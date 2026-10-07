@@ -3,51 +3,47 @@ use std::sync::Weak;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     process::TreeExit,
-    runtime::{DriverError, HostError, ProjectIntentAuthority, RuntimeHost},
+    runtime::{HostError, NonfatalRefusal, ProjectIntentAuthority, RuntimeHost},
 };
 
 use super::{
-    ControlMessage, DriverStep, FirstTurnWorkerContext, FirstTurnWorkerState, RunnerAction,
-    RunnerExit, StdinTransport, WorkerState, acknowledge_terminal, closing,
-    configuration::{PendingConfig, handle_worker},
-    failed, process_tail, terminal,
+    ControlMessage, FirstTurnWorkerContext, FirstTurnWorkerState, RunnerAction, RunnerExit,
+    StdinTransport, WorkerState, acknowledge_terminal,
+    classification::{control_kind, log_unexpected_mailbox},
+    closing,
+    configuration::{
+        PendingConfig, fail_pending_config, handle_worker, pending_deadline_millis,
+        settle_pending_config,
+    },
+    failed, failed_with_exit, process_tail, terminal,
 };
 
-fn pending_deadline_millis(
-    pending: &Option<PendingConfig>,
-    clock: &dyn crate::acp::runtime::DriverClock,
-) -> Option<i64> {
-    pending.as_ref().map(|config| config.deadline_millis(clock))
-}
+mod active;
 
-pub(super) async fn drive<A, R, T, Auth>(
-    mut state: WorkerState<A, R, T>,
+pub(super) async fn drive<A, R, T, Auth, C>(
+    mut state: WorkerState<A, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
     host: Weak<RuntimeHost>,
-) -> RunnerExit<A, R, T>
+) -> RunnerExit<A, R, T, C>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
     Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
     let mut notified = None;
     let mut pending = None;
     let mut pending_config: Option<PendingConfig> = None;
+    let mut eof_deadline_millis = None;
     loop {
-        if let Some(config) = pending_config.take() {
-            if !state.config_pending() {
-                config.complete(Ok(()));
-            } else if config.expired() {
-                config.complete(Err(HostError::Deadline));
-            } else {
-                pending_config = Some(config);
-            }
+        if let FirstTurnWorkerState::Active(active) = &mut state {
+            active.settle_steer();
         }
+        settle_pending_config(&mut pending_config, state.config_pending());
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
-            if let Some(config) = pending_config.take() {
-                config.complete(Err(HostError::RecoveryRequired));
-            }
+            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
             tracing::warn!(
                 activation_checkpoint = "live_runner.drive.terminal_notification",
                 ?error,
@@ -56,165 +52,23 @@ where
             return failed(state);
         }
         let (action, terminal_callback) = match state {
-            FirstTurnWorkerState::Active(mut active) if active.stdout_allowed() => {
-                match active
-                    .turn
-                    .driver
-                    .run_next_step_until(
-                        context.mailbox.as_ref(),
-                        pending_deadline_millis(&pending_config, context.clock.as_ref()),
-                    )
-                    .await
-                {
-                    Ok(DriverStep::Progress(_)) => (
-                        RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                        None,
-                    ),
-                    Ok(DriverStep::YieldWorker { envelope, .. }) => {
-                        handle_worker(
-                            FirstTurnWorkerState::Active(active),
-                            context,
-                            envelope,
-                            &mut pending_config,
-                        )
-                        .await
-                    }
-                    Err(DriverError::ConfigMutationRejected) => {
-                        let Some(config) = pending_config.take() else {
-                            return failed(FirstTurnWorkerState::Active(active));
-                        };
-                        config.complete(Err(HostError::ConfigMutationRejected));
-                        (
-                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                            None,
-                        )
-                    }
-                    Err(_) if active.has_durable_terminal() => {
-                        match context.mailbox.wait_control_until(
-                            pending_deadline_millis(&pending_config, context.clock.as_ref()),
-                            context.clock.as_ref(),
-                        ) {
-                            Ok(Some(ControlMessage::Worker(envelope))) => {
-                                handle_worker(
-                                    FirstTurnWorkerState::Active(active),
-                                    context,
-                                    envelope,
-                                    &mut pending_config,
-                                )
-                                .await
-                            }
-                            Ok(Some(message)) if process_tail(&message) => (
-                                RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                                None,
-                            ),
-                            Ok(None) if pending_config.is_some() => (
-                                RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                                None,
-                            ),
-                            _ => return failed(FirstTurnWorkerState::Active(active)),
-                        }
-                    }
-                    Err(error) => {
-                        if let Some(config) = pending_config.take() {
-                            config.complete(Err(HostError::RecoveryRequired));
-                        }
-                        tracing::warn!(
-                            activation_checkpoint = "live_runner.drive.active_stdout",
-                            ?error,
-                            "ACP live runner failed while awaiting stdout"
-                        );
-                        return failed(FirstTurnWorkerState::Active(active));
-                    }
-                }
-            }
-            FirstTurnWorkerState::Active(active) if active.ready_for_write() => {
-                match context.mailbox.wait_next_until(
-                    pending_deadline_millis(&pending_config, context.clock.as_ref()),
-                    context.clock.as_ref(),
-                ) {
-                    Ok(Some(ControlMessage::Worker(envelope))) => {
-                        handle_worker(
-                            FirstTurnWorkerState::Active(active),
-                            context,
-                            envelope,
-                            &mut pending_config,
-                        )
-                        .await
-                    }
-                    Ok(Some(message))
-                        if active.has_durable_terminal() && process_tail(&message) =>
-                    {
-                        (
-                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                            None,
-                        )
-                    }
-                    Ok(None) if pending_config.is_some() => (
-                        RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                        None,
-                    ),
-                    result => {
-                        if let Some(config) = pending_config.take() {
-                            config.complete(Err(HostError::RecoveryRequired));
-                        }
-                        tracing::warn!(
-                            activation_checkpoint = "live_runner.drive.active_write",
-                            outcome = ?result
-                                .as_ref()
-                                .ok()
-                                .and_then(|message| message.as_ref())
-                                .map(control_kind),
-                            "ACP live runner rejected an unexpected activation mailbox message"
-                        );
-                        return failed(FirstTurnWorkerState::Active(active));
-                    }
-                }
-            }
-            FirstTurnWorkerState::Active(active) => {
-                match context.mailbox.wait_control_until(
-                    pending_deadline_millis(&pending_config, context.clock.as_ref()),
-                    context.clock.as_ref(),
-                ) {
-                    Ok(Some(ControlMessage::Worker(envelope))) => {
-                        handle_worker(
-                            FirstTurnWorkerState::Active(active),
-                            context,
-                            envelope,
-                            &mut pending_config,
-                        )
-                        .await
-                    }
-                    Ok(Some(message))
-                        if active.has_durable_terminal() && process_tail(&message) =>
-                    {
-                        (
-                            RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                            None,
-                        )
-                    }
-                    Ok(None) if pending_config.is_some() => (
-                        RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
-                        None,
-                    ),
-                    result => {
-                        if let Some(config) = pending_config.take() {
-                            config.complete(Err(HostError::RecoveryRequired));
-                        }
-                        tracing::warn!(
-                            activation_checkpoint = "live_runner.drive.active_control",
-                            outcome = ?result
-                                .as_ref()
-                                .ok()
-                                .and_then(|message| message.as_ref())
-                                .map(control_kind),
-                            "ACP live runner rejected an unexpected control mailbox message"
-                        );
-                        return failed(FirstTurnWorkerState::Active(active));
-                    }
-                }
-            }
+            FirstTurnWorkerState::Active(active) => match active::step(
+                active,
+                context,
+                &mut pending_config,
+                &mut eof_deadline_millis,
+            )
+            .await
+            {
+                Ok(step) => step,
+                Err(exit) => return exit,
+            },
             FirstTurnWorkerState::Idle(mut idle) => match context.mailbox.wait_next_until(
-                pending_deadline_millis(&pending_config, context.clock.as_ref()),
+                wait_deadline(
+                    &pending_config,
+                    [eof_deadline_millis],
+                    context.clock.as_ref(),
+                ),
                 context.clock.as_ref(),
             ) {
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
@@ -223,7 +77,9 @@ where
                             RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                             None,
                         ),
-                        Err(crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::ConfigMutation,
+                        )) => {
                             let Some(config) = pending_config.take() else {
                                 return failed(FirstTurnWorkerState::Idle(idle));
                             };
@@ -233,10 +89,14 @@ where
                                 None,
                             )
                         }
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::SignIn,
+                        )) => (
+                            RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                            None,
+                        ),
                         Err(_) => {
-                            if let Some(config) = pending_config.take() {
-                                config.complete(Err(HostError::RecoveryRequired));
-                            }
+                            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                             return failed(FirstTurnWorkerState::Idle(idle));
                         }
                     }
@@ -250,28 +110,46 @@ where
                     )
                     .await
                 }
+                Ok(Some(ControlMessage::ProcessExit(exit))) => {
+                    return failed_with_exit(
+                        FirstTurnWorkerState::Idle(idle),
+                        exit,
+                        &mut pending_config,
+                    );
+                }
+                Ok(Some(ControlMessage::ReaderTerminal(
+                    crate::acp::runtime::ReaderTerminal::Eof,
+                ))) => {
+                    eof_deadline_millis = Some(reader_eof_deadline(context.clock.as_ref()));
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                    (
+                        RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                        None,
+                    )
+                }
                 Ok(None) if pending_config.is_some() => (
                     RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                     None,
                 ),
-                result => {
-                    if let Some(config) = pending_config.take() {
-                        config.complete(Err(HostError::RecoveryRequired));
-                    }
-                    tracing::warn!(
-                        activation_checkpoint = "live_runner.drive.idle",
-                        outcome = ?result
-                            .as_ref()
-                            .ok()
-                            .and_then(|message| message.as_ref())
-                            .map(control_kind),
-                        "ACP idle runner rejected an unexpected mailbox message"
+                Ok(None) if eof_deadline_millis.is_some() => {
+                    return failed_with_exit(
+                        FirstTurnWorkerState::Idle(idle),
+                        TreeExit::Exited { code: None },
+                        &mut pending_config,
                     );
+                }
+                result => {
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                    log_unexpected_mailbox("live_runner.drive.idle", &result);
                     return failed(FirstTurnWorkerState::Idle(idle));
                 }
             },
             FirstTurnWorkerState::Reusable(mut parts) => match context.mailbox.wait_next_until(
-                pending_deadline_millis(&pending_config, context.clock.as_ref()),
+                wait_deadline(
+                    &pending_config,
+                    [eof_deadline_millis],
+                    context.clock.as_ref(),
+                ),
                 context.clock.as_ref(),
             ) {
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
@@ -280,7 +158,9 @@ where
                             RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                             None,
                         ),
-                        Err(crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::ConfigMutation,
+                        )) => {
                             let Some(config) = pending_config.take() else {
                                 return failed(FirstTurnWorkerState::Reusable(parts));
                             };
@@ -290,10 +170,14 @@ where
                                 None,
                             )
                         }
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::SignIn,
+                        )) => (
+                            RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
+                            None,
+                        ),
                         Err(_) => {
-                            if let Some(config) = pending_config.take() {
-                                config.complete(Err(HostError::RecoveryRequired));
-                            }
+                            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                             return failed(FirstTurnWorkerState::Reusable(parts));
                         }
                     }
@@ -307,14 +191,36 @@ where
                     )
                     .await
                 }
+                Ok(Some(ControlMessage::ProcessExit(exit))) => {
+                    return failed_with_exit(
+                        FirstTurnWorkerState::Reusable(parts),
+                        exit,
+                        &mut pending_config,
+                    );
+                }
+                Ok(Some(ControlMessage::ReaderTerminal(
+                    crate::acp::runtime::ReaderTerminal::Eof,
+                ))) => {
+                    eof_deadline_millis = Some(reader_eof_deadline(context.clock.as_ref()));
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                    (
+                        RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
+                        None,
+                    )
+                }
                 Ok(None) if pending_config.is_some() => (
                     RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                     None,
                 ),
+                Ok(None) if eof_deadline_millis.is_some() => {
+                    return failed_with_exit(
+                        FirstTurnWorkerState::Reusable(parts),
+                        TreeExit::Exited { code: None },
+                        &mut pending_config,
+                    );
+                }
                 _ => {
-                    if let Some(config) = pending_config.take() {
-                        config.complete(Err(HostError::RecoveryRequired));
-                    }
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                     return failed(FirstTurnWorkerState::Reusable(parts));
                 }
             },
@@ -322,6 +228,21 @@ where
                 pending_deadline_millis(&pending_config, context.clock.as_ref()),
                 context.clock.as_ref(),
             ) {
+                Ok(Some(ControlMessage::StdoutChunk(chunk)))
+                    if matches!(&retained, FirstTurnWorkerState::Prepared { .. }) =>
+                {
+                    let mut retained = retained;
+                    let FirstTurnWorkerState::Prepared { turn, .. } = &mut retained else {
+                        unreachable!()
+                    };
+                    match turn.parts.accept_idle_stdout_chunk(&chunk) {
+                        Ok(()) => (RunnerAction::Continue(retained), None),
+                        Err(_) => {
+                            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                            return failed(retained);
+                        }
+                    }
+                }
                 Ok(Some(ControlMessage::Worker(envelope))) => {
                     handle_worker(retained, context, envelope, &mut pending_config).await
                 }
@@ -330,9 +251,7 @@ where
                 }
                 Ok(None) if pending_config.is_some() => (RunnerAction::Continue(retained), None),
                 result => {
-                    if let Some(config) = pending_config.take() {
-                        config.complete(Err(HostError::RecoveryRequired));
-                    }
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                     tracing::warn!(
                         activation_checkpoint = "live_runner.drive.retained",
                         outcome = ?result
@@ -351,23 +270,17 @@ where
                 if terminal_callback.as_ref().is_some_and(|cursor| {
                     acknowledge_terminal(cursor, &mut pending, &mut notified).is_err()
                 }) {
-                    if let Some(config) = pending_config.take() {
-                        config.complete(Err(HostError::RecoveryRequired));
-                    }
+                    fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                     return failed(next);
                 }
                 state = next;
             }
             RunnerAction::Failure(state) => {
-                if let Some(config) = pending_config.take() {
-                    config.complete(Err(HostError::RecoveryRequired));
-                }
+                fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                 return failed(state);
             }
             RunnerAction::Shutdown(state, envelope) => {
-                if let Some(config) = pending_config.take() {
-                    config.complete(Err(HostError::Closed));
-                }
+                fail_pending_config(&mut pending_config, HostError::Closed);
                 let reason = if state.has_durable_completed_cursor()
                     || state.has_durable_cancelled_cursor()
                 {
@@ -385,14 +298,18 @@ where
     }
 }
 
-fn control_kind(message: &ControlMessage) -> &'static str {
-    match message {
-        ControlMessage::StdoutChunk(_) => "stdout",
-        ControlMessage::Prompt(_) => "prompt",
-        ControlMessage::Cancel(_) => "cancel",
-        ControlMessage::Worker(_) => "worker",
-        ControlMessage::ReaderTerminal(crate::acp::runtime::ReaderTerminal::Eof) => "reader-eof",
-        ControlMessage::ReaderTerminal(crate::acp::runtime::ReaderTerminal::Io) => "reader-io",
-        ControlMessage::ProcessExit(_) => "process-exit",
-    }
+fn reader_eof_deadline(clock: &dyn crate::acp::runtime::DriverClock) -> i64 {
+    i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+        .map_or(i64::MAX, |budget| clock.now_millis().saturating_add(budget))
+}
+
+pub(super) fn wait_deadline(
+    pending_config: &Option<PendingConfig>,
+    deadlines: impl IntoIterator<Item = Option<i64>>,
+    clock: &dyn crate::acp::runtime::DriverClock,
+) -> Option<i64> {
+    std::iter::once(pending_deadline_millis(pending_config, clock))
+        .chain(deadlines)
+        .flatten()
+        .min()
 }

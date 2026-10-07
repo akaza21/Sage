@@ -105,10 +105,51 @@ fn prompt(runtime: &mut ClaudeRuntime) -> (u64, EgressToken) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt command");
     let id = request_id(&egress);
     (id, egress.into_token())
+}
+
+#[test]
+fn mcp_session_wire_preserves_empty_array_and_injects_only_admitted_servers() {
+    let mut runtime = ClaudeRuntime::fixture();
+    initialize(&mut runtime);
+    let empty = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\fixture\root".into(),
+            model: None,
+        })
+        .unwrap();
+    let text = std::str::from_utf8(empty.frame().payload()).unwrap();
+    assert!(text.contains("\"mcpServers\":[]"), "{text}");
+
+    let mut runtime = ClaudeRuntime::fixture();
+    runtime.mcp = crate::acp::mcp::McpAdmission::for_test(vec![
+        crate::acp::mcp::McpServerDescriptor::stdio_for_test(
+            "files",
+            r"C:\tools\mcp.exe",
+            &[],
+            vec![],
+        ),
+        crate::acp::mcp::McpServerDescriptor::http_for_test("remote", "https://example.com/mcp"),
+    ])
+    .unwrap();
+    initialize(&mut runtime);
+    let injected = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\fixture\root".into(),
+            model: None,
+        })
+        .unwrap();
+    let value: Value = serde_json::from_slice(injected.frame().payload()).unwrap();
+    assert_eq!(
+        value["params"]["mcpServers"],
+        json!([{
+            "name":"files","command":r"C:\tools\mcp.exe","args":[],"env":[]
+        }])
+    );
 }
 
 #[test]
@@ -131,8 +172,15 @@ fn initialize_new_prompt_update_terminal_cancel_and_close_preserve_intent() {
             &Mapper,
         )
         .expect("update");
-    let SharedEvent::Item { id: identity, .. } = &update.events()[0] else {
-        panic!("item")
+    let [
+        SharedEvent::Turn {
+            state: TurnState::Running,
+            ..
+        },
+        SharedEvent::Item { id: identity, .. },
+    ] = update.events()
+    else {
+        panic!("expected the turn to start before its first item")
     };
     assert_eq!(identity.binding_digest, [7; 32]);
     assert_eq!(identity.runtime_epoch.get(), 3);
@@ -185,6 +233,85 @@ fn initialize_new_prompt_update_terminal_cancel_and_close_preserve_intent() {
         )
         .expect("close response");
     assert!(matches!(closed.events(), [SharedEvent::Acknowledged]));
+}
+
+#[test]
+fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_item_stream() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .expect("prompt written");
+
+    let usage = runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                "sessionId":"claude-session-1",
+                "update":{"sessionUpdate":"usage_update","used":23753,"size":1000000}
+            }})),
+            &Mapper,
+        )
+        .expect("usage update");
+    assert!(
+        matches!(
+            usage.events(),
+            [
+                SharedEvent::Turn {
+                    state: TurnState::Running,
+                    ..
+                },
+                SharedEvent::Absorbed
+            ]
+        ),
+        "{:?}",
+        usage.events()
+    );
+
+    let message = runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                "sessionId":"claude-session-1",
+                "update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ok"}}
+            }})),
+            &Mapper,
+        )
+        .expect("agent message");
+    assert!(
+        matches!(message.events(), [SharedEvent::Item { .. }]),
+        "{:?}",
+        message.events()
+    );
+
+    let terminal = runtime
+        .ingest(
+            &frame(json!({"jsonrpc":"2.0","id":id,"result":{
+                "stopReason":"end_turn",
+                "usage":{"inputTokens":2,"outputTokens":4,"cachedReadTokens":23747,
+                         "cachedWriteTokens":0,"totalTokens":23753},
+                "_meta":{"quota":{"token_count":{"totalTokens":23753,"inputTokens":2}}}
+            }})),
+            &Mapper,
+        )
+        .expect("prompt result carrying vendor _meta and usage");
+    let [
+        SharedEvent::Usage { payload, .. },
+        SharedEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        },
+    ] = terminal.events()
+    else {
+        panic!("{:?}", terminal.events())
+    };
+    assert_eq!(
+        *payload,
+        NormalizedPayload::Usage {
+            input_tokens: 2,
+            output_tokens: 4,
+            context_window: Some(1_000_000),
+        }
+    );
 }
 
 #[test]
@@ -254,6 +381,7 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
             .is_err()
     );
@@ -265,10 +393,16 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
         .expect("correlated response still wins");
     assert!(matches!(
         terminal.events(),
-        [SharedEvent::Turn {
-            state: TurnState::Completed,
-            ..
-        }]
+        [
+            SharedEvent::Turn {
+                state: TurnState::Running,
+                ..
+            },
+            SharedEvent::Turn {
+                state: TurnState::Completed,
+                ..
+            }
+        ]
     ));
 }
 
@@ -377,6 +511,22 @@ fn allow_once_on_claude_does_not_emit_denial_and_records_resolved_allowed() {
         [SharedEvent::PermissionRequest { .. }]
     ));
     assert!(batch.egress().is_empty());
+    let SharedEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("offered options")
+    };
+    assert!(
+        kinds
+            .as_slice()
+            .contains(&crate::acp::intent::PermissionOptionKind::AllowOnce)
+    );
     assert!(batch.actual_bytes() <= LIMITS.queues.journal_bytes_per_transaction as usize);
     let SharedEvent::PermissionRequest {
         external_request_id,
@@ -418,6 +568,58 @@ fn allow_once_on_claude_does_not_emit_denial_and_records_resolved_allowed() {
 }
 
 #[test]
+fn claude_always_allow_selects_the_native_option_id() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (_, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"method":"session/update","params":{
+                "sessionId":"claude-session-1","update":{
+                    "sessionUpdate":"tool_call","toolCallId":"tool-1",
+                    "kind":"execute","status":"in_progress"
+                }
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let permission = json!({
+        "id":"permission-always","method":"session/request_permission","params":{
+            "sessionId":"claude-session-1","toolCall":{"toolCallId":"tool-1"},
+            "options":[{"optionId":"native-always","name":"Allow always"}]
+        }
+    });
+    let batch = runtime.ingest(&frame(permission), &Mapper).unwrap();
+    let SharedEvent::PermissionRequest {
+        payload:
+            NormalizedPayload::PermissionRequest {
+                offered_option_kinds: Some(kinds),
+                ..
+            },
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission options")
+    };
+    assert_eq!(
+        kinds.as_slice(),
+        &[crate::acp::intent::PermissionOptionKind::AllowAlways]
+    );
+    let reply = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(external_request_id.as_str()).unwrap(),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowAlways,
+        })
+        .unwrap();
+    let response: Value = serde_json::from_slice(reply.frame().payload()).unwrap();
+    assert_eq!(response["result"]["outcome"]["optionId"], "native-always");
+}
+
+#[test]
 fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
     let mut runtime = ClaudeRuntime::fixture();
     assert!(matches!(
@@ -427,6 +629,154 @@ fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
+}
+
+#[test]
+fn the_captured_claude_write_approval_survives_runtime_ingest_end_to_end() {
+    let tree = std::env::temp_dir().join(format!("sage-hr6-runtime-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&tree).expect("tree");
+    let tree = tree.canonicalize().expect("canonical");
+    let live = crate::acp::resource_mapper::NativeResourceMapper::new([
+        crate::acp::resource_mapper::ConfiguredResourceRoot {
+            root_id: SageRootId::parse("root-claude-runtime").expect("root"),
+            canonical_native_root: tree.clone(),
+        },
+    ])
+    .expect("mapper");
+    let target = tree.join("hr6-permission.txt");
+    let path = target.to_str().expect("path").to_owned();
+    let tool = "toolu_01VxPvQHiywMnCJRonXWy9oU";
+    let body = "hr6 permission granted\n";
+
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (_prompt_id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Queued)
+        .expect("queued");
+
+    let mut seen: Vec<SharedEvent> = Vec::new();
+    let replay = |runtime: &mut ClaudeRuntime, update: Value, seen: &mut Vec<SharedEvent>| {
+        let batch = runtime
+            .ingest(
+                &frame(json!({"method":"session/update","params":{
+                    "sessionId":"claude-session-1","update":update
+                }})),
+                &live,
+            )
+            .expect("session update");
+        seen.extend(batch.events().iter().cloned());
+    };
+
+    replay(
+        &mut runtime,
+        json!({
+            "_meta": {"claudeCode": {"toolName": "Write"}},
+            "toolCallId": tool,
+            "sessionUpdate": "tool_call",
+            "rawInput": {},
+            "status": "pending",
+            "title": "Preparing file",
+            "kind": "edit",
+            "content": [],
+            "locations": [],
+        }),
+        &mut seen,
+    );
+    replay(
+        &mut runtime,
+        json!({
+            "_meta": {"claudeCode": {"toolName": "Write"}},
+            "toolCallId": tool,
+            "sessionUpdate": "tool_call_update",
+            "rawInput": {"file_path": path, "content": body},
+            "title": "Write hr6-permission.txt",
+            "kind": "edit",
+            "content": [{"type": "diff", "path": path, "oldText": Value::Null, "newText": body}],
+            "locations": [{"path": path}],
+        }),
+        &mut seen,
+    );
+
+    let permission = json!({
+        "id": "permission-hr6", "method": "session/request_permission", "params": {
+            "sessionId": "claude-session-1",
+            "toolCall": {
+                "toolCallId": tool,
+                "status": "pending",
+                "title": "Write hr6-permission.txt",
+                "kind": "edit",
+                "rawInput": {"file_path": path, "content": body},
+                "content": [{"type": "diff", "path": path, "oldText": Value::Null, "newText": body}],
+                "locations": [{"path": path}]
+            },
+            "_meta": {"permission": {"version": 1, "title": "Write hr6-permission.txt"}},
+            "options": [
+                {"optionId": "allow-once", "name": "Yes", "kind": "allow_once"},
+                {"optionId": "reject", "name": "No", "kind": "reject_once"}
+            ]
+        }
+    });
+    let batch = runtime
+        .ingest(&frame(permission), &live)
+        .expect("permission request");
+    let SharedEvent::PermissionRequest {
+        external_request_id,
+        ..
+    } = &batch.events()[0]
+    else {
+        panic!("permission request")
+    };
+    let allow = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(external_request_id.as_str()).expect("request"),
+            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        })
+        .expect("allow once");
+    runtime
+        .resolve_egress(allow.token().clone(), EgressResolution::Queued)
+        .expect("queued");
+    runtime
+        .resolve_egress(allow.into_token(), EgressResolution::Written)
+        .expect("written");
+
+    std::fs::write(&target, body).expect("write");
+    replay(
+        &mut runtime,
+        json!({
+            "_meta": {"claudeCode": {"toolResponse": {"type": "create", "filePath": path}, "toolName": "Write"}},
+            "toolCallId": tool,
+            "sessionUpdate": "tool_call_update",
+        }),
+        &mut seen,
+    );
+    replay(
+        &mut runtime,
+        json!({
+            "_meta": {"claudeCode": {"toolName": "Write"}},
+            "toolCallId": tool,
+            "sessionUpdate": "tool_call_update",
+            "status": "completed",
+            "rawOutput": "File created successfully",
+        }),
+        &mut seen,
+    );
+
+    let _ = std::fs::remove_dir_all(&tree);
+    let pairs = seen
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| match event {
+            SharedEvent::FilePair { id, .. } => Some((index, id.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(pairs.len(), 1);
+    let (index, key) = &pairs[0];
+    let SharedEvent::Item { id, .. } = &seen[index - 1] else {
+        panic!("a file pair must immediately follow its item")
+    };
+    assert_eq!(id, key);
 }
 
 #[test]
@@ -466,7 +816,13 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     for index in 0..limit {
         let id = format!("pending-{index}");
         blocked
-            .reserve_denial(&id, id.clone(), Value::String(id.clone()), "allow".into())
+            .reserve_denial(
+                &id,
+                id.clone(),
+                Value::String(id.clone()),
+                Some("allow".into()),
+                None,
+            )
             .expect("within bound");
     }
     assert_eq!(blocked.denials.len(), limit);
@@ -475,7 +831,8 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
             "limit-plus-one",
             "limit-plus-one".into(),
             Value::String("limit-plus-one".into()),
-            "allow".into(),
+            Some("allow".into()),
+            None,
         ),
         Err(AdapterRuntimeError::MandatoryDenyTeardown)
     );
@@ -484,7 +841,13 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
     for index in 0..limit {
         let id = format!("written-{index}");
         pruned
-            .reserve_denial(&id, id.clone(), Value::String(id.clone()), "allow".into())
+            .reserve_denial(
+                &id,
+                id.clone(),
+                Value::String(id.clone()),
+                Some("allow".into()),
+                None,
+            )
             .expect("within bound");
         pruned.denials.get_mut(&id).expect("record").state = DenialState::Written;
     }
@@ -493,7 +856,8 @@ fn denial_ledger_is_exactly_bounded_and_prunes_only_oldest_written_tombstone() {
             "replacement",
             "replacement".into(),
             Value::String("replacement".into()),
-            "allow".into(),
+            Some("allow".into()),
+            None,
         )
         .expect("written tombstone pruned");
     assert_eq!(pruned.denials.len(), limit);
@@ -562,7 +926,7 @@ fn admitted_session_can_request_namespaced_sage_browse_during_a_turn() {
         &opened.events()[0],
         SharedEvent::Item {
             payload: NormalizedPayload::ToolCall {
-                category: ToolCategory::Web,
+                category: ToolCategory::Fetch,
                 input_summary: Some(summary),
                 ..
             },
@@ -601,5 +965,129 @@ fn admitted_session_can_request_namespaced_sage_browse_during_a_turn() {
 
 #[path = "cancel_contract_tests.rs"]
 mod cancel_contract_tests;
+
+#[path = "decline_publication_tests.rs"]
+mod decline_publication_tests;
+
+#[path = "permission_surface_tests.rs"]
+mod permission_surface_tests;
+
+#[path = "permission_terminal_identity_tests.rs"]
+mod permission_terminal_identity_tests;
+
+#[test]
+fn an_auth_status_update_is_understood_rather_than_reported_unsupported() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(
+                json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"none","label":"Not logged in"}}}),
+            ),
+            &Mapper,
+        )
+        .expect("auth status update");
+    assert!(matches!(batch.events(), [SharedEvent::Absorbed]));
+}
+
+#[test]
+fn an_auth_status_request_still_fails_closed_like_any_unknown_request() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({
+                "id": "auth-1",
+                "method": "_auth/status_update",
+                "params": {"authStatus": {"kind": "none"}}
+            })),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::MandatoryDenyTeardown)
+    ));
+}
+
+#[test]
+fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"none"}}})),
+            &Mapper,
+        )
+        .expect("auth status update");
+    assert!(matches!(
+        runtime.command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
+            client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }),
+        Err(AdapterRuntimeError::SignInRequired)
+    ));
+}
+
+#[test]
+fn a_later_signed_in_status_restores_the_prompt_path() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"none"}}})),
+            &Mapper,
+        )
+        .expect("signed out");
+    runtime
+        .ingest(
+            &frame(
+                json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"subscription","label":"Max"}}}),
+            ),
+            &Mapper,
+        )
+        .expect("signed in");
+    let (_, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .expect("written");
+}
+
+#[test]
+fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .expect("written");
+    assert!(matches!(
+        runtime.ingest(
+            &frame(
+                json!({"id": id, "error": {"code": -32000, "message": "Authentication required"}}),
+            ),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::SignInRequired)
+    ));
+    assert!(matches!(
+        runtime.command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
+            client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }),
+        Err(AdapterRuntimeError::SignInRequired)
+    ));
+    runtime
+        .ingest(
+            &frame(
+                json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"subscription","label":"Max"}}}),
+            ),
+            &Mapper,
+        )
+        .expect("signed in");
+    let (_, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .expect("prompt after sign-in");
+}
 #[path = "p01_tests.rs"]
 mod p01_tests;

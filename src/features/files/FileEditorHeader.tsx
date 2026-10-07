@@ -4,6 +4,7 @@ import { FilePathChips } from "./FilePathChips";
 
 interface FileEditorHeaderProps {
   path: string;
+  projectName?: string;
   lineEnding: string;
   diskByteLen: number;
   persisting: boolean;
@@ -12,11 +13,13 @@ interface FileEditorHeaderProps {
   transitioning: boolean;
   canPreview?: boolean;
   previewing?: boolean;
+  agentMarkdown?: boolean;
   onTogglePreview?: () => void;
 }
 
 export function FileEditorHeader({
   path,
+  projectName,
   lineEnding,
   diskByteLen,
   persisting,
@@ -25,6 +28,7 @@ export function FileEditorHeader({
   transitioning,
   canPreview = false,
   previewing = false,
+  agentMarkdown = false,
   onTogglePreview,
 }: FileEditorHeaderProps) {
   const saveState = saving
@@ -45,7 +49,7 @@ export function FileEditorHeader({
   return (
     <header className="file-header">
       <span className="file-header__path">
-        <FilePathChips path={path} />
+        <FilePathChips path={path} projectName={projectName} />
       </span>
       <span className="file-header__metadata">
         UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk
@@ -68,7 +72,15 @@ export function FileEditorHeader({
             <button
               className="button button--compact file-header__preview"
               type="button"
-              aria-label={previewing ? "Return to editor" : "Preview file"}
+              aria-label={
+                agentMarkdown
+                  ? previewing
+                    ? "View source"
+                    : "View preview"
+                  : previewing
+                    ? "Return to editor"
+                    : "Preview file"
+              }
               aria-pressed={previewing}
               disabled={transitioning}
               onClick={onTogglePreview}
@@ -78,7 +90,13 @@ export function FileEditorHeader({
               ) : (
                 <Eye size={14} aria-hidden="true" />
               )}
-              {previewing ? "Edit" : "Preview"}
+              {agentMarkdown
+                ? previewing
+                  ? "View source"
+                  : "View preview"
+                : previewing
+                  ? "Edit"
+                  : "Preview"}
             </button>
           ) : null}
         </span>

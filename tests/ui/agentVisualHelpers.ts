@@ -159,15 +159,16 @@ export async function runAgentCanonicalTest(
   await settleTranscriptAtEnd(page);
   if (name === "agent-activity-family") {
     const cards = page.locator(".acp-activity-card");
-    await expect(cards).toHaveCount(10);
-    await expect(page.locator('[data-activity-kind="command"]')).toBeVisible();
+    await expect(cards).toHaveCount(9);
+    await expect(page.locator('[data-activity-kind="execute"]')).toBeVisible();
     await expect(page.locator('[data-activity-kind="search"]')).toHaveAttribute(
       "data-activity-state",
       "inProgress",
     );
-    await expect(page.locator('[data-activity-kind="usage"]')).toContainText(
-      "1,626 tokens",
+    await expect(page.locator('[data-activity-kind="fetch"]')).toContainText(
+      "Review preview",
     );
+    await expect(page.locator('[data-activity-kind="usage"]')).toHaveCount(0);
     await expect(page.locator('[data-activity-kind="error"]')).toContainText(
       "Retry available",
     );
@@ -181,17 +182,26 @@ export async function runAgentCanonicalTest(
       .locator("summary")
       .evaluate((node) => (node as HTMLElement).blur());
     await settleTranscriptAtEnd(page);
-    const command = page.locator(".acp-tool-command");
+    const command = page.locator(".acp-tool-command--line");
     await expect(command).toBeVisible();
     expect(
       await command.evaluate((node) => {
         const card = node.closest<HTMLElement>(".acp-activity-card");
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const lines = range.getClientRects().length;
+        range.detach();
         return {
           cardIsBounded: card !== null && card.scrollWidth <= card.clientWidth,
-          commandOwnsOverflow: node.scrollWidth > node.clientWidth,
+          commandStaysInside: node.scrollWidth <= node.clientWidth,
+          commandWraps: lines > 1,
         };
       }),
-    ).toEqual({ cardIsBounded: true, commandOwnsOverflow: true });
+    ).toEqual({
+      cardIsBounded: true,
+      commandStaysInside: true,
+      commandWraps: true,
+    });
     await expectNoViewportOverflow(page);
   }
   if (name === "agent-image") {

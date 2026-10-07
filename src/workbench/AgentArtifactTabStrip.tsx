@@ -1,4 +1,4 @@
-import { Eye, GitCompareArrows, Pin, X } from "lucide-react";
+import { Eye, GitCompareArrows, Globe2, Pin, X } from "lucide-react";
 import { useRef } from "react";
 
 import {
@@ -12,6 +12,7 @@ import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import type { WorkbenchTab } from "../domain/workbench";
 import { FileKindIcon } from "../features/files/FileKindIcon";
+import { BrowserFavicon } from "../features/browser/browserAddress";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 
@@ -21,6 +22,7 @@ type AgentArtifactTabStripProps = {
   focusedOwner: AgentArtifactOwner | null;
   focusedPage: AcpChatPage | null;
   previewSelected: boolean;
+  previewOpen: boolean;
   record: AgentArtifactFollowRecord | null;
   availableTargets: readonly AgentArtifactTarget[];
   activateTab: (tabId: string) => Promise<void> | void;
@@ -33,6 +35,7 @@ export function AgentArtifactTabStrip({
   focusedOwner,
   focusedPage,
   previewSelected,
+  previewOpen,
   record,
   availableTargets,
   activateTab,
@@ -69,7 +72,12 @@ export function AgentArtifactTabStrip({
               focusedOwner ? focusedPage : null,
             );
             const [fullPath, basename, directory] = artifactTabParts(tab);
-            const kindLabel = tab.kind === "file" ? "File" : "Diff";
+            const kindLabel =
+              tab.kind === "file"
+                ? "File"
+                : tab.kind === "browser"
+                  ? "Browser"
+                  : "Diff";
             const accessibleName = `${kindLabel} ${fullPath}`;
             const pending = pendingTargets.some((target) =>
               sameAgentArtifactTarget(target, {
@@ -97,7 +105,7 @@ export function AgentArtifactTabStrip({
                   }
                   data-resource-root-id={tab.resource?.rootId}
                   data-resource-relative-path={tab.resource?.relativePath}
-                  title={fullPath}
+                  title={accessibleName}
                   onClick={() => {
                     if (focusedOwner) {
                       useAgentArtifactFollowStore.getState().pin(focusedOwner, {
@@ -111,18 +119,28 @@ export function AgentArtifactTabStrip({
                   {tab.kind === "file" ? (
                     <FileKindIcon
                       path={tab.resource?.relativePath ?? tab.title}
-                      size={15}
+                      size={16}
+                    />
+                  ) : tab.kind === "browser" ? (
+                    <BrowserFavicon
+                      key={tab.favicon ?? ""}
+                      value={tab.favicon}
+                      className="tab__favicon"
+                      fallback={
+                        <Globe2
+                          size={16}
+                          strokeWidth={1.8}
+                          aria-hidden="true"
+                        />
+                      }
                     />
                   ) : (
                     <GitCompareArrows
-                      size={15}
+                      size={16}
                       strokeWidth={1.8}
                       aria-hidden="true"
                     />
                   )}
-                  <span className="agent-artifact-tab__kind" aria-hidden="true">
-                    {kindLabel}
-                  </span>
                   <span className="tab__path" aria-hidden="true">
                     <span className="tab__dir">{directory}</span>
                     <span className="tab__basename">{basename}</span>
@@ -161,7 +179,7 @@ export function AgentArtifactTabStrip({
               </div>
             );
           })}
-          {focusedOwner !== null ? (
+          {focusedOwner !== null && previewOpen ? (
             <div
               className={`tab ${previewSelected ? "tab--active" : ""}${
                 previewPending ? " tab--pending" : ""
@@ -175,6 +193,7 @@ export function AgentArtifactTabStrip({
                 role="tab"
                 aria-selected={previewSelected}
                 aria-label="Preview"
+                title="Preview"
                 aria-describedby={
                   previewPending ? "preview-new-resource" : undefined
                 }
@@ -184,9 +203,9 @@ export function AgentArtifactTabStrip({
                     .pin(focusedOwner, { kind: "preview" })
                 }
               >
-                <Eye size={15} strokeWidth={1.8} aria-hidden="true" />
-                <span className="agent-artifact-tab__kind" aria-hidden="true">
-                  Preview
+                <Eye size={16} strokeWidth={1.8} aria-hidden="true" />
+                <span className="tab__path" aria-hidden="true">
+                  <span className="tab__basename">Preview</span>
                 </span>
                 {previewPending ? (
                   <span

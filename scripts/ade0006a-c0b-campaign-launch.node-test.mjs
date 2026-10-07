@@ -746,7 +746,7 @@ test("campaign collector bind rejects a mismatched request before starting a pro
         "Set-StrictMode -Version Latest",
         "$ErrorActionPreference = 'Stop'",
         `Import-Module -Name ${quote(observationModulePath)} -Force`,
-        `Invoke-C0BCampaignObservationRequest -RequestPath ${quote(requestPath)} -LaunchPath ${quote(launchPath)}`,
+        `Invoke-C0BCampaignObservationRequest -RequestPath ${quote(requestPath)} -LaunchPath ${quote(launchPath)} -NodePath ${quote(process.execPath)}`,
       ].join("\r\n"),
     );
     const result = spawnSync(

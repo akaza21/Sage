@@ -67,7 +67,7 @@ pub(crate) fn claim_receiver(
                 Arc::clone(state),
                 token.into(),
                 attempt.pending.deadline,
-                completion,
+                *completion,
             ))
         }
         Some(Terminal::Failure(failure)) => {

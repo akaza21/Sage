@@ -1,17 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="224" fill="#101210"/>
-  <rect
-    x="112"
-    y="112"
-    width="800"
-    height="800"
-    rx="188"
-    fill="#19291d"
-    stroke="#52765a"
-    stroke-width="24"
-  />
-  <path
-    d="M704 326c-54-38-116-58-186-58-111 0-188 54-188 139 0 74 50 112 172 143 91 23 116 40 116 77 0 42-42 68-107 68-75 0-145-25-208-75l-69 84c75 64 168 96 274 96 126 0 211-60 211-153 0-80-49-119-174-151-89-23-115-39-115-73 0-39 36-63 92-63 58 0 112 18 162 53z"
-    fill="#b5e4b4"
-  />
+  <rect width="1024" height="1024" rx="224" fill="#0b0b0b"/>
+  <g
+    transform="translate(512 512) scale(26) translate(-12 -12)"
+    fill="#ededed"
+    stroke="#ededed"
+    stroke-width="1"
+    stroke-linejoin="round"
+  >
+    <path
+      transform="rotate(-17 12 12)"
+      d="M6.03 12.16 A 17 17 0 0 1 18.35 3.22 A 17 17 0 0 1 16.67 8.28 Z"
+    />
+    <path
+      transform="rotate(-17 12 12)"
+      d="M17.97 11.85 A 17 17 0 0 1 5.65 20.79 A 17 17 0 0 1 7.33 15.73 Z"
+    />
+  </g>
 </svg>

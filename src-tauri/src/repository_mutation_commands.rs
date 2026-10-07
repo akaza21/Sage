@@ -397,10 +397,7 @@ mod tests {
             let mutation = tokio::spawn(async move {
                 mutate_git_file_inner_with_process_policy(&mutation_state, request, 0, policy).await
             });
-            deadline_gate
-                .wait_for_entry(Duration::from_secs(1))
-                .await
-                .unwrap();
+            deadline_gate.wait_for_entry().await.unwrap();
             let result = mutation.await.unwrap().unwrap();
             deadline_gate.release();
 
@@ -455,10 +452,7 @@ mod tests {
             let mutation = tokio::spawn(async move {
                 mutate_git_file_inner_with_process_policy(&mutation_state, request, 0, policy).await
             });
-            deadline_gate
-                .wait_for_entry(Duration::from_secs(1))
-                .await
-                .unwrap();
+            deadline_gate.wait_for_entry().await.unwrap();
             let result = mutation.await.unwrap().unwrap();
             deadline_gate.release();
 
@@ -481,7 +475,7 @@ mod tests {
 
     #[test]
     fn nonconvergent_reap_returns_containment_without_a_final_projection() {
-        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
+        let _serial = crate::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -554,7 +548,7 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::post_reap_failure(Duration::from_secs(3)),
+                repository::GitProcessPolicy::post_reap_failure(crate::test_wait::BUDGET),
             )
             .await
             .unwrap();
@@ -607,7 +601,7 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::stdout_reader_failure(Duration::from_secs(3)),
+                repository::GitProcessPolicy::stdout_reader_failure(crate::test_wait::BUDGET),
             )
             .await
             .unwrap();
@@ -631,7 +625,7 @@ mod tests {
 
     #[test]
     fn potentially_running_cleanup_blocks_mutations_until_bounded_reaper_proves_exit() {
-        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
+        let _serial = crate::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -671,7 +665,7 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+                reaper.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
             )
             .await
             .unwrap_err();
@@ -684,12 +678,15 @@ mod tests {
             ));
 
             reaper.release();
-            reaper.wait_for_exit(Duration::from_secs(1)).await.unwrap();
+            reaper
+                .wait_for_exit(crate::test_wait::BUDGET)
+                .await
+                .unwrap();
             let recovered = mutate_git_file_inner_with_process_policy(
                 &state,
                 request,
                 0,
-                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
+                reaper.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
             )
             .await
             .unwrap();
@@ -748,7 +745,7 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+                reaper.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
             )
             .await
             .unwrap_err();
@@ -761,12 +758,15 @@ mod tests {
             ));
 
             reaper.release_wait();
-            reaper.wait_for_exit(Duration::from_secs(1)).await.unwrap();
+            reaper
+                .wait_for_exit(crate::test_wait::BUDGET)
+                .await
+                .unwrap();
             let recovered = mutate_git_file_inner_with_process_policy(
                 &state,
                 request,
                 0,
-                reaper.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
+                reaper.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
             )
             .await
             .unwrap();
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn exhausted_real_reapers_quarantine_exact_eight_and_keep_admission_charged() {
-        let _serial = crate::SERIAL_PROCESS_TESTS.lock().unwrap();
+        let _serial = crate::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -815,7 +815,7 @@ mod tests {
                     }
                 ));
                 reaper
-                    .wait_for_quarantine(Duration::from_secs(1))
+                    .wait_for_quarantine(crate::test_wait::BUDGET)
                     .await
                     .unwrap();
                 assert_eq!(reaper.wait_attempts(), 40);
@@ -835,7 +835,7 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                harness.mutation_policy(Duration::from_secs(3), Duration::from_millis(10)),
+                harness.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
             )
             .await
             .unwrap_err();
@@ -848,7 +848,7 @@ mod tests {
             ));
 
             harness
-                .reap_quarantine(Duration::from_secs(1))
+                .reap_quarantine(crate::test_wait::BUDGET)
                 .await
                 .unwrap();
             let reset = harness.observation();
@@ -857,7 +857,7 @@ mod tests {
             assert_eq!(reset.active_reapers, 0);
             assert_eq!(reset.available_reaper_permits, 8);
             harness
-                .reap_quarantine(Duration::from_secs(1))
+                .reap_quarantine(crate::test_wait::BUDGET)
                 .await
                 .unwrap();
             assert_eq!(harness.observation().unconfirmed_exits, 0);
@@ -866,7 +866,7 @@ mod tests {
                 &state,
                 request,
                 0,
-                harness.mutation_policy(Duration::from_secs(3), Duration::from_millis(50)),
+                harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
             )
             .await
             .unwrap();

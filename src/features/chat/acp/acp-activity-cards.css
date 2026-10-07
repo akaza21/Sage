@@ -1,6 +1,6 @@
 .acp-activity-card {
   min-width: 0;
-  padding: 6px 0 6px var(--space-3);
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
   overflow: hidden;
   border: 0;
   border-left: 1px solid var(--color-border-strong);
@@ -43,11 +43,10 @@
 
 .acp-activity-card > header,
 .acp-activity-card > summary,
-.acp-activity-card__header,
-.acp-usage {
+.acp-activity-card__header {
   display: grid;
   min-width: 0;
-  min-height: 26px;
+  min-height: var(--row-height-compact);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
@@ -56,6 +55,42 @@
 .acp-activity-card > summary {
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+.acp-activity-card > .acp-tool-card__header {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+}
+
+.acp-tool-card__header > .acp-state {
+  grid-column: 4;
+}
+
+.acp-tool-card__header > svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.acp-tool-card__header > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-tool-card__duration {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.acp-tool-card__raw-kind {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
 }
 
 .acp-activity-card > summary:focus-visible {
@@ -81,7 +116,8 @@
   > :is(header, summary)
   .acp-state {
   color: var(--color-accent);
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
 }
 
 .acp-activity-card[data-activity-state="completed"] > header .acp-state {
@@ -106,7 +142,7 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: 26px;
+  min-height: var(--row-height-compact);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
@@ -177,7 +213,7 @@
 }
 
 .acp-plan li[data-plan-state="inProgress"] {
-  color: var(--color-warning);
+  color: var(--color-accent);
 }
 
 .acp-plan li[data-plan-state="pending"] {
@@ -189,7 +225,8 @@
 }
 
 .acp-plan__working {
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
 }
 
 .acp-plan__activity {
@@ -205,7 +242,7 @@
   min-width: 0;
   grid-template-columns: 10px minmax(0, 1fr);
   align-items: start;
-  gap: 6px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -225,12 +262,13 @@
 }
 
 .acp-plan__pulse {
-  width: 6px;
-  height: 6px;
-  margin-top: 5px;
+  width: 4px;
+  height: 4px;
+  margin-top: 4px;
   border-radius: var(--radius-pill);
-  background: var(--color-warning);
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
+  background: var(--color-accent);
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
 }
 
 .acp-plan__activity .acp-plan__working-more {
@@ -246,13 +284,104 @@
   margin-top: var(--space-2);
 }
 
-.acp-tool-rollup__items .acp-activity-card {
-  margin-left: var(--space-2);
+.acp-activity-card.acp-activity-card--tool-rollup {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.acp-usage {
-  margin: 0;
+.acp-tool-rollup > summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: var(--row-height-compact);
+  padding-right: var(--space-1);
+  list-style: none;
+  transition: color var(--motion-duration-fast) ease;
+}
+
+.acp-tool-rollup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.acp-tool-rollup__summary-copy,
+.acp-tool-rollup__meta,
+.acp-tool-rollup__duration {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.acp-tool-rollup__summary-copy {
+  overflow: hidden;
+}
+
+.acp-tool-rollup__summary-copy > svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.acp-tool-rollup__label {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-tool-rollup__lead {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
   font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-tool-rollup__summary-copy > svg:first-child {
+  color: var(--color-text-muted);
+}
+
+.acp-tool-rollup[data-activity-state="failed"]
+  .acp-tool-rollup__summary-copy
+  > svg {
+  color: var(--color-danger);
+}
+
+.acp-tool-rollup__meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.acp-tool-rollup[data-activity-state="completed"] .acp-tool-rollup__duration,
+.acp-tool-rollup[data-activity-state="completed"]
+  .acp-tool-rollup__meta
+  > .acp-state {
+  display: none;
+}
+
+.acp-tool-rollup__duration {
+  font-variant-numeric: tabular-nums;
+}
+
+.acp-tool-rollup__chevron {
+  flex: 0 0 auto;
+  transition: transform var(--motion-duration-fast) ease;
+}
+
+.acp-tool-rollup[open] .acp-tool-rollup__chevron {
+  transform: rotate(180deg);
+}
+
+.acp-tool-rollup__working {
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
+}
+
+.acp-tool-rollup__items .acp-activity-card {
+  margin-left: var(--space-2);
 }
 
 .acp-tool-card > .acp-details,
@@ -295,6 +424,27 @@
   white-space: pre;
 }
 
+.acp-tool-command--line {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.acp-tool-output > .acp-tool-command__disclosure {
+  cursor: pointer;
+}
+
+.acp-tool-command--output {
+  max-height: 14rem;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .acp-activity-card .acp-resource-list {
   margin: var(--space-1) 0 0;
   padding: 0;
@@ -318,7 +468,7 @@
   min-width: 0;
   grid-template-columns: 10px minmax(0, 1fr);
   align-items: start;
-  gap: 6px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -338,12 +488,13 @@
 }
 
 .acp-thought__pulse {
-  width: 6px;
-  height: 6px;
-  margin-top: 5px;
+  width: 4px;
+  height: 4px;
+  margin-top: 4px;
   border-radius: var(--radius-pill);
   background: var(--color-accent);
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
 }
 
 .acp-thought[open] > :not(summary) {
@@ -364,18 +515,22 @@
 
 @media (max-width: 640px) {
   .acp-activity-card {
-    padding: 6px 0 6px var(--space-2);
+    padding: var(--space-2) 0 var(--space-2) var(--space-2);
   }
 
   .acp-activity-card > header,
   .acp-activity-card > summary,
-  .acp-activity-card__header,
-  .acp-usage {
+  .acp-activity-card__header {
     gap: var(--space-2);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .acp-tool-rollup > summary,
+  .acp-tool-rollup__chevron {
+    transition: none;
+  }
+
   .acp-activity-card *,
   .acp-thought[open] > :not(summary) {
     animation-duration: 0s !important;

@@ -130,7 +130,8 @@ pub(crate) fn browse_tool_payload(
     href: &str,
 ) -> Result<NormalizedPayload, crate::acp::contract::ContractError> {
     Ok(NormalizedPayload::ToolCall {
-        category: crate::acp::intent::ToolCategory::Web,
+        execution: Default::default(),
+        category: crate::acp::intent::ToolCategory::Fetch,
         label: SafeText::new("toolLabel", CURATED_BROWSE_TOOL_NAME)?,
         input_summary: Some(SafeText::new("toolInput", href)?),
         output_summary: None,

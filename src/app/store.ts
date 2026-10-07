@@ -62,6 +62,7 @@ import {
   type FileNavigationSlice,
 } from "./fileNavigationSlice";
 import { closeWorkbenchTab } from "./tabClosing";
+import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
 
 export type SidebarView =
   "explorer" | "search" | "sourceControl" | "preview" | "problems" | "outline";
@@ -81,6 +82,7 @@ export interface WorkbenchState
     FileRenameSlice,
     HarnessSlice,
     ProjectSlice,
+    BrowserSlice,
     RepositoryCommitSlice,
     RepositoryCheckoutSlice,
     RepositoryRemoteSlice,
@@ -91,6 +93,7 @@ export interface WorkbenchState
     FileNavigationSlice {
   phase: "booting" | "ready" | "error";
   error: string | null;
+  browserClearNotice: string | null;
   projects: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];
@@ -131,6 +134,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
   return {
     phase: "booting",
     error: null,
+    browserClearNotice: null,
     projects: [],
     project: null,
     tabs: [],
@@ -168,6 +172,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createFileRenameSlice(set, get, store),
     ...createResourceTrashSlice(set, get, store),
     ...createHarnessSlice(set, get, store),
+    ...createBrowserSlice(set, get, store),
 
     selectRoot: (selectedRootId) => {
       if (

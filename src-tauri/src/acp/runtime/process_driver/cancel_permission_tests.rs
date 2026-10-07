@@ -8,6 +8,7 @@ fn permission(id: &str) -> AdapterEvent {
         payload: NormalizedPayload::PermissionRequest {
             category: crate::acp::intent::ToolCategory::Other,
             summary: SafeText::new("summary", "permission").expect("summary"),
+            offered_option_kinds: None,
         },
         request_payload_digest: [5; 32],
     }

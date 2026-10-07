@@ -19,14 +19,14 @@ describe("Problems surface stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.problem-card\b/m);
   });
 
-  it("keeps Problems and Outline rows dense, quiet, and truncation-safe", async () => {
+  it("keeps Problems and Outline rows dense on the four pixel scale, quiet, and truncation-safe", async () => {
     const surfaceCss = await readFile(
       resolve("src/styles/problems-outline-surfaces.css"),
       "utf8",
     );
 
     expect(surfaceCss).toMatch(
-      /\.problem-card,[\s\S]*\.outline-card\s*\{[^}]*display:\s*grid;[^}]*min-height:\s*28px;[^}]*grid-template-columns:\s*16px minmax\(0, 1fr\);[^}]*padding:\s*3px 7px;/s,
+      /\.problem-card,[\s\S]*\.outline-card\s*\{[^}]*display:\s*grid;[^}]*min-height:\s*28px;[^}]*grid-template-columns:\s*16px minmax\(0, 1fr\);[^}]*padding:\s*4px 8px;/s,
     );
     expect(surfaceCss).toMatch(
       /\.problem-card__kind,[\s\S]*\.outline-card__kind\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px;[^}]*background:\s*transparent;/s,

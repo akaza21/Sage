@@ -1,5 +1,6 @@
 import {
   GitCompareArrows,
+  Globe2,
   MessageSquare,
   Plus,
   Settings,
@@ -11,6 +12,37 @@ import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
 import { FileKindIcon } from "../features/files/FileKindIcon";
+import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
+import type { WorkbenchTab } from "../domain/workbench";
+import { BrowserFavicon } from "../features/browser/browserAddress";
+
+function BrowserTabPresence({
+  tabId,
+  projectId,
+  tabs,
+}: {
+  tabId: string;
+  projectId: string | null;
+  tabs: readonly WorkbenchTab[];
+}) {
+  const operation = useBrowserAgentPresence(projectId, tabId);
+  if (!operation) return null;
+  const chatTitle =
+    tabs.find((tab) => tab.kind === "chat" && tab.id === operation.chatId)
+      ?.title ?? "Chat";
+  const status =
+    operation.phase === "started"
+      ? "Agent has a browser action pending"
+      : "Agent used this tab";
+  return (
+    <span className="tab__agent-presence" title={`${status} · ${chatTitle}`}>
+      <span aria-hidden="true">Agent · {chatTitle}</span>
+      <span className="sr-only">
+        {status} · {chatTitle}
+      </span>
+    </span>
+  );
+}
 
 const icons: Record<TabKind, typeof MessageSquare> = {
   chat: MessageSquare,
@@ -21,6 +53,7 @@ const icons: Record<TabKind, typeof MessageSquare> = {
   problems: MessageSquare,
   output: TerminalSquare,
   settings: Settings,
+  browser: Globe2,
 };
 
 export function TabStrip({
@@ -63,15 +96,31 @@ export function TabStrip({
                 aria-selected={active}
                 onClick={() => void activateTab(tab.id)}
               >
-                {tab.kind === "file" ? (
+                {tab.kind === "browser" ? (
+                  <BrowserFavicon
+                    key={tab.favicon ?? ""}
+                    value={tab.favicon}
+                    className="tab__favicon"
+                    fallback={
+                      <Globe2 size={16} strokeWidth={1.8} aria-hidden="true" />
+                    }
+                  />
+                ) : tab.kind === "file" ? (
                   <FileKindIcon
                     path={tab.resource?.relativePath ?? tab.title}
-                    size={15}
+                    size={16}
                   />
                 ) : (
-                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                 )}
                 <span>{tab.title}</span>
+                {tab.kind === "browser" ? (
+                  <BrowserTabPresence
+                    tabId={tab.id}
+                    projectId={project?.id ?? null}
+                    tabs={tabs}
+                  />
+                ) : null}
                 {tab.status === "working" ? (
                   <span className="tab__status" title="Working" />
                 ) : null}

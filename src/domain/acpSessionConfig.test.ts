@@ -25,7 +25,7 @@ describe("session config boundary", () => {
   it("retains v1 modes and thought_level without conflating them", () => {
     expect(decodeSessionConfig(overlay())).toEqual(overlay());
   });
-  it("accepts boolean, homogeneous grouped select options and removal tombstones", () => {
+  it("accepts negotiated booleans, grouped select options and removal tombstones", () => {
     const value = {
       ...overlay(),
       configOptions: [
@@ -57,6 +57,78 @@ describe("session config boundary", () => {
       ...select,
       category: "vendor_custom",
     });
+  });
+  it("keeps neighbouring options when one option advertises an unknown type", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [
+        {
+          id: "free-text",
+          name: "Free text",
+          type: "text",
+          currentValue: "a",
+          placeholder: "type here",
+        },
+        select,
+      ],
+    };
+    const decoded = decodeSessionConfig(value);
+    expect(decoded?.modes).toEqual(overlay().modes);
+    expect(decoded?.configOptions).toEqual([
+      { id: "free-text", name: "Free text", type: "unsupported", kind: "text" },
+      select,
+    ]);
+  });
+  it("demotes a boolean option without a negotiated boolean value", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [
+        { id: "toggle", name: "Toggle", type: "boolean", currentValue: "yes" },
+      ],
+    };
+    expect(decodeSessionConfig(value)?.configOptions).toEqual([
+      { id: "toggle", name: "Toggle", type: "unsupported", kind: "boolean" },
+    ]);
+  });
+  it("reports a missing option type as an unsupported option with an empty kind", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [{ id: "bare", name: "Bare" }],
+    };
+    expect(decodeSessionConfig(value)?.configOptions).toEqual([
+      { id: "bare", name: "Bare", type: "unsupported", kind: "" },
+    ]);
+  });
+  it("carries the original kind when the wire tags an option as unsupported", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [
+        {
+          id: "toggle",
+          name: "Toggle",
+          type: "unsupported",
+          kind: "boolean",
+          currentValue: true,
+        },
+      ],
+    };
+    expect(decodeSessionConfig(value)?.configOptions).toEqual([
+      { id: "toggle", name: "Toggle", type: "unsupported", kind: "boolean" },
+    ]);
+  });
+  it("still discards the overlay when an option omits its base identity", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [{ name: "Nameless", type: "text" }, select],
+    };
+    expect(decodeSessionConfig(value)).toBeNull();
+  });
+  it("still discards the overlay when a select advertises an unreachable current value", () => {
+    const value = {
+      ...overlay(),
+      configOptions: [{ ...select, currentValue: "absent" }],
+    };
+    expect(decodeSessionConfig(value)).toBeNull();
   });
   it.each([
     { configRevision: "0" },
@@ -90,7 +162,6 @@ describe("session config boundary", () => {
         },
       ],
     },
-    { configOptions: [{ ...select, type: "text" }] },
     {
       configOptions: [
         {

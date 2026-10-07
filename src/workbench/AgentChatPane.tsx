@@ -47,26 +47,32 @@ export function AgentChatPane({
       aria-label={`Chat pane ${title}`}
       onFocus={handleFocus}
     >
-      <header className="agent-chat-pane__header">
-        <button
-          className="agent-chat-pane__focus"
-          type="button"
-          aria-pressed={focused}
-          onClick={handleFocus}
-        >
-          {unread ? (
-            <span className="agent-unread-dot" aria-label="Unread updates" />
-          ) : null}
-          <span className="agent-chat-pane__title">{title}</span>
-        </button>
-        <span
-          className={`agent-chat-chip agent-chat-chip--${snapshot.statusTone}`}
-          role="status"
-        >
-          {snapshot.statusLabel}
-        </span>
-      </header>
-      {renderRegisteredCanvas("chat", tab)}
+      {renderRegisteredCanvas("chat", tab, {
+        paneHeader: (
+          <div className="agent-chat-pane__identity">
+            <button
+              className="agent-chat-pane__focus"
+              type="button"
+              aria-pressed={focused}
+              onClick={handleFocus}
+            >
+              {unread ? (
+                <span
+                  className="agent-unread-dot"
+                  aria-label="Unread updates"
+                />
+              ) : null}
+              <span className="agent-chat-pane__title">{title}</span>
+            </button>
+            <span
+              className={`agent-chat-chip agent-chat-chip--${snapshot.statusTone}`}
+              role="status"
+            >
+              {snapshot.statusLabel}
+            </span>
+          </div>
+        ),
+      })}
     </section>
   );
 }

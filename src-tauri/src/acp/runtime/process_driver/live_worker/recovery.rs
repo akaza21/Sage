@@ -7,7 +7,7 @@ use super::super::{
     CoordinatorZeroToken, PreparedProcessWrite, PreparedWriteError, ProcessTreeControl,
     StdinTransport, WorkerCommand, WorkerEnvelope, WorkerReply,
 };
-use super::turn::map_write;
+use super::write_recovery::map_write;
 use super::write_recovery::{
     classify_begin_send_failure, classify_observe_failure, durable_commit_unknown,
 };
@@ -147,7 +147,7 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
-    let active = match active.accept_terminal(&cursor) {
+    let mut active = match active.accept_terminal(&cursor) {
         Ok(active) => active,
         Err(failure)
             if matches!(
@@ -171,6 +171,7 @@ where
             }));
         }
     };
+    active.settle_steer();
     match active.try_into_completed(context.mailbox.as_ref()) {
         Ok(completed) => {
             envelope.respond(Ok(WorkerReply::Unit));

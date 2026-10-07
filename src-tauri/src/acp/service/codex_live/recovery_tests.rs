@@ -1,5 +1,13 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{Receiver, SyncSender},
+    },
+    time::Duration,
+};
 
+use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 use crate::acp::{
     contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
@@ -11,53 +19,7 @@ use crate::acp::{
 #[test]
 fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
     tauri::async_runtime::block_on(async {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
-        let root = std::env::current_dir().unwrap().canonicalize().unwrap();
-        let project = database.create_project_from_root(&root).unwrap();
-        let bootstrap = database.bootstrap_snapshot().unwrap();
-        let project_id = SageProjectId::parse(project.id).unwrap();
-        let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
-        let service = AcpService::new(database).unwrap();
-        let revision = service
-            .load_chat_page(project_id.clone(), chat_id.clone(), None)
-            .unwrap()
-            .projection_revision;
-        let started = service
-            .sessions
-            .start_session(StartSessionCommand {
-                project_id: project_id.clone(),
-                chat_id: chat_id.clone(),
-                expected_projection_revision: revision,
-                client_intent_id: ClientIntentId::new(),
-                binding_id: BindingId::new("bindingId", "recovery-test").unwrap(),
-                binding_digest: "11".repeat(32),
-                harness_version: None,
-                model_id: None,
-                now_millis: crate::persistence::now_millis(),
-            })
-            .await
-            .unwrap();
-        let owner = RuntimeOwner {
-            project_id: project_id.clone(),
-            chat_id: chat_id.clone(),
-            session_id: started.session_id.clone(),
-            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        };
-        let lease = service
-            .sessions
-            .activate_session(ActivateSessionCommand {
-                project_id,
-                chat_id,
-                expected_projection_revision: started.projection_revision,
-                client_intent_id: ClientIntentId::new(),
-                session_id: started.session_id,
-                runtime_epoch: owner.runtime_epoch,
-                artifact_digest: "22".repeat(32),
-                now_millis: crate::persistence::now_millis(),
-            })
-            .await
-            .unwrap();
+        let (service, owner, lease) = activating_session_fixture("recovery-test").await;
         let turn = lease.reserve_turn_for_test().unwrap();
         service.retain_codex_recovery(PendingCodexRecovery::Abort {
             abort: ActivationAbortIntent {
@@ -88,6 +50,95 @@ fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
         assert!(service.scheduler.active().is_none());
         service.shutdown_blocking().unwrap();
     });
+}
+
+#[test]
+fn retained_activation_recovery_releases_capacity_before_another_live_admission() {
+    tauri::async_runtime::block_on(async {
+        let (service, owner, lease) = activating_session_fixture("activation-reclaim").await;
+        service.runtime.reserve_start(owner.clone()).unwrap();
+        service.runtime.mark_recovery(&owner).unwrap();
+        service.retain_codex_recovery(PendingCodexRecovery::Abort {
+            abort: ActivationAbortIntent {
+                owner: owner.clone(),
+                binding_digest: "11".repeat(32),
+                artifact_digest: "22".repeat(32),
+            },
+            category: ActivationAbortCategory::AssemblyFailure,
+            lease,
+            proof: ZeroProcessProof::confirmed(owner.clone()),
+        });
+
+        assert!(
+            service
+                .reclaim_zero_process_capacity(Instant::now() + Duration::from_secs(1))
+                .unwrap()
+        );
+        assert!(service.codex_recovery.lock().unwrap().is_none());
+        let next = RuntimeOwner {
+            runtime_epoch: RuntimeEpoch::new(owner.runtime_epoch.get() + 1).unwrap(),
+            ..owner
+        };
+        service.runtime.reserve_start(next.clone()).unwrap();
+        service.runtime.abandon_start(&next).unwrap();
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+async fn activating_session_fixture(
+    label: &str,
+) -> (
+    AcpService,
+    RuntimeOwner,
+    crate::acp::runtime::SessionTreeLease,
+) {
+    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let bootstrap = database.bootstrap_snapshot().unwrap();
+    let project_id = SageProjectId::parse(project.id).unwrap();
+    let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
+    let service = AcpService::new(database).unwrap();
+    let revision = service
+        .load_chat_page(project_id.clone(), chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    let started = service
+        .sessions
+        .start_session(StartSessionCommand {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            expected_projection_revision: revision,
+            client_intent_id: ClientIntentId::new(),
+            binding_id: BindingId::new("bindingId", label).unwrap(),
+            binding_digest: "11".repeat(32),
+            harness_version: None,
+            model_id: None,
+            now_millis: crate::persistence::now_millis(),
+        })
+        .await
+        .unwrap();
+    let owner = RuntimeOwner {
+        project_id: project_id.clone(),
+        chat_id: chat_id.clone(),
+        session_id: started.session_id.clone(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    let lease = service
+        .sessions
+        .activate_session(ActivateSessionCommand {
+            project_id,
+            chat_id,
+            expected_projection_revision: started.projection_revision,
+            client_intent_id: ClientIntentId::new(),
+            session_id: started.session_id,
+            runtime_epoch: owner.runtime_epoch,
+            artifact_digest: "22".repeat(32),
+            now_millis: crate::persistence::now_millis(),
+        })
+        .await
+        .unwrap();
+    (service, owner, lease)
 }
 
 #[test]
@@ -352,6 +403,289 @@ fn effect_unknown_send_retains_the_exact_host_until_bounded_shutdown_without_rep
 }
 
 #[test]
+fn native_end_proves_zero_process_and_terminalizes_the_exact_runtime() {
+    let (service, owner) = tauri::async_runtime::block_on(ready_runtime_fixture("native-end"));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+
+    service.end_session_natively(owner.clone()).unwrap();
+
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.scheduler.active().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn native_end_refuses_to_replace_an_existing_recovery() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("native-end-existing"));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    service.runtime.mark_recovery(&owner).unwrap();
+    service.retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+        owner: owner.clone(),
+        host,
+        phase: LiveHostRecoveryPhase::SendEffect,
+    }));
+
+    assert!(matches!(
+        service.end_session_natively(owner.clone()),
+        Err(CodexSessionError::Recovery)
+    ));
+    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.scheduler.active().is_some());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn native_end_without_native_proof_refuses_without_mutating_the_runtime() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("native-end-no-proof"));
+    let host = Arc::new(crate::acp::runtime::RuntimeHost::start(TestRuntime::default()).unwrap());
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+
+    assert!(matches!(
+        service.end_session_natively(owner.clone()),
+        Err(CodexSessionError::Recovery)
+    ));
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.scheduler.active().is_some());
+    assert!(service.runtime.for_owner(&owner).is_ok());
+    assert!(service.runtime.for_owner(&owner).is_ok());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn native_end_retries_its_exact_retained_recovery() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("native-end-retry"));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(RetryingShutdownRecovery {
+                attempts: Arc::clone(&attempts),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+
+    assert!(matches!(
+        service.end_session_natively(owner.clone()),
+        Err(CodexSessionError::Recovery)
+    ));
+    assert_eq!(attempts.load(Ordering::Acquire), 1);
+    assert!(service.codex_recovery.lock().unwrap().is_some());
+
+    service.end_session_natively(owner.clone()).unwrap();
+    assert_eq!(attempts.load(Ordering::Acquire), 2);
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn native_end_preserves_its_terminal_outcome_against_inflight_and_late_config_recovery() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("native-end-in-flight"));
+    let (entered_sender, entered_receiver) = std::sync::mpsc::sync_channel(1);
+    let (release_sender, release_receiver) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(BlockingShutdownRecovery {
+                entered: entered_sender,
+                release: Mutex::new(release_receiver),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+
+    let result = std::thread::scope(|scope| {
+        let worker = scope.spawn(|| service.end_session_natively(owner.clone()));
+        entered_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+
+        assert_native_end_in_flight(&service, &owner, &host);
+        service.retain_config_effect_recovery(owner.clone(), Arc::clone(&host));
+        service.forget_stale_owner_recovery(&owner);
+        assert!(matches!(
+            service.reclaim_zero_process_capacity(Instant::now() + Duration::from_millis(50)),
+            Err(crate::acp::runtime::HostError::RecoveryRequired)
+        ));
+        assert_native_end_in_flight(&service, &owner, &host);
+        assert!(service.scheduler.active().is_some());
+
+        release_sender.send(()).unwrap();
+        worker.join().unwrap()
+    });
+
+    result.unwrap();
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.scheduler.active().is_none());
+    service.retain_config_effect_recovery(owner.clone(), host);
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn shutdown_retry_keeps_native_end_inflight_when_a_runner_fails() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("native-end-shutdown"));
+    let (entered_sender, entered_receiver) = std::sync::mpsc::sync_channel(1);
+    let (release_sender, release_receiver) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(BlockingShutdownRecovery {
+                entered: entered_sender,
+                release: Mutex::new(release_receiver),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    service.runtime.mark_recovery(&owner).unwrap();
+    service.retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+        owner: owner.clone(),
+        host: Arc::clone(&host),
+        phase: LiveHostRecoveryPhase::NativeEnd,
+    }));
+    let running = crate::acp::process::launch_fixture_for_test(owner.runtime_epoch.get());
+    let (_, _, control) = running.into_parts();
+    control
+        .terminate_zero(crate::acp::process::TreeExit::ProtocolFailure)
+        .unwrap();
+    let runner = LiveRunnerHandle::new(Arc::new(DriverMailbox::new().unwrap()), control);
+
+    let result = std::thread::scope(|scope| {
+        let worker = scope
+            .spawn(|| service.shutdown_codex_recovery(Instant::now() + Duration::from_secs(1)));
+        entered_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        super::super::observe_runner_failure_for_test(
+            &service.runtime,
+            &owner,
+            &runner,
+            &service.codex_recovery,
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+        assert_native_end_in_flight(&service, &owner, &host);
+
+        release_sender.send(()).unwrap();
+        worker.join().unwrap()
+    });
+
+    assert!(result.unwrap());
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.scheduler.active().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn close_recovery_keeps_live_authority_inflight_when_a_runner_fails() {
+    let (service, owner) = tauri::async_runtime::block_on(ready_runtime_fixture("close-inflight"));
+    let (entered_sender, entered_receiver) = std::sync::mpsc::sync_channel(1);
+    let (release_sender, release_receiver) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start(TestRuntime::blocking_close(
+            entered_sender,
+            release_receiver,
+        ))
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    let command = close_session(&owner);
+    assert!(matches!(
+        service.close_codex_session(command.clone()),
+        Err(CodexSessionError::Recovery)
+    ));
+    let running = crate::acp::process::launch_fixture_for_test(owner.runtime_epoch.get());
+    let (_, _, control) = running.into_parts();
+    control
+        .terminate_zero(crate::acp::process::TreeExit::ProtocolFailure)
+        .unwrap();
+    let runner = LiveRunnerHandle::new(Arc::new(DriverMailbox::new().unwrap()), control);
+
+    let result = std::thread::scope(|scope| {
+        let worker = scope.spawn(|| service.close_codex_session(command));
+        entered_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        super::super::observe_runner_failure_for_test(
+            &service.runtime,
+            &owner,
+            &runner,
+            &service.codex_recovery,
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+        service.retain_live_failure_recovery(
+            owner.clone(),
+            Arc::clone(&host),
+            LiveHostRecoveryPhase::SendEffect,
+        );
+
+        release_sender.send(()).unwrap();
+        worker.join().unwrap()
+    });
+
+    assert!(matches!(
+        result,
+        Ok(crate::acp::runtime::HostOutcome::Closed)
+    ));
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.runtime.active().is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+fn assert_native_end_in_flight(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    host: &Arc<RuntimeHost>,
+) {
+    let retained = service.codex_recovery.lock().unwrap();
+    let Some(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+        owner: current_owner,
+        host: current_host,
+        phase: LiveHostRecoveryPhase::NativeEndInFlight,
+    })) = retained.as_ref()
+    else {
+        panic!("native End recovery was not retained in flight");
+    };
+    assert_eq!(current_owner, owner);
+    assert!(Arc::ptr_eq(current_host, host));
+}
+
+#[test]
 fn public_close_retries_managed_shutdown_without_replaying_the_uncertain_effect() {
     let (service, owner) = tauri::async_runtime::block_on(ready_runtime_fixture("managed-retry"));
     let trace = Arc::new(std::sync::Mutex::new(OperationTrace::default()));
@@ -411,6 +745,109 @@ fn public_close_retries_managed_shutdown_without_replaying_the_uncertain_effect(
     assert_eq!(trace.close, 0, "normal close was dispatched");
     drop(trace);
     assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("replacement-timeout"));
+    let (entered_sender, entered_receiver) = std::sync::mpsc::sync_channel(1);
+    let (release_sender, release_receiver) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(
+        RuntimeHost::start_with_timeout_and_shutdown_recovery(
+            TestRuntime::blocking_prepare(entered_sender, release_receiver),
+            Duration::from_millis(20),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.without_timeout_override(|| host.activate(owner.clone()))
+        .unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    assert!(service.scheduler.active().is_some());
+
+    let timed_out = {
+        let host = Arc::clone(&host);
+        let intent = crate::acp::runtime::HostPromptIntent {
+            command: prepare_turn(&owner),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        };
+        std::thread::spawn(move || host.prepare_prompt(intent))
+    };
+    entered_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .unwrap();
+    assert!(matches!(
+        timed_out.join().unwrap(),
+        Err(crate::acp::runtime::HostError::Deadline)
+    ));
+    assert!(host.is_awaiting_exit());
+    release_sender.send(()).unwrap();
+
+    service.retain_live_failure_recovery(
+        owner.clone(),
+        Arc::clone(&host),
+        LiveHostRecoveryPhase::ReplacementPark,
+    );
+    assert!(service.scheduler.active().is_some());
+    assert!(matches!(
+        service.shutdown_codex_recovery(Instant::now() + Duration::from_secs(1)),
+        Ok(true)
+    ));
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.scheduler.active().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("steer-ack-timeout"));
+    let pending = Arc::new(Mutex::new(None));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let host = Arc::new(
+        RuntimeHost::start_with_timeout_and_shutdown_recovery(
+            TestRuntime::delayed_first_steer(Arc::clone(&pending), Arc::clone(&attempts)),
+            Duration::from_millis(30),
+            Arc::new(SuccessfulShutdownRecovery(owner.runtime_epoch.get())),
+        )
+        .unwrap(),
+    );
+    host.without_timeout_override(|| {
+        host.activate(owner.clone())?;
+        host.send(crate::acp::runtime::HostPromptIntent {
+            command: prepare_turn(&owner),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })?;
+        Ok::<(), crate::acp::runtime::HostError>(())
+    })
+    .unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    let intent = crate::acp::runtime::HostSteerIntent {
+        owner: owner.clone(),
+        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        prompt: crate::acp::intent::Prompt::new("prompt", "Please steer").unwrap(),
+        client_message_id: crate::acp::contract::RequiredText::new("clientMessageId", "queued-one")
+            .unwrap(),
+    };
+
+    let error = host.steer(intent.clone()).unwrap_err();
+    let _ = service.retain_live_host_error(
+        owner.clone(),
+        Arc::clone(&host),
+        LiveHostRecoveryPhase::SendEffect,
+        error,
+    );
+    assert!(service.runtime.for_owner(&owner).is_ok());
+    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert_eq!(
+        host.steer(intent),
+        Ok(crate::acp::runtime::HostOutcome::SteerQueued)
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    drop(pending.lock().unwrap().take());
     service.shutdown_blocking().unwrap();
 }
 
@@ -674,6 +1111,40 @@ impl crate::acp::runtime::RuntimeShutdownRecovery for SuccessfulShutdownRecovery
     }
 }
 
+struct BlockingShutdownRecovery {
+    entered: SyncSender<()>,
+    release: Mutex<Receiver<()>>,
+    epoch: u64,
+}
+
+struct BlockingCloseRecovery {
+    attempts: usize,
+    entered: SyncSender<()>,
+    release: Mutex<Receiver<()>>,
+}
+
+struct BlockingPrepareRecovery {
+    entered: SyncSender<()>,
+    release: Mutex<Receiver<()>>,
+}
+
+impl crate::acp::runtime::RuntimeShutdownRecovery for BlockingShutdownRecovery {
+    fn shutdown_recovery_before(
+        &self,
+        _: Instant,
+    ) -> Result<crate::acp::process::ZeroProcessToken, crate::acp::runtime::HostError> {
+        self.entered
+            .send(())
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        self.release
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        Ok(crate::acp::process::ZeroProcessToken::for_test(self.epoch))
+    }
+}
+
 fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand {
     crate::acp::store::CloseSessionCommand {
         project_id: owner.project_id.clone(),
@@ -717,12 +1188,62 @@ fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
 #[derive(Default)]
 struct TestRuntime {
     script: Option<(OperationFailure, Arc<std::sync::Mutex<OperationTrace>>)>,
+    blocking_close: Option<BlockingCloseRecovery>,
+    blocking_prepare: Option<BlockingPrepareRecovery>,
+    pending_steer: Option<Arc<Mutex<Option<crate::acp::runtime::SteerCompletionSink>>>>,
+    steer_attempts: Option<Arc<AtomicUsize>>,
 }
 
 impl TestRuntime {
     fn scripted(failure: OperationFailure, trace: Arc<std::sync::Mutex<OperationTrace>>) -> Self {
         Self {
             script: Some((failure, trace)),
+            blocking_close: None,
+            blocking_prepare: None,
+            pending_steer: None,
+            steer_attempts: None,
+        }
+    }
+
+    fn blocking_close(entered: SyncSender<()>, release: Receiver<()>) -> Self {
+        Self {
+            script: None,
+            blocking_close: Some(BlockingCloseRecovery {
+                attempts: 0,
+                entered,
+                release: Mutex::new(release),
+            }),
+            blocking_prepare: None,
+            pending_steer: None,
+            steer_attempts: None,
+        }
+    }
+
+    fn blocking_prepare(entered: SyncSender<()>, release: Receiver<()>) -> Self {
+        Self {
+            script: None,
+            blocking_close: None,
+            blocking_prepare: Some(BlockingPrepareRecovery {
+                entered,
+                release: Mutex::new(release),
+            }),
+            pending_steer: None,
+            steer_attempts: None,
+        }
+    }
+
+    fn delayed_first_steer(
+        pending: Arc<Mutex<Option<crate::acp::runtime::SteerCompletionSink>>>,
+        attempts: Arc<AtomicUsize>,
+    ) -> Self {
+        Self {
+            script: Some((
+                OperationFailure::Cancel,
+                Arc::new(Mutex::new(OperationTrace::default())),
+            )),
+            pending_steer: Some(pending),
+            steer_attempts: Some(attempts),
+            ..Self::default()
         }
     }
 }
@@ -753,10 +1274,41 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         Ok(())
     }
 
+    fn begin_steer(
+        &mut self,
+        _: &crate::acp::runtime::HostSteerIntent,
+        _: Instant,
+        completion: crate::acp::runtime::SteerCompletionSink,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        let Some(attempts) = &self.steer_attempts else {
+            return Err(crate::acp::runtime::HostError::State);
+        };
+        if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+            *self.pending_steer.as_ref().unwrap().lock().unwrap() = Some(completion);
+        } else {
+            completion.complete(Ok(()));
+        }
+        Ok(())
+    }
+
     fn prepare_prompt(
         &mut self,
         _: &crate::acp::runtime::HostPromptIntent,
     ) -> Result<crate::acp::contract::SageTurnId, crate::acp::runtime::HostError> {
+        if let Some(recovery) = &self.blocking_prepare {
+            recovery
+                .entered
+                .send(())
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+            recovery
+                .release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(1))
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+            return crate::acp::contract::SageTurnId::parse("turn-timeout-recovery")
+                .map_err(|_| crate::acp::runtime::HostError::Intent);
+        }
         let Some((failure, trace)) = &self.script else {
             return Err(crate::acp::runtime::HostError::Unavailable);
         };
@@ -836,6 +1388,12 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         &mut self,
         _: &crate::acp::runtime::HostCloseIntent,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(recovery) = self.blocking_close.as_mut() {
+            recovery.attempts += 1;
+            return (recovery.attempts > 1)
+                .then_some(())
+                .ok_or(crate::acp::runtime::HostError::RecoveryRequired);
+        }
         let Some((failure, trace)) = &self.script else {
             return Ok(());
         };
@@ -856,6 +1414,18 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         &mut self,
         _: &crate::acp::runtime::HostCloseIntent,
     ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(recovery) = &self.blocking_close {
+            recovery
+                .entered
+                .send(())
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+            recovery
+                .release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(1))
+                .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        }
         Ok(())
     }
 

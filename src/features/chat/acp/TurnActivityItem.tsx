@@ -1,19 +1,125 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Check, Circle, LoaderCircle, XCircle } from "lucide-react";
 
 import type { AcpItem } from "../../../domain/acp";
+import type {
+  AgentArtifactOpenHandler,
+  AgentArtifactOwner,
+} from "../../../domain/agentArtifact";
+import { chatTimestamp } from "../chatTimestamp";
 import {
   agentRailClockMs,
   useAgentRailViewPrefs,
 } from "../../../workbench/agentRailViewPrefs";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { CollaborationItem } from "./CollaborationItem";
+import { ImageItem } from "./ImageItem";
+import { PermissionItem } from "./PermissionItem";
+import { ToolItem } from "./ToolItem";
+import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
 import { isActiveTool, isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
-  { kind: "thoughtSummary" | "plan" | "usage" | "error" }
+  { kind: "thoughtSummary" | "plan" | "error" }
 >;
+
+export const ItemView = memo(
+  function ItemView({
+    item,
+    workingItems,
+    interactive,
+    fileReferenceOwner,
+    onOpenResource,
+  }: {
+    item: AcpItem;
+    workingItems?: readonly AcpItem[];
+    interactive: boolean;
+    fileReferenceOwner?: AgentArtifactOwner;
+    onOpenResource?: AgentArtifactOpenHandler;
+  }) {
+    switch (item.kind) {
+      case "text": {
+        const timestamp = chatTimestamp(item.createdAt);
+        return (
+          <article
+            className={`acp-message acp-message--${item.payload.role}`}
+            data-item-id={item.id}
+            data-message-role={item.payload.role}
+          >
+            <header className="acp-message__meta">
+              {item.payload.role === "assistant" ? (
+                <span className="acp-message__avatar" aria-hidden="true">
+                  S
+                </span>
+              ) : null}
+              <span className="acp-message__role">
+                {item.payload.role === "assistant"
+                  ? "Agent"
+                  : item.payload.role === "user"
+                    ? "You"
+                    : "System"}
+              </span>
+              {timestamp ? (
+                <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
+                  {timestamp.label}
+                </time>
+              ) : null}
+            </header>
+            <ChatMarkdown
+              text={item.payload.text}
+              streaming={
+                item.lifecycle === "started" || item.lifecycle === "streaming"
+              }
+              fileReferenceOwner={
+                item.payload.role === "assistant"
+                  ? fileReferenceOwner
+                  : undefined
+              }
+            />
+          </article>
+        );
+      }
+      case "thoughtSummary":
+      case "plan":
+        return <TurnActivityItem item={item} workingItems={workingItems} />;
+      case "error":
+        return <TurnActivityItem item={item} />;
+      case "toolCall":
+        return (
+          <ToolItem
+            item={item}
+            allowBrowse={interactive}
+            onOpenResource={interactive ? onOpenResource : undefined}
+          />
+        );
+      case "fileChangeDiff":
+        return (
+          <p className="acp-activity__edit-reference">
+            Edit included in the Turn changed-file summary
+          </p>
+        );
+      case "image":
+        return <ImageItem item={item} />;
+      case "permissionRequest":
+        return <PermissionItem item={item} />;
+      case "unsupported":
+        return <UnknownItem item={item} />;
+      case "collaboration":
+        return <CollaborationItem item={item} />;
+    }
+  },
+  (left, right) =>
+    left.item.id === right.item.id &&
+    left.item.revision === right.item.revision &&
+    (left.item.kind !== "thoughtSummary" && left.item.kind !== "plan"
+      ? true
+      : left.workingItems === right.workingItems) &&
+    left.interactive === right.interactive &&
+    left.fileReferenceOwner === right.fileReferenceOwner &&
+    left.onOpenResource === right.onOpenResource,
+);
 
 const MAX_THOUGHT_WORKING_ROWS = 64;
 const MAX_PLAN_WORKING_ROWS = 3;
@@ -183,29 +289,6 @@ function PlanActivity({
   );
 }
 
-function UsageActivity({
-  item,
-}: {
-  item: Extract<AcpItem, { kind: "usage" }>;
-}) {
-  const total = item.payload.totalTokens;
-  return (
-    <article
-      className="acp-activity-card acp-activity-card--usage acp-usage"
-      aria-label="Usage"
-      data-activity-kind="usage"
-      data-activity-state={total === null ? "unknown" : "reported"}
-    >
-      <strong>Usage</strong>
-      <span className="acp-state">
-        {total === null
-          ? "Tokens not reported"
-          : `${total.toLocaleString()} tokens`}
-      </span>
-    </article>
-  );
-}
-
 function ErrorActivity({
   item,
 }: {
@@ -250,8 +333,6 @@ export function TurnActivityItem({
       );
     case "plan":
       return <PlanActivity item={item} workingItems={workingItems} />;
-    case "usage":
-      return <UsageActivity item={item} />;
     case "error":
       return <ErrorActivity item={item} />;
   }

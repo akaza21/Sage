@@ -10,10 +10,17 @@ export type TabKind =
   | "search"
   | "problems"
   | "output"
-  | "settings";
+  | "settings"
+  | "browser";
 
 export type SessionStatus =
-  "idle" | "working" | "waiting" | "recovering" | "failed" | "complete";
+  | "idle"
+  | "working"
+  | "waiting"
+  | "recovering"
+  | "failed"
+  | "complete"
+  | "closed";
 
 export interface WorkbenchTab {
   id: string;
@@ -22,6 +29,7 @@ export interface WorkbenchTab {
   position: number;
   pinned: boolean;
   dirty: boolean;
+  favicon?: string;
   status?: SessionStatus;
   updatedAt?: number;
   resource?: ResourceRef;

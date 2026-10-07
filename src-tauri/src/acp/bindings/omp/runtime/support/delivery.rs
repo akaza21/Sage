@@ -5,7 +5,7 @@ use crate::acp::{
 };
 
 use super::super::{DenyIntent, DenyStage, OmpRuntime, RequestKind};
-use crate::acp::bindings::omp::Outbound;
+use crate::acp::bindings::omp::{AdapterEvent, Outbound};
 
 impl OmpRuntime {
     pub(in crate::acp::bindings::omp::runtime) fn reject_outbound(
@@ -88,9 +88,13 @@ impl OmpRuntime {
                         .permission_cancel_committed(request_id)
                         .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
                 } else {
-                    self.translator
+                    let response = self
+                        .translator
                         .permission_decline_committed(request_id)
                         .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+                    if matches!(response.event, AdapterEvent::Item { .. }) {
+                        self.deferred.push(response.event);
+                    }
                 }
                 intent.stage = DenyStage::Committed;
                 Ok(())

@@ -6,6 +6,7 @@
 mod admission;
 mod auth;
 mod authority;
+mod degrade;
 mod discovery;
 mod host_presence;
 mod incoming;
@@ -14,6 +15,7 @@ mod managed;
 mod manifest;
 mod physical;
 mod policy;
+mod policy_0146;
 mod provisioning;
 mod reproduction;
 mod request;
@@ -29,7 +31,7 @@ const CODEX_BROWSE_TOOL_NAME: &str = "sage_browse";
 pub(crate) use admission::BINDING_ID as CODEX_BINDING_ID;
 pub(crate) use admission::{
     AdmittedCodexBinding, CodexAdmissionUnavailable, CodexBindingRegistration,
-    startup_codex_binding_registration,
+    admit_discovered_codex, startup_codex_binding_registration,
 };
 pub(crate) use auth::{
     AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthNotification,
@@ -84,3 +86,6 @@ pub(crate) use state::CodexAdapter;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod hard_failure_tests;

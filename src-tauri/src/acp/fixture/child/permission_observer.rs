@@ -70,13 +70,15 @@ async fn observe(case: &FrozenCase) -> Value {
         pump_intent(&fixture, "message-permission"),
     )
     .unwrap();
+    let clock = Arc::new(FixtureClock::new(10));
+    let driver_clock: Arc<dyn crate::acp::runtime::DriverClock> = clock.clone();
     let mut driver = ProcessAdapterDriver::new(
         pump,
         transport,
         control,
         Lease(owner.clone()),
         owner,
-        Arc::new(FixtureClock::new(10)),
+        driver_clock,
     )
     .unwrap();
     let mailbox = DriverMailbox::new().unwrap();
@@ -96,6 +98,16 @@ async fn observe(case: &FrozenCase) -> Value {
         mailbox
             .signal_process_exit(crate::acp::process::TreeExit::Exited { code: Some(17) })
             .unwrap();
+        tokio::time::timeout(
+            deadline.operation_before_cleanup(),
+            driver.run_next(&mailbox),
+        )
+        .await
+        .expect("permission fixture process-exit observation timed out")
+        .unwrap();
+        clock.set(
+            10 + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination).unwrap(),
+        );
         failure = tokio::time::timeout(
             deadline.operation_before_cleanup(),
             driver.run_next(&mailbox),
@@ -104,12 +116,12 @@ async fn observe(case: &FrozenCase) -> Value {
         .expect("permission fixture process-exit wake timed out")
         .err();
     }
-    let zero_process = failure.map(|error| {
+    let zero_process = failure.as_ref().map(|error| {
         let handoff = driver
             .take_zero_process_handoff()
             .expect("fixture failure must converge to an exact zero-process proof");
         ZeroProcessObservation {
-            error,
+            error: error.clone(),
             cause: handoff.cause,
             exit: handoff.exit,
         }
@@ -165,8 +177,8 @@ async fn observe(case: &FrozenCase) -> Value {
             "requestReplayed": !(zero_process.as_ref().is_some_and(|observed|
                     observed.error == DriverError::TeardownRequired(TeardownCause::ProcessExit)
                     && observed.cause == TeardownCause::ProcessExit
-                    && observed.exit == (TreeExit::Exited { code: None }))
-                && termination_exact(&terminations, TreeExit::Exited { code: None })
+                    && observed.exit == (TreeExit::Exited { code: Some(17) }))
+                && termination_exact(&terminations, TreeExit::Exited { code: Some(17) })
                 && recovery.is_some_and(|report| report.recovered_sessions == 1)
                 && replay.as_ref().is_some_and(|probe| probe.duplicate && probe.writes == 0)
                 && fixture.request_count() == 1

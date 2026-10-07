@@ -3,6 +3,7 @@ mod characterization;
 pub(crate) mod codex_auth;
 pub(crate) mod edit_disposition;
 mod errors;
+pub(crate) mod file_reference;
 pub(crate) mod permission;
 pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
@@ -30,10 +31,11 @@ use crate::{
             ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest,
             CodexDiscoveryResponse, GetAcpChatPageRequest, GetAcpFileSnapshotRequest,
             GetCodexDiscoveryRequest, IntentError, IntentSnapshot, PromptDispatch,
-            SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, validate_base_intent,
-            validate_cancel_intent, validate_session_intent,
+            SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, SteerAcpTurnRequest,
+            validate_base_intent, validate_cancel_intent, validate_session_intent,
+            validate_steer_intent,
         },
-        runtime::HostCancelIntent,
+        runtime::{HostCancelIntent, HostSteerIntent},
         scheduler::RuntimeOwner,
         store::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
@@ -175,7 +177,8 @@ pub async fn send_acp_turn(
 }
 
 pub(crate) use session_operations::{
-    cancel_acp_turn_inner, close_acp_session_inner, send_acp_turn_inner,
+    cancel_acp_turn_inner, close_acp_session_inner, end_acp_session_inner, send_acp_turn_inner,
+    steer_acp_turn_inner,
 };
 
 #[tauri::command]
@@ -187,11 +190,27 @@ pub async fn cancel_acp_turn(
 }
 
 #[tauri::command]
+pub async fn steer_acp_turn(
+    state: State<'_, AppState>,
+    request: SteerAcpTurnRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    steer_acp_turn_inner(&state, request).await
+}
+
+#[tauri::command]
 pub async fn close_acp_session(
     state: State<'_, AppState>,
     request: CloseAcpSessionRequest,
 ) -> Result<AcpMutationResponse, AcpIpcError> {
     close_acp_session_inner(&state, request).await
+}
+
+#[tauri::command]
+pub async fn end_acp_session(
+    state: State<'_, AppState>,
+    request: CloseAcpSessionRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    end_acp_session_inner(&state, request).await
 }
 
 async fn snapshot_for<'a>(
@@ -317,7 +336,12 @@ fn validate_attached_context(
     expected_revision: crate::acp::contract::ProjectionRevision,
     contexts: &AttachedContexts,
 ) -> Result<(), AcpIpcError> {
-    if contexts.as_slice().is_empty() {
+    if contexts.as_slice().iter().all(|context| {
+        matches!(
+            context,
+            crate::acp::attached_context::AttachedContext::BrowserPage(_)
+        )
+    }) {
         return Ok(());
     }
     let connection = state.database.connection();
@@ -337,6 +361,10 @@ fn validate_attached_context(
         .map(|root| crate::acp::contract::SageRootId::parse(root).map_err(|_| internal_error()))
         .collect::<Result<Vec<_>, _>>()?;
     for context in contexts.as_slice() {
+        let crate::acp::attached_context::AttachedContext::DiffLineComment(context) = context
+        else {
+            continue;
+        };
         let reference = &context.diff_ref;
         if reference.project_id != project_id.as_str() || reference.chat_id != chat_id.as_str() {
             return Err(AcpIpcError::InvalidRequest {

@@ -2,7 +2,10 @@ use std::{
     collections::VecDeque,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
 };
 
 use crate::acp::{
@@ -15,6 +18,7 @@ use crate::acp::{
         SageProjectId, SchemaVersionV1,
     },
     intent::{CapabilitySnapshotV1, ExternalId, SafeResourceRef},
+    limits::LIMITS,
     process::{LaunchError, TreeExit},
     runtime::{
         ActivationIntent, ActivationJournal, ActivationJournalError, ActivationMode,
@@ -129,14 +133,17 @@ struct Control(Arc<Mutex<ControlState>>);
 #[derive(Default)]
 struct ControlState {
     requested: usize,
+    requested_exits: Vec<TreeExit>,
     zero: bool,
 }
 
 impl ProcessTreeControl for Control {
     type ZeroProof = u64;
 
-    fn request_termination(&self, _: TreeExit) -> Result<(), LaunchError> {
-        self.0.lock().unwrap().requested += 1;
+    fn request_termination(&self, exit: TreeExit) -> Result<(), LaunchError> {
+        let mut state = self.0.lock().unwrap();
+        state.requested += 1;
+        state.requested_exits.push(exit);
         Ok(())
     }
 
@@ -158,6 +165,24 @@ struct Clock;
 impl DriverClock for Clock {
     fn now_millis(&self) -> i64 {
         10
+    }
+}
+
+struct MutableClock(AtomicI64);
+
+impl MutableClock {
+    fn new(now_millis: i64) -> Self {
+        Self(AtomicI64::new(now_millis))
+    }
+
+    fn set(&self, now_millis: i64) {
+        self.0.store(now_millis, Ordering::SeqCst);
+    }
+}
+
+impl DriverClock for MutableClock {
+    fn now_millis(&self) -> i64 {
+        self.0.load(Ordering::SeqCst)
     }
 }
 
@@ -222,6 +247,238 @@ fn activation_driver_hands_off_only_after_ready_and_quiescent() {
             "external"
         );
         assert_eq!(control.lock().unwrap().requested, 0);
+    });
+}
+
+#[test]
+fn activation_process_exit_preserves_its_observed_code_after_delayed_stdout() {
+    runtime().block_on(async {
+        let commits = Arc::new(Mutex::new(0));
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::from([
+                    AdapterBatch::new(
+                        vec![AdapterEvent::Initialized {
+                            capabilities: capabilities(),
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                    AdapterBatch::new(
+                        vec![AdapterEvent::SessionReady {
+                            id: identity(),
+                            loaded: false,
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                ]),
+                next: 0,
+            },
+            Journal(Arc::clone(&commits)),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let control = Arc::new(Mutex::new(ControlState::default()));
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::clone(&control)),
+            owner(),
+            Arc::new(Clock),
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+
+        driver.begin().unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        mailbox.signal_reader_terminal(ReaderTerminal::Eof).unwrap();
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(ActivationDriverError::TeardownRequired(
+                TeardownCause::ProcessExit
+            ))
+        );
+        assert_eq!(*commits.lock().unwrap(), 1);
+        assert_eq!(
+            control.lock().unwrap().requested_exits,
+            [TreeExit::Exited { code: Some(17) }]
+        );
+    });
+}
+
+#[test]
+fn activation_reader_eof_before_late_process_exit_preserves_the_exit_code() {
+    runtime().block_on(async {
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::new(),
+                next: 0,
+            },
+            Journal(Arc::new(Mutex::new(0))),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let control = Arc::new(Mutex::new(ControlState::default()));
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::clone(&control)),
+            owner(),
+            Arc::new(Clock),
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+
+        mailbox.signal_reader_terminal(ReaderTerminal::Eof).unwrap();
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Ok(DriverProgress::default())
+        );
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .unwrap();
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(ActivationDriverError::TeardownRequired(
+                TeardownCause::ProcessExit
+            ))
+        );
+        assert_eq!(
+            control.lock().unwrap().requested_exits,
+            [TreeExit::Exited { code: Some(17) }]
+        );
+    });
+}
+
+#[test]
+fn activation_process_exit_without_eof_latches_at_its_deadline() {
+    runtime().block_on(async {
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::new(),
+                next: 0,
+            },
+            Journal(Arc::new(Mutex::new(0))),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let clock = Arc::new(MutableClock::new(10));
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::new(Mutex::new(ControlState::default()))),
+            owner(),
+            Arc::clone(&clock) as Arc<dyn DriverClock>,
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        clock.set(10 + LIMITS.deadlines_ms.tree_termination as i64);
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            driver.run_next(&mailbox),
+        )
+        .await;
+        assert_eq!(
+            result,
+            Ok(Err(ActivationDriverError::TeardownRequired(
+                TeardownCause::ProcessExit
+            )))
+        );
+    });
+}
+
+#[test]
+fn activation_driver_hands_off_when_session_ready_and_available_commands_share_a_chunk() {
+    runtime().block_on(async {
+        let commits = Arc::new(Mutex::new(0));
+        let pump = ActivationPump::new(
+            Adapter {
+                batches: VecDeque::from([
+                    AdapterBatch::new(
+                        vec![AdapterEvent::Initialized {
+                            capabilities: capabilities(),
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                    AdapterBatch::new(
+                        vec![AdapterEvent::SessionReady {
+                            id: identity(),
+                            loaded: false,
+                        }],
+                        vec![],
+                    )
+                    .unwrap(),
+                ]),
+                next: 0,
+            },
+            Journal(Arc::clone(&commits)),
+            Mapper,
+            intent(),
+        )
+        .unwrap();
+        let mut driver = ActivationProcessDriver::new(
+            pump,
+            Transport {
+                outcomes: VecDeque::new(),
+                writes: 0,
+                closes: 0,
+            },
+            Control(Arc::new(Mutex::new(ControlState::default()))),
+            owner(),
+            Arc::new(Clock),
+        )
+        .unwrap();
+        let mailbox = DriverMailbox::new().unwrap();
+        driver.begin().unwrap();
+        mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+        let session_and_update = format!(
+            concat!(
+                "{{}}\n",
+                r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"{}","update":{{"sessionUpdate":"available_commands_update","availableCommands":[]}}}}}}"#,
+                "\n",
+            ),
+            identity().external_id.as_str(),
+        );
+        mailbox
+            .try_push_chunk(session_and_update.into_bytes())
+            .unwrap();
+        driver.run_next(&mailbox).await.unwrap();
+
+        assert!(driver.completion_ready(&mailbox));
+        assert!(driver.try_into_idle_parts(&mailbox).is_ok());
+        assert_eq!(*commits.lock().unwrap(), 1);
     });
 }
 

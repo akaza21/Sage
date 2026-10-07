@@ -1,11 +1,14 @@
 use serde::Serialize;
 
+mod browser_operation;
+pub use browser_operation::BrowserOperationProjection;
+
 use super::{
     contract::*,
     declared_test::CommandActivity,
     intent::{
-        BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ModelId, PageCursor,
-        SafeResourceRef,
+        BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ImageSource, ModelId, PageCursor,
+        PermissionOptionKind,
     },
 };
 
@@ -24,6 +27,13 @@ pub enum TextRole {
     User,
     Assistant,
     System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PermissionRequestSource {
+    Harness,
+    Browser,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -49,42 +59,70 @@ pub struct PlanEntry {
     rename_all_fields = "camelCase"
 )]
 pub enum ToolPresentation {
-    Generic {
-        label: SafeText<512>,
-        summary: Option<SafeText<16384>>,
-    },
-    File {
+    Read {
         label: SafeText<512>,
         resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
-    Diff {
+    Edit {
         label: SafeText<512>,
         resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
-    Command {
+    Delete {
         label: SafeText<512>,
-        summary: Option<SafeText<16384>>,
         resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
-        #[serde(default)]
-        activity: CommandActivity,
+    },
+    Move {
+        label: SafeText<512>,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        original_resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     Search {
         label: SafeText<512>,
         query_summary: SafeText<16384>,
-        resources: BoundedVec<SafeResourceRef, 256>,
+        resources: BoundedVec<SafeResourceLocation, 256>,
+        match_count: Option<u32>,
+        truncated: bool,
     },
-    Web {
+    Execute {
         label: SafeText<512>,
         summary: Option<SafeText<16384>>,
+        cwd: Option<SafeResourceLocation>,
+        exit_code: Option<i32>,
+        output_tail: Option<SafeText<16384>>,
+        output_truncated: bool,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
+        #[serde(default)]
+        activity: CommandActivity,
+    },
+    Fetch {
+        label: SafeText<512>,
+        url: Option<SafeText<4096>>,
+        summary: Option<SafeText<16384>>,
+    },
+    Think {
+        label: SafeText<512>,
+        summary: Option<SafeText<16384>>,
+    },
+    SwitchMode {
+        label: SafeText<512>,
+        mode_id: Option<SafeText<512>>,
+        mode_label: Option<SafeText<512>>,
     },
     Mcp {
         label: SafeText<512>,
         server_label: SafeText<512>,
         tool_label: SafeText<512>,
+        arguments_summary: Option<SafeText<16384>>,
+        result_summary: Option<SafeText<16384>>,
     },
     Subagent {
         label: SafeText<512>,
         activity_id: Option<SageActivityId>,
+    },
+    Other {
+        label: SafeText<512>,
+        raw_kind: Option<SafeText<128>>,
+        summary: Option<SafeText<16384>>,
     },
 }
 
@@ -153,11 +191,6 @@ pub enum ItemContent {
         input_summary: Option<SafeText<65536>>,
         output_summary: Option<SafeText<65536>>,
     },
-    ToolUpdateResult {
-        call_item_id: Option<SageItemId>,
-        presentation: ToolPresentation,
-        output_summary: Option<SafeText<65536>>,
-    },
     FileChangeDiff {
         changes: BoundedVec<FileChangeProjection, 32>,
         truncated: bool,
@@ -165,20 +198,16 @@ pub enum ItemContent {
     Image {
         media_type: crate::acp::intent::ImageMediaType,
         data_url: SafeText<262144>,
-    },
-    Usage {
-        input_tokens: Option<u64>,
-        output_tokens: Option<u64>,
-        cached_input_tokens: Option<u64>,
-        total_tokens: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        context_window: Option<u32>,
+        source: ImageSource,
     },
     PermissionRequest {
         request_id: SageServerRequestId,
         state: ServerRequestState,
         label: SafeText<512>,
         summary: SafeText<65536>,
+        source: PermissionRequestSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        offered_option_kinds: Option<BoundedVec<PermissionOptionKind, 8>>,
     },
     Error {
         code: SafeText<128>,
@@ -191,19 +220,20 @@ pub enum ItemContent {
         truncated: bool,
     },
     Collaboration {
-        activity_id: SageActivityId,
+        activity_id: Option<SageActivityId>,
         label: SafeText<512>,
         summary: SafeText<16384>,
         receiver_labels: BoundedVec<SafeText<512>, 32>,
+        operation: Option<SafeText<32>>,
+        agent_key: Option<SafeText<512>>,
+        agent_keys: BoundedVec<SafeText<512>, 32>,
+        agent_states: BoundedVec<(SafeText<512>, SafeText<32>), 32>,
     },
 }
 
 impl ItemContent {
     pub fn requires_tool_state(&self) -> bool {
-        matches!(
-            self,
-            Self::ToolCall { .. } | Self::ToolUpdateResult { .. } | Self::PermissionRequest { .. }
-        )
+        matches!(self, Self::ToolCall { .. } | Self::PermissionRequest { .. })
     }
 }
 
@@ -264,8 +294,34 @@ pub struct TurnProjection {
     pub created_at: i64,
     pub updated_at: i64,
     pub terminal_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TurnUsageProjection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_reason: Option<TurnTerminalReasonProjection>,
     pub items: BoundedVec<ItemProjection, 256>,
     pub activities: BoundedVec<ActivityProjection, 32>,
+    pub browser_operations: BoundedVec<BrowserOperationProjection, 32>,
+    pub browser_operations_collapsed: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnUsageProjection {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnTerminalReasonProjection {
+    pub kind: TurnTerminalReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -282,6 +338,7 @@ pub struct SessionProjection {
     /// Null while an epoch is open or the session cannot be activated.
     pub next_runtime_epoch: Option<RuntimeEpoch>,
     pub capabilities: CapabilitySnapshotV1,
+    pub permission_requests: bool,
     pub revision: EntityRevision,
     pub projection_revision: ProjectionRevision,
     pub legacy: bool,
@@ -301,80 +358,4 @@ pub struct AcpChatPage {
     pub next_cursor: Option<PageCursor>,
 }
 
-impl AcpChatPage {
-    pub fn validate_page_bounds(&self) -> Result<(), ContractError> {
-        let mut items = 0_usize;
-        let mut activities = 0_usize;
-        if self.current_session_id.as_ref().is_some_and(|current| {
-            !self
-                .sessions
-                .as_slice()
-                .iter()
-                .any(|session| &session.id == current)
-        }) {
-            return Err(ContractError::ForbiddenContent {
-                field: "currentSessionId",
-            });
-        }
-        for turn in self.turns.as_slice() {
-            if !self
-                .sessions
-                .as_slice()
-                .iter()
-                .any(|session| session.id == turn.session_id)
-            {
-                return Err(ContractError::ForbiddenContent {
-                    field: "turn.sessionId",
-                });
-            }
-            for item in turn.items.as_slice() {
-                if item.project_id != self.project_id
-                    || item.chat_id != self.chat_id
-                    || item.session_id != turn.session_id
-                    || item.turn_id != turn.id
-                    || item.content.requires_tool_state() != item.tool_state.is_some()
-                {
-                    return Err(ContractError::ForbiddenContent {
-                        field: "itemOwnership",
-                    });
-                }
-            }
-            for activity in turn.activities.as_slice() {
-                if activity.turn_id != turn.id {
-                    return Err(ContractError::ForbiddenContent {
-                        field: "activityOwnership",
-                    });
-                }
-            }
-            items = items.checked_add(turn.items.as_slice().len()).ok_or(
-                ContractError::TooManyEntries {
-                    field: "historyPageItems",
-                    actual: usize::MAX,
-                    maximum: 256,
-                },
-            )?;
-            activities = activities
-                .checked_add(turn.activities.as_slice().len())
-                .ok_or(ContractError::TooManyEntries {
-                    field: "activityNodesPerPage",
-                    actual: usize::MAX,
-                    maximum: 128,
-                })?;
-        }
-        if items > 256 {
-            return Err(ContractError::TooManyEntries {
-                field: "historyPageItems",
-                actual: items,
-                maximum: 256,
-            });
-        }
-        if activities > 128 {
-            return Err(ContractError::TooManyEntries {
-                field: "activityNodesPerPage",
-                actual: activities,
-                maximum: 128,
-            });
-        }
-        Ok(())
-    }
-}
+mod validation;

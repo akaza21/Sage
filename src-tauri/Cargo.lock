@@ -2557,6 +2557,7 @@ name = "sage"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol-schema",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
@@ -2566,10 +2567,13 @@ dependencies = [
  "tauri-plugin-dialog",
  "thiserror 2.0.19",
  "tokio",
+ "toml 0.8.2",
  "tracing",
  "tracing-subscriber",
  "url",
  "uuid",
+ "webview2-com",
+ "webview2-com-sys",
  "windows",
  "windows-core 0.61.2",
  "windows-sys 0.61.2",

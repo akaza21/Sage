@@ -25,8 +25,8 @@ pub(super) fn apply_events(
             let Some(AdapterInboundEvent::FilePair(pair)) = events.next() else {
                 return Err(StoreError::BatchShape);
             };
-            super::verify_item_scope(owner, item)?;
-            super::verify_file_pair_scope(owner, pair)?;
+            super::scope::verify_item_scope(owner, item)?;
+            super::scope::verify_file_pair_scope(owner, pair)?;
             if item.external_item_id != pair.external_item_id {
                 return Err(StoreError::Conflict {
                     resource: "filePairItem",

@@ -1,12 +1,9 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository,
+    git_budget, repository,
     workspace::Workspace,
 };
 
-const GIT_ABORT_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_GIT_ABORT_OUTPUT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +53,7 @@ fn abort_args(kind: ExclusiveSequence) -> &'static [&'static str] {
 pub(crate) async fn abort_in_progress(workspace: &Workspace) -> AppResult<()> {
     abort_in_progress_with_policy(
         workspace,
-        repository::GitProcessPolicy::mutation(GIT_ABORT_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }

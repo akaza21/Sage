@@ -135,16 +135,19 @@ impl Fixture {
                 external_session_id: ExternalId::new("external", "thread-command-route").unwrap(),
             };
             let payload = NormalizedPayload::file_admitted(
-                SafeResourceLocation::Resource {
-                    resource: SafeResourceRef::new(
-                        SageRootId::parse(root_id.clone()).unwrap(),
-                        "src/review.ts",
-                    )
-                    .unwrap(),
+                crate::acp::intent::FileChangeFacts {
+                    resource: SafeResourceLocation::Resource {
+                        resource: SafeResourceRef::new(
+                            SageRootId::parse(root_id.clone()).unwrap(),
+                            "src/review.ts",
+                        )
+                        .unwrap(),
+                    },
+                    summary: SafeText::new("summary", "Saved change").unwrap(),
+                    additions: Some(1),
+                    deletions: Some(1),
+                    operation: crate::acp::intent::FileChangeOperation::Updated,
                 },
-                SafeText::new("summary", "Saved change").unwrap(),
-                Some(1),
-                Some(1),
                 0,
                 (OLD.len() as u64, NEW.len() as u64),
                 pair_digest(OLD.as_bytes(), NEW.as_bytes()),
@@ -234,7 +237,7 @@ impl Fixture {
             )
             .unwrap();
         let attached_context =
-            AttachedContexts::new("context", vec![self.context.clone()]).unwrap();
+            AttachedContexts::new("context", vec![self.context.clone().into()]).unwrap();
         if new_session {
             SendAcpTurnRequest::NewSession {
                 project_id: self.owner.project_id.clone(),
@@ -310,7 +313,14 @@ fn attached_context_rejects_prior_session_for_both_send_targets_before_dispatch(
             client_intent_id: ClientIntentId::new(), binding_id: BindingId::new("binding", "codex-app-server").unwrap(),
             binding_digest: binding.binding_digest_hex().to_owned(), harness_version: None, model_id: None, now_millis: 15,
         }).unwrap().session_id;
-        let (owner, calls) = install_command_host(&fixture.state, &fixture.owner.project_id, &fixture.owner.chat_id, &fixture.owner.session_id, CommandHostMode::Idle);
+        let (owner, calls) = install_command_host(
+            &fixture.state,
+            &fixture.owner.project_id,
+            &fixture.owner.chat_id,
+            &fixture.owner.session_id,
+            CommandHostMode::Idle,
+            false,
+        );
         fixture.owner = owner;
         let before = fixture.counts();
         for new_session in [true, false] {
@@ -339,7 +349,7 @@ fn attached_context_current_head_old_epoch_matches_dispatched_and_durable_prompt
             ItemContent::Text { role: TextRole::User, text } if text.as_str().starts_with("Review safely") => Some(text.as_str()), _ => None,
         }).unwrap();
         assert_eq!(captured, persisted);
-        assert_eq!(captured, "Review safely\n\nAttached diff comments (review context only; do not edit implicitly):\n- src/review.ts:1 (new side): Review this guard");
+        assert_eq!(captured, "Review safely\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/review.ts:1 (new side): Review this guard");
         for forbidden in [OLD.trim(), NEW.trim(), &fixture.context.diff_ref.content_digest, &fixture.root.to_string_lossy()] { assert!(!captured.contains(forbidden)); }
         assert_eq!(*calls.lock().unwrap(), vec!["prepare", "dispatch"]);
     });

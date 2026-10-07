@@ -47,6 +47,28 @@ export function occupiedAcpProjectionSlotCount(): number {
   return slots.size;
 }
 
+export function hasActiveAcpTurn(activeChatId: string | null): boolean {
+  const activeSlot = activeChatId ? slots.get(activeChatId) : null;
+  return [useAcpProjectionStore, ...(activeSlot ? [activeSlot] : [])].some(
+    (store) => {
+      const page = store.getState().page;
+      return (
+        page?.turns.some(
+          (turn) =>
+            turn.sessionId === page.currentSessionId &&
+            ![
+              "completed",
+              "interrupted",
+              "cancelled",
+              "failed",
+              "deliveryUnknown",
+            ].includes(turn.state),
+        ) ?? false
+      );
+    },
+  );
+}
+
 export function releaseAcpProjectionStore(chatId: string): void {
   slots.delete(chatId);
 }

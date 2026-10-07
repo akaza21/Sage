@@ -10,6 +10,8 @@ pub(crate) enum CodexAdmissionUnavailable {
     IndependentAdmission,
     #[error("the admitted Codex Binding changed after admission")]
     Drift,
+    #[error(transparent)]
+    Projection(#[from] super::super::degrade::ProjectionUnavailable),
 }
 
 impl AdmittedCodexBinding {
@@ -35,6 +37,21 @@ impl AdmittedCodexBinding {
 
     pub(crate) fn is_observed(&self) -> bool {
         self.observed.is_some()
+    }
+
+    pub(crate) fn characterisation(
+        &self,
+    ) -> crate::acp::bindings::characterisation::Characterisation {
+        self.characterisation
+    }
+
+    pub(super) fn observed_build(&self) -> Option<super::super::degrade::ObservedBuild<'_>> {
+        self.observed
+            .is_some()
+            .then(|| super::super::degrade::ObservedBuild {
+                reported_version: &self.harness_version,
+                characterisation: self.characterisation,
+            })
     }
 
     pub(crate) fn entrypoint(&self) -> &EntrypointIdentity {
@@ -75,30 +92,20 @@ impl AdmittedCodexBinding {
     pub(crate) fn capability_ceiling(
         &self,
     ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
-        use crate::acp::{
-            contract::{RequiredText, SchemaVersionV1},
-            intent::CapabilitySnapshotV1,
-        };
+        super::super::degrade::projected_capabilities(
+            self.packet.capability_ceiling(),
+            self.observed_build(),
+        )
+        .map(|(snapshot, _)| snapshot)
+        .map_err(CodexAdmissionUnavailable::from)
+    }
 
-        let value = self.packet.capability_ceiling();
-        Ok(CapabilitySnapshotV1 {
-            schema_version: SchemaVersionV1,
-            protocol_version: RequiredText::new("protocolVersion", &value.protocol_identity)
-                .map_err(|_| CodexAdmissionUnavailable::Drift)?,
-            new_session: value.new_session,
-            resume_session: value.resume_session,
-            load_session: value.load_session,
-            close_session: value.close_session,
-            prompt: value.prompt,
-            cancel: value.cancel,
-            native_session_fork: false,
-            active_turn_steer: false,
-            child_conversation_projection: value.child_conversation_projection,
-            child_transcript_read: false,
-            collaboration_event_projection: value.collaboration_event_projection,
-            multi_root_extension_schema_id: None,
-            model_count: 0,
-            config_count: 0,
-        })
+    pub(crate) fn model_discovery_available(&self) -> Result<bool, CodexAdmissionUnavailable> {
+        super::super::degrade::projected_capabilities(
+            self.packet.capability_ceiling(),
+            self.observed_build(),
+        )
+        .map(|(_, available)| available)
+        .map_err(CodexAdmissionUnavailable::from)
     }
 }

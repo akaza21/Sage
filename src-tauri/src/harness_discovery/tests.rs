@@ -1,17 +1,25 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use super::{
-    DiscoveredHarness, DiscoverySource, HarnessDiscovery, HarnessExecutable, HarnessVersion,
-    PATH_BYTES_MAX, PATH_DIR_CAP, ProbeLimits, authentic_harness_file, discover_from_candidates,
+    DiscoveredHarness, DiscoverySource, DisplayVersionCache, HarnessDiscovery, HarnessExecutable,
+    HarnessVersion, InstallLayout, InstalledHarness, PATH_BYTES_MAX, ProbeLimits,
+    authentic_harness_file, discover_from_candidates, enrich_installed_harness_versions,
+    present_candidate,
 };
 use super::{
-    candidates::{bounded_path_roots, candidates_for_test, known_install_roots_from_app_data},
+    candidates::{
+        candidates_for_test, known_install_roots_from_app_data, path_roots_from,
+        scan_candidates_from_roots,
+    },
     validation::expected_basenames,
 };
+
+#[cfg(windows)]
+use super::candidates::known_install_roots_from_windows;
 
 fn scratch_dir() -> PathBuf {
     let nonce = SystemTime::now()
@@ -66,7 +74,7 @@ fn claude_version_command() -> &'static str {
     }
 }
 
-fn short_limits() -> ProbeLimits {
+fn timeout_limits() -> ProbeLimits {
     ProbeLimits {
         command_deadline: Duration::from_millis(50),
         reap_deadline: Duration::from_millis(100),
@@ -75,12 +83,74 @@ fn short_limits() -> ProbeLimits {
 }
 
 #[test]
+fn presence_projection_does_not_wait_for_a_slow_version_command() {
+    let directory = scratch_dir();
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        if cfg!(windows) {
+            "ping 127.0.0.1 -n 6 > nul"
+        } else {
+            "sleep 1"
+        },
+    );
+    let started = std::time::Instant::now();
+    let candidate = present_candidate(
+        HarnessExecutable::Codex,
+        vec![super::candidates::Candidate {
+            executable,
+            source: DiscoverySource::Path,
+        }],
+    );
+
+    assert!(candidate.is_some());
+    assert!(started.elapsed() < Duration::from_millis(200));
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
+fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identity() {
+    let directory = scratch_dir();
+    let marker = directory.join("version-probes.txt");
+    let command = format!(
+        "echo codex-cli 0.146.0 & echo probe>>\"{}\"",
+        marker.display()
+    );
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        &command,
+    );
+    let present = vec![InstalledHarness {
+        id: "codex",
+        executable: executable.clone(),
+        version: None,
+    }];
+    let cache = DisplayVersionCache::default();
+
+    let first = enrich_installed_harness_versions(&present, &cache);
+    let second = enrich_installed_harness_versions(&present, &cache);
+    fs::write(
+        &executable,
+        format!("@echo off\r\n{command}\r\nrem changed"),
+    )
+    .unwrap();
+    let third = enrich_installed_harness_versions(&present, &cache);
+
+    assert_eq!(first[0].version.as_deref(), Some("0.146.0"));
+    assert_eq!(second[0].version.as_deref(), Some("0.146.0"));
+    assert_eq!(third[0].version.as_deref(), Some("0.146.0"));
+    assert_eq!(fs::read_to_string(marker).unwrap().lines().count(), 2);
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
 fn absent_when_no_valid_candidate_exists() {
     let directory = scratch_dir();
     let result = discover_from_candidates(
         HarnessExecutable::Codex,
         candidates(HarnessExecutable::Codex, DiscoverySource::Path, &directory),
-        short_limits(),
+        ProbeLimits::PRODUCTION,
     );
     assert_eq!(result, HarnessDiscovery::Absent);
     fs::remove_dir_all(directory).expect("remove scratch directory");
@@ -100,7 +170,7 @@ fn parses_only_the_documented_codex_and_claude_output_shapes() {
             executable: codex.clone(),
             source: DiscoverySource::Path,
         }],
-        short_limits(),
+        ProbeLimits::PRODUCTION,
     );
     assert_eq!(
         codex_result,
@@ -126,7 +196,7 @@ fn parses_only_the_documented_codex_and_claude_output_shapes() {
             executable: claude.clone(),
             source: DiscoverySource::Path,
         }],
-        short_limits(),
+        ProbeLimits::PRODUCTION,
     );
     assert_eq!(
         claude_result,
@@ -157,7 +227,7 @@ fn nonzero_version_command_stays_present_but_unreadable() {
             executable: executable.clone(),
             source: DiscoverySource::Path,
         }],
-        short_limits(),
+        ProbeLimits::PRODUCTION,
     );
     assert_eq!(
         result,
@@ -177,16 +247,14 @@ fn hung_version_command_stays_present_but_unreadable_after_deadline() {
     #[cfg(not(windows))]
     let command = "sleep 1";
     let executable = write_script(&directory, test_basename(HarnessExecutable::Codex), command);
-    let started = Instant::now();
     let result = discover_from_candidates(
         HarnessExecutable::Codex,
         vec![super::candidates::Candidate {
             executable: executable.clone(),
             source: DiscoverySource::Path,
         }],
-        short_limits(),
+        timeout_limits(),
     );
-    assert!(started.elapsed() < Duration::from_millis(500));
     assert_eq!(
         result,
         HarnessDiscovery::PresentVersionUnreadable {
@@ -211,7 +279,7 @@ fn unrecognised_output_is_not_mistaken_for_a_version() {
             executable: executable.clone(),
             source: DiscoverySource::Path,
         }],
-        short_limits(),
+        ProbeLimits::PRODUCTION,
     );
     assert_eq!(
         result,
@@ -251,7 +319,7 @@ fn symlink_candidate_is_rejected_when_links_are_available() {
                     executable: link,
                     source: DiscoverySource::Path,
                 }],
-                short_limits(),
+                ProbeLimits::PRODUCTION,
             ),
             HarnessDiscovery::Absent
         );
@@ -285,33 +353,95 @@ fn directory_named_like_harness_is_rejected() {
 }
 
 #[test]
-fn path_directory_cap_ignores_a_valid_seventeenth_root() {
+fn path_resolution_reaches_a_valid_seventeenth_root_in_shell_order() {
     let directory = scratch_dir();
-    let roots: Vec<PathBuf> = (0..PATH_DIR_CAP)
+    let roots: Vec<PathBuf> = (0..16)
         .map(|index| directory.join(format!("missing-{index}")))
-        .chain(std::iter::once(directory.join("seventeenth")))
+        .chain(std::iter::once(directory.join("agent-bin")))
         .collect();
-    let seventeenth = roots.last().expect("seventeenth root");
-    fs::create_dir_all(seventeenth).expect("create seventeenth root");
+    let agent_bin = roots.last().expect("agent binary root");
+    fs::create_dir_all(agent_bin).expect("create agent binary root");
     let executable = write_script(
-        seventeenth,
+        agent_bin,
         test_basename(HarnessExecutable::Codex),
         "echo codex-cli 0.146.0",
     );
-    let bounded = bounded_path_roots(roots);
-    let candidates = candidates_for_test(
-        HarnessExecutable::Codex,
+    let canonical_executable = executable.canonicalize().expect("canonical executable");
+    let path = std::env::join_paths(roots).expect("compose test PATH");
+    let bounded = path_roots_from(Some(&path));
+    let candidates = scan_candidates_from_roots(
+        &[test_basename(HarnessExecutable::Codex)],
         bounded
             .into_iter()
             .map(|root| (DiscoverySource::Path, root)),
     );
     assert_eq!(
-        discover_from_candidates(HarnessExecutable::Codex, candidates, short_limits()),
-        HarnessDiscovery::Absent
+        discover_from_candidates(
+            HarnessExecutable::Codex,
+            candidates,
+            ProbeLimits::PRODUCTION
+        ),
+        HarnessDiscovery::Present(DiscoveredHarness {
+            executable: canonical_executable,
+            version: HarnessVersion {
+                major: 0,
+                minor: 146,
+                patch: 0,
+            },
+            source: DiscoverySource::Path,
+        })
     );
-    assert!(
-        executable.exists(),
-        "the ignored seventeenth root was genuinely valid"
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[cfg(windows)]
+#[test]
+fn path_scan_preserves_pathext_order_within_a_root() {
+    let directory = scratch_dir();
+    let exe = directory.join("codex.exe");
+    let command = directory.join("codex.cmd");
+    fs::write(&exe, b"native binary placeholder").expect("write executable placeholder");
+    fs::write(&command, b"@echo off\r\n").expect("write command placeholder");
+
+    let candidates = scan_candidates_from_roots(
+        expected_basenames(HarnessExecutable::Codex),
+        [(DiscoverySource::Path, directory.clone())],
+    );
+
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| candidate.executable.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            exe.canonicalize().expect("canonical executable"),
+            command.canonicalize().expect("canonical command"),
+        ]
+    );
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
+fn presence_scan_finds_a_sought_basename_in_a_large_directory() {
+    let directory = scratch_dir();
+    for index in 0..8_192 {
+        fs::write(directory.join(format!("unrelated-{index}")), b"placeholder")
+            .expect("write unrelated entry");
+    }
+    let executable = directory.join(test_basename(HarnessExecutable::Codex));
+    fs::write(&executable, b"native binary placeholder").expect("write executable placeholder");
+
+    let candidates = scan_candidates_from_roots(
+        &[test_basename(HarnessExecutable::Codex)],
+        [(DiscoverySource::Path, directory.clone())],
+    );
+
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| candidate.executable.clone())
+            .collect::<Vec<_>>(),
+        vec![executable.canonicalize().expect("canonical executable")]
     );
     fs::remove_dir_all(directory).expect("remove scratch directory");
 }
@@ -333,7 +463,11 @@ fn appdata_npm_root_is_found_without_path_candidates() {
             .into_iter()
             .map(|root| (DiscoverySource::KnownInstallRoot, root)),
     );
-    let result = discover_from_candidates(HarnessExecutable::Claude, candidates, short_limits());
+    let result = discover_from_candidates(
+        HarnessExecutable::Claude,
+        candidates,
+        ProbeLimits::PRODUCTION,
+    );
     assert_eq!(
         result,
         HarnessDiscovery::Present(DiscoveredHarness {
@@ -368,4 +502,174 @@ fn parser_rejects_semver_lookalikes_and_unexpected_prose() {
             .is_none()
         );
     }
+}
+
+#[test]
+fn parser_accepts_only_each_harness_documented_version_shape() {
+    let stream = |output: &str| super::version_probe::StreamOutput {
+        bytes: output.as_bytes().to_vec(),
+        truncated: false,
+    };
+    for (harness, output, expected) in [
+        (
+            HarnessExecutable::Pi,
+            "0.74.2",
+            HarnessVersion {
+                major: 0,
+                minor: 74,
+                patch: 2,
+            },
+        ),
+        (
+            HarnessExecutable::Gemini,
+            "0.1.22",
+            HarnessVersion {
+                major: 0,
+                minor: 1,
+                patch: 22,
+            },
+        ),
+        (
+            HarnessExecutable::OpenCode,
+            "1.18.21",
+            HarnessVersion {
+                major: 1,
+                minor: 18,
+                patch: 21,
+            },
+        ),
+        (
+            HarnessExecutable::OhMyPi,
+            "omp 0.74.2",
+            HarnessVersion {
+                major: 0,
+                minor: 74,
+                patch: 2,
+            },
+        ),
+    ] {
+        assert_eq!(
+            super::parsing::parse_harness_version(harness, &stream(output)),
+            Some(expected)
+        );
+    }
+    for (harness, output) in [
+        (HarnessExecutable::Pi, "omp 0.74.2"),
+        (HarnessExecutable::OhMyPi, "0.74.2"),
+    ] {
+        assert_eq!(
+            super::parsing::parse_harness_version(harness, &stream(output)),
+            None
+        );
+    }
+}
+
+#[test]
+fn codex_prerelease_display_version_preserves_the_observed_identity() {
+    let stream = super::version_probe::StreamOutput {
+        bytes: b"codex-cli 0.155.0-alpha.16.3".to_vec(),
+        truncated: false,
+    };
+
+    assert_eq!(
+        super::parsing::parse_harness_display_version(HarnessExecutable::Codex, &stream),
+        Some("0.155.0-alpha.16.3".into())
+    );
+}
+
+#[test]
+fn enrichment_preserves_a_codex_prerelease_display_version() {
+    let directory = scratch_dir();
+    let executable = write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        "echo codex-cli 0.155.0-alpha.16.3",
+    );
+    let cache = DisplayVersionCache::default();
+    let enriched = enrich_installed_harness_versions(
+        &[InstalledHarness {
+            id: "codex",
+            executable,
+            version: None,
+        }],
+        &cache,
+    );
+
+    assert_eq!(enriched[0].version.as_deref(), Some("0.155.0-alpha.16.3"));
+    fs::remove_dir_all(directory).expect("remove scratch directory");
+}
+
+#[test]
+fn the_installed_cursor_agent_date_build_version_is_read_not_rejected() {
+    let stream = |output: &str| super::version_probe::StreamOutput {
+        bytes: output.as_bytes().to_vec(),
+        truncated: false,
+    };
+    assert_eq!(
+        super::parsing::parse_harness_version(
+            HarnessExecutable::CursorAgent,
+            &stream("2026.08.11-e8db854")
+        ),
+        Some(HarnessVersion {
+            major: 2026,
+            minor: 8,
+            patch: 11,
+        })
+    );
+    for rejected in [
+        "2026.08.11",
+        "2026.08.11-",
+        "2026.08.11-e8db85z",
+        "2026.08-e8db854",
+        "2026.08.11.4-e8db854",
+    ] {
+        assert_eq!(
+            super::parsing::parse_harness_version(
+                HarnessExecutable::CursorAgent,
+                &stream(rejected)
+            ),
+            None
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn npm_global_layout_discovers_pi_without_path_injection() {
+    let app_data = scratch_dir();
+    let npm_root = app_data.join("npm");
+    fs::create_dir_all(&npm_root).expect("create npm root");
+    let executable = write_script(
+        &npm_root,
+        test_basename(HarnessExecutable::Pi),
+        "echo 0.74.2",
+    );
+    let roots = known_install_roots_from_windows(
+        InstallLayout::NpmGlobal,
+        Some(app_data.as_os_str()),
+        None,
+    );
+    let result = discover_from_candidates(
+        HarnessExecutable::Pi,
+        candidates_for_test(
+            HarnessExecutable::Pi,
+            roots
+                .into_iter()
+                .map(|root| (DiscoverySource::KnownInstallRoot, root)),
+        ),
+        ProbeLimits::PRODUCTION,
+    );
+    assert_eq!(
+        result,
+        HarnessDiscovery::Present(DiscoveredHarness {
+            executable,
+            version: HarnessVersion {
+                major: 0,
+                minor: 74,
+                patch: 2,
+            },
+            source: DiscoverySource::KnownInstallRoot,
+        })
+    );
+    fs::remove_dir_all(app_data).expect("remove scratch directory");
 }

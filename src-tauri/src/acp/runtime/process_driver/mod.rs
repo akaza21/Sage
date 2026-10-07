@@ -42,8 +42,8 @@ pub(crate) use reuse::{
 };
 pub(crate) use types::{
     CoordinatorZeroToken, DispatchSource, DriverClock, DriverError, DriverProgress,
-    FirstDeliveryUnknown, ProcessTreeControl, StdinTransport, SystemDriverClock, TeardownCause,
-    TreeLeaseOwner,
+    FirstDeliveryUnknown, PendingExit, ProcessTreeControl, StdinTransport, SystemDriverClock,
+    TeardownCause, TeardownDetail, TreeLeaseOwner,
 };
 pub(crate) use worker_command::{ProcessLivePort, WorkerCommand, WorkerEnvelope, WorkerReply};
 use write_fence::{WriteFence, WriteFenceError};

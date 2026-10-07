@@ -1,4 +1,4 @@
-mod support;
+pub(crate) mod support;
 
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +12,90 @@ use crate::acp::{
 };
 
 use super::PermissionDecisionIntent;
-use support::{permission_snapshot, service_with_pending_requests};
+use support::{
+    permission_snapshot, permission_snapshot_for, service_with_pending_requests,
+    service_with_pending_requests_and_deny_id,
+};
+
+#[test]
+fn an_unoffered_allow_leaves_durable_and_runtime_state_untouched() {
+    let commands = Arc::new(Mutex::new(Vec::new()));
+    let (service, owner) = service_with_pending_requests(Arc::clone(&commands));
+    let before = permission_snapshot(&service);
+    assert!(
+        service
+            .resolve_permission_decision(PermissionDecisionIntent {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                turn_id: SageTurnId::parse("turn-permission").unwrap(),
+                runtime_epoch: owner.runtime_epoch,
+                request_id: SageServerRequestId::parse("request-deny").unwrap(),
+                decision: PermissionDecision::AllowOnce,
+            })
+            .is_err()
+    );
+    assert_eq!(permission_snapshot(&service), before);
+    assert!(commands.lock().unwrap().is_empty());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn an_unoffered_always_allow_leaves_durable_and_runtime_state_untouched() {
+    let commands = Arc::new(Mutex::new(Vec::new()));
+    let (service, owner) = service_with_pending_requests(Arc::clone(&commands));
+    let before = permission_snapshot(&service);
+    assert!(
+        service
+            .resolve_permission_decision(PermissionDecisionIntent {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                turn_id: SageTurnId::parse("turn-permission").unwrap(),
+                runtime_epoch: owner.runtime_epoch,
+                request_id: SageServerRequestId::parse("request-allow").unwrap(),
+                decision: PermissionDecision::AllowAlways,
+            })
+            .is_err()
+    );
+    assert_eq!(permission_snapshot(&service), before);
+    assert!(commands.lock().unwrap().is_empty());
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn raw_external_id_is_rejected_before_runtime_dispatch_and_scoped_id_remains_usable() {
+    let commands = Arc::new(Mutex::new(Vec::new()));
+    let (service, owner) =
+        service_with_pending_requests_and_deny_id(Arc::clone(&commands), "permission:scoped-deny");
+    let scoped = SageServerRequestId::parse("permission:scoped-deny").unwrap();
+    let before = permission_snapshot_for(&service, scoped.as_str());
+    let decision = |request_id| PermissionDecisionIntent {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: SageTurnId::parse("turn-permission").unwrap(),
+        runtime_epoch: owner.runtime_epoch,
+        request_id,
+        decision: PermissionDecision::Deny,
+    };
+
+    assert!(
+        service
+            .resolve_permission_decision(decision(
+                SageServerRequestId::parse("request-deny").unwrap()
+            ))
+            .is_err()
+    );
+    assert_eq!(permission_snapshot_for(&service, scoped.as_str()), before);
+    assert!(commands.lock().unwrap().is_empty());
+
+    service
+        .resolve_permission_decision(decision(scoped.clone()))
+        .unwrap();
+    assert_eq!(commands.lock().unwrap().len(), 1);
+    service.shutdown_blocking().unwrap();
+}
 
 #[test]
 fn resolve_permission_decision_reaches_live_runtime_port() {

@@ -34,6 +34,11 @@ pub(crate) enum AdapterCommand {
     Prompt {
         prompt: Prompt,
         client_message_id: RequiredText<512>,
+        access_mode: crate::settings_store::SessionAccessMode,
+    },
+    Steer {
+        prompt: Prompt,
+        client_message_id: RequiredText<512>,
     },
     Cancel,
     ResolvePermission {
@@ -47,6 +52,10 @@ pub(crate) trait ResourceMapper {
         &self,
         absolute_path: &str,
     ) -> Result<SafeResourceRef, UnavailableResourceReason>;
+
+    fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -89,6 +98,12 @@ pub(crate) struct AdapterActivityItem {
     pub(crate) payload: NormalizedPayload,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub(crate) enum ItemUpdateMode {
+    Append,
+    Replace,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum AdapterEvent {
     Initialized {
@@ -112,8 +127,6 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
-    /// Bounded old/new bytes for the preceding `FileChangeDiff` item.
-    /// `external_item_id` keys the item the pair belongs to.
     FilePair {
         id: AdapterIdentity,
         external_item_id: ExternalId,
@@ -132,7 +145,17 @@ pub(crate) enum AdapterEvent {
         payload: NormalizedPayload,
         request_payload_digest: [u8; 32],
     },
+    PermissionResolved {
+        turn_id: AdapterIdentity,
+        external_request_id: ExternalId,
+        state: crate::acp::lifecycle::ServerRequestState,
+    },
     Acknowledged,
+    SteerResponse {
+        request_id: u64,
+        accepted: bool,
+    },
+    Absorbed,
     Unsupported(NormalizedPayload),
     Error(NormalizedPayload),
     IgnoredLate,
@@ -158,6 +181,7 @@ enum EgressIntent {
     PermissionAllow {
         request_id: ExternalId,
     },
+    ClientFsResponse,
 }
 
 impl EgressToken {
@@ -189,6 +213,14 @@ impl EgressToken {
         Self(EgressIntent::PermissionCancel { request_id })
     }
 
+    pub(crate) fn client_fs_response() -> Self {
+        Self(EgressIntent::ClientFsResponse)
+    }
+
+    pub(crate) fn is_client_fs_response(&self) -> bool {
+        matches!(self.0, EgressIntent::ClientFsResponse)
+    }
+
     pub(crate) fn is_mandatory(&self) -> bool {
         self.deny_request().is_some() || self.cancelled_permission_request().is_some()
     }
@@ -201,6 +233,7 @@ impl EgressToken {
                 | EgressIntent::MandatoryDeny { .. }
                 | EgressIntent::PermissionCancel { .. }
                 | EgressIntent::PermissionAllow { .. }
+                | EgressIntent::ClientFsResponse
         )
     }
 
@@ -329,8 +362,14 @@ pub(crate) struct AdapterBatchBuilder {
 
 mod batch_builder;
 
+mod refusal_detail;
+pub(crate) use refusal_detail::RefusalDetail;
+
 pub(crate) trait HarnessAdapter {
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+        None
+    }
+    fn refusal_detail(&self) -> Option<RefusalDetail> {
         None
     }
     fn config_pending(&self) -> bool {
@@ -377,6 +416,8 @@ pub(crate) enum AdapterRuntimeError {
     LaterPermissionMiss,
     #[error("adapter launch artifact is not admitted")]
     LaunchUnavailable,
+    #[error("the harness reports that it is not signed in")]
+    SignInRequired,
     #[error("adapter frame is invalid")]
     Frame,
     #[error("adapter event batch exceeds its count limit")]

@@ -3,9 +3,9 @@ use std::ffi::OsString;
 use crate::acp::limits::LIMITS;
 
 use super::FixtureError;
-use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase};
+use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase, JOURNEY_CASES};
 
-const CHARACTERIZATION_CASES: [(&str, &str); 7] = [
+const CHARACTERIZATION_CASES: [(&str, &str); 8] = [
     (
         "characterization-turn-success",
         r#"[{"op":"awaitClient","kind":"initialize"},{"op":"emitKnownFrame","shape":"initializeSuccess","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"newSession"},{"op":"emitKnownFrame","shape":"newSessionSuccess","externalSessionId":"fixture-persisted-session-1","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"prompt"},{"op":"emitKnownFrame","shape":"textStart","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textDelta","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textComplete","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"turnComplete","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"close"}]"#,
@@ -28,7 +28,11 @@ const CHARACTERIZATION_CASES: [(&str, &str); 7] = [
     ),
     (
         "characterization-cancel-reuse",
-        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexInterrupt"},{"op":"emitKnownFrame","shape":"codexAck"},{"op":"emitKnownFrame","shape":"codexInterrupted"}]"#,
+        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexInterrupt"},{"op":"emitKnownFrame","shape":"codexAck"},{"op":"emitKnownFrame","shape":"codexInterrupted"},{"op":"awaitClient","kind":"codexUnsubscribe"},{"op":"emitKnownFrame","shape":"codexAck"}]"#,
+    ),
+    (
+        "codex-item-completed-then-exit",
+        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexItemCompleted"},{"op":"exit","code":17}]"#,
     ),
     (
         "characterization-resume-turn-success",
@@ -60,6 +64,9 @@ impl FixtureInvocation {
             .find(|(case_id, _)| *case_id == case)
         {
             return Self::validated(case_id, steps_json, seed);
+        }
+        if let Some(journey) = JOURNEY_CASES.iter().find(|journey| journey.id == case) {
+            return Self::validated(journey.id, journey.steps_json, seed);
         }
         let frozen = FROZEN_CASES
             .iter()

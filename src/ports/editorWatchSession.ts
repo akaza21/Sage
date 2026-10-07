@@ -5,6 +5,8 @@ import {
   type EditorWatchSubscription,
 } from "../domain/editorWatch";
 import type { ResourceRef } from "../domain/workbench";
+import { EDITOR_EXTERNAL_WATCH_EVENT } from "../domain/editorWatch";
+import { invokeNative, isTauriRuntime } from "./nativeInvoke";
 
 export interface EditorWatchNativeHooks {
   listen(
@@ -41,4 +43,25 @@ export async function startEditorWatchSession(
       await hooks.unwatch(resource);
     },
   };
+}
+
+export function startNativeEditorWatchSession(
+  resource: ResourceRef,
+): Promise<EditorWatchSubscription> {
+  return startEditorWatchSession(resource, {
+    async listen(_watched, emit) {
+      if (!isTauriRuntime()) return () => undefined;
+      const { listen } = await import("@tauri-apps/api/event");
+      return listen<EditorExternalWatchNotice>(
+        EDITOR_EXTERNAL_WATCH_EVENT,
+        (event) => emit(event.payload),
+      );
+    },
+    watch(watched) {
+      return invokeNative("watch_editor_document", { resource: watched });
+    },
+    unwatch(watched) {
+      return invokeNative("unwatch_editor_document", { resource: watched });
+    },
+  });
 }

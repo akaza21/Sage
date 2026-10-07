@@ -58,16 +58,6 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
         },
         terminal_item(
             &fixture.owner,
-            "usage-one",
-            NormalizedPayload::Usage {
-                input_tokens: 10,
-                output_tokens: 4,
-                context_window: None,
-            },
-            ItemLifecycle::Completed,
-        ),
-        terminal_item(
-            &fixture.owner,
             "error-one",
             NormalizedPayload::Error {
                 code: SafeText::new("code", "providerError").unwrap(),
@@ -107,14 +97,6 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
     let projected = page.turns.as_slice()[0].items.as_slice();
     assert!(projected.iter().any(|item| matches!(
         item.content,
-        ItemContent::Usage {
-            input_tokens: Some(10),
-            output_tokens: Some(4),
-            ..
-        }
-    )));
-    assert!(projected.iter().any(|item| matches!(
-        item.content,
         ItemContent::Error { ref code, .. } if code.as_str() == "providerError"
     )));
     assert!(projected.iter().any(|item| matches!(
@@ -124,8 +106,8 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
 }
 
 #[test]
-fn usage_replacement_updates_context_window_and_explicitly_clears_it() {
-    let mut fixture = fixture();
+fn usage_snapshots_replace_context_window_and_never_create_transcript_items() {
+    let mut fixture = migrated_fixture();
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         batch(
@@ -137,47 +119,30 @@ fn usage_replacement_updates_context_window_and_explicitly_clears_it() {
         ),
     )
     .unwrap();
-
-    let usage =
-        |owner: &AdapterStoreOwner, input_tokens, output_tokens, context_window, now_millis| {
-            let payload = NormalizedPayload::Usage {
-                input_tokens,
-                output_tokens,
-                context_window,
-            };
-            let payload_digest = super::super::facts::hex_digest(
-                serde_json::to_string(&payload).unwrap().as_bytes(),
-            );
-            AdapterInboundEvent::Item(ItemIngressCommand {
-                project_id: owner.project_id.clone(),
-                chat_id: owner.chat_id.clone(),
-                session_id: owner.session_id.clone(),
-                turn_id: owner.turn_id.clone(),
-                runtime_epoch: owner.runtime_epoch,
-                external_item_id: ExternalId::new("usage", "turn-usage").unwrap(),
-                activity_id: None,
-                payload,
-                payload_digest,
-                lifecycle: ItemLifecycle::Completed,
-                tool_state: None,
-                now_millis,
-            })
-        };
+    let usage = |input_tokens, output_tokens, context_window, now_millis| {
+        AdapterInboundEvent::UsageSnapshot(TurnUsageSnapshotCommand {
+            input_tokens,
+            output_tokens,
+            context_window,
+            now_millis,
+        })
+    };
 
     let first = apply_adapter_inbound_batch(
         &mut fixture.connection,
-        batch(
-            &fixture.owner,
-            vec![usage(&fixture.owner, 10, 4, Some(272_000), 7)],
-        ),
+        batch(&fixture.owner, vec![usage(10, 4, Some(272_000), 8)]),
     )
     .unwrap();
+    fixture
+        .connection
+        .execute(
+            "UPDATE turns SET state='completed',terminal_at=9,updated_at=9 WHERE id='turn-one'",
+            [],
+        )
+        .unwrap();
     let replacement = apply_adapter_inbound_batch(
         &mut fixture.connection,
-        batch(
-            &fixture.owner,
-            vec![usage(&fixture.owner, 20, 5, Some(128_000), 8)],
-        ),
+        batch(&fixture.owner, vec![usage(20, 5, Some(128_000), 10)]),
     )
     .unwrap();
     assert_eq!(first.disposition, MutationDisposition::Applied);
@@ -186,7 +151,7 @@ fn usage_replacement_updates_context_window_and_explicitly_clears_it() {
 
     let cleared = apply_adapter_inbound_batch(
         &mut fixture.connection,
-        batch(&fixture.owner, vec![usage(&fixture.owner, 30, 6, None, 9)]),
+        batch(&fixture.owner, vec![usage(30, 6, None, 11)]),
     )
     .unwrap();
     assert_eq!(cleared.disposition, MutationDisposition::Applied);
@@ -197,21 +162,28 @@ fn usage_replacement_updates_context_window_and_explicitly_clears_it() {
         None,
     )
     .unwrap();
-    let usages = page.turns.as_slice()[0]
-        .items
-        .as_slice()
-        .iter()
-        .filter_map(|item| match item.content {
-            ItemContent::Usage {
-                input_tokens,
-                output_tokens,
-                context_window,
-                ..
-            } => Some((input_tokens, output_tokens, context_window)),
-            _ => None,
+    let turn = &page.turns.as_slice()[0];
+    let usage_items: i64 = fixture
+        .connection
+        .query_row("SELECT COUNT(*) FROM items WHERE kind='usage'", [], |row| {
+            row.get(0)
         })
-        .collect::<Vec<_>>();
-    assert_eq!(usages, [(Some(30), Some(6), None)]);
+        .unwrap();
+    assert_eq!(usage_items, 0);
+    assert_eq!(turn.state, TurnState::Completed);
+    assert_eq!(turn.terminal_at, Some(9));
+    assert_eq!(
+        turn.usage.as_ref().map(|usage| (
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.context_window
+        )),
+        Some((30, 6, None))
+    );
+    let terminal_trigger: i64 = fixture.connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name='deny_terminal_item_mutation'", [], |row| row.get(0),
+    ).unwrap();
+    assert_eq!(terminal_trigger, 1);
 }
 
 #[test]
@@ -307,4 +279,77 @@ fn deferred_running_after_cancel_keeps_the_interrupted_terminal() {
         .query_row("SELECT state FROM turns", [], |row| row.get(0))
         .unwrap();
     assert_eq!(state, "interrupted");
+}
+
+#[test]
+fn adapter_cancelled_after_a_durable_user_cancel_projects_user_attribution() {
+    let mut fixture = fixture();
+    let revision: i64 = fixture
+        .connection
+        .query_row("SELECT revision FROM turns", [], |row| row.get(0))
+        .unwrap();
+    begin_cancel(
+        &mut fixture.connection,
+        BeginCancelCommand {
+            turn: TurnMutationCommand {
+                project_id: fixture.owner.project_id.clone(),
+                chat_id: fixture.owner.chat_id.clone(),
+                session_id: fixture.owner.session_id.clone(),
+                runtime_epoch: fixture.owner.runtime_epoch,
+                turn_id: fixture.owner.turn_id.clone(),
+                expected_revision: EntityRevision::new(revision as u64).unwrap(),
+                now_millis: 6,
+            },
+            client_intent_id: ClientIntentId::parse("cancel-adapter-terminal").unwrap(),
+        },
+    )
+    .unwrap();
+    let mutation = apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![AdapterInboundEvent::Turn {
+                state: TurnState::Cancelled,
+                now_millis: 7,
+            }],
+        ),
+    )
+    .unwrap();
+
+    assert_eq!(mutation.turn_cursor().state(), TurnState::Cancelled);
+    let reason: String = fixture
+        .connection
+        .query_row(
+            "SELECT kind FROM acp_turn_terminal_reasons WHERE turn_id=?1",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(reason, "cancelledByUser");
+}
+
+#[test]
+fn adapter_cancelled_without_a_durable_user_cancel_keeps_reason_unattributed() {
+    let mut fixture = fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![AdapterInboundEvent::Turn {
+                state: TurnState::Cancelled,
+                now_millis: 6,
+            }],
+        ),
+    )
+    .unwrap();
+
+    let count: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT COUNT(*) FROM acp_turn_terminal_reasons WHERE turn_id=?1 AND kind='cancelledByUser'",
+            [fixture.owner.turn_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 0);
 }

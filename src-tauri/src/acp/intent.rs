@@ -5,6 +5,15 @@ use super::contract::{
 };
 pub use super::limits::COMMAND_RESOURCE_LIMIT;
 
+mod capability;
+mod file_change;
+mod tool_category;
+
+pub use capability::CapabilitySnapshotV1;
+pub(crate) use file_change::FileChangeFacts;
+pub use file_change::FileChangeOperation;
+pub use tool_category::ToolCategory;
+
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
 pub type ExternalId = RequiredText<512>;
@@ -80,10 +89,36 @@ pub enum SafeResourceLocation {
     Unavailable {
         reason: UnavailableResourceReason,
         label: SafeText<512>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_resource: Option<SafeResourceRef>,
     },
 }
 
 impl SafeResourceLocation {
+    pub(crate) fn unavailable_with_display(
+        reason: UnavailableResourceReason,
+        display_resource: SafeResourceRef,
+    ) -> Self {
+        if reason != UnavailableResourceReason::Missing
+            || display_resource.relative_path.as_str().len() > 512
+            || display_resource
+                .relative_path
+                .as_str()
+                .chars()
+                .any(char::is_control)
+        {
+            return Self::unavailable(reason);
+        }
+        let Self::Unavailable { label, .. } = Self::unavailable(reason) else {
+            unreachable!()
+        };
+        Self::Unavailable {
+            reason,
+            label,
+            display_resource: Some(display_resource),
+        }
+    }
+
     pub(crate) fn unavailable(reason: UnavailableResourceReason) -> Self {
         let label = match reason {
             UnavailableResourceReason::AmbiguousRoot => "Path belongs to multiple project roots",
@@ -96,6 +131,7 @@ impl SafeResourceLocation {
             reason,
             label: SafeText::new("resourceUnavailable", label)
                 .expect("fixed unavailable-resource label is bounded"),
+            display_resource: None,
         }
     }
 }
@@ -108,6 +144,14 @@ pub enum ImageMediaType {
     Jpeg,
     #[serde(rename = "image/webp")]
     Webp,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageSource {
+    User,
+    #[default]
+    Agent,
 }
 
 impl ImageMediaType {
@@ -135,16 +179,21 @@ pub const IMAGE_DECODED_BYTES_MAX: usize = 262_144;
 pub const IMAGE_BASE64_MAX: usize = 349_544;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ToolCategory {
-    File,
-    Diff,
-    Command,
-    Search,
-    Web,
-    Mcp,
-    Subagent,
-    Other,
+#[serde(rename_all = "snake_case")]
+pub enum PermissionOptionKind {
+    AllowOnce,
+    AllowAlways,
+    RejectOnce,
+    RejectAlways,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ToolExecution {
+    pub cwd: Option<SafeResourceLocation>,
+    pub exit_code: Option<i32>,
+    pub output_tail: Option<SafeText<16384>>,
+    pub output_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,16 +225,8 @@ pub enum NormalizedPayload {
         /// Legacy rows decode as ordinary commands.
         #[serde(default)]
         command_activity: crate::acp::declared_test::CommandActivity,
-    },
-    ToolUpdateResult {
-        category: ToolCategory,
-        label: SafeText<512>,
-        output_summary: Option<SafeText<65536>>,
         #[serde(default)]
-        locations: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
-        /// Legacy rows decode as ordinary commands.
-        #[serde(default)]
-        command_activity: crate::acp::declared_test::CommandActivity,
+        execution: ToolExecution,
     },
     FileChangeDiff {
         resource: SafeResourceLocation,
@@ -211,10 +252,14 @@ pub enum NormalizedPayload {
         /// False for legacy summary-only rows, which decode as unavailable.
         #[serde(default)]
         pair_available: bool,
+        #[serde(default)]
+        operation: FileChangeOperation,
     },
     Image {
         media_type: ImageMediaType,
         data: SafeText<349544>,
+        #[serde(default)]
+        source: ImageSource,
     },
     Usage {
         input_tokens: u64,
@@ -225,6 +270,8 @@ pub enum NormalizedPayload {
     PermissionRequest {
         category: ToolCategory,
         summary: SafeText<65536>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offered_option_kinds: Option<BoundedVec<PermissionOptionKind, 8>>,
     },
     Error {
         code: SafeText<128>,
@@ -239,6 +286,14 @@ pub enum NormalizedPayload {
         label: SafeText<512>,
         message: Option<SafeText<16384>>,
         receiver_labels: BoundedVec<SafeText<512>, 32>,
+        #[serde(default)]
+        operation: Option<SafeText<32>>,
+        #[serde(default)]
+        agent_key: Option<SafeText<512>>,
+        #[serde(default)]
+        agent_keys: BoundedVec<SafeText<512>, 32>,
+        #[serde(default)]
+        agent_states: BoundedVec<(SafeText<512>, SafeText<32>), 32>,
     },
 }
 
@@ -246,49 +301,42 @@ impl NormalizedPayload {
     /// Summary-only file change: no pair is retained. `truncated` marks an
     /// over-cap admission; legacy rows decode with `truncated == false` and
     /// render as typed unavailable, never fabricated text.
-    pub(crate) fn file_summary_only(
-        resource: SafeResourceLocation,
-        summary: SafeText<65536>,
-        additions: Option<u64>,
-        deletions: Option<u64>,
-        truncated: bool,
-    ) -> Self {
+    pub(crate) fn file_summary_only(facts: FileChangeFacts, truncated: bool) -> Self {
         Self::FileChangeDiff {
-            resource,
-            summary,
-            additions,
-            deletions,
+            resource: facts.resource,
+            summary: facts.summary,
+            additions: facts.additions,
+            deletions: facts.deletions,
             truncated,
             snapshot_revision: 0,
             old_bytes: 0,
             new_bytes: 0,
             content_digest: String::new(),
             pair_available: false,
+            operation: facts.operation,
         }
     }
 
     /// Admitted pair metadata. The texts live as BLOBs in
     /// `acp_file_change_snapshots`; only lengths and digest stay inline.
     pub(crate) fn file_admitted(
-        resource: SafeResourceLocation,
-        summary: SafeText<65536>,
-        additions: Option<u64>,
-        deletions: Option<u64>,
+        facts: FileChangeFacts,
         snapshot_revision: u64,
         side_bytes: (u64, u64),
         content_digest: String,
     ) -> Self {
         Self::FileChangeDiff {
-            resource,
-            summary,
-            additions,
-            deletions,
+            resource: facts.resource,
+            summary: facts.summary,
+            additions: facts.additions,
+            deletions: facts.deletions,
             truncated: false,
             snapshot_revision,
             old_bytes: side_bytes.0,
             new_bytes: side_bytes.1,
             content_digest,
             pair_available: true,
+            operation: facts.operation,
         }
     }
 
@@ -298,7 +346,6 @@ impl NormalizedPayload {
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } => ItemKind::Plan,
             Self::ToolCall { .. } => ItemKind::ToolCall,
-            Self::ToolUpdateResult { .. } => ItemKind::ToolUpdateResult,
             Self::FileChangeDiff { .. } => ItemKind::FileChangeDiff,
             Self::Image { .. } => ItemKind::Image,
             Self::Usage { .. } => ItemKind::Usage,
@@ -307,80 +354,6 @@ impl NormalizedPayload {
             Self::Unsupported { .. } => ItemKind::Unsupported,
             Self::Collaboration { .. } => ItemKind::Collaboration,
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CapabilitySnapshotV1 {
-    pub schema_version: SchemaVersionV1,
-    pub protocol_version: RequiredText<64>,
-    pub new_session: bool,
-    pub resume_session: bool,
-    pub load_session: bool,
-    pub close_session: bool,
-    pub prompt: bool,
-    pub cancel: bool,
-    pub native_session_fork: bool,
-    pub active_turn_steer: bool,
-    pub child_conversation_projection: bool,
-    pub child_transcript_read: bool,
-    pub collaboration_event_projection: bool,
-    pub multi_root_extension_schema_id: Option<RequiredText<128>>,
-    pub model_count: u16,
-    pub config_count: u16,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CapabilitySnapshotWire {
-    schema_version: SchemaVersionV1,
-    protocol_version: RequiredText<64>,
-    new_session: bool,
-    resume_session: bool,
-    load_session: bool,
-    close_session: bool,
-    prompt: bool,
-    cancel: bool,
-    native_session_fork: bool,
-    active_turn_steer: bool,
-    child_conversation_projection: bool,
-    child_transcript_read: bool,
-    collaboration_event_projection: bool,
-    multi_root_extension_schema_id: Option<RequiredText<128>>,
-    model_count: u16,
-    config_count: u16,
-}
-
-impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let wire = CapabilitySnapshotWire::deserialize(deserializer)?;
-        if wire.model_count > 128 || wire.config_count > 128 {
-            return Err(de::Error::custom(
-                "invalid capability snapshot version or count",
-            ));
-        }
-        Ok(Self {
-            schema_version: wire.schema_version,
-            protocol_version: wire.protocol_version,
-            new_session: wire.new_session,
-            resume_session: wire.resume_session,
-            load_session: wire.load_session,
-            close_session: wire.close_session,
-            prompt: wire.prompt,
-            cancel: wire.cancel,
-            native_session_fork: wire.native_session_fork,
-            active_turn_steer: wire.active_turn_steer,
-            child_conversation_projection: wire.child_conversation_projection,
-            child_transcript_read: wire.child_transcript_read,
-            collaboration_event_projection: wire.collaboration_event_projection,
-            multi_root_extension_schema_id: wire.multi_root_extension_schema_id,
-            model_count: wire.model_count,
-            config_count: wire.config_count,
-        })
     }
 }
 

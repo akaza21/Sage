@@ -7,10 +7,12 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   {
     ignores: [
+      ".claude/worktrees/**",
       "dist/**",
       "node_modules/**",
       "coverage/**",
       "local-evidence/**",
+      "work/**",
       "src-tauri/target/**",
       "tools/footprint-control/target/**",
     ],

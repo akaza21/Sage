@@ -3,11 +3,24 @@ use super::{
     normalize::{control_critical, validate_batch, validate_deny_pairs},
     *,
 };
+use crate::acp::redaction::sanitize_diagnostic_text;
+use crate::acp::runtime::terminal_detail;
+
+mod teardown;
 
 #[derive(Clone, Copy)]
 enum IngestMode {
     Immediate,
     Deferred,
+}
+
+fn opens_json_container(frame: &Frame) -> bool {
+    frame
+        .as_bytes()
+        .iter()
+        .copied()
+        .find(|byte| !byte.is_ascii_whitespace())
+        .is_some_and(|byte| matches!(byte, b'{' | b'['))
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
@@ -93,7 +106,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 self.accept_batch(batch, now_millis, IngestMode::Deferred)
                     .await?
             }
-            Err(AdapterRuntimeError::ConfigMutationRejected) => {}
+            Err(error) if NonfatalRefusal::from_adapter(&error).is_some() => {}
             Err(AdapterRuntimeError::MandatoryDenyTeardown) => {
                 return self
                     .fail_deferred_mandatory_deny(IngestMode::Deferred)
@@ -202,11 +215,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let Some(frame) = frame else { return Ok(false) };
         self.ensure_live()?;
         if validate_structure(&frame).is_err() {
+            if self.skip_stdout_preamble(&frame) {
+                return Ok(false);
+            }
             return match mode {
                 IngestMode::Immediate => self.latch_frame(),
                 IngestMode::Deferred => self.fail_deferred_frame().await,
             };
         }
+        self.stdout_preamble = None;
         let batch = match self.adapter.ingest(&frame, &self.resources) {
             Ok(batch) => batch,
             Err(AdapterRuntimeError::MandatoryDenyTeardown) => {
@@ -218,11 +235,26 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     IngestMode::Deferred => self.fail_deferred_frame().await,
                 };
             }
-            Err(AdapterRuntimeError::ConfigMutationRejected) => {
+            Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
                 if matches!(mode, IngestMode::Deferred) && !self.pending.is_empty() {
                     self.flush_deferred().await?;
                 }
-                return Err(AdapterPumpError::ConfigMutationRejected);
+                if matches!(refusal, NonfatalRefusal::SignIn) {
+                    let detail = self.adapter.refusal_detail();
+                    self.terminalize_active_turn(
+                        TurnTerminalReason::AuthRequired,
+                        detail
+                            .as_ref()
+                            .and_then(|detail| terminal_detail::auth_required(detail.message())),
+                        detail
+                            .as_ref()
+                            .and_then(|detail| terminal_detail::remediation(detail.remediation())),
+                        now_millis,
+                        frame.len(),
+                    )
+                    .await?;
+                }
+                return Err(refusal.into());
             }
             Err(error) => {
                 if matches!(mode, IngestMode::Deferred) && !self.pending.is_empty() {
@@ -235,6 +267,33 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         };
         self.accept_batch(batch, now_millis, mode).await?;
         Ok(true)
+    }
+
+    fn skip_stdout_preamble(&mut self, frame: &Frame) -> bool {
+        let Some(mut window) = self.stdout_preamble else {
+            return false;
+        };
+        if opens_json_container(frame) {
+            self.stdout_preamble = None;
+            return false;
+        }
+        window.lines += 1;
+        window.bytes = window.bytes.saturating_add(frame.len());
+        if window.lines > STDOUT_PREAMBLE_MAX_LINES || window.bytes > STDOUT_PREAMBLE_MAX_BYTES {
+            self.stdout_preamble = None;
+            return false;
+        }
+        self.stdout_preamble = Some(window);
+        tracing::warn!(
+            activation_checkpoint = "adapter_pump.stdout.preamble_skipped",
+            preamble_lines = window.lines,
+            preamble_bytes = window.bytes,
+            preamble_max_lines = STDOUT_PREAMBLE_MAX_LINES,
+            preamble_max_bytes = STDOUT_PREAMBLE_MAX_BYTES,
+            preamble_line = %sanitize_diagnostic_text(&String::from_utf8_lossy(frame.as_bytes())),
+            "ACP adapter pump skipped non-protocol stdout preamble before the first frame"
+        );
+        true
     }
 
     async fn accept_batch(
@@ -256,6 +315,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 .await;
         }
         for event in events {
+            if let AdapterEvent::SteerResponse {
+                request_id,
+                accepted,
+            } = &event
+                && self.pending_steer_request == Some(*request_id)
+            {
+                self.steer_response = Some(*accepted);
+            }
             let fact = match self.normalize(event, now_millis, prospective_terminal) {
                 Ok(value) => value,
                 Err(error) => return self.fail_deferred_protocol(mode, error).await,
@@ -316,54 +383,5 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.teardown = true;
         })?;
         self.commit_and_egress(durable, actual_bytes, egress).await
-    }
-
-    async fn fail_deferred_frame<T>(&mut self) -> Result<T, AdapterPumpError> {
-        if !self.pending.is_empty() && self.flush_deferred().await.is_err() {
-            self.pending.clear();
-            self.teardown = true;
-            return Err(AdapterPumpError::TeardownRequired);
-        }
-        self.pending.clear();
-        self.teardown = true;
-        Err(AdapterPumpError::Frame)
-    }
-
-    async fn fail_deferred_mandatory_deny<T>(
-        &mut self,
-        mode: IngestMode,
-    ) -> Result<T, AdapterPumpError> {
-        if matches!(mode, IngestMode::Deferred) && !self.pending.is_empty() {
-            let _ = self.flush_deferred().await;
-        }
-        self.pending.clear();
-        self.teardown = true;
-        Err(AdapterPumpError::Adapter(
-            AdapterRuntimeError::MandatoryDenyTeardown,
-        ))
-    }
-
-    async fn fail_deferred_protocol<T>(
-        &mut self,
-        mode: IngestMode,
-        error: AdapterPumpError,
-    ) -> Result<T, AdapterPumpError> {
-        if matches!(mode, IngestMode::Deferred)
-            && !self.pending.is_empty()
-            && self.flush_deferred().await.is_err()
-        {
-            self.pending.clear();
-            self.teardown = true;
-            return Err(AdapterPumpError::TeardownRequired);
-        }
-        self.pending.clear();
-        self.teardown = true;
-        Err(error)
-    }
-
-    fn fail_capacity<T>(&mut self, error: AdapterPumpError) -> Result<T, AdapterPumpError> {
-        self.pending.clear();
-        self.teardown = true;
-        Err(error)
     }
 }

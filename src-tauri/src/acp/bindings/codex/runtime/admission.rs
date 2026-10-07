@@ -64,6 +64,7 @@ impl CodexRuntime {
     ) -> Self {
         Self {
             launch_authority: RuntimeLaunchAuthority::metadata_only(),
+            mcp: Default::default(),
             declared_test_commands: Default::default(),
             inner: super::super::state::CodexAdapter::from_metadata_packet(
                 packet,
@@ -74,6 +75,8 @@ impl CodexRuntime {
             next_request_id: 0,
             snapshots: ItemSnapshots::new(),
             poisoned: false,
+            pending_browser_failure_details: Vec::new(),
+            browser_failure_warning_logged: false,
         }
     }
 
@@ -83,9 +86,26 @@ impl CodexRuntime {
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
+        Self::from_admitted_binding_with_mcp(
+            binding,
+            project_root,
+            runtime_epoch,
+            session_id,
+            Default::default(),
+        )
+    }
+
+    pub(crate) fn from_admitted_binding_with_mcp(
+        binding: Arc<AdmittedCodexBinding>,
+        project_root: CodexProjectRootAuthority,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+        mcp: crate::acp::mcp::McpAdmission,
+    ) -> Result<Self, AdapterRuntimeError> {
         let declared_test_commands = declared_test_commands_for_project(project_root.as_path());
         let mut runtime = Self {
             launch_authority: RuntimeLaunchAuthority::metadata_only(),
+            mcp,
             declared_test_commands,
             inner: super::super::state::CodexAdapter::from_admitted_binding(
                 &binding,
@@ -95,6 +115,8 @@ impl CodexRuntime {
             next_request_id: 0,
             snapshots: ItemSnapshots::new(),
             poisoned: false,
+            pending_browser_failure_details: Vec::new(),
+            browser_failure_warning_logged: false,
         };
         runtime.launch_authority = RuntimeLaunchAuthority::admitted(binding, project_root)?;
         Ok(runtime)

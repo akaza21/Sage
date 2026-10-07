@@ -1,4 +1,5 @@
-export type PermissionDecision = "ask" | "allowOnce" | "deny";
+export type PermissionDecision =
+  "ask" | "allowOnce" | "allowAlways" | "allowForOriginSession" | "deny";
 
 export type PermissionState =
   | "received"
@@ -23,6 +24,7 @@ export interface ResolvePermissionDecisionRequest {
 }
 
 export interface ResolvePermissionDecisionResponse {
+  source?: "browser";
   projectId: string;
   chatId: string;
   sessionId: string;

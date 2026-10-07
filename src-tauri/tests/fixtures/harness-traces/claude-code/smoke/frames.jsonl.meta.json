@@ -1,0 +1,8 @@
+{
+  "command": "node",
+  "args": [
+    "C:\\fixture-workspace\\profiles\\AppData\\Roaming\\npm\\node_modules\\@agentclientprotocol\\claude-agent-acp\\dist\\index.js"
+  ],
+  "reason": "prompt-complete",
+  "stderr": "[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=validate-cwd durationMs=4 totalMs=4\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=settings durationMs=84 totalMs=88\n[session/query] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 resume=none apiType=native baseUrl=native\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=prepare-query durationMs=31 totalMs=119\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=sdk-initialize durationMs=3513 totalMs=3632\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=models durationMs=1 totalMs=3633\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=modes durationMs=1 totalMs=3634\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=agents durationMs=1 totalMs=3635\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=register durationMs=2 totalMs=3637\n"
+}

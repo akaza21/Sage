@@ -20,6 +20,13 @@ export function useAcpRetentionIncomplete(boundChatId?: string | null) {
   );
 }
 
+export function useAcpChatLoadFailure(boundChatId?: string | null) {
+  const store = acpProjectionStoreFor(boundChatId);
+  const error = useStore(store, (state) => state.error);
+  const retry = useStore(store, (state) => state.requestReload);
+  return { error, retry };
+}
+
 export function useAcpChatProjection(
   enabled = true,
   boundChatId?: string | null,
@@ -49,6 +56,7 @@ export function useAcpChatProjection(
   const completePageLoad = useStore(store, (state) => state.completePageLoad);
   const failPageLoad = useStore(store, (state) => state.failPageLoad);
   const clear = useStore(store, (state) => state.clear);
+  const loadNonce = useStore(store, (state) => state.loadNonce);
   const enqueueProjectionChange = useStore(
     store,
     (state) => state.enqueueProjectionChange,
@@ -152,6 +160,7 @@ export function useAcpChatProjection(
     enqueueProjectionChange,
     enabled,
     failPageLoad,
+    loadNonce,
     nativeTransitionEpoch,
     projectGeneration,
     projectId,

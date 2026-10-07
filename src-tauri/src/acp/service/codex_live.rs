@@ -46,20 +46,18 @@ mod cleanup;
 mod live_cancel;
 mod live_commands;
 mod live_recovery;
+mod native_end;
 mod projection_recovery;
 mod recovery;
+mod steer;
 
 #[cfg(all(test, windows))]
-#[path = "codex_live/journey_tests.rs"]
 mod journey_tests;
-
-#[cfg(all(test, windows))]
-pub(super) use journey_tests::journey_test_lock;
 
 pub(super) use recovery::PendingCodexRecovery;
 
 impl ActivationAbortIntent {
-    fn from_prepared(prepared: &super::codex_session::PreparedCodexActivation) -> Self {
+    fn from_prepared(prepared: &super::session::PreparedActivation) -> Self {
         Self {
             owner: prepared.owner.clone(),
             binding_digest: hex_digest(&prepared.intent.binding_digest),
@@ -134,10 +132,12 @@ fn observe_runner(
         let preview_retired =
             crate::app_preview_commands::retire_preview_runtime_owner(&owner).is_ok();
         if exit == LiveRunnerExit::Failed || !preview_retired {
-            if let Some(slot) = slot.upgrade() {
-                let _ = slot.mark_recovery(&owner);
-            }
-            if let (Some(recovery), Some(runner)) = (recovery.upgrade(), weak_runner.upgrade()) {
+            let recovered = slot
+                .upgrade()
+                .is_some_and(|slot| slot.mark_recovery(&owner).is_ok());
+            if recovered
+                && let (Some(recovery), Some(runner)) = (recovery.upgrade(), weak_runner.upgrade())
+            {
                 let mut retained = recovery
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -207,6 +207,10 @@ fn map_host_error(error: crate::acp::runtime::HostError) -> CodexSessionError {
     match error {
         crate::acp::runtime::HostError::Capacity => CodexSessionError::Capacity,
         crate::acp::runtime::HostError::Intent => CodexSessionError::Intent,
+        crate::acp::runtime::HostError::SteerOutcomeUnknown => {
+            CodexSessionError::SteerOutcomeUnknown
+        }
+        crate::acp::runtime::HostError::SignInRequired => CodexSessionError::SignInRequired,
         _ => CodexSessionError::Recovery,
     }
 }

@@ -28,7 +28,7 @@ pub(super) fn apply(
         provenance_digest,
         item,
     } = command.as_ref();
-    super::verify_item_scope(owner, item)?;
+    super::scope::verify_item_scope(owner, item)?;
     if item.activity_id.is_some() {
         return Err(StoreError::Conflict {
             resource: "adapterActivityItem",

@@ -64,6 +64,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             label,
             input_summary,
         } => NormalizedPayload::ToolCall {
+            execution: Default::default(),
             category,
             label: SafeText::new("toolLabel", label)?,
             input_summary: input_summary
@@ -77,9 +78,11 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             category,
             label,
             output_summary,
-        } => NormalizedPayload::ToolUpdateResult {
+        } => NormalizedPayload::ToolCall {
+            execution: Default::default(),
             category,
             label: SafeText::new("toolLabel", label)?,
+            input_summary: None,
             output_summary: output_summary
                 .map(|value| SafeText::new("toolOutput", value))
                 .transpose()?,
@@ -92,10 +95,13 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             additions,
             deletions,
         } => NormalizedPayload::file_summary_only(
-            crate::acp::intent::SafeResourceLocation::Resource { resource },
-            SafeText::new("fileSummary", summary)?,
-            additions,
-            deletions,
+            crate::acp::intent::FileChangeFacts {
+                resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+                summary: SafeText::new("fileSummary", summary)?,
+                additions,
+                deletions,
+                operation: crate::acp::intent::FileChangeOperation::Updated,
+            },
             false,
         ),
         NormalizerInput::Usage {
@@ -109,6 +115,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
         NormalizerInput::Permission { category, summary } => NormalizedPayload::PermissionRequest {
             category,
             summary: SafeText::new("permissionSummary", summary)?,
+            offered_option_kinds: None,
         },
         NormalizerInput::Error {
             code,
@@ -135,6 +142,10 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
                     .map(|value| SafeText::new("receiverLabel", value))
                     .collect::<Result<Vec<_>, _>>()?,
             )?,
+            operation: None,
+            agent_key: None,
+            agent_keys: BoundedVec::default(),
+            agent_states: BoundedVec::default(),
         },
         NormalizerInput::Unknown {
             external_kind,

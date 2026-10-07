@@ -28,6 +28,33 @@ const ref = {
 afterEach(cleanup);
 
 describe("ComposerAttachments", () => {
+  it("shows a removable page chip with its source URL available for review", () => {
+    const page = {
+      kind: "browserPage" as const,
+      tabId: "browser-1",
+      url: "https://example.com/article",
+      title: "Example article",
+      text: "Article text",
+    };
+    const onRemove = vi.fn();
+    render(
+      <ComposerAttachments
+        contexts={[page]}
+        disabled={false}
+        onRemove={onRemove}
+      />,
+    );
+    expect(screen.getByText("Page · Example article")).toHaveAttribute(
+      "title",
+      page.url,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove Page · Example article context",
+      }),
+    );
+    expect(onRemove).toHaveBeenCalledExactlyOnceWith(page);
+  });
   it.each([
     { rootId: "root-b" },
     { snapshotRevision: "2" },

@@ -1,0 +1,103 @@
+{
+  "provenance": "Sanitized from work/opencode-permission-native/raw-allow-20260929T072457Z/raw-allow.json, OpenCode 1.18.21 ACP frames; path and session/tool identifiers replaced.",
+  "toolStart": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+      "sessionId": "synthetic-session",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "fixture-tool",
+        "title": "write",
+        "kind": "edit",
+        "status": "pending",
+        "locations": [],
+        "rawInput": {}
+      }
+    }
+  },
+  "toolProgress": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+      "sessionId": "synthetic-session",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "fixture-tool",
+        "kind": "edit",
+        "status": "in_progress",
+        "title": "write",
+        "locations": [{ "path": "__TARGET__" }],
+        "rawInput": {
+          "filePath": "__TARGET__",
+          "content": "RAW APPROVED PROBE"
+        }
+      }
+    }
+  },
+  "permission": {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "session/request_permission",
+    "params": {
+      "sessionId": "synthetic-session",
+      "toolCall": {
+        "toolCallId": "fixture-tool",
+        "title": "__TARGET__",
+        "kind": "edit",
+        "status": "pending",
+        "locations": [{ "path": "__TARGET__" }],
+        "rawInput": {
+          "filepath": "__TARGET__",
+          "diff": "Index: __TARGET__\n===================================================================\n--- __TARGET__\n+++ __TARGET__\n@@ -0,0 +1,1 @@\n+RAW APPROVED PROBE\n\\ No newline at end of file\n"
+        },
+        "content": [
+          {
+            "type": "diff",
+            "path": "__TARGET__",
+            "oldText": "",
+            "newText": "RAW APPROVED PROBE"
+          }
+        ]
+      },
+      "options": [
+        { "optionId": "once", "kind": "allow_once", "name": "Allow once" },
+        {
+          "optionId": "always",
+          "kind": "allow_always",
+          "name": "Always allow"
+        },
+        { "optionId": "reject", "kind": "reject_once", "name": "Reject" }
+      ]
+    }
+  },
+  "clientWrite": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "fs/write_text_file",
+    "params": {
+      "sessionId": "synthetic-session",
+      "path": "__TARGET__",
+      "content": "RAW APPROVED PROBE"
+    }
+  },
+  "toolComplete": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+      "sessionId": "synthetic-session",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "fixture-tool",
+        "status": "completed",
+        "title": "captured.txt",
+        "content": [
+          {
+            "type": "content",
+            "content": { "type": "text", "text": "Wrote file successfully." }
+          }
+        ]
+      }
+    }
+  }
+}

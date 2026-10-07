@@ -10,7 +10,7 @@ use crate::acp::{
         SageProjectId, SageServerRequestId, SageTurnId,
     },
     intent::{ExternalId, NormalizedPayload},
-    lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState},
+    lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState, TurnTerminalReason},
     limits::LIMITS,
     runtime::{ProjectionPublishStatus, ProjectionPublisher, permissions::PermissionIntent},
     store::AdapterTurnCursor,
@@ -27,6 +27,7 @@ mod coalescer;
 mod commit;
 mod completion;
 mod egress;
+mod error;
 mod ingress;
 mod normalize;
 mod payload;
@@ -39,6 +40,7 @@ pub(crate) use coalescer::DeferredIngressState;
 use coalescer::PendingIngress;
 #[allow(unused_imports)]
 pub(crate) use completion::CompletedPumpParts;
+pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
 pub(crate) use payload::normalized_payload_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,11 +149,31 @@ pub(crate) enum DurableAdapterEvent {
         intent: PermissionIntent,
         now_millis: i64,
     },
+    PermissionResolved {
+        scope: TurnScope,
+        request_id: SageServerRequestId,
+        state: ServerRequestState,
+        now_millis: i64,
+    },
     RuntimePayload {
         scope: TurnScope,
         external_item_id: ExternalId,
         payload: NormalizedPayload,
         payload_digest: String,
+        now_millis: i64,
+    },
+    UsageSnapshot {
+        scope: TurnScope,
+        input_tokens: u64,
+        output_tokens: u64,
+        context_window: Option<u32>,
+        now_millis: i64,
+    },
+    TerminalReason {
+        scope: TurnScope,
+        reason: TurnTerminalReason,
+        message: Option<String>,
+        remediation: Option<String>,
         now_millis: i64,
     },
 }
@@ -173,32 +195,6 @@ pub(crate) enum FlushDisposition {
     DeliveryUnknown,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum AdapterPumpError {
-    #[error("adapter event or command has stale or foreign intent")]
-    Intent,
-    #[error("there is no exact active Turn for cancellation")]
-    NoActiveTurn,
-    #[error("adapter runtime is tearing down fail closed")]
-    TeardownRequired,
-    #[error("adapter batch exceeds a frozen count or actual-byte limit")]
-    BatchCapacity,
-    #[error("adapter egress is backpressured at its bounded capacity")]
-    Backpressure,
-    #[error("durable adapter journal failed")]
-    Journal(#[from] PumpJournalError),
-    #[error("projection ownership changed; authoritative bootstrap is required")]
-    BootstrapRequired,
-    #[error("projection delivery failed; authoritative recovery is required")]
-    RecoveryRequired,
-    #[error("adapter frame is malformed")]
-    Frame,
-    #[error("the harness rejected the session configuration mutation")]
-    ConfigMutationRejected,
-    #[error(transparent)]
-    Adapter(#[from] AdapterRuntimeError),
-}
-
 pub(crate) struct AdapterPump<A, J, R> {
     adapter: A,
     journal: J,
@@ -207,6 +203,7 @@ pub(crate) struct AdapterPump<A, J, R> {
     intent: PumpIntent,
     decoder: IncrementalFrameDecoder,
     decoder_frame_aligned: bool,
+    stdout_preamble: Option<StdoutPreambleWindow>,
     egress: ReservedQueue<AdapterEgress>,
     pending: PendingIngress,
     next_synthetic_item: u64,
@@ -215,6 +212,17 @@ pub(crate) struct AdapterPump<A, J, R> {
     teardown: bool,
     projection_recovery_required: bool,
     pending_permissions: Vec<PendingPermission>,
+    pending_steer_request: Option<u64>,
+    steer_response: Option<bool>,
+}
+
+const STDOUT_PREAMBLE_MAX_LINES: u32 = 16;
+const STDOUT_PREAMBLE_MAX_BYTES: usize = 8_192;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct StdoutPreambleWindow {
+    lines: u32,
+    bytes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -269,6 +277,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             intent,
             decoder: IncrementalFrameDecoder::new(),
             decoder_frame_aligned: true,
+            stdout_preamble: Some(StdoutPreambleWindow::default()),
             egress: admission.egress,
             pending: PendingIngress::new(),
             next_synthetic_item: 0,
@@ -277,6 +286,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             teardown: false,
             projection_recovery_required: false,
             pending_permissions: admission.pending_permissions,
+            pending_steer_request: None,
+            steer_response: None,
         }
     }
 

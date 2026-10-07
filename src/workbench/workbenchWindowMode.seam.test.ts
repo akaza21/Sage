@@ -9,10 +9,11 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument } from "../domain/workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 import {
   DEFAULT_WORKBENCH_WINDOW_MODE,
@@ -35,12 +36,26 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 const srcRoot = path.resolve(import.meta.dirname, "..");
 const initialState = useWorkbenchStore.getState();
 
+beforeAll(async () => {
+  await import("./AgentWorkbenchBody");
+});
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
   compactViewport = false;
   useWorkbenchStore.setState(initialState, true);
 });
+
+async function switchWindowMode(mode: "Agent" | "Editor") {
+  fireEvent.click(
+    within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+      "radio",
+      { name: mode },
+    ),
+  );
+  await settleLazyModules();
+}
 
 describe("D0 workbench window mode seam", () => {
   it("offers exactly Agent and Editor with Editor as the default", () => {
@@ -52,7 +67,7 @@ describe("D0 workbench window mode seam", () => {
     expect(isWorkbenchWindowMode(1)).toBe(false);
   });
 
-  it("admits File, Diff, and Settings to the one Editor tab strip", () => {
+  it("admits only File, Diff, and Settings to the one Editor tab strip", () => {
     expect([...EDITOR_CANVAS_KINDS]).toEqual(["file", "diff", "settings"]);
   });
 
@@ -83,16 +98,20 @@ describe("D0 workbench window mode seam", () => {
       loadEditor: vi.fn(async () => undefined),
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await settleLazyModules();
     expect(
       await screen.findByRole("tab", { name: "Settings" }),
     ).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await settleLazyModules();
     expect(
       await screen.findByRole("region", { name: "Settings" }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
+    await settleLazyModules();
     expect(screen.getByRole("tab", { name: "current.ts" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -193,6 +212,7 @@ describe("D0 workbench window mode seam", () => {
   it("keeps the Editor tool rail by default and swaps to Agent chrome on toggle", async () => {
     useWorkbenchStore.setState({ sidebarOpen: false });
     render(createElement(Workbench));
+    await settleLazyModules();
 
     const modeToggle = screen.getByRole("radiogroup", { name: "Window mode" });
     const agentControl = within(modeToggle).getByRole("radio", {
@@ -208,9 +228,15 @@ describe("D0 workbench window mode seam", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(agentControl);
+    await settleLazyModules();
 
-    expect(agentControl).toBeChecked();
-    expect(editorControl).not.toBeChecked();
+    const railToggle = screen.getByRole("radiogroup", { name: "Window mode" });
+    expect(
+      within(railToggle).getByRole("radio", { name: "Agent" }),
+    ).toBeChecked();
+    expect(
+      within(railToggle).getByRole("radio", { name: "Editor" }),
+    ).not.toBeChecked();
     expect(
       screen.queryByRole("complementary", { name: "Project tools" }),
     ).toBeNull();
@@ -219,9 +245,15 @@ describe("D0 workbench window mode seam", () => {
       await screen.findByRole("complementary", { name: "Projects and chats" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(editorControl);
+    fireEvent.click(within(railToggle).getByRole("radio", { name: "Editor" }));
+    await settleLazyModules();
 
-    expect(editorControl).toBeChecked();
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Editor" },
+      ),
+    ).toBeChecked();
     expect(
       screen.getByRole("complementary", { name: "Project tools" }),
     ).toBeInTheDocument();
@@ -236,7 +268,7 @@ describe("D0 workbench window mode seam", () => {
     ).toBeNull();
   });
 
-  it("rehydrates Agent mode from the existing bounded workbench layout", () => {
+  it("rehydrates Agent mode from the existing bounded workbench layout", async () => {
     localStorage.setItem(
       "sage.workbench.layout.v1",
       JSON.stringify({
@@ -247,6 +279,7 @@ describe("D0 workbench window mode seam", () => {
     );
 
     render(createElement(Workbench));
+    await settleLazyModules();
 
     expect(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
@@ -282,13 +315,9 @@ describe("D0 workbench window mode seam", () => {
       loadEditor: vi.fn(async () => undefined),
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     expect(
       await screen.findByRole("complementary", { name: "Projects and chats" }),
@@ -307,8 +336,9 @@ describe("D0 workbench window mode seam", () => {
     expect(screen.queryByRole("button", { name: "Outline" })).toBeNull();
   });
 
-  it("places Editor project tools on the left of the file canvas", () => {
+  it("places Editor project tools on the left of the file canvas", async () => {
     const { container } = render(createElement(Workbench));
+    await settleLazyModules();
     const body = container.querySelector(".workbench__body");
     const tools = screen.getByRole("complementary", { name: "Project tools" });
     expect(body?.firstElementChild).toBe(tools);
@@ -317,8 +347,9 @@ describe("D0 workbench window mode seam", () => {
     ).toBeNull();
   });
 
-  it("keeps one Editor resource tab strip across both window modes", () => {
+  it("keeps one Editor resource tab strip across both window modes", async () => {
     render(createElement(Workbench));
+    await settleLazyModules();
 
     expect(
       screen.getAllByRole("navigation", { name: "Open tabs" }),
@@ -327,12 +358,7 @@ describe("D0 workbench window mode seam", () => {
       screen.queryByRole("navigation", { name: "Agent artifact tabs" }),
     ).toBeNull();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     expect(screen.queryByRole("navigation", { name: "Open tabs" })).toBeNull();
     expect(

@@ -1,6 +1,92 @@
 use crate::acp::{contract::RequiredText, intent::ExternalId, limits::LIMITS};
 
-use super::AdapterError;
+use super::{AdapterError, CodexAdapter};
+use crate::acp::intent::NormalizedPayload;
+
+impl CodexAdapter {
+    pub(crate) fn learn_child_threads(&mut self, payload: &NormalizedPayload) {
+        let NormalizedPayload::Collaboration {
+            operation,
+            agent_key,
+            agent_keys,
+            ..
+        } = payload
+        else {
+            return;
+        };
+        let keys = match operation.as_ref().map(|value| value.as_str()) {
+            Some("spawnAgent") => agent_keys.as_slice(),
+            Some("started" | "interacted" | "interrupted") => {
+                agent_key.as_ref().map(std::slice::from_ref).unwrap_or(&[])
+            }
+            _ => &[],
+        };
+        for key in keys {
+            if self
+                .external_thread_id
+                .as_ref()
+                .is_some_and(|parent| parent.as_str() == key.as_str())
+                || self.child_threads.iter().any(|known| known == key)
+            {
+                continue;
+            }
+            if self.child_threads.len() == 32 {
+                self.child_threads.remove(0);
+            }
+            self.child_threads.push(key.clone());
+        }
+    }
+
+    pub(crate) fn is_child_thread(&self, thread: &str) -> bool {
+        self.child_threads
+            .iter()
+            .any(|known| known.as_str() == thread)
+    }
+
+    pub(crate) fn ignore_unbound_thread_notification(&mut self, thread: &str) -> bool {
+        if self
+            .external_thread_id
+            .as_ref()
+            .is_some_and(|parent| parent.as_str() == thread)
+        {
+            return false;
+        }
+        if self.is_child_thread(thread) {
+            return true;
+        }
+        if self.child_threads.is_empty() {
+            return false;
+        }
+        if !self.unknown_child_notification_reported {
+            tracing::warn!("Codex unbound-thread notification ignored after subagent activity");
+            self.unknown_child_notification_reported = true;
+        }
+        true
+    }
+
+    pub(crate) fn buffer_browser_mcp_failure(&mut self, thread: &str) {
+        if self.browser_mcp_failure_reported
+            || self
+                .pending_browser_mcp_failure_threads
+                .iter()
+                .any(|known| known == thread)
+        {
+            return;
+        }
+        if self.pending_browser_mcp_failure_threads.len() == 8 {
+            self.pending_browser_mcp_failure_threads.remove(0);
+        }
+        self.pending_browser_mcp_failure_threads
+            .push(thread.to_owned());
+    }
+
+    pub(crate) fn take_browser_mcp_failure_for_thread(&mut self, thread: &str) -> bool {
+        let matched = std::mem::take(&mut self.pending_browser_mcp_failure_threads)
+            .iter()
+            .any(|pending| pending == thread);
+        matched && self.mark_browser_mcp_failure_reported()
+    }
+}
 
 #[derive(Debug)]
 enum CorrelationState {

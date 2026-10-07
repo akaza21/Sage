@@ -71,7 +71,7 @@ impl OmpTranslator {
         self.one_request(
             PendingKind::NewSession,
             "session/new",
-            json!({"cwd": native_cwd, "mcpServers": []}),
+            json!({"cwd": native_cwd, "mcpServers": self.mcp.wire(self.mcp_capabilities)}),
         )
     }
 
@@ -94,7 +94,7 @@ impl OmpTranslator {
                 expected_session: session_id.as_str().to_owned(),
             },
             "session/load",
-            json!({"sessionId":session_id.as_str(),"cwd":native_cwd,"mcpServers":[]}),
+            json!({"sessionId":session_id.as_str(),"cwd":native_cwd,"mcpServers":self.mcp.wire(self.mcp_capabilities)}),
         )
     }
 
@@ -141,6 +141,7 @@ impl OmpTranslator {
             terminal: None,
             tools: BTreeMap::new(),
             tool_categories: BTreeMap::new(),
+            settled_reports: BTreeMap::new(),
             tool_snapshots: BTreeMap::new(),
             tool_snapshot_bytes: 0,
         });

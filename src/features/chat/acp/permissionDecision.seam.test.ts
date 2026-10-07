@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createElement } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
@@ -45,7 +45,7 @@ function waitingPermission(): PermissionProjectionItem {
 }
 
 describe("permission decision seam", () => {
-  it("keeps the product surface read-only until permission decisions are admitted", () => {
+  it("routes an admitted decision through the bounded desktop seam", () => {
     const resolve = vi
       .spyOn(acpDesktop, "resolvePermissionDecision")
       .mockResolvedValue({
@@ -61,17 +61,18 @@ describe("permission decision seam", () => {
 
     render(createElement(PermissionItem, { item: waitingPermission() }));
 
-    expect(
-      screen.getByRole("note", {
-        name: "",
-      }),
-    ).toHaveTextContent(
-      "Permission actions are unavailable. Sage automatically denies permission requests in this build.",
-    );
-    expect(
-      screen.queryByRole("button", { name: /ask|allow|deny/i }),
-    ).toBeNull();
-    expect(resolve).not.toHaveBeenCalled();
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith({
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      turnId: "turn-1",
+      runtimeEpoch: "1",
+      requestId: "request-1",
+      decision: "deny",
+    });
   });
 
   it("keeps decision behavior harness-neutral", async () => {

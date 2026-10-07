@@ -205,3 +205,13 @@ pub(super) const FROZEN_CASES: &[FrozenCase] = &[
     FrozenCase { id: "migration-retirement-prefixes", steps_json: r#"[{"op":"crashRestartEach","failpoints":["replacement-manifest-fsync","replacement-build-intent-remove-or-parent-fsync","retire-wal-rename-or-parent-fsync","retire-shm-rename-or-parent-fsync","retire-live-rename-or-parent-fsync","replacement-publish","postcommit-reopen","cleanup-retired-shm-remove-or-parent-fsync","cleanup-retired-wal-remove-or-parent-fsync","cleanup-retired-live-remove-or-parent-fsync","cleanup-replacement-manifest-remove-or-parent-fsync"]}]"#, owner: FrozenOwner::Host, phase: FrozenPhase::Foundation, #[cfg(test)] oracle_json: r#"{"verifiedSourceOrV5":true,"permanentBlockerForValidPrefix":false,"partialLogicalDatabase":false,"unlistedPrefix":false}"# },
     FrozenCase { id: "migration-recovery-insufficient-space", steps_json: r#"[{"op":"runMigration","freeBytes":2254857830}]"#, owner: FrozenOwner::Host, phase: FrozenPhase::Foundation, #[cfg(test)] oracle_json: r#"{"accepted":false,"error":"ResourceLimit","sqliteWrites":0,"backupCreated":false}"# },
 ];
+
+pub(super) struct JourneyCase {
+    pub(super) id: &'static str,
+    pub(super) steps_json: &'static str,
+}
+
+#[rustfmt::skip]
+pub(super) const JOURNEY_CASES: &[JourneyCase] = &[
+    JourneyCase { id: "codex-steer-lost-result", steps_json: r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult0146"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexSteer"},{"op":"exit","code":17}]"# },
+];

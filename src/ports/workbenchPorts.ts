@@ -1,3 +1,4 @@
+import type { QueuedChatPrompt } from "../domain/chatOwnership";
 import type {
   BootstrapSnapshot,
   BufferSnapshotAck,
@@ -54,7 +55,10 @@ import type {
   TrashProjectResourceRequest,
   TrashProjectResourceResult,
 } from "../domain/workbench";
+import type { HarnessDefinition } from "../domain/harness";
 import type { EditorAppearance } from "../features/files/editorAppearance";
+import type { SessionAccessMode } from "../domain/sessionAccessMode";
+import type { UiAppearance } from "../domain/uiAppearance";
 
 export interface SendPromptRequest {
   chatId: string;
@@ -65,6 +69,14 @@ export interface SendPromptRequest {
 
 export interface ProjectPort {
   getBootstrapSnapshot(): Promise<BootstrapSnapshot>;
+  getProjectChatQueuedPrompts(
+    projectId: string,
+  ): Promise<Record<string, QueuedChatPrompt[]>>;
+  replaceChatQueuedPrompts(
+    projectId: string,
+    chatId: string,
+    prompts: readonly QueuedChatPrompt[],
+  ): Promise<void>;
   createProjectFromPicker(
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
@@ -225,13 +237,18 @@ export interface ChatPort {
 }
 
 export interface AgentPort {
+  listHarnesses(): Promise<HarnessDefinition[]>;
   listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
 
 export interface SettingsPort {
   getEditorAppearance(): Promise<EditorAppearance>;
+  getSessionAccessMode(): Promise<SessionAccessMode>;
+  getUiAppearance(): Promise<UiAppearance>;
   setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance>;
+  setSessionAccessMode(mode: SessionAccessMode): Promise<SessionAccessMode>;
+  setUiAppearance(appearance: UiAppearance): Promise<UiAppearance>;
 }
 
 export interface WorkbenchPorts {
@@ -298,6 +315,13 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "renameChat",
     "restoreChat",
   ],
-  agent: ["listHarnessModels", "sendPrompt"],
-  settings: ["getEditorAppearance", "setEditorAppearance"],
+  agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
+  settings: [
+    "getEditorAppearance",
+    "getSessionAccessMode",
+    "getUiAppearance",
+    "setEditorAppearance",
+    "setSessionAccessMode",
+    "setUiAppearance",
+  ],
 } as const;

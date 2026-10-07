@@ -57,6 +57,7 @@ where
 
 impl AcpService {
     pub(crate) fn project_switched(&self, active_project: &SageProjectId) -> Result<(), HostError> {
+        self.revoke_browser_other_projects(active_project);
         // P-02 has no live adapter pump, but its conformance receivers are
         // owner-bound native work and must not survive a project replacement.
         // The coordinator keeps settlement, discovery, and RuntimeHost under

@@ -39,6 +39,7 @@ beforeEach(() => setHarnessBrowseOwner(previewOwner, [previewOwner.chatId]));
 function tool(
   presentation: ToolProjectionItem["payload"]["presentation"],
   toolState: ToolProjectionItem["toolState"] = "inProgress",
+  terminalAt: number | null = null,
 ): ToolProjectionItem {
   return {
     id: "item-1",
@@ -54,7 +55,7 @@ function tool(
     revision: "1",
     createdAt: 1,
     updatedAt: 1,
-    terminalAt: null,
+    terminalAt,
     kind: "toolCall",
     toolState,
     payload: { presentation, inputSummary: "Bounded retained input" },
@@ -67,7 +68,7 @@ describe("ToolItem", () => {
     const { rerender } = render(
       <ToolItem
         item={tool({
-          kind: "file",
+          kind: "read",
           label: "Read files",
           resources: [
             {
@@ -104,7 +105,7 @@ describe("ToolItem", () => {
     rerender(
       <ToolItem
         item={tool({
-          kind: "diff",
+          kind: "edit",
           label: "Changed file",
           resources: [
             {
@@ -125,10 +126,83 @@ describe("ToolItem", () => {
     );
   });
 
+  function readItemWithOutput(
+    outputSummary: string | null,
+  ): ToolProjectionItem {
+    const item = tool({
+      kind: "read",
+      label: "Read alpha.txt",
+      resources: [
+        {
+          kind: "resource",
+          resource: { rootId: "root-a", relativePath: "alpha.txt" },
+        },
+      ],
+    });
+    item.payload.outputSummary = outputSummary;
+    return item;
+  }
+
+  it("discloses retained read output as bounded escaped text without claiming resources are the result", () => {
+    const onOpen = vi.fn();
+    const { rerender } = render(
+      <ToolItem
+        item={readItemWithOutput("1\tread-only harness probe")}
+        onOpenResource={onOpen}
+      />,
+    );
+
+    const output = screen.getByLabelText("Tool output");
+    expect(output).toBeVisible();
+    expect(output.tagName).toBe("PRE");
+    expect(output.textContent).toBe("1\tread-only harness probe");
+    expect(screen.getByText("Tool output")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Open file alpha.txt" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Tool details")).toBeNull();
+    const card = screen.getByRole("group", { name: "Read alpha.txt" });
+    expect(
+      document.getElementById(card.getAttribute("aria-describedby") ?? ""),
+    ).toBe(output);
+    expect(card.textContent?.match(/read-only harness probe/g)).toHaveLength(1);
+
+    const markup = "<img src=x onerror=alert(1)>";
+    rerender(<ToolItem item={readItemWithOutput(markup)} />);
+    const escaped = screen.getByLabelText("Tool output");
+    expect(escaped.textContent).toBe(markup);
+    expect(escaped.querySelector("img")).toBeNull();
+
+    const oversize = `[output truncated] ${"probe line\n".repeat(200)}`;
+    rerender(<ToolItem item={readItemWithOutput(oversize)} />);
+    expect(screen.getByLabelText("Tool output").textContent).toBe(oversize);
+
+    rerender(<ToolItem item={readItemWithOutput(null)} />);
+    expect(screen.queryByLabelText("Tool output")).toBeNull();
+    expect(screen.getByText("Tool details")).toBeInTheDocument();
+  });
+
+  it("never labels an admitted browse href as tool output", () => {
+    const fetchItem = tool({
+      kind: "fetch",
+      label: "Fetch page",
+      url: null,
+      summary: null,
+    } as ToolProjectionItem["payload"]["presentation"]);
+    fetchItem.payload.inputSummary = null;
+    fetchItem.payload.outputSummary = "http://127.0.0.1:5173/app";
+    render(<ToolItem item={fetchItem} />);
+
+    expect(screen.queryByLabelText("Tool output")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open in Sage browser" }),
+    ).toBeVisible();
+  });
+
   it("keeps harness truncation text verbatim while identifying retained output as Sage chrome", () => {
     const output =
       "[output truncated] retained tail\n\tindented line\n\nfinal line\n";
-    render(<ToolItem item={commandItem("toolUpdateResult", output)} />);
+    render(<ToolItem item={commandItem(output)} />);
 
     expect(screen.getByText("Retained command output")).toBeVisible();
     expect(screen.getByLabelText("Command output").textContent).toBe(output);
@@ -137,7 +211,7 @@ describe("ToolItem", () => {
   it("shows command output and its safe File action in one card", () => {
     const onOpen = vi.fn();
     const fileItem = tool({
-      kind: "file",
+      kind: "read",
       label: "Read file",
       resources: [
         {
@@ -158,7 +232,11 @@ describe("ToolItem", () => {
 
     const command = {
       ...tool({
-        kind: "command",
+        kind: "execute",
+        cwd: null,
+        exitCode: null,
+        outputTail: null,
+        outputTruncated: false,
         label: "Run tests",
         summary: null,
         resources: [
@@ -169,10 +247,13 @@ describe("ToolItem", () => {
         ],
         activity: "ordinary",
       }),
-      kind: "toolUpdateResult" as const,
       payload: {
         presentation: {
-          kind: "command" as const,
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
           label: "Run tests",
           summary: null,
           resources: [
@@ -183,10 +264,10 @@ describe("ToolItem", () => {
           ],
           activity: "ordinary",
         },
-        callItemId: null,
+        inputSummary: null,
         outputSummary: "retained command output",
       },
-    } as Extract<AcpItem, { kind: "toolUpdateResult" }>;
+    } as Extract<AcpItem, { kind: "toolCall" }>;
     rerender(<ToolItem item={command} onOpenResource={onOpen} />);
     expect(screen.getByLabelText("Command output")).toHaveTextContent(
       "retained command output",
@@ -208,75 +289,131 @@ describe("ToolItem", () => {
     );
   });
 
-  it.each(["toolCall", "toolUpdateResult"] as const)(
-    "uses one referenced output surface for %s command output transitions",
-    (kind) => {
-      const { rerender } = render(<ToolItem item={commandItem(kind, null)} />);
-      expect(
-        screen.getByRole("group", { name: "Run command" }),
-      ).not.toHaveAttribute("aria-describedby");
-      expect(screen.queryByLabelText("Command output")).toBeNull();
+  it("uses one referenced output surface for toolCall command output transitions", () => {
+    const { rerender } = render(<ToolItem item={commandItem(null)} />);
+    expect(
+      screen.getByRole("group", { name: "Run command" }),
+    ).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByLabelText("Command output")).toBeNull();
 
-      rerender(<ToolItem item={commandItem(kind, "bounded output")} />);
-      const card = screen.getByRole("group", { name: "Run command" });
-      const id = card.getAttribute("aria-describedby");
-      expect(document.getElementById(id ?? "")).toBe(
-        screen.getByLabelText("Command output"),
-      );
-      expect(screen.getAllByText("bounded output")).toHaveLength(1);
-      expect(screen.queryByText("Tool details")).toBeNull();
+    rerender(<ToolItem item={commandItem("bounded output")} />);
+    const card = screen.getByRole("group", { name: "Run command" });
+    const id = card.getAttribute("aria-describedby");
+    expect(document.getElementById(id ?? "")).toBe(
+      screen.getByLabelText("Command output"),
+    );
+    expect(screen.getAllByText("bounded output")).toHaveLength(1);
+    expect(screen.queryByText("Tool details")).toBeNull();
 
-      rerender(<ToolItem item={commandItem(kind, "")} />);
-      expect(
-        screen.getByRole("group", { name: "Run command" }),
-      ).not.toHaveAttribute("aria-describedby");
-      expect(screen.queryByLabelText("Command output")).toBeNull();
-    },
-  );
+    rerender(<ToolItem item={commandItem("")} />);
+    expect(
+      screen.getByRole("group", { name: "Run command" }),
+    ).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByLabelText("Command output")).toBeNull();
+  });
+
+  it("adopts a terminal state and duration on one card when a call updates in place", () => {
+    const presentation = {
+      kind: "execute" as const,
+      cwd: null,
+      exitCode: null,
+      outputTail: null,
+      outputTruncated: false,
+      label: "Run migration",
+      summary: null,
+      resources: [],
+      activity: "ordinary" as const,
+    };
+    const { rerender, container } = render(
+      <ToolItem item={tool(presentation, "inProgress", null)} />,
+    );
+    expect(container.querySelector(".acp-tool-card")).toHaveAttribute(
+      "data-activity-state",
+      "inProgress",
+    );
+    expect(container.querySelector(".acp-tool-card__duration")).toBeNull();
+
+    rerender(
+      <ToolItem
+        item={{
+          ...tool(presentation, "completed", 4_000),
+          createdAt: 1_000,
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
+    const card = container.querySelector(".acp-tool-card");
+    expect(card).toHaveAttribute("data-activity-state", "completed");
+    expect(card).toHaveAttribute("data-acp-item-id", "item-1");
+    expect(
+      container.querySelector(".acp-tool-card__duration"),
+    ).toHaveTextContent("3s");
+  });
+
+  it("omits the command line when it only repeats the tool label", () => {
+    const echoed = tool({
+      kind: "execute",
+      cwd: null,
+      exitCode: null,
+      outputTail: null,
+      outputTruncated: false,
+      label: "npm run check",
+      summary: "npm run check",
+      resources: [],
+      activity: "ordinary",
+    });
+    const { rerender } = render(<ToolItem item={echoed} />);
+    expect(screen.queryByLabelText("Command line")).toBeNull();
+    expect(screen.getAllByText("npm run check")).toHaveLength(1);
+
+    const distinct = tool({
+      kind: "execute",
+      cwd: null,
+      exitCode: null,
+      outputTail: null,
+      outputTruncated: false,
+      label: "npm run check",
+      summary: "npm run check -- --watch",
+      resources: [],
+      activity: "ordinary",
+    });
+    rerender(<ToolItem item={distinct} />);
+    expect(screen.getByLabelText("Command line")).toHaveTextContent(
+      "npm run check -- --watch",
+    );
+  });
 
   function commandItem(
-    kind: "toolCall" | "toolUpdateResult",
     outputSummary: string | null,
-  ): Extract<AcpItem, { kind: "toolCall" | "toolUpdateResult" }> {
+  ): Extract<AcpItem, { kind: "toolCall" }> {
     const presentation = {
-      kind: "command" as const,
+      kind: "execute" as const,
+      cwd: null,
+      exitCode: null,
+      outputTail: null,
+      outputTruncated: false,
       label: "Run command",
       summary: null,
       resources: [],
       activity: "ordinary" as const,
     };
-    if (kind === "toolCall") {
-      return {
-        ...tool(presentation),
-        payload: {
-          presentation,
-          inputSummary: "retained input",
-          outputSummary,
-        },
-      };
-    }
     return {
-      ...tool({
-        kind: "command",
-        label: "Run command",
-        summary: null,
-        resources: [],
-        activity: "ordinary",
-      }),
-      kind,
+      ...tool(presentation),
       payload: {
         presentation,
-        callItemId: null,
+        inputSummary: "retained input",
         outputSummary,
       },
-    } as Extract<AcpItem, { kind: "toolUpdateResult" }>;
+    };
   }
 
   it("uses one generic card for unknown tools and typed safe summaries", () => {
     const { rerender } = render(
       <ToolItem
         item={tool({
-          kind: "generic",
+          kind: "other",
+          rawKind: null,
           label: "Unknown provider tool",
           summary: "Normalized fallback",
         })}
@@ -294,6 +431,8 @@ describe("ToolItem", () => {
       <ToolItem
         item={tool({
           kind: "mcp",
+          argumentsSummary: null,
+          resultSummary: null,
           label: "MCP tool",
           serverLabel: "Issue tracker",
           toolLabel: "Read issue",
@@ -303,12 +442,32 @@ describe("ToolItem", () => {
     expect(screen.getByText("Issue tracker · Read issue")).toBeInTheDocument();
   });
 
+  it("puts an MCP identity on its activity line without repeating generic detail", () => {
+    const { container } = render(
+      <ToolItem
+        item={tool({
+          kind: "mcp",
+          argumentsSummary: null,
+          resultSummary: null,
+          label: "MCP tool",
+          serverLabel: "Issue tracker",
+          toolLabel: "Read issue",
+        })}
+      />,
+    );
+    const row = container.querySelector(".acp-tool-card__header");
+    expect(row).toHaveTextContent("Issue tracker · Read issue");
+    expect(container.querySelectorAll(".acp-tool-card p")).toHaveLength(0);
+    expect(container.querySelectorAll(".acp-details")).toHaveLength(0);
+  });
+
   it("keeps a terminal tool state accessible without replaying it", () => {
     render(
       <ToolItem
         item={tool(
           {
-            kind: "generic",
+            kind: "other",
+            rawKind: null,
             label: "Unknown provider tool",
             summary: "Normalized fallback",
           },
@@ -336,14 +495,19 @@ describe("ToolItem", () => {
     const { container } = render(
       <ToolItem
         item={tool(
-          { kind: "generic", label: "Tool state", summary: "Bounded detail" },
+          {
+            kind: "other",
+            rawKind: null,
+            label: "Tool state",
+            summary: "Bounded detail",
+          },
           state,
         )}
       />,
     );
     expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
       "data-activity-kind",
-      "generic",
+      "other",
     );
     expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
       "data-activity-state",
@@ -351,11 +515,115 @@ describe("ToolItem", () => {
     );
   });
 
+  it("renders the kind icon, title, status and duration on one row", () => {
+    const { container } = render(
+      <ToolItem
+        item={tool(
+          {
+            kind: "execute",
+            label: "Run command",
+            summary: null,
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            resources: [],
+            activity: "ordinary",
+          },
+          "completed",
+          4_500,
+        )}
+      />,
+    );
+    const header = container.querySelector(".acp-tool-card__header");
+    expect(
+      header?.querySelector('[data-tool-kind-icon="execute"]'),
+    ).not.toBeNull();
+    expect(header).toHaveTextContent("Run command");
+    expect(header).toHaveTextContent("Completed");
+    expect(header?.querySelector(".acp-tool-card__duration")).toHaveTextContent(
+      "4s",
+    );
+  });
+
+  it("labels a sub-second and a multi-minute tool duration without lying", () => {
+    const { container, rerender } = render(
+      <ToolItem
+        item={tool(
+          { kind: "other", rawKind: null, label: "Quick", summary: null },
+          "completed",
+          400,
+        )}
+      />,
+    );
+    expect(
+      container.querySelector(".acp-tool-card__duration"),
+    ).toHaveTextContent("<1s");
+
+    rerender(
+      <ToolItem
+        item={tool(
+          { kind: "other", rawKind: null, label: "Slow", summary: null },
+          "completed",
+          125_001,
+        )}
+      />,
+    );
+    expect(
+      container.querySelector(".acp-tool-card__duration"),
+    ).toHaveTextContent("2m 5s");
+  });
+
+  it("names the unknown provider kind on the other fallback row", () => {
+    const { container, rerender } = render(
+      <ToolItem
+        item={tool({
+          kind: "other",
+          rawKind: "teleport",
+          label: "Teleported",
+          summary: "raw input preserved",
+        })}
+      />,
+    );
+    expect(
+      container.querySelector(".acp-tool-card__raw-kind"),
+    ).toHaveTextContent("teleport");
+
+    rerender(
+      <ToolItem
+        item={tool({
+          kind: "other",
+          rawKind: null,
+          label: "Plain",
+          summary: null,
+        })}
+      />,
+    );
+    expect(container.querySelector(".acp-tool-card__raw-kind")).toBeNull();
+  });
+
+  it("omits the duration until the tool reaches a terminal state", () => {
+    const { container } = render(
+      <ToolItem
+        item={tool({
+          kind: "read",
+          label: "Read files",
+          resources: [],
+        })}
+      />,
+    );
+    expect(container.querySelector(".acp-tool-card__duration")).toBeNull();
+    expect(
+      container.querySelector('[data-tool-kind-icon="read"]'),
+    ).not.toBeNull();
+  });
+
   it("opens an admitted loopback web tool in the Sage browser", () => {
     render(
       <ToolItem
         item={tool({
-          kind: "web",
+          kind: "fetch",
+          url: null,
           label: "Browse preview",
           summary: "Opened http://127.0.0.1:5173/app",
         })}
@@ -380,7 +648,8 @@ describe("ToolItem", () => {
       <ToolItem
         allowBrowse={false}
         item={tool({
-          kind: "web",
+          kind: "fetch",
+          url: null,
           label: "Browse preview",
           summary: "Opened http://127.0.0.1:5173/history",
         })}
@@ -397,7 +666,7 @@ describe("ToolItem", () => {
     render(
       <ToolItem
         item={tool({
-          kind: "file",
+          kind: "read",
           label: "Read file",
           resources: [
             {

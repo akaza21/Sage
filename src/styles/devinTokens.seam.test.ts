@@ -39,7 +39,7 @@ describe("Devin / VS Code dark tokens", () => {
         ".workspace-search__file-count",
       ],
       ["src/styles/chat-navigation-surface.css", ".project-chat-edit input"],
-      ["src/styles/composer-surface.css", ".send-button:disabled"],
+      ["src/styles/status-surfaces.css", ".send-button:disabled"],
       [
         "src/styles/repository-sidebar-controls.css",
         ".source-change-group > summary span:last-child",

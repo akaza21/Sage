@@ -1,5 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
+import { beforeEach } from "vitest";
+
+import { resetHarnessModelCache } from "../app/harnessModelCache";
+
+beforeEach(() => {
+  resetHarnessModelCache();
+});
+
 // jsdom does not implement Range geometry, but CodeMirror schedules layout
 // measurements through these APIs after editor updates. Keep the shared test
 // environment deterministic so a late animation-frame measurement cannot

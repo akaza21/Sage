@@ -1,11 +1,9 @@
-use std::{path::Path, time::Duration};
+use std::path::Path;
 
 use crate::{
     error::{AppError, AppResult},
-    git_process,
+    git_budget, git_process,
 };
-
-const GIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub(crate) use git_process::{GitOutput, GitProcessPolicy};
 
@@ -60,7 +58,7 @@ pub(crate) async fn run_git(
         root,
         args,
         stdout_limit,
-        GitProcessPolicy::read(GIT_TIMEOUT),
+        GitProcessPolicy::read(git_budget::READ),
     )
     .await
     {

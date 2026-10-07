@@ -132,6 +132,9 @@ impl CodexAuthManager {
             crate::acp::bindings::codex::CodexAdmissionUnavailable::Drift => {
                 CodexDiscoveryRunError::Drift
             }
+            crate::acp::bindings::codex::CodexAdmissionUnavailable::Projection(_) => {
+                CodexDiscoveryRunError::CapabilityProjectionUnavailable
+            }
             crate::acp::bindings::codex::CodexAdmissionUnavailable::Platform
             | crate::acp::bindings::codex::CodexAdmissionUnavailable::ObservationOnly => {
                 CodexDiscoveryRunError::Unavailable

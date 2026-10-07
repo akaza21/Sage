@@ -11,7 +11,7 @@ export type {
   TurnProjection,
 } from "./acpProjection";
 import type { AcpChatPage } from "./acpProjection";
-import type { DiffLineCommentContext } from "./attachedContext";
+import type { AttachedContext } from "./attachedContext";
 
 export type {
   PermissionDecision,
@@ -103,6 +103,15 @@ export type TurnState =
   | "failed"
   | "deliveryUnknown";
 
+export type TurnTerminalReason =
+  | "authRequired"
+  | "harnessExited"
+  | "protocolError"
+  | "cancelledByUser"
+  | "refusedVersion"
+  | "timeout"
+  | "other";
+
 export type ItemLifecycle =
   | "started"
   | "streaming"
@@ -167,7 +176,7 @@ export interface CodexDiscoveryResponse {
   rootId: string;
   bindingId: CuratedBindingId;
   runtimeEpoch: RuntimeEpoch;
-  account: "managedChatgpt" | "signedOut";
+  account: "managedChatgpt" | "providerManaged" | "signedOut";
   models: readonly CodexDiscoveryModel[];
   defaultModelId: CuratedModelId | null;
 }
@@ -205,7 +214,7 @@ export interface StartAcpSessionRequest extends AcpMutationIntent {
 
 interface AcpTurnContent {
   prompt: string;
-  attachedContext?: readonly DiffLineCommentContext[];
+  attachedContext?: readonly AttachedContext[];
 }
 
 export type SendAcpTurnRequest =
@@ -223,8 +232,16 @@ export interface CancelAcpTurnRequest extends AcpSessionMutationIntent {
   expectedTurnRevision: EntityRevision;
 }
 
+export interface SteerAcpTurnRequest extends AcpSessionMutationIntent {
+  turnId: SageTurnId;
+  expectedTurnRevision: EntityRevision;
+  prompt: string;
+  attachedContext?: readonly AttachedContext[];
+}
+
 export type ActivateAcpSessionRequest = AcpSessionMutationIntent;
 export type CloseAcpSessionRequest = AcpSessionMutationIntent;
+export type EndAcpSessionRequest = AcpSessionMutationIntent;
 
 export interface AcpMutationResult {
   projection: AcpChatPage;
@@ -258,7 +275,8 @@ type AcpCommandFailureDetail =
         | "runtimeEpoch"
         | "turnState"
         | "turnRevision"
-        | "clientIntent";
+        | "clientIntent"
+        | "steerOutcomeUnknown";
       message: string;
     }
   | {
@@ -274,6 +292,7 @@ type AcpCommandFailureDetail =
       message: string;
     }
   | { kind: "invalidRequest"; message: string }
+  | { kind: "signInRequired"; message: string }
   | { kind: "rejected"; message: string }
   | { kind: "recoveryRequired"; message: string }
   | { kind: "internal"; message: string };

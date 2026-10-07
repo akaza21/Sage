@@ -182,6 +182,7 @@ fn running(runtime: &mut OmpRuntime) -> Value {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-omp-1").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     deliver(runtime, command)
@@ -469,6 +470,12 @@ fn mandatory_denial_is_correlated_replay_bounded_and_fail_closed() {
 
 #[path = "cancel_contract_tests.rs"]
 mod cancel_contract_tests;
+
+#[path = "decline_publication_tests.rs"]
+mod decline_publication_tests;
+
+#[path = "settled_report_tests.rs"]
+mod settled_report_tests;
 
 #[test]
 fn malformed_and_plus_one_models_fail_closed() {

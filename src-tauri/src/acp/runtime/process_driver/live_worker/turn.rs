@@ -9,15 +9,19 @@ use crate::acp::{
 
 use super::super::{
     ActiveCloseBeginState, CompletedActivationDriverParts, CompletedDriverParts,
-    CoordinatorZeroToken, IdleCloseBeginState, PrepareActivationTurnError, PrepareDriverTurnError,
-    PreparedActivationTurn, PreparedProcessWrite, PreparedWriteError, ProcessTreeControl,
-    ReusableCloseBeginState, StdinTransport, WorkerCommand, WorkerEnvelope, WorkerReply,
+    CoordinatorZeroToken, IdleCloseBeginState, PreparedActivationTurn, PreparedProcessWrite,
+    ProcessTreeControl, ReusableCloseBeginState, StdinTransport, WorkerCommand, WorkerEnvelope,
+    WorkerReply,
 };
 use super::write_recovery::{
-    classify_begin_send_failure, classify_observe_failure, durable_commit_unknown,
+    classify_begin_send_failure, classify_observe_failure, durable_commit_unknown, map_write,
     retain_active_after_write_error,
 };
 use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState};
+
+#[path = "turn/prepare_error.rs"]
+mod prepare_error;
+use prepare_error::{map_prepare, map_prepare_next};
 
 pub(super) async fn handle_reusable<A, R, T, C, Auth>(
     parts: CompletedDriverParts<
@@ -58,7 +62,11 @@ where
                 Ok(turn) => {
                     let turn_id = turn.dispatch.turn_id().clone();
                     responder.respond(Ok(WorkerReply::Prepared(turn_id)));
-                    FirstTurnWorkerState::Active(PreparedProcessWrite::new(turn, prompt))
+                    FirstTurnWorkerState::Active(PreparedProcessWrite::new(
+                        turn,
+                        prompt,
+                        intent.access_mode,
+                    ))
                 }
                 Err(failure) => {
                     responder.respond(Err(map_prepare_next(&failure.error)));
@@ -93,7 +101,6 @@ where
         }
     }
 }
-
 pub(super) async fn handle_idle<A, R, T, C, Auth>(
     parts: CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
@@ -126,7 +133,11 @@ where
                 Ok(turn) => {
                     let turn_id = turn.dispatch.turn_id().clone();
                     responder.respond(Ok(WorkerReply::Prepared(turn_id)));
-                    FirstTurnWorkerState::Prepared { turn, prompt }
+                    FirstTurnWorkerState::Prepared {
+                        turn,
+                        prompt,
+                        access_mode: intent.access_mode,
+                    }
                 }
                 Err(failure) => {
                     responder.respond(Err(map_prepare(&failure.error)));
@@ -149,6 +160,7 @@ where
 pub(super) async fn handle_prepared<A, R, T, C, Auth>(
     turn: PreparedActivationTurn<A, R, T, C>,
     prompt: crate::acp::intent::Prompt,
+    access_mode: crate::settings_store::SessionAccessMode,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -178,7 +190,11 @@ where
         }
         _ => {
             envelope.reject(HostError::Intent);
-            return FirstTurnWorkerState::Prepared { turn, prompt };
+            return FirstTurnWorkerState::Prepared {
+                turn,
+                prompt,
+                access_mode,
+            };
         }
     }
     let running = match turn.bind_driver(context.journal.clone(), Arc::clone(&context.publisher)) {
@@ -191,7 +207,7 @@ where
         }
     };
     write_once(
-        PreparedProcessWrite::new(running, prompt),
+        PreparedProcessWrite::new(running, prompt, access_mode),
         context,
         envelope,
     )
@@ -275,6 +291,7 @@ where
             if intent.owner == context.owner
                 && intent.turn_id == *active.turn.dispatch.turn_id() =>
         {
+            active.reject_steer(HostError::Intent);
             let intent = intent.clone();
             match active.begin_cancel(&intent).await {
                 Ok(active) => {
@@ -306,6 +323,15 @@ where
                 Err(failure) => retain_active_after_write_error(failure, envelope),
             }
         }
+        WorkerCommand::Steer { .. } => {
+            let deadline = envelope.deadline();
+            let (command, responder) = envelope.into_parts();
+            let WorkerCommand::Steer { intent, completion } = command else {
+                unreachable!("Steer command matched")
+            };
+            super::turn_steer::dispatch(&mut active, intent, deadline, completion, responder);
+            FirstTurnWorkerState::Active(active)
+        }
         WorkerCommand::AcceptTerminal { owner, cursor }
             if owner == &context.owner && cursor.turn_id() == active.turn.dispatch.turn_id() =>
         {
@@ -328,6 +354,7 @@ where
                 && command.session_id == context.owner.session_id
                 && command.runtime_epoch == context.owner.runtime_epoch =>
         {
+            active.reject_steer(HostError::Closed);
             super::active_close::begin(
                 ActiveCloseBeginState::new(active, command.clone()),
                 envelope,
@@ -361,32 +388,5 @@ where
             FirstTurnWorkerState::Active(active)
         }
         Err(failure) => classify_begin_send_failure(failure, owner, turn_id, envelope),
-    }
-}
-
-fn map_prepare(error: &PrepareActivationTurnError) -> HostError {
-    match error {
-        PrepareActivationTurnError::Duplicate | PrepareActivationTurnError::Identity => {
-            HostError::Intent
-        }
-        PrepareActivationTurnError::Prepare(_) => HostError::RecoveryRequired,
-    }
-}
-
-fn map_prepare_next(error: &PrepareDriverTurnError) -> HostError {
-    match error {
-        PrepareDriverTurnError::Duplicate | PrepareDriverTurnError::Identity => HostError::Intent,
-        PrepareDriverTurnError::MissingLease
-        | PrepareDriverTurnError::Prepare(_)
-        | PrepareDriverTurnError::Rebind(_) => HostError::RecoveryRequired,
-    }
-}
-
-pub(super) fn map_write(error: &PreparedWriteError) -> HostError {
-    match error {
-        PreparedWriteError::Intent | PreparedWriteError::Fence(_) => HostError::Intent,
-        PreparedWriteError::Coordinator(_) | PreparedWriteError::Driver(_) => {
-            HostError::RecoveryRequired
-        }
     }
 }

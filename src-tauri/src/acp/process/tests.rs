@@ -561,3 +561,105 @@ fn windows_job_convergence_never_reopens_process_ids() {
     assert!(!include_str!("windows/authority.rs").contains("OpenProcess"));
     assert!(!include_str!("windows/job.rs").contains("ProcessIdList"));
 }
+
+#[cfg(windows)]
+#[test]
+fn admitted_fixture_live_process_candidates_stay_alive_under_their_declared_environment() {
+    let mut admitted_candidates = 0_u32;
+    for candidate in fixture_live_process_candidates() {
+        let Some(candidate) = candidate.canonicalized() else {
+            continue;
+        };
+        let executable = candidate.executable.clone();
+        match try_launch_fixture_live_process_for_test(9, candidate) {
+            FixtureCandidateOutcome::Usable(tree) => {
+                let (_, _, control) = tree.into_parts();
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                assert_eq!(
+                    control.native_exit_code_if_exited().unwrap(),
+                    None,
+                    "{} was admitted but exited before the fixture could use it",
+                    executable.display()
+                );
+                control.terminate_zero(TreeExit::Cancelled).unwrap();
+                admitted_candidates += 1;
+            }
+            FixtureCandidateOutcome::RejectedWithZeroProcesses => {}
+            FixtureCandidateOutcome::CleanupUnproven => panic!(
+                "{} was rejected without proving its process tree reached zero",
+                executable.display()
+            ),
+        }
+    }
+    assert!(admitted_candidates > 0);
+}
+
+#[cfg(windows)]
+#[test]
+fn fixture_live_process_selection_falls_back_past_unusable_candidates() {
+    let system_root =
+        std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from("C:\\Windows"));
+    let system32 = PathBuf::from(&system_root).join("System32");
+    let minimal_environment = vec![(OsString::from("SystemRoot"), system_root.clone())];
+    let mut candidates = vec![
+        FixtureLiveProcess {
+            executable: system32.join("drivers").join("etc").join("hosts"),
+            args: Vec::new(),
+            environment: minimal_environment.clone(),
+        },
+        FixtureLiveProcess {
+            executable: system32.join("cmd.exe"),
+            args: vec![OsString::from("/c"), OsString::from("exit")],
+            environment: minimal_environment.clone(),
+        },
+    ];
+    candidates.extend(fixture_live_process_candidates());
+    let tree = launch_first_usable_fixture_live_process_for_test(11, candidates)
+        .expect("a usable live process candidate remains after the unusable ones");
+    let (_, _, control) = tree.into_parts();
+    assert_eq!(control.native_exit_code_if_exited().unwrap(), None);
+    control.terminate_zero(TreeExit::Cancelled).unwrap();
+
+    assert!(
+        launch_first_usable_fixture_live_process_for_test(
+            12,
+            vec![FixtureLiveProcess {
+                executable: system32.join("cmd.exe"),
+                args: vec![OsString::from("/c"), OsString::from("exit")],
+                environment: minimal_environment,
+            }],
+        )
+        .is_none()
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn fixture_candidate_selection_falls_back_only_after_proven_zero_processes() {
+    let candidate = || FixtureLiveProcess {
+        executable: PathBuf::from("C:\\Windows\\System32\\cmd.exe"),
+        args: Vec::new(),
+        environment: Vec::new(),
+    };
+
+    let mut attempts = 0_u32;
+    let selected = select_first_usable_fixture_candidate(vec![candidate(), candidate()], |_| {
+        attempts += 1;
+        if attempts == 1 {
+            FixtureCandidateOutcome::RejectedWithZeroProcesses
+        } else {
+            FixtureCandidateOutcome::Usable(7_u32)
+        }
+    });
+    assert_eq!(selected, Some(7));
+    assert_eq!(attempts, 2);
+
+    let mut attempts = 0_u32;
+    let selected =
+        select_first_usable_fixture_candidate::<u32, _>(vec![candidate(), candidate()], |_| {
+            attempts += 1;
+            FixtureCandidateOutcome::CleanupUnproven
+        });
+    assert_eq!(selected, None);
+    assert_eq!(attempts, 1);
+}

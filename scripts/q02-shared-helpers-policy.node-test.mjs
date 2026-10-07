@@ -25,6 +25,21 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
+test("default production file cap accepts 384 and rejects 385", async () => {
+  const files = Array.from({ length: 385 }, (_, index) => [
+    `src/f${String(index).padStart(3, "0")}.ts`,
+    "",
+  ]);
+  await withFixture(Object.fromEntries(files.slice(0, 384)), async (root) => {
+    assert.deepEqual(await scan(root), []);
+  });
+  await withFixture(Object.fromEntries(files), async (root) => {
+    assert.deepEqual(await scan(root), [
+      "Q02 file limit 384 exceeded at src/f384.ts",
+    ]);
+  });
+});
+
 test("clean scope admits exact owners and ignores test/spec/fixture/JS", async () => {
   await withFixture(
     {

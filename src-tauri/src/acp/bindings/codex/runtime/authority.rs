@@ -61,6 +61,14 @@ impl CodexProjectRootAuthority {
             .expect("retained test root authority is valid"),
         )
     }
+
+    #[cfg(test)]
+    pub(crate) fn adopt_foreign_root_identity_for_test(
+        &mut self,
+        other_root: &std::path::Path,
+    ) -> AppResult<()> {
+        self.0.adopt_foreign_root_identity_for_test(other_root)
+    }
 }
 
 impl Database {

@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::acp::{
     contract::{BoundedVec, ContractError, RequiredText, SafeText},
     intent::{COMMAND_RESOURCE_LIMIT, ExternalId, SafeResourceLocation},
+    mcp::{McpAdmission, McpCapabilities},
 };
 
 use super::{
@@ -44,6 +45,7 @@ pub(super) struct ActiveTurn {
     terminal: Option<PromptTerminal>,
     tools: BTreeMap<String, crate::acp::contract::ToolState>,
     tool_categories: BTreeMap<String, crate::acp::intent::ToolCategory>,
+    settled_reports: BTreeMap<String, crate::acp::contract::ToolState>,
     tool_snapshots: BTreeMap<
         String,
         (
@@ -69,6 +71,8 @@ pub(crate) struct OmpTranslator {
     capabilities: OmpBindingCapabilities,
     initialized: bool,
     negotiated_load: bool,
+    mcp: McpAdmission,
+    mcp_capabilities: McpCapabilities,
     pending: BTreeMap<String, PendingKind>,
     completed: BTreeMap<String, CompletedResponse>,
     completed_order: VecDeque<String>,
@@ -80,12 +84,22 @@ pub(crate) struct OmpTranslator {
 
 impl OmpTranslator {
     pub(crate) fn new(epoch: u64, capabilities: OmpBindingCapabilities) -> Self {
+        Self::with_mcp(epoch, capabilities, McpAdmission::default())
+    }
+
+    pub(crate) fn with_mcp(
+        epoch: u64,
+        capabilities: OmpBindingCapabilities,
+        mcp: McpAdmission,
+    ) -> Self {
         Self {
             epoch,
             next_request: 0,
             capabilities,
             initialized: false,
             negotiated_load: false,
+            mcp,
+            mcp_capabilities: McpCapabilities::default(),
             pending: BTreeMap::new(),
             completed: BTreeMap::new(),
             completed_order: VecDeque::new(),

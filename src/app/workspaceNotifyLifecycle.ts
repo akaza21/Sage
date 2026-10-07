@@ -9,7 +9,7 @@ import {
   type WorkspaceNotifyHooks,
   type WorkspaceNotifyNotice,
 } from "../features/files/workspaceNotifyCompose";
-import { isTauriRuntime } from "../ports/nativeInvoke";
+import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { currentProjectLayout } from "./projectProjection";
 import {
@@ -17,6 +17,40 @@ import {
   holdEditorAppearancePersistenceForClose,
 } from "./editorAppearanceStore";
 import type { WorkbenchState } from "./store";
+
+type CloseStage =
+  | "closeRequested"
+  | "editorFlush"
+  | "appearanceFlush"
+  | "workspaceUnwatch"
+  | "persistAndDestroy";
+type CloseStageStatus = "start" | "end" | "error";
+let closeTraceQueue = Promise.resolve();
+
+export function traceCloseStage(
+  stage: CloseStage,
+  status: CloseStageStatus,
+): void {
+  if (!isTauriRuntime()) return;
+  closeTraceQueue = closeTraceQueue
+    .then(() => invokeNative<void>("trace_close_stage", { stage, status }))
+    .catch(() => undefined);
+}
+
+async function runCloseStage(
+  stage: CloseStage,
+  work: () => Promise<void>,
+): Promise<void> {
+  traceCloseStage(stage, "start");
+  try {
+    await work();
+    traceCloseStage(stage, "end");
+  } catch (error) {
+    traceCloseStage(stage, "error");
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Close ${stage} failed: ${detail}`, { cause: error });
+  }
+}
 
 export function liveProjectNotifyStamp(
   state: WorkbenchState,
@@ -179,12 +213,14 @@ export async function closeLiveWorkbench(
 ): Promise<void> {
   const releaseAppearance = holdEditorAppearancePersistenceForClose();
   try {
-    await get().flushActiveEditor();
-    await flushEditorAppearancePersistence();
-    await unbindWorkspaceNotify();
-    await getWorkbenchPorts().project.persistProjectLayoutAndClose(
-      currentProjectLayout(get()),
-      get().nativeTransitionEpoch,
+    await runCloseStage("editorFlush", () => get().flushActiveEditor());
+    await runCloseStage("appearanceFlush", flushEditorAppearancePersistence);
+    await runCloseStage("workspaceUnwatch", unbindWorkspaceNotify);
+    await runCloseStage("persistAndDestroy", () =>
+      getWorkbenchPorts().project.persistProjectLayoutAndClose(
+        currentProjectLayout(get()),
+        get().nativeTransitionEpoch,
+      ),
     );
   } finally {
     releaseAppearance();

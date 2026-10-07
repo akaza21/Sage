@@ -15,10 +15,10 @@ use windows_sys::Win32::System::JobObjects::{
 use super::super::supervisor::LaunchError;
 use super::native::NativeHandle;
 
-pub(super) struct JobBoundary(NativeHandle);
+pub(crate) struct JobBoundary(NativeHandle);
 
 impl JobBoundary {
-    pub(super) fn create(active_limit: u32) -> Result<Self, LaunchError> {
+    pub(crate) fn create(active_limit: u32) -> Result<Self, LaunchError> {
         // SAFETY: null security/name creates an unnamed non-inheritable Job.
         let job = NativeHandle::new(unsafe { CreateJobObjectW(null(), null()) })
             .map_err(|_| LaunchError::ContainmentFailure)?;
@@ -43,7 +43,7 @@ impl JobBoundary {
         Ok(Self(job))
     }
 
-    pub(super) fn assign(&self, process: HANDLE) -> Result<(), LaunchError> {
+    pub(crate) fn assign(&self, process: HANDLE) -> Result<(), LaunchError> {
         // SAFETY: both handles are live and assignment happens while suspended.
         if unsafe { AssignProcessToJobObject(self.0.raw(), process) } == 0 {
             return Err(LaunchError::ContainmentFailure);
@@ -51,7 +51,7 @@ impl JobBoundary {
         Ok(())
     }
 
-    pub(super) fn terminate(&self) -> Result<(), LaunchError> {
+    pub(crate) fn terminate(&self) -> Result<(), LaunchError> {
         // SAFETY: the Job is live and exclusively controlled by this supervisor.
         if unsafe { TerminateJobObject(self.0.raw(), 1) } == 0 {
             return Err(LaunchError::ContainmentFailure);
@@ -116,7 +116,7 @@ impl JobBoundary {
 
     /// Teardown-only bounded convergence. No steady-state timer or polling is
     /// created; Job accounting remains the sole membership authority.
-    pub(super) fn wait_for_zero(
+    pub(crate) fn wait_for_zero(
         &self,
         capacity: u32,
         deadline: Instant,

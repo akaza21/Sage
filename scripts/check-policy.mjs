@@ -56,7 +56,7 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "4a59a52cc9f165d2051e532c404a419907a6cda00eda8ff0d865b8a30b1f08f2" ||
+    "634344e11a46328536cd53d629b1544ae14dead07fc854c8f559fb9f5c065e3d" ||
   betaAcceptance.schemaVersion !== 1 ||
   betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
   betaAcceptance.workItem !== "BETA-0001"
@@ -74,7 +74,7 @@ const betaCandidateSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaCandidateSha256 !==
-    "274026a28e6539ff567af6705e73f27ce011f520d7c0684527e129e0ebca1f8f" ||
+    "fdea662a05dbef4eb8b025c04cdd99f59f387892b4dbb50c9eda12d156fc27d6" ||
   betaCandidate.schemaVersion !== 1 ||
   betaCandidate.status !== "frozen-verdict-matrix" ||
   betaCandidate.workItem !== "BETA-0001" ||
@@ -568,14 +568,12 @@ if (
 }
 
 const capabilities = await readJson("src-tauri/capabilities/main.json");
-const allowedPermissions = new Set(["core:default"]);
-
-for (const permission of capabilities.permissions ?? []) {
-  const identifier =
-    typeof permission === "string" ? permission : permission.identifier;
-  if (!allowedPermissions.has(identifier)) {
-    fail(`Unexpected Tauri permission: ${identifier}`);
-  }
+try {
+  const { validateMainCapabilityPermissions } =
+    await import("./check-policy-permissions.mjs");
+  validateMainCapabilityPermissions(capabilities);
+} catch (error) {
+  fail(error.message);
 }
 
 const packageJson = await readJson("package.json");
@@ -743,6 +741,7 @@ const windowsFeatures = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Storage_FileSystem",
+  "Win32_System_Console",
   "Win32_System_JobObjects",
   "Win32_System_Pipes",
   "Win32_System_Performance",

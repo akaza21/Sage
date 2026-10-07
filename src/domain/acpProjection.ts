@@ -1,5 +1,6 @@
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpSessionConfig } from "./acpSessionConfig";
+import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
 import type {
   ActivityState,
@@ -16,6 +17,7 @@ import type {
   SageTurnId,
   ToolState,
   TurnState,
+  TurnTerminalReason,
   CuratedBindingId,
   CuratedModelId,
   SessionResidency,
@@ -37,40 +39,71 @@ export type SafeResourceLocation =
         | "noncanonical"
         | "unsupported";
       label: string;
+      displayResource?: ResourceRef | null;
     };
 
 export type ToolPresentation =
-  | { kind: "generic"; label: string; summary: string | null }
   | {
-      kind: "file" | "diff";
+      kind: "read" | "edit" | "delete";
       label: string;
       resources: readonly SafeResourceLocation[];
     }
   | {
-      kind: "command";
+      kind: "move";
       label: string;
-      summary: string | null;
       resources: readonly SafeResourceLocation[];
-      /** Legacy projections without this field decode as ordinary. */
-      activity: "ordinary" | "declaredTest";
+      originalResources: readonly SafeResourceLocation[];
     }
   | {
       kind: "search";
       label: string;
       querySummary: string;
-      resources: readonly ResourceRef[];
+      resources: readonly SafeResourceLocation[];
+      matchCount: number | null;
+      truncated: boolean;
     }
-  | { kind: "web"; label: string; summary: string | null }
+  | {
+      kind: "execute";
+      label: string;
+      summary: string | null;
+      cwd: SafeResourceLocation | null;
+      exitCode: number | null;
+      outputTail: string | null;
+      outputTruncated: boolean;
+      resources: readonly SafeResourceLocation[];
+      activity: "ordinary" | "declaredTest";
+    }
+  | {
+      kind: "fetch";
+      label: string;
+      url: string | null;
+      summary: string | null;
+    }
+  | { kind: "think"; label: string; summary: string | null }
+  | {
+      kind: "switchMode";
+      label: string;
+      modeId: string | null;
+      modeLabel: string | null;
+    }
   | {
       kind: "mcp";
       label: string;
       serverLabel: string;
       toolLabel: string;
+      argumentsSummary: string | null;
+      resultSummary: string | null;
     }
   | {
       kind: "subagent";
       label: string;
       activityId: SageActivityId | null;
+    }
+  | {
+      kind: "other";
+      label: string;
+      rawKind: string | null;
+      summary: string | null;
     };
 
 export type FileChangeProjection = FilePairMetadata & {
@@ -125,29 +158,11 @@ export type AcpItem =
         outputSummary?: string | null;
       }
     >
-  | ToolItem<
-      "toolUpdateResult",
-      {
-        callItemId: SageItemId | null;
-        presentation: ToolPresentation;
-        outputSummary: string | null;
-      }
-    >
   | PlainItem<
       "fileChangeDiff",
       { changes: readonly FileChangeProjection[]; truncated: boolean }
     >
   | PlainItem<"image", AcpImagePayload>
-  | PlainItem<
-      "usage",
-      {
-        inputTokens: number | null;
-        outputTokens: number | null;
-        cachedInputTokens: number | null;
-        totalTokens: number | null;
-        contextWindow?: number;
-      }
-    >
   | ToolItem<
       "permissionRequest",
       {
@@ -155,6 +170,10 @@ export type AcpItem =
         state: PermissionState;
         label: string;
         summary: string;
+        source?: "harness" | "browser";
+        offeredOptionKinds?: Array<
+          "allow_once" | "allow_always" | "reject_once" | "reject_always"
+        > | null;
       }
     >
   | PlainItem<"error", { code: string; message: string; recoverable: boolean }>
@@ -165,10 +184,14 @@ export type AcpItem =
   | PlainItem<
       "collaboration",
       {
-        activityId: SageActivityId;
+        activityId: SageActivityId | null;
         label: string;
         summary: string;
         receiverLabels: readonly string[];
+        operation?: string | null;
+        agentKey?: string | null;
+        agentKeys?: readonly string[];
+        agentStates?: readonly (readonly [string, string])[];
       }
     >;
 
@@ -200,8 +223,21 @@ export interface TurnProjection {
   createdAt: number;
   updatedAt: number;
   terminalAt: number | null;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    contextWindow?: number;
+  };
+  terminalReason?: {
+    kind: TurnTerminalReason;
+    message?: string;
+    remediation?: string;
+  };
   items: readonly AcpItem[];
   activities: readonly HarnessActivityProjection[];
+  browserOperations: readonly BrowserOperationProjection[];
+  browserOperationsCollapsed: number;
 }
 
 export interface AgentSessionProjection {
@@ -214,6 +250,7 @@ export interface AgentSessionProjection {
   runtimeEpoch: RuntimeEpoch | null;
   nextRuntimeEpoch: RuntimeEpoch | null;
   capabilities: AcpCapabilitySet;
+  permissionRequests: boolean;
   revision: EntityRevision;
   projectionRevision: ProjectionRevision;
   legacy: boolean;

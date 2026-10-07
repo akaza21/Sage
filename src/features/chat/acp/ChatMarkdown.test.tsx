@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -7,6 +13,15 @@ import {
   renderMarkdownPreview,
 } from "../../files/markdownPreview";
 import * as markdownPreview from "../../files/markdownPreview";
+import { acpDesktop } from "../../../services/acpDesktop";
+import { openAgentArtifact } from "../../../app/openAgentArtifact";
+import { useWorkbenchStore } from "../../../app/store";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
+
+vi.mock("../../../app/openAgentArtifact", () => ({
+  openAgentArtifact: vi.fn().mockResolvedValue(true),
+  agentArtifactOwnerIsCurrent: vi.fn().mockReturnValue(true),
+}));
 
 afterEach(() => {
   cleanup();
@@ -14,6 +29,71 @@ afterEach(() => {
 });
 
 describe("ChatMarkdown code blocks", () => {
+  it("opens a natively resolved assistant file link through Chat admission", async () => {
+    const resource = { rootId: "root-a", relativePath: "README.md" };
+    vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
+      resource,
+      lineNumber: 12,
+    });
+    const owner = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      sessionId: "session-a",
+    } as AgentArtifactOwner;
+    const openFileLocation = vi
+      .spyOn(useWorkbenchStore.getState(), "openFileLocation")
+      .mockResolvedValue();
+    render(
+      <ChatMarkdown
+        text="See [README.md](README.md:12)"
+        fileReferenceOwner={owner}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open README.md" }),
+    );
+    expect(acpDesktop.resolveChatFileReference).toHaveBeenCalledWith(
+      "project-a",
+      "README.md:12",
+    );
+    expect(openAgentArtifact).toHaveBeenCalledWith({
+      owner,
+      target: "file",
+      resource,
+    });
+    await waitFor(() =>
+      expect(openFileLocation).toHaveBeenCalledWith({
+        projectId: "project-a",
+        transitionEpoch: useWorkbenchStore.getState().nativeTransitionEpoch,
+        resource,
+        lineNumber: 12,
+        columnNumber: 1,
+        selection: { kind: "caret" },
+      }),
+    );
+  });
+  it("keeps a repeated plain label inert before the inline link", async () => {
+    vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
+      resource: { rootId: "root-a", relativePath: "README.md" },
+      lineNumber: null,
+    });
+    const owner = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      sessionId: "session-a",
+    } as AgentArtifactOwner;
+    render(
+      <ChatMarkdown
+        text="README.md then [README.md](README.md)"
+        fileReferenceOwner={owner}
+      />,
+    );
+
+    const link = await screen.findByRole("button", { name: "Open README.md" });
+    expect(link.previousSibling?.textContent).toBe("README.md then ");
+    expect(link.parentElement?.textContent).toBe("README.md then README.md");
+  });
   it("labels the language and copies the exact retained source", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {

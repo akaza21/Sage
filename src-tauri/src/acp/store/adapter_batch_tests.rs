@@ -14,6 +14,7 @@ use crate::acp::{
 };
 
 mod lifecycle_tests;
+mod settlement_tests;
 mod snapshot_reopen_tests;
 mod snapshot_tests;
 
@@ -93,6 +94,35 @@ fn fixture() -> Fixture {
             turn_id: prepared.turn_id,
             binding_digest: "a".repeat(64),
             external_session_id,
+        },
+    }
+}
+
+fn migrated_fixture() -> Fixture {
+    let (connection, _) = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
+        .unwrap()
+        .into_parts();
+    connection.execute_batch(&format!(
+        "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Project',1,1,1);
+         INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/project','c:/project',0);
+         INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-one','project-one',0,'Chat',0,1,1);
+         INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-one','project-one','chat-one',0,'binding','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','adapter-session','{}','active','hot',0,0,0,1,1);
+         INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project-one','chat-one','session-one',0,1);
+         INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-one','chat-one','session-one',1,'running','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',1);
+         INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-one','project-one','chat-one','session-one',1,0,'intent-one','running','correlated',0,1,1);
+         INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,activity_id,kind,lifecycle,tool_state,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES('item-one','project-one','chat-one','session-one','turn-one',1,0,'primary',NULL,'text','completed',NULL,'item-one','{{\"kind\":\"text\",\"payload\":{{\"text\":\"prompt\"}}}}',43,'b2bf66ef982a206f5552f31203f5825ec8155829efc5a4d0f63ba817a6dbe9fe',0,1,1,1);",
+        capabilities(),
+    )).unwrap();
+    Fixture {
+        connection,
+        owner: AdapterStoreOwner {
+            project_id: project(),
+            chat_id: chat(),
+            session_id: SageAgentSessionId::parse("session-one").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            turn_id: SageTurnId::parse("turn-one").unwrap(),
+            binding_digest: "a".repeat(64),
+            external_session_id: ExternalId::new("external", "adapter-session").unwrap(),
         },
     }
 }
@@ -570,8 +600,9 @@ fn terminal_item(
 
 fn permission(owner: &AdapterStoreOwner) -> PermissionIntent {
     let payload = NormalizedPayload::PermissionRequest {
-        category: ToolCategory::Command,
+        category: ToolCategory::Execute,
         summary: SafeText::new("summary", "Run command?").unwrap(),
+        offered_option_kinds: None,
     };
     let json = serde_json::to_string(&payload).unwrap();
     PermissionIntent {

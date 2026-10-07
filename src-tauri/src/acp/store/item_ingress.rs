@@ -236,9 +236,7 @@ use update::update_existing;
 fn validate_lifecycle(command: &ItemIngressCommand) -> Result<(), StoreError> {
     let needs_tool = matches!(
         command.payload,
-        NormalizedPayload::ToolCall { .. }
-            | NormalizedPayload::ToolUpdateResult { .. }
-            | NormalizedPayload::PermissionRequest { .. }
+        NormalizedPayload::ToolCall { .. } | NormalizedPayload::PermissionRequest { .. }
     );
     if needs_tool != command.tool_state.is_some()
         || command

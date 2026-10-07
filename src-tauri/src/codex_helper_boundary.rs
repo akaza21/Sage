@@ -1,26 +1,18 @@
 #[cfg(any(windows, test))]
-#[path = "codex_helper_boundary/authority.rs"]
 mod authority;
 #[cfg(windows)]
-#[path = "codex_helper_boundary/caller.rs"]
 mod caller;
 #[cfg(any(windows, test))]
-#[path = "codex_helper_boundary/dispatch.rs"]
 mod dispatch;
 #[cfg(windows)]
-#[path = "codex_helper_boundary/entrypoint.rs"]
 mod entrypoint;
 #[cfg(any(windows, test))]
-#[path = "codex_helper_boundary/executable.rs"]
 mod executable;
 #[cfg(any(windows, test))]
-#[path = "codex_helper_boundary/protocol.rs"]
 mod protocol;
 #[cfg(windows)]
-#[path = "codex_helper_boundary/watchdog.rs"]
 mod watchdog;
 #[cfg(windows)]
-#[path = "codex_helper_boundary/windows.rs"]
 mod windows;
 
 #[cfg(windows)]

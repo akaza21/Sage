@@ -15,14 +15,10 @@ use super::{
     OmpBindingCapabilities, OmpTranslator, Operation, Outbound, ResearchBinding, TranslationError,
 };
 
-#[path = "runtime/support.rs"]
 mod support;
 
-#[path = "runtime/admission.rs"]
 mod admission;
-#[path = "runtime/read_text_file.rs"]
 mod read_text_file;
-#[path = "runtime/snapshots.rs"]
 mod snapshots;
 use snapshots::ItemSnapshots;
 
@@ -81,6 +77,7 @@ pub(crate) struct OmpRuntime {
     pub(super) transition: Option<SessionTransition>,
     pub(super) active_turn: Option<TurnIntent>,
     pub(super) denials: BTreeMap<String, DenyIntent>,
+    pub(super) deferred: Vec<super::AdapterEvent>,
     snapshots: ItemSnapshots,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
@@ -118,6 +115,7 @@ impl OmpRuntime {
             transition: None,
             active_turn: None,
             denials: BTreeMap::new(),
+            deferred: Vec::new(),
             snapshots: ItemSnapshots::new(),
             reservations: BTreeMap::new(),
             next_egress: 0,
@@ -212,6 +210,7 @@ impl OmpRuntime {
             RequestKind::Prompt => {
                 self.active_turn = None;
                 self.snapshots.clear();
+                self.deferred.clear();
             }
             RequestKind::Cancel => {}
             RequestKind::AuthorityCancel => unreachable!(),
@@ -230,6 +229,7 @@ impl HarnessAdapter for OmpRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         match command {
+            AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::Initialize => {
                 self.begin_one(Operation::Initialize, RequestKind::Initialize)
             }
@@ -278,6 +278,7 @@ impl HarnessAdapter for OmpRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
+                ..
             } => {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
@@ -391,5 +392,4 @@ impl HarnessAdapter for OmpRuntime {
 }
 
 #[cfg(test)]
-#[path = "runtime/tests.rs"]
 mod tests;

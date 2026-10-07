@@ -10,6 +10,7 @@ import {
   CHECK_LANES_MIGRATION,
   CHECK_LANES_ORIGIN,
   discoverBudgetTestFiles,
+  environmentForBudgetLane,
   extractDeclaredTestTitles,
   laneGate,
   laneOfBudgetTest,
@@ -26,6 +27,33 @@ import {
   verifyCheckLanesMigrationEntries,
   verifyLaneJustifications,
 } from "./budget-lanes.mjs";
+
+test("budget lane keeps portable environment untouched and scopes Windows inbox utilities", () => {
+  const portable = { KEEP: "value" };
+  if (process.platform !== "win32") {
+    assert.equal(environmentForBudgetLane(portable), portable);
+    return;
+  }
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  assert.ok(systemRoot);
+  const environment = environmentForBudgetLane({
+    ...portable,
+    SystemRoot: systemRoot,
+    PSModulePath: "custom-module-path",
+  });
+  const inboxModules = path.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "Modules",
+  );
+  assert.equal(
+    environment.PSModulePath,
+    [inboxModules, "custom-module-path"].join(path.delimiter),
+  );
+  assert.equal(environment.KEEP, "value");
+});
 
 // origin: NODE-BUDGET-C02 runner record for budget-lanes.node-test.mjs.
 // Portable inventory guard: proves unique ownership, no unknown owner, and
@@ -60,7 +88,23 @@ test("every original check-lanes case has a declared successor", () => {
 
 test("lane split and runner tests are explicitly recorded", () => {
   const justifications = verifyLaneJustifications();
-  assert.equal(justifications.justified, 11);
+  assert.equal(justifications.justified, 23);
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-cancel-evidence.node-test.mjs"),
+  );
+  assert.equal(
+    laneOfBudgetTest("hr6-cancel-evidence.node-test.mjs"),
+    "portable",
+  );
+  assert.ok(
+    discoverBudgetTestFiles().includes(
+      "check-harness-trace-privacy.node-test.mjs",
+    ),
+  );
+  assert.equal(
+    laneOfBudgetTest("check-harness-trace-privacy.node-test.mjs"),
+    "portable",
+  );
   assert.ok(discoverBudgetTestFiles().includes("gate.node-test.mjs"));
   assert.equal(laneOfBudgetTest("gate.node-test.mjs"), "portable");
   assert.ok(discoverBudgetTestFiles().includes("ci-rust-phase.node-test.mjs"));
@@ -76,6 +120,42 @@ test("lane split and runner tests are explicitly recorded", () => {
   );
   assert.ok(discoverBudgetTestFiles().includes("lane.node-test.mjs"));
   assert.equal(laneOfBudgetTest("lane.node-test.mjs"), "portable");
+  assert.ok(discoverBudgetTestFiles().includes("hr6-live-run.node-test.mjs"));
+  assert.equal(laneOfBudgetTest("hr6-live-run.node-test.mjs"), "windows");
+  assert.ok(discoverBudgetTestFiles().includes("hr6-chat-scope.node-test.mjs"));
+  assert.equal(laneOfBudgetTest("hr6-chat-scope.node-test.mjs"), "portable");
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-tool-evidence.node-test.mjs"),
+  );
+  assert.equal(laneOfBudgetTest("hr6-tool-evidence.node-test.mjs"), "portable");
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-access-mode.node-test.mjs"),
+  );
+  assert.equal(laneOfBudgetTest("hr6-access-mode.node-test.mjs"), "portable");
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-diff-evidence.node-test.mjs"),
+  );
+  assert.equal(laneOfBudgetTest("hr6-diff-evidence.node-test.mjs"), "portable");
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-permission-evidence.node-test.mjs"),
+  );
+  assert.equal(
+    laneOfBudgetTest("hr6-permission-evidence.node-test.mjs"),
+    "portable",
+  );
+  assert.ok(
+    discoverBudgetTestFiles().includes("hr6-harness-selection.node-test.mjs"),
+  );
+  assert.equal(
+    laneOfBudgetTest("hr6-harness-selection.node-test.mjs"),
+    "portable",
+  );
+  assert.ok(
+    discoverBudgetTestFiles().includes("app-smoke-server.node-test.mjs"),
+  );
+  assert.equal(laneOfBudgetTest("app-smoke-server.node-test.mjs"), "portable");
+  assert.ok(discoverBudgetTestFiles().includes("app-smoke-cli.node-test.mjs"));
+  assert.equal(laneOfBudgetTest("app-smoke-cli.node-test.mjs"), "windows");
 });
 
 test("mixed check-lanes source is retired from the discovered set", () => {

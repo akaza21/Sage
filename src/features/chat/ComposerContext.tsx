@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 
-import type { AcpItem } from "../../domain/acp";
+import type { ChatUsage } from "./acp/chatUsage";
 
-type UsagePayload = Extract<AcpItem, { kind: "usage" }>["payload"];
+type UsagePayload = ChatUsage;
 type UsageStyle = CSSProperties & { "--composer-context-usage": string };
 
 function compactTokenCount(tokens: number): string {
@@ -14,7 +14,6 @@ function compactTokenCount(tokens: number): string {
 
 function UsageContext({ usage }: { usage: UsagePayload }) {
   const total = usage.totalTokens;
-  if (total === null) return null;
   const formattedTotal = total.toLocaleString();
   const capacity = usage.contextWindow;
   if (
@@ -23,11 +22,7 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
     capacity <= 0 ||
     capacity > 0xffff_ffff
   ) {
-    return (
-      <span className="composer__context-item">
-        Reported usage · {formattedTotal} tokens
-      </span>
-    );
+    return null;
   }
 
   const progress = Math.min(Math.max(total, 0), capacity);
@@ -40,9 +35,10 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
       </span>
       <span
         className="composer__context-usage"
-        title={`${formattedTotal} / ${formattedCapacity} tokens`}
+        title={`${formattedTotal} used / ${formattedCapacity} total tokens`}
         role="progressbar"
-        aria-label="Reported usage"
+        aria-label={`${formattedTotal} used / ${formattedCapacity} total tokens`}
+        tabIndex={0}
         aria-valuemin={0}
         aria-valuemax={capacity}
         aria-valuenow={progress}
@@ -55,14 +51,17 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
   );
 }
 
-export function ComposerContext({
-  usage,
-}: {
-  usage: Extract<AcpItem, { kind: "usage" }>["payload"] | null;
-}) {
+export function ComposerContext({ usage }: { usage: ChatUsage | null }) {
+  if (
+    !usage ||
+    !Number.isSafeInteger(usage.contextWindow) ||
+    !usage.contextWindow ||
+    usage.contextWindow <= 0
+  )
+    return null;
   return (
     <p className="composer__context" aria-label="Composer context">
-      {usage ? <UsageContext usage={usage} /> : null}
+      <UsageContext usage={usage} />
     </p>
   );
 }

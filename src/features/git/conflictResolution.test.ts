@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { FileChange } from "../../domain/workbench";
-import { canResolveConflictedChange } from "./conflictResolution";
+import { canResolveConflictedChange } from "../../domain/gitMutation";
 
 function change(
   path: string,

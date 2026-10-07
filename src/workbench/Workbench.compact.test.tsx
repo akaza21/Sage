@@ -26,7 +26,7 @@ async function selectWindowMode(mode: "Agent" | "Editor") {
   );
   if (mode === "Agent") {
     await screen.findByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Waiting",
     });
   }
 }
@@ -123,7 +123,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
 
     const openResources = screen.getByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Waiting",
     });
     expect(openResources).toBeVisible();
     expect(
@@ -163,7 +163,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     );
 
@@ -176,7 +176,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.keyDown(resources, { key: "Escape" });
     expect(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     ).toBeVisible();
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
@@ -591,6 +591,42 @@ describe("compact Workbench project tools", () => {
     expect(createChat).toHaveBeenCalledTimes(beforeClick + 1);
   });
 
+  it("creates a task from the new task keyboard shortcut", async () => {
+    const createChat = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      createChat,
+      project: { id: "project-a", name: "A", roots: [] },
+    });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+
+    const before = createChat.mock.calls.length;
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    expect(createChat).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it("reveals Settings when the rail gear is used from Agent mode", async () => {
+    const openSettings = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({
+      openSettings,
+      project: { id: "project-a", name: "A", roots: [] },
+    });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+    openAgentNavigation();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(openSettings).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: "Show preview · Waiting",
+        }),
+      ).toBeNull();
+    });
+  });
+
   it("guides an empty Editor workbench only through implemented entry points", () => {
     render(<Workbench />);
 
@@ -630,15 +666,19 @@ describe("compact Workbench project tools", () => {
 
     expect(
       screen.queryByRole("button", { name: "Open settings" }),
-    ).not.toBeInTheDocument();
+    ).toBeEnabled();
 
     const searchChats = within(
       screen.getByRole("dialog", { name: "Projects and chats" }),
-    ).getByRole("button", { name: "Search all chats" });
-    expect(searchChats).toBeEnabled();
-    searchChats.focus();
-    expect(searchChats).toHaveFocus();
-    fireEvent.click(searchChats);
+    );
+    fireEvent.click(searchChats.getByRole("button", { name: "Filter tasks" }));
+    const globalSearch = searchChats.getByRole("button", {
+      name: "Search all chats",
+    });
+    expect(globalSearch).toBeEnabled();
+    globalSearch.focus();
+    expect(globalSearch).toHaveFocus();
+    fireEvent.click(globalSearch);
     expect(
       screen.getByRole("dialog", { name: "Search Chats" }),
     ).toBeInTheDocument();
@@ -694,17 +734,106 @@ describe("compact Workbench project tools", () => {
       name: "Resize project and chat rail",
     });
     expect(agentRail).toHaveAttribute("aria-valuemin", "180");
-    expect(agentRail).toHaveAttribute("aria-valuemax", "380");
+    expect(agentRail).toHaveAttribute("aria-valuemax", "368");
     fireEvent.keyDown(agentRail, { key: "Home" });
     expect(agentRail).toHaveAttribute("aria-valuenow", "180");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
-    ).toHaveAttribute("aria-valuenow", "360");
+    ).toHaveAttribute("aria-valuenow", "280");
+  });
+
+  it("resizes untouched Agent proportions while retaining a manually sized rail", async () => {
+    compactViewport = false;
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show preview · Waiting",
+      }),
+    );
+
+    const rail = screen.getByRole("separator", {
+      name: "Resize project and chat rail",
+    });
+    const artifact = screen.getByRole("separator", {
+      name: "Resize files and preview",
+    });
+    expect(rail).toHaveAttribute("aria-valuenow", "368");
+    expect(artifact).toHaveAttribute("aria-valuenow", "280");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1380,
+    });
+    fireEvent(window, new Event("resize"));
+    expect(rail).toHaveAttribute("aria-valuenow", "385");
+    expect(artifact).toHaveAttribute("aria-valuenow", "619");
+
+    fireEvent.keyDown(rail, { key: "ArrowRight" });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1672,
+    });
+    fireEvent(window, new Event("resize"));
+    expect(rail).toHaveAttribute("aria-valuenow", "393");
+    expect(artifact).toHaveAttribute("aria-valuenow", "903");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalWidth,
+    });
+  });
+
+  it("restores a dragged Agent artifact width after the window shrinks and grows", async () => {
+    compactViewport = false;
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1672,
+    });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show preview · Waiting",
+      }),
+    );
+
+    const artifact = screen.getByRole("separator", {
+      name: "Resize files and preview",
+    });
+    expect(artifact).toHaveAttribute("aria-valuenow", "903");
+    fireEvent.keyDown(artifact, { key: "End" });
+    expect(artifact).toHaveAttribute("aria-valuenow", "1116");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 900,
+    });
+    fireEvent(window, new Event("resize"));
+    expect(artifact).toHaveAttribute("aria-valuenow", "344");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1672,
+    });
+    fireEvent(window, new Event("resize"));
+    expect(artifact).toHaveAttribute("aria-valuenow", "1116");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalWidth,
+    });
   });
 
   it("resizes the Editor sidebar from its visible sidebar edge", () => {
@@ -749,18 +878,19 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
-    ).toHaveAttribute("aria-valuenow", "248");
+    ).toHaveAttribute("aria-valuenow", "368");
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
-    ).toHaveAttribute("aria-valuenow", "360");
+    ).toHaveAttribute("aria-valuenow", "280");
   });
 
   it("moves focus out of the center on a compact transition", async () => {
+    await import("./SourceControlView");
     compactViewport = false;
     useWorkbenchStore.setState({
       sidebarOpen: true,

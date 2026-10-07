@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_AGENT_RAIL_CHATS_PER_PROJECT,
+  MAX_AGENT_RAIL_CURRENT_CHATS,
   MAX_AGENT_RAIL_PIN_IDS,
   MAX_AGENT_RAIL_RECENT_CHATS,
   agentChatMoveDestinations,
@@ -13,6 +14,70 @@ import {
 } from "./agentChatRail";
 
 describe("agent chat rail", () => {
+  it("stops current-chat admission after bounded invalid input entries", () => {
+    const invalid = Array.from({ length: 65 }, () => ({
+      id: "",
+      title: "bad",
+    }));
+    const [group] = groupAgentRailProjects({
+      projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
+      currentProjectId: "sage",
+      currentChats: [
+        ...invalid,
+        { id: "chat:late", title: "Late", pinned: false, position: 65 },
+      ],
+    });
+    expect(group?.chats).toEqual([]);
+    expect(group?.truncated).toBe(false);
+  });
+
+  it("does not inspect projects beyond the native 65-entry overflow window", () => {
+    const projects = new Proxy(
+      Array.from({ length: 66 }, (_, index) => ({
+        id: `project:${index}`,
+        name: `Project ${index}`,
+        rootCount: 1,
+        lastOpenedAt: index,
+      })),
+      {
+        get(target, property, receiver) {
+          if (
+            typeof property === "string" &&
+            /^\d+$/.test(property) &&
+            Number(property) >= 65
+          )
+            throw new Error("read beyond project bound");
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    expect(() =>
+      groupAgentRailProjects({
+        projects,
+        currentProjectId: null,
+        currentChats: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps the 64th native-admitted chat and reports synthetic overflow", () => {
+    const currentChats = Array.from({ length: 65 }, (_, index) => ({
+      id: `chat:${index}`,
+      title: `Chat ${index}`,
+      pinned: false,
+      position: index,
+    }));
+    const [group] = groupAgentRailProjects({
+      projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
+      currentProjectId: "sage",
+      currentChats,
+    });
+    expect(MAX_AGENT_RAIL_CURRENT_CHATS).toBe(64);
+    expect(group?.chats).toHaveLength(MAX_AGENT_RAIL_CURRENT_CHATS);
+    expect(group?.chats.at(-1)?.id).toBe("chat:63");
+    expect(group?.truncated).toBe(true);
+  });
+
   it("lists other projects for a move popover and marks 0-root as Local", () => {
     expect(
       agentChatMoveDestinations(
@@ -232,7 +297,33 @@ describe("agent chat rail", () => {
     expect(filterAgentRailGroups(groups, "missing")).toEqual([]);
   });
 
-  it("hoists the current project into the bounded project window", () => {
+  it("keeps the last native-admitted project in the bounded window", () => {
+    const projects = Array.from({ length: 65 }, (_, index) => ({
+      id: `project:${index}`,
+      name: `Project ${index}`,
+      rootCount: 1,
+      lastOpenedAt: index,
+    }));
+    const groups = groupAgentRailProjects({
+      projects,
+      currentProjectId: "project:63",
+      currentChats: [
+        { id: "chat:current", title: "Current", pinned: false, position: 0 },
+      ],
+    });
+    expect(groups).toHaveLength(64);
+    expect(groups.at(-1)).toMatchObject({
+      id: "project:63",
+      name: "Project 63",
+      chats: [expect.objectContaining({ id: "chat:current" })],
+    });
+    expect(groups.some((group) => group.id === "project:64")).toBe(false);
+    expect(groups.some((group) => group.name === "Unknown project")).toBe(
+      false,
+    );
+  });
+
+  it("keeps the current project at the native overflow entry", () => {
     const projects = Array.from({ length: 65 }, (_, index) => ({
       id: `project:${index}`,
       name: `Project ${index}`,
@@ -246,6 +337,7 @@ describe("agent chat rail", () => {
         { id: "chat:current", title: "Current", pinned: false, position: 0 },
       ],
     });
+
     expect(groups).toHaveLength(64);
     expect(groups.at(-1)).toMatchObject({
       id: "project:64",
@@ -253,9 +345,6 @@ describe("agent chat rail", () => {
       chats: [expect.objectContaining({ id: "chat:current" })],
     });
     expect(groups.some((group) => group.id === "project:63")).toBe(false);
-    expect(groups.some((group) => group.name === "Unknown project")).toBe(
-      false,
-    );
   });
 
   it("groups orphaned current chats under Unknown project", () => {

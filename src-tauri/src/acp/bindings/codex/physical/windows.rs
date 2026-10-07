@@ -5,7 +5,6 @@ use std::path::{Component, Path, PathBuf, Prefix};
 
 use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
 
-#[path = "windows/handle.rs"]
 mod handle;
 use handle::{
     NativeInfo, local_absolute_normalized, open_node, open_root, path_key, require_disjoint_state,

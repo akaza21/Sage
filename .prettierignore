@@ -3,6 +3,7 @@ dist
 coverage
 target
 src-tauri/target
+.claude/worktrees
 package-lock.json
 *.md
 work
@@ -11,4 +12,5 @@ local-evidence
 docs/work-items/ADE-0006A-acp-session-foundation/evidence/
 docs/work-items/BETA-0001-primary-beta-path/evidence/
 src-tauri/testdata/acp/codex/security-policy-v1.json
+src-tauri/tests/fixtures/harness-traces/
 tools/footprint-control/gen

@@ -6,6 +6,7 @@ export type VisualScenarioName =
   | "agent-long"
   | "agent-activity-family"
   | "agent-declared-test"
+  | "agent-command-rollup"
   | "agent-image"
   | "agent-child-activity"
   | "agent-picker-harness-model"
@@ -60,6 +61,7 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "agent-long",
   "agent-activity-family",
   "agent-declared-test",
+  "agent-command-rollup",
   "agent-image",
   "agent-child-activity",
   "agent-picker-harness-model",

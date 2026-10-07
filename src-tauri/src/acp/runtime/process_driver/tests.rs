@@ -25,14 +25,16 @@ use crate::acp::{
     process::{LaunchError, TreeExit},
     runtime::{
         ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent, EgressTransport,
-        JournalReceipt, ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
-        PumpIntent, PumpJournalError, SessionPumpIntent, permissions::PermissionDecision,
+        JournalReceipt, NonfatalRefusal, ProjectionPublishError, ProjectionPublishStatus,
+        ProjectionPublisher, PumpIntent, PumpJournalError, SessionPumpIntent,
+        permissions::PermissionDecision,
     },
     scheduler::RuntimeOwner,
     store::SendObservation,
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
 
+use super::driver::DriverState;
 use super::*;
 
 #[derive(Default)]
@@ -44,6 +46,8 @@ struct SharedState {
     durable: Vec<Vec<DurableAdapterEvent>>,
     rebound_turns: Vec<SageTurnId>,
     ingest_error: Option<AdapterRuntimeError>,
+    command_error: Option<AdapterRuntimeError>,
+    commit_error: Option<PumpJournalError>,
     rejected_ingests: usize,
     ingest_outcomes: VecDeque<Result<(), AdapterRuntimeError>>,
     worker_observation: Option<Arc<DriverMailbox>>,
@@ -64,6 +68,9 @@ impl HarnessAdapter for FakeAdapter {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let Some(error) = self.shared.0.lock().expect("shared").command_error.take() {
+            return Err(error);
+        }
         if let AdapterCommand::ResolvePermission {
             request_id,
             decision,
@@ -79,7 +86,9 @@ impl HarnessAdapter for FakeAdapter {
                 .map_err(|_| AdapterRuntimeError::Frame)?;
             let token = match decision {
                 PermissionDecision::Ask => EgressToken::protocol_notification(),
-                PermissionDecision::AllowOnce => EgressToken::permission_allow(external),
+                PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+                    EgressToken::permission_allow(external)
+                }
                 PermissionDecision::Deny => EgressToken::mandatory_deny(external, false),
             };
             return Ok(AdapterEgress::new(
@@ -208,6 +217,9 @@ impl AdapterBatchJournal for FakeJournal {
         events: Vec<DurableAdapterEvent>,
         _: usize,
     ) -> Pin<Box<dyn Future<Output = Result<JournalReceipt, PumpJournalError>> + Send + 'a>> {
+        if let Some(error) = self.shared.0.lock().expect("shared").commit_error.take() {
+            return Box::pin(async move { Err(error) });
+        }
         self.next_revision += 1;
         for event in &events {
             if let DurableAdapterEvent::Turn { state, .. } = event
@@ -308,6 +320,7 @@ impl StdinTransport for FakeTransport {
 #[derive(Default)]
 struct ControlState {
     requested: Vec<TreeExit>,
+    termination_error: bool,
     zero: bool,
     waits: usize,
     observations: usize,
@@ -321,7 +334,11 @@ impl ProcessTreeControl for FakeControl {
     type ZeroProof = u64;
 
     fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
-        self.0.lock().expect("control").requested.push(reason);
+        let mut state = self.0.lock().expect("control");
+        state.requested.push(reason);
+        if state.termination_error {
+            return Err(LaunchError::Deadline);
+        }
         Ok(())
     }
 
@@ -378,6 +395,15 @@ impl DriverClock for FakeClock {
 
 type TestDriver =
     ProcessAdapterDriver<FakeAdapter, FakeJournal, Mapper, FakeTransport, FakeControl, FakeLease>;
+
+async fn drive_to_teardown(driver: &mut TestDriver, mailbox: &DriverMailbox) -> DriverError {
+    for _ in 0..8 {
+        if let Err(error) = driver.run_next(mailbox).await {
+            return error;
+        }
+    }
+    panic!("the driver never latched teardown");
+}
 
 fn build_driver(
     batches: Vec<AdapterBatch>,
@@ -480,7 +506,7 @@ fn configuration_rejection_drains_following_frame_and_driver_remains_usable() {
 
         assert_eq!(
             driver.run_next(&mailbox).await,
-            Err(DriverError::ConfigMutationRejected)
+            Err(DriverError::Refused(NonfatalRefusal::ConfigMutation))
         );
         assert_eq!(driver.teardown_cause(), None);
         assert!(control.lock().expect("control").requested.is_empty());
@@ -502,6 +528,48 @@ fn configuration_rejection_drains_following_frame_and_driver_remains_usable() {
         assert!(control.lock().expect("control").requested.is_empty());
         assert_eq!(driver.transport.closes, 0);
         assert!(shared.0.lock().expect("shared").durable.is_empty());
+    });
+}
+
+#[test]
+fn sign_in_refusal_drains_following_frame_and_driver_remains_usable() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, control) = build_driver(
+            vec![
+                owned(vec![item(identity_one("after-sign-in-refusal"))]),
+                owned(vec![item(identity_one("after-subsequent-chunk"))]),
+            ],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        shared.0.lock().expect("shared").ingest_error = Some(AdapterRuntimeError::SignInRequired);
+        mailbox
+            .try_push_chunk(b"{}\n{}\n".to_vec())
+            .expect("sign-in refusal followed by frame");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::Refused(NonfatalRefusal::SignIn))
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
+        assert_eq!(shared.0.lock().expect("shared").batches.len(), 1);
+
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("subsequent chunk after drained sign-in refusal");
+        assert_eq!(
+            driver
+                .run_next(&mailbox)
+                .await
+                .expect("driver remains usable after sign-in refusal")
+                .accepted_frames,
+            1
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        assert_eq!(driver.transport.closes, 0);
     });
 }
 
@@ -586,7 +654,7 @@ fn multiple_rejections_in_one_chunk_are_non_latching_and_drain_to_alignment() {
 
         assert_eq!(
             driver.run_next(&mailbox).await,
-            Err(DriverError::ConfigMutationRejected)
+            Err(DriverError::Refused(NonfatalRefusal::ConfigMutation))
         );
         assert_eq!(driver.teardown_cause(), None);
         assert!(control.lock().expect("control").requested.is_empty());
@@ -610,7 +678,7 @@ fn accepted_frame_before_rejection_stays_ordered_and_nonfatal() {
 
         assert_eq!(
             driver.run_next(&mailbox).await,
-            Err(DriverError::ConfigMutationRejected)
+            Err(DriverError::Refused(NonfatalRefusal::ConfigMutation))
         );
         assert_eq!(driver.teardown_cause(), None);
         assert!(control.lock().expect("control").requested.is_empty());
@@ -626,7 +694,7 @@ fn accepted_frame_before_rejection_stays_ordered_and_nonfatal() {
 #[test]
 fn eof_with_a_buffered_config_rejection_still_latches_reader_eof() {
     runtime().block_on(async {
-        let (mut driver, shared, _, control) = build_driver(
+        let (mut driver, shared, clock, control) = build_driver(
             vec![owned(vec![item(identity_one("before-buffered-rejection"))])],
             VecDeque::new(),
         );
@@ -650,6 +718,11 @@ fn eof_with_a_buffered_config_rejection_still_latches_reader_eof() {
             .signal_reader_terminal(ReaderTerminal::Eof)
             .expect("reader eof");
 
+        driver
+            .run_next(mailbox.as_ref())
+            .await
+            .expect("reader eof is pending");
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
         assert_eq!(
             driver.run_next(mailbox.as_ref()).await,
             Err(DriverError::TeardownRequired(TeardownCause::ReaderEof))
@@ -827,6 +900,23 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
 }
 
 #[test]
+fn signed_out_prompt_refusal_does_not_teardown_the_driver() {
+    let (mut driver, shared, _, control) = build_driver(Vec::new(), VecDeque::new());
+    shared.0.lock().expect("shared").command_error = Some(AdapterRuntimeError::SignInRequired);
+
+    assert_eq!(
+        driver.dispatch_prompt(
+            RequiredText::new("prompt", "hello").expect("prompt"),
+            RequiredText::new("message", "message-one").expect("message"),
+        ),
+        Err(DriverError::Refused(NonfatalRefusal::SignIn))
+    );
+    assert_eq!(driver.teardown_cause(), None);
+    assert!(control.lock().expect("control").requested.is_empty());
+    assert_eq!(driver.transport.closes, 0);
+}
+
+#[test]
 fn prompt_crosses_the_bounded_driver_mailbox_and_returns_exact_write_evidence() {
     runtime().block_on(async {
         let (mut driver, shared, _, _) =
@@ -858,6 +948,7 @@ fn permission_write_settles_the_durable_decision() {
             payload: NormalizedPayload::PermissionRequest {
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
+                offered_option_kinds: None,
             },
             request_payload_digest: [3; 32],
         };
@@ -874,11 +965,23 @@ fn permission_write_settles_the_durable_decision() {
             .await
             .expect("permission journaled");
 
+        let request_id = shared
+            .0
+            .lock()
+            .expect("shared")
+            .durable
+            .iter()
+            .flatten()
+            .find_map(|event| match event {
+                DurableAdapterEvent::PermissionRequest { intent, .. } => {
+                    Some(intent.request_id.clone())
+                }
+                _ => None,
+            })
+            .expect("durable scoped permission request");
+
         driver
-            .resolve_permission(
-                &SageServerRequestId::parse("request-allow").expect("request"),
-                PermissionDecision::AllowOnce,
-            )
+            .resolve_permission(&request_id, PermissionDecision::AllowOnce)
             .await
             .expect("allow written");
 
@@ -892,6 +995,48 @@ fn permission_write_settles_the_durable_decision() {
             ]
         );
         assert!(state.commands.contains(&"permission"));
+    });
+}
+
+#[test]
+fn raw_external_permission_id_tears_down_without_writing_a_decision() {
+    runtime().block_on(async {
+        let permission = AdapterEvent::PermissionRequest {
+            turn_id: identity_one("turn-envelope"),
+            item_id: identity_one("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-allow")
+                .expect("request"),
+            payload: NormalizedPayload::PermissionRequest {
+                category: crate::acp::intent::ToolCategory::Other,
+                summary: SafeText::new("summary", "permission").expect("summary"),
+                offered_option_kinds: None,
+            },
+            request_payload_digest: [3; 32],
+        };
+        let (mut driver, shared, _, _) = build_driver(
+            vec![owned(vec![permission])],
+            VecDeque::from([FrameWriteOutcome::Complete]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("permission ingress");
+        driver
+            .run_next(&mailbox)
+            .await
+            .expect("permission journaled");
+
+        let raw = SageServerRequestId::parse("request-allow").expect("raw external ID");
+        assert_eq!(
+            driver
+                .resolve_permission(&raw, PermissionDecision::AllowOnce)
+                .await,
+            Err(DriverError::TeardownRequired(TeardownCause::PumpFailure))
+        );
+        assert_eq!(driver.teardown_cause(), Some(TeardownCause::PumpFailure));
+        let state = shared.0.lock().expect("shared");
+        assert!(state.permission_states.is_empty());
+        assert!(!state.commands.contains(&"permission"));
     });
 }
 
@@ -952,6 +1097,14 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
                 TeardownCause::ProtocolFailure
             ))
         );
+        assert_eq!(
+            malformed.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::ProtocolError,
+                message: Some("harness sent a malformed protocol frame".to_owned()),
+                remediation: None,
+            })
+        );
 
         let (mut exited, _shared, _, _) = build_driver(
             vec![owned(vec![item(identity_one("must-not-run"))])],
@@ -961,9 +1114,20 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
         mailbox
             .signal_process_exit(TreeExit::Exited { code: Some(17) })
             .expect("exit");
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("eof");
         assert_eq!(
-            exited.run_next(&mailbox).await,
-            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+            drive_to_teardown(&mut exited, &mailbox).await,
+            DriverError::TeardownRequired(TeardownCause::ProcessExit)
+        );
+        assert_eq!(
+            exited.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
         );
 
         let (mut mandatory, shared, _, control) = build_driver(Vec::new(), VecDeque::new());
@@ -985,6 +1149,26 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
 }
 
 #[test]
+fn refused_protocol_version_reports_the_exact_observed_value() {
+    let (mut driver, _, _, _) = build_driver(Vec::new(), VecDeque::new());
+    driver.state = DriverState::TeardownRequired(TeardownCause::RefusedVersion {
+        observed: RequiredText::new("protocolVersion", "acp-9").expect("version"),
+    });
+
+    assert_eq!(
+        driver.terminal_outcome(),
+        Some(crate::acp::lifecycle::TurnTerminalOutcome {
+            reason: crate::acp::lifecycle::TurnTerminalReason::RefusedVersion,
+            message: Some(
+                "harness reported protocol version acp-9, which Sage has not characterised"
+                    .to_owned(),
+            ),
+            remediation: None,
+        })
+    );
+}
+
+#[test]
 fn process_exit_does_not_outrank_queued_stdout() {
     let mailbox = DriverMailbox::new().expect("mailbox");
     mailbox
@@ -1001,6 +1185,503 @@ fn process_exit_does_not_outrank_queued_stdout() {
         matches!(message, ControlMessage::StdoutChunk(_)),
         "queued stdout must commit before ProcessExit"
     );
+}
+
+#[test]
+fn process_exit_admits_stdout_the_reader_has_not_delivered_yet() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, _) = build_driver(
+            vec![owned(vec![item(identity_one("late-observation"))])],
+            VecDeque::new(),
+        );
+        let mailbox = Arc::new(DriverMailbox::new().expect("mailbox"));
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        let reader = Arc::clone(&mailbox);
+        let delivered = thread::spawn(move || {
+            thread::sleep(std::time::Duration::from_millis(100));
+            reader
+                .push_chunk_blocking(b"{}\n".to_vec())
+                .expect("late chunk");
+            reader
+                .signal_reader_terminal(ReaderTerminal::Eof)
+                .expect("eof");
+        });
+
+        let observed = drive_to_teardown(&mut driver, mailbox.as_ref()).await;
+        delivered.join().expect("reader thread");
+
+        assert_eq!(
+            observed,
+            DriverError::TeardownRequired(TeardownCause::ProcessExit)
+        );
+        assert!(
+            shared.0.lock().expect("shared").batches.is_empty(),
+            "late reader stdout must be ingested before the ProcessExit latch"
+        );
+        assert!(
+            !shared.0.lock().expect("shared").durable.is_empty(),
+            "the late observation must be durable before teardown"
+        );
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn reader_eof_processed_before_watcher_exit_preserves_the_observed_exit_code() {
+    runtime().block_on(async {
+        let (mut driver, _, _, _) = build_driver(Vec::new(), VecDeque::new());
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("eof");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Ok(DriverProgress::default())
+        );
+        assert!(driver.teardown_cause().is_none());
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn reader_eof_without_watcher_exit_latches_at_the_cleanup_deadline() {
+    runtime().block_on(async {
+        let (mut driver, _, clock, control) = build_driver(Vec::new(), VecDeque::new());
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("eof");
+
+        driver.run_next(&mailbox).await.expect("eof is pending");
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ReaderEof))
+        );
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [TreeExit::Exited { code: None }]
+        );
+    });
+}
+
+#[test]
+fn pending_process_exit_latches_on_the_absolute_cleanup_deadline_without_eof() {
+    runtime().block_on(async {
+        let (mut driver, _, clock, control) = build_driver(Vec::new(), VecDeque::new());
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
+        mailbox
+            .submit_cancel(
+                cancel("one", "message-one"),
+                LIMITS.deadlines_ms.cancel_dispatch,
+            )
+            .expect("cancel");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [TreeExit::Exited { code: Some(17) }]
+        );
+    });
+}
+
+#[test]
+fn cancel_after_process_exit_never_writes_to_dead_stdin() {
+    runtime().block_on(async {
+        let (mut driver, _, _, _) = build_driver(
+            Vec::new(),
+            VecDeque::from(vec![FrameWriteOutcome::DeliveryUnknown {
+                bytes_written: 2,
+            }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        mailbox
+            .submit_cancel(
+                cancel("one", "message-one"),
+                LIMITS.deadlines_ms.cancel_dispatch,
+            )
+            .expect("cancel");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(driver.first_delivery_unknown(), None);
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn urgent_cancel_after_process_exit_never_writes_to_dead_stdin() {
+    runtime().block_on(async {
+        let (mut driver, _, _, _) = build_driver(
+            Vec::new(),
+            VecDeque::from(vec![FrameWriteOutcome::DeliveryUnknown {
+                bytes_written: 2,
+            }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        mailbox
+            .submit_cancel(
+                cancel("one", "message-one"),
+                LIMITS.deadlines_ms.cancel_dispatch,
+            )
+            .expect("cancel");
+
+        let Err(observed) = driver.resume_after_worker_control(&mailbox).await else {
+            panic!("urgent cancel after exit must not proceed");
+        };
+        assert_eq!(
+            observed,
+            DriverError::TeardownRequired(TeardownCause::ProcessExit)
+        );
+        assert_eq!(driver.first_delivery_unknown(), None);
+    });
+}
+
+#[test]
+fn reader_terminal_is_never_delivered_on_the_urgent_control_lane() {
+    let mailbox = DriverMailbox::new().expect("mailbox");
+    mailbox
+        .signal_process_exit(TreeExit::Exited { code: Some(17) })
+        .expect("exit");
+    mailbox
+        .signal_reader_terminal(ReaderTerminal::Eof)
+        .expect("eof");
+
+    let mut urgent = Vec::new();
+    while let Some(control) = mailbox.try_pop_control() {
+        urgent.push(control);
+    }
+    assert!(
+        urgent
+            .iter()
+            .all(|control| matches!(control, ControlMessage::ProcessExit(_))),
+        "reader terminals stay ordered behind stdout and never preempt as urgent control"
+    );
+    assert!(matches!(
+        mailbox
+            .wait_next_until(None, &SystemDriverClock)
+            .expect("pop")
+            .expect("terminal"),
+        ControlMessage::ReaderTerminal(ReaderTerminal::Eof)
+    ));
+}
+
+#[test]
+fn prepared_write_prompt_is_refused_after_process_exit() {
+    runtime().block_on(async {
+        let (mut driver, _, _, _) = build_driver(
+            Vec::new(),
+            VecDeque::from(vec![FrameWriteOutcome::DeliveryUnknown {
+                bytes_written: 2,
+            }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+
+        assert_eq!(
+            driver.dispatch_prompt(
+                RequiredText::new("prompt", "hello").expect("prompt"),
+                RequiredText::new("message", "message-one").expect("message"),
+            ),
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(driver.first_delivery_unknown(), None);
+    });
+}
+
+#[test]
+fn recorded_process_exit_requests_tree_termination_with_the_observed_code() {
+    runtime().block_on(async {
+        let (mut driver, _, clock, control) = build_driver(Vec::new(), VecDeque::new());
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [TreeExit::Exited { code: Some(17) }]
+        );
+
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [TreeExit::Exited { code: Some(17) }]
+        );
+    });
+}
+
+#[test]
+fn due_process_exit_settles_before_a_failing_deferred_flush() {
+    runtime().block_on(async {
+        let (mut driver, shared, clock, _) = build_driver(
+            vec![owned(vec![item(identity_one("deferred-observation"))])],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox.try_push_chunk(b"{}\n".to_vec()).expect("chunk");
+        driver.run_next(&mailbox).await.expect("deferred frame");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+
+        shared.0.lock().expect("shared").commit_error = Some(PumpJournalError::CommitUnknown);
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+    });
+}
+
+#[test]
+fn final_drain_failure_cannot_replace_the_known_process_exit() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, _) = build_driver(
+            vec![owned(vec![item(identity_one("last-observation"))])],
+            VecDeque::new(),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        mailbox.try_push_chunk(b"{}\n".to_vec()).expect("chunk");
+        driver.run_next(&mailbox).await.expect("late chunk");
+        shared.0.lock().expect("shared").commit_error = Some(PumpJournalError::CommitUnknown);
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("eof");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn delivery_unknown_after_process_exit_keeps_the_durable_harness_exited_reason() {
+    runtime().block_on(async {
+        let batch = AdapterBatch::new(
+            vec![item(identity_one("last-observation"))],
+            vec![AdapterEgress::new(
+                OutboundFrame::new(br#"{"ack":true}"#.to_vec()).expect("frame"),
+                EgressToken::protocol_notification(),
+            )],
+        )
+        .expect("batch");
+        let (mut driver, _, _, _) = build_driver(
+            vec![batch],
+            VecDeque::from([FrameWriteOutcome::DeliveryUnknown { bytes_written: 1 }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        mailbox.try_push_chunk(b"{}\n".to_vec()).expect("chunk");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn failed_immediate_termination_retries_and_reports_the_failure_with_the_exit_detail() {
+    runtime().block_on(async {
+        let (mut driver, _, clock, control) = build_driver(Vec::new(), VecDeque::new());
+        control.lock().expect("control").termination_error = true;
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+        clock.set(100 + LIMITS.deadlines_ms.tree_termination as i64);
+
+        assert_eq!(driver.run_next(&mailbox).await, Err(DriverError::Tree));
+        assert_eq!(
+            control.lock().expect("control").requested,
+            [
+                TreeExit::Exited { code: Some(17) },
+                TreeExit::Exited { code: Some(17) }
+            ]
+        );
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn close_session_after_process_exit_never_writes_to_dead_stdin() {
+    runtime().block_on(async {
+        let (mut driver, shared, _, _) = build_driver(
+            Vec::new(),
+            VecDeque::from(vec![FrameWriteOutcome::DeliveryUnknown {
+                bytes_written: 2,
+            }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+
+        assert_eq!(
+            driver.dispatch_close_session(),
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(driver.first_delivery_unknown(), None);
+        assert!(shared.0.lock().expect("shared").commands.is_empty());
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
+}
+
+#[test]
+fn permission_resolution_after_process_exit_never_writes_to_dead_stdin() {
+    runtime().block_on(async {
+        let permission = AdapterEvent::PermissionRequest {
+            turn_id: identity_one("turn-envelope"),
+            item_id: identity_one("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-allow")
+                .expect("request"),
+            payload: NormalizedPayload::PermissionRequest {
+                category: crate::acp::intent::ToolCategory::Other,
+                summary: SafeText::new("summary", "permission").expect("summary"),
+                offered_option_kinds: None,
+            },
+            request_payload_digest: [3; 32],
+        };
+        let (mut driver, _, _, _) = build_driver(
+            vec![owned(vec![permission])],
+            VecDeque::from(vec![FrameWriteOutcome::DeliveryUnknown {
+                bytes_written: 2,
+            }]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("permission ingress");
+        driver
+            .run_next(&mailbox)
+            .await
+            .expect("permission journaled");
+        mailbox
+            .signal_process_exit(TreeExit::Exited { code: Some(17) })
+            .expect("exit");
+        driver.run_next(&mailbox).await.expect("exit is pending");
+
+        assert_eq!(
+            driver
+                .resolve_permission(
+                    &SageServerRequestId::parse("request-allow").expect("request"),
+                    PermissionDecision::AllowOnce,
+                )
+                .await,
+            Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
+        );
+        assert_eq!(driver.first_delivery_unknown(), None);
+        assert_eq!(
+            driver.terminal_outcome(),
+            Some(crate::acp::lifecycle::TurnTerminalOutcome {
+                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 17".to_owned()),
+                remediation: None,
+            })
+        );
+    });
 }
 
 #[test]
@@ -1115,7 +1796,10 @@ fn zero_process_handoff_never_releases_without_convergence_proof() {
         mailbox
             .signal_process_exit(TreeExit::Exited { code: Some(17) })
             .expect("exit");
-        let _ = driver.run_next(&mailbox).await;
+        mailbox
+            .signal_reader_terminal(ReaderTerminal::Eof)
+            .expect("eof");
+        drive_to_teardown(&mut driver, &mailbox).await;
         assert!(matches!(
             driver.take_zero_process_handoff(),
             Err(DriverError::Tree)
@@ -1349,3 +2033,33 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[path = "cancel_permission_tests.rs"]
 mod cancel_permission_tests;
+
+#[test]
+fn every_teardown_cause_maps_to_a_truthful_terminal_reason() {
+    use crate::acp::lifecycle::TurnTerminalReason;
+
+    let mapped = [
+        TeardownCause::ReaderEof,
+        TeardownCause::ReaderIo,
+        TeardownCause::ProcessExit,
+        TeardownCause::ProtocolFailure,
+        TeardownCause::PumpFailure,
+        TeardownCause::MandatoryDenyFailure,
+        TeardownCause::DeliveryUnknown,
+        TeardownCause::HostTermination,
+    ]
+    .map(TurnTerminalReason::from);
+    assert_eq!(
+        mapped,
+        [
+            TurnTerminalReason::HarnessExited,
+            TurnTerminalReason::HarnessExited,
+            TurnTerminalReason::HarnessExited,
+            TurnTerminalReason::ProtocolError,
+            TurnTerminalReason::Other,
+            TurnTerminalReason::Other,
+            TurnTerminalReason::Other,
+            TurnTerminalReason::CancelledByUser,
+        ]
+    );
+}

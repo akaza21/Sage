@@ -78,8 +78,9 @@ function webTool(
     toolState: "inProgress",
     payload: {
       presentation: {
-        kind: "web",
+        kind: "fetch",
         label: "_sage/browse",
+        url: null,
         summary,
       },
       inputSummary: null,

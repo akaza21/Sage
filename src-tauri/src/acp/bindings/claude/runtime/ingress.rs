@@ -2,14 +2,41 @@ use super::*;
 
 mod permission;
 mod read_text_file;
-use permission::permission_allow_once_option;
+use permission::permission_allow_option;
 
 impl ClaudeRuntime {
+    fn binding_is_characterised(&self) -> bool {
+        self.launch_binding
+            .as_ref()
+            .is_none_or(|binding| binding.characterisation().is_characterised())
+    }
+
     fn ingest_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
         let id = response_id(&value)?;
         let Some(pending) = self.pending.remove(&id) else {
             return self.ingest_late_prompt_response(value);
         };
+        if let Some(observed) = decode_auth_required_error(&value) {
+            self.auth = observed;
+            if matches!(pending, PendingRequest::Prompt | PendingRequest::NewSession) {
+                self.refusal_detail = profile_for(CLAUDE_PROFILE_ID)
+                    .and_then(|profile| auth_refusal_detail(profile, &value));
+                if matches!(pending, PendingRequest::Prompt) {
+                    if let Some(active) = self.active.as_mut() {
+                        active.turn = None;
+                        active
+                            .translator
+                            .reject_prompt(&id.to_string())
+                            .map_err(map_translation)?;
+                    }
+                    self.deferred.clear();
+                    if self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
+                        self.delivery_unknown = None;
+                    }
+                }
+                return Err(AdapterRuntimeError::SignInRequired);
+            }
+        }
         let result = match pending {
             PendingRequest::Initialize => self.initialize_response(value),
             PendingRequest::NewSession => self.session_response(value, None, false),
@@ -36,6 +63,7 @@ impl ClaudeRuntime {
     }
 
     fn initialize_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.mcp_capabilities = McpCapabilities::from_initialize(&value);
         let offer = ClaudeCapabilityOffer::from_initialize_value(&value).map_err(map_capability)?;
         let mut capabilities = negotiate_capabilities(&offer).map_err(map_capability)?;
         if offer.models.len() as u64 > LIMITS.wire.models_or_config_entries
@@ -58,6 +86,11 @@ impl ClaudeRuntime {
             })
             .collect::<Result<Vec<_>, AdapterRuntimeError>>()?;
         capabilities.model_count = u16::from(!models.is_empty());
+        if !self.binding_is_characterised() {
+            capabilities.resume_session = false;
+            capabilities.child_conversation_projection = false;
+            capabilities.collaboration_event_projection = false;
+        }
         // `session/load` requires cwd/MCP context that the frozen shared command
         // does not carry. Intersect the source offer with Sage's safe surface.
         capabilities.load_session = false;
@@ -90,7 +123,9 @@ impl ClaudeRuntime {
         {
             return Err(AdapterRuntimeError::Frame);
         }
-        let translator = ClaudeTranslator::new(external_id.as_str()).map_err(map_translation)?;
+        let translator =
+            ClaudeTranslator::new(super::super::claude_profile(), external_id.as_str())
+                .map_err(map_translation)?;
         self.active = Some(ActiveSession {
             external_id: external_id.clone(),
             translator,
@@ -148,6 +183,12 @@ impl ClaudeRuntime {
         if method == crate::acp::runtime::host_browse::CURATED_BROWSE_TOOL_NAME {
             return self.ingest_browse_host(value);
         }
+        if value.get("id").is_none()
+            && let Some(observed) = decode_auth_status_update(&value)
+        {
+            self.auth = observed;
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        }
         if method != "session/update" {
             if value.get("id").is_some() {
                 return Err(AdapterRuntimeError::MandatoryDenyTeardown);
@@ -168,100 +209,14 @@ impl ClaudeRuntime {
         self.translate_events(events)
     }
 
-    fn permission_request(
-        &mut self,
-        value: Value,
-        request_digest: [u8; 32],
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let (request_id, translator_id, wire_id) = permission_identity(value.get("id"))?;
-        if let Some(record) = self.denials.get(request_id.as_str()) {
-            if record.state == DenialState::Written && record.reply == PermissionReply::Deny {
-                return AdapterBatch::new(
-                    vec![SharedEvent::IgnoredDuplicate],
-                    vec![denial(&request_id, &record.wire_id, true)?],
-                )
-                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
-            }
-            return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());
-        }
-        let allow_once_option_id = permission_allow_once_option(&value)?;
-        let events = self
-            .active
-            .as_mut()
-            .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?
-            .translator
-            .translate_permission_request_value(value)
-            .map_err(map_translation)?;
-        let active = self
-            .active
-            .as_ref()
-            .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-        let mut request_event = None;
-        for event in events {
-            if let AdapterEvent::Item { payload, .. } = event {
-                request_event = Some(SharedEvent::PermissionRequest {
-                    turn_id: self.turn_identity(active)?,
-                    item_id: self.item_identity(active, request_id.clone())?,
-                    external_request_id: request_id.clone(),
-                    payload,
-                    request_payload_digest: request_digest,
-                });
-            }
-        }
-        let request_event = request_event.ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-        self.reserve_denial(
-            request_id.as_str(),
-            translator_id,
-            wire_id,
-            allow_once_option_id,
-        )?;
-        AdapterBatch::new(vec![request_event], Vec::new())
-    }
-
-    pub(super) fn reserve_denial(
-        &mut self,
-        request_id: &str,
-        translator_id: String,
-        wire_id: Value,
-        allow_once_option_id: String,
-    ) -> Result<(), AdapterRuntimeError> {
-        let limit = LIMITS.queues.server_requests_per_session as usize;
-        if self.denials.len() >= limit {
-            let oldest = self
-                .denials
-                .iter()
-                .filter(|(_, record)| record.state == DenialState::Written)
-                .min_by_key(|(_, record)| record.sequence)
-                .map(|(id, _)| id.clone())
-                .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-            self.denials.remove(&oldest);
-        }
-        let sequence = self
-            .next_denial_sequence
-            .checked_add(1)
-            .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-        self.denials.insert(
-            request_id.to_owned(),
-            DenialRecord {
-                state: DenialState::Pending,
-                sequence,
-                translator_id,
-                wire_id,
-                allow_once_option_id,
-                reply: PermissionReply::Deny,
-            },
-        );
-        self.next_denial_sequence = sequence;
-        Ok(())
-    }
-
     fn translate_events(
         &mut self,
         events: Vec<AdapterEvent>,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let mut batch = AdapterBatchBuilder::new();
         let mut terminal = false;
-        for event in events {
+        let deferred = std::mem::take(&mut self.deferred);
+        for event in deferred.into_iter().chain(events) {
             match event {
                 AdapterEvent::Item {
                     external_key,
@@ -298,7 +253,22 @@ impl ClaudeRuntime {
                     })?;
                     terminal = true;
                 }
+                AdapterEvent::TurnRunning => {
+                    let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+                    batch.push_event(SharedEvent::Turn {
+                        id: self.turn_identity(active)?,
+                        state: TurnState::Running,
+                    })?;
+                }
+                AdapterEvent::Usage(payload) => {
+                    let active = self.active.as_ref().ok_or(AdapterRuntimeError::Frame)?;
+                    batch.push_event(SharedEvent::Usage {
+                        turn_id: self.turn_identity(active)?,
+                        payload,
+                    })?;
+                }
                 AdapterEvent::IgnoredLate => batch.push_event(SharedEvent::IgnoredLate)?,
+                AdapterEvent::Absorbed => batch.push_event(SharedEvent::Absorbed)?,
                 AdapterEvent::IgnoredDuplicate => {
                     batch.push_event(SharedEvent::IgnoredDuplicate)?
                 }

@@ -20,7 +20,6 @@ use super::super::ElevatedHelperError;
 use super::super::transaction::NodeIdentity;
 use crate::acp::bindings::codex::physical::open_exact_state_root;
 
-#[path = "native/listing.rs"]
 mod listing;
 
 use listing::bounded_directory_entries;
@@ -380,5 +379,4 @@ fn run_cleanup_crash(point: CleanupCrashPoint) {
 }
 
 #[cfg(test)]
-#[path = "native/tests.rs"]
 mod tests;

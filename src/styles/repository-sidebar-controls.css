@@ -11,10 +11,10 @@
 
 .sidebar__heading {
   display: flex;
-  height: 42px;
+  height: 40px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--color-border-subtle);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
@@ -26,7 +26,7 @@
 .sidebar__heading-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sidebar__heading-actions button {
@@ -75,7 +75,7 @@
 }
 
 .source-control-list {
-  padding: 8px 6px;
+  padding: 8px 4px;
 }
 
 .source-root__summary {
@@ -86,15 +86,15 @@
     minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.4fr)
     auto;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 4px;
+  padding: 4px 4px;
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
 
 .source-root + .source-root {
   margin-top: 8px;
-  padding-top: 5px;
+  padding-top: 4px;
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -120,7 +120,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -132,8 +132,8 @@
 
 .source-root__primary {
   flex: 0 0 auto;
-  min-height: 26px;
-  padding: 0 7px;
+  min-height: 24px;
+  padding: 0 8px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -154,7 +154,7 @@
 }
 
 .source-root__action-reason {
-  margin: 0 6px 7px;
+  margin: 0 4px 8px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
@@ -180,20 +180,20 @@
   color: var(--color-text-muted);
 }
 .source-change-group > summary span:last-child {
-  padding: 1px 5px;
+  padding: 2px 4px;
   border-radius: var(--radius-pill);
   background: var(--color-plane-raised);
   font-variant-numeric: tabular-nums;
 }
 
 .source-branches {
-  margin: 0 8px 6px;
+  margin: 0 8px 4px;
   padding: 0;
   list-style: none;
 }
 
 .source-branch {
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
@@ -243,9 +243,9 @@
 
 .source-branch-create {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  margin: 0 8px 6px;
+  margin: 0 8px 4px;
 }
 
 .source-branch-create__label,
@@ -258,7 +258,7 @@
 .source-branch-create__label input,
 .source-branch-create__label .searchable-picker__trigger {
   width: 100%;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -271,7 +271,7 @@
   flex: 0 0 auto;
   border: 0;
   border-radius: var(--radius-sm);
-  padding: 5px 8px;
+  padding: 4px 8px;
   background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface));
   color: var(--color-text-primary);
   cursor: pointer;
@@ -307,7 +307,7 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -316,7 +316,7 @@
 }
 
 .source-commit__sha {
-  padding: 1px 6px;
+  padding: 2px 4px;
   border-radius: var(--radius-pill);
   color: var(--color-accent);
   background: var(--color-accent-muted);
@@ -344,7 +344,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -379,8 +379,8 @@
 
 .repository-commit {
   display: grid;
-  gap: 5px;
-  margin: 0 6px 7px;
+  gap: 4px;
+  margin: 0 4px 8px;
 }
 
 .repository-commit__label,
@@ -391,7 +391,7 @@
 .repository-commit__label textarea {
   min-height: 48px;
   resize: vertical;
-  padding: 7px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -419,7 +419,7 @@
 
 .repository-commit__actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex: 0 0 auto;
 }
 
@@ -432,7 +432,7 @@
 }
 
 .repository-commit__footer button {
-  padding: 4px 9px;
+  padding: 4px 8px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);

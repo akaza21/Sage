@@ -4,8 +4,10 @@ export { useAcpChatHistory } from "./useAcpChatHistory";
 export {
   useAcpChatProjection,
   useAcpRetentionIncomplete,
+  useAcpChatLoadFailure,
 } from "./useAcpChatProjection";
 export { terminalTurnStates } from "./statusSemantics";
+export { latestRetryPrompt, permissionRequestsAvailable } from "./acpTurnState";
 export { useRendererRecreationFocus } from "./useRendererRecreationFocus";
 export { applyAgentFileIntent } from "./agentFileOps";
 export type { AgentFileIntent, AgentFileOperation } from "./agentFileOps";

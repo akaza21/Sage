@@ -1,29 +1,31 @@
 pub(crate) mod capabilities;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
+mod construction;
 mod errors;
+mod permission_resolution;
 mod permissions;
+mod turn_prompt;
 mod turn_starts;
 mod turns;
 
-use errors::observed_platform;
 pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
+pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
 use crate::acp::{
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId, ModelId, Prompt},
+    contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
+    intent::{CapabilitySnapshotV1, ExternalId, ModelId},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
     limits::LIMITS,
 };
 
 use super::{
-    admission::AdmittedCodexBinding,
     incoming::{IngressDisposition, ResourceMapper, ingest},
-    manifest::{CuratedCapabilityCeiling, MetadataValidatedPacket, Platform},
+    manifest::{CuratedCapabilityCeiling, Platform},
     request::{NativeProjectRoot, OutgoingRequest, RequestKind, initialized_notification},
 };
 
@@ -74,10 +76,21 @@ struct PermissionRequestEntry {
     id: String,
     fingerprint: u64,
     method: String,
+    allow_always: bool,
     turn_id: String,
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
+}
+
+pub(crate) struct PermissionRequestParams<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) fingerprint: u64,
+    pub(crate) method: &'a str,
+    pub(crate) allow_always: bool,
+    pub(crate) turn_id: &'a str,
+    pub(crate) item_id: &'a str,
+    pub(crate) response: &'a [u8],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,9 +121,13 @@ pub(crate) struct CodexAdapter {
     codex_home: String,
     runtime_version: String,
     capability_ceiling: CuratedCapabilityCeiling,
+    observed_build_characterisation:
+        Option<crate::acp::bindings::characterisation::Characterisation>,
     pending: Vec<(u64, RequestKind)>,
     negotiated: Option<NegotiatedMethods>,
     external_thread_id: Option<ExternalId>,
+    browser_mcp_failure_reported: bool,
+    pending_browser_mcp_failure_threads: Vec<String>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     active_turn_client_message_id: Option<RequiredText<512>>,
@@ -118,55 +135,23 @@ pub(crate) struct CodexAdapter {
     active_terminal_id_bytes: usize,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
+    subagent_labels: SubagentLabels,
+    child_threads: Vec<SafeText<512>>,
+    unknown_child_notification_reported: bool,
     permission_requests: Vec<PermissionRequestEntry>,
 }
 
 impl CodexAdapter {
-    pub(crate) fn from_metadata_packet(
-        packet: &MetadataValidatedPacket,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Self {
-        Self {
-            binding_digest,
-            runtime_epoch,
-            session_id,
-            platform: packet.metadata().platform,
-            codex_home: packet.codex_home().to_string_lossy().into_owned(),
-            runtime_version: packet.metadata().codex_runtime_version.clone(),
-            capability_ceiling: packet.capability_ceiling().clone(),
-            pending: Vec::new(),
-            negotiated: None,
-            external_thread_id: None,
-            turn_start_correlations: TurnStartCorrelations::new(),
-            active_turn_id: None,
-            active_turn_client_message_id: None,
-            active_item_terminals: Vec::new(),
-            active_terminal_id_bytes: 0,
-            previous_turn: None,
-            command_item_snapshots: CommandItemSnapshots::default(),
-            permission_requests: Vec::new(),
+    pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {
+        if self.browser_mcp_failure_reported {
+            return false;
         }
+        self.browser_mcp_failure_reported = true;
+        true
     }
 
-    pub(crate) fn from_admitted_binding(
-        binding: &AdmittedCodexBinding,
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Self {
-        let mut adapter = Self::from_metadata_packet(
-            binding.packet(),
-            binding.binding_digest(),
-            runtime_epoch,
-            session_id,
-        );
-        if binding.is_observed() {
-            adapter.runtime_version = binding.harness_version().to_owned();
-            adapter.codex_home.clear();
-            adapter.platform = observed_platform();
-        }
-        adapter
+    pub(crate) fn has_bound_thread(&self) -> bool {
+        self.external_thread_id.is_some()
     }
 
     pub(crate) fn effective_capabilities(&self) -> Result<CapabilitySnapshotV1, AdapterError> {
@@ -243,31 +228,6 @@ impl CodexAdapter {
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.models)?;
         self.reserve(OutgoingRequest::models(id, cursor)?)
-    }
-
-    pub(crate) fn prompt(
-        &mut self,
-        id: u64,
-        prompt: &Prompt,
-        client_message_id: &RequiredText<512>,
-    ) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.prompt)?;
-        if self.turn_start_correlations.has_pending() || self.active_turn_id.is_some() {
-            return Err(AdapterError::TurnAlreadyActive);
-        }
-        let thread = self
-            .external_thread_id
-            .clone()
-            .ok_or(AdapterError::SessionUnavailable)?;
-        let request = self.reserve(OutgoingRequest::turn_start(
-            id,
-            &thread,
-            prompt,
-            client_message_id,
-        )?)?;
-        self.turn_start_correlations
-            .register(id, client_message_id.clone());
-        Ok(request)
     }
 
     pub(crate) fn cancel(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
@@ -352,6 +312,18 @@ impl CodexAdapter {
         };
         self.finish_turn_start_response(id)?;
         Ok(result)
+    }
+
+    pub(super) fn fail_pending_turn_start(&mut self) -> Result<TurnStartFailure, AdapterError> {
+        let mut turn_starts = self
+            .pending
+            .iter()
+            .filter_map(|(id, kind)| (*kind == RequestKind::TurnStart).then_some(*id));
+        let id = turn_starts.next().ok_or(AdapterError::TurnIntentConflict)?;
+        if turn_starts.next().is_some() {
+            return Err(AdapterError::TurnIntentConflict);
+        }
+        self.fail_turn_start(id)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {

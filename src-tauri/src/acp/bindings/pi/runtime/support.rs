@@ -12,9 +12,7 @@ use crate::acp::{
 use super::{DenyIntent, DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome};
 
-#[path = "support/delivery.rs"]
 mod delivery;
-#[path = "support/identity.rs"]
 mod identity;
 use identity::{external, model_event, model_key, text_payload, tool_payload, unsupported};
 
@@ -73,6 +71,9 @@ impl PiRuntime {
                 let frame = crate::acp::transport::OutboundFrame::new(bytes)
                     .map_err(|_| AdapterRuntimeError::Frame)?;
                 AdapterEgress::new(frame, EgressToken::protocol_notification())
+            }
+            crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
+                return Err(AdapterRuntimeError::UnsupportedCommand);
             }
             crate::acp::runtime::permissions::PermissionDecision::Deny => {
                 self.mandatory_abort()?
@@ -281,7 +282,7 @@ impl PiRuntime {
                         id,
                         ItemLifecycle::Started,
                         Some(ToolState::InProgress),
-                        tool_payload(name, false)?,
+                        tool_payload(name)?,
                     )?),
                     None,
                 )
@@ -293,7 +294,7 @@ impl PiRuntime {
                         id,
                         ItemLifecycle::Streaming,
                         Some(ToolState::InProgress),
-                        tool_payload("Pi tool update", true)?,
+                        tool_payload("Pi tool update")?,
                     )?),
                     None,
                 )
@@ -310,12 +311,7 @@ impl PiRuntime {
                     ToolOutcome::Cancelled => (ItemLifecycle::Cancelled, ToolState::Cancelled),
                 };
                 (
-                    Some(self.item(
-                        id,
-                        lifecycle,
-                        Some(state),
-                        tool_payload("Pi tool result", true)?,
-                    )?),
+                    Some(self.item(id, lifecycle, Some(state), tool_payload("Pi tool result")?)?),
                     None,
                 )
             }
@@ -363,6 +359,7 @@ impl PiRuntime {
                                 ),
                             )
                             .map_err(|_| AdapterRuntimeError::Frame)?,
+                            offered_option_kinds: None,
                         },
                         request_payload_digest: request_digest,
                     }),

@@ -19,4 +19,17 @@ describe("Editor Activity Bar stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.activity-rail\b/m);
     expect(surfaceCss).toMatch(/^\.activity-rail__button\b/m);
   });
+
+  it("sizes the rail target from the emphasis control token rather than a loose literal", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/styles/editor-activity-bar.css"),
+      "utf8",
+    );
+    expect(surfaceCss).toMatch(
+      /\.activity-rail__button\s*\{[^}]*width:\s*var\(--control-height-emphasis\);/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.activity-rail__button\s*\{[^}]*height:\s*var\(--control-height-emphasis\);/s,
+    );
+  });
 });

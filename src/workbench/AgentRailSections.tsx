@@ -42,9 +42,9 @@ function AgentRailSection({
           onClick={() => toggleAgentRailSection(id)}
         >
           {collapsed ? (
-            <ChevronRight size={13} aria-hidden="true" />
+            <ChevronRight size={14} aria-hidden="true" />
           ) : (
-            <ChevronDown size={13} aria-hidden="true" />
+            <ChevronDown size={14} aria-hidden="true" />
           )}
           <span>{label}</span>
         </button>
@@ -207,18 +207,6 @@ export function AgentRailSections({
 
   return (
     <>
-      <AgentRailSection id="pinned" label="Pinned">
-        {pinned.length > 0 ? (
-          <FlatChatList
-            items={pinned}
-            currentProjectId={currentProjectId}
-            prefs={prefs}
-          />
-        ) : (
-          <p className="agent-rail-section__empty">No pinned tasks</p>
-        )}
-      </AgentRailSection>
-
       <AgentRailSection
         id="projects"
         label={prefs.grouping === "status" ? "Chats" : "Projects"}
@@ -316,6 +304,18 @@ export function AgentRailSections({
               : "No tasks match this search."}
           </p>
         ) : null}
+      </AgentRailSection>
+
+      <AgentRailSection id="pinned" label="Pinned">
+        {pinned.length > 0 ? (
+          <FlatChatList
+            items={pinned}
+            currentProjectId={currentProjectId}
+            prefs={prefs}
+          />
+        ) : (
+          <p className="agent-rail-section__empty">No pinned tasks</p>
+        )}
       </AgentRailSection>
 
       <AgentRailSection id="recent" label="Recent">

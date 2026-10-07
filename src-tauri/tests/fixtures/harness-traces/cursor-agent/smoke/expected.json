@@ -1,0 +1,38 @@
+{
+  "scenario": "smoke",
+  "harness": "cursor-agent",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "turn", "state": "running" },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "text": "The user requested a"
+    },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "text": "The user requested a single-word reply."
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "ok"
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "agent_thought_chunk must coalesce into one thoughtSummary item, not two.",
+    "Text payloads are accumulated snapshots, not per-frame deltas. The translator re-sanitizes the whole accumulated value on every chunk because a secret or path can straddle a frame boundary, so the second thought event carries the full coalesced text.",
+    "updateMode is no longer an adapter-level field; the accumulated-snapshot rule above makes it redundant.",
+    "session_info_update and available_commands_update are absorbed rather than surfaced. They are session metadata the harness volunteers before any assistant text, and projecting them as unsupported items put two opaque activity rows ahead of every reply."
+  ]
+}

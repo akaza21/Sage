@@ -101,6 +101,7 @@ fn await_client_kind(
         "codexStart" => Some("thread/start"),
         "codexResume" => Some("thread/resume"),
         "codexTurnStart" => Some("turn/start"),
+        "codexSteer" => Some("turn/steer"),
         "codexInterrupt" => Some("turn/interrupt"),
         "codexUnsubscribe" => Some("thread/unsubscribe"),
         _ => None,
@@ -148,11 +149,15 @@ fn emit_known(
     let shape = field_str(step, "shape")?;
     match shape {
         "codexInitializeResult" => return codex::emit_response("initialize", state, output),
+        "codexInitializeResult0146" => {
+            return codex::emit_response("initialize0146", state, output);
+        }
         "codexThreadResult" => return codex::emit_response("thread", state, output),
         "codexTurnResult" => return codex::emit_response("turn", state, output),
         "codexStarted" => return codex::emit_notification("started", state, output),
         "codexAck" => return codex::emit_response("ack", state, output),
         "codexDelta" => return codex::emit_notification("delta", state, output),
+        "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
         "codexCompleted" => return codex::emit_notification("completed", state, output),
         "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
         _ => {}

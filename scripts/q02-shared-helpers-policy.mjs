@@ -3,11 +3,10 @@ import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 
 export const Q02_LIMITS = Object.freeze({
-  files: 320,
+  files: 384,
   depth: 16,
   fileBytes: 64 * 1024,
   aggregateBytes: 2 * 1024 * 1024,
-  // Current 277 source files plus directory entries fit below this cap.
   visitedEntries: 1024,
   errors: 32,
 });

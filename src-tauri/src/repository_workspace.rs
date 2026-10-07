@@ -1,10 +1,9 @@
 use crate::{
     error::{AppError, AppResult},
+    git_budget,
     repository::{self, GitOutput, GitProcessPolicy},
     workspace::Workspace,
 };
-
-const GIT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 pub(crate) async fn repository_boundary(
     workspace: &Workspace,
@@ -25,7 +24,7 @@ pub(crate) async fn run_git(
         workspace.root(),
         args,
         stdout_limit,
-        GitProcessPolicy::read(GIT_READ_TIMEOUT),
+        GitProcessPolicy::read(git_budget::READ),
         authority,
     )
     .await;

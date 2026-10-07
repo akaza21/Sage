@@ -1,10 +1,13 @@
 use serde_json::json;
 
-use super::{AdapterEvent, ClaudeTranslator, ResourceMapper, TranslationError};
+use super::{AdapterEvent, ClaudeTranslator, ResourceMapper, TranslationError, claude_profile};
 use crate::acp::{
     contract::SageRootId,
     file_diff::{DIFF_SIDE_BYTES_MAX, admit_pair, pair_digest},
-    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
+    intent::{
+        FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
+        UnavailableResourceReason,
+    },
     lifecycle::ItemLifecycle,
 };
 
@@ -30,6 +33,91 @@ impl ResourceMapper for FixtureResources {
 
 fn encoded(value: &serde_json::Value) -> Vec<u8> {
     serde_json::to_vec(value).unwrap()
+}
+
+struct MissingResources;
+
+impl ResourceMapper for MissingResources {
+    fn map_absolute(
+        &self,
+        _absolute_path: &str,
+    ) -> Result<SafeResourceRef, UnavailableResourceReason> {
+        Err(UnavailableResourceReason::Missing)
+    }
+}
+
+fn intended_change_resource(content: serde_json::Value) -> SafeResourceLocation {
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    let start = json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": "claude-session-1",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tool-diff",
+                "kind": "edit",
+                "status": "pending",
+            }
+        }
+    });
+    translator
+        .translate_notification(&encoded(&start), &MissingResources)
+        .unwrap();
+    let frame = json!({
+        "method": "session/update",
+        "params": {
+            "sessionId": "claude-session-1",
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tool-diff",
+                "kind": "edit",
+                "status": "completed",
+                "content": content,
+            }
+        }
+    });
+    let events = translator
+        .translate_notification(&encoded(&frame), &MissingResources)
+        .unwrap();
+    events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { resource, .. },
+                ..
+            } => Some(resource.clone()),
+            _ => None,
+        })
+        .expect("a file change carries a resource location")
+}
+
+#[test]
+fn claude_creation_of_a_path_the_harness_has_not_written_stays_unavailable() {
+    let resource = intended_change_resource(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\created.rs",
+        "oldText": null,
+        "newText": "created\n",
+    }]));
+    assert_eq!(
+        resource,
+        SafeResourceLocation::unavailable(UnavailableResourceReason::Missing)
+    );
+}
+
+#[test]
+fn claude_update_of_a_missing_path_stays_unavailable() {
+    let resource = intended_change_resource(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\created.rs",
+        "oldText": "old\n",
+        "newText": "new\n",
+    }]));
+    assert_eq!(
+        resource,
+        SafeResourceLocation::unavailable(UnavailableResourceReason::Missing)
+    );
 }
 
 fn start_tool(translator: &mut ClaudeTranslator) {
@@ -74,7 +162,7 @@ fn complete_with(
 
 #[test]
 fn claude_multi_entry_pair_maps_to_shared_typed_shape() {
-    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
     start_tool(&mut translator);
     let events = complete_with(
@@ -126,7 +214,7 @@ fn claude_multi_entry_pair_maps_to_shared_typed_shape() {
 
 #[test]
 fn claude_duplicate_late_and_cancel_are_typed_without_text() {
-    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
     start_tool(&mut translator);
     let first = complete_with(
@@ -167,7 +255,7 @@ fn claude_duplicate_late_and_cancel_are_typed_without_text() {
 
 #[test]
 fn claude_oversize_and_foreign_map_to_summary_only_without_partial_text() {
-    let mut translator = ClaudeTranslator::new("claude-session-1").unwrap();
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
     start_tool(&mut translator);
     let big = "x".repeat(DIFF_SIDE_BYTES_MAX + 1);
@@ -194,7 +282,7 @@ fn claude_oversize_and_foreign_map_to_summary_only_without_partial_text() {
     )));
     assert!(!format!("{events:?}").contains(&big[..64]));
 
-    let mut foreign = ClaudeTranslator::new("claude-session-1").unwrap();
+    let mut foreign = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     foreign.begin_prompt("prompt-1").unwrap();
     let start = json!({
         "method": "session/update",
@@ -232,4 +320,115 @@ fn claude_oversize_and_foreign_map_to_summary_only_without_partial_text() {
             .iter()
             .all(|event| !matches!(event, AdapterEvent::FilePair { .. }))
     );
+}
+
+fn creation_events(content: serde_json::Value) -> Vec<AdapterEvent> {
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    start_tool(&mut translator);
+    complete_with(&mut translator, content)
+}
+
+fn admitted_creation(events: &[AdapterEvent]) -> (String, String, u64) {
+    let pair = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::FilePair {
+                old_text, new_text, ..
+            } => Some((old_text.clone(), new_text.clone())),
+            _ => None,
+        })
+        .expect("a created file still reports one admitted pair");
+    let old_bytes = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { old_bytes, .. },
+                ..
+            } => Some(*old_bytes),
+            _ => None,
+        })
+        .expect("a created file still reports typed diff metadata");
+    (pair.0, pair.1, old_bytes)
+}
+
+#[test]
+fn claude_file_creation_with_null_old_text_admits_an_empty_original() {
+    let events = creation_events(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\lib.rs",
+        "oldText": null,
+        "newText": "created\n",
+    }]));
+    let (old_text, new_text, old_bytes) = admitted_creation(&events);
+    assert_eq!(old_text, "");
+    assert_eq!(new_text, "created\n");
+    assert_eq!(old_bytes, 0);
+}
+
+fn change_shape(events: &[AdapterEvent]) -> (FileChangeOperation, Option<u64>, Option<u64>) {
+    events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload:
+                    NormalizedPayload::FileChangeDiff {
+                        operation,
+                        additions,
+                        deletions,
+                        ..
+                    },
+                ..
+            } => Some((*operation, *additions, *deletions)),
+            _ => None,
+        })
+        .expect("a file change reports typed diff metadata")
+}
+
+#[test]
+fn claude_null_old_text_marks_the_change_created_with_one_addition_and_no_deletion() {
+    let events = creation_events(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\lib.rs",
+        "oldText": null,
+        "newText": "created\n",
+    }]));
+    assert_eq!(
+        change_shape(&events),
+        (FileChangeOperation::Created, Some(1), Some(0))
+    );
+}
+
+#[test]
+fn claude_absent_old_text_marks_the_change_created() {
+    let events = creation_events(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\lib.rs",
+        "newText": "created\n",
+    }]));
+    assert_eq!(change_shape(&events).0, FileChangeOperation::Created);
+}
+
+#[test]
+fn claude_explicitly_empty_old_text_stays_an_update_of_an_existing_empty_file() {
+    let events = creation_events(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\lib.rs",
+        "oldText": "",
+        "newText": "created\n",
+    }]));
+    assert_eq!(change_shape(&events).0, FileChangeOperation::Updated);
+}
+
+#[test]
+fn claude_file_creation_without_old_text_admits_an_empty_original() {
+    let events = creation_events(json!([{
+        "type": "diff",
+        "path": r"C:\fixture\root\src\lib.rs",
+        "newText": "created\n",
+    }]));
+    let (old_text, new_text, old_bytes) = admitted_creation(&events);
+    assert_eq!(old_text, "");
+    assert_eq!(new_text, "created\n");
+    assert_eq!(old_bytes, 0);
 }

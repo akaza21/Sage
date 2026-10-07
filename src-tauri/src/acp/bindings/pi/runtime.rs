@@ -13,7 +13,6 @@ use crate::acp::{
 
 use super::{AdapterError, Operation, Outbound, PiTranslator, ResearchPiBinding, TerminalOutcome};
 
-#[path = "runtime/support.rs"]
 mod support;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,6 +240,7 @@ impl HarnessAdapter for PiRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         match command {
+            AdapterCommand::Steer { .. } => Err(AdapterRuntimeError::UnsupportedCommand),
             AdapterCommand::Initialize => self.begin_initialize(),
             AdapterCommand::ModelPage { cursor: None } if self.initialized => {
                 self.begin_one(Operation::GetModels, RequestKind::Models)
@@ -264,6 +264,7 @@ impl HarnessAdapter for PiRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
+                ..
             } => {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
@@ -409,5 +410,4 @@ impl HarnessAdapter for PiRuntime {
 }
 
 #[cfg(test)]
-#[path = "runtime/tests.rs"]
 mod tests;

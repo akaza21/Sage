@@ -22,4 +22,18 @@ describe("Explorer stylesheet seam", () => {
     expect(sharedControlsCss).toMatch(/@media \(forced-colors: active\)/);
     expect(surfaceCss).toMatch(/^\.root-tree__heading\b/m);
   });
+
+  it("anchors file tree rows to the compact row height and the four pixel spacing scale", async () => {
+    const surfaceCss = await readFile(
+      resolve("src/features/files/explorer-surface.css"),
+      "utf8",
+    );
+
+    expect(surfaceCss).toMatch(
+      /^\.tree__row \{[^}]*height: var\(--row-height-compact\);[^}]*gap: var\(--space-1\);[^}]*padding-right: var\(--space-2\);/ms,
+    );
+    expect(surfaceCss).not.toMatch(/height:\s*27px/);
+    expect(surfaceCss).not.toMatch(/gap:\s*5px/);
+    expect(surfaceCss).not.toMatch(/padding-right:\s*7px/);
+  });
 });

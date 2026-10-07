@@ -92,8 +92,24 @@ pub(super) fn preflight_original_schema(
             | SchemaClass::CurrentV6
             | SchemaClass::CurrentV7
             | SchemaClass::CurrentV8
+            | SchemaClass::CurrentV9
+            | SchemaClass::CurrentV10
+            | SchemaClass::CurrentV11
+            | SchemaClass::CurrentV12
     ) {
         verify_file_envelope(live)?;
+    } else if schema == SchemaClass::CurrentV10LegacySessionEvents {
+        verify_file_envelope(live)?;
+        let has_events: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_events LIMIT 1)",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_events {
+            return Err(AppError::InvalidRequest(
+                "historical v10 session events must be empty before migration".into(),
+            ));
+        }
     } else {
         return Err(AppError::InvalidRequest(
             "backup source does not require an original-schema backup".into(),

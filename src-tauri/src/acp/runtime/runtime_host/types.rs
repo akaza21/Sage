@@ -1,5 +1,6 @@
 use crate::acp::{
-    contract::{ClientIntentId, SageProjectId, SageServerRequestId, SageTurnId},
+    contract::{ClientIntentId, RequiredText, SageProjectId, SageServerRequestId, SageTurnId},
+    intent::Prompt,
     runtime::permissions::PermissionDecision,
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
@@ -30,6 +31,7 @@ pub(crate) enum HostOutcome {
     Activated,
     PromptPrepared,
     PromptAccepted,
+    SteerQueued,
     CancelQueued,
     PermissionResolved,
     SessionConfigured,
@@ -53,6 +55,8 @@ pub(crate) enum HostError {
     State,
     #[error("the harness rejected the session configuration mutation")]
     ConfigMutationRejected,
+    #[error("the harness requires sign-in before it can continue")]
+    SignInRequired,
     #[error("prompt delivery may have written bytes and cannot be replayed")]
     DeliveryUnknown,
     #[error("the one permitted zero-byte prompt retry is exhausted")]
@@ -61,6 +65,8 @@ pub(crate) enum HostError {
     RecoveryRequired,
     #[error("the runtime operation exceeded its bounded deadline")]
     Deadline,
+    #[error("the Steer acknowledgement timed out; the message may have been delivered")]
+    SteerOutcomeUnknown,
     #[error("the runtime host is closed")]
     Closed,
 }
@@ -68,6 +74,7 @@ pub(crate) enum HostError {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct HostPromptIntent {
     pub(crate) command: PrepareTurnCommand,
+    pub(crate) access_mode: crate::settings_store::SessionAccessMode,
 }
 
 impl HostPromptIntent {
@@ -90,6 +97,14 @@ pub(crate) struct HostCancelIntent {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+pub(crate) struct HostSteerIntent {
+    pub(crate) owner: RuntimeOwner,
+    pub(crate) turn_id: SageTurnId,
+    pub(crate) prompt: Prompt,
+    pub(crate) client_message_id: RequiredText<512>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct HostCloseIntent {
     pub(crate) command: CloseSessionCommand,
 }
@@ -107,9 +122,11 @@ impl HostCloseIntent {
 
 type ConfigCompletionCallback = Box<dyn FnOnce(Result<(), HostError>) + Send + 'static>;
 
-pub(crate) struct ConfigCompletionSink(Option<ConfigCompletionCallback>);
+pub(crate) struct OperationCompletionSink(Option<ConfigCompletionCallback>);
+pub(crate) type ConfigCompletionSink = OperationCompletionSink;
+pub(crate) type SteerCompletionSink = OperationCompletionSink;
 
-impl ConfigCompletionSink {
+impl OperationCompletionSink {
     pub(crate) fn new(complete: impl FnOnce(Result<(), HostError>) + Send + 'static) -> Self {
         Self(Some(Box::new(complete)))
     }
@@ -121,7 +138,7 @@ impl ConfigCompletionSink {
     }
 }
 
-impl Drop for ConfigCompletionSink {
+impl Drop for OperationCompletionSink {
     fn drop(&mut self) {
         if let Some(complete) = self.0.take() {
             complete(Err(HostError::Closed));
@@ -133,6 +150,19 @@ pub(super) struct ConfigCompletion {
     pub(super) operation_id: u64,
     pub(super) owner: RuntimeOwner,
     pub(super) result: Result<(), HostError>,
+}
+
+pub(super) struct SteerCompletion {
+    pub(super) operation_id: u64,
+    pub(super) owner: RuntimeOwner,
+    pub(super) result: Result<(), HostError>,
+}
+
+pub(super) struct PendingHostSteer {
+    pub(super) operation_id: u64,
+    pub(super) owner: RuntimeOwner,
+    pub(super) reply: mpsc::SyncSender<Result<HostReply, HostError>>,
+    pub(super) deadline: Instant,
 }
 
 pub(super) struct PendingHostConfig {
@@ -195,6 +225,18 @@ pub(crate) trait RuntimeEngine: Send + 'static {
         owner: &RuntimeOwner,
         turn_id: &SageTurnId,
     ) -> Result<PromptWrite, HostError>;
+    fn dispatch_steer(&mut self, _intent: &HostSteerIntent) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
+    fn begin_steer(
+        &mut self,
+        intent: &HostSteerIntent,
+        _deadline: Instant,
+        completion: SteerCompletionSink,
+    ) -> Result<(), HostError> {
+        completion.complete(self.dispatch_steer(intent));
+        Ok(())
+    }
     fn retry_prompt(
         &mut self,
         owner: &RuntimeOwner,
@@ -250,6 +292,7 @@ pub(super) enum HostCommand {
         owner: RuntimeOwner,
         turn_id: SageTurnId,
     },
+    Steer(HostSteerIntent),
     Cancel(HostCancelIntent),
     Terminal {
         owner: RuntimeOwner,
@@ -311,6 +354,7 @@ impl HostCommand {
             | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
             Self::PreparePrompt(_)
             | Self::DispatchPrompt { .. }
+            | Self::Steer(_)
             | Self::ProjectSwitched(_)
             | Self::State => LIMITS.deadlines_ms.ordinary_rpc,
         }
@@ -353,6 +397,12 @@ impl HostCommand {
                     + std::mem::size_of::<u64>() * 2
             }
             Self::DispatchPrompt { owner, turn_id } => owner_bytes(owner) + turn_id.as_str().len(),
+            Self::Steer(intent) => {
+                owner_bytes(&intent.owner)
+                    + intent.turn_id.as_str().len()
+                    + intent.prompt.as_str().len()
+                    + intent.client_message_id.as_str().len()
+            }
             Self::Cancel(intent) => {
                 owner_bytes(&intent.owner)
                     + intent.turn_id.as_str().len()

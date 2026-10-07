@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
-import { attachmentLabel } from "./attachmentLabel";
+import { attachmentLabel } from "./ComposerAttachments";
 
 function context(relativePath: string): DiffLineCommentContext {
   return {

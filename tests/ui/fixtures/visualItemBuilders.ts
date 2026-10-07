@@ -1,4 +1,4 @@
-import type { AcpItem } from "../../../src/domain/acp";
+import type { AcpItem, SafeResourceLocation } from "../../../src/domain/acp";
 
 import { ROOT_ID } from "./visualFixtureIds";
 import type { ItemInput } from "./visualFixtureIds";
@@ -41,10 +41,102 @@ export function planItem(input: ItemInput): AcpItem {
   };
 }
 
+type ToolPresentation = Extract<
+  AcpItem,
+  { kind: "toolCall" }
+>["payload"]["presentation"];
+
+const FIXTURE_RESOURCE: SafeResourceLocation = {
+  kind: "resource",
+  resource: { rootId: ROOT_ID, relativePath: "src/main.ts" },
+};
+
+export const TOOL_KIND_PRESENTATIONS = {
+  read: {
+    kind: "read",
+    label: "Read src/main.ts",
+    resources: [FIXTURE_RESOURCE],
+  },
+  edit: {
+    kind: "edit",
+    label: "Edit [redacted]",
+    resources: [FIXTURE_RESOURCE],
+  },
+  delete: {
+    kind: "delete",
+    label: "Delete src/stale.ts",
+    resources: [FIXTURE_RESOURCE],
+  },
+  move: {
+    kind: "move",
+    label: "Move src/old.ts",
+    resources: [FIXTURE_RESOURCE],
+    originalResources: [FIXTURE_RESOURCE],
+  },
+  search: {
+    kind: "search",
+    label: "Search workspace",
+    querySummary: "interaction states",
+    resources: [],
+    matchCount: 14,
+    truncated: false,
+  },
+  execute: {
+    kind: "execute",
+    label: "Run checks",
+    summary: "npm run check",
+    cwd: FIXTURE_RESOURCE,
+    exitCode: 0,
+    outputTail: "12 passed",
+    outputTruncated: false,
+    resources: [],
+    activity: "ordinary",
+  },
+  fetch: {
+    kind: "fetch",
+    label: "Fetch changelog",
+    url: "https://example.invalid/changelog",
+    summary: "200 OK",
+  },
+  think: {
+    kind: "think",
+    label: "Consider the failing assertion",
+    summary: "Weighing two causes",
+  },
+  switchMode: {
+    kind: "switchMode",
+    label: "Entered review mode",
+    modeId: null,
+    modeLabel: null,
+  },
+  mcp: {
+    kind: "mcp",
+    label: "Call linter server",
+    serverLabel: "lint-mcp",
+    toolLabel: "check",
+    argumentsSummary: "{}",
+    resultSummary: "clean",
+  },
+  subagent: {
+    kind: "subagent",
+    label: "Delegate to reviewer",
+    activityId: null,
+  },
+  other: {
+    kind: "other",
+    label: "harness.future_thing",
+    rawKind: "harness.future_thing",
+    summary: null,
+  },
+} satisfies {
+  [Kind in ToolPresentation["kind"]]: ToolPresentation & { kind: Kind };
+};
+
 export function toolItem(
   input: ItemInput,
   state: "completed" | "inProgress",
-): AcpItem {
+  presentation: ToolPresentation = TOOL_KIND_PRESENTATIONS.search,
+): Extract<AcpItem, { kind: "toolCall" }> {
   const identity = itemIdentity(input);
   return {
     ...identity,
@@ -53,15 +145,10 @@ export function toolItem(
     kind: "toolCall",
     toolState: state,
     payload: {
-      presentation: {
-        kind: "search",
-        label: "Search workspace",
-        querySummary: "interaction states",
-        resources: [],
-      },
+      presentation,
       inputSummary: "Scanning relevant UI modules",
     },
-  };
+  } as Extract<AcpItem, { kind: "toolCall" }>;
 }
 
 export function errorItem(input: ItemInput): AcpItem {

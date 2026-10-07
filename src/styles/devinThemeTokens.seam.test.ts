@@ -145,10 +145,6 @@ describe("Devin-dark theme tokens", () => {
       },
       {
         path: "workbench/workbench-window-mode.css",
-        selector: ".title-bar__mode--active",
-      },
-      {
-        path: "workbench/workbench-window-mode.css",
         selector: '.agent-artifact-pane__follow[aria-pressed="true"]',
       },
     ]);
@@ -167,8 +163,8 @@ describe("Devin-dark theme tokens", () => {
   });
 
   it("defines a compact chrome ramp apart from Chat reading text", () => {
-    expect(rootBlock).toMatch(/--font-size-xs:\s*11px;/);
-    expect(rootBlock).toMatch(/--font-size-sm:\s*12px;/);
+    expect(rootBlock).toMatch(/--font-size-xs:\s*12px;/);
+    expect(rootBlock).toMatch(/--font-size-sm:\s*13px;/);
     expect(rootBlock).toMatch(/--font-size-md:\s*14px;/);
     expect(rootBlock).toMatch(/--font-size-xl:\s*20px;/);
     expect(rootBlock).toMatch(/--type-size-chrome:\s*var\(--font-size-sm\);/);

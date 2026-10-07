@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -22,6 +23,8 @@ const PACKAGE_JSON: &str = "package.json";
 const SDK_PACKAGE: &str = "@agentclientprotocol/sdk";
 const PACKAGE_JSON_BYTES_MAX: u64 = 64 * 1024;
 const HASHED_FILE_BYTES_MAX: u64 = 512 * 1024 * 1024;
+const DIGEST_CACHE_BYTES_MAX: u64 = 16 * 1024;
+const DIGEST_CACHE_ENTRIES_MAX: usize = 32;
 
 /// All facts needed to construct the Node-hosted Claude ACP launch contract.
 /// Paths are native-only and must never be projected to the renderer.
@@ -75,10 +78,10 @@ fn discover_claude_launch_from(
             ClaudeLaunchDiscovery::NodeAbsent
         };
     };
-    let Some(adapter_sha256) = sha256_file(&adapter.adapter_path) else {
+    let Some(adapter_sha256) = cached_sha256_file(&adapter.adapter_path) else {
         return ClaudeLaunchDiscovery::AdapterVersionUnreadable;
     };
-    let Some(node_sha256) = sha256_file(&node_path) else {
+    let Some(node_sha256) = cached_sha256_file(&node_path) else {
         return ClaudeLaunchDiscovery::NodeVersionUnreadable;
     };
     ClaudeLaunchDiscovery::Present(Box::new(DiscoveredClaudeLaunch {
@@ -261,11 +264,22 @@ fn valid_text(value: &str) -> bool {
 
 #[allow(dead_code)]
 pub(crate) fn sha256_file(path: &Path) -> Option<String> {
-    let metadata = path.metadata().ok()?;
+    #[cfg(windows)]
+    let mut file = {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        fs::OpenOptions::new()
+            .read(true)
+            .share_mode(windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ)
+            .open(path)
+            .ok()?
+    };
+    #[cfg(not(windows))]
+    let mut file = fs::File::open(path).ok()?;
+    let metadata = file.metadata().ok()?;
     if metadata.len() > HASHED_FILE_BYTES_MAX || metadata.len() == 0 {
         return None;
     }
-    let mut file = fs::File::open(path).ok()?;
     let mut hash = Sha256::new();
     let mut bytes = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
@@ -281,6 +295,112 @@ pub(crate) fn sha256_file(path: &Path) -> Option<String> {
         hash.update(&buffer[..read]);
     }
     (bytes == metadata.len()).then(|| format!("{:x}", hash.finalize()))
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct DigestCache {
+    entries: Vec<DigestCacheEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DigestCacheEntry {
+    path: PathBuf,
+    length: u64,
+    modified_seconds: u64,
+    modified_nanos: u32,
+    digest: String,
+}
+
+pub(crate) fn cached_sha256_file(path: &Path) -> Option<String> {
+    let cache_path = digest_cache_path()?;
+    digest_with_cache(path, &cache_path, sha256_file)
+}
+
+fn digest_cache_path() -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT") {
+        return Some(
+            PathBuf::from(root)
+                .join("durable")
+                .join("claude-digest-cache-v1.json"),
+        );
+    }
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| Some(std::env::temp_dir()))
+        .map(|root| root.join("Sage").join("claude-digest-cache-v1.json"))
+}
+
+fn digest_with_cache(
+    path: &Path,
+    cache_path: &Path,
+    hash: impl FnOnce(&Path) -> Option<String>,
+) -> Option<String> {
+    let path = path.canonicalize().ok()?;
+    let metadata = path.metadata().ok()?;
+    if metadata.len() == 0 || metadata.len() > HASHED_FILE_BYTES_MAX {
+        return None;
+    }
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    let length = metadata.len();
+    let modified_seconds = modified.as_secs();
+    let modified_nanos = modified.subsec_nanos();
+    let mut cache = read_digest_cache(cache_path);
+    if let Some(entry) = cache.entries.iter().find(|entry| {
+        entry.path == path
+            && entry.length == length
+            && entry.modified_seconds == modified_seconds
+            && entry.modified_nanos == modified_nanos
+    }) {
+        return Some(entry.digest.clone());
+    }
+    let digest = hash(&path)?;
+    cache.entries.retain(|entry| entry.path != path);
+    cache.entries.push(DigestCacheEntry {
+        path,
+        length,
+        modified_seconds,
+        modified_nanos,
+        digest: digest.clone(),
+    });
+    if cache.entries.len() > DIGEST_CACHE_ENTRIES_MAX {
+        cache
+            .entries
+            .drain(0..cache.entries.len() - DIGEST_CACHE_ENTRIES_MAX);
+    }
+    write_digest_cache(cache_path, &cache);
+    Some(digest)
+}
+
+fn read_digest_cache(path: &Path) -> DigestCache {
+    let Ok(metadata) = path.metadata() else {
+        return DigestCache::default();
+    };
+    if metadata.len() > DIGEST_CACHE_BYTES_MAX {
+        return DigestCache::default();
+    }
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write_digest_cache(path: &Path, cache: &DigestCache) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    let Ok(bytes) = serde_json::to_vec(cache) else {
+        return;
+    };
+    if bytes.len() as u64 > DIGEST_CACHE_BYTES_MAX {
+        return;
+    }
+    if fs::create_dir_all(parent).is_ok() {
+        let _ = fs::write(path, bytes);
+    }
 }
 
 #[cfg(test)]
@@ -339,5 +459,53 @@ mod tests {
         // This discriminates because omitting the standard Node install root
         // makes a PATH without Node unable to locate the installed runtime.
         assert!(candidates.iter().any(|candidate| candidate == &expected));
+    }
+
+    #[test]
+    fn digest_cache_skips_unchanged_files_and_rehashes_metadata_changes() {
+        let root = scratch_root();
+        let node = root.join("node.exe");
+        let cache = root.join("digest-cache.json");
+        fs::write(&node, b"node").expect("write node");
+        let digest = "a".repeat(64);
+        let mut hashes = 0;
+
+        assert_eq!(
+            digest_with_cache(&node, &cache, |_| {
+                hashes += 1;
+                Some(digest.clone())
+            }),
+            Some(digest.clone())
+        );
+        assert_eq!(
+            digest_with_cache(&node, &cache, |_| {
+                hashes += 1;
+                Some(digest.clone())
+            }),
+            Some(digest.clone())
+        );
+        assert_eq!(hashes, 1);
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        fs::write(&node, b"node").expect("rewrite node");
+        assert_eq!(
+            digest_with_cache(&node, &cache, |_| {
+                hashes += 1;
+                Some(digest.clone())
+            }),
+            Some(digest.clone())
+        );
+        assert_eq!(hashes, 2);
+
+        fs::write(&node, b"node changed").expect("change node length");
+        assert_eq!(
+            digest_with_cache(&node, &cache, |_| {
+                hashes += 1;
+                Some(digest.clone())
+            }),
+            Some(digest.clone())
+        );
+        assert_eq!(hashes, 3);
+        fs::remove_dir_all(root).expect("remove root");
     }
 }

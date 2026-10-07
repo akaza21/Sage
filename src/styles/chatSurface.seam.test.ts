@@ -13,6 +13,7 @@ describe("Chat surface stylesheet seam", () => {
     ]);
 
     expect(entry).toMatch(/import ["']\.\/styles\/chat-surface\.css["'];/);
+    expect(surfaceCss).not.toMatch(/font-size:\s*15px/);
     expect(shellCss).not.toMatch(/^\.chat-surface\b/m);
     expect(shellCss).not.toMatch(/^\.message-list\b/m);
     expect(surfaceCss).toMatch(/^\.chat-surface\b/m);
@@ -32,7 +33,7 @@ describe("Chat surface stylesheet seam", () => {
     );
 
     expect(surfaceCss).toMatch(
-      /\.surface-header\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*36px;[^}]*max-height:\s*36px;/s,
+      /\.surface-header\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*var\(--tab-height\);[^}]*max-height:\s*var\(--tab-height\);/s,
     );
     expect(surfaceCss).not.toMatch(/\.surface-header\s*\{[^}]*flex-wrap:/s);
   });

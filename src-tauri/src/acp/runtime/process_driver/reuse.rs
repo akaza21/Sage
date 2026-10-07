@@ -34,6 +34,7 @@ where
     ) -> CompleteTurnResult<A, J, R, T, C, L> {
         if !matches!(self.state, DriverState::Running)
             || self.first_delivery_unknown.is_some()
+            || self.pending_exit.is_some()
             || !mailbox.is_quiescent()
             || !self.pump.completed_turn_ready()
         {
@@ -51,6 +52,9 @@ where
             clock,
             state,
             first_delivery_unknown,
+            durable_mutation_unknown,
+            teardown_detail,
+            pending_exit,
         } = self;
         let completed = match pump.try_into_completed_parts() {
             Ok(value) => value,
@@ -66,6 +70,9 @@ where
                         clock,
                         state,
                         first_delivery_unknown,
+                        durable_mutation_unknown,
+                        teardown_detail,
+                        pending_exit,
                     },
                     error: DriverError::NotReusable,
                 }));
@@ -231,6 +238,9 @@ where
                 clock,
                 state: DriverState::Running,
                 first_delivery_unknown: None,
+                durable_mutation_unknown: false,
+                teardown_detail: None,
+                pending_exit: None,
             }),
             Err(error) => {
                 let (completed, _) = *error;

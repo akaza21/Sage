@@ -234,5 +234,4 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-#[path = "trust_root/tests.rs"]
 mod tests;

@@ -12,7 +12,10 @@ import {
   nextProjectGeneration,
   validateTransitionIntent,
 } from "./projectIntent";
-import { snapshotProjection } from "./projectProjection";
+import {
+  reconcileLiveBrowserTabs,
+  snapshotProjection,
+} from "./projectProjection";
 import { projectChatOwnership } from "./chatOwnershipProjection";
 import type { WorkbenchState } from "./store";
 import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
@@ -111,6 +114,8 @@ export function createChatTransitionContext(
     snapshot: BootstrapSnapshot,
     generation: number,
   ) => {
+    snapshot = await reconcileLiveBrowserTabs(snapshot);
+    if (get().projectGeneration !== generation) return;
     const projectId = snapshot.project?.id ?? null;
     set({
       ...snapshotProjection(snapshot),
@@ -128,16 +133,15 @@ export function createChatTransitionContext(
       snapshot.project?.roots
         .filter((root) => root.availability === "available")
         .map((root) => get().loadDirectory(childResource(root.id))) ?? [];
-    if (projectId && snapshot.selectedHarnessId) {
-      projectionLoads.push(
-        get().loadHarnessModelsForProjection(
-          snapshot.selectedHarnessId,
-          snapshot.selectedModelId,
-          generation,
-          projectId,
-        ),
-      );
-    }
+    const modelDiscovery =
+      projectId && snapshot.selectedHarnessId
+        ? get().loadHarnessModelsForProjection(
+            snapshot.selectedHarnessId,
+            snapshot.selectedModelId,
+            generation,
+            projectId,
+          )
+        : null;
     await Promise.all(projectionLoads);
     if (!projectId || matchesProjectIntent(get(), generation, projectId)) {
       set({ projectTransitioning: false });
@@ -147,6 +151,7 @@ export function createChatTransitionContext(
         /* watch failure must not fail Chat projection */
       }
     }
+    void modelDiscovery;
   };
 
   const loadAuthoritativeProjection = async (
@@ -158,7 +163,9 @@ export function createChatTransitionContext(
     );
     for (let attempt = 0; attempt < MAX_PROJECTION_ATTEMPTS; attempt += 1) {
       try {
-        const snapshot = await project.getBootstrapSnapshot();
+        const snapshot = await reconcileLiveBrowserTabs(
+          await project.getBootstrapSnapshot(),
+        );
         const outcome = classify(snapshot);
         if (!outcome) {
           throw new Error(
@@ -198,15 +205,16 @@ export function createChatTransitionContext(
       const generation = nextProjectGeneration(get().projectGeneration);
       set({ projectGeneration: generation, repositoryRefreshing: false });
       if (result.snapshot) {
+        const snapshot = await reconcileLiveBrowserTabs(result.snapshot);
         if (
-          result.snapshot.transitionEpoch !== result.transitionEpoch ||
-          options.classify(result.snapshot) !== "committed"
+          snapshot.transitionEpoch !== result.transitionEpoch ||
+          options.classify(snapshot) !== "committed"
         ) {
           throw new Error(
             `native Chat ${options.action} returned an invalid projection`,
           );
         }
-        await applyProjection(result.snapshot, generation);
+        await applyProjection(snapshot, generation);
       } else {
         await loadAuthoritativeProjection(generation, (snapshot) =>
           options.classify(snapshot) === "committed" ? "committed" : null,

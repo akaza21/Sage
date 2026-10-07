@@ -28,7 +28,6 @@ use super::{
     },
 };
 
-#[path = "transport/reader.rs"]
 mod reader;
 #[cfg(test)]
 use reader::{ReaderCompletion, enqueue_reader_event};

@@ -1,16 +1,27 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
+import type { TabKind } from "../domain/chat";
 import {
   AGENT_CENTER_CHAT_SCAN_LIMIT,
   type AgentCenterScanTab,
   agentCenterChatAction,
 } from "./workbenchWindowMode";
 
-const srcRoot = path.resolve(import.meta.dirname, "..");
-
 describe("agentCenterChatAction scan bounds", () => {
+  it("scans no more than the 64-tab native layout maximum", () => {
+    expect(AGENT_CENTER_CHAT_SCAN_LIMIT).toBe(64);
+    const tabs: AgentCenterScanTab[] = Array.from(
+      { length: 65 },
+      (_, index) => ({
+        id: `file:${index}`,
+        kind: index === 64 ? "chat" : "file",
+      }),
+    );
+    expect(agentCenterChatAction(tabs, null)).toEqual({ action: "create" });
+    tabs[63] = { id: "chat:63", kind: "chat" };
+    expect(agentCenterChatAction(tabs, null)).toEqual({ action: "none" });
+  });
+
   it("declares a finite positive scan bound", () => {
     expect(Number.isInteger(AGENT_CENTER_CHAT_SCAN_LIMIT)).toBe(true);
     expect(AGENT_CENTER_CHAT_SCAN_LIMIT).toBeGreaterThan(0);
@@ -63,12 +74,33 @@ describe("agentCenterChatAction scan bounds", () => {
     });
   });
 
-  it("avoids unrestricted tab walks and untyped kinds in the module source", async () => {
-    const source = await readFile(
-      path.join(srcRoot, "workbench/workbenchWindowMode.ts"),
-      "utf8",
+  it("never reads a tab beyond the native scan bound", () => {
+    const tabs: AgentCenterScanTab[] = Array.from(
+      { length: AGENT_CENTER_CHAT_SCAN_LIMIT + 1 },
+      (_, index) => ({
+        id: `file:${index}`,
+        kind: index === AGENT_CENTER_CHAT_SCAN_LIMIT ? "chat" : "file",
+      }),
     );
-    expect(source).not.toMatch(/\.find\(/);
-    expect(source).not.toMatch(/kind: string\b/);
+    const guarded = new Proxy(tabs, {
+      get(target, property, receiver) {
+        if (
+          typeof property === "string" &&
+          /^\d+$/.test(property) &&
+          Number(property) >= AGENT_CENTER_CHAT_SCAN_LIMIT
+        ) {
+          throw new Error(`Out-of-bound tab read: ${property}`);
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(agentCenterChatAction(guarded, "file:0")).toEqual({
+      action: "create",
+    });
+  });
+
+  it("keeps tab kinds limited to the domain tab-kind union", () => {
+    expectTypeOf<AgentCenterScanTab["kind"]>().toEqualTypeOf<TabKind>();
   });
 });

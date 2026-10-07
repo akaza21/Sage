@@ -42,7 +42,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         } else {
             match self.journal.commit(durable, actual_bytes).await {
                 Ok(receipt) => Some(receipt),
-                Err(PumpJournalError::CommitUnknown | PumpJournalError::Rejected) => {
+                Err(error @ PumpJournalError::CommitUnknown) => {
+                    self.pending.clear();
+                    self.teardown = true;
+                    return Err(AdapterPumpError::Journal(error));
+                }
+                Err(PumpJournalError::Rejected) => {
                     self.pending.clear();
                     self.teardown = true;
                     return Err(AdapterPumpError::TeardownRequired);

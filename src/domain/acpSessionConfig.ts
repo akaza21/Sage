@@ -34,6 +34,7 @@ export type AcpConfigOption = ConfigBase &
         options: AcpConfigChoice[] | AcpConfigGroup[];
       }
     | { type: "boolean"; currentValue: boolean }
+    | { type: "unsupported"; kind: string }
   );
 export type AcpConfigValue =
   { value: string } | { type: "boolean"; value: boolean };
@@ -107,8 +108,19 @@ function option(v: unknown): AcpConfigOption | null {
   };
   if (v.type === "boolean" && typeof v.currentValue === "boolean")
     return { ...base, type: "boolean", currentValue: v.currentValue };
-  if (v.type !== "select" || !text(v.currentValue) || !array(v.options))
-    return null;
+  if (v.type === "unsupported")
+    return {
+      ...base,
+      type: "unsupported",
+      kind: text(v.kind, 1024, false) ? v.kind : "",
+    };
+  if (v.type !== "select")
+    return {
+      ...base,
+      type: "unsupported",
+      kind: text(v.type, 1024, false) ? v.type : "",
+    };
+  if (!text(v.currentValue) || !array(v.options)) return null;
   let options: AcpConfigChoice[] | AcpConfigGroup[];
   let values: string[];
   if (v.options.length > 0 && object(v.options[0]) && "group" in v.options[0]) {

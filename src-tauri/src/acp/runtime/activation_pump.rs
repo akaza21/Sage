@@ -6,13 +6,14 @@ use crate::acp::{
         AdapterCommand, AdapterEgress, AdapterEvent, AdapterModel, AdapterRuntimeError,
         EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    contract::{ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    contract::{
+        ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
+        SageProjectId,
+    },
     intent::{CapabilitySnapshotV1, ExternalId, ModelId, PageCursor},
     limits::LIMITS,
     store::CompleteActivationCommand,
-    transport::{
-        Frame, FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure,
-    },
+    transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
 };
 
 mod capabilities;
@@ -26,6 +27,7 @@ use intent::{digest, validate_intent};
 pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
 };
+pub(crate) use ingress::is_available_commands_update;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
 
 #[cfg(test)]
@@ -132,6 +134,8 @@ enum Phase {
 pub(crate) enum ActivationPumpError {
     #[error("activation intent or adapter completion is stale or foreign")]
     Intent,
+    #[error("activation refused the advertised protocol version")]
+    RefusedVersion(RequiredText<64>),
     #[error("activation metadata exceeds a frozen count or actual-byte limit")]
     Capacity,
     #[error("activation command is backpressured at its bounded capacity")]

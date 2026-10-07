@@ -1,8 +1,11 @@
 import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
-import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
-import { canResolveConflictedChange } from "../features/git/conflictResolution";
+import {
+  canResolveConflictedChange,
+  isConflictedChange,
+  isSafeDiscardChange,
+} from "../domain/gitMutation";
 import type {
   GitFileMutationAction,
   GitProcessState,

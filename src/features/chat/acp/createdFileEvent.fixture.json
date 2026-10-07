@@ -1,0 +1,16 @@
+{
+  "raw": {
+    "type": "fileChange",
+    "id": "file-added",
+    "status": "completed",
+    "changes": [
+      {
+        "path": "C:\\fixture\\src\\new.ts",
+        "kind": { "type": "add" },
+        "diff": "opaque"
+      }
+    ]
+  },
+  "resource": { "rootId": "fixture-root", "relativePath": "src/new.ts" },
+  "expected": { "operation": "created", "summary": "Created src/new.ts" }
+}

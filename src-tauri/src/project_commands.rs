@@ -4,22 +4,48 @@ use std::path::PathBuf;
 use crate::persistence::Database;
 use crate::{
     acp::contract::SageProjectId,
+    browser::BrowserState,
     domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
-    error::AppResult,
+    error::{AppError, AppResult},
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
 };
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, State, Window};
 use tauri_plugin_dialog::DialogExt;
+use tracing::info;
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum CloseStage {
+    CloseRequested,
+    EditorFlush,
+    AppearanceFlush,
+    WorkspaceUnwatch,
+    PersistAndDestroy,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum CloseStageStatus {
+    Start,
+    End,
+    Error,
+}
+
+#[tauri::command]
+pub fn trace_close_stage(stage: CloseStage, status: CloseStageStatus) {
+    info!(?stage, ?status, "Sage window close stage");
+}
 
 const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
 
 #[tauri::command]
 pub async fn create_project_from_picker(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, AppState>,
+    browser: State<'_, BrowserState>,
     expected_active_project_id: Option<String>,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
@@ -28,28 +54,37 @@ pub async fn create_project_from_picker(
         return Ok(cancelled_transition(&state).await);
     };
     let database = state.database.clone();
+    let preflight_root = root.clone();
     let operations = state.editor_operations.clone();
     let ticket = operations
         .issue_ticket()
         .map_err(|error| error.to_string())?;
-    Ok(
-        execute_committed_transition(&state, expected_transition_epoch, move || {
+    Ok(execute_committed_transition_checked(
+        &state,
+        expected_transition_epoch,
+        || {
+            browser
+                .validate_project_roots(std::slice::from_ref(&preflight_root))
+                .map_err(AppError::InvalidRequest)
+        },
+        move || {
             operations.execute_project_transition(ticket, || {
                 database.create_project_from_root_if_active(
                     &root,
                     expected_active_project_id.as_deref(),
                 )
             })
-        })
-        .await,
+        },
     )
+    .await)
 }
 
 #[tauri::command]
 pub async fn add_project_root_from_picker(
     app: AppHandle,
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, AppState>,
+    browser: State<'_, BrowserState>,
     project_id: String,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
@@ -58,18 +93,26 @@ pub async fn add_project_root_from_picker(
         return Ok(cancelled_transition(&state).await);
     };
     let database = state.database.clone();
+    let preflight_root = root.clone();
     let operations = state.editor_operations.clone();
     let ticket = operations
         .issue_ticket()
         .map_err(|error| error.to_string())?;
-    Ok(
-        execute_committed_transition(&state, expected_transition_epoch, move || {
+    Ok(execute_committed_transition_checked(
+        &state,
+        expected_transition_epoch,
+        || {
+            browser
+                .validate_project_roots(std::slice::from_ref(&preflight_root))
+                .map_err(AppError::InvalidRequest)
+        },
+        move || {
             operations.execute_project_transition(ticket, || {
                 database.add_project_root(&project_id, &root)
             })
-        })
-        .await,
+        },
     )
+    .await)
 }
 
 #[tauri::command]
@@ -103,15 +146,26 @@ pub async fn persist_project_layout(
 
 #[tauri::command]
 pub async fn persist_project_layout_and_close(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, AppState>,
     request: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
 ) -> Result<(), String> {
-    persist_project_layout_inner(&state, request, expected_transition_epoch)
-        .await
-        .map_err(|error| error.to_string())?;
-    window.destroy().map_err(|error| error.to_string())
+    info!("Sage window close persist start");
+    if let Err(error) =
+        persist_project_layout_inner(&state, request, expected_transition_epoch).await
+    {
+        info!("Sage window close persist error");
+        return Err(error.to_string());
+    }
+    info!("Sage window close persist end");
+    info!("Sage window destroy start");
+    let result = window.destroy().map_err(|error| error.to_string());
+    info!(
+        status = if result.is_ok() { "end" } else { "error" },
+        "Sage window destroy"
+    );
+    result
 }
 
 pub(crate) async fn persist_project_layout_inner(
@@ -137,25 +191,48 @@ pub(crate) async fn persist_project_layout_inner(
 #[tauri::command]
 pub async fn switch_project(
     state: State<'_, AppState>,
+    browser: State<'_, BrowserState>,
     request: ProjectSwitchRequest,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
     let database = state.database.clone();
+    let preflight_database = database.clone();
+    let target_project_id = request.target_project_id.clone();
     let operations = state.editor_operations.clone();
     let ticket = operations
         .issue_ticket()
         .map_err(|error| error.to_string())?;
-    Ok(
-        execute_committed_transition(&state, expected_transition_epoch, move || {
-            operations.execute_project_transition(ticket, || database.switch_project(&request))
-        })
-        .await,
+    Ok(execute_committed_transition_checked(
+        &state,
+        expected_transition_epoch,
+        || {
+            let roots = preflight_database
+                .root_records(&target_project_id)?
+                .into_iter()
+                .map(|root| root.absolute_path)
+                .collect::<Vec<_>>();
+            browser
+                .validate_project_roots(&roots)
+                .map_err(AppError::InvalidRequest)
+        },
+        move || operations.execute_project_transition(ticket, || database.switch_project(&request)),
     )
+    .await)
 }
 
 async fn execute_committed_transition<T: Send + 'static>(
     state: &AppState,
     expected_transition_epoch: u64,
+    operation: impl FnOnce() -> AppResult<T> + Send + 'static,
+) -> ProjectTransitionResult {
+    execute_committed_transition_checked(state, expected_transition_epoch, || Ok(()), operation)
+        .await
+}
+
+async fn execute_committed_transition_checked<T: Send + 'static>(
+    state: &AppState,
+    expected_transition_epoch: u64,
+    preflight: impl FnOnce() -> AppResult<()>,
     operation: impl FnOnce() -> AppResult<T> + Send + 'static,
 ) -> ProjectTransitionResult {
     let mut transition_epoch = state.project_transitions.lock().await;
@@ -168,6 +245,9 @@ async fn execute_committed_transition<T: Send + 'static>(
     if *transition_epoch >= MAX_TRANSITION_EPOCH {
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
+    if let Err(error) = preflight() {
+        return failed_transition(*transition_epoch, error);
+    }
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
         .await
@@ -178,6 +258,17 @@ async fn execute_committed_transition<T: Send + 'static>(
     }
     *transition_epoch = committed_epoch;
     on_committed_project_transition_epoch(*transition_epoch);
+    let active_after = state.database.active_project_id().ok().flatten();
+    let terminal_cleanup = active_after
+        .and_then(|id| SageProjectId::parse(id).ok())
+        .zip(crate::acp::contract::ProjectGeneration::new(committed_epoch).ok())
+        .map_or_else(
+            || state.terminals.shutdown(),
+            |(project, generation)| state.terminals.project_changed(&project, generation),
+        );
+    let terminal_recovery_error = terminal_cleanup
+        .err()
+        .map(|_| "terminal cleanup did not converge; restart Sage before retrying".to_owned());
     let acp_recovery_error = if let Ok(Some(active_project)) = state.database.active_project_id()
         && let Ok(active_project) = SageProjectId::parse(active_project)
     {
@@ -189,7 +280,7 @@ async fn execute_committed_transition<T: Send + 'static>(
     };
     let mut result = committed_projection(state, committed_epoch).await;
     if result.recovery_error.is_none() {
-        result.recovery_error = acp_recovery_error;
+        result.recovery_error = terminal_recovery_error.or(acp_recovery_error);
     }
     result
 }
@@ -232,7 +323,7 @@ fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTran
 
 async fn pick_folder(
     app: &AppHandle,
-    window: &WebviewWindow,
+    window: &Window,
     title: &str,
 ) -> Result<Option<PathBuf>, String> {
     let dialog = app
@@ -280,6 +371,28 @@ mod tests {
 
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn window_commands_accept_multi_webview_hosts() {
+        let source = include_str!("project_commands.rs");
+        for command in [
+            "create_project_from_picker",
+            "add_project_root_from_picker",
+            "persist_project_layout_and_close",
+        ] {
+            let signature = source
+                .split_once(&format!("pub async fn {command}("))
+                .unwrap()
+                .1
+                .split_once(')')
+                .unwrap()
+                .0;
+            assert!(
+                signature.contains("window: Window,"),
+                "{command} must inject the owning Window, not a WebviewWindow"
+            );
+        }
+    }
 
     #[test]
     fn picker_cancellation_does_not_create_or_mutate_projects() {
@@ -462,6 +575,45 @@ mod tests {
             assert_eq!(result.transition_epoch, 1);
             assert!(result.snapshot.is_none());
             assert!(result.recovery_error.is_some());
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn overlapping_project_selection_fails_before_transition_mutation() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let root = std::env::temp_dir()
+                .join(format!("sage-browser-project-switch-{}", Uuid::new_v4()));
+            let ui = root.join("ui");
+            let durable = root.join("durable");
+            std::fs::create_dir_all(&ui).unwrap();
+            std::fs::create_dir_all(&durable).unwrap();
+            let browser = crate::browser::BrowserState::new(
+                &crate::launch_profile::LaunchProfile::Normal {
+                    durable_dir: durable,
+                },
+                ui,
+                &[],
+                1,
+            )
+            .unwrap();
+            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let selected = root.clone();
+            let result = execute_committed_transition_checked(
+                &state,
+                0,
+                || {
+                    browser
+                        .validate_project_roots(&[selected])
+                        .map_err(crate::error::AppError::InvalidRequest)
+                },
+                || -> AppResult<()> { panic!("overlapping project was committed") },
+            )
+            .await;
+            assert!(!result.committed);
+            assert_eq!(result.transition_epoch, 0);
+            assert!(result.recovery_error.unwrap().contains("overlaps"));
             std::fs::remove_dir_all(root).unwrap();
         });
     }

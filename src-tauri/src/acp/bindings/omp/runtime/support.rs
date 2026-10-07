@@ -14,9 +14,7 @@ use crate::acp::bindings::omp::{
     AdapterEvent, ModelSummary, Operation, PromptTerminal, TranslationError,
 };
 
-#[path = "support/delivery.rs"]
 mod delivery;
-#[path = "support/identity.rs"]
 mod identity;
 
 pub(super) struct MapperBridge<'a>(pub(super) &'a dyn ResourceMapper);
@@ -85,7 +83,8 @@ impl OmpRuntime {
         request_digest: [u8; 32],
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let mut builder = AdapterBatchBuilder::new();
-        for event in events {
+        let deferred = std::mem::take(&mut self.deferred);
+        for event in deferred.into_iter().chain(events) {
             let (normalized, egress) = match self.translate_event(event, request_digest) {
                 Ok(value) => value,
                 Err(error) => {

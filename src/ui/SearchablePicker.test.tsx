@@ -86,6 +86,38 @@ describe("SearchablePicker", () => {
     expect(onSelect).toHaveBeenCalledWith("two");
   });
 
+  it("uses a concise trigger label without losing the full menu label", () => {
+    render(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={[
+          {
+            id: "claude",
+            label: "Claude Code — 2.1.270 — available",
+            triggerLabel: "Claude Code",
+          },
+        ]}
+        onSelect={vi.fn()}
+        selectedId="claude"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Harness" })).toHaveTextContent(
+      "Claude Code",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Harness" })
+        .querySelector(".searchable-picker__chevron"),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    expect(
+      screen.getByRole("option", {
+        name: "Claude Code — 2.1.270 — available",
+      }),
+    ).toBeVisible();
+  });
+
   it("moves every named navigation key across enabled rows, wraps, pages, and retains current value while filtered", async () => {
     vi.useFakeTimers();
     try {

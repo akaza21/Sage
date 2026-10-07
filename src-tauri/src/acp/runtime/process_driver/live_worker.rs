@@ -8,7 +8,8 @@ use crate::acp::{
     lifecycle::TurnState,
     runtime::{
         CoordinatorActivationJournal, HostCancelIntent, HostError, JournalHandle,
-        ProjectIntentAuthority, ProjectionPublisher, SendCoordinator, SqliteAdapterBatchJournal,
+        ProjectIntentAuthority, ProjectionPublisher, SendCoordinator, SessionCoordinator,
+        SqliteAdapterBatchJournal,
     },
     scheduler::RuntimeOwner,
 };
@@ -30,6 +31,7 @@ mod reusable;
 mod session_config;
 mod turn;
 mod turn_park;
+mod turn_steer;
 mod write_recovery;
 
 pub(crate) struct FirstTurnWorkerContext<Auth> {
@@ -39,6 +41,7 @@ pub(crate) struct FirstTurnWorkerContext<Auth> {
     pub(crate) publisher: Arc<dyn ProjectionPublisher>,
     pub(crate) clock: Arc<dyn DriverClock>,
     pub(crate) mailbox: Arc<DriverMailbox>,
+    pub(crate) session_recovery: Option<SessionCoordinator>,
     pub(crate) zero_sequence: AtomicU64,
 }
 
@@ -68,6 +71,7 @@ where
     Prepared {
         turn: PreparedActivationTurn<A, R, T, C>,
         prompt: crate::acp::intent::Prompt,
+        access_mode: crate::settings_store::SessionAccessMode,
     },
     Active(PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>),
     Reusable(
@@ -188,11 +192,22 @@ where
         context: &FirstTurnWorkerContext<Auth>,
         envelope: WorkerEnvelope,
     ) -> Self {
+        if context.mailbox.reader_terminal_queued()
+            && matches!(
+                &envelope.command,
+                WorkerCommand::PreparePrompt(_) | WorkerCommand::DispatchPrompt { .. }
+            )
+        {
+            envelope.reject(HostError::RecoveryRequired);
+            return self;
+        }
         match self {
             Self::Idle(parts) => turn::handle_idle(parts, context, envelope).await,
-            Self::Prepared { turn, prompt } => {
-                turn::handle_prepared(turn, prompt, context, envelope).await
-            }
+            Self::Prepared {
+                turn,
+                prompt,
+                access_mode,
+            } => turn::handle_prepared(turn, prompt, access_mode, context, envelope).await,
             Self::Active(active) => turn::handle_active(active, context, envelope).await,
             Self::Reusable(parts) => turn::handle_reusable(parts, context, envelope).await,
             Self::ReusableDraining(closing) => {
@@ -326,9 +341,23 @@ where
     pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken) {
         match self {
             Self::Reusable(parts) => parts.park_after_zero(token).await,
+            Self::ReusableDraining(closing) => closing.park_after_zero(token).await,
+            Self::ReusableZero(zero) => zero.park_after_zero(token).await,
             Self::Active(active) if active.has_durable_terminal() => {
                 active.park_after_zero(token).await;
             }
+            Self::Recovery(recovery) => match recovery.as_mut() {
+                FirstTurnWorkerRecovery::ReusableBegin(failure) => {
+                    failure.state.park_after_zero(token).await;
+                }
+                FirstTurnWorkerRecovery::ReusableConverge(failure) => {
+                    failure.state.park_after_zero(token).await;
+                }
+                FirstTurnWorkerRecovery::ReusableFinalize(failure) => {
+                    failure.state.park_after_zero(token).await;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -338,36 +367,36 @@ where
     }
 
     pub(crate) fn has_durable_cancelled_cursor(&self) -> bool {
-        match self {
-            Self::Reusable(parts) => matches!(
-                parts.terminal_cursor().state(),
-                TurnState::Cancelled | TurnState::Interrupted
-            ),
-            Self::Active(active) => {
-                active
-                    .turn
-                    .driver
-                    .latest_durable_turn_cursor()
-                    .is_some_and(|cursor| {
-                        matches!(
-                            cursor.state(),
-                            TurnState::Cancelled | TurnState::Interrupted
-                        )
-                    })
-            }
-            _ => false,
-        }
+        matches!(
+            self.durable_cursor(),
+            Some(TurnState::Cancelled | TurnState::Interrupted)
+        )
     }
 
     fn durable_cursor_is(&self, expected: TurnState) -> bool {
+        self.durable_cursor() == Some(expected)
+    }
+
+    fn durable_cursor(&self) -> Option<TurnState> {
         match self {
-            Self::Reusable(parts) => parts.terminal_cursor().state() == expected,
-            Self::Active(active) => active
-                .turn
-                .driver
-                .latest_durable_turn_cursor()
-                .is_some_and(|cursor| cursor.state() == expected),
-            _ => false,
+            Self::Reusable(parts) => Some(parts.terminal_cursor().state()),
+            Self::ReusableDraining(closing) => Some(closing.terminal_cursor().state()),
+            Self::ReusableZero(zero) => Some(zero.terminal_cursor().state()),
+            Self::Active(active) => Some(active.durable_turn_state()),
+            Self::Recovery(recovery) => match recovery.as_ref() {
+                FirstTurnWorkerRecovery::Terminal { cursor, .. } => Some(cursor.state()),
+                FirstTurnWorkerRecovery::ReusableBegin(failure) => {
+                    Some(failure.state.terminal_cursor().state())
+                }
+                FirstTurnWorkerRecovery::ReusableConverge(failure) => {
+                    Some(failure.state.terminal_cursor().state())
+                }
+                FirstTurnWorkerRecovery::ReusableFinalize(failure) => {
+                    Some(failure.state.terminal_cursor().state())
+                }
+                _ => None,
+            },
+            _ => None,
         }
     }
 }

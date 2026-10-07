@@ -1,6 +1,6 @@
 use crate::acp::{
     contract::ProjectionRevision,
-    lifecycle::{DeliveryState, TurnState},
+    lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
     recovery::RecoveryReport,
     runtime::permissions::PermissionIntent,
 };
@@ -38,6 +38,7 @@ pub(crate) enum StoreMutation {
     ObserveSend {
         command: TurnMutationCommand,
         observation: SendObservation,
+        terminal_reason: Option<TurnTerminalOutcome>,
     },
     StartSession(StartSessionCommand),
     ActivateSession(ActivateSessionCommand),

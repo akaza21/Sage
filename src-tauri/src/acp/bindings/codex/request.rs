@@ -9,9 +9,8 @@ use crate::acp::{
 
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
-use super::policy::{
-    APPROVAL_POLICY_NEVER, SANDBOX_NETWORK_ACCESS, SANDBOX_POLICY_READ_ONLY, SANDBOX_READ_ONLY,
-};
+use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
+use super::policy_0146::{TurnPolicySurface, turn_policy, validate_turn_policy};
 
 // The shared writer owns the single LF delimiter. Keeping the payload one
 // byte below the wire ceiling makes the eventual payload + LF write fit the
@@ -58,6 +57,7 @@ pub(crate) enum RequestKind {
     Read,
     Models,
     TurnStart,
+    Steer,
     Interrupt,
     Unsubscribe,
 }
@@ -70,6 +70,13 @@ pub(crate) struct OutgoingRequest {
 }
 
 impl OutgoingRequest {
+    pub(crate) fn with_config(self, config: Value) -> Result<Self, RequestError> {
+        let mut value: Value =
+            serde_json::from_slice(&self.bytes).map_err(|_| RequestError::Encoding)?;
+        value["params"]["config"] = config;
+        Self::build(self.id, self.kind, value["params"].clone())
+    }
+
     pub(crate) fn build(id: u64, kind: RequestKind, params: Value) -> Result<Self, RequestError> {
         if id > i64::MAX as u64 {
             return Err(RequestError::InvalidId);
@@ -81,6 +88,7 @@ impl OutgoingRequest {
             RequestKind::Read => "thread/read",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
+            RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
             RequestKind::Unsubscribe => "thread/unsubscribe",
         };
@@ -179,6 +187,26 @@ impl OutgoingRequest {
         prompt: &Prompt,
         client_message_id: &RequiredText<512>,
     ) -> Result<Self, RequestError> {
+        Self::turn_start_with_access_mode(
+            id,
+            thread_id,
+            prompt,
+            client_message_id,
+            crate::settings_store::SessionAccessMode::ReadOnly,
+            TurnPolicySurface::Pinned0145,
+        )
+    }
+
+    pub(crate) fn turn_start_with_access_mode(
+        id: u64,
+        thread_id: &RequiredText<512>,
+        prompt: &Prompt,
+        client_message_id: &RequiredText<512>,
+        access_mode: crate::settings_store::SessionAccessMode,
+        surface: TurnPolicySurface,
+    ) -> Result<Self, RequestError> {
+        let policy = turn_policy(surface, access_mode)?;
+        validate_turn_policy(surface, access_mode, policy)?;
         Self::build(
             id,
             RequestKind::TurnStart,
@@ -186,10 +214,10 @@ impl OutgoingRequest {
                 "threadId": thread_id.as_str(),
                 "clientUserMessageId": client_message_id.as_str(),
                 "input": [{"type": "text", "text": prompt.as_str()}],
-                "approvalPolicy": APPROVAL_POLICY_NEVER,
+                "approvalPolicy": policy.approval,
                 "sandboxPolicy": {
-                    "type": SANDBOX_POLICY_READ_ONLY,
-                    "networkAccess": SANDBOX_NETWORK_ACCESS
+                    "type": policy.sandbox,
+                    "networkAccess": policy.network_access
                 }
             }),
         )
@@ -204,6 +232,25 @@ impl OutgoingRequest {
             id,
             RequestKind::Interrupt,
             json!({"threadId": thread_id.as_str(), "turnId": turn_id.as_str()}),
+        )
+    }
+
+    pub(crate) fn steer(
+        id: u64,
+        thread_id: &RequiredText<512>,
+        turn_id: &RequiredText<512>,
+        prompt: &Prompt,
+        client_message_id: &RequiredText<512>,
+    ) -> Result<Self, RequestError> {
+        Self::build(
+            id,
+            RequestKind::Steer,
+            json!({
+                "threadId": thread_id.as_str(),
+                "expectedTurnId": turn_id.as_str(),
+                "clientUserMessageId": client_message_id.as_str(),
+                "input": [{"type": "text", "text": prompt.as_str()}]
+            }),
         )
     }
 
@@ -246,6 +293,8 @@ pub(crate) fn initialized_notification() -> Result<Vec<u8>, RequestError> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum RequestError {
+    #[error("the selected access mode is not admitted by this Codex binding")]
+    UnsupportedAccessMode,
     #[error("request id is outside the admitted integer range")]
     InvalidId,
     #[error("native project path is not absolute and normalized")]

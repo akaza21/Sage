@@ -15,6 +15,20 @@ import { TitleBar } from "./TitleBar";
 
 const initialState = useWorkbenchStore.getState();
 
+it("draws the Sage leaf mark as an inline shape that inherits the neutral text colour", () => {
+  const { container } = render(
+    <TitleBar mode="agent" onModeChange={vi.fn()} />,
+  );
+  const mark = container.querySelector("svg.title-bar__mark");
+  expect(mark).not.toBeNull();
+  expect(mark!.getAttribute("fill")).toBe("currentColor");
+  expect(mark!.getAttribute("aria-hidden")).toBe("true");
+  expect(mark!.querySelectorAll("path").length).toBe(2);
+  expect(mark!.outerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb|green/);
+  expect(screen.getByText("Sage")).toBeTruthy();
+  expect(container.querySelector(".title-bar__logo")).toBeNull();
+});
+
 afterEach(() => {
   cleanup();
   clearChatSearchFolderRequest();
@@ -61,20 +75,36 @@ describe("TitleBar center chrome", () => {
   it("keeps the mode chooser and Agent chat search named and keyboard reachable", () => {
     seedChats();
     const onModeChange = vi.fn();
-    render(<TitleBar mode="agent" onModeChange={onModeChange} />);
+    render(<TitleBar mode="editor" onModeChange={onModeChange} />);
 
     const modes = screen.getByRole("radiogroup", { name: "Window mode" });
     const agent = within(modes).getByRole("radio", { name: "Agent" });
     const editor = within(modes).getByRole("radio", { name: "Editor" });
-    const chatSearch = screen.getByRole("button", { name: "Search chats" });
-    expect(agent).toBeChecked();
-    expect(editor).not.toBeChecked();
-    expect(chatSearch).toBeEnabled();
+    expect(editor).toBeChecked();
+    expect(agent).not.toBeChecked();
 
-    agent.focus();
-    fireEvent.keyDown(agent, { key: "ArrowRight" });
-    fireEvent.click(editor);
-    expect(onModeChange).toHaveBeenCalledWith("editor");
+    editor.focus();
+    fireEvent.keyDown(editor, { key: "ArrowRight" });
+    fireEvent.click(agent);
+    expect(onModeChange).toHaveBeenCalledWith("agent");
+  });
+
+  it("anchors the mode chooser in the title bar for every mode and layout", () => {
+    seedChats();
+    const { rerender } = render(
+      <TitleBar mode="agent" onModeChange={vi.fn()} />,
+    );
+    const start = () => document.querySelector(".title-bar__start");
+
+    for (const mode of ["agent", "editor", "agent"] as const) {
+      rerender(<TitleBar mode={mode} onModeChange={vi.fn()} />);
+      const modes = screen.getByRole("radiogroup", { name: "Window mode" });
+      expect(start()).toContainElement(modes);
+      expect(screen.getByText("Sage")).toBeTruthy();
+    }
+
+    rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();
   });
 
   it("shows the focused session title in Agent and Search files in Editor", () => {
@@ -100,6 +130,26 @@ describe("TitleBar center chrome", () => {
         name: "Search chats",
       }),
     ).toBeNull();
+  });
+
+  it("opens Chat search from the search chord and shows it on the control", () => {
+    seedChats();
+    render(
+      <>
+        <TitleBar mode="agent" onModeChange={vi.fn()} />
+        <LeftSidebar />
+      </>,
+    );
+    const titleSearch = within(screen.getByRole("banner")).getByRole("button", {
+      name: "Search chats",
+    });
+    expect(titleSearch).toHaveTextContent("Ctrl+K");
+    expect(titleSearch).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+
+    expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
   });
 
   it("opens the durable Settings tab from Editor chrome", async () => {

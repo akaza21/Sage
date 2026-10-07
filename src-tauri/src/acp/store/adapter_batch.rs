@@ -1,4 +1,4 @@
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::Transaction;
 
 use crate::acp::{
     contract::{
@@ -6,18 +6,22 @@ use crate::acp::{
         SageChatId, SageProjectId, SageTurnId,
     },
     intent::{ActivityProvenanceV1, ExternalId},
-    lifecycle::{ActivityLifecycle, DeliveryState, TurnState},
-    limits::LIMITS,
+    lifecycle::{ActivityLifecycle, DeliveryState, TurnState, TurnTerminalReason},
     projection::ActivityRole,
     runtime::permissions::PermissionIntent,
 };
 
 use super::snapshots::FilePairCommand;
-use super::{ItemIngressCommand, MutationDisposition, StoreError};
+use super::{ItemIngressCommand, MutationDisposition, RequestStateCommand, StoreError};
 
 mod activity_item;
 mod file_pairs;
+mod scope;
+mod terminal_reason;
 mod turns;
+mod usage;
+
+pub(crate) use terminal_reason::TurnTerminalReasonCommand;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AdapterStoreOwner {
@@ -46,12 +50,22 @@ pub(crate) struct AdapterActivityItemCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TurnUsageSnapshotCommand {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub context_window: Option<u32>,
+    pub now_millis: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AdapterInboundEvent {
     Turn {
         state: TurnState,
         now_millis: i64,
     },
     Item(ItemIngressCommand),
+    UsageSnapshot(TurnUsageSnapshotCommand),
+    TerminalReason(TurnTerminalReasonCommand),
     /// Bounded old/new bytes for the `FileChangeDiff` item with the same
     /// owner and external key. Applied in the same transaction as its item.
     FilePair(FilePairCommand),
@@ -64,6 +78,7 @@ pub(crate) enum AdapterInboundEvent {
         intent: PermissionIntent,
         now_millis: i64,
     },
+    PermissionResolved(RequestStateCommand),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,7 +182,7 @@ impl AdapterInboundBatchCommand {
             retained_bytes,
             events,
         };
-        preflight(&command)?;
+        scope::preflight(&command)?;
         Ok(command)
     }
 
@@ -187,12 +202,26 @@ pub(super) fn apply_adapter_inbound_batch_ref(
     connection: &mut rusqlite::Connection,
     command: &AdapterInboundBatchCommand,
 ) -> Result<AdapterBatchMutation, StoreError> {
-    preflight(command)?;
+    scope::preflight(command)?;
     let transaction = connection.transaction()?;
-    verify_owner(&transaction, &command.owner)?;
-    let initial = current_projection(&transaction, &command.owner)?;
-    let applied = file_pairs::apply_events(&transaction, &command.owner, &command.events)?;
+    scope::verify_owner(&transaction, &command.owner)?;
+    let initial = scope::current_projection(&transaction, &command.owner)?;
+    let user_cancelled = contains_user_cancel_terminal(&command.events)
+        && scope::has_durable_user_cancel_intent(&transaction, &command.owner)?;
+    let mut applied = file_pairs::apply_events(&transaction, &command.owner, &command.events)?;
     let turn_cursor = turns::cursor(&transaction, &command.owner)?;
+    if user_cancelled && user_cancel_terminal(turn_cursor.state()) {
+        applied |= terminal_reason::apply(
+            &transaction,
+            &command.owner,
+            &TurnTerminalReasonCommand {
+                reason: TurnTerminalReason::CancelledByUser,
+                message: None,
+                remediation: None,
+                now_millis: now_millis(&command.events),
+            },
+        )?;
+    }
     let projection = turn_cursor.projection_revision();
     transaction
         .commit()
@@ -221,7 +250,7 @@ fn apply_event(
             )
         }
         AdapterInboundEvent::Item(command) => {
-            verify_item_scope(owner, command)?;
+            scope::verify_item_scope(owner, command)?;
             if matches!(
                 command.payload,
                 crate::acp::intent::NormalizedPayload::FileChangeDiff { .. }
@@ -235,154 +264,56 @@ fn apply_event(
                     == MutationDisposition::Applied,
             )
         }
+        AdapterInboundEvent::UsageSnapshot(command) => usage::apply(transaction, owner, command),
+        AdapterInboundEvent::TerminalReason(command) => {
+            terminal_reason::apply(transaction, owner, command)
+        }
         AdapterInboundEvent::FilePair(_) => Err(StoreError::BatchShape),
         event @ AdapterInboundEvent::ActivityItem(_) => {
             activity_item::apply(transaction, owner, event)
         }
         AdapterInboundEvent::PermissionRequest { intent, now_millis } => {
-            verify_permission_scope(owner, intent)?;
+            scope::verify_permission_scope(owner, intent)?;
             let received =
                 super::requests::receive_permission_request_in(transaction, intent, *now_millis)?;
             Ok(received.disposition == MutationDisposition::Applied)
         }
         AdapterInboundEvent::PermissionDeny { intent, now_millis } => {
-            verify_permission_scope(owner, intent)?;
+            scope::verify_permission_scope(owner, intent)?;
             let received =
                 super::requests::receive_permission_request_in(transaction, intent, *now_millis)?;
             let declined = super::requests::commit_decline_in(transaction, intent, *now_millis)?;
             Ok(received.disposition == MutationDisposition::Applied
                 || declined == crate::acp::runtime::permissions::DeclineCommit::Applied)
         }
+        AdapterInboundEvent::PermissionResolved(command) => {
+            scope::verify_request_scope(owner, command)?;
+            let resolved =
+                super::request_terminal::apply_harness_resolution_in(transaction, command)?;
+            Ok(resolved.disposition == MutationDisposition::Applied)
+        }
     }
 }
 
-fn preflight(command: &AdapterInboundBatchCommand) -> Result<(), StoreError> {
-    if command.events.is_empty()
-        || command.events.len() > LIMITS.queues.journal_facts_per_transaction as usize
-        || command.actual_bytes == 0
-        || command.actual_bytes > LIMITS.queues.journal_bytes_per_transaction as usize
-        || command.retained_bytes == 0
-        || command.retained_bytes > LIMITS.queues.journal_bytes_per_transaction as usize
-        || command.owner.runtime_epoch == RuntimeEpoch::ZERO
-        || !valid_digest(&command.owner.binding_digest)
-    {
-        return Err(StoreError::BatchShape);
-    }
-    Ok(())
+fn user_cancel_terminal(state: TurnState) -> bool {
+    matches!(state, TurnState::Cancelled | TurnState::Interrupted)
 }
 
-fn verify_owner(
-    transaction: &Transaction<'_>,
-    owner: &AdapterStoreOwner,
-) -> Result<(), StoreError> {
-    let valid: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM turns t
-         JOIN agent_sessions s ON s.id=t.session_id
-         JOIN session_runtime_epochs e ON e.session_id=t.session_id
-           AND e.runtime_epoch=t.runtime_epoch
-         WHERE t.project_id=?1 AND t.chat_id=?2 AND t.session_id=?3 AND t.id=?4
-           AND t.runtime_epoch=?5 AND s.binding_digest=?6 AND s.external_session_id=?7
-           AND s.state IN ('ready','active') AND s.residency='hot' AND e.state='running')",
-        params![
-            owner.project_id.as_str(),
-            owner.chat_id.as_str(),
-            owner.session_id.as_str(),
-            owner.turn_id.as_str(),
-            owner.runtime_epoch.get() as i64,
-            owner.binding_digest,
-            owner.external_session_id.as_str()
-        ],
-        |row| row.get(0),
-    )?;
-    if valid {
-        Ok(())
-    } else {
-        Err(StoreError::Conflict {
-            resource: "adapterBatchOwner",
+fn contains_user_cancel_terminal(events: &[AdapterInboundEvent]) -> bool {
+    events.iter().any(|event| {
+        matches!(event, AdapterInboundEvent::Turn { state, .. } if user_cancel_terminal(*state))
+    })
+}
+
+fn now_millis(events: &[AdapterInboundEvent]) -> i64 {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            AdapterInboundEvent::Turn { state, now_millis } if user_cancel_terminal(*state) => {
+                Some(*now_millis)
+            }
+            _ => None,
         })
-    }
-}
-
-pub(super) fn verify_item_scope(
-    owner: &AdapterStoreOwner,
-    command: &ItemIngressCommand,
-) -> Result<(), StoreError> {
-    if command.project_id == owner.project_id
-        && command.chat_id == owner.chat_id
-        && command.session_id == owner.session_id
-        && command.turn_id == owner.turn_id
-        && command.runtime_epoch == owner.runtime_epoch
-    {
-        Ok(())
-    } else {
-        Err(StoreError::Conflict {
-            resource: "adapterItemOwner",
-        })
-    }
-}
-
-fn verify_file_pair_scope(
-    owner: &AdapterStoreOwner,
-    command: &FilePairCommand,
-) -> Result<(), StoreError> {
-    if command.project_id == owner.project_id
-        && command.chat_id == owner.chat_id
-        && command.session_id == owner.session_id
-        && command.turn_id == owner.turn_id
-        && command.runtime_epoch == owner.runtime_epoch
-    {
-        Ok(())
-    } else {
-        Err(StoreError::Conflict {
-            resource: "adapterItemOwner",
-        })
-    }
-}
-
-fn verify_permission_scope(
-    owner: &AdapterStoreOwner,
-    intent: &PermissionIntent,
-) -> Result<(), StoreError> {
-    if intent.project_id == owner.project_id
-        && intent.chat_id == owner.chat_id
-        && intent.session_id == owner.session_id
-        && intent.turn_id == owner.turn_id
-        && intent.runtime_epoch == owner.runtime_epoch
-        && intent.binding_digest == owner.binding_digest
-    {
-        Ok(())
-    } else {
-        Err(StoreError::Conflict {
-            resource: "adapterPermissionOwner",
-        })
-    }
-}
-
-fn current_projection(
-    transaction: &Transaction<'_>,
-    owner: &AdapterStoreOwner,
-) -> Result<ProjectionRevision, StoreError> {
-    let value: i64 = transaction
-        .query_row(
-            "SELECT projection_revision FROM agent_sessions
-             WHERE project_id=?1 AND chat_id=?2 AND id=?3",
-            params![
-                owner.project_id.as_str(),
-                owner.chat_id.as_str(),
-                owner.session_id.as_str()
-            ],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or(StoreError::Conflict {
-            resource: "adapterBatchOwner",
-        })?;
-    super::facts::projection_from_i64(value)
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        .max()
+        .unwrap_or_default()
 }

@@ -1,6 +1,8 @@
 use crate::acp::{
     contract::SafeText,
-    intent::{IMAGE_BASE64_MAX, IMAGE_DECODED_BYTES_MAX, ImageMediaType, NormalizedPayload},
+    intent::{
+        IMAGE_BASE64_MAX, IMAGE_DECODED_BYTES_MAX, ImageMediaType, ImageSource, NormalizedPayload,
+    },
     limits::LIMITS,
 };
 
@@ -39,6 +41,7 @@ pub(crate) fn admit_image_parts(
     let payload = NormalizedPayload::Image {
         media_type,
         data: SafeText::new("imageData", data).map_err(|_| ImageAdmitError::Oversize)?,
+        source: ImageSource::Agent,
     };
     if serialized_item_bytes(&payload) > LIMITS.wire.normalized_item_bytes as usize {
         return Err(ImageAdmitError::Oversize);
@@ -207,7 +210,9 @@ mod tests {
     #[test]
     fn admits_png_data_url_without_retaining_a_remote_url() {
         let url = format!("data:image/png;base64,{PNG_1X1}");
-        let NormalizedPayload::Image { media_type, data } = admit_image_data_url(&url).unwrap()
+        let NormalizedPayload::Image {
+            media_type, data, ..
+        } = admit_image_data_url(&url).unwrap()
         else {
             panic!("expected image payload");
         };

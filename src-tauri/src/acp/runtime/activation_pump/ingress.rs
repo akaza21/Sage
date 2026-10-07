@@ -1,4 +1,32 @@
 use super::{capabilities, *};
+use crate::acp::transport::Frame;
+
+pub(crate) fn is_available_commands_update(frame: &Frame, expected_session_id: &str) -> bool {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(frame.as_bytes()) else {
+        return false;
+    };
+    let Some(params) = value.get("params") else {
+        return false;
+    };
+    value.get("jsonrpc").and_then(serde_json::Value::as_str) == Some("2.0")
+        && value.get("method").and_then(serde_json::Value::as_str) == Some("session/update")
+        && value.get("id").is_none()
+        && value.get("result").is_none()
+        && value.get("error").is_none()
+        && params.get("sessionId").and_then(serde_json::Value::as_str) == Some(expected_session_id)
+        && params
+            .get("update")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|update| {
+                update
+                    .get("sessionUpdate")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("available_commands_update")
+                    && update
+                        .get("availableCommands")
+                        .is_some_and(serde_json::Value::is_array)
+            })
+}
 
 impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<A, J, R> {
     pub(crate) fn flush_one<T: ActivationTransport>(
@@ -101,6 +129,9 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             self.fail_closed();
             return Err(ActivationPumpError::Frame);
         }
+        if self.is_ready_handoff_available_commands_update(&frame) {
+            return Ok(true);
+        }
         let batch = self
             .adapter
             .ingest(&frame, &self.resources)
@@ -121,6 +152,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 Err(error)
             }
         }
+    }
+
+    fn is_ready_handoff_available_commands_update(&self, frame: &Frame) -> bool {
+        self.phase == Phase::Ready
+            && self.ready.as_ref().is_some_and(|ready| {
+                super::is_available_commands_update(frame, ready.external_session_id.as_str())
+            })
     }
 
     async fn accept_batch(
@@ -169,16 +207,20 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                     }
                     ready = Some(self.validate_session_ready(id, loaded)?);
                 }
-                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate => {}
+                AdapterEvent::IgnoredLate
+                | AdapterEvent::IgnoredDuplicate
+                | AdapterEvent::Absorbed => {}
                 AdapterEvent::Error(_)
                 | AdapterEvent::Unsupported(_)
                 | AdapterEvent::Acknowledged
+                | AdapterEvent::SteerResponse { .. }
                 | AdapterEvent::Turn { .. }
                 | AdapterEvent::Item { .. }
                 | AdapterEvent::FilePair { .. }
                 | AdapterEvent::ActivityItem(_)
                 | AdapterEvent::Usage { .. }
-                | AdapterEvent::PermissionRequest { .. } => return self.protocol_error(),
+                | AdapterEvent::PermissionRequest { .. }
+                | AdapterEvent::PermissionResolved { .. } => return self.protocol_error(),
             }
         }
         for value in egress {

@@ -53,7 +53,7 @@
 
 .new-file-dialog__field input {
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 8px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -72,7 +72,7 @@
 }
 
 .new-file-dialog .new-file-dialog__error {
-  min-height: 18px;
+  min-height: 16px;
   color: var(--color-danger);
 }
 
@@ -88,7 +88,7 @@
   right: 0;
   width: max-content;
   max-width: min(360px, calc(100vw - 32px));
-  padding: 8px 10px;
+  padding: 8px 8px;
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-sm);
   color: var(--color-danger);
@@ -105,12 +105,12 @@
 
 .handoff-dialog__form {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .handoff-dialog__field {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
@@ -140,6 +140,21 @@
 .chat-search-dialog {
   width: min(620px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 32px));
+  padding: 20px;
+  border: 1px solid var(--search-dialog-border);
+  border-radius: var(--radius-lg);
+  color: var(--search-dialog-text-primary);
+  background: var(--search-dialog-fill);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--search-dialog-highlight), var(--elevation-floating);
+}
+
+.chat-search-dialog[open] {
+  animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
+}
+
+.chat-search-dialog::backdrop {
+  background: var(--search-dialog-scrim);
 }
 
 .chat-search-dialog__form {
@@ -152,21 +167,26 @@
   margin: 0;
 }
 
+.chat-search-dialog__form > p {
+  color: var(--search-dialog-text);
+}
+
 .chat-search-dialog__query {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  color: var(--search-dialog-text);
 }
 
 .chat-search-dialog__query input,
 .chat-search-dialog__query .searchable-picker__trigger {
   width: 100%;
-  border: 1px solid var(--color-border-strong);
+  height: var(--control-height-emphasis);
+  border: 1px solid var(--search-dialog-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  padding: 8px 10px;
+  background: var(--search-dialog-control-fill);
+  color: var(--search-dialog-text-primary);
+  padding: 8px 8px;
 }
 
 .chat-search-dialog__query input:focus,
@@ -180,6 +200,34 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.chat-search-dialog__actions .button {
+  height: var(--control-height-emphasis);
+  min-height: var(--control-height-emphasis);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--search-dialog-border);
+  border-radius: var(--radius-sm);
+  color: var(--search-dialog-text-primary);
+  background: var(--search-dialog-control-fill);
+  box-shadow: var(--search-dialog-highlight);
+}
+
+.chat-search-dialog__actions .button:hover:not(:disabled) {
+  background: var(--search-dialog-control-hover);
+}
+
+.chat-search-dialog__actions .button--primary {
+  border-color: var(--color-accent);
+  background: var(--search-dialog-button-fill);
+}
+
+.chat-search-dialog__actions .button--primary:hover:not(:disabled) {
+  background: var(--search-dialog-button-hover);
+}
+
+.chat-search-dialog .composer__error {
+  background: var(--search-dialog-error-fill);
 }
 
 .chat-search-dialog__results {
@@ -197,12 +245,12 @@
 
 .chat-search-result {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   width: 100%;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--search-dialog-text-primary);
   padding: 8px;
   text-align: left;
 }
@@ -221,9 +269,19 @@
 }
 
 .chat-search-result__heading > span,
-.chat-search-result > span:last-child,
+.chat-search-result > span:last-child {
+  color: var(--search-dialog-text);
+  font-size: var(--font-size-sm);
+}
+
 .chat-search-dialog__more,
 .chat-search-dialog__empty {
-  color: var(--color-text-muted);
+  color: var(--search-dialog-text);
   font-size: var(--font-size-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-search-dialog[open] {
+    animation: none;
+  }
 }

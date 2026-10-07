@@ -118,6 +118,43 @@ const rows = document.cases.map((fixtureCase) => {
   return `    FrozenCase { id: ${JSON.stringify(fixtureCase.id)}, steps_json: r#"${steps}"#, owner: FrozenOwner::${owner}, phase: FrozenPhase::${phase}, #[cfg(test)] oracle_json: r#"${oracle}"# },`;
 });
 
+// Live Codex journeys extend the child runner without changing the frozen C0 contract.
+const journeyCases = [
+  {
+    id: "codex-steer-lost-result",
+    steps: [
+      { op: "awaitClient", kind: "codexInitialize" },
+      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      { op: "awaitClient", kind: "codexSteer" },
+      { op: "exit", code: 17 },
+    ],
+  },
+];
+const journeyIds = new Set();
+for (const fixtureCase of journeyCases) {
+  if (
+    typeof fixtureCase.id !== "string" ||
+    fixtureCase.id.length === 0 ||
+    identifiers.has(fixtureCase.id) ||
+    journeyIds.has(fixtureCase.id) ||
+    fixtureCase.steps.length > limits.fixture.stepsPerCase ||
+    fixtureCase.steps.some((step) => !childOperations.has(step.op)) ||
+    JSON.stringify(fixtureCase.steps).includes('"#')
+  ) {
+    throw new Error(`invalid live journey fixture ${fixtureCase.id}`);
+  }
+  journeyIds.add(fixtureCase.id);
+}
+const journeyRows = journeyCases.map(
+  ({ id, steps }) =>
+    `    JourneyCase { id: ${JSON.stringify(id)}, steps_json: r#"${JSON.stringify(steps)}"# },`,
+);
+
 function limitAt(path) {
   const value = path
     .split(".")
@@ -336,6 +373,16 @@ pub(super) struct FrozenCase {
 #[rustfmt::skip]
 pub(super) const FROZEN_CASES: &[FrozenCase] = &[
 ${rows.join("\n")}
+];
+
+pub(super) struct JourneyCase {
+    pub(super) id: &'static str,
+    pub(super) steps_json: &'static str,
+}
+
+#[rustfmt::skip]
+pub(super) const JOURNEY_CASES: &[JourneyCase] = &[
+${journeyRows.join("\n")}
 ];
 `;
 

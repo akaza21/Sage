@@ -2,6 +2,7 @@ import type {
   BootstrapSnapshot,
   ProjectLayoutRequest,
 } from "../domain/workbench";
+import { browserLiveTabs } from "../ports/nativeBrowserPort";
 import type { WorkbenchState } from "./store";
 
 export function projectErrorMessage(error: unknown): string {
@@ -18,6 +19,40 @@ export function currentProjectLayout(
     activeTabId: state.activeTabId,
     selectedRootId: state.selectedRootId,
     selectedResource: state.selectedResource,
+  };
+}
+
+export async function reconcileLiveBrowserTabs(
+  snapshot: BootstrapSnapshot,
+): Promise<BootstrapSnapshot> {
+  if (
+    !snapshot.tabs.some(
+      (tab) => tab.kind === "browser" && tab.status === "closed",
+    )
+  ) {
+    return snapshot;
+  }
+  let liveIds: string[];
+  try {
+    liveIds = await browserLiveTabs();
+  } catch {
+    return snapshot;
+  }
+  const live = new Set(liveIds);
+  return {
+    ...snapshot,
+    tabs: snapshot.tabs.map((tab) => {
+      if (
+        tab.kind !== "browser" ||
+        tab.status !== "closed" ||
+        !live.has(tab.id)
+      ) {
+        return tab;
+      }
+      const reopened = { ...tab };
+      delete reopened.status;
+      return reopened;
+    }),
   };
 }
 

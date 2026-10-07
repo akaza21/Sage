@@ -1,0 +1,120 @@
+{
+  "scenario": "tool-kinds",
+  "harness": "opencode",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "turn", "state": "running" },
+    {
+      "event": "item",
+      "externalItemId": "thought:3",
+      "kind": "thoughtSummary",
+      "lifecycle": "streaming",
+      "chunks": 13
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_de264bda031740609ec7532a",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "read",
+      "label": "read"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_de264bda031740609ec7532a",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "read",
+      "label": "read"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_640ba72c73f949db957819d8",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "execute",
+      "label": "bash"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_de264bda031740609ec7532a",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "read",
+      "label": "Sage-build\\harness-probe\\run2\\opencode\\notes.txt"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_640ba72c73f949db957819d8",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "execute",
+      "label": "node -e \"console.log(2+2)\"",
+      "chunks": 3
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_640ba72c73f949db957819d8",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "execute",
+      "label": "node -e \"console.log(2+2)\""
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_e656b18352cd4ee38f6c1227",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "edit",
+      "label": "write"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_e656b18352cd4ee38f6c1227",
+      "kind": "toolCall",
+      "lifecycle": "streaming",
+      "toolState": "inProgress",
+      "category": "edit",
+      "label": "Edited file"
+    },
+    {
+      "event": "item",
+      "externalItemId": "call_e656b18352cd4ee38f6c1227",
+      "kind": "toolCall",
+      "lifecycle": "completed",
+      "toolState": "completed",
+      "category": "edit",
+      "label": "Sage-build\\harness-probe\\run2\\opencode\\result.txt"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "PONG"
+    },
+    {
+      "event": "usage",
+      "inputTokens": 6671,
+      "outputTokens": 4,
+      "contextWindow": 200000
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "One turn exercising all three tool categories against a real opencode 1.18.21 over ACP: a read, a shell execute and an edit. Captured with scripts/capture-acp-trace.mjs, never hand-written.",
+    "opencode omits kind on the completing tool_call_update for all three tools. The category asserted on every completed event therefore proves the translator retains the category recorded when the tool started, rather than defaulting a kind-less completion to Other.",
+    "The tools interleave. The execute tool starts before the read completes, so the translator must track concurrent tool identities rather than assuming one open tool at a time.",
+    "Tool labels are rewritten on completion from the tool name to the target path. The asserted labels keep a real captured path and show the drive-qualified prefix removed at projection time, so this trace also covers redaction on a genuine absolute path.",
+    "opencode states the context window on usage_update and the input and output token split on the prompt result. Neither frame states both, so the turn-scoped usage snapshot joins the two stated facts and infers nothing; had the split never arrived, no usage would be recorded."
+  ]
+}

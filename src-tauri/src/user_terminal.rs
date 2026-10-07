@@ -1,0 +1,379 @@
+use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
+use rusqlite::OptionalExtension;
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+};
+
+#[cfg(windows)]
+mod windows;
+
+pub const MAX_PER_CHAT: usize = 4;
+pub const MAX_PER_PROJECT: usize = 16;
+pub const OUTPUT_BYTES: usize = 1_048_576;
+pub const OUTPUT_LINES: usize = 4_096;
+pub const INPUT_BYTES: usize = 4_096;
+pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TerminalSessionId(uuid::Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalRevision(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalHandle {
+    pub id: TerminalSessionId,
+    pub revision: TerminalRevision,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminalError {
+    Capacity,
+    InvalidScope,
+    InvalidDimensions,
+    InvalidInput,
+    UnknownSession,
+    Backend,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct TerminalScope {
+    pub project: SageProjectId,
+    pub generation: ProjectGeneration,
+    pub chat: SageChatId,
+}
+
+pub struct TerminalAuthority<'a>(&'a crate::state::AppState);
+
+trait TerminalProcess: Send {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), TerminalError>;
+    fn resize(&mut self, columns: u16, rows: u16) -> Result<(), TerminalError>;
+    fn terminate(&mut self) -> Result<(), TerminalError>;
+}
+
+trait TerminalFactory: Send + Sync {
+    fn spawn(
+        &self,
+        root: &crate::project_registry::ProjectRootAuthority,
+        columns: u16,
+        rows: u16,
+        output: TerminalOutputSink,
+    ) -> Result<Box<dyn TerminalProcess>, TerminalError>;
+}
+
+#[derive(Clone)]
+struct TerminalOutputSink(Arc<Mutex<OutputRing>>);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalOutputSnapshot {
+    pub bytes: Vec<u8>,
+    pub truncations: u64,
+}
+
+#[derive(Default)]
+struct OutputRing {
+    bytes: VecDeque<u8>,
+    lines: usize,
+    truncations: u64,
+}
+
+impl TerminalOutputSink {
+    fn append(&self, chunk: &[u8]) -> Result<(), TerminalError> {
+        if chunk.len() > OUTPUT_CHUNK_BYTES {
+            return Err(TerminalError::Backend);
+        }
+        let mut ring = self.0.lock().map_err(|_| TerminalError::Backend)?;
+        for &byte in chunk {
+            if byte == b'\n' {
+                ring.lines += 1;
+            }
+            ring.bytes.push_back(byte);
+            while ring.bytes.len() > OUTPUT_BYTES || ring.lines >= OUTPUT_LINES {
+                if let Some(removed) = ring.bytes.pop_front() {
+                    if removed == b'\n' {
+                        ring.lines -= 1;
+                    }
+                    ring.truncations = ring.truncations.saturating_add(1);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn snapshot(&self) -> Result<TerminalOutputSnapshot, TerminalError> {
+        let ring = self.0.lock().map_err(|_| TerminalError::Backend)?;
+        Ok(TerminalOutputSnapshot {
+            bytes: ring.bytes.iter().copied().collect(),
+            truncations: ring.truncations,
+        })
+    }
+}
+
+pub struct TerminalSessionPort {
+    factory: Box<dyn TerminalFactory>,
+    sessions: Mutex<HashMap<TerminalSessionId, Session>>,
+}
+
+impl std::fmt::Debug for TerminalSessionPort {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TerminalSessionPort")
+            .finish_non_exhaustive()
+    }
+}
+
+impl Drop for TerminalSessionPort {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
+#[cfg(not(windows))]
+struct UnsupportedFactory;
+
+#[cfg(not(windows))]
+impl TerminalFactory for UnsupportedFactory {
+    fn spawn(
+        &self,
+        _root: &crate::project_registry::ProjectRootAuthority,
+        _columns: u16,
+        _rows: u16,
+        _output: TerminalOutputSink,
+    ) -> Result<Box<dyn TerminalProcess>, TerminalError> {
+        Err(TerminalError::Backend)
+    }
+}
+
+struct Session {
+    scope: TerminalScope,
+    revision: TerminalRevision,
+    output: TerminalOutputSink,
+    process: Box<dyn TerminalProcess>,
+}
+
+impl TerminalSessionPort {
+    fn new(factory: Box<dyn TerminalFactory>) -> Self {
+        Self {
+            factory,
+            sessions: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub(crate) fn desktop() -> Self {
+        #[cfg(windows)]
+        {
+            Self::new(Box::new(windows::ConPtyFactory))
+        }
+        #[cfg(not(windows))]
+        {
+            Self::new(Box::new(UnsupportedFactory))
+        }
+    }
+
+    pub async fn create(
+        &self,
+        authority: &TerminalAuthority<'_>,
+        scope: &TerminalScope,
+        columns: u16,
+        rows: u16,
+    ) -> Result<TerminalHandle, TerminalError> {
+        let state = authority.0;
+        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
+            return Err(TerminalError::InvalidDimensions);
+        }
+        let context = state
+            .lock_active_project(&scope.project, scope.generation)
+            .await
+            .map_err(|_| TerminalError::InvalidScope)?;
+        let chat_exists: Option<i64> = state
+            .database
+            .connection()
+            .query_row(
+                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
+                [scope.project.as_str(), scope.chat.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| TerminalError::InvalidScope)?;
+        if chat_exists.is_none() {
+            return Err(TerminalError::InvalidScope);
+        }
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let project_count = sessions
+            .values()
+            .filter(|session| session.scope.project == scope.project)
+            .count();
+        let chat_count = sessions
+            .values()
+            .filter(|session| session.scope == *scope)
+            .count();
+        if project_count >= MAX_PER_PROJECT || chat_count >= MAX_PER_CHAT {
+            return Err(TerminalError::Capacity);
+        }
+        let root = state
+            .database
+            .selected_project_root_authority(&context)
+            .map_err(|_| TerminalError::InvalidScope)?;
+        root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
+        let output = TerminalOutputSink(Arc::new(Mutex::new(OutputRing::default())));
+        let process = self.factory.spawn(&root, columns, rows, output.clone())?;
+        let id = TerminalSessionId(uuid::Uuid::new_v4());
+        let revision = TerminalRevision(1);
+        sessions.insert(
+            id,
+            Session {
+                scope: scope.clone(),
+                revision,
+                output,
+                process,
+            },
+        );
+        Ok(TerminalHandle { id, revision })
+    }
+
+    pub async fn write_input(
+        &self,
+        authority: &TerminalAuthority<'_>,
+        scope: &TerminalScope,
+        handle: TerminalHandle,
+        text: &str,
+    ) -> Result<(), TerminalError> {
+        let state = authority.0;
+        if text.is_empty() || text.len() > INPUT_BYTES {
+            return Err(TerminalError::InvalidInput);
+        }
+        let _context = state
+            .lock_active_project(&scope.project, scope.generation)
+            .await
+            .map_err(|_| TerminalError::InvalidScope)?;
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let session = sessions
+            .get_mut(&handle.id)
+            .ok_or(TerminalError::UnknownSession)?;
+        if session.scope != *scope || session.revision != handle.revision {
+            return Err(TerminalError::InvalidScope);
+        }
+        session.process.write(text.as_bytes())
+    }
+
+    pub async fn resize(
+        &self,
+        authority: &TerminalAuthority<'_>,
+        scope: &TerminalScope,
+        handle: TerminalHandle,
+        columns: u16,
+        rows: u16,
+    ) -> Result<(), TerminalError> {
+        let state = authority.0;
+        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
+            return Err(TerminalError::InvalidDimensions);
+        }
+        let _context = state
+            .lock_active_project(&scope.project, scope.generation)
+            .await
+            .map_err(|_| TerminalError::InvalidScope)?;
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let session = sessions
+            .get_mut(&handle.id)
+            .ok_or(TerminalError::UnknownSession)?;
+        if session.scope != *scope || session.revision != handle.revision {
+            return Err(TerminalError::InvalidScope);
+        }
+        session.process.resize(columns, rows)
+    }
+
+    pub async fn output_snapshot(
+        &self,
+        authority: &TerminalAuthority<'_>,
+        scope: &TerminalScope,
+        handle: TerminalHandle,
+    ) -> Result<TerminalOutputSnapshot, TerminalError> {
+        let state = authority.0;
+        let _context = state
+            .lock_active_project(&scope.project, scope.generation)
+            .await
+            .map_err(|_| TerminalError::InvalidScope)?;
+        let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let session = sessions
+            .get(&handle.id)
+            .ok_or(TerminalError::UnknownSession)?;
+        if session.scope != *scope || session.revision != handle.revision {
+            return Err(TerminalError::InvalidScope);
+        }
+        session.output.snapshot()
+    }
+
+    pub async fn close(
+        &self,
+        authority: &TerminalAuthority<'_>,
+        scope: &TerminalScope,
+        handle: TerminalHandle,
+    ) -> Result<(), TerminalError> {
+        let state = authority.0;
+        let _context = state
+            .lock_active_project(&scope.project, scope.generation)
+            .await
+            .map_err(|_| TerminalError::InvalidScope)?;
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let session = sessions
+            .get_mut(&handle.id)
+            .ok_or(TerminalError::UnknownSession)?;
+        if session.scope != *scope || session.revision != handle.revision {
+            return Err(TerminalError::InvalidScope);
+        }
+        session.process.terminate()?;
+        sessions.remove(&handle.id);
+        Ok(())
+    }
+
+    pub fn close_chat(
+        &self,
+        project: &SageProjectId,
+        chat: &SageChatId,
+    ) -> Result<(), TerminalError> {
+        self.terminate_matching(|scope| &scope.project == project && &scope.chat == chat)
+    }
+
+    pub fn project_changed(
+        &self,
+        project: &SageProjectId,
+        generation: ProjectGeneration,
+    ) -> Result<(), TerminalError> {
+        self.terminate_matching(|scope| &scope.project != project || scope.generation != generation)
+    }
+
+    pub fn shutdown(&self) -> Result<(), TerminalError> {
+        self.terminate_matching(|_| true)
+    }
+
+    fn terminate_matching(
+        &self,
+        predicate: impl Fn(&TerminalScope) -> bool,
+    ) -> Result<(), TerminalError> {
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let ids = sessions
+            .iter()
+            .filter(|(_, session)| predicate(&session.scope))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        let mut failed = false;
+        for id in ids {
+            if let Some(session) = sessions.get_mut(&id) {
+                if session.process.terminate().is_ok() {
+                    sessions.remove(&id);
+                } else {
+                    failed = true;
+                }
+            }
+        }
+        if failed {
+            Err(TerminalError::Backend)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -133,7 +133,7 @@ impl ConfigChannel {
         self.flush_notice();
     }
     pub(crate) fn update(&self, owner: &RuntimeOwner, config: SessionConfig) -> Result<(), String> {
-        config.validate(true)?;
+        config.validate()?;
         let mut state = self.lock();
         let Some(entry) = &mut state.entry else {
             return Ok(());

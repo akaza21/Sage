@@ -7,11 +7,41 @@ use super::{
     terminal::{append_entity_fact, applied, duplicate, ensure_one},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ResolutionAuthority {
+    Local,
+    Harness,
+}
+
 pub(crate) fn apply_request_state(
     connection: &mut rusqlite::Connection,
     command: RequestStateCommand,
 ) -> Result<EntityMutation, StoreError> {
     let transaction = connection.transaction()?;
+    let mutation = apply_request_state_in(&transaction, &command, ResolutionAuthority::Local)?;
+    transaction
+        .commit()
+        .map_err(|_| StoreError::CommitUnknown)?;
+    Ok(mutation)
+}
+
+pub(super) fn apply_harness_resolution_in(
+    transaction: &Transaction<'_>,
+    command: &RequestStateCommand,
+) -> Result<EntityMutation, StoreError> {
+    if !command.state.is_terminal() {
+        return Err(StoreError::InvalidTransition {
+            resource: "request",
+        });
+    }
+    apply_request_state_in(transaction, command, ResolutionAuthority::Harness)
+}
+
+fn apply_request_state_in(
+    transaction: &Transaction<'_>,
+    command: &RequestStateCommand,
+    authority: ResolutionAuthority,
+) -> Result<EntityMutation, StoreError> {
     let row: (String, i64, String, String) = transaction
         .query_row(
             "SELECT state,revision,external_request_id,normalized_payload_json FROM server_requests
@@ -34,16 +64,19 @@ pub(crate) fn apply_request_state(
     let current = parse_request_state(&row.0)?;
     if current == command.state {
         if current.is_terminal() {
-            verify_terminal_item(&transaction, &command, &row.2, &row.3)?;
+            verify_terminal_item(transaction, command, &row.2, &row.3)?;
         }
-        return duplicate(&transaction, command.session_id.as_str(), row.1);
+        return duplicate(transaction, command.session_id.as_str(), row.1);
     }
     if current.is_terminal() {
+        if authority == ResolutionAuthority::Harness {
+            return duplicate(transaction, command.session_id.as_str(), row.1);
+        }
         return Err(StoreError::TerminalConflict {
             resource: "request",
         });
     }
-    if !current.can_transition_to(command.state) {
+    if authority == ResolutionAuthority::Local && !current.can_transition_to(command.state) {
         return Err(StoreError::InvalidTransition {
             resource: "request",
         });
@@ -52,7 +85,7 @@ pub(crate) fn apply_request_state(
         .next()
         .map_err(|_| StoreError::CounterExhausted)?;
     let projection = next_projection_revision(
-        &transaction,
+        transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
     )?;
@@ -71,10 +104,10 @@ pub(crate) fn apply_request_state(
         "request",
     )?;
     if command.state.is_terminal() {
-        terminalize_permission_item(&transaction, &command, &row.2, &row.3)?;
+        terminalize_permission_item(transaction, command, &row.2, &row.3)?;
     }
     append_entity_fact(
-        &transaction,
+        transaction,
         &command.project_id,
         &command.chat_id,
         &command.session_id,
@@ -86,16 +119,13 @@ pub(crate) fn apply_request_state(
         command.now_millis,
     )?;
     publish_projection(
-        &transaction,
+        transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
         command.session_id.as_str(),
         projection,
         command.now_millis,
     )?;
-    transaction
-        .commit()
-        .map_err(|_| StoreError::CommitUnknown)?;
     Ok(applied(revision, projection))
 }
 

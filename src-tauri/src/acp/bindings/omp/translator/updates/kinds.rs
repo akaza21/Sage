@@ -18,28 +18,29 @@ pub(crate) fn tool_category(update: &Map<String, Value>) -> ToolCategory {
         .unwrap_or("")
         .to_ascii_lowercase();
     match kind {
-        "read" | "edit" | "delete" | "move" => ToolCategory::File,
+        "read" | "edit" | "delete" | "move" => ToolCategory::Read,
         "search" => ToolCategory::Search,
-        "fetch" => ToolCategory::Web,
-        "execute" => ToolCategory::Command,
-        _ if name.contains("diff") || name.contains("patch") => ToolCategory::Diff,
+        "fetch" => ToolCategory::Fetch,
+        "execute" => ToolCategory::Execute,
+        _ if name.contains("diff") || name.contains("patch") => ToolCategory::Edit,
         _ if name.contains("search") || name.contains("grep") || name.contains("find") => {
             ToolCategory::Search
         }
         _ if name.contains("browser") || name.contains("web") || name.contains("fetch") => {
-            ToolCategory::Web
+            ToolCategory::Fetch
         }
         _ if name.contains("mcp") => ToolCategory::Mcp,
         _ if name.contains("subagent") || name.contains("sub-agent") || name == "task" => {
             ToolCategory::Subagent
         }
         _ if name.contains("shell")
+            || name.contains("powershell")
             || name.contains("bash")
             || name.contains("process")
             || name.contains("lsp")
             || name.contains("dap") =>
         {
-            ToolCategory::Command
+            ToolCategory::Execute
         }
         _ => ToolCategory::Other,
     }
@@ -47,11 +48,15 @@ pub(crate) fn tool_category(update: &Map<String, Value>) -> ToolCategory {
 
 pub(crate) fn category_label(category: ToolCategory) -> &'static str {
     match category {
-        ToolCategory::File => "File tool",
-        ToolCategory::Diff => "Diff tool",
-        ToolCategory::Command => "Command tool",
+        ToolCategory::Read => "File tool",
+        ToolCategory::Edit => "Diff tool",
+        ToolCategory::Delete => "Delete tool",
+        ToolCategory::Move => "Move tool",
+        ToolCategory::Execute => "Command tool",
         ToolCategory::Search => "Search tool",
-        ToolCategory::Web => "Web tool",
+        ToolCategory::Fetch => "Web tool",
+        ToolCategory::Think => "Thinking tool",
+        ToolCategory::SwitchMode => "Mode switch",
         ToolCategory::Mcp => "MCP tool",
         ToolCategory::Subagent => "Subagent activity",
         ToolCategory::Other => "OMP tool",

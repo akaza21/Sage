@@ -30,9 +30,7 @@ use crate::acp::bindings::codex::{
 // widening Sage's exact reviewed windows-sys feature surface for constants.
 const MAXIMUM_ALLOWED_ACCESS: u32 = 0x0200_0000;
 
-#[path = "windows/acl.rs"]
 mod acl;
-#[path = "windows/token.rs"]
 mod token;
 use token::ProcessToken;
 

@@ -322,6 +322,10 @@ impl DriverMailbox {
             && !state.closed
     }
 
+    pub(super) fn reader_terminal_queued(&self) -> bool {
+        self.lock().terminal_queued
+    }
+
     /// Allows only already-authorized worker operations to cross the atomic
     /// activation-to-idle ownership boundary. Raw stdout must be drained by
     /// activation first, so an unknown frame or reader terminal still prevents

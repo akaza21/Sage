@@ -11,6 +11,7 @@ const source = (file: string) =>
 it("keeps all Q04 named surfaces behind dynamic imports", () => {
   const workbenchSource = source("Workbench.tsx");
   const registrySource = source("registeredSurfaces.tsx");
+  const activeEditorCanvasSource = source("ActiveEditorCanvas.tsx");
   const chatSource = readFileSync(
     path.join(workbench, "../features/chat/acp/ChatMarkdown.tsx"),
     "utf8",
@@ -23,7 +24,9 @@ it("keeps all Q04 named surfaces behind dynamic imports", () => {
     path.join(workbench, "../features/preview/AgentPreviewSurface.tsx"),
     "utf8",
   );
-  expect(workbenchSource).toContain('import("./SettingsSurface")');
+  expect(activeEditorCanvasSource).toContain('import("./SettingsSurface")');
+  expect(activeEditorCanvasSource).not.toContain('from "./SettingsSurface"');
+  expect(workbenchSource).not.toContain('from "./SettingsSurface"');
   expect(workbenchSource).toContain('import("./AgentWorkbenchBody")');
   expect(workbenchSource).not.toContain('from "./AgentArtifactPane"');
   expect(workbenchSource).not.toContain('from "./AgentChatPanes"');
@@ -41,6 +44,9 @@ it("keeps all Q04 named surfaces behind dynamic imports", () => {
   );
   expect(registrySource).toContain("readOnly={readOnly}");
   expect(registrySource).toContain('import("../features/files/FileSurface")');
+  expect(registrySource).toContain(
+    'import("../features/browser/BrowserSurface")',
+  );
   expect(chatSource).not.toContain('from "./MermaidFigure"');
   expect(markdownSource).not.toContain('from "../chat/acp/MermaidFigure"');
   expect(previewSource).toContain('import("./AgentPreviewPresentation")');

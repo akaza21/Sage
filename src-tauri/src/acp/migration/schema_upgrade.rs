@@ -1,12 +1,78 @@
 use super::*;
 
-pub(super) fn apply_through_v9(connection: &mut Connection) -> AppResult<()> {
+pub(super) fn upgrade_current_through_v9(
+    paths: &MigrationPaths,
+    source_schema: SchemaClass,
+) -> AppResult<OpenedDatabase> {
+    let verified_backup = ensure(paths)?;
+    let anchor = platform::anchor_existing_sqlite(&paths.live, true)?;
+    if probe::classify_live(paths)? != source_schema {
+        return invalid("current SQLite path changed before its anchored upgrade");
+    }
+    let mut connection = Connection::open(&paths.live)?;
+    if database_fingerprint(&connection)? != verified_backup.source.database {
+        return invalid("current source changed after original-schema backup publication");
+    }
+    match source_schema {
+        SchemaClass::CurrentV5 => {
+            apply_v6_and_v7_atomically(&mut connection)?;
+            apply_v8(&mut connection)?;
+            apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
+        }
+        SchemaClass::CurrentV6 => {
+            apply_v7(&mut connection)?;
+            apply_v8(&mut connection)?;
+            apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
+        }
+        SchemaClass::CurrentV7 => {
+            apply_v8(&mut connection)?;
+            apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
+        }
+        SchemaClass::CurrentV8 => {
+            apply_v9(&mut connection)?;
+            apply_v10(&mut connection)?;
+        }
+        SchemaClass::CurrentV9 => apply_v10(&mut connection)?,
+        SchemaClass::CurrentV12 => apply_v13(&mut connection)?,
+        SchemaClass::CurrentV11 => {
+            apply_v12(&mut connection)?;
+            apply_v13(&mut connection)?;
+        }
+        SchemaClass::CurrentV10 | SchemaClass::CurrentV10LegacySessionEvents => {
+            apply_v11(&mut connection)?
+        }
+        _ => return invalid("in-place upgrade source is not admitted"),
+    }
+    if !matches!(
+        source_schema,
+        SchemaClass::CurrentV10
+            | SchemaClass::CurrentV10LegacySessionEvents
+            | SchemaClass::CurrentV11
+            | SchemaClass::CurrentV12
+    ) {
+        apply_v11(&mut connection)?;
+    }
+    if !matches!(
+        source_schema,
+        SchemaClass::CurrentV11 | SchemaClass::CurrentV12
+    ) {
+        apply_v12(&mut connection)?;
+        apply_v13(&mut connection)?;
+    }
+    anchor.verify_path(&paths.live)?;
+    Ok(opened_database(connection, anchor))
+}
+
+pub(super) fn apply_through_v11(connection: &mut Connection) -> AppResult<()> {
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 10")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 11")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 8
+        || versions.len() > 11
         || versions
             .iter()
             .enumerate()
@@ -15,6 +81,9 @@ pub(super) fn apply_through_v9(connection: &mut Connection) -> AppResult<()> {
         return invalid("replacement source has unsupported migration history");
     }
     let last = versions.last().copied().unwrap_or(0);
+    if last == 11 {
+        return Ok(());
+    }
     if last < 2 {
         connection.execute_batch(V2)?;
     }
@@ -31,19 +100,36 @@ pub(super) fn apply_through_v9(connection: &mut Connection) -> AppResult<()> {
         apply_v6_and_v7_atomically(connection)?;
         apply_v8(connection)?;
         apply_v9(connection)?;
-        return apply_v10(connection);
+        apply_v10(connection)?;
+        return apply_v11(connection);
     }
     if last < 7 {
         apply_v7(connection)?;
         apply_v8(connection)?;
         apply_v9(connection)?;
-        return apply_v10(connection);
+        apply_v10(connection)?;
+        return apply_v11(connection);
     }
     if last < 8 {
         apply_v8(connection)?;
     }
-    apply_v9(connection)?;
-    apply_v10(connection)
+    if last < 9 {
+        apply_v9(connection)?;
+    }
+    if last < 10 {
+        apply_v10(connection)?;
+    }
+    apply_v11(connection)
+}
+
+pub(super) fn apply_through_v12(connection: &mut Connection) -> AppResult<()> {
+    apply_through_v11(connection)?;
+    apply_v12(connection)
+}
+
+pub(super) fn apply_through_v13(connection: &mut Connection) -> AppResult<()> {
+    apply_through_v12(connection)?;
+    apply_v13(connection)
 }
 
 pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
@@ -141,6 +227,52 @@ pub(super) fn apply_v10(connection: &mut Connection) -> AppResult<()> {
         transaction.commit()?;
         Ok(())
     })?;
+    verify_reached(connection, SchemaClass::CurrentV10)
+}
+
+pub(super) fn apply_v11(connection: &mut Connection) -> AppResult<()> {
+    with_foreign_keys_disabled(connection, |connection| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(V11)?;
+        tool_result_fold::apply(&transaction)?;
+        transaction.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, ?1)",
+            [now_millis()],
+        )?;
+        transaction.pragma_update(None, "user_version", 11)?;
+        verify_v8_foreign_keys(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })?;
+    verify_reached(connection, SchemaClass::CurrentV11)
+}
+
+pub(super) fn apply_v12(connection: &mut Connection) -> AppResult<()> {
+    with_foreign_keys_disabled(connection, |connection| {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(V12)?;
+        transaction.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, ?1)",
+            [now_millis()],
+        )?;
+        transaction.pragma_update(None, "user_version", 12)?;
+        verify_v8_foreign_keys(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })?;
+    verify_reached(connection, SchemaClass::CurrentV12)
+}
+
+pub(super) fn apply_v13(connection: &mut Connection) -> AppResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(V13)?;
+    transaction.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
+        [now_millis()],
+    )?;
+    transaction.pragma_update(None, "user_version", 13)?;
+    verify_v8_foreign_keys(&transaction)?;
+    transaction.commit()?;
     verify_current(connection)
 }
 
@@ -219,8 +351,31 @@ fn verify_v7_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<
     Ok(())
 }
 
+pub(super) fn build_fresh_v11(connection: &mut Connection) -> AppResult<()> {
+    build_fresh_v10(connection)?;
+    apply_v11(connection)
+}
+
+pub(super) fn build_fresh_v12(connection: &mut Connection) -> AppResult<()> {
+    build_fresh_v11(connection)?;
+    apply_v12(connection)
+}
+
+pub(super) fn build_fresh_v13(connection: &mut Connection) -> AppResult<()> {
+    build_fresh_v12(connection)?;
+    apply_v13(connection)
+}
+
+#[cfg(test)]
 pub(super) fn build_fresh_v9(connection: &mut Connection) -> AppResult<()> {
-    build_fresh_v10(connection)
+    connection.execute_batch(INITIAL)?;
+    connection.execute_batch(V2)?;
+    connection.execute_batch(V3)?;
+    project_migration::migrate(connection)?;
+    apply_v5(connection)?;
+    apply_v6_and_v7_atomically(connection)?;
+    apply_v8(connection)?;
+    apply_v9(connection)
 }
 
 pub(super) fn build_fresh_v10(connection: &mut Connection) -> AppResult<()> {

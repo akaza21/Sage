@@ -114,12 +114,15 @@ where
     C: ProcessTreeControl,
 {
     pub(crate) fn new(
-        active: PreparedProcessWrite<A, J, R, T, C>,
+        mut active: PreparedProcessWrite<A, J, R, T, C>,
         command: CloseSessionCommand,
     ) -> Self {
         let cancel_committed = active.cancel_intent().is_some();
         let cancel_dispatched = active.cancel_was_dispatched();
         let cancel_delivery_ambiguous = active.cancel_requires_convergence();
+        if active.turn.driver.take_durable_mutation_unknown() {
+            active = active.mark_durable_mutation_unknown();
+        }
         let durable_mutation_unknown = active.durable_mutation_unknown();
         Self {
             active,

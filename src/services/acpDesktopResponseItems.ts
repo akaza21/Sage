@@ -20,24 +20,6 @@ import {
 const MAX_PLAN_ENTRIES = 512;
 const MAX_COLLABORATION_RECEIVERS = 32;
 
-function safeNullableNonnegativeInteger(
-  value: unknown,
-): number | null | undefined {
-  if (value === null) return null;
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : undefined;
-}
-
-function safeOptionalContextWindow(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0 &&
-    value <= 0xffff_ffff
-    ? value
-    : undefined;
-}
-
 function safeItemIdentity(
   value: Record<string, unknown>,
 ): AcpItemIdentity | null {
@@ -187,37 +169,6 @@ export function safeItem(value: unknown): AcpItem | null {
             payload: { presentation, inputSummary, outputSummary },
           };
     }
-    case "toolUpdateResult": {
-      const callItemId = safeNullableIdentifier(payload.callItemId);
-      const presentation = safeToolPresentation(payload.presentation);
-      const outputSummary = safeNullableText(payload.outputSummary, 65_536);
-      return !isOneOf(value.toolState, [
-        "pending",
-        "inProgress",
-        "waitingForApproval",
-        "completed",
-        "failed",
-        "declined",
-        "cancelled",
-      ] as const) ||
-        callItemId === undefined ||
-        !presentation ||
-        outputSummary === undefined
-        ? null
-        : {
-            ...identity,
-            kind: "toolUpdateResult",
-            toolState: value.toolState,
-            payload: {
-              callItemId: callItemId as Extract<
-                AcpItem,
-                { kind: "toolUpdateResult" }
-              >["payload"]["callItemId"],
-              presentation,
-              outputSummary,
-            },
-          };
-    }
     case "fileChangeDiff": {
       if (
         value.toolState !== null ||
@@ -250,36 +201,28 @@ export function safeItem(value: unknown): AcpItem | null {
           }
         : null;
     }
-    case "usage": {
-      const counters = [
-        payload.inputTokens,
-        payload.outputTokens,
-        payload.cachedInputTokens,
-        payload.totalTokens,
-      ].map(safeNullableNonnegativeInteger);
-      const hasContextWindow = Object.hasOwn(payload, "contextWindow");
-      const contextWindow = safeOptionalContextWindow(payload.contextWindow);
-      return value.toolState !== null ||
-        counters.some((counter) => counter === undefined) ||
-        (hasContextWindow && contextWindow === undefined)
-        ? null
-        : {
-            ...identity,
-            kind: "usage",
-            toolState: null,
-            payload: {
-              inputTokens: counters[0] as number | null,
-              outputTokens: counters[1] as number | null,
-              cachedInputTokens: counters[2] as number | null,
-              totalTokens: counters[3] as number | null,
-              ...(contextWindow === undefined ? {} : { contextWindow }),
-            },
-          };
-    }
     case "permissionRequest": {
       const requestId = safeIdentifier(payload.requestId);
       const label = safeText(payload.label, 512);
       const summary = safeText(payload.summary, 65_536);
+      const offeredOptionKinds =
+        Array.isArray(payload.offeredOptionKinds) &&
+        payload.offeredOptionKinds.length <= 8 &&
+        payload.offeredOptionKinds.every((kind) =>
+          isOneOf(kind, [
+            "allow_once",
+            "allow_always",
+            "reject_once",
+            "reject_always",
+          ] as const),
+        )
+          ? (payload.offeredOptionKinds as Array<
+              "allow_once" | "allow_always" | "reject_once" | "reject_always"
+            >)
+          : undefined;
+      const source = isOneOf(payload.source, ["harness", "browser"] as const)
+        ? payload.source
+        : undefined;
       return !isOneOf(value.toolState, [
         "pending",
         "inProgress",
@@ -317,6 +260,8 @@ export function safeItem(value: unknown): AcpItem | null {
               state: payload.state,
               label,
               summary,
+              source,
+              offeredOptionKinds,
             },
           };
     }
@@ -351,12 +296,14 @@ export function safeItem(value: unknown): AcpItem | null {
         : null;
     }
     case "collaboration": {
-      const activityId = safeIdentifier(payload.activityId);
+      const activityId = safeNullableIdentifier(payload.activityId);
       const label = safeText(payload.label, 512);
       const summary = safeText(payload.summary, 16_384);
       if (
         value.toolState !== null ||
-        !activityId ||
+        activityId === undefined ||
+        (identity.origin !== "primary" &&
+          (activityId === null || identity.activityId === null)) ||
         label === null ||
         summary === null ||
         !Array.isArray(payload.receiverLabels) ||
@@ -366,7 +313,29 @@ export function safeItem(value: unknown): AcpItem | null {
       const receiverLabels = payload.receiverLabels.map((receiver) =>
         safeText(receiver, 512),
       );
-      return receiverLabels.some((receiver) => receiver === null)
+      const operation =
+        payload.operation == null ? null : safeText(payload.operation, 32);
+      const agentKey =
+        payload.agentKey == null ? null : safeText(payload.agentKey, 512);
+      const agentKeys = Array.isArray(payload.agentKeys)
+        ? payload.agentKeys.map((key) => safeText(key, 512))
+        : [];
+      const agentStates = Array.isArray(payload.agentStates)
+        ? payload.agentStates.map((entry) =>
+            Array.isArray(entry) && entry.length === 2
+              ? [safeText(entry[0], 512), safeText(entry[1], 32)]
+              : null,
+          )
+        : [];
+      return receiverLabels.some((receiver) => receiver === null) ||
+        (payload.operation != null && operation === null) ||
+        (payload.agentKey != null && agentKey === null) ||
+        agentKeys.length > MAX_COLLABORATION_RECEIVERS ||
+        agentKeys.some((key) => key === null) ||
+        agentStates.length > MAX_COLLABORATION_RECEIVERS ||
+        agentStates.some(
+          (entry) => entry === null || entry.some((part) => part === null),
+        )
         ? null
         : {
             ...identity,
@@ -380,6 +349,10 @@ export function safeItem(value: unknown): AcpItem | null {
               label,
               summary,
               receiverLabels: receiverLabels as string[],
+              operation,
+              agentKey,
+              agentKeys: agentKeys as string[],
+              agentStates: agentStates as [string, string][],
             },
           };
     }

@@ -50,7 +50,7 @@ function tool(
     toolState: state,
     ordinal: 1,
     payload: {
-      presentation: { kind: "generic", label, summary: null },
+      presentation: { kind: "other", rawKind: null, label, summary: null },
       inputSummary: null,
     },
   } as unknown as AcpItem;

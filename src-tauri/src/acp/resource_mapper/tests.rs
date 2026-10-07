@@ -90,6 +90,44 @@ fn rejects_missing_foreign_and_non_absolute_paths() {
 }
 
 #[test]
+fn deleted_display_path_is_root_scoped_without_requiring_the_leaf_to_exist() {
+    let tree = TempTree::new();
+    let project = tree.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let project = project.canonicalize().unwrap();
+    let mapper = NativeResourceMapper::new([root("root-one", project.clone())]).unwrap();
+    let deleted = project.join("src/deleted.md");
+    let deleted_path = native(&deleted);
+    #[cfg(windows)]
+    let deleted_path = deleted_path
+        .strip_prefix("\\\\?\\")
+        .unwrap_or(&deleted_path)
+        .to_owned();
+
+    let display = mapper.try_map_missing_display(&deleted_path).unwrap();
+    assert_eq!(display.root_id.as_str(), "root-one");
+    assert_eq!(display.relative_path.as_str(), "src/deleted.md");
+    assert_eq!(
+        mapper.try_map_existing(&native(&deleted)),
+        Err(ResourceMapError::PathMissing)
+    );
+
+    let separator = std::path::MAIN_SEPARATOR;
+    for unsafe_path in [
+        native(&tree.path().join("outside.md")),
+        format!("{}{separator}..{separator}outside.md", native(&project)),
+        "https://example.test/deleted.md".to_owned(),
+        "\\\\server\\share\\deleted.md".to_owned(),
+        "\\\\?\\C:\\deleted.md".to_owned(),
+    ] {
+        assert!(
+            mapper.try_map_missing_display(&unsafe_path).is_err(),
+            "{unsafe_path}"
+        );
+    }
+}
+
+#[test]
 fn rejects_a_resource_with_nested_root_membership() {
     let tree = TempTree::new();
     let outer = tree.path().join("outer");

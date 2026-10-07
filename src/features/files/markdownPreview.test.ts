@@ -4,6 +4,8 @@ import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
   MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
+  MAX_CHAT_FILE_LINKS,
+  MAX_CHAT_FILE_LINK_PATH_BYTES,
   canPreviewDiagram,
   canPreviewMarkdown,
   renderMarkdownPreview,
@@ -28,6 +30,37 @@ describe("canPreviewDiagram", () => {
 });
 
 describe("renderMarkdownPreview", () => {
+  it("retains only bounded file-link candidates outside code fences", () => {
+    const document = renderMarkdownPreview(
+      [
+        "See [readme](README.md), [line](src/main.ts:7), and [absolute](C:\\project\\src\\file.ts).",
+        "[web](https://example.com) [foreign](file:///C:/secret) [traverse](../secret) [unc](\\\\server\\share)",
+        "```md",
+        "[code](README.md)",
+        "```",
+        `[huge](${"x".repeat(MAX_CHAT_FILE_LINK_PATH_BYTES + 1)})`,
+        ...Array.from(
+          { length: MAX_CHAT_FILE_LINKS + 2 },
+          (_, index) => `[file${index}](f${index}.ts)`,
+        ),
+      ].join("\n"),
+    );
+    expect(
+      document.fileLinks.map(({ label, destination }) => ({
+        label,
+        destination,
+      })),
+    ).toEqual([
+      { label: "readme", destination: "README.md" },
+      { label: "line", destination: "src/main.ts:7" },
+      { label: "absolute", destination: "C:\\project\\src\\file.ts" },
+      ...Array.from({ length: MAX_CHAT_FILE_LINKS - 3 }, (_, index) => ({
+        label: `file${index}`,
+        destination: `f${index}.ts`,
+      })),
+    ]);
+    expect(document.fileLinks[0]).toMatchObject({ blockIndex: 0, offset: 4 });
+  });
   it("projects a bounded CommonMark subset without HTML authority", () => {
     const document = renderMarkdownPreview(
       [

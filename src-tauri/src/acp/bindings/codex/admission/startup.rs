@@ -1,35 +1,26 @@
 use super::*;
 
 pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
-    let registration = CodexBindingRegistration {
+    CodexBindingRegistration {
         authority: Arc::new(CodexRegistrationAuthority {
             state: Mutex::new(CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission,
             )),
         }),
-    };
-    if !admit_discovered_codex(
-        &registration,
-        crate::harness_discovery::discover_installed_harnesses()
-            .into_iter()
-            .find(|candidate| candidate.id == "codex"),
-    ) {
-        #[cfg(windows)]
-        {
-            let _ = authenticate_startup_signed_installed_role(&registration);
-        }
     }
-    registration
 }
 
-fn admit_discovered_codex(
+pub(crate) fn admit_discovered_codex(
     registration: &CodexBindingRegistration,
     candidate: Option<crate::harness_discovery::InstalledHarness>,
 ) -> bool {
     candidate.is_some_and(|candidate| {
-        registration
-            .authenticate_observed(candidate.executable, candidate.version)
-            .is_ok()
+        crate::harness_discovery::revalidate_harness_version(candidate.id, &candidate.executable)
+            .is_some_and(|version| {
+                registration
+                    .authenticate_observed(candidate.executable, version)
+                    .is_ok()
+            })
     })
 }
 
@@ -104,8 +95,22 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let executable = std::env::temp_dir().join(format!("sage-discovered-codex-{nonce}.bin"));
-        fs::write(&executable, b"observed Codex CLI").unwrap();
+        let directory = std::env::temp_dir().join(format!("sage-discovered-codex-{nonce}"));
+        fs::create_dir_all(&directory).unwrap();
+        #[cfg(windows)]
+        let executable = directory.join("codex.cmd");
+        #[cfg(not(windows))]
+        let executable = directory.join("codex");
+        #[cfg(windows)]
+        fs::write(&executable, b"@echo off\r\necho codex-cli 0.146.0\r\n").unwrap();
+        #[cfg(not(windows))]
+        {
+            fs::write(&executable, b"#!/bin/sh\necho codex-cli 0.146.0\n").unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&executable).unwrap().permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&executable, permissions).unwrap();
+        }
         let registration = CodexBindingRegistration::unavailable_for_test();
 
         assert!(admit_discovered_codex(
@@ -113,7 +118,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable: executable.clone(),
-                version: "codex 0.146.0".into(),
+                version: Some("0.146.0".into()),
             }),
         ));
         let binding = registration.refresh().unwrap();
@@ -122,6 +127,46 @@ mod tests {
             binding.entrypoint().path,
             executable.canonicalize().unwrap()
         );
-        fs::remove_file(executable).unwrap();
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn display_version_cannot_admit_a_cli_that_fails_an_authoritative_version_probe() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("sage-cached-codex-{nonce}"));
+        fs::create_dir_all(&directory).unwrap();
+        #[cfg(windows)]
+        let executable = directory.join("codex.cmd");
+        #[cfg(not(windows))]
+        let executable = directory.join("codex");
+        #[cfg(windows)]
+        fs::write(
+            &executable,
+            b"@echo off\r\necho codex-cli not-a-version\r\n",
+        )
+        .unwrap();
+        #[cfg(not(windows))]
+        {
+            fs::write(&executable, b"#!/bin/sh\necho codex-cli not-a-version\n").unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&executable).unwrap().permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&executable, permissions).unwrap();
+        }
+        let registration = CodexBindingRegistration::unavailable_for_test();
+
+        assert!(!admit_discovered_codex(
+            &registration,
+            Some(crate::harness_discovery::InstalledHarness {
+                id: "codex",
+                executable,
+                version: Some("0.146.0".into()),
+            }),
+        ));
+        assert!(!registration.is_available());
+        fs::remove_dir_all(directory).unwrap();
     }
 }

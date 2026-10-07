@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { searchResultFileName } from "./searchResultCard";
+import { searchResultFileName } from "./workspaceSearchDomain";
 
 describe("searchResultFileName", () => {
   it("shows the basename for Devin search cards", () => {

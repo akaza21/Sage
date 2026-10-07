@@ -1,0 +1,8 @@
+{
+  "command": "gemini",
+  "args": [
+    "--experimental-acp"
+  ],
+  "reason": "session-new-error",
+  "stderr": "Data collection is disabled.\n\n\nCode Assist login required.\nAttempting to open authentication page in your browser.\nOtherwise navigate to:\n\nhttps://accounts.google.com/\n\n\nWaiting for authentication...\nAuthentication failed: Error: This account requires setting the GOOGLE_CLOUD_PROJECT env var. See https://goo.gle/gemini-cli-auth-docs#workspace-gca\n"
+}

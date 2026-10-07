@@ -28,6 +28,7 @@ where
 {
     pub(crate) fn completion_ready(&self, mailbox: &DriverMailbox) -> bool {
         self.state == State::Running
+            && self.pending_exit.is_none()
             && mailbox.is_activation_handoff_ready()
             && self.pump.completion_ready()
     }
@@ -70,6 +71,7 @@ where
                         clock,
                         state: State::Running,
                         first_delivery_unknown: None,
+                        pending_exit: None,
                     },
                     error: ActivationDriverError::NotReusable,
                 }))
@@ -115,6 +117,7 @@ where
                         clock,
                         state: State::ProjectionRecovery,
                         first_delivery_unknown,
+                        pending_exit: None,
                     },
                     error: ActivationDriverError::NotReusable,
                 }))
@@ -146,6 +149,7 @@ where
             control,
             owner,
             first_delivery_unknown,
+            pending_exit,
             transport,
             clock,
             ..
@@ -162,6 +166,7 @@ where
                         clock,
                         state: State::Teardown(cause),
                         first_delivery_unknown,
+                        pending_exit,
                     },
                     error: ActivationDriverError::Tree,
                 }));
@@ -187,6 +192,7 @@ where
                         clock,
                         state: State::Teardown(cause),
                         first_delivery_unknown,
+                        pending_exit,
                     },
                     error: ActivationDriverError::NotReusable,
                 }))
@@ -236,6 +242,7 @@ where
                         clock,
                         state: State::ProjectionRecovery,
                         first_delivery_unknown,
+                        pending_exit: None,
                     },
                     error: ActivationDriverError::Tree,
                 }));
@@ -259,6 +266,7 @@ where
                         clock,
                         state: State::ProjectionRecovery,
                         first_delivery_unknown,
+                        pending_exit: None,
                     },
                     error: ActivationDriverError::NotReusable,
                 }))

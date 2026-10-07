@@ -4,7 +4,11 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     bindings::codex::{
-        incoming::ResourceMapper, state::command_output_stream::CommandOutputStream,
+        incoming::{
+            ResourceMapper,
+            support::{command_cwd, command_exit_code, sanitized_command_line},
+        },
+        state::command_output_stream::CommandOutputStream,
     },
     contract::BoundedVec,
     declared_test::{CommandActivity, DeclaredTestCommands},
@@ -43,7 +47,10 @@ impl CommandStatus {
 #[derive(Debug, Clone, Default)]
 struct CommandSnapshot {
     stream: CommandOutputStream,
+    command: Option<String>,
     location: Option<SafeResourceLocation>,
+    cwd: Option<SafeResourceLocation>,
+    exit_code: Option<i32>,
     activity: CommandActivity,
 }
 
@@ -51,7 +58,9 @@ impl CommandSnapshot {
     fn retained_bytes(&self) -> usize {
         self.stream
             .retained_bytes()
+            .saturating_add(self.command.as_ref().map_or(0, String::len))
             .saturating_add(location_bytes(self.location.as_ref()))
+            .saturating_add(location_bytes(self.cwd.as_ref()))
     }
 
     fn locations(&self) -> Result<CommandLocations, IngressError> {
@@ -65,13 +74,14 @@ impl CommandSnapshot {
     }
 }
 
-/// Fully materialized, safe command data. It deliberately excludes command,
-/// cwd, rawInput, rawOutput, action command, and action name.
 pub(crate) struct MaterializedCommandItem {
     next: CommandSnapshot,
     pub(crate) status: CommandStatus,
+    pub(crate) command: Option<String>,
     pub(crate) output: Option<String>,
     pub(crate) locations: CommandLocations,
+    pub(crate) cwd: Option<SafeResourceLocation>,
+    pub(crate) exit_code: Option<i32>,
     pub(crate) activity: CommandActivity,
 }
 
@@ -99,6 +109,9 @@ impl CommandItemSnapshots {
         let mut next = self.values.get(item_id).cloned().unwrap_or_default();
         if let Some(command) = raw_command(item) {
             next.activity = declarations.activity_for(command);
+            next.command = Some(sanitized_command_line(command)?).filter(|value| !value.is_empty());
+        } else if matches!(item.get("command"), Some(Value::Null)) {
+            next.command = None;
         }
 
         if let Some(output) = item.get("aggregatedOutput") {
@@ -126,14 +139,26 @@ impl CommandItemSnapshots {
         if let Some(actions) = item.get("commandActions") {
             next.location = parse_location(actions, mapper);
         }
+        if item.contains_key("cwd") {
+            next.cwd = command_cwd(item, mapper);
+        }
+        if item.contains_key("exitCode") {
+            next.exit_code = command_exit_code(item);
+        }
         let output = next.output()?;
         let locations = next.locations()?;
         let activity = next.activity;
+        let command = next.command.clone();
+        let cwd = next.cwd.clone();
+        let exit_code = next.exit_code;
         Ok(MaterializedCommandItem {
             next,
             status,
+            command,
             output,
             locations,
+            cwd,
+            exit_code,
             activity,
         })
     }
@@ -153,12 +178,18 @@ impl CommandItemSnapshots {
             .map_err(|_| IngressError::Content)?;
         let output = next.output()?;
         let locations = next.locations()?;
+        let command = next.command.clone();
+        let cwd = next.cwd.clone();
+        let exit_code = next.exit_code;
         Ok(MaterializedCommandItem {
             activity: next.activity,
             next,
             status: CommandStatus::InProgress,
+            command,
             output,
             locations,
+            cwd,
+            exit_code,
         })
     }
 
@@ -267,12 +298,6 @@ impl CodexAdapter {
     }
 }
 
-/// Reads the stable Codex `command` field only for an immediate exact
-/// declaration comparison. It is never copied into a snapshot or payload.
-///
-/// Do not trim/collapse whitespace, case-fold, tokenize/rejoin, strip quotes,
-/// remove environment prefixes, peel shell wrappers, normalize path separators,
-/// or compare basenames: each would infer shell/package-manager intent.
 fn raw_command(item: &Map<String, Value>) -> Option<&str> {
     item.get("command").and_then(Value::as_str).filter(|value| {
         // The enclosing frame already has the wire byte cap. An empty or NUL
@@ -393,7 +418,64 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_a_declared_test_without_retaining_the_raw_command() {
+    fn a_command_cwd_is_retained_as_a_project_relative_resource() {
+        let snapshots = CommandItemSnapshots::default();
+        let item = command(json!({
+            "status":"completed",
+            "cwd":"/workspace/fixture/nested",
+            "exitCode":3
+        }));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                true,
+            )
+            .unwrap();
+        let Some(SafeResourceLocation::Resource { resource }) = materialized.cwd else {
+            panic!("expected a mapped cwd resource");
+        };
+        assert_eq!(resource.root_id.as_str(), "fixture-root");
+        assert_eq!(resource.relative_path.as_str(), "fixture.txt");
+        assert_eq!(materialized.exit_code, Some(3));
+    }
+
+    #[test]
+    fn an_explicit_null_cwd_and_exit_code_clear_the_retained_execution() {
+        let mut snapshots = CommandItemSnapshots::default();
+        let started = command(json!({
+            "status":"inProgress",
+            "cwd":"/workspace/fixture",
+            "exitCode":0
+        }));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &started,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
+            .unwrap();
+        snapshots.commit("command", materialized).unwrap();
+        let cleared = command(json!({"status":"completed","cwd":null,"exitCode":null}));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &cleared,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                true,
+            )
+            .unwrap();
+        assert!(materialized.cwd.is_none());
+        assert!(materialized.exit_code.is_none());
+    }
+
+    #[test]
+    fn recognizes_a_declared_test_and_retains_only_the_sanitized_command() {
         let root =
             std::env::temp_dir().join(format!("sage-command-activity-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -404,30 +486,89 @@ mod tests {
         .unwrap();
         let declarations = declared_test_commands_for_project(root.as_path());
         let mut snapshots = CommandItemSnapshots::default();
-        let secret = "vitest --private-token";
         let declared = command(json!({"command":"vitest"}));
         let materialized = snapshots
             .materialize("command", &declared, &Mapper, &declarations, false)
             .unwrap();
         assert_eq!(materialized.activity, CommandActivity::DeclaredTest);
+        assert_eq!(materialized.command.as_deref(), Some("vitest"));
         snapshots.commit("command", materialized).unwrap();
 
-        let near_miss = command(json!({"command":secret}));
+        let near_miss = command(json!({"command":"vitest --coverage"}));
         let materialized = snapshots
             .materialize("command", &near_miss, &Mapper, &declarations, false)
             .unwrap();
         assert_eq!(materialized.activity, CommandActivity::Ordinary);
         snapshots.commit("near-miss", materialized).unwrap();
 
-        // A raw near-miss has passed through materialization and commit. Neither
-        // retained snapshot nor its safe materialization may retain its bytes.
-        assert!(!format!("{snapshots:?}").contains(secret));
         let stored = snapshots.values.get("near-miss").unwrap();
         assert_eq!(stored.activity, CommandActivity::Ordinary);
-        assert!(!format!("{stored:?}").contains(secret));
-        assert!(!format!("{:?}", stored.output()).contains(secret));
-        assert!(!format!("{:?}", stored.locations()).contains(secret));
+        assert_eq!(stored.command.as_deref(), Some("vitest --coverage"));
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_retained_command_is_redacted_and_flattened_to_one_line() {
+        let mut snapshots = CommandItemSnapshots::default();
+        let item = command(json!({
+            "command":"curl -H \"Authorization: Bearer sk-live-super-secret\"\n\tC:\\private\\run.exe"
+        }));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
+            .unwrap();
+        let retained = materialized.command.clone().unwrap();
+        assert!(!retained.contains("sk-live-super-secret"));
+        assert!(!retained.contains("private"));
+        assert!(retained.contains("[redacted]"));
+        assert!(retained.contains("[path]"));
+        assert!(!retained.contains('\n') && !retained.contains('\t'));
+        snapshots.commit("command", materialized).unwrap();
+        assert!(!format!("{snapshots:?}").contains("sk-live-super-secret"));
+    }
+
+    #[test]
+    fn an_explicit_null_command_clears_the_retained_command() {
+        let mut snapshots = CommandItemSnapshots::default();
+        let item = command(json!({"command":"cargo test"}));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &item,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
+            .unwrap();
+        snapshots.commit("command", materialized).unwrap();
+        let sparse = command(json!({}));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &sparse,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
+            .unwrap();
+        assert_eq!(materialized.command.as_deref(), Some("cargo test"));
+        snapshots.commit("command", materialized).unwrap();
+        let cleared = command(json!({"command":null}));
+        let materialized = snapshots
+            .materialize(
+                "command",
+                &cleared,
+                &Mapper,
+                &DeclaredTestCommands::default(),
+                false,
+            )
+            .unwrap();
+        assert!(materialized.command.is_none());
     }
 
     #[test]

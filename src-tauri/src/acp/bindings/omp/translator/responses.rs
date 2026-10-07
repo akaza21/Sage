@@ -10,6 +10,10 @@ use crate::acp::bindings::omp::{
     protocol::{AdapterEvent, ModelSummary, PromptTerminal},
     wire::{normalized_text, opaque_id},
 };
+use crate::acp::{
+    contract::{ItemLifecycle, RequiredText, SafeText},
+    intent::NormalizedPayload,
+};
 
 const MAX_MODELS: usize = 128;
 const MAX_MODEL_BYTES: usize = 262_144;
@@ -71,6 +75,9 @@ impl OmpTranslator {
             .and_then(Value::as_bool)
             .unwrap_or(false)
             && self.capabilities.load_session_ceiling();
+        self.mcp_capabilities = crate::acp::mcp::McpCapabilities::from_initialize(
+            &serde_json::json!({"result":result}),
+        );
         self.initialized = true;
         Ok(vec![AdapterEvent::Initialized {
             protocol_version,
@@ -111,7 +118,24 @@ impl OmpTranslator {
             Some("refusal" | "max_tokens" | "max_turn_requests") => PromptTerminal::Failed,
             _ => return Err(TranslationError::UnknownTerminal),
         };
-        self.finish_turn(terminal)
+        let mut events = self.finish_turn(terminal)?;
+        if result.get("stopReason").and_then(Value::as_str) == Some("refusal") {
+            events.insert(
+                0,
+                AdapterEvent::Item {
+                    external_key: RequiredText::new("externalItemId", "harness-refusal")?,
+                    lifecycle: ItemLifecycle::Failed,
+                    tool_state: None,
+                    payload: NormalizedPayload::Error {
+                        code: SafeText::new("errorCode", "harnessRefusal")?,
+                        message: SafeText::new("errorMessage", "Declined by OpenCode")?,
+                        retryable: false,
+                    },
+                    update_mode: crate::acp::bindings::omp::protocol::ItemUpdateMode::Replace,
+                },
+            );
+        }
+        Ok(events)
     }
 
     pub(super) fn finish_turn(
@@ -126,6 +150,7 @@ impl OmpTranslator {
                 active.terminal = Some(terminal);
                 active.tools.clear();
                 active.tool_categories.clear();
+                active.settled_reports.clear();
                 active.tool_snapshots.clear();
                 active.tool_snapshot_bytes = 0;
                 Ok(vec![AdapterEvent::TurnTerminal {

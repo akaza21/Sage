@@ -17,9 +17,7 @@ use crate::acp::bindings::codex::{
 
 const CONFIG_READ_BYTES_MAX: u64 = 4 * 1024 + 1;
 
-#[path = "windows/native.rs"]
 mod native;
-#[path = "windows/streams.rs"]
 mod streams;
 use native::{NativeInfo, final_path, native_info, open_node, path_key};
 use streams::{reject_directory_named_streams, reject_named_streams};

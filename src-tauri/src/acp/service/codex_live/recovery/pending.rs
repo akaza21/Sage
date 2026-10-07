@@ -65,6 +65,10 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
     /// payload intentionally retain the same host until bounded shutdown (or
     /// the close recovery path) proves it is safe to release capacity.
     LiveHost(LiveHostRecovery),
+    LiveHostInFlight {
+        owner: RuntimeOwner,
+        host: Arc<RuntimeHost>,
+    },
     Driver {
         abort: ActivationAbortIntent,
         category: ActivationAbortCategory,

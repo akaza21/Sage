@@ -1,21 +1,16 @@
 import type {
-  AgentPort,
   ChatPort,
   EditorPort,
   ProjectPort,
   RepositoryPort,
-  SettingsPort,
-  SendPromptRequest,
   WorkbenchPorts,
 } from "./workbenchPorts";
-import type { EditorAppearance } from "../features/files/editorAppearance";
-import { invokeNative, isTauriRuntime } from "./nativeInvoke";
-import { startEditorWatchSession } from "./editorWatchSession";
-import {
-  EDITOR_EXTERNAL_WATCH_EVENT,
-  type EditorExternalWatchNotice,
-  type EditorWatchSubscription,
-} from "../domain/editorWatch";
+import { invokeNative } from "./nativeInvoke";
+import type { QueuedChatPrompt } from "../domain/chatOwnership";
+import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
+import { nativeSettingsPort } from "./nativeSettingsPort";
+import { startNativeEditorWatchSession } from "./editorWatchSession";
+import type { EditorWatchSubscription } from "../domain/editorWatch";
 import type {
   BootstrapSnapshot,
   BufferSnapshotAck,
@@ -49,7 +44,6 @@ import type {
   GitRepositorySequenceAbortRequest,
   GitRepositoryRemoteTransportRequest,
   GitRepositoryRemoteTransportResult,
-  ModelOption,
   NestedRepositoryFileDiffRequest,
   NestedRepositoryFileDiffResult,
   NestedRepositoryStatusRequest,
@@ -63,7 +57,6 @@ import type {
   RenameProjectFolderRequest,
   RenameProjectFolderResult,
   ResourceRef,
-  SimulatorTurnResult,
   TextFile,
   TrashProjectResourceRequest,
   TrashProjectResourceResult,
@@ -72,6 +65,22 @@ import type {
 const project: ProjectPort = {
   getBootstrapSnapshot(): Promise<BootstrapSnapshot> {
     return invokeNative("get_bootstrap_snapshot");
+  },
+  getProjectChatQueuedPrompts(
+    projectId: string,
+  ): Promise<Record<string, QueuedChatPrompt[]>> {
+    return invokeNative("get_project_chat_queued_prompts", { projectId });
+  },
+  replaceChatQueuedPrompts(
+    projectId: string,
+    chatId: string,
+    prompts: readonly QueuedChatPrompt[],
+  ): Promise<void> {
+    return invokeNative("replace_chat_queued_prompts", {
+      projectId,
+      chatId,
+      prompts,
+    });
   },
   createProjectFromPicker(
     expectedActiveProjectId: string | null,
@@ -175,26 +184,7 @@ const editor: EditorPort = {
     return invokeNative("discard_editor_buffer", { resource });
   },
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription> {
-    return startEditorWatchSession(resource, {
-      async listen(_watched, emit) {
-        if (!isTauriRuntime()) {
-          return () => undefined;
-        }
-        const { listen } = await import("@tauri-apps/api/event");
-        return listen<EditorExternalWatchNotice>(
-          EDITOR_EXTERNAL_WATCH_EVENT,
-          (event) => {
-            emit(event.payload);
-          },
-        );
-      },
-      watch(watched) {
-        return invokeNative("watch_editor_document", { resource: watched });
-      },
-      unwatch(watched) {
-        return invokeNative("unwatch_editor_document", { resource: watched });
-      },
-    });
+    return startNativeEditorWatchSession(resource);
   },
 };
 
@@ -383,24 +373,13 @@ const chat: ChatPort = {
   },
 };
 
-const agent: AgentPort = {
-  listHarnessModels(harnessId: string): Promise<ModelOption[]> {
-    return invokeNative("list_harness_models", { harnessId });
-  },
-  sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult> {
-    return invokeNative("send_simulated_prompt", { ...request });
-  },
-};
-
-const settings: SettingsPort = {
-  getEditorAppearance(): Promise<EditorAppearance> {
-    return invokeNative("get_editor_appearance");
-  },
-  setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance> {
-    return invokeNative("set_editor_appearance", { appearance });
-  },
-};
-
 export function createNativeWorkbenchPorts(): WorkbenchPorts {
-  return { project, editor, repository, chat, agent, settings };
+  return {
+    project,
+    editor,
+    repository,
+    chat,
+    agent: nativeWorkbenchAgentPort,
+    settings: nativeSettingsPort,
+  };
 }

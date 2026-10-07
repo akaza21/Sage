@@ -1,0 +1,8 @@
+{
+  "command": "cursor-agent",
+  "args": [
+    "acp"
+  ],
+  "reason": "prompt-complete",
+  "stderr": ""
+}

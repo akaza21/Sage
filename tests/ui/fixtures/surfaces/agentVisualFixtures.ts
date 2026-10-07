@@ -60,20 +60,6 @@ function activityToolItem(
   } as ToolCallItem;
 }
 
-function usageItem(input: ItemInput): AcpItem {
-  return {
-    ...itemIdentity(input),
-    kind: "usage",
-    toolState: null,
-    payload: {
-      inputTokens: 1240,
-      outputTokens: 386,
-      cachedInputTokens: 240,
-      totalTokens: 1626,
-    },
-  } as AcpItem;
-}
-
 function composerContextPage(
   chatIdValue: string,
   title: string,
@@ -89,27 +75,23 @@ function composerContextPage(
     ordinal,
     createdAt: createdAt + ordinal * 1_000,
   });
-  const usage: AcpItem = {
-    ...itemIdentity(input(2)),
-    kind: "usage",
-    toolState: null,
-    payload: {
-      inputTokens: totalTokens,
-      outputTokens: 0,
-      cachedInputTokens: 0,
-      totalTokens,
-      ...(contextWindow === undefined ? {} : { contextWindow }),
-    },
-  } as AcpItem;
+  const reportedTurn = turn(chatId, 1, "completed", [
+    textItem(
+      input(1),
+      "assistant",
+      "The runtime reported the current composer context usage.",
+    ),
+  ]);
   return page(chatId, title, [
-    turn(chatId, 1, "completed", [
-      textItem(
-        input(1),
-        "assistant",
-        "The runtime reported the current composer context usage.",
-      ),
-      usage,
-    ]),
+    {
+      ...reportedTurn,
+      usage: {
+        inputTokens: totalTokens,
+        outputTokens: 0,
+        totalTokens,
+        ...(contextWindow === undefined ? {} : { contextWindow }),
+      },
+    },
   ]);
 }
 
@@ -225,10 +207,14 @@ function activityFamilyPage() {
     activityToolItem(
       input(3),
       {
-        kind: "command",
+        kind: "execute",
         label: "Run focused checks",
         summary:
           "npm test -- src/features/chat/acp/ToolItem.test.tsx src/features/chat/acp/TurnActivityItem.test.tsx src/features/chat/acp/AcpChatProjection.test.tsx",
+        cwd: null,
+        exitCode: 0,
+        outputTail: null,
+        outputTruncated: false,
         resources: [],
         activity: "ordinary",
       },
@@ -243,15 +229,20 @@ function activityFamilyPage() {
         querySummary: "activity card ownership",
         resources: [
           {
-            rootId: ROOT_ID,
-            relativePath: "src/features/chat/acp/ToolItem.tsx",
+            kind: "resource",
+            resource: {
+              rootId: ROOT_ID,
+              relativePath: "src/features/chat/acp/ToolItem.tsx",
+            },
           },
         ],
+        matchCount: 14,
+        truncated: false,
       },
       "inProgress",
     ),
     activityToolItem(input(5), {
-      kind: "file",
+      kind: "read",
       label: "Read file",
       resources: [
         {
@@ -264,18 +255,19 @@ function activityFamilyPage() {
       ],
     }),
     activityToolItem(input(6), {
-      kind: "web",
+      kind: "fetch",
       label: "Review preview",
+      url: "http://127.0.0.1:1431/",
       summary: "Opened http://127.0.0.1:1431/",
     }),
     activityToolItem(input(7), {
-      kind: "generic",
+      kind: "other",
       label: "Inspect extension state",
+      rawKind: "harness.extension_state",
       summary: "Normalized bounded activity",
     }),
-    usageItem(input(8)),
-    errorItem(input(9)),
-    unsupportedItem(input(10)),
+    errorItem(input(8)),
+    unsupportedItem(input(9)),
   ];
   return page(
     chatId,
@@ -302,12 +294,56 @@ function declaredTestPage() {
         "I ran the project's declared test script.",
       ),
       activityToolItem(input(2), {
-        kind: "command",
+        kind: "execute",
         label: "Command",
         summary: null,
+        cwd: null,
+        exitCode: 0,
+        outputTail: null,
+        outputTruncated: false,
         resources: [],
         activity: "declaredTest",
       }),
+    ]),
+  ]);
+}
+
+function commandRollupPage() {
+  const chatId = "visual-chat-command-rollup" as SageChatId;
+  const turnId = `visual-turn-${chatId}-1` as SageTurnId;
+  const input = (ordinal: number): ItemInput => ({
+    chatId,
+    turnId,
+    ordinal,
+    createdAt: FIXED_NOW - 60_000 + ordinal * 1_000,
+  });
+  const command = (ordinal: number, summary: string) =>
+    activityToolItem(input(ordinal), {
+      kind: "execute",
+      label: "Command",
+      summary,
+      cwd: null,
+      exitCode: 0,
+      outputTail: null,
+      outputTruncated: false,
+      resources: [],
+      activity: "ordinary",
+    });
+  return page(chatId, "Command rollup", [
+    turn(chatId, 1, "completed", [
+      textItem(
+        input(1),
+        "assistant",
+        "I read alpha.txt followed by README.md, one read-only call per file.",
+      ),
+      command(
+        2,
+        "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
+      ),
+      command(
+        3,
+        "powershell -NoProfile -Command 'Get-Content -Path README.md -TotalCount 40'",
+      ),
     ]),
   ]);
 }
@@ -427,6 +463,8 @@ export function buildAgentPages(
       return [activityFamilyPage()];
     case "agent-declared-test":
       return [declaredTestPage()];
+    case "agent-command-rollup":
+      return [commandRollupPage()];
     case "agent-image":
       return [
         imagePage(),

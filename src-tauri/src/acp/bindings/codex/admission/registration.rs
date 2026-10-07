@@ -85,6 +85,13 @@ impl CodexBindingRegistration {
         matches!(*self.lock_state(), CodexRegistrationState::Admitted(_))
     }
 
+    pub(crate) fn admitted(&self) -> Option<Arc<AdmittedCodexBinding>> {
+        match &*self.lock_state() {
+            CodexRegistrationState::Admitted(binding) => Some(Arc::clone(binding)),
+            CodexRegistrationState::Unavailable(_) => None,
+        }
+    }
+
     pub(crate) fn unavailable(&self) -> Option<CodexAdmissionUnavailable> {
         match *self.lock_state() {
             CodexRegistrationState::Admitted(_) => None,

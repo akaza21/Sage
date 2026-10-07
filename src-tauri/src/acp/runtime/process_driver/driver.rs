@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+mod exit;
 mod ingress;
+mod teardown;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
@@ -12,11 +14,13 @@ use crate::acp::{
 use super::worker_command::{WorkerCommand, WorkerReply, WorkerResponder};
 use super::{
     CancelIntent, DispatchSource, DriverClock, DriverError, DriverProgress, FirstDeliveryUnknown,
-    ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, WorkerEnvelope,
+    PendingExit, ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, WorkerEnvelope,
     types::tree_exit,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use super::TeardownDetail;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DriverState {
     Running,
     TeardownRequired(TeardownCause),
@@ -39,6 +43,9 @@ where
     pub(super) clock: Arc<dyn DriverClock>,
     pub(super) state: DriverState,
     pub(super) first_delivery_unknown: Option<FirstDeliveryUnknown>,
+    pub(super) durable_mutation_unknown: bool,
+    pub(super) teardown_detail: Option<TeardownDetail>,
+    pub(super) pending_exit: Option<PendingExit>,
 }
 
 pub(crate) struct DriverAdmission;
@@ -136,6 +143,9 @@ where
             clock,
             state: DriverState::Running,
             first_delivery_unknown: None,
+            durable_mutation_unknown: false,
+            teardown_detail: None,
+            pending_exit: None,
         }
     }
 
@@ -157,11 +167,8 @@ where
         self.first_delivery_unknown
     }
 
-    pub(crate) fn teardown_cause(&self) -> Option<TeardownCause> {
-        match self.state {
-            DriverState::Running => None,
-            DriverState::TeardownRequired(cause) => Some(cause),
-        }
+    pub(crate) fn take_durable_mutation_unknown(&mut self) -> bool {
+        std::mem::take(&mut self.durable_mutation_unknown)
     }
 
     pub(crate) fn dispatch_prompt(
@@ -169,8 +176,27 @@ where
         prompt: crate::acp::intent::Prompt,
         client_message_id: crate::acp::contract::RequiredText<512>,
     ) -> Result<DriverProgress, DriverError> {
+        self.dispatch_prompt_with_access_mode(
+            prompt,
+            client_message_id,
+            crate::settings_store::SessionAccessMode::ReadOnly,
+        )
+    }
+
+    pub(crate) fn dispatch_prompt_with_access_mode(
+        &mut self,
+        prompt: crate::acp::intent::Prompt,
+        client_message_id: crate::acp::contract::RequiredText<512>,
+        access_mode: crate::settings_store::SessionAccessMode,
+    ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
-        match self.pump.queue_prompt(prompt, &client_message_id) {
+        if let Some(error) = self.latch_pending_exit() {
+            return Err(error);
+        }
+        match self
+            .pump
+            .queue_prompt(prompt, &client_message_id, access_mode)
+        {
             Ok(_) => {}
             Err(AdapterPumpError::NoActiveTurn | AdapterPumpError::Intent) => {
                 return Err(DriverError::RejectedIntent);
@@ -187,11 +213,46 @@ where
         intent: CancelIntent,
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
+        if self.pending_exit.is_some() {
+            return Err(self.settle_exit(self.clock.now_millis()).await);
+        }
         self.cancel(intent, DispatchSource::Cancel).await
+    }
+
+    pub(crate) fn dispatch_steer(
+        &mut self,
+        prompt: crate::acp::intent::Prompt,
+        client_message_id: crate::acp::contract::RequiredText<512>,
+    ) -> Result<(DriverProgress, u64), DriverError> {
+        self.ensure_running()?;
+        if let Some(error) = self.latch_pending_exit() {
+            return Err(error);
+        }
+        let request_id = match self.pump.queue_steer(prompt, client_message_id) {
+            Ok((_, request_id)) => request_id,
+            Err(AdapterPumpError::NoActiveTurn | AdapterPumpError::Intent) => {
+                return Err(DriverError::RejectedIntent);
+            }
+            Err(error) => return Err(self.pump_error(error)),
+        };
+        let mut progress = DriverProgress::default();
+        self.flush_all(DispatchSource::Prompt, &mut progress)?;
+        Ok((progress, request_id))
+    }
+
+    pub(crate) fn take_steer_response(&mut self, request_id: u64) -> Option<bool> {
+        self.pump.take_steer_response(request_id)
+    }
+
+    pub(crate) fn expire_steer(&mut self, request_id: u64) {
+        self.pump.expire_steer(request_id);
     }
 
     pub(crate) fn dispatch_close_session(&mut self) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
+        if let Some(error) = self.latch_pending_exit() {
+            return Err(error);
+        }
         match self
             .pump
             .queue_command(crate::acp::bindings::adapter::AdapterCommand::CloseSession)
@@ -213,6 +274,9 @@ where
         decision: crate::acp::runtime::permissions::PermissionDecision,
     ) -> Result<(), DriverError> {
         self.ensure_running()?;
+        if self.pending_exit.is_some() {
+            return Err(self.settle_exit(self.clock.now_millis()).await);
+        }
         self.pump
             .resolve_permission(request_id, decision, self.clock.now_millis())
             .await
@@ -241,7 +305,9 @@ where
                 Ok(())
             }
             DriverState::TeardownRequired(TeardownCause::HostTermination) => Ok(()),
-            DriverState::TeardownRequired(cause) => Err(DriverError::TeardownRequired(cause)),
+            DriverState::TeardownRequired(ref cause) => {
+                Err(DriverError::TeardownRequired(cause.clone()))
+            }
         }
     }
 
@@ -304,7 +370,9 @@ where
                 Ok(FlushDisposition::DeliveryUnknown) => {
                     self.first_delivery_unknown
                         .get_or_insert(FirstDeliveryUnknown { source });
-                    return Err(self.latch(TeardownCause::DeliveryUnknown));
+                    return Err(self
+                        .latch_pending_exit()
+                        .unwrap_or_else(|| self.latch(TeardownCause::DeliveryUnknown)));
                 }
                 Err(error) => return Err(self.pump_error(error)),
             }
@@ -330,40 +398,12 @@ where
                 Ok(FlushDisposition::DeliveryUnknown) => {
                     self.first_delivery_unknown
                         .get_or_insert(FirstDeliveryUnknown { source });
-                    return Err(self.latch(TeardownCause::DeliveryUnknown));
+                    return Err(self
+                        .latch_pending_exit()
+                        .unwrap_or_else(|| self.latch(TeardownCause::DeliveryUnknown)));
                 }
                 Err(error) => return Err(self.pump_error(error)),
             }
         }
-    }
-
-    fn pump_error(&mut self, error: AdapterPumpError) -> DriverError {
-        if matches!(error, AdapterPumpError::ConfigMutationRejected) {
-            return DriverError::ConfigMutationRejected;
-        }
-        let cause = match error {
-            AdapterPumpError::Frame => TeardownCause::ProtocolFailure,
-            AdapterPumpError::Adapter(
-                crate::acp::bindings::adapter::AdapterRuntimeError::MandatoryDenyTeardown,
-            ) => TeardownCause::MandatoryDenyFailure,
-            _ => TeardownCause::PumpFailure,
-        };
-        self.latch(cause)
-    }
-
-    fn ensure_running(&self) -> Result<(), DriverError> {
-        match self.state {
-            DriverState::Running => Ok(()),
-            DriverState::TeardownRequired(cause) => Err(DriverError::TeardownRequired(cause)),
-        }
-    }
-
-    fn latch(&mut self, cause: TeardownCause) -> DriverError {
-        if matches!(self.state, DriverState::Running) {
-            self.transport.close();
-            let _ = self.control.request_termination(tree_exit(cause));
-            self.state = DriverState::TeardownRequired(cause);
-        }
-        DriverError::TeardownRequired(self.teardown_cause().unwrap_or(cause))
     }
 }

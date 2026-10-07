@@ -12,6 +12,7 @@ use crate::acp::{
 pub(crate) enum PermissionDecision {
     Ask,
     AllowOnce,
+    AllowAlways,
     Deny,
 }
 

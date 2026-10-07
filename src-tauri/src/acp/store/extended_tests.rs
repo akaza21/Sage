@@ -47,6 +47,16 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(
+            "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
+        )
+        .unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE acp_turn_terminal_reasons(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,kind TEXT,message TEXT,remediation TEXT,created_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
+        )
+        .unwrap();
+    connection
 }
 
 pub(super) fn capabilities() -> String {
@@ -438,16 +448,19 @@ fn chat_page_rejects_a_persisted_resource_from_a_foreign_root() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-resource','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::file_summary_only(
-        crate::acp::intent::SafeResourceLocation::Resource {
-            resource: crate::acp::intent::SafeResourceRef::new(
-                crate::acp::contract::SageRootId::parse("root-foreign").unwrap(),
-                "src/lib.rs",
-            )
-            .unwrap(),
+        crate::acp::intent::FileChangeFacts {
+            resource: crate::acp::intent::SafeResourceLocation::Resource {
+                resource: crate::acp::intent::SafeResourceRef::new(
+                    crate::acp::contract::SageRootId::parse("root-foreign").unwrap(),
+                    "src/lib.rs",
+                )
+                .unwrap(),
+            },
+            summary: crate::acp::contract::SafeText::new("summary", "changed").unwrap(),
+            additions: Some(1),
+            deletions: None,
+            operation: crate::acp::intent::FileChangeOperation::Updated,
         },
-        crate::acp::contract::SafeText::new("summary", "changed").unwrap(),
-        Some(1),
-        None,
         false,
     ))
     .unwrap();
@@ -500,16 +513,16 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
         &session,
         "legacy-result",
         1,
-        "toolUpdateResult",
-        r#"{"kind":"toolUpdateResult","payload":{"category":"command","label":"Command","outputSummary":null}}"#,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"command","label":"Command","inputSummary":null,"outputSummary":null}}"#,
     );
     insert(
         &connection,
         &session,
         "current-result",
         2,
-        "toolUpdateResult",
-        r#"{"kind":"toolUpdateResult","payload":{"category":"command","label":"Command","outputSummary":"safe","locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/lib.rs"}},{"kind":"unavailable","reason":"missing","label":"Path does not exist"}]}}"#,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"command","label":"Command","inputSummary":null,"outputSummary":"safe","locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/lib.rs"}},{"kind":"unavailable","reason":"missing","label":"Path does not exist"}]}}"#,
     );
     insert(
         &connection,
@@ -524,8 +537,8 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
         &session,
         "diff-result",
         4,
-        "toolUpdateResult",
-        r#"{"kind":"toolUpdateResult","payload":{"category":"diff","label":"Apply diff","outputSummary":null,"locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/main.rs"}}]}}"#,
+        "toolCall",
+        r#"{"kind":"toolCall","payload":{"category":"diff","label":"Apply diff","inputSummary":null,"outputSummary":null,"locations":[{"kind":"resource","resource":{"rootId":"root-one","relativePath":"src/main.rs"}}]}}"#,
     );
     insert(
         &connection,
@@ -551,7 +564,7 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
     ));
     assert!(matches!(
         page.turns.as_slice()[0].items.as_slice()[1].content,
-        crate::acp::projection::ItemContent::ToolUpdateResult {
+        crate::acp::projection::ItemContent::ToolCall {
             output_summary: None,
             ..
         }
@@ -560,14 +573,14 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
     assert!(matches!(
         &items[3].content,
         crate::acp::projection::ItemContent::ToolCall {
-            presentation: crate::acp::projection::ToolPresentation::File { resources, .. },
+            presentation: crate::acp::projection::ToolPresentation::Read { resources, .. },
             ..
         } if resources.as_slice().len() == 2
     ));
     assert!(matches!(
         &items[4].content,
-        crate::acp::projection::ItemContent::ToolUpdateResult {
-            presentation: crate::acp::projection::ToolPresentation::Diff { resources, .. },
+        crate::acp::projection::ItemContent::ToolCall {
+            presentation: crate::acp::projection::ToolPresentation::Edit { resources, .. },
             ..
         } if matches!(
             resources.as_slice(),
@@ -578,7 +591,7 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
     assert!(matches!(
         &items[5].content,
         crate::acp::projection::ItemContent::ToolCall {
-            presentation: crate::acp::projection::ToolPresentation::File { resources, .. },
+            presentation: crate::acp::projection::ToolPresentation::Read { resources, .. },
             ..
         } if resources.as_slice().is_empty()
     ));
@@ -613,14 +626,44 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
 }
 
 #[test]
+fn chat_page_loads_a_turn_with_no_transcript_items() {
+    let mut connection = setup();
+    let started = start_session(&mut connection, start(0, "start-empty-turn")).unwrap();
+    connection
+        .execute(
+            "INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",
+            [started.session_id.as_str()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns VALUES('turn-empty','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",
+            [started.session_id.as_str()],
+        )
+        .unwrap();
+
+    let page = load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").unwrap(),
+        SageChatId::parse("chat-one").unwrap(),
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(page.turns.as_slice().len(), 1);
+    assert!(page.turns.as_slice()[0].items.as_slice().is_empty());
+}
+
+#[test]
 fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     let mut connection = setup();
     let started = start_session(&mut connection, start(0, "start-permission-history")).unwrap();
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permissions','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
-        category: ToolCategory::Command,
+        category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        offered_option_kinds: None,
     })
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());
@@ -654,8 +697,9 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'failed',NULL,0,2,'protocolFailure')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permission','project-one','chat-one',?1,1,0,'turn-intent','failed','correlated',0,1,2,2)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
-        category: ToolCategory::Command,
+        category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        offered_option_kinds: None,
     })
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());
@@ -686,8 +730,9 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
 
 pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
-        category: ToolCategory::Command,
+        category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        offered_option_kinds: None,
     })
     .unwrap();
     let payload_digest = super::facts::hex_digest(normalized_payload_json.as_bytes());
@@ -765,8 +810,9 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
     let mut changed = intent.clone();
     changed.normalized_payload_json =
         serde_json::to_string(&NormalizedPayload::PermissionRequest {
-            category: ToolCategory::Command,
+            category: ToolCategory::Execute,
             summary: crate::acp::contract::SafeText::new("summary", "Different command").unwrap(),
+            offered_option_kinds: None,
         })
         .unwrap();
     changed.normalized_payload_digest =

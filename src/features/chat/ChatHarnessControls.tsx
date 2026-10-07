@@ -1,25 +1,62 @@
-import { Box, BrainCircuit, Folder, Settings, ShieldCheck } from "lucide-react";
 import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type RefObject,
-} from "react";
+  BrainCircuit,
+  ChevronDown,
+  Folder,
+  Plus,
+  Settings,
+  ShieldCheck,
+} from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
+import {
+  cachedHarnessModels,
+  harnessModelIdentity,
+} from "../../app/harnessModelCache";
+import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import {
+  SESSION_ACCESS_MODE_SCOPE,
+  sessionAccessModeAvailability,
+  sessionAccessModeCandidates,
+  sessionAccessModeCopy,
+} from "../../domain/sessionAccessMode";
+import type { SessionAccessMode } from "../../domain/sessionAccessMode";
+import type {
+  AcpConfigValue,
+  AcpSessionConfig,
+} from "../../domain/acpSessionConfig";
+import { sessionConfigControls } from "../../domain/acpSessionConfigControls";
 import { SearchablePicker } from "../../ui/SearchablePicker";
-
+import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { composerOptionLabel } from "./composerChrome";
+import {
+  harnessPickerCandidates,
+  useComposerPopovers,
+} from "./useChatHarnessSelection";
+import "../../styles/harness-picker.css";
 interface Props {
   availableBinding: boolean;
   canPrompt: boolean;
+  discoveryPhase: HarnessDiscoveryPhase;
+  sessionHarnessId: string | null;
+  sessionModelId: string | null;
+  selectedHarnessId: string | null;
+  selectedModelId: string | null;
   projectName: string | null;
+  turnBusy: boolean;
   sessionConfig: AcpSessionConfig | null;
+  permissionRequests: boolean;
   modePending: boolean;
   modeError: string | null;
   focused: boolean;
   onSetSessionMode: (modeId: string) => Promise<unknown>;
+  onSetSessionConfigOption: (
+    configId: string,
+    value: AcpConfigValue,
+  ) => Promise<unknown>;
+  onSelectHarness: (harnessId: string) => Promise<void>;
+  onSelectModel: (modelId: string) => void;
   onModeRemoved: () => void;
   modeControlRef?: RefObject<HTMLLabelElement | null>;
 }
@@ -27,84 +64,116 @@ interface Props {
 export function ChatHarnessControls({
   availableBinding,
   canPrompt,
+  discoveryPhase,
+  sessionHarnessId,
+  sessionModelId,
+  selectedHarnessId,
+  selectedModelId,
   projectName,
+  turnBusy,
   sessionConfig,
+  permissionRequests,
   modePending,
   modeError,
   focused,
   onSetSessionMode,
+  onSetSessionConfigOption,
+  onSelectHarness,
+  onSelectModel,
   onModeRemoved,
   modeControlRef: externalModeControlRef,
 }: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const selectedHarnessId = useWorkbenchStore(
-    (state) => state.selectedHarnessId,
-  );
-  const models = useWorkbenchStore((state) => state.models);
-  const selectedModelId = useWorkbenchStore((state) => state.selectedModelId);
+  const projects = useWorkbenchStore((state) => state.projects);
+  const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const switchProject = useWorkbenchStore((state) => state.switchProject);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const selectHarness = useWorkbenchStore((state) => state.selectHarness);
-  const selectModel = useWorkbenchStore((state) => state.selectModel);
-  const harnessCandidates = useMemo(
-    () =>
-      harnesses
-        .filter(
-          (harness) =>
-            harness.installState !== "notInstalled" ||
-            harness.source === "development" ||
-            harness.id === selectedHarnessId,
-        )
-        .map((harness) => ({
-          disabledReason:
-            harness.installState === "available"
-              ? undefined
-              : harness.installState === "notInstalled"
-                ? "Harness is not installed."
-                : "Harness is unavailable.",
-          id: harness.id,
-          label: `${harness.name}${harness.version ? ` — ${harness.version}` : ""}${
-            harness.source === "development"
-              ? " — test only"
-              : harness.installState === "notInstalled"
-                ? " — not installed"
-                : harness.installState === "available"
-                  ? ""
-                  : " — unavailable"
-          }`,
-        })),
-    [harnesses, selectedHarnessId],
+  const {
+    active,
+    modelId,
+    modelPanel,
+    modelTrigger,
+    optionsId,
+    optionsPanel,
+    optionsTrigger,
+    toggle,
+  } = useComposerPopovers(turnBusy || projectTransitioning);
+  const globalSelectedHarnessId = useWorkbenchStore(
+    (state) => state.selectedHarnessId,
   );
-  const modelCandidates = useMemo(
-    () => models.map((model) => ({ id: model.id, label: model.name })),
-    [models],
+  const globalModels = useWorkbenchStore((state) => state.models);
+  const accessMode = useSessionAccessModeStore((state) => state.mode);
+  const effectiveAccessMode = sessionAccessModeAvailability(
+    accessMode,
+    permissionRequests,
+  ).effective;
+  const accessModeReady = useSessionAccessModeStore((state) => state.ready);
+  const accessModeError = useSessionAccessModeStore((state) => state.error);
+  const setAccessMode = useSessionAccessModeStore((state) => state.setMode);
+  const accessModeCandidates = useMemo(
+    () => sessionAccessModeCandidates(permissionRequests),
+    [permissionRequests],
   );
-  const chooseHarness = useCallback(
-    (id: string) => void selectHarness(id),
-    [selectHarness],
+  const harnessesPending = harnesses.some(
+    (harness) => harness.installState === "detecting",
   );
-  const chooseModel = useCallback(
-    (id: string) => selectModel(id),
-    [selectModel],
+  const selectedHarness = harnesses.find(
+    (harness) => harness.id === selectedHarnessId,
+  );
+  const modelIdentity = selectedHarness?.accountModelDiscovery
+    ? null
+    : harnessModelIdentity(selectedHarness);
+  const models =
+    selectedHarnessId === globalSelectedHarnessId
+      ? globalModels
+      : (cachedHarnessModels(modelIdentity) ?? []);
+  const modelCatalogPending =
+    selectedHarnessId === globalSelectedHarnessId &&
+    (harnessesPending || discoveryPhase === "checking");
+  const modelCandidates = models.map((model) => ({
+    id: model.id,
+    label: model.name,
+  }));
+  const projectCandidates = useMemo(
+    () => projects.map((project) => ({ id: project.id, label: project.name })),
+    [projects],
   );
   const modelUnavailable = !canPrompt || models.length === 0;
+  const selectedSessionConfig =
+    sessionHarnessId === selectedHarnessId && sessionModelId === selectedModelId
+      ? sessionConfig
+      : null;
+  const configOptions = sessionConfigControls(selectedSessionConfig);
+  const modelOption = configOptions.find(
+    (option) => (option.category ?? option.id).toLocaleLowerCase() === "model",
+  );
+  const effortOption = configOptions.find(
+    (option) => (option.category ?? option.id).toLocaleLowerCase() === "effort",
+  );
+  const hasSessionModel = Boolean(modelOption);
+  const modelLabel =
+    composerOptionLabel(modelOption) ??
+    models.find((model) => model.id === selectedModelId)?.name ??
+    "Model";
+  const effortLabel = composerOptionLabel(effortOption);
+  const harnessCandidates = harnessPickerCandidates(
+    harnesses,
+    selectedHarnessId,
+    selectedModelId,
+    models,
+    modelLabel,
+    effortLabel,
+  );
   const internalModeControlRef = useRef<HTMLLabelElement>(null);
   const modeControlRef = externalModeControlRef ?? internalModeControlRef;
-  const modeOptions = sessionConfig?.modes?.availableModes ?? [];
-  const hasModes = !sessionConfig?.removed && modeOptions.length > 0;
-  const modeCandidates = useMemo(
-    () =>
-      modeOptions.map((mode) => ({
-        id: mode.id,
-        label: mode.name || mode.id,
-      })),
-    [modeOptions],
-  );
-  const chooseMode = useCallback(
-    (modeId: string) => void onSetSessionMode(modeId),
-    [onSetSessionMode],
-  );
+  const modeOptions = selectedSessionConfig?.modes?.availableModes ?? [];
+  const hasModes = !selectedSessionConfig?.removed && modeOptions.length > 0;
+  const modeCandidates = modeOptions.map((mode) => ({
+    id: mode.id,
+    label: mode.name || mode.id,
+  }));
   const hadModes = useRef(hasModes);
   useLayoutEffect(() => {
     const activeElement = document.activeElement;
@@ -123,85 +192,200 @@ export function ChatHarnessControls({
       onModeRemoved();
     }
     hadModes.current = hasModes;
-  }, [focused, hasModes, onModeRemoved]);
-
+  }, [focused, hasModes, modeControlRef, onModeRemoved]);
   return (
     <div className="composer__controls">
-      <label className="select-control select-control--chip">
-        <Box className="select-control__icon" size={14} aria-hidden="true" />
+      <button
+        ref={optionsTrigger}
+        className="composer__plus"
+        type="button"
+        aria-label="Composer options"
+        aria-controls={optionsId}
+        aria-haspopup="dialog"
+        aria-expanded={active === "options"}
+        disabled={turnBusy || projectTransitioning}
+        onClick={() => toggle("options")}
+      >
+        <Plus size={16} aria-hidden="true" />
+      </button>
+      {availableBinding ? (
+        <span
+          className={`composer__access-label${effectiveAccessMode === "workspaceWrite" ? " composer__access-label--write" : ""}`}
+        >
+          <ShieldCheck size={13} aria-hidden="true" />
+          {effectiveAccessMode === "workspaceWrite"
+            ? "Full access"
+            : sessionAccessModeCopy(effectiveAccessMode).label}
+        </span>
+      ) : null}
+      <label className="composer__control-trigger composer__harness">
         <SearchablePicker
           ariaLabel="Harness"
           candidates={harnessCandidates}
-          disabled={projectTransitioning}
-          onSelect={chooseHarness}
+          popoverClassName="composer__popover composer__harness-menu"
+          triggerClassName="composer__control-trigger composer__picker-trigger"
+          sectionLabel="Harnesses"
+          searchable={false}
+          disabled={projectTransitioning || turnBusy}
+          state={harnessesPending ? "loading" : undefined}
+          stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
+          onSelect={(id) => void onSelectHarness(id)}
           selectedId={selectedHarnessId}
         />
       </label>
-      <label className="select-control select-control--chip">
-        <BrainCircuit
-          className="select-control__icon"
-          size={14}
-          aria-hidden="true"
-        />
-        <SearchablePicker
-          ariaLabel="Model"
-          candidates={modelCandidates}
-          disabled={projectTransitioning || modelUnavailable}
-          onSelect={chooseModel}
-          selectedId={selectedModelId}
-        />
-        {modelUnavailable ? (
-          <span className="select-control__reason">
-            Select a ready harness to load models.
-          </span>
-        ) : null}
-      </label>
-      {projectName ? (
-        <span
-          className="project-scope"
-          title="Project switching is unavailable"
+      <button
+        ref={modelTrigger}
+        className="composer__control-trigger composer__picker-trigger composer__model-trigger"
+        type="button"
+        aria-label="Model and effort"
+        aria-controls={modelId}
+        aria-haspopup="dialog"
+        aria-expanded={active === "model"}
+        disabled={turnBusy || projectTransitioning}
+        onClick={() => toggle("model")}
+      >
+        <BrainCircuit size={14} data-model-icon aria-hidden="true" />
+        {modelLabel}
+        {effortLabel ? ` ${effortLabel}` : ""}
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+      {active === "options" ? (
+        <div
+          ref={optionsPanel}
+          id={optionsId}
+          role="dialog"
+          tabIndex={-1}
+          className="composer__popover composer__options"
+          aria-label="Composer options menu"
         >
-          <Folder
-            className="project-scope__icon"
-            size={14}
-            aria-hidden="true"
+          <ChatSessionConfigControls
+            sessionConfig={selectedSessionConfig}
+            group="other"
+            pending={modePending}
+            disabled={turnBusy || projectTransitioning}
+            error={modeError}
+            onSetSessionConfigOption={onSetSessionConfigOption}
           />
-          <span>{projectName}</span>
-        </span>
+          {projectName ? (
+            projectCandidates.length > 0 ? (
+              <label className="select-control select-control--chip project-scope">
+                <Folder
+                  className="project-scope__icon"
+                  size={14}
+                  aria-hidden="true"
+                />
+                <SearchablePicker
+                  ariaLabel="Project"
+                  candidates={projectCandidates}
+                  disabled={projectTransitioning || turnBusy}
+                  onSelect={(id) => void switchProject(id)}
+                  selectedId={projectId}
+                />
+              </label>
+            ) : (
+              <span
+                className="project-scope"
+                title="No other projects available"
+              >
+                <Folder
+                  className="project-scope__icon"
+                  size={14}
+                  aria-hidden="true"
+                />
+                <span>{projectName}</span>
+              </span>
+            )
+          ) : null}
+          {hasModes ? (
+            <label
+              ref={modeControlRef}
+              className="select-control select-control--chip"
+            >
+              <Settings
+                className="select-control__icon"
+                size={14}
+                aria-hidden="true"
+              />
+              <SearchablePicker
+                ariaLabel="Session mode"
+                candidates={modeCandidates}
+                disabled={turnBusy || projectTransitioning || modePending}
+                onSelect={(modeId) => void onSetSessionMode(modeId)}
+                selectedId={selectedSessionConfig?.modes?.currentModeId ?? null}
+              />
+              {modePending ? (
+                <span className="select-control__reason" role="status">
+                  Changing mode…
+                </span>
+              ) : null}
+              {modeError ? (
+                <span className="select-control__reason" role="alert">
+                  {modeError}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+          {availableBinding ? (
+            <label className="select-control select-control--chip access-mode">
+              <ShieldCheck
+                className="select-control__icon"
+                size={14}
+                aria-hidden="true"
+              />
+              <SearchablePicker
+                ariaLabel="Permission mode"
+                candidates={accessModeCandidates}
+                disabled={!accessModeReady || turnBusy || projectTransitioning}
+                footer={SESSION_ACCESS_MODE_SCOPE}
+                onSelect={(mode) =>
+                  void setAccessMode(mode as SessionAccessMode)
+                }
+                selectedId={accessMode}
+              />
+              {accessModeError ? (
+                <span className="select-control__reason" role="alert">
+                  {accessModeError}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+        </div>
       ) : null}
-      {hasModes ? (
-        <label
-          ref={modeControlRef}
-          className="select-control select-control--chip"
+      {active === "model" ? (
+        <div
+          ref={modelPanel}
+          id={modelId}
+          role="dialog"
+          tabIndex={-1}
+          className="composer__popover composer__model-menu"
+          aria-label="Model and effort menu"
         >
-          <Settings
-            className="select-control__icon"
-            size={14}
-            aria-hidden="true"
+          <ChatSessionConfigControls
+            sessionConfig={selectedSessionConfig}
+            group="model"
+            pending={modePending}
+            disabled={turnBusy || projectTransitioning}
+            error={modeError}
+            onSetSessionConfigOption={onSetSessionConfigOption}
           />
-          <SearchablePicker
-            ariaLabel="Session mode"
-            candidates={modeCandidates}
-            onSelect={chooseMode}
-            selectedId={sessionConfig?.modes?.currentModeId ?? null}
-          />
-          {modePending ? (
-            <span className="select-control__reason" role="status">
-              Changing mode…
-            </span>
+          {(models.length > 0 || modelCatalogPending) && !hasSessionModel ? (
+            <label className="select-control select-control--chip">
+              <BrainCircuit
+                className="select-control__icon"
+                size={14}
+                aria-hidden="true"
+              />
+              <SearchablePicker
+                ariaLabel="Model"
+                candidates={modelCandidates}
+                disabled={turnBusy || projectTransitioning || modelUnavailable}
+                emptyLabel="Model"
+                onSelect={onSelectModel}
+                selectedId={selectedModelId}
+              />
+            </label>
           ) : null}
-          {modeError ? (
-            <span className="select-control__reason" role="alert">
-              {modeError}
-            </span>
-          ) : null}
-        </label>
-      ) : null}
-      {availableBinding ? (
-        <span className="access-mode" title="Permission requests fail closed">
-          <ShieldCheck size={14} aria-hidden="true" />
-          Read-only policy
-        </span>
+        </div>
       ) : null}
     </div>
   );

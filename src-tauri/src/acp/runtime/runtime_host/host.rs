@@ -29,6 +29,8 @@ pub(crate) struct RuntimeHost {
     #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
     #[cfg(test)]
+    timeout_override_suspended: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
     pub(crate) last_shutdown_phase: Mutex<&'static str>,
 }
 
@@ -45,6 +47,9 @@ enum TimeoutOverride {
 
 #[path = "host_session_config.rs"]
 mod host_session_config;
+
+#[path = "host_dispatch.rs"]
+mod host_dispatch;
 
 impl RuntimeHost {
     pub(crate) fn start<E: RuntimeEngine>(engine: E) -> Result<Self, HostError> {
@@ -69,6 +74,24 @@ impl RuntimeHost {
         timeout: Duration,
     ) -> Result<Self, HostError> {
         Self::start_inner(engine, Some(TimeoutOverride::Duration(timeout)), None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_with_timeout_and_shutdown_recovery<E, R>(
+        engine: E,
+        timeout: Duration,
+        shutdown_recovery: Arc<R>,
+    ) -> Result<Self, HostError>
+    where
+        E: RuntimeEngine,
+        R: RuntimeShutdownRecovery + 'static,
+    {
+        let shutdown_recovery: Arc<dyn RuntimeShutdownRecovery> = shutdown_recovery;
+        Self::start_inner(
+            engine,
+            Some(TimeoutOverride::Duration(timeout)),
+            Some(shutdown_recovery),
+        )
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -127,8 +150,20 @@ impl RuntimeHost {
             #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
             #[cfg(test)]
+            timeout_override_suspended: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
             last_shutdown_phase: Mutex::new("none"),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn without_timeout_override<T>(&self, body: impl FnOnce() -> T) -> T {
+        self.timeout_override_suspended
+            .store(true, Ordering::Release);
+        let outcome = body();
+        self.timeout_override_suspended
+            .store(false, Ordering::Release);
+        outcome
     }
 
     pub(crate) fn activate(&self, owner: RuntimeOwner) -> Result<HostOutcome, HostError> {
@@ -176,42 +211,19 @@ impl RuntimeHost {
         self.outcome(HostCommand::Cancel(intent))
     }
 
+    pub(crate) fn steer(
+        &self,
+        intent: super::types::HostSteerIntent,
+    ) -> Result<HostOutcome, HostError> {
+        self.outcome(HostCommand::Steer(intent))
+    }
+
     pub(crate) fn accept_terminal(
         &self,
         owner: RuntimeOwner,
         cursor: AdapterTurnCursor,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::Terminal { owner, cursor })
-    }
-
-    /// Queues a durable terminal cursor without waiting for the host actor.
-    /// Process workers must use this path: the actor accepts the cursor by
-    /// calling back into that same worker, so a synchronous wait would deadlock.
-    pub(crate) fn try_notify_terminal(
-        &self,
-        owner: RuntimeOwner,
-        cursor: AdapterTurnCursor,
-    ) -> Result<TerminalNotification, HostError> {
-        match self.lifecycle.load(Ordering::Acquire) {
-            HOST_RUNNING => {}
-            HOST_AWAITING_EXIT => return Err(HostError::RecoveryRequired),
-            HOST_SHUTDOWN_ACKNOWLEDGED | HOST_JOINED => return Err(HostError::Closed),
-            _ => return Err(HostError::RecoveryRequired),
-        }
-        let command = HostCommand::Terminal { owner, cursor };
-        let timeout = self.response_timeout(&command);
-        if timeout.is_zero() {
-            self.fail_deadline();
-            return Err(HostError::Deadline);
-        }
-        let deadline = Instant::now() + timeout;
-        let (reply, response) = mpsc::sync_channel(1);
-        self.mailbox.try_push(Envelope {
-            command,
-            reply,
-            deadline,
-        })?;
-        Ok(TerminalNotification { response, deadline })
     }
 
     pub(crate) fn project_switched(
@@ -275,6 +287,15 @@ impl RuntimeHost {
             .transpose()
     }
 
+    pub(crate) fn has_shutdown_recovery(&self) -> bool {
+        self.shutdown_recovery.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_awaiting_exit(&self) -> bool {
+        self.lifecycle.load(Ordering::Acquire) == HOST_AWAITING_EXIT
+    }
+
     /// Stops a host that was assembled for an activation which never became
     /// a usable runtime. Closing the mailbox prevents the actor from issuing
     /// any new process command; joining is the ownership barrier.
@@ -282,151 +303,6 @@ impl RuntimeHost {
         self.mailbox.close();
         self.lifecycle.store(HOST_AWAITING_EXIT, Ordering::Release);
         self.join_with_timeout(self.cleanup_timeout())
-    }
-
-    fn outcome(&self, command: HostCommand) -> Result<HostOutcome, HostError> {
-        match self.submit(command)? {
-            HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
-        }
-    }
-
-    pub(super) fn outcome_with_timeout(
-        &self,
-        command: HostCommand,
-        timeout: Duration,
-    ) -> Result<HostOutcome, HostError> {
-        match self.submit_with_timeout(command, timeout)? {
-            HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
-        }
-    }
-
-    fn outcome_until(
-        &self,
-        command: HostCommand,
-        deadline: Instant,
-    ) -> Result<HostOutcome, HostError> {
-        match self.submit_until(command, deadline)? {
-            HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
-        }
-    }
-
-    fn submit(&self, command: HostCommand) -> Result<HostReply, HostError> {
-        let timeout = self.response_timeout(&command);
-        self.submit_with_timeout(command, timeout)
-    }
-
-    pub(super) fn submit_with_timeout(
-        &self,
-        command: HostCommand,
-        timeout: Duration,
-    ) -> Result<HostReply, HostError> {
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or(HostError::Deadline)?;
-        self.submit_until(command, deadline)
-    }
-
-    /// Submits and waits against the caller's original absolute deadline.
-    /// The mailbox envelope retains this exact value, including queue time.
-    pub(super) fn submit_until(
-        &self,
-        command: HostCommand,
-        deadline: Instant,
-    ) -> Result<HostReply, HostError> {
-        let actor_settles_deadline = matches!(&command, HostCommand::ConfigureSession(_));
-        match self.lifecycle.load(Ordering::Acquire) {
-            HOST_RUNNING => {}
-            HOST_AWAITING_EXIT => return Err(HostError::RecoveryRequired),
-            HOST_SHUTDOWN_ACKNOWLEDGED | HOST_JOINED => return Err(HostError::Closed),
-            _ => return Err(HostError::RecoveryRequired),
-        }
-        if Instant::now() >= deadline {
-            self.fail_deadline();
-            return Err(HostError::Deadline);
-        }
-        let (reply, response) = mpsc::sync_channel(1);
-        self.mailbox.try_push(Envelope {
-            command,
-            reply,
-            deadline,
-        })?;
-        match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            Ok(reply) => reply,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                if !actor_settles_deadline {
-                    self.fail_deadline();
-                }
-                Err(HostError::Deadline)
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.lifecycle.store(HOST_AWAITING_EXIT, Ordering::Release);
-                self.mailbox.close();
-                Err(HostError::Closed)
-            }
-        }
-    }
-
-    fn fail_deadline(&self) {
-        let _ = self.lifecycle.compare_exchange(
-            HOST_RUNNING,
-            HOST_AWAITING_EXIT,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        );
-        self.mailbox.close();
-    }
-
-    fn response_timeout(&self, command: &HostCommand) -> Duration {
-        #[cfg(any(test, all(windows, feature = "acp-fixture")))]
-        if let Some(timeout) = self.timeout_override {
-            return match timeout {
-                #[cfg(test)]
-                TimeoutOverride::Duration(duration) => duration,
-                TimeoutOverride::Deadline { operation, .. } => operation
-                    .saturating_duration_since(Instant::now())
-                    .min(Duration::from_millis(command.deadline_millis())),
-            };
-        }
-        Duration::from_millis(command.deadline_millis())
-    }
-
-    pub(super) fn join(&self) -> Result<(), HostError> {
-        self.join_with_timeout(self.cleanup_timeout())
-    }
-
-    fn cleanup_timeout(&self) -> Duration {
-        let native = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
-        #[cfg(any(test, all(windows, feature = "acp-fixture")))]
-        if let Some(TimeoutOverride::Deadline { cleanup, .. }) = self.timeout_override {
-            return native.min(cleanup.saturating_duration_since(Instant::now()));
-        }
-        native
-    }
-
-    pub(super) fn join_with_timeout(&self, timeout: Duration) -> Result<(), HostError> {
-        let mut thread = self
-            .thread
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(worker) = thread.as_mut() else {
-            return Ok(());
-        };
-        match worker.wait(timeout) {
-            Ok(()) => {
-                *thread = None;
-                self.lifecycle.store(HOST_JOINED, Ordering::Release);
-                Ok(())
-            }
-            Err(ThreadWaitError::Timeout) => Err(HostError::Deadline),
-            Err(ThreadWaitError::Panicked) => {
-                *thread = None;
-                self.lifecycle.store(HOST_JOINED, Ordering::Release);
-                Err(HostError::Unavailable)
-            }
-        }
     }
 }
 

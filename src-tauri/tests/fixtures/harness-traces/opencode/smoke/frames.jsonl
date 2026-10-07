@@ -1,0 +1,13 @@
+{"direction":"out","frame":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false}},"clientInfo":{"name":"Sage fixture","version":"0"}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"embeddedContext":true}}}}}
+{"direction":"out","frame":{"jsonrpc":"2.0","method":"initialized","params":{}}}
+{"direction":"out","frame":{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"C:\\fixture-workspace\\opencode\\smoke","mcpServers":[]}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","id":2,"result":{"sessionId":"synthetic-session","configOptions":[]}}}
+{"direction":"out","frame":{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"synthetic-session","prompt":[{"type":"text","text":"synthetic prompt"}]}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"available_commands_update","availableCommands":[]}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"agent_thought_chunk","messageId":"synthetic-thought","content":{"type":"text","text":"synthetic "}}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"agent_thought_chunk","messageId":"synthetic-thought","content":{"type":"text","text":"reasoning"}}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"agent_thought_chunk","messageId":"synthetic-thought","content":{"type":"text","text":"."}}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"agent_message_chunk","messageId":"synthetic-message","content":{"type":"text","text":"synthetic final"}}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"synthetic-session","update":{"sessionUpdate":"usage_update","used":6,"size":4096,"cost":{"amount":0,"currency":"XXX"}}}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn","usage":{"inputTokens":5,"outputTokens":1,"totalTokens":6,"cachedReadTokens":0},"_meta":{}}}}

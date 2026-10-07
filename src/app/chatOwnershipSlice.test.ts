@@ -169,6 +169,60 @@ describe("per-Chat disposable ownership", () => {
     });
   });
 
+  it("restores only known Chat queues as blocked after authoritative initialization", async () => {
+    vi.spyOn(projectPort, "getBootstrapSnapshot").mockResolvedValue(
+      projection([chatA, chatB], chatA.id, 2),
+    );
+    vi.spyOn(projectPort, "getProjectChatQueuedPrompts").mockResolvedValue({
+      [chatA.id]: [
+        {
+          id: "queued-a",
+          text: "Run later",
+          attachedContext: [],
+          bindingId: "binding-a",
+          modelId: null,
+          status: "sending",
+        },
+        {
+          id: "unknown-a",
+          text: "Maybe delivered",
+          attachedContext: [],
+          bindingId: "binding-a",
+          modelId: null,
+          status: "outcomeUnknown",
+        },
+      ],
+      foreign: [
+        {
+          id: "foreign",
+          text: "Never show",
+          attachedContext: [],
+          bindingId: "binding-a",
+          modelId: null,
+          status: "queued",
+        },
+      ],
+    });
+
+    await useWorkbenchStore.getState().initialize();
+
+    expect(
+      useWorkbenchStore.getState().chatUiById[chatA.id].queuedPrompts,
+    ).toEqual([
+      expect.objectContaining({
+        id: "queued-a",
+        text: "Run later",
+        status: "blocked",
+      }),
+      expect.objectContaining({
+        id: "unknown-a",
+        text: "Maybe delivered",
+        status: "outcomeUnknown",
+      }),
+    ]);
+    expect(useWorkbenchStore.getState().chatUiById.foreign).toBeUndefined();
+  });
+
   it("preserves Chat ownership through a same-Project root projection", async () => {
     useWorkbenchStore.getState().setComposerText("Keep through root change");
     vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
@@ -303,6 +357,32 @@ describe("per-Chat disposable ownership", () => {
       composerText: "Retry A",
       sending: false,
       chatError: "A failed in background",
+    });
+  });
+
+  it("sends a legacy prompt through the active Chat's harness selection", async () => {
+    const send = vi
+      .spyOn(getWorkbenchPorts().agent, "sendPrompt")
+      .mockResolvedValue({ sessionId: "session-a", messages: [] });
+    const state = useWorkbenchStore.getState();
+    const owner = state.captureChatOwnership(chatA.id)!;
+    state.setChatHarnessSelection(owner, {
+      harnessId: "codex-app-server",
+      modelId: "codex-model",
+    });
+    useWorkbenchStore.setState({
+      selectedHarnessId: "claude",
+      selectedModelId: "claude-model",
+    });
+    useWorkbenchStore.getState().setComposerText("Send from Codex");
+
+    await useWorkbenchStore.getState().sendPrompt();
+
+    expect(send).toHaveBeenCalledWith({
+      chatId: chatA.id,
+      harnessId: "codex-app-server",
+      modelId: "codex-model",
+      text: "Send from Codex",
     });
   });
 

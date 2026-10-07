@@ -12,6 +12,7 @@ function session(index = 0, overrides: Record<string, unknown> = {}): object {
     residency: "hot",
     runtimeEpoch: "1",
     nextRuntimeEpoch: null,
+    permissionRequests: false,
     capabilities: {
       schemaVersion: 1,
       protocolVersion: "1",
@@ -108,6 +109,8 @@ function turn(overrides: Record<string, unknown> = {}): object {
     terminalAt: 1,
     items: [item()],
     activities: [activity()],
+    browserOperations: [],
+    browserOperationsCollapsed: 0,
     ...overrides,
   };
 }
@@ -198,7 +201,24 @@ describe("safeAcpMutationResponse", () => {
     ).not.toBeNull();
   });
 
-  it("does not admit zero runtime or projection counters with zero entity revisions", () => {
+  it("admits a freshly created chat page at projection revision zero", () => {
+    const freshChat = {
+      projection: {
+        sessionConfig: null,
+        projectId: "45ae7ae4-fe47-44af-850f-59ba2ba59048",
+        chatId: "eedef600-e483-403d-9b3d-0485c30cc5ae",
+        title: "Chat: New chat 3",
+        projectionRevision: "0",
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+        nextCursor: null,
+      },
+    };
+    expect(safeAcpMutationResponse(freshChat)).toEqual(freshChat);
+  });
+
+  it("admits a zero page projection revision alongside zero entity revisions", () => {
     const zeroEntities = mutationWithEntityRevisions("0") as {
       projection: Record<string, unknown>;
     };
@@ -206,7 +226,13 @@ describe("safeAcpMutationResponse", () => {
       safeAcpMutationResponse({
         projection: { ...zeroEntities.projection, projectionRevision: "0" },
       }),
-    ).toBeNull();
+    ).not.toBeNull();
+  });
+
+  it("does not admit a zero runtime epoch with zero entity revisions", () => {
+    const zeroEntities = mutationWithEntityRevisions("0") as {
+      projection: Record<string, unknown>;
+    };
     expect(
       safeAcpMutationResponse({
         projection: {
@@ -241,6 +267,18 @@ describe("safeAcpMutationResponse", () => {
           ],
         },
       }),
+    ).toBeNull();
+  });
+
+  it("projects the session permission-request capability and rejects an absent value", () => {
+    expect(
+      safeAcpMutationResponse(mutation({ sessions: [session()] }))?.projection
+        .sessions[0]?.permissionRequests,
+    ).toBe(false);
+    expect(
+      safeAcpMutationResponse(
+        mutation({ sessions: [session(0, { permissionRequests: undefined })] }),
+      ),
     ).toBeNull();
   });
 
@@ -345,6 +383,202 @@ describe("safeAcpMutationResponse", () => {
     ).not.toBeNull();
   });
 
+  it("preserves a safe relative label for a deleted missing file", () => {
+    const response = safeAcpMutationResponse(
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "fileChangeDiff",
+                payload: {
+                  changes: [
+                    {
+                      ...fileChange("cp8c-probe.md"),
+                      resource: {
+                        kind: "unavailable",
+                        reason: "missing",
+                        label: "Path does not exist",
+                        displayResource: {
+                          rootId: "root-a",
+                          relativePath: "cp8c-probe.md",
+                        },
+                      },
+                      operation: "deleted",
+                    },
+                  ],
+                  truncated: false,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(response?.projection.turns[0]?.items[0]?.payload).toMatchObject({
+      changes: [
+        {
+          resource: {
+            kind: "unavailable",
+            reason: "missing",
+            displayResource: {
+              rootId: "root-a",
+              relativePath: "cp8c-probe.md",
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it.each([
+    "openTab",
+    "navigate",
+    "snapshotPage",
+    "act",
+    "waitFor",
+    "screenshot",
+    "readConsole",
+    "readNetwork",
+  ])("accepts the Rust browser operation %s", (operation) => {
+    const response = mutation({
+      turns: [
+        turn({
+          browserOperations: [
+            {
+              projectId: "project-a",
+              chatId: "chat-a",
+              sessionId: "session-0",
+              turnId: "turn-0",
+              tabId: "browser-1",
+              operationId: "operation-1",
+              operation,
+              phase: "completed",
+              origin: "https://example.com",
+              summary: "Browser operation",
+              resultSummary: "Completed",
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ],
+        }),
+      ],
+    });
+    expect(safeAcpMutationResponse(response)).not.toBeNull();
+  });
+
+  it("keeps known browser actions when another action has an unknown kind", () => {
+    const operation = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      sessionId: "session-0",
+      turnId: "turn-0",
+      tabId: "browser-1",
+      operationId: "operation-1",
+      operation: "navigate",
+      phase: "completed",
+      origin: "https://example.com",
+      summary: "Navigate to origin",
+      resultSummary: "Completed",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const decoded = safeAcpMutationResponse(
+      mutation({
+        turns: [
+          turn({
+            browserOperations: [
+              operation,
+              {
+                ...operation,
+                operationId: "operation-2",
+                operation: "futureSecretAction",
+                summary: "private operation input",
+                resultSummary: "private operation output",
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(decoded?.projection.turns[0]?.browserOperations).toEqual([
+      operation,
+      {
+        ...operation,
+        operationId: "operation-2",
+        operation: "unsupported",
+        phase: "failed",
+        summary: "Unsupported browser operation",
+        resultSummary:
+          "This browser operation is not supported by this version of Sage.",
+      },
+    ]);
+  });
+
+  it("rejects malformed browser actions even when their kind is unknown", () => {
+    const base = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      sessionId: "session-0",
+      turnId: "turn-0",
+      tabId: "browser-1",
+      operationId: "operation-1",
+      operation: "futureAction",
+      phase: "completed",
+      origin: "https://example.com",
+      summary: "Browser action",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    for (const malformed of [
+      { ...base, operation: "x".repeat(129) },
+      { ...base, turnId: "" },
+      { ...base, summary: "x".repeat(513) },
+      { ...base, phase: "mystery" },
+    ]) {
+      expect(
+        safeAcpMutationResponse(
+          mutation({ turns: [turn({ browserOperations: [malformed] })] }),
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it.each([
+    "C:/secret.md",
+    "../secret.md",
+    "https:secret.md",
+    "cp8\u0085probe.md",
+  ])("rejects unsafe missing-file display path %s", (relativePath) => {
+    const response = mutation({
+      turns: [
+        turn({
+          items: [
+            item(0, {
+              kind: "fileChangeDiff",
+              payload: {
+                changes: [
+                  {
+                    ...fileChange("cp8c-probe.md"),
+                    resource: {
+                      kind: "unavailable",
+                      reason: "missing",
+                      label: "Path does not exist",
+                      displayResource: { rootId: "root-a", relativePath },
+                    },
+                    operation: "deleted",
+                  },
+                ],
+                truncated: false,
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(safeAcpMutationResponse(response)).toBeNull();
+  });
+
   it("fails closed when a file-change payload exceeds its change limit", () => {
     expect(
       safeAcpMutationResponse(
@@ -381,7 +615,7 @@ describe("safeAcpMutationResponse", () => {
                   toolState: "completed",
                   payload: {
                     presentation: {
-                      kind: "file",
+                      kind: "read",
                       label: "Read files",
                       resources: Array.from({ length: 65 }, () => ({
                         kind: "resource",
@@ -412,7 +646,7 @@ describe("safeAcpMutationResponse", () => {
               toolState: "completed",
               payload: {
                 presentation: {
-                  kind: "command",
+                  kind: "execute",
                   label: "Command",
                   summary: null,
                   resources: [],
@@ -438,6 +672,40 @@ describe("safeAcpMutationResponse", () => {
     expect(safeAcpMutationResponse(unknown)).toBeNull();
   });
 
+  it("degrades an unknown tool kind to other instead of dropping the page", () => {
+    const decoded = safeAcpMutationResponse(
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "toolCall",
+                toolState: "completed",
+                payload: {
+                  presentation: {
+                    kind: "teleport",
+                    label: "Teleported",
+                    summary: "raw input preserved",
+                  },
+                  inputSummary: null,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    const teleported = decoded?.projection.turns[0]?.items[0];
+    expect(
+      teleported?.kind === "toolCall" ? teleported.payload.presentation : null,
+    ).toEqual({
+      kind: "other",
+      label: "Teleported",
+      rawKind: "teleport",
+      summary: "raw input preserved",
+    });
+  });
+
   it("admits exactly 64 command locations and rejects one more", () => {
     const command = (count: number) =>
       mutation({
@@ -445,13 +713,13 @@ describe("safeAcpMutationResponse", () => {
           turn({
             items: [
               item(0, {
-                kind: "toolUpdateResult",
+                kind: "toolCall",
                 toolState: "completed",
                 payload: {
-                  callItemId: null,
+                  inputSummary: null,
                   outputSummary: "bounded output",
                   presentation: {
-                    kind: "command",
+                    kind: "execute",
                     label: "Command",
                     summary: null,
                     resources: Array.from({ length: count }, (_, index) => ({
@@ -472,50 +740,65 @@ describe("safeAcpMutationResponse", () => {
     expect(safeAcpMutationResponse(command(65))).toBeNull();
   });
 
-  it.each([
-    ["toolCall", "outputSummary"],
-    ["toolUpdateResult", "outputSummary"],
-  ] as const)("bounds %s command output by UTF-8 bytes", (kind, outputKey) => {
-    const output = "😀".repeat(16_384);
-    const command = (value: string) =>
-      mutation({
-        turns: [
-          turn({
-            items: [
-              item(0, {
-                kind,
-                toolState: "completed",
-                payload:
-                  kind === "toolCall"
-                    ? {
-                        presentation: {
-                          kind: "command",
-                          label: "Command",
-                          summary: null,
-                          resources: [],
-                        },
-                        inputSummary: null,
-                        [outputKey]: value,
-                      }
-                    : {
-                        callItemId: null,
-                        presentation: {
-                          kind: "command",
-                          label: "Command",
-                          summary: null,
-                          resources: [],
-                        },
-                        [outputKey]: value,
-                      },
-              }),
-            ],
-          }),
-        ],
-      });
-    expect(new TextEncoder().encode(output).byteLength).toBe(65_536);
-    expect(safeAcpMutationResponse(command(output))).not.toBeNull();
-    expect(safeAcpMutationResponse(command(`${output}x`))).toBeNull();
+  it("rejects a folded toolUpdateResult kind with no legacy decode path", () => {
+    const legacy = mutation({
+      turns: [
+        turn({
+          items: [
+            item(0, {
+              kind: "toolUpdateResult",
+              toolState: "completed",
+              payload: {
+                callItemId: null,
+                outputSummary: "folded away by migration 011",
+                presentation: {
+                  kind: "execute",
+                  label: "Command",
+                  summary: null,
+                  resources: [],
+                },
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    expect(safeAcpMutationResponse(legacy)).toBeNull();
   });
+
+  it.each([["toolCall", "outputSummary"]] as const)(
+    "bounds %s command output by UTF-8 bytes",
+    (kind, outputKey) => {
+      const output = "😀".repeat(16_384);
+      const command = (value: string) =>
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind,
+                  toolState: "completed",
+                  payload: {
+                    presentation: {
+                      kind: "execute",
+                      label: "Command",
+                      summary: null,
+                      resources: [],
+                    },
+                    inputSummary: null,
+                    [outputKey]: value,
+                  },
+                }),
+              ],
+            }),
+          ],
+        });
+      expect(new TextEncoder().encode(output).byteLength).toBe(65_536);
+      expect(safeAcpMutationResponse(command(output))).not.toBeNull();
+      expect(safeAcpMutationResponse(command(`${output}x`))).toBeNull();
+    },
+  );
 
   it("fails closed when collaboration labels exceed their limit", () => {
     expect(
@@ -541,7 +824,64 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
-  it("decodes known and omitted runtime context windows on usage", () => {
+  it("loads a root collaboration item without an activity", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "collaboration",
+                  payload: {
+                    activityId: null,
+                    label: "Subagent",
+                    summary: "",
+                    receiverLabels: [],
+                    operation: "started",
+                    agentKey: "child-1",
+                    agentKeys: [],
+                    agentStates: [],
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("rejects a harness activity collaboration item without its activity", () => {
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  origin: "harnessActivity",
+                  kind: "collaboration",
+                  payload: {
+                    activityId: null,
+                    label: "Subagent",
+                    summary: "",
+                    receiverLabels: [],
+                    operation: "started",
+                    agentKey: "child-1",
+                    agentKeys: [],
+                    agentStates: [],
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects legacy usage transcript items", () => {
     const usageMutation = (contextWindow: unknown, include = true) =>
       mutation({
         turns: [
@@ -562,12 +902,8 @@ describe("safeAcpMutationResponse", () => {
         ],
       });
 
-    expect(safeAcpMutationResponse(usageMutation(272_000))).toEqual(
-      usageMutation(272_000),
-    );
-    expect(safeAcpMutationResponse(usageMutation(undefined, false))).toEqual(
-      usageMutation(undefined, false),
-    );
+    expect(safeAcpMutationResponse(usageMutation(272_000))).toBeNull();
+    expect(safeAcpMutationResponse(usageMutation(undefined, false))).toBeNull();
   });
 
   it.each([

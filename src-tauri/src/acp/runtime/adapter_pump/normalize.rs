@@ -3,6 +3,7 @@ use super::{
     payload::{payload_json, payload_measure},
     *,
 };
+use sha2::{Digest, Sha256};
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     pub(super) fn normalize(
@@ -118,10 +119,30 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
-            AdapterEvent::Usage { turn_id, payload }
-                if self.exact_turn(&turn_id) && terminal.is_none() =>
-            {
-                self.runtime_payload(payload, now_millis, Some(turn_id.external_id))
+            AdapterEvent::Usage { turn_id, payload } if self.exact_turn(&turn_id) => {
+                let NormalizedPayload::Usage {
+                    input_tokens,
+                    output_tokens,
+                    context_window,
+                } = payload
+                else {
+                    return Err(AdapterPumpError::Intent);
+                };
+                let measured = payload_measure(&NormalizedPayload::Usage {
+                    input_tokens,
+                    output_tokens,
+                    context_window,
+                })?;
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::UsageSnapshot {
+                        scope: self.scope(),
+                        input_tokens,
+                        output_tokens,
+                        context_window,
+                        now_millis,
+                    },
+                    measured.bytes,
+                )))
             }
             AdapterEvent::PermissionRequest {
                 turn_id,
@@ -130,8 +151,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 payload,
                 request_payload_digest,
             } if self.exact_turn(&turn_id) && self.exact_turn(&item_id) && terminal.is_none() => {
-                let request_id = SageServerRequestId::parse(external_request_id.as_str())
-                    .map_err(|_| AdapterPumpError::Intent)?;
+                let request_id = self.scoped_permission_id(&external_request_id)?;
                 let (normalized_payload_json, measured) = payload_json(&payload)?;
                 Ok(Some(NormalizedFact::new(
                     DurableAdapterEvent::PermissionRequest {
@@ -155,6 +175,22 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
+            AdapterEvent::PermissionResolved {
+                turn_id,
+                external_request_id,
+                state,
+            } if self.exact_turn(&turn_id) && state.is_terminal() => {
+                let request_id = self.scoped_permission_id(&external_request_id)?;
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::PermissionResolved {
+                        scope: self.scope(),
+                        request_id,
+                        state,
+                        now_millis,
+                    },
+                    external_request_id.as_str().len(),
+                )))
+            }
             AdapterEvent::Error(payload) | AdapterEvent::Unsupported(payload)
                 if terminal.is_none() =>
             {
@@ -167,13 +203,17 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
             | AdapterEvent::PermissionRequest { .. }
+            | AdapterEvent::PermissionResolved { .. }
             | AdapterEvent::Error(_)
             | AdapterEvent::Unsupported(_) => Ok(None),
-            AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate => Ok(None),
+            AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate | AdapterEvent::Absorbed => {
+                Ok(None)
+            }
             AdapterEvent::Initialized { .. }
             | AdapterEvent::SessionReady { .. }
             | AdapterEvent::Models { .. }
-            | AdapterEvent::Acknowledged => Ok(None),
+            | AdapterEvent::Acknowledged
+            | AdapterEvent::SteerResponse { .. } => Ok(None),
         }
     }
 
@@ -199,6 +239,19 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         )))
     }
 
+    fn scoped_permission_id(
+        &self,
+        external_request_id: &ExternalId,
+    ) -> Result<SageServerRequestId, AdapterPumpError> {
+        let session_digest = Sha256::digest(self.intent.session_id.as_str().as_bytes());
+        let external_digest = Sha256::digest(external_request_id.as_str().as_bytes());
+        SageServerRequestId::parse(format!(
+            "permission:{session_digest:x}:{}:{external_digest:x}",
+            self.intent.runtime_epoch.get()
+        ))
+        .map_err(|_| AdapterPumpError::Intent)
+    }
+
     pub(super) fn latch_frame<T>(&mut self) -> Result<T, AdapterPumpError> {
         self.pending.clear();
         self.teardown = true;
@@ -210,11 +263,14 @@ pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
     match &fact.event {
         DurableAdapterEvent::PermissionRequest { .. } => true,
         DurableAdapterEvent::PermissionDeny { .. } => true,
+        DurableAdapterEvent::PermissionResolved { .. } => true,
         DurableAdapterEvent::Turn { state, .. } => state.is_terminal(),
         DurableAdapterEvent::RuntimePayload { payload, .. } => matches!(
             payload,
             NormalizedPayload::Error { .. } | NormalizedPayload::Unsupported { .. }
         ),
+        DurableAdapterEvent::UsageSnapshot { .. } => false,
+        DurableAdapterEvent::TerminalReason { .. } => true,
         DurableAdapterEvent::Item { .. } => false,
         DurableAdapterEvent::FilePair { .. } => false,
         DurableAdapterEvent::ActivityItem(_) => false,

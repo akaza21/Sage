@@ -141,6 +141,19 @@ describe("snapshot loading through the real Diff dispatcher", () => {
     await runLoadDiff(get, set, resource, undefined, ref);
     expect(get().diffs[key].phase).toBe("ready");
   });
+  it("carries the native transition epoch the bounded guard validates, not the local generation", async () => {
+    set({ nativeTransitionEpoch: 4 });
+    const read = vi
+      .spyOn(acpDesktop, "getFileSnapshot")
+      .mockResolvedValue(result());
+    await runLoadDiff(get, set, resource, undefined, ref);
+    expect(read).toHaveBeenCalledExactlyOnceWith({
+      ...ref,
+      projectGeneration: "4",
+      expectedProjectionRevision: "1",
+    });
+    expect(get().diffs[key].phase).toBe("ready");
+  });
   it("closing and reopening the same reference cannot revive a pre-close request", async () => {
     let complete!: (value: AgentDiffSnapshot) => void;
     const read = vi

@@ -164,7 +164,7 @@ describe("agent edit summary projection", () => {
       toolState: "completed",
       payload: {
         presentation: {
-          kind: "diff",
+          kind: "edit",
           label: "Apply patch",
           resources: [],
         },

@@ -3,6 +3,7 @@ import type {
   ItemLifecycle,
   ToolState,
   TurnState,
+  TurnTerminalReason,
 } from "../../../domain/acp";
 
 export const terminalItemLifecycles: ReadonlySet<ItemLifecycle> = new Set([
@@ -34,6 +35,16 @@ export const turnStateLabels: Record<TurnState, string> = {
   cancelled: "Cancelled",
   failed: "Failed",
   deliveryUnknown: "Delivery unknown",
+};
+
+export const turnTerminalReasonLabels: Record<TurnTerminalReason, string> = {
+  authRequired: "Not signed in",
+  harnessExited: "Harness exited",
+  protocolError: "Protocol error",
+  cancelledByUser: "Cancelled by you",
+  refusedVersion: "Version refused",
+  timeout: "Timed out",
+  other: "Reason unavailable",
 };
 
 export const terminalToolStates: ReadonlySet<ToolState> = new Set([
@@ -70,9 +81,9 @@ export function getPermissionStatus(item: PermissionItem) {
     : cancelled
       ? "Cancelled"
       : allowed
-        ? "Allowed once"
+        ? "Allowed"
         : allowing
-          ? "Allowing once"
+          ? "Allowing"
           : declined || item.payload.state === "declineCommitted"
             ? "Declined"
             : asking
@@ -89,7 +100,7 @@ export function getPermissionStatus(item: PermissionItem) {
       : cancelled
         ? "Permission cancelled"
         : allowed
-          ? "Permission allowed once"
+          ? "Permission allowed"
           : declined
             ? "Permission declined"
             : visual,

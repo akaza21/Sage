@@ -27,18 +27,39 @@ impl HarnessAdapter for CodexRuntime {
             AdapterCommand::ModelPage { cursor } => {
                 self.request(|adapter, id| adapter.models(id, cursor.as_ref()))
             }
-            AdapterCommand::NewSession { native_root, model } => self.request(|adapter, id| {
-                let root = adapter.project_root(native_root)?;
-                adapter.start(id, &root, model.as_ref())
-            }),
+            AdapterCommand::NewSession { native_root, model } => {
+                let config = self
+                    .mcp
+                    .codex_config()
+                    .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+                self.request(|adapter, id| {
+                    let root = adapter.project_root(native_root)?;
+                    let request = adapter.start(id, &root, model.as_ref())?;
+                    match config {
+                        Some(config) => request.with_config(config).map_err(Into::into),
+                        None => Ok(request),
+                    }
+                })
+            }
             AdapterCommand::ResumeSession {
                 external_session_id,
                 native_root,
                 model,
-            } => self.request(|adapter, id| {
-                let root = adapter.project_root(native_root)?;
-                adapter.resume(id, &external_session_id, &root, model.as_ref())
-            }),
+            } => {
+                let config = self
+                    .mcp
+                    .codex_config()
+                    .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+                self.request(|adapter, id| {
+                    let root = adapter.project_root(native_root)?;
+                    let request =
+                        adapter.resume(id, &external_session_id, &root, model.as_ref())?;
+                    match config {
+                        Some(config) => request.with_config(config).map_err(Into::into),
+                        None => Ok(request),
+                    }
+                })
+            }
             AdapterCommand::LoadSession {
                 external_session_id,
             } => self.request(|adapter, id| adapter.read(id, &external_session_id)),
@@ -46,7 +67,14 @@ impl HarnessAdapter for CodexRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
-            } => self.request(|adapter, id| adapter.prompt(id, &prompt, &client_message_id)),
+                access_mode,
+            } => self.request(|adapter, id| {
+                adapter.prompt_with_access_mode(id, &prompt, &client_message_id, access_mode)
+            }),
+            AdapterCommand::Steer {
+                prompt,
+                client_message_id,
+            } => self.request(|adapter, id| adapter.steer(id, &prompt, &client_message_id)),
             AdapterCommand::Cancel => self.request_with_control(CodexAdapter::cancel, true),
             AdapterCommand::ResolvePermission {
                 request_id,
@@ -58,7 +86,10 @@ impl HarnessAdapter for CodexRuntime {
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                 match (decision, pending) {
                     (PermissionDecision::Ask, None) => Err(AdapterRuntimeError::Operation),
-                    (PermissionDecision::AllowOnce, Some((_, bytes, _))) => {
+                    (
+                        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways,
+                        Some((_, bytes, _)),
+                    ) => {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
                         resolve_later_permission(
@@ -130,6 +161,7 @@ impl HarnessAdapter for CodexRuntime {
             .inner
             .ingest_with_declarations(frame.as_bytes(), &mapper, &self.declared_test_commands)
             .map_err(map_adapter)?;
+        self.record_browser_failure_diagnostic(&disposition, frame.as_bytes());
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
         self.translate(disposition, request_digest)
@@ -237,6 +269,75 @@ impl HarnessAdapter for CodexRuntime {
     }
 }
 
+impl CodexRuntime {
+    fn record_browser_failure_diagnostic(
+        &mut self,
+        disposition: &IngressDisposition,
+        frame: &[u8],
+    ) {
+        if self.browser_failure_warning_logged {
+            return;
+        }
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(frame) else {
+            return;
+        };
+        let failure = (value["method"] == "mcpServer/startupStatus/updated"
+            && value["params"]["name"] == "sage-browser"
+            && value["params"]["status"] == "failed")
+            .then(|| {
+                let thread = value["params"]["threadId"].as_str()?;
+                let error = value["params"]["error"].as_str()?;
+                Some((thread, self.mcp.browser_failure_detail(error), error.len()))
+            })
+            .flatten();
+        if let Some((thread, detail, bytes)) = failure.as_ref()
+            && !self.inner.has_active_turn()
+            && !self
+                .pending_browser_failure_details
+                .iter()
+                .any(|(id, _, _)| id == thread)
+        {
+            if self.pending_browser_failure_details.len() == 8 {
+                self.pending_browser_failure_details.remove(0);
+            }
+            self.pending_browser_failure_details.push((
+                (*thread).to_owned(),
+                detail.clone(),
+                *bytes,
+            ));
+        }
+        let projected = matches!(disposition, IngressDisposition::Events(events) if events.iter().any(|event| {
+            matches!(event, IncomingEvent::Error(crate::acp::intent::NormalizedPayload::Error { code, .. }) if code.as_str() == "browserMcpUnavailable")
+        }));
+        if !projected {
+            return;
+        }
+        let thread = failure.as_ref().map(|(thread, _, _)| *thread).or_else(|| {
+            value["result"]["thread"]["id"]
+                .as_str()
+                .or_else(|| value["params"]["thread"]["id"].as_str())
+                .or_else(|| value["params"]["threadId"].as_str())
+        });
+        let pending = thread.and_then(|thread| {
+            self.pending_browser_failure_details
+                .iter()
+                .position(|(id, _, _)| id == thread)
+                .map(|index| self.pending_browser_failure_details.swap_remove(index))
+        });
+        let (detail, error_bytes) = failure
+            .map(|(_, detail, bytes)| (detail, bytes))
+            .or_else(|| pending.map(|(_, detail, bytes)| (detail, bytes)))
+            .unwrap_or_else(|| ("browser failure detail unavailable".to_owned(), 0));
+        tracing::warn!(
+            detail = %detail,
+            error_bytes,
+            "Codex browser MCP startup failed"
+        );
+        self.browser_failure_warning_logged = true;
+        self.pending_browser_failure_details.clear();
+    }
+}
+
 fn command_method(command: &AdapterCommand) -> &'static str {
     match command {
         AdapterCommand::Initialize => "initialize",
@@ -246,6 +347,7 @@ fn command_method(command: &AdapterCommand) -> &'static str {
         AdapterCommand::LoadSession { .. } => "thread/read",
         AdapterCommand::CloseSession => "thread/archive",
         AdapterCommand::Prompt { .. } => "turn/start",
+        AdapterCommand::Steer { .. } => "turn/steer",
         AdapterCommand::Cancel => "turn/interrupt",
         AdapterCommand::ResolvePermission { .. } => "requestPermission",
     }

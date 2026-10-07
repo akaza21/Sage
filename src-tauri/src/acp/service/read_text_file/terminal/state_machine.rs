@@ -193,7 +193,7 @@ pub(crate) fn finish_read(
         )))
     } else {
         match result {
-            Ok(completion) => Terminal::Success(completion),
+            Ok(completion) => Terminal::Success(Box::new(completion)),
             Err(failure) => Terminal::Failure(failure),
         }
     };

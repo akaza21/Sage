@@ -14,13 +14,9 @@ use super::transaction::{
     execute_boundary_remove, execute_boundary_update, finalize,
 };
 use super::{AuthenticatedHelperRequest, ElevatedHelperError};
-#[path = "windows/native.rs"]
 mod native;
-#[path = "windows/platform.rs"]
 mod platform;
-#[path = "windows/security.rs"]
 mod security;
-#[path = "windows/transaction_lock.rs"]
 mod transaction_lock;
 use crate::acp::bindings::codex::managed::{
     ManagedStagingPrerequisite, current_process_user_sid, inspect_provisioned_managed_staging,

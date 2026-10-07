@@ -7,7 +7,9 @@ use serde_json::Value;
 use super::contract::{BoundedVec, RequiredText, SafeText};
 use super::limits::LIMITS;
 
+mod kind;
 mod overlay;
+pub(crate) use kind::ConfigKind;
 pub(crate) use overlay::{
     ConfigChannel, ConfigIntent, ConfigMutation, ConfigRevision, NoticeSink, SessionConfigOverlay,
 };
@@ -49,19 +51,6 @@ pub(crate) struct ChoiceGroup {
 pub(crate) enum Choices {
     Flat(BoundedVec<Choice, 128>),
     Grouped(BoundedVec<ChoiceGroup, 128>),
-}
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub(crate) enum ConfigKind {
-    Select {
-        #[serde(rename = "currentValue")]
-        current_value: ConfigId,
-        options: Choices,
-    },
-    Boolean {
-        #[serde(rename = "currentValue")]
-        current_value: bool,
-    },
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ConfigOption {
@@ -131,12 +120,32 @@ impl SessionConfig {
             "configOptions":value.get("configOptions").cloned().unwrap_or_else(|| serde_json::json!([]))
         });
         validate_shapes(&config)?;
-        let result: Self = serde_json::from_value(config).map_err(|e| e.to_string())?;
-        result.validate(boolean_supported)?;
+        let mut result: Self = serde_json::from_value(config).map_err(|e| e.to_string())?;
+        if !boolean_supported {
+            result.demote_unnegotiated_booleans()?;
+        }
+        result.validate()?;
         Ok(result)
     }
 
-    pub(crate) fn validate(&self, boolean_supported: bool) -> Result<(), String> {
+    fn demote_unnegotiated_booleans(&mut self) -> Result<(), String> {
+        let options = self
+            .config_options
+            .as_slice()
+            .iter()
+            .map(|option| {
+                Ok(ConfigOption {
+                    kind: option.kind.demoted()?,
+                    ..option.clone()
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        self.config_options =
+            ConfigOptions::new("configOptions", options).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), String> {
         if serde_json::to_vec(self).map_err(|e| e.to_string())?.len()
             > LIMITS.wire.models_or_config_bytes as usize
         {
@@ -160,10 +169,7 @@ impl SessionConfig {
                 .map_or(0, |m| m.available_modes.as_slice().len());
         for option in self.config_options.as_slice() {
             match &option.kind {
-                ConfigKind::Boolean { .. } if !boolean_supported => {
-                    return Err("boolean config not negotiated".into());
-                }
-                ConfigKind::Boolean { .. } => {}
+                ConfigKind::Boolean { .. } | ConfigKind::Unsupported { .. } => {}
                 ConfigKind::Select {
                     current_value,
                     options,
@@ -205,7 +211,7 @@ impl SessionConfig {
         if let Some(modes) = &mut candidate.modes {
             modes.current_mode_id = mode;
         }
-        candidate.validate(true)?;
+        candidate.validate()?;
         *self = candidate;
         Ok(())
     }

@@ -15,10 +15,13 @@ impl ClaudeRuntime {
                 .active
                 .as_mut()
                 .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-            active
+            let event = active
                 .translator
                 .permission_cancel_committed(&record.translator_id)
                 .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+            if matches!(event, AdapterEvent::Item { .. }) {
+                self.deferred.push(event);
+            }
             record.reply = PermissionReply::Cancelled;
             record.state = DenialState::Committed;
             return Ok(());
@@ -43,10 +46,13 @@ impl ClaudeRuntime {
                 .active
                 .as_mut()
                 .ok_or(AdapterRuntimeError::MandatoryDenyTeardown)?;
-            active
+            let event = active
                 .translator
                 .permission_decline_committed(&record.translator_id)
                 .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+            if matches!(event, AdapterEvent::Item { .. }) {
+                self.deferred.push(event);
+            }
             record.state = DenialState::Committed;
         }
         matches!(
@@ -84,6 +90,7 @@ impl ClaudeRuntime {
                         .reject_prompt(&request_id.to_string())
                         .map_err(map_translation)?;
                     active.turn = None;
+                    self.deferred.clear();
                 }
             } else if resolution == EgressResolution::DeliveryUnknown {
                 if !self.pending.contains_key(&request_id) {
@@ -111,7 +118,12 @@ impl ClaudeRuntime {
             let record = self
                 .denials
                 .get_mut(request_id)
-                .filter(|record| record.reply == PermissionReply::AllowOnce)
+                .filter(|record| {
+                    matches!(
+                        record.reply,
+                        PermissionReply::AllowOnce | PermissionReply::AllowAlways
+                    )
+                })
                 .ok_or(AdapterRuntimeError::EgressIntent)?;
             record.state = match (resolution, record.state) {
                 (EgressResolution::Queued, DenialState::Pending | DenialState::Queued) => {

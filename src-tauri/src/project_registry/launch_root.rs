@@ -93,6 +93,21 @@ impl ProjectRootAuthority {
         let workspace = Workspace::open(project_id.as_str(), root_id.as_str(), root)?;
         Self::acquire(workspace, project_id, generation, root_id)
     }
+
+    #[cfg(test)]
+    pub(crate) fn adopt_foreign_root_identity_for_test(
+        &mut self,
+        other_root: &Path,
+    ) -> AppResult<()> {
+        let foreign = root_identity_path(other_root)?;
+        if foreign == self.identity {
+            return Err(AppError::InvalidRequest(
+                "foreign test root must resolve to a distinct root identity".into(),
+            ));
+        }
+        self.identity = foreign;
+        Ok(())
+    }
 }
 
 #[cfg(unix)]

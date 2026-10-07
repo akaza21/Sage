@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 use std::{
     fs::File,
     io::Read,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use sha2::{Digest, Sha256};
@@ -35,6 +35,11 @@ impl RunningTree {
         TreeControl,
     ) {
         (self.stdin, self.stdout, self.control)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn control_for_test(&self) -> TreeControl {
+        self.control.clone()
     }
 
     pub(super) fn new(
@@ -127,19 +132,10 @@ impl TreeControl {
         &self,
         observation: crate::acp::characterization_observation::CharacterizationObservation,
     ) -> Result<(), LaunchError> {
-        if *self
-            .0
-            .convergence
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?
-        {
+        if *locked(&self.0.convergence)? {
             return Err(LaunchError::ContainmentFailure);
         }
-        let mut state = self
-            .0
-            .characterization_observation
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?;
+        let mut state = locked(&self.0.characterization_observation)?;
         if state.job_zero_observed || state.sink.is_some() {
             return Err(LaunchError::ContainmentFailure);
         }
@@ -151,12 +147,7 @@ impl TreeControl {
     /// blocked reader. Completion is observed separately through `wait`.
     pub(crate) fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
         {
-            let mut requested = self
-                .0
-                .requested_exit
-                .lock()
-                .map_err(|_| LaunchError::ContainmentFailure)?;
-            requested.get_or_insert(reason);
+            locked(&self.0.requested_exit)?.get_or_insert(reason);
         }
         self.0.job.terminate()
     }
@@ -176,19 +167,9 @@ impl TreeControl {
     }
 
     fn observed_exit(&self) -> Result<TreeExit, LaunchError> {
-        let mut code = 0_u32;
-        // SAFETY: the retained process handle is live and code is writable.
-        if unsafe { GetExitCodeProcess(self.0.process.raw(), &mut code) } == 0 {
-            return Err(LaunchError::ContainmentFailure);
-        }
-        let requested = *self
-            .0
-            .requested_exit
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?;
-        Ok(requested.unwrap_or(TreeExit::Exited {
-            code: Some(code as i32),
-        }))
+        let code = self.native_exit_code()?;
+        let requested = *locked(&self.0.requested_exit)?;
+        Ok(requested.unwrap_or(TreeExit::Exited { code: Some(code) }))
     }
 
     pub(crate) fn wait(&self) -> Result<TreeExit, LaunchError> {
@@ -307,6 +288,10 @@ impl TreeControl {
 
 const MAX_DIAGNOSTIC_IMAGE_BYTES: u64 = 512 * 1024 * 1024;
 
+fn locked<T>(mutex: &Mutex<T>) -> Result<MutexGuard<'_, T>, LaunchError> {
+    mutex.lock().map_err(|_| LaunchError::ContainmentFailure)
+}
+
 fn bounded_image_digest(path: &std::path::Path) -> Result<([u8; 32], u64), LaunchError> {
     let mut file = File::open(path).map_err(|_| LaunchError::IdentityMismatch)?;
     let bytes = file
@@ -373,10 +358,7 @@ pub(super) struct CharacterizationObservationState {
 
 impl TreeAuthority {
     pub(super) fn converge_until(&self, deadline: Instant) -> Result<(), LaunchError> {
-        let mut converged = self
-            .convergence
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?;
+        let mut converged = locked(&self.convergence)?;
         if *converged {
             return Ok(());
         }
@@ -389,10 +371,7 @@ impl TreeAuthority {
         #[cfg(feature = "acp-fixture")]
         {
             let observation = {
-                let mut state = self
-                    .characterization_observation
-                    .lock()
-                    .map_err(|_| LaunchError::ContainmentFailure)?;
+                let mut state = locked(&self.characterization_observation)?;
                 if state.job_zero_observed {
                     None
                 } else {
@@ -407,10 +386,7 @@ impl TreeAuthority {
             }
         }
         self.stderr.wait_until(deadline)?;
-        let lease = self
-            .lease
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?
+        let lease = locked(&self.lease)?
             .take()
             .ok_or(LaunchError::ContainmentFailure)?;
         lease.release_after_zero()?;
@@ -423,19 +399,11 @@ impl TreeAuthority {
         let deadline = self
             .absolute_cleanup_deadline
             .map_or(native_deadline, |absolute| native_deadline.min(absolute));
-        if *self
-            .convergence
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?
-        {
+        if *locked(&self.convergence)? {
             return Ok(());
         }
         {
-            let mut requested = self
-                .requested_exit
-                .lock()
-                .map_err(|_| LaunchError::ContainmentFailure)?;
-            requested.get_or_insert(TreeExit::ParentShutdown);
+            locked(&self.requested_exit)?.get_or_insert(TreeExit::ParentShutdown);
         }
         self.job.terminate()?;
         self.converge_until(deadline)

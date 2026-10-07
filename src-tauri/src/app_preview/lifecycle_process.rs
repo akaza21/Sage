@@ -2,7 +2,11 @@
 use std::process::Child;
 use std::{
     io::Read,
-    sync::mpsc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -16,6 +20,36 @@ use super::{
 };
 
 const STARTUP_WAIT: Duration = Duration::from_millis(PREVIEW_LIMITS.startup_deadline_ms);
+const STARTUP_IDLE_WAIT: Duration = Duration::from_millis(PREVIEW_LIMITS.startup_idle_deadline_ms);
+#[cfg(test)]
+static TEST_STARTUP_WAIT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(test)]
+pub(super) fn test_override_startup_wait(millis: u64) {
+    TEST_STARTUP_WAIT_MS.store(millis, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn startup_wait() -> Duration {
+    #[cfg(test)]
+    {
+        let millis = TEST_STARTUP_WAIT_MS.load(std::sync::atomic::Ordering::SeqCst);
+        if millis > 0 {
+            return Duration::from_millis(millis);
+        }
+    }
+    STARTUP_WAIT
+}
+
+fn startup_idle_wait() -> Duration {
+    #[cfg(test)]
+    {
+        let millis = TEST_STARTUP_WAIT_MS.load(std::sync::atomic::Ordering::SeqCst);
+        if millis > 0 {
+            return Duration::from_millis(millis);
+        }
+    }
+    STARTUP_IDLE_WAIT
+}
 const TERMINATION_WAIT: Duration =
     Duration::from_millis(PREVIEW_LIMITS.process_termination_deadline_ms);
 const MAX_STARTUP_OUTPUT_BYTES: usize = PREVIEW_LIMITS.startup_output_bytes as usize;
@@ -184,24 +218,33 @@ pub(super) fn wait_for_origin(
     stderr: impl Read + Send + 'static,
 ) -> (StartupObservation, Vec<JoinHandle<()>>) {
     let (sender, receiver) = mpsc::sync_channel(PREVIEW_LIMITS.startup_output_channel as usize);
+    let progress = Arc::new(AtomicU64::new(0));
     let drainers = vec![
-        drain_preview_output(stdout, sender.clone()),
-        drain_preview_output(stderr, sender),
+        drain_preview_output(stdout, sender.clone(), Arc::clone(&progress)),
+        drain_preview_output(stderr, sender, Arc::clone(&progress)),
     ];
-    let observation =
-        wait_for_startup_observation(&receiver, Instant::now() + STARTUP_WAIT, || {
-            starting_exited(target)
-        });
+    let observation = wait_for_startup_observation(
+        &receiver,
+        &progress,
+        startup_idle_wait(),
+        Instant::now() + startup_wait(),
+        || starting_exited(target),
+    );
     (observation, drainers)
 }
 
 fn wait_for_startup_observation(
     receiver: &mpsc::Receiver<StartupObservation>,
-    deadline: Instant,
+    progress: &AtomicU64,
+    idle_wait: Duration,
+    hard_deadline: Instant,
     mut exited: impl FnMut() -> bool,
 ) -> StartupObservation {
+    let mut observed = progress.load(Ordering::SeqCst);
+    let mut idle_deadline = Instant::now() + idle_wait;
     loop {
         let now = Instant::now();
+        let deadline = idle_deadline.min(hard_deadline);
         if now >= deadline {
             break if exited() {
                 StartupObservation::ExitedEarly
@@ -220,7 +263,13 @@ fn wait_for_startup_observation(
             Err(mpsc::RecvTimeoutError::Timeout) if exited() => {
                 break StartupObservation::ExitedEarly;
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let current = progress.load(Ordering::SeqCst);
+                if current != observed {
+                    observed = current;
+                    idle_deadline = Instant::now() + idle_wait;
+                }
+            }
         }
     }
 }
@@ -228,6 +277,7 @@ fn wait_for_startup_observation(
 fn drain_preview_output(
     mut reader: impl Read + Send + 'static,
     sender: mpsc::SyncSender<StartupObservation>,
+    progress: Arc<AtomicU64>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut bytes = [0_u8; 1024];
@@ -237,6 +287,7 @@ fn drain_preview_output(
             if read == 0 {
                 break;
             }
+            progress.fetch_add(read as u64, Ordering::SeqCst);
             let decoded = String::from_utf8_lossy(&bytes[..read]);
             if decoded.len() >= MAX_STARTUP_OUTPUT_BYTES {
                 prefix.clear();
@@ -330,6 +381,8 @@ mod tests {
 
         let observation = wait_for_startup_observation(
             &receiver,
+            &super::AtomicU64::new(0),
+            Duration::from_millis(200),
             Instant::now() + Duration::from_millis(200),
             || {
                 probes.set(probes.get() + 1);
@@ -339,6 +392,52 @@ mod tests {
 
         assert_eq!(observation, StartupObservation::ExitedEarly);
         assert!(probes.get() >= 2);
+    }
+
+    #[test]
+    fn a_silent_child_times_out_at_the_idle_budget() {
+        let (_sender, receiver) = mpsc::sync_channel(1);
+        let started = Instant::now();
+
+        let observation = wait_for_startup_observation(
+            &receiver,
+            &super::AtomicU64::new(0),
+            Duration::from_millis(150),
+            started + Duration::from_secs(30),
+            || false,
+        );
+
+        assert_eq!(observation, StartupObservation::Timeout);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_reporting_child_outlives_the_idle_budget_until_the_hard_deadline() {
+        let (_sender, receiver) = mpsc::sync_channel(1);
+        let progress = super::Arc::new(super::AtomicU64::new(0));
+        let reporter = super::Arc::clone(&progress);
+        let stop = super::Arc::new(super::AtomicU64::new(0));
+        let reporter_stop = super::Arc::clone(&stop);
+        let ticker = std::thread::spawn(move || {
+            while reporter_stop.load(super::Ordering::SeqCst) == 0 {
+                reporter.fetch_add(1, super::Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let started = Instant::now();
+
+        let observation = wait_for_startup_observation(
+            &receiver,
+            &progress,
+            Duration::from_millis(150),
+            started + Duration::from_millis(900),
+            || false,
+        );
+
+        stop.store(1, super::Ordering::SeqCst);
+        ticker.join().unwrap();
+        assert_eq!(observation, StartupObservation::Timeout);
+        assert!(started.elapsed() >= Duration::from_millis(800));
     }
 
     #[test]

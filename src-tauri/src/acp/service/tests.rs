@@ -6,12 +6,18 @@ use std::{
 
 use crate::{
     acp::{
+        bindings::{
+            claude::ClaudeBindingRegistration,
+            codex::CodexBindingRegistration,
+            registry::{BindingProjectRoot, BindingRegistry},
+        },
         contract::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
+            SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
         },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
         lifecycle::TurnState,
+        runtime::ActivationMode,
         runtime::{
             ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent, HostCancelIntent,
             HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
@@ -29,19 +35,132 @@ use crate::{
     },
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     persistence::Database,
-};
-
-#[cfg(windows)]
-use crate::{
-    acp::{
-        bindings::codex::CodexProjectRootAuthority,
-        contract::{SafeText, SageRootId},
-        runtime::ActivationMode,
-    },
     project_registry::ProjectRootAuthority,
 };
 
+#[cfg(windows)]
+use crate::acp::{bindings::codex::CodexProjectRootAuthority, contract::SafeText};
+
+use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+
 use super::AcpService;
+
+#[test]
+fn admitted_claude_session_starts_and_prepares_activation_without_codex_admission() {
+    tauri::async_runtime::block_on(async {
+        let fixture_root =
+            std::env::temp_dir().join(format!("sage-claude-activation-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&fixture_root).unwrap();
+        let adapter = fixture_root.join("adapter.js");
+        let node = fixture_root.join("node.exe");
+        fs::write(&adapter, b"adapter").unwrap();
+        fs::write(&node, b"node").unwrap();
+        let registration = ClaudeBindingRegistration::admitted_for_test(
+            ClaudeLaunchDiscovery::Present(Box::new(DiscoveredClaudeLaunch {
+                adapter_path: adapter.clone(),
+                adapter_version: "0.76.0".into(),
+                acp_sdk_version: "1.4.0".into(),
+                node_engine: ">=22".into(),
+                node_path: node.clone(),
+                node_version: "22.18.0".into(),
+                adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+                node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+            })),
+        );
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project_root = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let project = database.create_project_from_root(&project_root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let root_authority = ProjectRootAuthority::for_test(
+            project_id.clone(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse(project.roots[0].id.clone()).unwrap(),
+            &project_root,
+        )
+        .unwrap();
+        let service = AcpService::new_with_registry_for_test(
+            database,
+            Arc::new(BindingRegistry::new(
+                CodexBindingRegistration::unavailable_for_test(),
+                registration,
+            )),
+        )
+        .unwrap();
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let started = service
+            .start_session(
+                service
+                    .binding_registry()
+                    .resolve("claude-agent-acp")
+                    .unwrap(),
+                &BindingProjectRoot::Claude(root_authority),
+                StartSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: revision,
+                    client_intent_id: ClientIntentId::new(),
+                    binding_id: crate::acp::intent::BindingId::new("bindingId", "claude-agent-acp")
+                        .unwrap(),
+                    binding_digest: "forged".into(),
+                    harness_version: None,
+                    model_id: None,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await
+            .unwrap();
+        let root_authority = ProjectRootAuthority::for_test(
+            project_id.clone(),
+            ProjectGeneration::ZERO,
+            SageRootId::parse(project.roots[0].id.clone()).unwrap(),
+            &project_root,
+        )
+        .unwrap();
+        let (_, prepared) = service
+            .prepare_session_activation(
+                service
+                    .binding_registry()
+                    .resolve("claude-agent-acp")
+                    .unwrap(),
+                ActivateSessionCommand {
+                    project_id,
+                    chat_id,
+                    expected_projection_revision: started.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    session_id: started.session_id,
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    artifact_digest: "forged".into(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                BindingProjectRoot::Claude(root_authority),
+            )
+            .unwrap();
+        assert!(matches!(
+            prepared.intent.mode,
+            ActivationMode::New { model: None, .. }
+        ));
+        assert!(
+            prepared.intent.curated_ceiling.prompt,
+            "an admitted Claude ACP binding must leave promptability to its initialize offer"
+        );
+        assert!(
+            prepared.intent.sage_policy.prompt,
+            "the activation policy must not suppress the admitted ACP prompt capability"
+        );
+        assert!(prepared.intent.curated_ceiling.resume_session);
+        assert!(!prepared.intent.curated_ceiling.load_session);
+        assert!(prepared.intent.curated_ceiling.close_session);
+        assert!(prepared.intent.curated_ceiling.cancel);
+        assert_eq!(prepared.intent.curated_ceiling.model_count, 0);
+        service.shutdown_blocking().unwrap();
+        fs::remove_dir_all(fixture_root).unwrap();
+    });
+}
 
 #[cfg(windows)]
 #[test]
@@ -52,7 +171,8 @@ fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registratio
     let catalog = crate::harnesses::HarnessCatalog::with_codex_registration_and_presence(
         registration.clone(),
         crate::acp::bindings::codex::CodexHostPresence::Absent,
-    );
+    )
+    .settled_for_test();
     let project_root = CodexProjectRootAuthority::for_test(
         ProjectRootAuthority::for_test(
             SageProjectId::parse("project-drift").unwrap(),
@@ -216,6 +336,65 @@ fn codex_start_rejects_a_model_without_current_scoped_discovery() {
             .unwrap();
         assert_eq!(sessions, 0);
         service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
+    tauri::async_runtime::block_on(async {
+        let root = std::env::temp_dir().join(format!(
+            "sage-observed-codex-no-model-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("codex.cmd");
+        fs::write(&executable, b"@echo off\r\n").unwrap();
+        fs::write(root.join("node.exe"), b"node").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        registration
+            .authenticate_observed(executable, "codex 0.145.0".into())
+            .unwrap();
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let project_id = SageProjectId::parse(project.id).unwrap();
+        let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
+        let service = AcpService::new_with_codex_for_test(database.clone(), registration).unwrap();
+        let project_root = codex_root(&project_id, &project.roots[0].id, &root);
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let mut selected_model = codex_start_command(&project_id, &chat_id, revision);
+        selected_model.model_id =
+            Some(crate::acp::intent::ModelId::new("modelId", "unverified-model").unwrap());
+        assert!(matches!(
+            service
+                .start_codex_session(&project_root, selected_model)
+                .await,
+            Err(super::CodexSessionError::Intent)
+        ));
+
+        let started = service
+            .start_codex_session(
+                &project_root,
+                codex_start_command(&project_id, &chat_id, revision),
+            )
+            .await
+            .unwrap();
+
+        let model: Option<String> = database
+            .connection()
+            .query_row(
+                "SELECT model_id FROM agent_sessions WHERE id=?1",
+                [started.session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(model.is_none());
+        service.shutdown_blocking().unwrap();
+        fs::remove_dir_all(root).unwrap();
     });
 }
 
@@ -780,7 +959,7 @@ fn codex_start_command(
 #[test]
 fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
     #[cfg(windows)]
-    let _journey = super::codex_live::journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
 
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     database
@@ -1036,6 +1215,7 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
                 prompt: Prompt::new("prompt", "hello").unwrap(),
                 now_millis: crate::persistence::now_millis(),
             },
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));
@@ -1069,7 +1249,9 @@ fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
         session_id: SageAgentSessionId::parse("session-timeout").unwrap(),
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
-    runtime.activate(owner.clone()).unwrap();
+    runtime
+        .without_timeout_override(|| runtime.activate(owner.clone()))
+        .unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));
 
     assert_eq!(service.shutdown_blocking(), Err(HostError::Deadline));
@@ -1078,7 +1260,9 @@ fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
     let (released, ready) = &*gate;
     *released.lock().unwrap() = true;
     ready.notify_all();
-    service.shutdown_blocking().unwrap();
+    runtime
+        .without_timeout_override(|| service.shutdown_blocking())
+        .unwrap();
 }
 
 #[test]
@@ -1206,7 +1390,11 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         };
         let sending = dispatch.begin_send(now + 5).await.unwrap();
         dispatch
-            .observe(crate::acp::store::SendObservation::CompleteBytes, now + 6)
+            .observe(
+                crate::acp::store::SendObservation::CompleteBytes,
+                None,
+                now + 6,
+            )
             .await
             .unwrap();
 

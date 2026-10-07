@@ -105,20 +105,43 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
+    let page = state
+        .acp
+        .load_chat_page(project_id.clone(), chat_id.clone(), None)
+        .map_err(store_error)
+        .map_err(prompt_not_dispatched)?;
+    let permission_requests = page
+        .sessions
+        .as_slice()
+        .iter()
+        .find(|session| session.id == session_id)
+        .is_some_and(|session| session.permission_requests);
+    let access_mode = state
+        .settings
+        .session_access_mode()
+        .map_err(|_| {
+            prompt_not_dispatched(AcpIpcError::RecoveryRequired {
+                message: safe_message("Session access mode could not be loaded; reload Sage."),
+            })
+        })?
+        .effective(permission_requests);
     state
         .acp
         .dispatch_session_turn(
             &binding_id,
-            PrepareTurnCommand {
-                project_id: project_id.clone(),
-                project_generation,
-                chat_id: chat_id.clone(),
-                session_id,
-                runtime_epoch,
-                expected_projection_revision,
-                client_intent_id,
-                prompt,
-                now_millis: crate::persistence::now_millis(),
+            crate::acp::runtime::HostPromptIntent {
+                command: PrepareTurnCommand {
+                    project_id: project_id.clone(),
+                    project_generation,
+                    chat_id: chat_id.clone(),
+                    session_id,
+                    runtime_epoch,
+                    expected_projection_revision,
+                    client_intent_id,
+                    prompt,
+                    now_millis: crate::persistence::now_millis(),
+                },
+                access_mode,
             },
         )
         .map_err(|failure| SendAcpTurnFailure {
@@ -182,6 +205,54 @@ pub(crate) async fn cancel_acp_turn_inner(
     mutation_response(state, project_id, chat_id)
 }
 
+pub(crate) async fn steer_acp_turn_inner(
+    state: &AppState,
+    request: SteerAcpTurnRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    let (_transition, snapshot) = snapshot_for(
+        state,
+        request.project_id.clone(),
+        request.project_generation,
+        request.chat_id.clone(),
+    )
+    .await?;
+    validate_steer_intent(&request, &snapshot).map_err(intent_error)?;
+    let binding_id =
+        session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
+    let prompt = effective_prompt(&request.prompt, &request.attached_context).map_err(|_| {
+        AcpIpcError::InvalidRequest {
+            message: safe_message("The prompt and attached context exceed the native byte limit."),
+        }
+    })?;
+    let client_message_id = crate::acp::contract::RequiredText::new(
+        "clientMessageId",
+        request.client_intent_id.as_str().to_owned(),
+    )
+    .map_err(|_| AcpIpcError::InvalidRequest {
+        message: safe_message("The Steer intent identifier is invalid."),
+    })?;
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    state
+        .acp
+        .dispatch_session_steer(
+            &binding_id,
+            HostSteerIntent {
+                owner: RuntimeOwner {
+                    project_id: request.project_id,
+                    chat_id: request.chat_id,
+                    session_id: request.session_id,
+                    runtime_epoch: request.runtime_epoch,
+                },
+                turn_id: request.turn_id,
+                prompt,
+                client_message_id,
+            },
+        )
+        .map_err(dispatch_error)?;
+    mutation_response(state, project_id, chat_id)
+}
+
 pub(crate) async fn close_acp_session_inner(
     state: &AppState,
     request: CloseAcpSessionRequest,
@@ -230,5 +301,75 @@ pub(crate) async fn close_acp_session_inner(
             },
         )
         .map_err(dispatch_error)?;
+    mutation_response(state, project_id, chat_id)
+}
+
+pub(crate) async fn end_acp_session_inner(
+    state: &AppState,
+    request: CloseAcpSessionRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    let (_transition, snapshot) = snapshot_for(
+        state,
+        request.project_id.clone(),
+        request.project_generation,
+        request.chat_id.clone(),
+    )
+    .await?;
+    validate_base_intent(
+        &request.project_id,
+        request.project_generation,
+        &request.chat_id,
+        request.expected_projection_revision,
+        &snapshot,
+    )
+    .map_err(intent_error)?;
+    if snapshot.session_id.as_ref() != Some(&request.session_id) {
+        return Err(intent_error(IntentError::ForeignSession));
+    }
+    if snapshot.runtime_epoch != Some(request.runtime_epoch) {
+        return Err(intent_error(IntentError::StaleRuntimeEpoch));
+    }
+    #[cfg(all(windows, feature = "acp-fixture"))]
+    {
+        let binding_id =
+            session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
+        if state.acp.accepts_characterization(&binding_id) {
+            return Err(AcpIpcError::InvalidRequest {
+                message: safe_message(
+                    "Characterization sessions cannot be ended by native recovery.",
+                ),
+            });
+        }
+    }
+    let page = state
+        .acp
+        .load_chat_page(request.project_id.clone(), request.chat_id.clone(), None)
+        .map_err(store_error)?;
+    let session = page
+        .sessions
+        .as_slice()
+        .iter()
+        .find(|session| session.id == request.session_id)
+        .ok_or_else(|| intent_error(IntentError::ForeignSession))?;
+    if session.capabilities.close_session {
+        return Err(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "Native session recovery is available only when close is unproven.",
+            ),
+        });
+    }
+    let project_id = request.project_id.clone();
+    let chat_id = request.chat_id.clone();
+    state
+        .acp
+        .end_session_natively(RuntimeOwner {
+            project_id: request.project_id,
+            chat_id: request.chat_id,
+            session_id: request.session_id,
+            runtime_epoch: request.runtime_epoch,
+        })
+        .map_err(|error| {
+            dispatch_error(crate::acp::service::SessionDispatchError::Operation(error))
+        })?;
     mutation_response(state, project_id, chat_id)
 }

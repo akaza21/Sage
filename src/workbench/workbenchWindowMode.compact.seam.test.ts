@@ -16,6 +16,7 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 
 vi.mock("../features/chat/ChatSurface", () => ({
@@ -66,6 +67,16 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
+async function switchWindowMode(mode: "Agent" | "Editor") {
+  fireEvent.click(
+    within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+      "radio",
+      { name: mode },
+    ),
+  );
+  await settleLazyModules();
+}
+
 describe("compact workbench window mode seam", () => {
   it("keeps the center interactive when Agent mode replaces an open compact Editor drawer", async () => {
     compactViewport = true;
@@ -86,6 +97,7 @@ describe("compact workbench window mode seam", () => {
       activeTabId: "chat:b",
     });
     const { container } = render(createElement(Workbench));
+    await settleLazyModules();
     const center = container.querySelector(".center-region");
     expect(center).toHaveAttribute("inert");
     expect(center).toHaveAttribute("aria-hidden", "true");
@@ -93,27 +105,17 @@ describe("compact workbench window mode seam", () => {
       screen.getByRole("dialog", { name: "Explorer project tools" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     expect(screen.queryByRole("dialog")).toBeNull();
     await screen.findByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Waiting",
     });
     const agentCenter = container.querySelector(".center-region");
     expect(agentCenter).not.toHaveAttribute("inert");
     expect(agentCenter).not.toHaveAttribute("aria-hidden");
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Editor" },
-      ),
-    );
+    await switchWindowMode("Editor");
 
     expect(
       screen.getByRole("dialog", { name: "Explorer project tools" }),
@@ -161,15 +163,11 @@ describe("compact workbench window mode seam", () => {
       tabId: "file:a",
     });
     const { container } = render(createElement(Workbench));
+    await settleLazyModules();
     const center = container.querySelector(".center-region");
     expect(center).toHaveAttribute("inert");
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
       expect(
@@ -188,6 +186,7 @@ describe("compact workbench window mode seam", () => {
         screen.getByRole("navigation", { name: "Agent artifact tabs" }),
       ).getByRole("tab", { name: /current\.ts/ }),
     );
+    await settleLazyModules();
 
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");

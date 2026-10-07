@@ -14,7 +14,7 @@ use super::{
     manifest::{BackupManifest, BackupSource, ReplacementManifest, SourceSet, write_stage},
     platform::{remove_synced, rename_synced},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v9, apply_v5, apply_v6},
+    schema_upgrade::{apply_through_v13, apply_v5, apply_v6},
     test_failpoint,
 };
 
@@ -47,7 +47,7 @@ impl Drop for TestDir {
 }
 
 #[test]
-fn portable_apply_through_v9_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
+fn portable_apply_through_v13_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
     for version in [1_i64, 2, 3, 5, 6] {
         let directory = TestDir::new();
         let mut connection = Connection::open(directory.database()).unwrap();
@@ -69,11 +69,11 @@ fn portable_apply_through_v9_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
             seed_epoch_child(&connection);
         }
 
-        apply_through_v9(&mut connection).unwrap();
+        apply_through_v13(&mut connection).unwrap();
 
         assert_eq!(
             super::fingerprint::classify_connection(&connection).unwrap(),
-            SchemaClass::CurrentV10,
+            SchemaClass::CurrentV13,
             "source version {version}"
         );
         let migration_count: i64 = connection
@@ -81,7 +81,7 @@ fn portable_apply_through_v9_dispatches_exact_v1_v2_v3_v5_and_v6_sources() {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(migration_count, 10);
+        assert_eq!(migration_count, 13);
         assert_eq!(
             connection
                 .query_row(
@@ -128,15 +128,15 @@ fn portable_v5_dispatch_rolls_back_v6_v7_failpoint_then_retries() {
     let mut connection = Connection::open(directory.database()).unwrap();
     seed_current_v5(&mut connection);
     test_failpoint::arm("v5-to-v7-after-v6");
-    assert!(apply_through_v9(&mut connection).is_err());
+    assert!(apply_through_v13(&mut connection).is_err());
     assert_eq!(
         super::fingerprint::classify_connection(&connection).unwrap(),
         SchemaClass::CurrentV5
     );
-    apply_through_v9(&mut connection).unwrap();
+    apply_through_v13(&mut connection).unwrap();
     assert_eq!(
         super::fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV10
+        SchemaClass::CurrentV13
     );
 }
 
@@ -145,7 +145,7 @@ fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_r
     let directory = TestDir::new();
     create_v4(&directory.database(), true);
     let mut upgrade = Connection::open(directory.database()).unwrap();
-    apply_through_v9(&mut upgrade).unwrap();
+    apply_through_v13(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
     let database = Database::open(&directory.database()).unwrap();
@@ -221,7 +221,7 @@ fn portable_v4_transform_then_database_runtime_creates_first_empty_chat_prompt()
     let directory = TestDir::new();
     create_v4(&directory.database(), false);
     let mut upgrade = Connection::open(directory.database()).unwrap();
-    apply_through_v9(&mut upgrade).unwrap();
+    apply_through_v13(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
     let database = Database::open(&directory.database()).unwrap();
@@ -270,7 +270,7 @@ fn portable_publish_recovers_valid_prefixes_and_rejects_stale_stage_identity() {
     assert!(recover_or_publish(&paths).unwrap());
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV10
+        SchemaClass::CurrentV13
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(
@@ -411,7 +411,7 @@ fn portable_retained_backup_survives_build_failure_then_retry_publishes() {
     fs::copy(&paths.backup_final, &paths.replacement_stage).unwrap();
     let mut replacement = Connection::open(&paths.replacement_stage).unwrap();
     test_failpoint::arm("v8-to-v9-after-schema");
-    assert!(apply_through_v9(&mut replacement).is_err());
+    assert!(apply_through_v13(&mut replacement).is_err());
     replacement.close().unwrap();
 
     assert_eq!(artifact_bytes(&paths), source_before);
@@ -425,7 +425,7 @@ fn portable_retained_backup_survives_build_failure_then_retry_publishes() {
     assert!(!recover_or_publish(&paths).unwrap());
 
     let mut replacement = Connection::open(&paths.replacement_stage).unwrap();
-    apply_through_v9(&mut replacement).unwrap();
+    apply_through_v13(&mut replacement).unwrap();
     let replacement_database = database_fingerprint(&replacement).unwrap();
     replacement.close().unwrap();
     let manifest = ReplacementManifest::new(
@@ -519,7 +519,7 @@ fn prepare_populated_replacement(paths: &MigrationPaths) -> ReplacementManifest 
     };
     fs::copy(&paths.live, &paths.replacement_stage).unwrap();
     let mut replacement = Connection::open(&paths.replacement_stage).unwrap();
-    apply_through_v9(&mut replacement).unwrap();
+    apply_through_v13(&mut replacement).unwrap();
     replacement.close().unwrap();
     let replacement_file = file_fingerprint(&paths.replacement_stage).unwrap();
     let replacement_connection = Connection::open(&paths.replacement_stage).unwrap();
@@ -621,7 +621,7 @@ fn prepare_populated_wal_replacement(
         .run_to_completion(256, Duration::ZERO, None)
         .unwrap();
     source_connection.close().unwrap();
-    apply_through_v9(&mut replacement).unwrap();
+    apply_through_v13(&mut replacement).unwrap();
     replacement.close().unwrap();
     let replacement_file = file_fingerprint(&paths.replacement_stage).unwrap();
     let replacement_connection = Connection::open(&paths.replacement_stage).unwrap();
@@ -723,7 +723,7 @@ fn cleanup_prefix(paths: &MigrationPaths, prefix: &str) {
 fn assert_published_project(paths: &MigrationPaths) {
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV10
+        SchemaClass::CurrentV13
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(

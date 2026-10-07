@@ -1,8 +1,57 @@
 use crate::acp::{
-    intent::ExternalId,
+    contract::{BoundedVec, SafeText},
+    intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, TerminalUpdate, TurnState, classify_terminal},
     limits::LIMITS,
 };
+
+#[derive(Default)]
+pub(in crate::acp::bindings::codex) struct SubagentLabels {
+    entries: Vec<(SafeText<512>, SafeText<512>)>,
+}
+
+impl SubagentLabels {
+    pub(in crate::acp::bindings::codex) fn apply(&mut self, payload: &mut NormalizedPayload) {
+        let NormalizedPayload::Collaboration {
+            label,
+            agent_key,
+            agent_keys,
+            receiver_labels,
+            ..
+        } = payload
+        else {
+            return;
+        };
+        if let Some(key) = agent_key.as_ref().filter(|_| label.as_str() != "Subagent") {
+            if let Some((_, existing)) = self.entries.iter_mut().find(|(entry, _)| entry == key) {
+                *existing = label.clone();
+            } else {
+                if self.entries.len() == 32 {
+                    self.entries.remove(0);
+                }
+                self.entries.push((key.clone(), label.clone()));
+            }
+        }
+        if agent_keys.as_slice().is_empty() {
+            return;
+        }
+        let labels = agent_keys
+            .as_slice()
+            .iter()
+            .map(|key| {
+                self.entries
+                    .iter()
+                    .find(|(entry, _)| entry == key)
+                    .map(|(_, label)| label.clone())
+            })
+            .collect::<Option<Vec<_>>>();
+        if let Some(labels) = labels
+            && let Ok(bounded) = BoundedVec::new("receiverLabels", labels)
+        {
+            *receiver_labels = bounded;
+        }
+    }
+}
 
 use super::{
     AdapterError, CodexAdapter, CorrelationMatch, ExternalKind, ItemTerminal, RequestKind,
@@ -10,6 +59,12 @@ use super::{
 };
 
 impl CodexAdapter {
+    pub(in crate::acp::bindings::codex) fn enrich_subagent_payload(
+        &mut self,
+        payload: &mut NormalizedPayload,
+    ) {
+        self.subagent_labels.apply(payload);
+    }
     pub(crate) fn bind_thread(&mut self, value: &str) -> Result<ScopedExternalId, AdapterError> {
         let id = ExternalId::new("externalSessionId", value.to_owned())?;
         if let Some(current) = self.external_thread_id.as_ref()

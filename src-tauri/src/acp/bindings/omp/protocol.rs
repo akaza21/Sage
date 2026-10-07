@@ -54,11 +54,7 @@ pub(crate) enum PromptTerminal {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ItemUpdateMode {
-    Append,
-    Replace,
-}
+pub(crate) use crate::acp::bindings::adapter::ItemUpdateMode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AdapterEvent {

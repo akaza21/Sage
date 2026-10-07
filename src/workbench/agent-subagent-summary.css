@@ -1,0 +1,42 @@
+.agent-task-header__agent-summary {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin-top: 4px;
+  gap: 12px;
+}
+
+.agent-task-header__agent-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.agent-task-header__agent-metric:last-child {
+  color: var(--color-text-muted);
+}
+
+.agent-task-header__agent-glyphs {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
+  padding-left: 2px;
+}
+
+.agent-task-header__agent-glyph {
+  margin-left: -2px;
+  color: var(--agent-subagent-violet);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.agent-task-header__agent-glyph--1 {
+  color: var(--agent-subagent-coral);
+}
+
+.agent-task-header__agent-glyph--2 {
+  color: var(--agent-subagent-teal);
+}

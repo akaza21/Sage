@@ -21,7 +21,9 @@ pub(crate) fn resolve_later_permission(
         .map_err(|_| LaterPermissionError::PendingRequestMiss)?;
     let token = match decision {
         PermissionDecision::Ask => unreachable!("Ask returns before a wire reply"),
-        PermissionDecision::AllowOnce => EgressToken::permission_allow(external_request_id),
+        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+            EgressToken::permission_allow(external_request_id)
+        }
         PermissionDecision::Deny => EgressToken::mandatory_deny(external_request_id, false),
     };
     Ok(Some(AdapterEgress::new(reply.into_frame(), token)))
@@ -34,5 +36,4 @@ pub(crate) enum LaterPermissionError {
 }
 
 #[cfg(test)]
-#[path = "later_permission/tests.rs"]
 mod tests;

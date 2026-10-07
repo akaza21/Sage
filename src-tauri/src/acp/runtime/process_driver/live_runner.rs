@@ -1,8 +1,4 @@
-use std::{
-    any::Any,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{any::Any, sync::Arc, time::Instant};
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
@@ -14,17 +10,20 @@ use crate::acp::{
 };
 
 use super::{
-    BlockingStdoutReader, ControlMessage, DriverMailbox, DriverStep, FirstTurnWorkerContext,
-    FirstTurnWorkerRecovery, FirstTurnWorkerState, ProcessExitWatcher, StdinTransport,
-    WorkerEnvelope, WorkerReply,
+    BlockingStdoutReader, ControlMessage, CoordinatorZeroToken, DriverMailbox, DriverStep,
+    FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState, ProcessExitWatcher,
+    StdinTransport, WorkerEnvelope,
 };
 use crate::acp::runtime::BoundedThread;
 
 mod activation;
+mod classification;
 mod configuration;
 mod drive;
 mod handle;
 mod observability;
+mod process_exit;
+mod shutdown;
 mod terminal;
 
 use drive::drive;
@@ -32,10 +31,10 @@ use handle::RunInput;
 pub(crate) use handle::{
     ActivationStartFailure, LiveRunnerExit, LiveRunnerHandle, RunnerStartSubstep,
 };
-use observability::{ShutdownObservability, shutdown_observability};
+use shutdown::{cleanup_budget, finish};
 use terminal::{acknowledge as acknowledge_terminal, cursor as terminal_cursor};
 
-type WorkerState<A, R, T> = FirstTurnWorkerState<A, R, T, TreeControl>;
+type WorkerState<A, R, T, C = TreeControl> = FirstTurnWorkerState<A, R, T, C>;
 type RetainedRunnerRecovery = Box<dyn Any + Send>;
 
 struct RunOutcome {
@@ -52,24 +51,28 @@ impl RunOutcome {
     }
 }
 
-enum RunnerAction<A, R, T>
+enum RunnerAction<A, R, T, C = TreeControl>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
 {
-    Continue(WorkerState<A, R, T>),
-    Failure(WorkerState<A, R, T>),
-    Shutdown(Box<WorkerState<A, R, T>>, WorkerEnvelope),
+    Continue(WorkerState<A, R, T, C>),
+    Failure(WorkerState<A, R, T, C>),
+    Shutdown(Box<WorkerState<A, R, T, C>>, WorkerEnvelope),
 }
 
-struct RunnerExit<A, R, T>
+struct RunnerExit<A, R, T, C = TreeControl>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
 {
-    state: WorkerState<A, R, T>,
+    state: WorkerState<A, R, T, C>,
     shutdown: Option<WorkerEnvelope>,
     reason: TreeExit,
 }
@@ -165,13 +168,14 @@ where
             }
         };
     if ready.send(Ok(())).is_err() {
-        let recovery = finish(
+        let (recovery, _) = finish(
             failed(initial),
             mailbox.as_ref(),
             &control,
             &mut reader,
             &mut watcher,
             cleanup_deadline,
+            &context,
         );
         return RunOutcome {
             exit: LiveRunnerExit::Failed,
@@ -179,16 +183,17 @@ where
         };
     }
     let exit = tauri::async_runtime::block_on(drive(initial, &context, host));
-    let recovery = finish(
+    let (recovery, recovered_after_exit) = finish(
         exit,
         mailbox.as_ref(),
         &control,
         &mut reader,
         &mut watcher,
         cleanup_deadline,
+        &context,
     );
     RunOutcome {
-        exit: if recovery.is_some() {
+        exit: if recovery.is_some() || recovered_after_exit {
             LiveRunnerExit::Failed
         } else {
             LiveRunnerExit::Shutdown
@@ -244,11 +249,13 @@ where
     failure
 }
 
-fn closing<A, R, T>(state: &WorkerState<A, R, T>) -> bool
+fn closing<A, R, T, C>(state: &WorkerState<A, R, T, C>) -> bool
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
 {
     match state {
         FirstTurnWorkerState::ReusableDraining(_)
@@ -283,122 +290,62 @@ fn process_tail(message: &ControlMessage) -> bool {
     )
 }
 
-fn failed<A, R, T>(state: WorkerState<A, R, T>) -> RunnerExit<A, R, T>
+fn failed<A, R, T, C>(state: WorkerState<A, R, T, C>) -> RunnerExit<A, R, T, C>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
 {
+    let reason = match &state {
+        FirstTurnWorkerState::Active(active) => active
+            .turn
+            .driver
+            .teardown_exit()
+            .unwrap_or(TreeExit::ProtocolFailure),
+        _ => TreeExit::ProtocolFailure,
+    };
     RunnerExit {
         state,
         shutdown: None,
-        reason: TreeExit::ProtocolFailure,
+        reason,
     }
 }
 
-fn finish<A, R, T>(
-    exit: RunnerExit<A, R, T>,
-    mailbox: &DriverMailbox,
-    control: &TreeControl,
-    reader: &mut BoundedThread,
-    watcher: &mut BoundedThread,
-    _cleanup_deadline: Instant,
-) -> Option<RetainedRunnerRecovery>
+fn failed_with_exit<A, R, T, C>(
+    state: WorkerState<A, R, T, C>,
+    reason: TreeExit,
+    pending_config: &mut Option<configuration::PendingConfig>,
+) -> RunnerExit<A, R, T, C>
 where
     A: HarnessAdapter,
-    R: ResourceMapper + Send + 'static,
-    T: StdinTransport + Send + 'static,
-    A: Send + 'static,
+    R: ResourceMapper,
+    T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
 {
-    let already_closed = matches!(exit.state, FirstTurnWorkerState::Closed);
-    let mut exit = exit;
-    let durable_completed = exit.state.has_durable_completed_cursor();
-    let durable_cancelled = exit.state.has_durable_cancelled_cursor();
-    let durable_terminal = already_closed || durable_completed || durable_cancelled;
-    let mut observability = shutdown_observability(exit.reason, durable_terminal, true);
-    let mut termination_succeeded = already_closed;
-    if !already_closed {
-        match observability {
-            ShutdownObservability::Intentional => tracing::info!(
-                shutdown_reason = ?exit.reason,
-                "ACP runner requesting termination after finalized turn"
-            ),
-            ShutdownObservability::Failure => {
-                let stderr_summary = control.stderr_summary().ok();
-                let stderr = control.stderr_diagnostic().ok();
-                let native_child_exit_code = control.native_exit_code_if_exited().ok().flatten();
-                tracing::warn!(
-                    recovery_checkpoint = "acp_runner.protocol_failure.pre_termination",
-                    protocol_failure_reason = ?exit.reason,
-                    native_child_exit_code,
-                    jsonrpc_method = ?stderr.as_ref().and_then(|diagnostic| diagnostic.method.as_deref()),
-                    jsonrpc_error_code = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_code.as_deref()),
-                    jsonrpc_error_message = ?stderr.as_ref().and_then(|diagnostic| diagnostic.error_message.as_deref()),
-                    stderr_summary = ?stderr_summary,
-                    "ACP runner diagnostic captured before termination"
-                );
-            }
-        }
-        exit.state.close_stdin_after_durable_completed();
-        match control.request_termination(exit.reason) {
-            Ok(()) => termination_succeeded = true,
-            Err(error) => {
-                observability = ShutdownObservability::Failure;
-                let stderr_summary = control.stderr_summary().ok();
-                tracing::warn!(
-                    termination_error = ?error,
-                    stderr_summary = ?stderr_summary,
-                    "ACP runner termination request failed"
-                );
-            }
-        }
+    configuration::fail_pending_config(pending_config, HostError::RecoveryRequired);
+    RunnerExit {
+        state,
+        shutdown: None,
+        reason,
     }
-    mailbox.close();
-    if let Some(envelope) = exit.shutdown.take() {
-        envelope.respond(Ok(WorkerReply::Unit));
-    }
-    let wait_deadline = Instant::now() + cleanup_budget();
-    let converged = match control.wait_zero_before(wait_deadline) {
-        Ok((root_exit, token)) => {
-            match observability {
-                ShutdownObservability::Intentional => tracing::info!(
-                    root_exit = ?root_exit,
-                    sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
-                    "ACP runner reached process-tree zero after requested clean termination"
-                ),
-                ShutdownObservability::Failure => {
-                    let stderr = control.stderr_summary().ok();
-                    tracing::warn!(
-                        root_exit = ?root_exit,
-                        sage_requested_termination = !matches!(root_exit, TreeExit::Exited { .. }),
-                        stderr_summary = ?stderr,
-                        "ACP runner reached process-tree zero"
-                    );
-                }
-            }
-            if durable_completed {
-                tauri::async_runtime::block_on(exit.state.park_after_zero(token));
-            }
-            true
-        }
-        Err(error) => {
-            let stderr = control.stderr_summary().ok();
-            tracing::warn!(
-                wait_status = ?error,
-                stderr_summary = ?stderr,
-                "ACP runner could not prove process-tree zero"
-            );
-            false
-        }
-    };
-    let remaining = wait_deadline.saturating_duration_since(Instant::now());
-    let reader_done = reader.wait(remaining).is_ok();
-    let watcher_done = watcher.wait(remaining).is_ok();
-    let clean_shutdown =
-        durable_terminal && termination_succeeded && converged && reader_done && watcher_done;
-    (!clean_shutdown).then(|| Box::new(exit.state) as RetainedRunnerRecovery)
 }
 
-fn cleanup_budget() -> Duration {
-    Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close)
+#[cfg(test)]
+pub(super) async fn drive_for_test<A, R, T, Auth, C>(
+    state: WorkerState<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+) -> (WorkerState<A, R, T, C>, TreeExit)
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
+{
+    let exit = drive(state, context, std::sync::Weak::new()).await;
+    (exit.state, exit.reason)
 }

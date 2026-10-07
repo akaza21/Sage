@@ -2,9 +2,12 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import type { AgentDiffRef } from "../../domain/agentDiff";
-import type { DiffLineCommentContext } from "../../domain/attachedContext";
+import type { AttachedContext } from "../../domain/attachedContext";
+import { MAX_QUEUED_CHAT_PROMPTS } from "../../domain/chatOwnership";
+import type { HarnessDefinition } from "../../domain/harness";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type {
+  AcpCommandFailure,
   CuratedBindingId,
   CuratedModelId,
   TurnProjection,
@@ -16,6 +19,17 @@ import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { currentChatUsage } from "./acp/chatUsage";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 
+type SurfaceHarness = Pick<
+  HarnessDefinition,
+  | "id"
+  | "transport"
+  | "bindingId"
+  | "installState"
+  | "source"
+  | "name"
+  | "signIn"
+>;
+
 export function useChatSurfaceModel({
   harnesses,
   selectedHarnessId,
@@ -26,44 +40,48 @@ export function useChatSurfaceModel({
   attachedContext = [],
   sending = false,
   chatError = null,
+  chatLoadFailed = false,
   projectTransitioning = false,
   focused = false,
   acpActions,
   sendPrompt,
+  queuePrompt,
+  queuedPromptCount = 0,
+  queueSavePending = false,
 }: {
-  harnesses: readonly {
-    id: string;
-    transport: string;
-    bindingId?: string | null;
-    installState: string;
-    source: string;
-  }[];
+  harnesses: readonly SurfaceHarness[];
   selectedHarnessId: string | null;
   selectedModelId: string | null;
   page: AcpChatPage | null;
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
-  attachedContext: readonly DiffLineCommentContext[];
+  attachedContext: readonly AttachedContext[];
   sending: boolean;
   chatError: string | null;
+  chatLoadFailed?: boolean;
   projectTransitioning: boolean;
   focused: boolean;
   acpActions: {
     busy: boolean;
     error: string | null;
+    errorKind?: AcpCommandFailure["kind"] | null;
     modeError?: string | null;
     modeChanging?: boolean;
     cancellableTurnId: TurnProjection["id"] | null;
     submit: (
       text: string,
-      attachedContext: readonly DiffLineCommentContext[],
+      attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
+    end: () => Promise<unknown>;
   };
   sendPrompt: () => Promise<unknown>;
+  queuePrompt?: (bindingId: string, modelId: string | null) => Promise<boolean>;
+  queuedPromptCount?: number;
+  queueSavePending?: boolean;
 }) {
   const model = useMemo(() => {
     const selectedHarness = harnesses.find(
@@ -78,6 +96,15 @@ export function useChatSurfaceModel({
       (candidate) =>
         candidate.id === page.currentSessionId && !candidate.legacy,
     );
+    const sessionHarnessId =
+      session?.runtimeEpoch &&
+      !["closed", "failed", "incompatible"].includes(session.state)
+        ? (harnesses.find(
+            (harness) =>
+              harness.transport === "acp" &&
+              harness.bindingId === session.bindingId,
+          )?.id ?? null)
+        : null;
     const selectedSession =
       session &&
       session.bindingId === bindingId &&
@@ -116,6 +143,8 @@ export function useChatSurfaceModel({
       useNativeAcp: Boolean(useNativeAcp),
       bindingId,
       selectedSession,
+      sessionHarnessId,
+      sessionModelId: session?.modelId ?? null,
       selectedModelId: selectedModelId as CuratedModelId | null,
       harnessAvailable,
       availableBinding,
@@ -130,10 +159,14 @@ export function useChatSurfaceModel({
     const activeAcpTurn = model.useNativeAcp
       ? currentNonterminalTurn(page)
       : null;
-    const workingTurnCount = model.useNativeAcp
-      ? (page?.turns.filter((turn) => !terminalTurnStates.has(turn.state))
-          .length ?? 0)
-      : 0;
+    const workingTurnCount =
+      model.useNativeAcp && page?.currentSessionId
+        ? page.turns.filter(
+            (turn) =>
+              turn.sessionId === page.currentSessionId &&
+              !terminalTurnStates.has(turn.state),
+          ).length
+        : 0;
     const currentSession = page?.sessions.find(
       (session) => session.id === page.currentSessionId && !session.legacy,
     );
@@ -142,6 +175,11 @@ export function useChatSurfaceModel({
       currentSession?.runtimeEpoch &&
       currentSession.capabilities.closeSession &&
       !activeAcpTurn,
+    );
+    const canEndSession = Boolean(
+      model.useNativeAcp &&
+      currentSession?.runtimeEpoch &&
+      !currentSession.capabilities.closeSession,
     );
     const canPrompt = model.useNativeAcp
       ? Boolean(
@@ -152,11 +190,15 @@ export function useChatSurfaceModel({
           (!model.selectedSession || model.selectedSession.capabilities.prompt),
         )
       : model.harnessAvailable;
-    const usage = model.useNativeAcp ? currentChatUsage(page) : null;
+    const usage =
+      model.useNativeAcp && model.selectedSession
+        ? currentChatUsage(page)
+        : null;
     return {
       activeAcpTurn,
       workingTurnCount,
       canCloseSession,
+      canEndSession,
       canPrompt,
       usage,
     };
@@ -168,27 +210,63 @@ export function useChatSurfaceModel({
     model.useNativeAcp,
     page,
   ]);
-  const { activeAcpTurn, workingTurnCount, canCloseSession, canPrompt, usage } =
-    turnEligibility;
+  const {
+    activeAcpTurn,
+    workingTurnCount,
+    canCloseSession,
+    canEndSession,
+    canPrompt,
+    usage,
+  } = turnEligibility;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
-  const composerEnabled = canPrompt && !activeAcpTurn && !legacyAttachments;
+  const queueAvailable = Boolean(
+    model.useNativeAcp &&
+    activeAcpTurn?.state === "running" &&
+    canPrompt &&
+    !actionBusy &&
+    !projectTransitioning &&
+    !queueSavePending &&
+    queuedPromptCount < MAX_QUEUED_CHAT_PROMPTS,
+  );
+  const composerEnabled =
+    canPrompt &&
+    !queueSavePending &&
+    (!activeAcpTurn || queueAvailable) &&
+    !legacyAttachments;
+  const sessionPromptUnavailable = Boolean(
+    model.useNativeAcp &&
+    model.selectedSession &&
+    !model.selectedSession.capabilities.prompt,
+  );
   const disabledReason = legacyAttachments
-    ? "Attached diff comments require an ACP harness. Remove them or select an ACP harness."
-    : composerDisabledReason({
-        actionBusy,
-        activeTurn: Boolean(activeAcpTurn),
-        availableBinding: model.availableBinding,
-        canPrompt,
-        harnessAvailable: model.harnessAvailable,
-        harnessDiscoveryPhase: discoveryPhase,
-        projectTransitioning,
-        selectedHarness: Boolean(model.selectedHarness),
-        useNativeAcp: model.useNativeAcp,
-      });
+    ? "Attached context requires an ACP harness. Remove it or select an ACP harness."
+    : queueSavePending
+      ? "Saving queued message."
+      : activeAcpTurn && queuedPromptCount >= MAX_QUEUED_CHAT_PROMPTS
+        ? `Queue is full (${MAX_QUEUED_CHAT_PROMPTS} messages).`
+        : queueAvailable
+          ? null
+          : composerDisabledReason({
+              actionBusy,
+              activeTurn: Boolean(activeAcpTurn),
+              availableBinding: model.availableBinding,
+              canPrompt,
+              chatLoadFailed,
+              harnessAvailable: model.harnessAvailable,
+              harnessDiscoveryPhase: discoveryPhase,
+              projectTransitioning,
+              selectedHarness: Boolean(model.selectedHarness),
+              useNativeAcp: model.useNativeAcp,
+            });
   const submit = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
+      if (activeAcpTurn) {
+        if (queueAvailable && model.bindingId)
+          void queuePrompt?.(model.bindingId, model.selectedModelId);
+        return;
+      }
       if (model.useNativeAcp) {
         if (
           !model.bindingId ||
@@ -210,6 +288,7 @@ export function useChatSurfaceModel({
     },
     [
       acpActions,
+      activeAcpTurn,
       actionBusy,
       attachedContext,
       composerEnabled,
@@ -219,6 +298,8 @@ export function useChatSurfaceModel({
       model.selectedModelId,
       model.useNativeAcp,
       projectTransitioning,
+      queueAvailable,
+      queuePrompt,
       sendPrompt,
     ],
   );
@@ -253,7 +334,10 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    foregroundError: acpActions.error ?? chatError,
+    foregroundError:
+      acpActions.errorKind === "signInRequired" && model.selectedHarness
+        ? signInRequiredMessage(model.selectedHarness)
+        : (acpActions.error ?? chatError),
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
     modeChanging: model.useNativeAcp
       ? (acpActions.modeChanging ?? false)
@@ -262,18 +346,35 @@ export function useChatSurfaceModel({
     activeAcpTurn,
     workingTurnCount,
     canCloseSession,
+    canEndSession,
     canPrompt,
+    sessionPromptUnavailable,
     usage,
     composerEnabled,
+    queueAvailable,
     composerHotkeyEnabled:
       focused && composerEnabled && !actionBusy && !projectTransitioning,
     disabledReason,
     submit,
     closeSession: () => void acpActions.close(),
+    endSession: () => void acpActions.end(),
     cancelTurn:
       model.useNativeAcp && acpActions.cancellableTurnId
         ? () => void acpActions.cancel(acpActions.cancellableTurnId!)
         : null,
+    steerAvailable: Boolean(
+      model.useNativeAcp &&
+      activeAcpTurn &&
+      page?.sessions.find((session) => session.id === page.currentSessionId)
+        ?.capabilities?.activeTurnSteer,
+    ),
     openResource,
   };
+}
+
+function signInRequiredMessage(harness: SurfaceHarness): string {
+  if (harness.signIn) {
+    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
+  }
+  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

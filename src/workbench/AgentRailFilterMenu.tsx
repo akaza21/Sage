@@ -1,7 +1,84 @@
-import { ListFilter } from "lucide-react";
+import {
+  FolderOpen,
+  History,
+  Home,
+  ListFilter,
+  Search,
+  Settings,
+} from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 
 import { MenuPopover } from "../ui/MenuPopover";
+
+export function AgentPrimaryNavigation({
+  onNewChat,
+  onSearch,
+  onSettings,
+  searchDisabled,
+}: {
+  onNewChat: () => void;
+  onSearch: () => void;
+  onSettings: () => void;
+  searchDisabled: boolean;
+}) {
+  const scrollToSection =
+    (target: "Recent" | "Projects") =>
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const section =
+        target === "Projects"
+          ? '[aria-label="Projects"], [aria-label="Chats"]'
+          : '[aria-label="Recent"]';
+      event.currentTarget
+        .closest(".project-sidebar")
+        ?.querySelector<HTMLElement>(section)
+        ?.scrollIntoView?.();
+    };
+  return (
+    <nav className="project-sidebar__icon-rail" aria-label="Primary navigation">
+      <button
+        type="button"
+        aria-label="New chat"
+        title="New chat"
+        onClick={onNewChat}
+      >
+        <Home size={18} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label="Go to recent chats"
+        title="Recent chats"
+        onClick={scrollToSection("Recent")}
+      >
+        <History size={18} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label="Go to projects"
+        title="Projects"
+        onClick={scrollToSection("Projects")}
+      >
+        <FolderOpen size={18} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label="Search chats"
+        title="Search chats"
+        disabled={searchDisabled}
+        onClick={onSearch}
+      >
+        <Search size={18} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label="Open settings from rail"
+        title="Settings"
+        onClick={onSettings}
+      >
+        <Settings size={18} aria-hidden="true" />
+      </button>
+    </nav>
+  );
+}
 
 import {
   AGENT_RAIL_GROUPINGS,

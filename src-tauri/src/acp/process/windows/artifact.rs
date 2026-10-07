@@ -9,12 +9,14 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Storage::FileSystem::{
-    BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_NAME_NORMALIZED, FILE_SHARE_DELETE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK, GetFileInformationByHandle, GetFileType,
+    BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_NAME_NORMALIZED, FILE_SHARE_DELETE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, FILE_TYPE_DISK, GetFileInformationByHandle, GetFileType,
     GetFinalPathNameByHandleW, VOLUME_NAME_DOS,
 };
 use windows_sys::Win32::System::Threading::QueryFullProcessImageNameW;
 
+use super::super::manifest::{ManifestExpectation, ManifestGuard};
 use super::super::supervisor::{EntryPointKind, LaunchError, LaunchSpec};
 use super::MAX_WINDOWS_WIDE;
 
@@ -33,6 +35,14 @@ pub(super) struct VerifiedArtifact {
 }
 
 impl VerifiedArtifact {
+    pub(super) fn open_with_manifest(
+        spec: &LaunchSpec,
+    ) -> Result<(Self, Option<ManifestGuard>), LaunchError> {
+        let artifact = Self::open(spec)?;
+        let manifest = ManifestExpectation::open_for_launch(spec)?;
+        Ok((artifact, manifest))
+    }
+
     pub(super) fn open(spec: &LaunchSpec) -> Result<Self, LaunchError> {
         let canonical =
             std::fs::canonicalize(&spec.artifact.canonical_absolute_path).map_err(|_| {
@@ -207,6 +217,36 @@ struct PathIdentity {
     path: PathBuf,
     bytes: Option<u64>,
     digest: Option<[u8; 32]>,
+}
+
+pub(in crate::acp::process) fn open_pinned_regular_file(path: &Path) -> Result<File, LaunchError> {
+    let canonical = std::fs::canonicalize(path).map_err(|_| LaunchError::Io)?;
+    let only = PathIdentity::path_only;
+    let refuse = |checkpoint, observed: PathBuf| {
+        identity_mismatch(checkpoint, Some(only(path.into())), Some(only(observed)))
+    };
+    if !same_windows_path(&canonical, path) {
+        return Err(refuse("pinned manifest canonical path", canonical));
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(&canonical)
+        .map_err(|_| LaunchError::Io)?;
+    let raw = file.as_raw_handle() as HANDLE;
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    if unsafe { GetFileType(raw) } != FILE_TYPE_DISK
+        || unsafe { GetFileInformationByHandle(raw, &mut info) } == 0
+        || info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) != 0
+    {
+        return Err(refuse("pinned manifest file metadata", canonical));
+    }
+    let observed = std::fs::canonicalize(final_path(raw)?).map_err(|_| LaunchError::Io)?;
+    if !same_windows_path(&observed, &canonical) {
+        return Err(refuse("pinned manifest handle path", observed));
+    }
+    Ok(file)
 }
 
 impl PathIdentity {

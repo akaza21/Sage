@@ -1,4 +1,4 @@
-use rusqlite::{Transaction, params};
+use rusqlite::{Transaction, params, params_from_iter, types::Value};
 
 use crate::acp::{
     contract::{
@@ -44,34 +44,15 @@ pub(crate) fn terminalize_epoch(
             resource: "epochTerminal",
         });
     }
-    let turns = count(
-        transaction,
-        "turns",
-        "state IN ('queued','sending','running','waitingModel','waitingTool','waitingApproval','waitingUser','cancelling')",
+    let scope = DescendantScope {
         session,
         epoch,
-    )?;
-    let items = count(
-        transaction,
-        "items",
-        "lifecycle IN ('started','streaming')",
-        session,
-        epoch,
-    )?;
-    let activities = count(
-        transaction,
-        "session_activities",
-        "lifecycle IN ('observed','active')",
-        session,
-        epoch,
-    )?;
-    let requests = count(
-        transaction,
-        "server_requests",
-        "state NOT IN ('resolvedAllowed','resolvedDeclined','cancelled')",
-        session,
-        epoch,
-    )?;
+        turn: None,
+    };
+    let turns = count(transaction, "turns", OPEN_TURNS, scope)?;
+    let items = count(transaction, "items", scope.open_items(), scope)?;
+    let activities = count(transaction, "session_activities", OPEN_ACTIVITIES, scope)?;
+    let requests = count(transaction, "server_requests", OPEN_REQUESTS, scope)?;
     if turns > LIMITS.durable.turns_per_session
         || items > LIMITS.durable.items_per_session
         || activities
@@ -189,27 +170,14 @@ fn precheck_descendants(
     epoch: RuntimeEpoch,
     turns: u64,
 ) -> Result<TerminalizedCounts, StoreError> {
-    let items = count(
-        transaction,
-        "items",
-        "lifecycle IN ('started','streaming')",
+    let scope = DescendantScope {
         session,
         epoch,
-    )?;
-    let activities = count(
-        transaction,
-        "session_activities",
-        "lifecycle IN ('observed','active')",
-        session,
-        epoch,
-    )?;
-    let requests = count(
-        transaction,
-        "server_requests",
-        "state NOT IN ('resolvedAllowed','resolvedDeclined','cancelled')",
-        session,
-        epoch,
-    )?;
+        turn: None,
+    };
+    let items = count(transaction, "items", scope.open_items(), scope)?;
+    let activities = count(transaction, "session_activities", OPEN_ACTIVITIES, scope)?;
+    let requests = count(transaction, "server_requests", OPEN_REQUESTS, scope)?;
     if turns > 1
         || items > LIMITS.durable.items_per_session
         || activities
@@ -229,14 +197,103 @@ fn precheck_descendants(
     })
 }
 
+#[derive(Clone, Copy)]
+struct DescendantScope<'a> {
+    session: &'a SageAgentSessionId,
+    epoch: RuntimeEpoch,
+    turn: Option<&'a SageTurnId>,
+}
+
+impl DescendantScope<'_> {
+    fn clause(&self, turn_index: u8) -> String {
+        match self.turn {
+            Some(_) => format!(" AND turn_id=?{turn_index}"),
+            None => String::new(),
+        }
+    }
+
+    fn open_items(&self) -> &'static str {
+        match self.turn {
+            Some(_) => OPEN_TURN_ITEMS,
+            None => OPEN_ITEMS,
+        }
+    }
+
+    fn values(&self, now: Option<i64>) -> Vec<Value> {
+        let mut values = vec![
+            Value::Text(self.session.as_str().to_owned()),
+            Value::Integer(self.epoch.get() as i64),
+        ];
+        values.extend(now.map(Value::Integer));
+        values.extend(self.turn.map(|turn| Value::Text(turn.as_str().to_owned())));
+        values
+    }
+}
+
+const OPEN_TURNS: &str = "state IN ('queued','sending','running','waitingModel','waitingTool','waitingApproval','waitingUser','cancelling')";
+const OPEN_ITEMS: &str = "lifecycle IN ('started','streaming')";
+const OPEN_TURN_ITEMS: &str = "lifecycle IN ('started','streaming') AND kind<>'permissionRequest'";
+const OPEN_ACTIVITIES: &str = "lifecycle IN ('observed','active')";
+const OPEN_REQUESTS: &str = "state NOT IN ('resolvedAllowed','resolvedDeclined','cancelled')";
+
+fn terminalize_open_descendants(
+    transaction: &Transaction<'_>,
+    scope: DescendantScope<'_>,
+    now: i64,
+) -> Result<(), StoreError> {
+    let turn_clause = scope.clause(4);
+    let open_items = scope.open_items();
+    transaction.execute(
+        &format!(
+            "UPDATE items SET lifecycle=CASE WHEN kind='permissionRequest' THEN 'failed' ELSE 'cancelled' END,tool_state=CASE WHEN kind='permissionRequest' THEN 'failed' WHEN tool_state IN ('pending','inProgress','waitingForApproval') THEN 'cancelled' ELSE tool_state END,revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND {open_items}{turn_clause}"
+        ),
+        params_from_iter(scope.values(Some(now))),
+    )?;
+    transaction.execute(
+        &format!(
+            "UPDATE session_activities SET lifecycle='cancelled',revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND {OPEN_ACTIVITIES}{turn_clause}"
+        ),
+        params_from_iter(scope.values(Some(now))),
+    )?;
+    Ok(())
+}
+
+pub(super) fn terminalize_turn_descendants(
+    transaction: &Transaction<'_>,
+    session: &SageAgentSessionId,
+    epoch: RuntimeEpoch,
+    turn: &SageTurnId,
+    now: i64,
+) -> Result<(), StoreError> {
+    let scope = DescendantScope {
+        session,
+        epoch,
+        turn: Some(turn),
+    };
+    if count(transaction, "items", scope.open_items(), scope)? > LIMITS.wire.items_per_turn
+        || count(transaction, "session_activities", OPEN_ACTIVITIES, scope)?
+            > LIMITS.native_thread_projection.activity_groups_per_turn
+    {
+        return Err(StoreError::Corrupt("turn terminalization limit+1"));
+    }
+    terminalize_open_descendants(transaction, scope, now)
+}
+
 fn terminalize_descendants(
     transaction: &Transaction<'_>,
     session: &SageAgentSessionId,
     epoch: RuntimeEpoch,
     now: i64,
 ) -> Result<(), StoreError> {
-    transaction.execute("UPDATE items SET lifecycle=CASE WHEN kind='permissionRequest' THEN 'failed' ELSE 'cancelled' END,tool_state=CASE WHEN kind='permissionRequest' THEN 'failed' WHEN tool_state IN ('pending','inProgress','waitingForApproval') THEN 'cancelled' ELSE tool_state END,revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('started','streaming')",params![session.as_str(),epoch.get() as i64,now])?;
-    transaction.execute("UPDATE session_activities SET lifecycle='cancelled',revision=revision+1,updated_at=?3,terminal_at=?3 WHERE session_id=?1 AND runtime_epoch=?2 AND lifecycle IN ('observed','active')",params![session.as_str(),epoch.get() as i64,now])?;
+    terminalize_open_descendants(
+        transaction,
+        DescendantScope {
+            session,
+            epoch,
+            turn: None,
+        },
+        now,
+    )?;
     for (old, next) in [
         ("received", "declinePending"),
         ("asked", "declinePending"),
@@ -275,7 +332,7 @@ fn recovery_turn_state(
             "running" | "waitingModel" | "waitingTool" | "waitingApproval" | "waitingUser"
             | "cancelling",
             value,
-        ) => Ok((Interrupted, value)),
+        ) => Ok((Failed, value)),
         _ => Err(StoreError::Corrupt("invalid recovery turn state")),
     }
 }
@@ -304,15 +361,13 @@ fn count(
     transaction: &Transaction<'_>,
     table: &str,
     predicate: &str,
-    session: &SageAgentSessionId,
-    epoch: RuntimeEpoch,
+    scope: DescendantScope<'_>,
 ) -> Result<u64, StoreError> {
+    let turn_clause = scope.clause(3);
     let sql = format!(
-        "SELECT COUNT(*) FROM {table} WHERE session_id=?1 AND runtime_epoch=?2 AND {predicate}"
+        "SELECT COUNT(*) FROM {table} WHERE session_id=?1 AND runtime_epoch=?2 AND {predicate}{turn_clause}"
     );
     let value: i64 =
-        transaction.query_row(&sql, params![session.as_str(), epoch.get() as i64], |row| {
-            row.get(0)
-        })?;
+        transaction.query_row(&sql, params_from_iter(scope.values(None)), |row| row.get(0))?;
     u64::try_from(value).map_err(|_| StoreError::Corrupt("terminalization count"))
 }

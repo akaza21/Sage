@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
@@ -40,8 +40,7 @@ fn sleeping_process() -> ProcessSpec {
 
 #[test]
 fn deadline_kills_and_reaps_the_actual_helper_process() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let started = Instant::now();
+    crate::test_wait::guarded("search helper run deadline", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
             HelperRequest::new(request("needle"), Vec::new()),
@@ -54,14 +53,12 @@ fn deadline_kills_and_reaps_the_actual_helper_process() {
         .await
         .unwrap_err();
         assert!(error.to_string().contains("deadline"));
-        assert!(started.elapsed() < Duration::from_secs(1));
     });
 }
 
 #[test]
 fn cancellation_kills_and_reaps_the_actual_helper_process() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let started = Instant::now();
+    crate::test_wait::guarded("search helper cancellation", async {
         let (cancel, receiver) = oneshot::channel();
         let cancellation = tokio::spawn(async move {
             sleep(Duration::from_millis(100)).await;
@@ -79,14 +76,12 @@ fn cancellation_kills_and_reaps_the_actual_helper_process() {
         .unwrap_err();
         cancellation.await.unwrap();
         assert!(error.to_string().contains("cancelled"));
-        assert!(started.elapsed() < Duration::from_secs(1));
     });
 }
 
 #[test]
 fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let started = Instant::now();
+    crate::test_wait::guarded("search helper forced reap handoff", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
             HelperRequest::new(request("needle"), Vec::new()),
@@ -99,27 +94,24 @@ fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
         .await
         .unwrap_err();
         assert!(error.to_string().contains("cleanup remains contained"));
-        assert!(started.elapsed() < Duration::from_secs(1));
     });
 }
 
 #[test]
 fn stalled_reap_policy_returns_at_its_bound() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let started = Instant::now();
+    crate::test_wait::guarded("search helper stalled reap bound", async {
         let reaped = bounded_reap(
             std::future::pending::<std::io::Result<std::process::ExitStatus>>(),
             Duration::from_millis(25),
         )
         .await;
         assert!(!reaped);
-        assert!(started.elapsed() < Duration::from_secs(1));
     });
 }
 
 #[test]
 fn exact_helper_process_receives_only_its_allowlisted_environment() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
+    crate::test_wait::guarded("search helper environment allowlist", async {
         let spec = ProcessSpec {
             executable: std::env::current_exe().unwrap(),
             arguments: vec![

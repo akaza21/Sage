@@ -5,21 +5,98 @@ import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import { closeTab as closeTabState } from "./tabState";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
+import { errorMessage } from "../domain/errors";
+import { closeBrowser } from "../ports/nativeBrowserPort";
+
+const browserClosesInFlight = new Set<string>();
+const browsersAlreadyClosed = new Set<string>();
+
+export function consumeBrowserAlreadyClosed(tabId: string): boolean {
+  return browsersAlreadyClosed.delete(tabId);
+}
+
+export function isBrowserCloseInFlight(tabId: string): boolean {
+  return browserClosesInFlight.has(tabId);
+}
+
+export function reconcileNativeClosedBrowserTabs(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  closedIds: string[],
+) {
+  const state = get();
+  let tabs = state.tabs;
+  let activeTabId: string | null = state.activeTabId;
+  for (const id of closedIds) {
+    const tab = tabs.find((candidate) => candidate.id === id);
+    if (tab?.kind !== "browser") continue;
+    browsersAlreadyClosed.add(id);
+    useAgentArtifactAdmissionStore.getState().forget(id);
+    useAgentArtifactFollowStore.getState().forgetTab(id);
+    const result = closeTabState(tabs, activeTabId ?? "", id);
+    tabs = result.tabs;
+    activeTabId = result.activeTabId;
+  }
+  if (tabs === state.tabs) return;
+  const next = tabs.find((tab) => tab.id === activeTabId);
+  set({
+    tabs,
+    activeTabId,
+    selectedResource: next?.resource ?? state.selectedResource,
+    selectedRootId: next?.resource?.rootId ?? state.selectedRootId,
+    activeEditor: state.activeTabId === activeTabId ? state.activeEditor : null,
+  });
+  if (next?.kind === "chat" && state.activeTabId !== activeTabId) {
+    void get().activateChat(next.id, tabs);
+  }
+}
 
 export function closeWorkbenchTab(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
   tabId: string,
   preferredNextTabId: string | null = null,
+  nativeBrowserClosed = false,
 ) {
   if (
-    get().projectTransitioning ||
-    get().fileRenameInFlight ||
-    get().resourceTrashInFlight
+    !nativeBrowserClosed &&
+    (get().projectTransitioning ||
+      get().fileRenameInFlight ||
+      get().resourceTrashInFlight)
   )
     return;
   const state = get();
   const tab = state.tabs.find((candidate) => candidate.id === tabId);
+  if (nativeBrowserClosed && tab?.kind === "browser") {
+    browsersAlreadyClosed.add(tabId);
+  }
+  if (
+    tab?.kind === "browser" &&
+    tab.status !== "closed" &&
+    !nativeBrowserClosed
+  ) {
+    if (browserClosesInFlight.has(tabId)) return;
+    browserClosesInFlight.add(tabId);
+    void closeBrowser(tabId)
+      .then(() => {
+        browserClosesInFlight.delete(tabId);
+        browsersAlreadyClosed.add(tabId);
+        closeWorkbenchTab(set, get, tabId, preferredNextTabId, true);
+        browsersAlreadyClosed.delete(tabId);
+        set((current) => ({
+          error: current.error?.startsWith("Couldn't close browser — try again")
+            ? null
+            : current.error,
+        }));
+      })
+      .catch((error) => {
+        browserClosesInFlight.delete(tabId);
+        set({
+          error: `Couldn't close browser — try again: ${errorMessage(error)}`,
+        });
+      });
+    return;
+  }
   if (tab?.kind === "chat") {
     void get().archiveChat(tabId);
     return;

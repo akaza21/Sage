@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::acp::{
     process::{LaunchError, StdinEndpoint, TreeControl, TreeExit, ZeroProcessToken},
-    runtime::{EgressTransport, SessionTreeLease},
+    runtime::{EgressTransport, NonfatalRefusal, SessionTreeLease},
     scheduler::RuntimeOwner,
     transport::{FrameWriteOutcome, OutboundFrame},
 };
@@ -22,7 +22,7 @@ pub(crate) struct FirstDeliveryUnknown {
     pub(crate) source: DispatchSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TeardownCause {
     ReaderEof,
     ReaderIo,
@@ -31,15 +31,47 @@ pub(crate) enum TeardownCause {
     PumpFailure,
     MandatoryDenyFailure,
     DeliveryUnknown,
+    RefusedVersion {
+        observed: crate::acp::contract::RequiredText<64>,
+    },
     HostTermination,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TeardownDetail {
+    Exit(TreeExit),
+    Summary(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PendingExit {
+    pub(crate) exit: Option<TreeExit>,
+    pub(crate) deadline_millis: i64,
+    pub(crate) termination_requested: bool,
+}
+
+impl From<TeardownCause> for crate::acp::lifecycle::TurnTerminalReason {
+    fn from(value: TeardownCause) -> Self {
+        match value {
+            TeardownCause::ProtocolFailure => Self::ProtocolError,
+            TeardownCause::ProcessExit | TeardownCause::ReaderEof | TeardownCause::ReaderIo => {
+                Self::HarnessExited
+            }
+            TeardownCause::HostTermination => Self::CancelledByUser,
+            TeardownCause::RefusedVersion { .. } => Self::RefusedVersion,
+            TeardownCause::PumpFailure
+            | TeardownCause::MandatoryDenyFailure
+            | TeardownCause::DeliveryUnknown => Self::Other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DriverError {
     IdentityMismatch,
     Mailbox(MailboxError),
     RejectedIntent,
-    ConfigMutationRejected,
+    Refused(NonfatalRefusal),
     TeardownRequired(TeardownCause),
     Tree,
     NotReusable,
@@ -172,6 +204,7 @@ pub(super) fn tree_exit(cause: TeardownCause) -> TreeExit {
         | TeardownCause::PumpFailure
         | TeardownCause::MandatoryDenyFailure
         | TeardownCause::DeliveryUnknown
+        | TeardownCause::RefusedVersion { .. }
         | TeardownCause::ReaderIo => TreeExit::ProtocolFailure,
     }
 }

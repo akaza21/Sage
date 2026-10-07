@@ -402,8 +402,16 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         return {
           display: getComputedStyle(node).display,
           buttonCount: buttons.length,
-          queryAboveControls: controlBounds.every(
-            (bounds) => queryBounds.bottom <= bounds.top,
+          controlsShareQueryRow: controlBounds.every(
+            (bounds) =>
+              Math.abs(
+                bounds.top +
+                  bounds.height / 2 -
+                  (queryBounds.top + queryBounds.height / 2),
+              ) <= 1,
+          ),
+          queryLeadsControls: controlBounds.every(
+            (bounds) => queryBounds.right <= bounds.left + 1,
           ),
           controlsVisible: controlBounds.every(
             (bounds) => bounds.width > 0 && bounds.height > 0,
@@ -412,12 +420,22 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         };
       }),
     ).toEqual({
-      display: "grid",
+      display: "flex",
       buttonCount: 4,
-      queryAboveControls: true,
+      controlsShareQueryRow: true,
+      queryLeadsControls: true,
       controlsVisible: true,
       noOverflow: true,
     });
+    await agentFind.getByRole("textbox", { name: "Find text" }).focus();
+    await agentPage.keyboard.press("Tab");
+    expect(
+      await agentFind.evaluate(
+        (node) =>
+          node.contains(document.activeElement) &&
+          document.activeElement?.tagName === "BUTTON",
+      ),
+    ).toBe(true);
     await agentFind.getByRole("button", { name: "Close find" }).click();
 
     expect(agentAppearance).toEqual(editorAppearance);
@@ -555,48 +573,81 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       agentDiffAppearance.text,
     );
 
+    const readDocumentRows = async (
+      target: Page,
+      selector: string,
+      rowSelector: string,
+    ) => {
+      await expect(
+        target.locator(selector + " " + rowSelector).first(),
+      ).toBeVisible();
+      return target.locator(selector).evaluate(
+        (node, probe) => {
+          const region = node.getBoundingClientRect();
+          const rows = Array.from(
+            node.querySelectorAll<HTMLElement>(probe.rowSelector),
+          ).slice(0, probe.limit);
+          if (rows.length === 0) {
+            throw new Error("Document row probe found no rendered rows");
+          }
+          return rows.map((row) => {
+            const style = getComputedStyle(row);
+            const bounds = row.getBoundingClientRect();
+            return {
+              text: row.textContent ?? "",
+              height: Math.round(bounds.height),
+              rendered: bounds.width > 0 && bounds.height > 0,
+              insideRegion:
+                bounds.left >= region.left - 1 && bounds.top >= region.top - 1,
+              offsetFromRegionTop: Math.round(bounds.top - region.top),
+              color: style.color,
+              background: style.backgroundColor,
+              borderLeft: style.borderLeftColor,
+              fontFamily: style.fontFamily,
+              fontSize: style.fontSize,
+              fontStyle: style.fontStyle,
+              fontWeight: style.fontWeight,
+              letterSpacing: style.letterSpacing,
+              lineHeight: style.lineHeight,
+              tabSize: style.tabSize,
+              whiteSpace: style.whiteSpace,
+            };
+          });
+        },
+        { rowSelector, limit: 24 },
+      );
+    };
+
     const compareDocumentRegion = async (
       first: Page,
       second: Page,
       selector: string,
+      rowSelector: string,
+      minimumRows: number,
     ) => {
-      const firstBox = await first
-        .locator(selector)
-        .evaluate((node) => node.getBoundingClientRect().toJSON());
-      const secondBox = await second
-        .locator(selector)
-        .evaluate((node) => node.getBoundingClientRect().toJSON());
-      const width = Math.floor(Math.min(firstBox.width, secondBox.width, 480));
-      const height = Math.floor(
-        Math.min(firstBox.height, secondBox.height, 400),
-      );
-      expect(width).toBeGreaterThanOrEqual(200);
-      expect(height).toBeGreaterThanOrEqual(120);
-      const [firstBytes, secondBytes] = await Promise.all([
-        first.screenshot({
-          clip: {
-            x: firstBox.x,
-            y: firstBox.y,
-            width,
-            height,
-          },
-        }),
-        second.screenshot({
-          clip: {
-            x: secondBox.x,
-            y: secondBox.y,
-            width,
-            height,
-          },
-        }),
+      const [firstRows, secondRows] = await Promise.all([
+        readDocumentRows(first, selector, rowSelector),
+        readDocumentRows(second, selector, rowSelector),
       ]);
-      expect(secondBytes).toEqual(firstBytes);
+      expect(firstRows.length).toBeGreaterThanOrEqual(minimumRows);
+      expect(
+        firstRows
+          .map((row) => row.text)
+          .join("")
+          .trim().length,
+      ).toBeGreaterThan(0);
+      expect(firstRows.every((row) => row.rendered && row.insideRegion)).toBe(
+        true,
+      );
+      expect(secondRows).toEqual(firstRows);
     };
 
     await compareDocumentRegion(
       editorDiffPage,
       agentDiffPage,
       ".diff-surface .diff-editor",
+      ".diff-line",
+      2,
     );
     await expectNoViewportOverflow(editorDiffPage);
     await expectNoViewportOverflow(agentDiffPage);
@@ -613,6 +664,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       editorFilePixelPage,
       agentFilePixelPage,
       ".file-surface .editor-input",
+      ".cm-line",
+      3,
     );
     await expectNoViewportOverflow(editorFilePixelPage);
     await expectNoViewportOverflow(agentFilePixelPage);
@@ -729,13 +782,13 @@ test.describe("V6a Agent right-resource state shell", () => {
   }) => {
     const workbench = await openAgentScenario(page, "agent-single");
     const toggle = page.getByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Waiting",
     });
     await expect(toggle).toBeVisible();
     await expect(toggle.locator("svg")).toHaveCount(1);
     await expect(toggle.locator("small")).toHaveCount(0);
 
-    for (let step = 0; step < 24; step += 1) {
+    for (let step = 0; step < 32; step += 1) {
       if (await toggle.evaluate((node) => node === document.activeElement)) {
         break;
       }
@@ -766,7 +819,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     await page.keyboard.press("Space");
     await expect(
       page.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     ).toBeFocused();
     await expectNoViewportOverflow(page);
@@ -779,29 +832,20 @@ test.describe("V6a Agent right-resource state shell", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).not.toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Open files, changes, and preview, 1 resource",
+      name: "Show preview · Ready · 1 resource",
     });
-    await expect(toggle).toContainText("Ready");
-    const geometry = await toggle.evaluate((node) => {
-      const label = node.querySelector<HTMLElement>(
-        ".agent-artifact-pane__edge-copy",
-      );
-      if (!label) throw new Error("Collapsed resource label is missing");
-      const button = node.getBoundingClientRect();
-      const copy = label.getBoundingClientRect();
-      return {
-        button: button.toJSON(),
-        copy: copy.toJSON(),
-        writingMode: getComputedStyle(label).writingMode,
-      };
-    });
-    expect(geometry.writingMode).toBe("vertical-rl");
-    expect(geometry.copy.width).toBeGreaterThan(0);
-    expect(geometry.copy.height).toBeGreaterThan(0);
-    expect(geometry.copy.left).toBeGreaterThanOrEqual(geometry.button.left);
-    expect(geometry.copy.right).toBeLessThanOrEqual(geometry.button.right);
-    expect(geometry.copy.top).toBeGreaterThanOrEqual(geometry.button.top);
-    expect(geometry.copy.bottom).toBeLessThanOrEqual(geometry.button.bottom);
+    await expect(toggle).toHaveAttribute(
+      "title",
+      "Show preview · Ready · 1 resource",
+    );
+    await expect(toggle.locator(".agent-artifact-pane__edge-copy")).toHaveCount(
+      0,
+    );
+    await expect(toggle.locator(".agent-artifact-pane__count")).toHaveText("1");
+    const height = await toggle.evaluate(
+      (node) => node.getBoundingClientRect().height,
+    );
+    expect(height).toBeLessThanOrEqual(44);
   });
 
   test("announces File loading and failure without changing its surface", async ({
@@ -855,7 +899,9 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByRole("table", { name: "Unified file diff" }),
     ).toBeVisible();
-    await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
+    await expect(
+      page.locator(".diff-toolbar").getByText("Read-only", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText(/Explorer focused/i)).toHaveCount(0);
 
     await setResourceState(page, "diff-loading");
@@ -887,19 +933,18 @@ test.describe("V6a Agent right-resource state shell", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Ready · 1 resource",
     });
     expect(
       await toggle.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
         return {
-          copy: node.querySelector(".agent-artifact-pane__edge-copy")
-            ?.textContent,
+          count: node.querySelector(".agent-artifact-pane__count")?.textContent,
           height: bounds.height,
           width: bounds.width,
         };
       }),
-    ).toEqual({ copy: "Ready", width: 44, height: 104 });
+    ).toEqual({ count: "1", width: 44, height: 44 });
 
     await toggle.click();
     await expect(
@@ -922,7 +967,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Ready · 1 resource",
     });
     await expect(toggle.locator("small")).toHaveCount(0);
     await toggle.click();

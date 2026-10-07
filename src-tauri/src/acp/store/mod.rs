@@ -3,8 +3,12 @@
 mod activation_outcome;
 mod activity_ingress;
 mod adapter_batch;
+pub(crate) mod browser_operations;
+#[cfg(test)]
+mod browser_permission_tests;
 mod cancel;
 mod commands;
+mod database_store;
 pub(crate) mod edit_disposition;
 mod facts;
 mod history;
@@ -28,6 +32,7 @@ mod sessions;
 mod snapshots;
 mod state;
 mod terminal;
+mod terminal_reason;
 mod terminalize;
 
 use serde::{Deserialize, Serialize};
@@ -68,7 +73,8 @@ pub(crate) use activity_ingress::{
 #[allow(unused_imports)]
 pub(crate) use adapter_batch::{
     AdapterActivityItemCommand, AdapterBatchMutation, AdapterInboundBatchCommand,
-    AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, apply_adapter_inbound_batch,
+    AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, TurnTerminalReasonCommand,
+    TurnUsageSnapshotCommand, apply_adapter_inbound_batch,
 };
 #[allow(unused_imports)]
 pub(crate) use cancel::begin_cancel;
@@ -281,12 +287,6 @@ pub(crate) struct DatabaseAcpStore {
     database: crate::persistence::Database,
 }
 
-impl DatabaseAcpStore {
-    pub(crate) fn new(database: crate::persistence::Database) -> Self {
-        Self { database }
-    }
-}
-
 impl AcpStore for DatabaseAcpStore {
     fn commit(&mut self, batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {
         let mut connection = self
@@ -347,9 +347,14 @@ fn commit_batch(
             StoreMutation::ObserveSend {
                 command,
                 observation,
+                terminal_reason,
             } => {
-                let turn =
-                    send::record_send_observation_in(&transaction, command.clone(), *observation)?;
+                let turn = send::record_send_observation_in(
+                    &transaction,
+                    command.clone(),
+                    *observation,
+                    terminal_reason.clone(),
+                )?;
                 projection_revision = turn.projection_revision;
                 StoreMutationResult::Turn(turn)
             }
@@ -417,5 +422,7 @@ mod ingress_tests;
 mod journal_store_tests;
 #[cfg(test)]
 mod prepare_tests;
+#[cfg(test)]
+mod terminal_reason_tests;
 #[cfg(test)]
 mod tests;

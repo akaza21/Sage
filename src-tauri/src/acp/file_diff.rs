@@ -33,9 +33,6 @@ pub(crate) enum PairAdmission {
     SummaryOnly,
 }
 
-/// Admit an already-typed `oldText`/`newText` pair. Missing, null, or
-/// non-string input never reaches this function: translators reject it with
-/// their typed malformed-frame error first.
 pub(crate) fn admit_pair(old_text: &str, new_text: &str) -> PairAdmission {
     let old_bytes = old_text.len();
     let new_bytes = new_text.len();

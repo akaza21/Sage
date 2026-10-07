@@ -1,0 +1,100 @@
+.harness-browser {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  --resource-document-header-height: 36px;
+  grid-template-rows:
+    var(--resource-document-header-height)
+    auto
+    minmax(240px, 1fr);
+}
+
+.harness-browser__chrome {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-panel);
+  grid-row: 1;
+}
+
+.harness-browser__address {
+  min-width: 0;
+  flex: 1;
+}
+
+.harness-browser__controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.harness-browser__address input {
+  width: 100%;
+  height: var(--control-height-compact);
+  padding: 0 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.harness-browser__address input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.harness-browser__chrome button {
+  display: inline-flex;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.harness-browser__chrome .harness-browser__controls-trigger {
+  display: none;
+}
+
+.harness-browser__chrome button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.harness-browser__denied {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  grid-row: 2;
+}
+
+.harness-browser__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--color-canvas);
+  grid-row: 3;
+}
+
+.harness-browser > .resource-state {
+  grid-row: 3;
+}
+
+@container agent-workbench (max-width: 760px) {
+  .harness-browser__controls {
+    display: none;
+  }
+
+  .harness-browser__chrome .harness-browser__controls-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+}

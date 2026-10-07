@@ -47,8 +47,8 @@ function syntaxNodeNames(view: EditorView): string[] {
 
 afterEach(() => {
   document.body.replaceChildren();
-  vi.doUnmock("@codemirror/lang-css");
-  vi.doUnmock("@codemirror/lang-python");
+  vi.doUnmock("./editorLanguageCss");
+  vi.doUnmock("./editorLanguagePython");
 });
 
 describe("CodeMirrorEditorRuntime language lifecycle", () => {
@@ -84,6 +84,21 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
     ]);
     expect(python.view.state.languageDataAt("autocomplete", 0)).toEqual([]);
     python.runtime.destroy();
+  });
+
+  it("keeps Markdown parsing and language data without autocomplete providers", async () => {
+    const { runtime, view } = runtimeForPath(
+      "docs/readme.md",
+      undefined,
+      "# Heading\n\n[documentation](https://example.test)",
+    );
+    await vi.waitFor(() =>
+      expect(syntaxNodeNames(view)).toEqual(
+        expect.arrayContaining(["ATXHeading1", "URL"]),
+      ),
+    );
+    expect(view.state.languageDataAt("autocomplete", 0)).toEqual([]);
+    runtime.destroy();
   });
 
   it("keeps no-match HTML parsing and embedded JavaScript and CSS languages", async () => {
@@ -131,7 +146,7 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
 
   it("falls back to plain text when the current language chunk rejects", async () => {
     const chunkRequested = vi.fn();
-    vi.doMock("@codemirror/lang-css", () => {
+    vi.doMock("./editorLanguageCss", () => {
       chunkRequested();
       throw new Error("language chunk unavailable");
     });
@@ -158,7 +173,8 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
 
   it("ignores a superseded language chunk that resolves out of order", async () => {
     let resolvePython:
-      ((module: { pythonLanguage: Extension }) => void) | undefined;
+      | ((module: { loadPythonEditorLanguage: () => Extension }) => void)
+      | undefined;
     let resolvePythonLanguageRead: (() => void) | undefined;
     let resolveStaleContinuation: (() => void) | undefined;
     const pythonLanguageRead = new Promise<void>((resolve) => {
@@ -168,11 +184,13 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
       resolveStaleContinuation = resolve;
     });
     vi.doMock(
-      "@codemirror/lang-python",
+      "./editorLanguagePython",
       () =>
-        new Promise<{ pythonLanguage: Extension }>((resolve) => {
-          resolvePython = resolve;
-        }),
+        new Promise<{ loadPythonEditorLanguage: () => Extension }>(
+          (resolve) => {
+            resolvePython = resolve;
+          },
+        ),
     );
     const { runtime, view } = runtimeForPath(
       "notes.txt",
@@ -202,12 +220,12 @@ describe("CodeMirrorEditorRuntime language lifecycle", () => {
     );
 
     resolvePython?.({
-      get pythonLanguage() {
+      get loadPythonEditorLanguage() {
         resolvePythonLanguageRead?.();
         queueMicrotask(() => {
           queueMicrotask(() => resolveStaleContinuation?.());
         });
-        return [];
+        return () => [];
       },
     });
     await pythonLanguageRead;

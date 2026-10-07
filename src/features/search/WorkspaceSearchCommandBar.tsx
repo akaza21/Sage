@@ -61,9 +61,9 @@ export function WorkspaceSearchCommandBar({
           onClick={() => setDetailsOpen((open) => !open)}
         >
           {detailsOpen ? (
-            <ChevronDown size={15} aria-hidden="true" />
+            <ChevronDown size={16} aria-hidden="true" />
           ) : (
-            <ChevronRight size={15} aria-hidden="true" />
+            <ChevronRight size={16} aria-hidden="true" />
           )}
         </button>
         <div className="workspace-search__input">
@@ -85,7 +85,7 @@ export function WorkspaceSearchCommandBar({
               disabled={!projectId || searching}
               onClick={() => onCaseSensitiveChange(!caseSensitive)}
             >
-              <CaseSensitive size={15} aria-hidden="true" />
+              <CaseSensitive size={16} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -113,7 +113,7 @@ export function WorkspaceSearchCommandBar({
                 title="Clear Search"
                 onClick={() => onQueryChange("")}
               >
-                <X size={13} aria-hidden="true" />
+                <X size={14} aria-hidden="true" />
               </button>
             ) : null}
           </span>

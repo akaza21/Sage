@@ -11,11 +11,12 @@
 // profile is touched. Without Tauri the app runs on its browser fixture ports,
 // so this proves rendering and wiring, not native behaviour.
 
-import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -29,38 +30,29 @@ const port = Number(flag("port") ?? 1431);
 let url = flag("url");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const out = resolve(repo, "work", "app-smoke", stamp);
+const out = flag("out")
+  ? resolve(repo, flag("out"))
+  : resolve(repo, "work", "app-smoke", stamp);
 mkdirSync(out, { recursive: true });
 
-let vite;
-if (!url) {
-  url = `http://127.0.0.1:${port}/`;
-  vite = spawn(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    ["vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-    {
-      cwd: repo,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    },
-  );
-  await waitForServer(url, 60_000);
-}
+const COMPOSER = 'textarea, [contenteditable="true"]';
+const EDITOR_TAB = '[role="tab"]';
+const SENTINEL = "sage-smoke-sentinel";
+const DOM_SCAN_LIMIT = 50;
+const NODE_SCAN_LIMIT = 2_000;
+const SEARCH_INPUT = '[aria-label="Search text"]';
+const AGENT_RAIL =
+  '[aria-label="Projects and chats"], [aria-label="Agent navigation"]';
+
+let server;
+let devServerPid = null;
 
 const errors = [];
 const misses = [];
+const requiredMisses = [];
 const shots = [];
-const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({
-  viewport: { width: 1600, height: 1000 },
-});
-const page = await ctx.newPage();
-page.on("console", (m) => {
-  if (m.type() === "error") errors.push(m.text().slice(0, 200));
-});
-page.on("pageerror", (e) =>
-  errors.push(`pageerror: ${String(e).slice(0, 200)}`),
-);
+let browser;
+let page;
 
 async function shot(name) {
   await page.waitForTimeout(600);
@@ -69,7 +61,7 @@ async function shot(name) {
   shots.push(name);
   console.log(`SHOT ${name}`);
 }
-async function click(label) {
+async function click(label, required = false) {
   try {
     await page
       .getByRole("button", { name: label })
@@ -85,22 +77,177 @@ async function click(label) {
       return true;
     } catch {
       misses.push(label);
+      if (required) requiredMisses.push(label);
       console.log(`MISS click: ${label}`);
       return false;
     }
   }
 }
 
+async function visible(selector) {
+  const locator = page.locator(selector).first();
+  if (!(await locator.isVisible().catch(() => false))) return null;
+  return await locator.elementHandle().catch(() => null);
+}
+
+async function reach(label, expectation) {
+  const previous = await visible(expectation);
+  if (!(await click(label, true))) {
+    await previous?.dispose();
+    return false;
+  }
+  const reached = await page
+    .waitForFunction(
+      ({ selector, before, matchLimit, nodeLimit }) => {
+        const walker = globalThis.document.createTreeWalker(
+          globalThis.document.body,
+          globalThis.NodeFilter.SHOW_ELEMENT,
+        );
+        let visited = 0;
+        let matched = 0;
+        let node = walker.nextNode();
+        while (node && visited < nodeLimit && matched < matchLimit) {
+          visited += 1;
+          if (node.matches(selector)) {
+            matched += 1;
+            if (node.getClientRects().length > 0) return node !== before;
+          }
+          node = walker.nextNode();
+        }
+        return false;
+      },
+      {
+        selector: expectation,
+        before: previous,
+        matchLimit: DOM_SCAN_LIMIT,
+        nodeLimit: NODE_SCAN_LIMIT,
+      },
+      { timeout: 5000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  await previous?.dispose();
+  if (!reached) {
+    requiredMisses.push(`${label} -> ${expectation}`);
+    console.log(`MISS state: ${label}`);
+  }
+  return reached;
+}
+
+async function reachComposer(label) {
+  const before = await page
+    .evaluate(
+      ({ selector, matchLimit, nodeLimit }) => {
+        const walker = globalThis.document.createTreeWalker(
+          globalThis.document.body,
+          globalThis.NodeFilter.SHOW_ELEMENT,
+        );
+        let visited = 0;
+        let matched = 0;
+        let shown = 0;
+        let node = walker.nextNode();
+        while (node && visited < nodeLimit && matched < matchLimit) {
+          visited += 1;
+          if (node.matches(selector)) {
+            matched += 1;
+            if (node.getClientRects().length > 0) shown += 1;
+          }
+          node = walker.nextNode();
+        }
+        return shown;
+      },
+      {
+        selector: COMPOSER,
+        matchLimit: DOM_SCAN_LIMIT,
+        nodeLimit: NODE_SCAN_LIMIT,
+      },
+    )
+    .catch(() => 0);
+  const primed = await page
+    .locator(COMPOSER)
+    .first()
+    .fill(SENTINEL)
+    .then(() => true)
+    .catch(() => false);
+  if (!(await click(label, true))) return false;
+  const reached = await page
+    .waitForFunction(
+      ({ selector, sentinel, opened, matchLimit, nodeLimit }) => {
+        const walker = globalThis.document.createTreeWalker(
+          globalThis.document.body,
+          globalThis.NodeFilter.SHOW_ELEMENT,
+        );
+        let visited = 0;
+        let matched = 0;
+        let shown = 0;
+        let held = false;
+        let node = walker.nextNode();
+        while (node && visited < nodeLimit && matched < matchLimit) {
+          visited += 1;
+          if (node.matches(selector)) {
+            matched += 1;
+            if (node.getClientRects().length > 0) {
+              shown += 1;
+              if (shown > opened) return true;
+              const text = "value" in node ? node.value : node.textContent;
+              if ((text ?? "").trim() === sentinel) held = true;
+            }
+          }
+          node = walker.nextNode();
+        }
+        return shown > 0 && !held;
+      },
+      {
+        selector: COMPOSER,
+        sentinel: SENTINEL,
+        opened: before,
+        matchLimit: DOM_SCAN_LIMIT,
+        nodeLimit: NODE_SCAN_LIMIT,
+      },
+      { timeout: 5000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  if (!reached) {
+    requiredMisses.push(
+      `${label} -> ${primed ? "new or reset" : "visible"} composer`,
+    );
+    console.log(`MISS state: ${label}`);
+  }
+  return reached;
+}
+
 let fatal = null;
+let settled;
 try {
+  if (!url) {
+    url = `http://127.0.0.1:${port}/`;
+    server = await startDevServer(repo, url).catch((error) => {
+      server = error.server;
+      devServerPid = error.devServerPid ?? null;
+      throw error;
+    });
+    devServerPid = server.child.pid ?? null;
+  }
+  browser = await chromium.launch({ headless: true });
+  const ctx = await browser.newContext({
+    viewport: { width: 1600, height: 1000 },
+  });
+  page = await ctx.newPage();
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text().slice(0, 200));
+  });
+  page.on("pageerror", (e) =>
+    errors.push(`pageerror: ${String(e).slice(0, 200)}`),
+  );
   await page.goto(url, { waitUntil: "networkidle", timeout: 60_000 });
   await page.waitForTimeout(1500);
   await shot("10-editor-welcome");
 
-  await click("README.md");
+  await reach("README.md", EDITOR_TAB);
   await shot("11-editor-file-open");
 
-  await click("Search files");
+  await reach("Search files", SEARCH_INPUT);
   await shot("12-search");
 
   try {
@@ -113,14 +260,14 @@ try {
   }
   await shot("13-settings");
 
-  await click("Agent");
+  await reach("Agent", AGENT_RAIL);
   await page.waitForTimeout(1200);
   await shot("20-agent-panel");
 
-  await click("New chat");
+  await reachComposer("New task");
   await shot("21-agent-new-chat");
 
-  const composer = page.locator('textarea, [contenteditable="true"]').first();
+  const composer = page.locator(COMPOSER).first();
   try {
     await composer.click({ timeout: 4000 });
     await composer.fill("Show me the README and summarise it.");
@@ -131,13 +278,23 @@ try {
 } catch (error) {
   fatal = String(error).slice(0, 400);
   console.error(`FATAL ${fatal}`);
+} finally {
+  if (page) await page.close().catch(() => {});
+  if (browser) await browser.close().catch(() => {});
+  settled = await settleDevServer(server);
 }
 
-await page.close().catch(() => {});
-await browser.close().catch(() => {});
-if (vite) vite.kill();
-
-const summary = { url, shots, misses, errors, fatal, strict };
+const summary = {
+  url,
+  devServerPid,
+  shots,
+  misses,
+  requiredMisses,
+  errors,
+  fatal,
+  strict,
+  settled,
+};
 writeFileSync(resolve(out, "summary.json"), JSON.stringify(summary, null, 2));
 console.log(
   `shots=${shots.length} misses=${misses.length} consoleErrors=${errors.length}`,
@@ -147,21 +304,9 @@ console.log(`output: ${out}`);
 
 const pageErrors = errors.filter((e) => e.startsWith("pageerror:"));
 const failed =
-  fatal !== null || pageErrors.length > 0 || (strict && errors.length > 0);
+  fatal !== null ||
+  pageErrors.length > 0 ||
+  !settled ||
+  requiredMisses.length > 0 ||
+  (strict && (errors.length > 0 || misses.length > 0));
 process.exit(failed ? 1 : 0);
-
-async function waitForServer(target, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(target);
-      if (response.ok) return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  throw new Error(
-    `dev server at ${target} did not start within ${timeoutMs}ms`,
-  );
-}

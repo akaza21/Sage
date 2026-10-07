@@ -133,6 +133,9 @@ fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
         crate::acp::runtime::HostError::ConfigMutationRejected => AcpIpcError::Rejected {
             message: safe_message("The harness rejected this session configuration change."),
         },
+        crate::acp::runtime::HostError::SignInRequired => AcpIpcError::SignInRequired {
+            message: safe_message("The harness requires sign-in before it can continue."),
+        },
         _ => AcpIpcError::RecoveryRequired {
             message: safe_message(
                 "Session configuration could not be confirmed; reload the authoritative session.",
@@ -160,6 +163,15 @@ mod tests {
         assert!(matches!(
             map_config_error(crate::acp::runtime::HostError::DeliveryUnknown),
             AcpIpcError::RecoveryRequired { .. }
+        ));
+    }
+
+    #[test]
+    fn sign_in_refusal_maps_to_the_stable_sign_in_ipc_failure() {
+        assert!(matches!(
+            map_config_error(crate::acp::runtime::HostError::SignInRequired),
+            AcpIpcError::SignInRequired { message }
+                if message.as_str() == "The harness requires sign-in before it can continue."
         ));
     }
 }

@@ -814,6 +814,34 @@ describe("FileSurface Markdown Preview", () => {
     resource: { rootId: "root-a", relativePath: "docs/readme.md" },
   };
 
+  it("opens Agent Markdown as rendered content and offers View source", async () => {
+    setReadyEditor(markdownTab, "# Agent notes\n\nReady for review.");
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+    });
+    render(<FileSurface tab={markdownTab} readOnly />);
+
+    expect(
+      screen.getByRole("navigation", { name: "File path" }),
+    ).toHaveTextContent("Sagedocsreadme.md");
+    expect(screen.getByRole("heading", { name: "Agent notes" })).toBeVisible();
+    expect(screen.getByText("Ready for review.")).toBeVisible();
+    expect(
+      screen.queryByRole("textbox", { name: "Edit docs/readme.md" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "View source" }));
+    expect(
+      await screen.findByRole("textbox", { name: "Edit docs/readme.md" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("article", { name: "Markdown preview" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "View preview" }));
+    expect(screen.getByRole("heading", { name: "Agent notes" })).toBeVisible();
+  });
+
   it("hides Preview on non-markdown files", async () => {
     setReadyEditor(tab, "plain");
     render(<FileSurface tab={tab} />);

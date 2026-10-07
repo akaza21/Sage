@@ -74,6 +74,8 @@ function isAbsolutePath(value) {
 
 function canonicalExpectedOrigin(value) {
   if (typeof value !== "string") return null;
+  if (value === "tauri://localhost/" || value === "http://tauri.localhost/")
+    return value;
   const match = LOOPBACK_HTTP_ORIGIN.exec(value);
   if (!match) return null;
   const port = Number(match.groups.port);
@@ -490,7 +492,7 @@ export function admitCdpTarget(targets, port, expectedOrigin) {
   return Object.freeze({
     id: pages[0].id,
     type: "page",
-    title: "Sage",
+    title: pages[0].title,
     url: pages[0].url,
     webSocketDebuggerUrl: pages[0].webSocketDebuggerUrl,
   });

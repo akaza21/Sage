@@ -40,9 +40,23 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(chatCss).toMatch(
       /\.project-chat-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(28px,\s*auto\);/s,
     );
-    expect(chatCss).toMatch(/\.project-chat\s*\{[^}]*height:\s*32px;/s);
     expect(chatCss).toMatch(
-      /\.project-chat__trailing\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
+      /\.project-chat-row\s*\{[^}]*grid-template-rows:\s*auto auto;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat\s*\{[^}]*min-height:\s*var\(--row-height-default\);/s,
+    );
+    expect(chatCss).not.toMatch(
+      /\.project-chat\s*\{[^}]*[^-]height:\s*var\(--row-height-default\);/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*grid-row:\s*1;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat__context\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*2;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-chat__trailing\s*\{[^}]*grid-row:\s*2;/s,
     );
     expect(chatCss).toMatch(
       /\.project-chat-row:hover \.project-chat__state,[\s\S]*?\.project-chat-row:focus-within \.project-chat__state\s*\{[^}]*opacity:\s*0;/s,
@@ -60,10 +74,10 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(chatCss).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
     expect(chatCss).toMatch(/@media \(forced-colors: active\)/);
     expect(projectCss).toMatch(
-      /\.project-sidebar__actions\s*\{[^}]*padding:\s*6px\s+8px;/s,
+      /\.project-sidebar__actions\s*\{[^}]*padding:\s*var\(--space-3\) var\(--space-3\) var\(--space-2\);/s,
     );
     expect(projectCss).not.toMatch(/\.project-section\b/);
-    expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*28px;/s);
+    expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*32px;/s);
     expect(projectCss).toMatch(
       /\.project-row \.project-row__branch\s*\{[^}]*border:\s*0;/s,
     );
@@ -90,5 +104,23 @@ describe("Project and chat navigation stylesheet seams", () => {
       /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__drawer\b/,
     );
     expect(chatCss).not.toMatch(/@media \(max-width: 760px\)/);
+  });
+
+  it("seats Settings inside the rail and leaves the brand to the title bar", async () => {
+    const [projectCss, chatCss] = await Promise.all([
+      readFile(resolve("src/styles/project-navigation-surface.css"), "utf8"),
+      readFile(resolve("src/styles/chat-navigation-surface.css"), "utf8"),
+    ]);
+
+    expect(projectCss).not.toMatch(/\.project-sidebar__brand/);
+    expect(projectCss).toMatch(
+      /\.project-sidebar\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)\s+auto;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-sidebar__account\s*\{[^}]*grid-template-columns:\s*auto minmax\(0,\s*1fr\)\s+auto;/s,
+    );
+    expect(chatCss).toMatch(
+      /\.project-sidebar__settings\s*\{[^}]*border:\s*0;/s,
+    );
   });
 });

@@ -9,8 +9,8 @@
 .activity-rail__button {
   position: relative;
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: var(--control-height-emphasis);
+  height: var(--control-height-emphasis);
   padding: 0;
   place-items: center;
   border: 0;
@@ -34,7 +34,7 @@
   position: absolute;
   right: -4px;
   width: 2px;
-  height: 22px;
+  height: 24px;
   border-radius: var(--radius-pill);
   background: var(--color-accent);
   content: "";
@@ -114,7 +114,7 @@
     .right-region--leading
     .activity-rail__button--active::after {
     width: 1px;
-    height: 22px;
+    height: 24px;
     background: var(--editor-active-edge);
   }
 

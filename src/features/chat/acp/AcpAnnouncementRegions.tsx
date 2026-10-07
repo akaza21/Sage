@@ -57,10 +57,7 @@ function isNewLatestTurn(
 }
 
 function terminalToolAnnouncement(item: AcpItem): string | null {
-  if (
-    (item.kind !== "toolCall" && item.kind !== "toolUpdateResult") ||
-    !terminalToolStates.has(item.toolState)
-  ) {
+  if (item.kind !== "toolCall" || !terminalToolStates.has(item.toolState)) {
     return null;
   }
   return `${item.payload.presentation.label}: ${toolStateLabels[item.toolState]}`;

@@ -311,5 +311,4 @@ impl ReadTextFileService {
     }
 }
 #[cfg(test)]
-#[path = "read_text_file/tests.rs"]
 mod tests;

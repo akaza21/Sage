@@ -87,6 +87,35 @@ pub enum TurnState {
     DeliveryUnknown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TurnTerminalReason {
+    AuthRequired,
+    HarnessExited,
+    ProtocolError,
+    CancelledByUser,
+    RefusedVersion,
+    Timeout,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnTerminalOutcome {
+    pub reason: TurnTerminalReason,
+    pub message: Option<String>,
+    pub remediation: Option<String>,
+}
+
+impl From<TurnTerminalReason> for TurnTerminalOutcome {
+    fn from(reason: TurnTerminalReason) -> Self {
+        Self {
+            reason,
+            message: None,
+            remediation: None,
+        }
+    }
+}
+
 impl TurnState {
     pub fn can_transition_to(self, next: Self) -> bool {
         use TurnState::*;
@@ -219,7 +248,6 @@ pub enum ItemKind {
     ThoughtSummary,
     Plan,
     ToolCall,
-    ToolUpdateResult,
     FileChangeDiff,
     Image,
     Usage,
@@ -236,7 +264,6 @@ impl ItemKind {
             Self::ThoughtSummary => "thoughtSummary",
             Self::Plan => "plan",
             Self::ToolCall => "toolCall",
-            Self::ToolUpdateResult => "toolUpdateResult",
             Self::FileChangeDiff => "fileChangeDiff",
             Self::Image => "image",
             Self::Usage => "usage",

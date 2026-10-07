@@ -1,0 +1,96 @@
+.composer__harness {
+  min-width: 0;
+  max-width: 180px;
+  flex: 0 1 180px;
+}
+
+.composer__harness .searchable-picker {
+  min-width: 0;
+  width: 100%;
+}
+
+.composer__harness .searchable-picker__trigger {
+  width: 100%;
+  height: 40px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--composer-control-text);
+  background: var(--composer-control-hover);
+}
+
+.composer__harness .searchable-picker__trigger > img,
+.composer__harness-menu .searchable-picker__option > img {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.composer__harness .searchable-picker__trigger-label,
+.composer__harness-menu .searchable-picker__option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.composer__harness .searchable-picker__trigger-label small,
+.composer__harness-menu .searchable-picker__option-copy small {
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 10px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__harness .searchable-picker__chevron {
+  width: 12px;
+  height: 12px;
+}
+
+.composer__harness-menu.menu-popover {
+  display: flex;
+  flex-direction: column;
+  width: min(260px, calc(100vw - 32px));
+  border-radius: var(--radius-composer-menu);
+}
+
+.composer__harness-menu .searchable-picker__input,
+.composer__harness-menu .searchable-picker__current,
+.composer__harness-menu .searchable-picker__section-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.composer__harness-menu:focus-within [role="listbox"] {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.composer__harness-menu .searchable-picker__option {
+  min-height: 44px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.composer__harness-menu .searchable-picker__option:hover,
+.composer__harness-menu .searchable-picker__option[data-active="true"] {
+  background: var(--composer-control-hover);
+  box-shadow: var(--glass-highlight);
+}
+
+.composer__harness-menu .searchable-picker__selected-check {
+  grid-column: 3;
+  color: var(--composer-control-text);
+}

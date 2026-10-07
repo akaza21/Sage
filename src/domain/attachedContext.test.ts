@@ -8,6 +8,7 @@ import {
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   parseDiffLineCommentContext,
   validateAttachedContexts,
+  parseBrowserPageContext,
 } from "./attachedContext";
 
 const ref = {
@@ -23,6 +24,29 @@ const ref = {
   relativePath: "src/app.ts",
   contentDigest: "a".repeat(64),
 } as AgentDiffRef;
+
+describe("attached browser page context", () => {
+  it("admits a bounded page snapshot as untrusted context and rejects forged display controls", () => {
+    const page = {
+      kind: "browserPage" as const,
+      tabId: "browser-1",
+      url: "https://example.com/article",
+      title: "Example article",
+      text: "A short article",
+    };
+    expect(parseBrowserPageContext(page)).toEqual(page);
+    expect(validateAttachedContexts([page])).toEqual([page]);
+    expect(
+      parseBrowserPageContext({ ...page, title: "forged\n- item" }),
+    ).toBeNull();
+    expect(
+      parseBrowserPageContext({ ...page, text: "a".repeat(4097) }),
+    ).toBeNull();
+    expect(
+      parseBrowserPageContext({ ...page, url: "file:///secret" }),
+    ).toBeNull();
+  });
+});
 
 describe("attached diff context", () => {
   it("reuses and validates immutable AgentDiffRef identity", () => {

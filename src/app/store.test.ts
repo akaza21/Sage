@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CodexDiscoveryResponse } from "../domain/acp";
+import type { AcpChatPage, CodexDiscoveryResponse } from "../domain/acp";
 import { resourceKey } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
@@ -18,6 +18,11 @@ import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
 import { acpDesktop } from "../services/acpDesktop";
 import { useWorkbenchStore } from "./store";
+import { useAcpProjectionStore } from "./acpProjectionStore";
+import {
+  acpProjectionStoreFor,
+  releaseAcpProjectionStore,
+} from "./acpProjectionRegistry";
 
 const projectPort = getWorkbenchPorts().project;
 const repositoryPort = getWorkbenchPorts().repository;
@@ -550,6 +555,75 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       projectTransitioning: false,
     });
+  });
+
+  it("settles a new Chat projection while Codex model discovery is still pending", async () => {
+    const newChat: WorkbenchTab = {
+      id: "chat:pending-models",
+      kind: "chat",
+      title: "Chat: New chat 2",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      status: "idle",
+    };
+    const codex = {
+      id: "codex",
+      name: "Codex",
+      description: "ACP",
+      installState: "available" as const,
+      source: "builtIn" as const,
+      transport: "acp" as const,
+      bindingId: "codex-app-server",
+      accountModelDiscovery: true,
+    };
+    const pending = deferred<CodexDiscoveryResponse>();
+    useWorkbenchStore.setState({ harnesses: [codex] });
+    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(getWorkbenchPorts().chat, "createChat").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: {
+        ...chatProjection([chatTab, newChat], newChat.id, 1, null, []),
+        harnesses: [codex],
+        selectedHarnessId: "codex",
+      },
+      recoveryError: null,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource(""),
+      entries: [],
+      truncated: false,
+    });
+
+    const creation = useWorkbenchStore.getState().createChat();
+    try {
+      await expect(
+        Promise.race([
+          creation.then(() => true),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 50),
+          ),
+        ]),
+      ).resolves.toBe(true);
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        activeTabId: newChat.id,
+        projectTransitioning: false,
+        harnessDiscoveryPhase: "checking",
+      });
+    } finally {
+      pending.resolve({
+        projectId: "project-a",
+        projectGeneration: "1",
+        rootId: "root-a",
+        bindingId: "codex-app-server",
+        runtimeEpoch: "2",
+        account: "managedChatgpt",
+        models: [{ id: "gpt-pending", name: "GPT Pending", isDefault: true }],
+        defaultModelId: "gpt-pending",
+      } as never);
+      await creation;
+    }
   });
 
   it("creates a chat on a foreign folder without switching the active Project", async () => {
@@ -2095,6 +2169,62 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
   });
 
+  it("blocks project switching while a chat send is pending", async () => {
+    const switchNative = vi.spyOn(projectPort, "switchProject");
+    useWorkbenchStore.setState({ sending: true });
+    await useWorkbenchStore.getState().switchProject("project-b");
+    expect(switchNative).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+  });
+
+  it("blocks project switching while an ACP turn is running", async () => {
+    const switchNative = vi.spyOn(projectPort, "switchProject");
+    useAcpProjectionStore.setState({
+      page: {
+        currentSessionId: "session-a",
+        turns: [{ sessionId: "session-a", state: "running" }],
+      } as unknown as AcpChatPage,
+    });
+    try {
+      await useWorkbenchStore.getState().switchProject("project-b");
+      expect(switchNative).not.toHaveBeenCalled();
+      expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
+    } finally {
+      useAcpProjectionStore.getState().clear();
+    }
+  });
+
+  it("lets a background ACP turn continue through a project switch", async () => {
+    const switchNative = vi.spyOn(projectPort, "switchProject");
+    const background = acpProjectionStoreFor("chat-background");
+    background.setState({
+      page: {
+        currentSessionId: "session-background",
+        turns: [{ sessionId: "session-background", state: "running" }],
+      } as unknown as AcpChatPage,
+    });
+    try {
+      await useWorkbenchStore.getState().switchProject("project-b");
+      expect(switchNative).toHaveBeenCalled();
+    } finally {
+      releaseAcpProjectionStore("chat-background");
+    }
+  });
+
+  it("lets an unmounted background ACP turn continue through a project switch", async () => {
+    const switchNative = vi.spyOn(projectPort, "switchProject");
+    const background = acpProjectionStoreFor("chat-background");
+    background.setState({
+      page: {
+        currentSessionId: "session-background",
+        turns: [{ sessionId: "session-background", state: "running" }],
+      } as unknown as AcpChatPage,
+    });
+    releaseAcpProjectionStore("chat-background");
+    await useWorkbenchStore.getState().switchProject("project-b");
+    expect(switchNative).toHaveBeenCalled();
+  });
+
   it("clears prior project caches only after a successful switch", async () => {
     const oldRoot = resource("");
     useWorkbenchStore.setState({
@@ -3493,6 +3623,127 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
+  const savedHarness = (version: string) => ({
+    id: "saved-harness",
+    name: "Saved",
+    description: "ACP",
+    installState: "available" as const,
+    source: "builtIn" as const,
+    transport: "acp" as const,
+    bindingId: "saved-binding",
+    accountModelDiscovery: false,
+    version,
+  });
+
+  const restoreSwitchInto = (
+    harness: ReturnType<typeof savedHarness>,
+    selectedModelId: string | null,
+  ) => {
+    const restored = snapshotB();
+    restored.harnesses = [harness];
+    restored.selectedHarnessId = "saved-harness";
+    restored.selectedModelId = selectedModelId;
+    vi.spyOn(projectPort, "switchProject").mockResolvedValue({
+      committed: true,
+      transitionEpoch: 1,
+      snapshot: restored,
+      recoveryError: null,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockImplementation(
+      async (target) => ({
+        resource: target,
+        entries: [],
+        truncated: false,
+      }),
+    );
+  };
+
+  it("resolves a repeat project switch from cached harness models without blocking on discovery", async () => {
+    const harness = savedHarness("1.0.0");
+    const models = [{ id: "saved-model", name: "Saved" }];
+    useWorkbenchStore.setState({ harnesses: [harness] });
+    const discovery = vi
+      .spyOn(desktop, "listHarnessModels")
+      .mockResolvedValue(models);
+    await useWorkbenchStore.getState().selectHarness("saved-harness");
+    expect(discovery).toHaveBeenCalledTimes(1);
+
+    const pending = deferred<ModelOption[]>();
+    discovery.mockReturnValue(pending.promise);
+    restoreSwitchInto(harness, "saved-model");
+
+    await useWorkbenchStore.getState().switchProject("project-b");
+
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        projectTransitioning: false,
+        selectedHarnessId: "saved-harness",
+        selectedModelId: "saved-model",
+        models,
+      }),
+    );
+  });
+
+  it("forces fresh discovery when the installed harness identity changes", async () => {
+    useWorkbenchStore.setState({ harnesses: [savedHarness("1.0.0")] });
+    const discovery = vi
+      .spyOn(desktop, "listHarnessModels")
+      .mockResolvedValue([{ id: "saved-model", name: "Saved" }]);
+    await useWorkbenchStore.getState().selectHarness("saved-harness");
+    discovery.mockClear();
+
+    const pending = deferred<ModelOption[]>();
+    discovery.mockReturnValue(pending.promise);
+    restoreSwitchInto(savedHarness("2.0.0"), "saved-model");
+
+    const switching = useWorkbenchStore.getState().switchProject("project-b");
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState()).toEqual(
+        expect.objectContaining({
+          projectTransitioning: true,
+          selectedHarnessId: "saved-harness",
+          selectedModelId: null,
+        }),
+      ),
+    );
+    pending.resolve([{ id: "upgraded-model", name: "Upgraded" }]);
+    await switching;
+
+    expect(discovery).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState()).toEqual(
+      expect.objectContaining({
+        projectTransitioning: false,
+        selectedModelId: "upgraded-model",
+      }),
+    );
+  });
+
+  it("clears a vanished model when cached harness models revalidate", async () => {
+    const harness = savedHarness("1.0.0");
+    useWorkbenchStore.setState({ harnesses: [harness] });
+    const discovery = vi
+      .spyOn(desktop, "listHarnessModels")
+      .mockResolvedValue([{ id: "saved-model", name: "Saved" }]);
+    await useWorkbenchStore.getState().selectHarness("saved-harness");
+
+    const pending = deferred<ModelOption[]>();
+    discovery.mockReturnValue(pending.promise);
+    restoreSwitchInto(harness, "saved-model");
+    await useWorkbenchStore.getState().switchProject("project-b");
+
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("saved-model");
+
+    pending.resolve([{ id: "replacement-model", name: "Replacement" }]);
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState()).toEqual(
+        expect.objectContaining({
+          models: [{ id: "replacement-model", name: "Replacement" }],
+          selectedModelId: null,
+        }),
+      ),
+    );
+  });
+
   it("blocks the workbench if projection recovery fails after a committed switch", async () => {
     vi.spyOn(projectPort, "switchProject").mockResolvedValue({
       committed: true,
@@ -4077,7 +4328,7 @@ describe("workbench resource and project navigation", () => {
     },
   );
 
-  it("prevents harness ABA completions and clears pending prompt state on switch", async () => {
+  it("prevents harness ABA completions and waits for pending prompt before switch", async () => {
     const firstOld = deferred<ModelOption[]>();
     let oldCalls = 0;
     vi.spyOn(desktop, "listHarnessModels").mockImplementation((harnessId) => {
@@ -4105,6 +4356,10 @@ describe("workbench resource and project navigation", () => {
       entries: [],
       truncated: false,
     });
+    await useWorkbenchStore.getState().switchProject("project-b");
+    expect(useWorkbenchStore.getState().sending).toBe(true);
+    expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+    useWorkbenchStore.setState({ sending: false });
     await useWorkbenchStore.getState().switchProject("project-b");
     expect(useWorkbenchStore.getState().sending).toBe(false);
     expect(useWorkbenchStore.getState().composerText).toBe("");

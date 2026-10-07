@@ -1,0 +1,6 @@
+{"direction":"out","frame":{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":true,"writeTextFile":false}},"clientInfo":{"name":"sage-trace-capture","version":"1"}}}}
+{"direction":"in","raw":"Data collection is disabled."}
+{"direction":"in","frame":{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"authMethods":[{"id":"oauth-personal","name":"Log in with Google","description":null},{"id":"gemini-api-key","name":"Use Gemini API key","description":"Requires setting the `GEMINI_API_KEY` environment variable"},{"id":"vertex-ai","name":"Vertex AI","description":null}],"agentCapabilities":{"loadSession":false}}}}
+{"direction":"out","frame":{"jsonrpc":"2.0","method":"initialized","params":{}}}
+{"direction":"out","frame":{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"C:\\fixture-workspace","mcpServers":[]}}}
+{"direction":"in","frame":{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"Authentication required"}}}

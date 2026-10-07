@@ -5,24 +5,34 @@
 //! blocked until the complete immutable artifact graph is independently reviewed.
 
 mod admission;
+mod auth;
 mod capabilities;
 mod manifest;
 mod runtime;
-mod sanitize;
-mod translator;
-mod wire;
+
+pub(crate) use crate::acp::bindings::standard_acp::{sanitize, translator, wire};
+
+use crate::acp::bindings::standard_acp::{StandardAcpProfile, profile_for};
+
+pub(crate) const CLAUDE_PROFILE_ID: &str = "claude-code";
+
+pub(crate) fn claude_profile() -> &'static StandardAcpProfile {
+    profile_for(CLAUDE_PROFILE_ID).expect("claude profile is a compiled-in row")
+}
 
 pub(crate) use admission::{
     AdmittedClaudeBinding, ClaudeAdmissionUnavailable, ClaudeBindingRegistration,
 };
+pub(crate) use auth::{ClaudeAuthState, decode_auth_required_error, decode_auth_status_update};
 pub(crate) use capabilities::{ClaudeCapabilityOffer, negotiate_capabilities};
 pub(crate) use manifest::{
-    ACP_SDK_VERSION, AdmittedCandidate, CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT,
+    AdmittedCandidate, CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT, LAUNCH_ENVIRONMENT_KEYS,
     ManifestError, validate_research_candidate,
 };
 pub(crate) use runtime::{ClaudeRuntime, ClaudeRuntimeFactory};
 pub(crate) use translator::{
-    AdapterEvent, ClaudeTranslator, PromptTerminal, ResourceMapper, TranslationError,
+    AdapterEvent, PromptTerminal, ResourceMapper, StandardAcpTranslator as ClaudeTranslator,
+    TranslationError,
 };
 
 #[cfg(test)]

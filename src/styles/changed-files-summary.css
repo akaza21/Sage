@@ -15,13 +15,23 @@
   margin: var(--space-3) auto 0;
 }
 
+.acp-file-changes {
+  width: min(100%, var(--reading-measure));
+  margin: var(--space-3) auto 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-panel);
+  animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
+}
+
 .edit-summary__header,
 .acp-file-changes__header {
   display: grid;
   min-height: 32px;
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0 var(--space-2);
 }
 
@@ -144,6 +154,29 @@
   padding: 2px var(--space-2);
 }
 
+.acp-file-changes li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.acp-file-changes li > .acp-resource-action {
+  display: flex;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.acp-file-changes .chat-file-chip {
+  display: grid;
+  width: 100%;
+  flex: 1 1 auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+}
+
+.acp-file-changes .chat-file-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .acp-file-changes li > .acp-resource-action {
   min-width: 0;
   min-height: 28px;
@@ -159,7 +192,7 @@
 }
 
 .acp-file-changes li > .acp-change-operation {
-  justify-self: end;
+  display: none;
 }
 
 .acp-file-changes li > span:last-child {
@@ -241,10 +274,19 @@
   }
 }
 
-@media (forced-colors: active) {
-  .edit-summary,
+@media (prefers-reduced-motion: reduce) {
   .acp-file-changes {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .edit-summary {
     border-left-color: CanvasText;
+  }
+
+  .acp-file-changes {
+    border-color: CanvasText;
   }
 
   .edit-file:focus-visible,

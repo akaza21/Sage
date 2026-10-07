@@ -1,11 +1,13 @@
+mod diffs;
 mod kinds;
+mod settled;
 mod tool_snapshots;
 
 use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
-    intent::{NormalizedPayload, SafeResourceLocation},
+    intent::{FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation},
     limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
@@ -107,7 +109,7 @@ impl OmpTranslator {
                 return Err(TranslationError::Limit("tools per Turn"));
             }
         }
-        let command = category == crate::acp::intent::ToolCategory::Command;
+        let command = category == crate::acp::intent::ToolCategory::Execute;
         let protocol_locations = path_locations(category, update, resources)?;
         let snapshot = if command {
             Some(
@@ -139,6 +141,7 @@ impl OmpTranslator {
             lifecycle: lifecycle(state),
             tool_state: Some(state),
             payload: NormalizedPayload::ToolCall {
+                execution: Default::default(),
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
                 input_summary: browse_tool_summary("toolInput", update),
@@ -186,10 +189,20 @@ impl OmpTranslator {
             .ok_or(TranslationError::Correlation)?;
         let next = parse_tool_state(update.get("status"), current)?;
         let protocol_locations = path_locations(category, update, resources)?;
-        let command = category == crate::acp::intent::ToolCategory::Command;
+        let command = category == crate::acp::intent::ToolCategory::Execute;
         let patch = command
             .then(|| command_update_payload(update, protocol_locations.clone()))
             .transpose()?;
+        if current.is_terminal() {
+            return self.settled_tool_report(
+                id.as_str(),
+                current,
+                next,
+                update,
+                patch.as_ref(),
+                protocol_locations.is_some(),
+            );
+        }
         if next == current
             && patch.as_ref().is_none_or(CommandPatch::is_omitted)
             && protocol_locations.is_none()
@@ -221,113 +234,18 @@ impl OmpTranslator {
             external_key: id.clone(),
             lifecycle: lifecycle(next),
             tool_state: Some(next),
-            payload: NormalizedPayload::ToolUpdateResult {
+            payload: NormalizedPayload::ToolCall {
+                execution: Default::default(),
                 category,
                 label: SafeText::new("toolLabel", category_label(category))?,
+                input_summary: browse_tool_summary("toolInput", update),
                 output_summary,
                 locations,
                 command_activity: Default::default(),
             },
             update_mode: ItemUpdateMode::Replace,
         }];
-        if let Some(content) = update.get("content").and_then(Value::as_array) {
-            if content.len() >= MAX_EVENTS_PER_FRAME {
-                return Err(TranslationError::Limit("tool content entries"));
-            }
-            for (index, entry) in content.iter().enumerate() {
-                if entry.get("type").and_then(Value::as_str) != Some("diff") {
-                    continue;
-                }
-                let path = entry
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .ok_or(TranslationError::MalformedFrame)?;
-                let resource = match resources.map_absolute(path) {
-                    Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-                    Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
-                };
-                // Missing, null, or non-string sides are malformed wire
-                // input, not an empty edit. Over-cap sides admit
-                // summary-only metadata without retaining a partial side.
-                let old_text = entry
-                    .get("oldText")
-                    .and_then(Value::as_str)
-                    .ok_or(TranslationError::MalformedFrame)?;
-                let new_text = entry
-                    .get("newText")
-                    .and_then(Value::as_str)
-                    .ok_or(TranslationError::MalformedFrame)?;
-                let external_key =
-                    RequiredText::new("externalItemId", format!("{}:diff:{index}", id.as_str()))?;
-                let summary = SafeText::new("fileSummary", "File change reported by OMP ACP")?;
-                // An unavailable resource has no immutable root/path key,
-                // so no pair is retained: typed unavailable, never text
-                // invented from disk or Git.
-                if !matches!(
-                    resource,
-                    crate::acp::intent::SafeResourceLocation::Resource { .. }
-                ) {
-                    events.push(AdapterEvent::Item {
-                        external_key,
-                        lifecycle: ItemLifecycle::Completed,
-                        tool_state: None,
-                        payload: NormalizedPayload::file_summary_only(
-                            resource,
-                            summary,
-                            line_count(Some(new_text)),
-                            line_count(Some(old_text)),
-                            false,
-                        ),
-                        update_mode: ItemUpdateMode::Replace,
-                    });
-                    continue;
-                }
-                match crate::acp::file_diff::admit_pair(old_text, new_text) {
-                    crate::acp::file_diff::PairAdmission::Admitted {
-                        old_bytes,
-                        new_bytes,
-                        digest,
-                    } => {
-                        events.push(AdapterEvent::Item {
-                            external_key: external_key.clone(),
-                            lifecycle: ItemLifecycle::Completed,
-                            tool_state: None,
-                            payload: NormalizedPayload::file_admitted(
-                                resource,
-                                summary,
-                                line_count(Some(new_text)),
-                                line_count(Some(old_text)),
-                                0,
-                                (old_bytes as u64, new_bytes as u64),
-                                digest,
-                            ),
-                            update_mode: ItemUpdateMode::Replace,
-                        });
-                        events.push(AdapterEvent::FilePair {
-                            external_key,
-                            old_text: old_text.to_owned(),
-                            new_text: new_text.to_owned(),
-                            update_mode: ItemUpdateMode::Replace,
-                        });
-                    }
-                    crate::acp::file_diff::PairAdmission::SummaryOnly => {
-                        events.push(AdapterEvent::Item {
-                            external_key,
-                            lifecycle: ItemLifecycle::Completed,
-                            tool_state: None,
-                            payload: NormalizedPayload::file_summary_only(
-                                resource,
-                                summary,
-                                line_count(Some(new_text)),
-                                line_count(Some(old_text)),
-                                true,
-                            ),
-                            update_mode: ItemUpdateMode::Replace,
-                        });
-                    }
-                }
-            }
-        }
+        diffs::push_diff_events(id.as_str(), update, resources, &mut events)?;
         self.live_turn()?.tools.insert(id.as_str().to_owned(), next);
         if let Some(snapshot) = next_snapshot {
             self.store_tool_snapshot(id.as_str(), snapshot)?;

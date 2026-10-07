@@ -32,7 +32,7 @@ export function agentPreviewControllerOwner({
     browseOwner.sessionId === focusedOwner.sessionId &&
     session?.runtimeEpoch === browseOwner.runtimeEpoch &&
     focusedScope?.projectGeneration === browseOwner.projectGeneration &&
-    projectGeneration === nativeTransitionEpoch &&
+    browseOwner.projectGeneration === String(projectGeneration) &&
     browseOwner.projectGeneration === String(nativeTransitionEpoch) &&
     browseOwner.transitionEpoch === nativeTransitionEpoch
     ? browseOwner

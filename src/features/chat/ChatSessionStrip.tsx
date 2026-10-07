@@ -87,7 +87,7 @@ export function ChatSessionStrip({
                   onClose(tab.id);
                 }}
               >
-                <X size={13} aria-hidden="true" />
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           );
@@ -101,7 +101,7 @@ export function ChatSessionStrip({
         disabled={disabled}
         onClick={onCreate}
       >
-        <Plus size={15} aria-hidden="true" />
+        <Plus size={16} aria-hidden="true" />
       </button>
     </div>
   );

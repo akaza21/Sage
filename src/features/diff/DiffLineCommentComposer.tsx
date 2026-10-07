@@ -37,7 +37,7 @@ export function DiffLineCommentComposer({
         aria-label={`Comment on ${lineLabel}`}
         onClick={() => setOpen(true)}
       >
-        <MessageSquarePlus size={13} aria-hidden="true" />
+        <MessageSquarePlus size={14} aria-hidden="true" />
       </button>
     );
   }

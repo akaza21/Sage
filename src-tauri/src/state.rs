@@ -12,6 +12,7 @@ use crate::{
     persistence::Database,
     settings_store::SettingsStore,
 };
+use tauri::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActiveProjectError {
@@ -46,12 +47,44 @@ pub struct AppState {
     pub settings: SettingsStore,
     pub acp: AcpService,
     pub harnesses: HarnessCatalog,
+    pub harness_version_cache: crate::harness_discovery::DisplayVersionCache,
     pub editor_operations: EditorOperationCoordinator,
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
+    pub terminals: crate::user_terminal::TerminalSessionPort,
 }
 
 impl AppState {
+    pub(crate) fn refresh_harnesses_after_window_shown(app: tauri::AppHandle) {
+        tauri::async_runtime::spawn_blocking(move || {
+            let presence = crate::harness_discovery::discover_installed_harness_presence();
+            let state = app.state::<AppState>();
+            state.harnesses.apply_presence(presence.clone());
+            use tauri::Emitter;
+            let _ = app.emit(
+                "harness-discovery-changed-v1",
+                state.harnesses.definitions(),
+            );
+            let (claude, discovered) = std::thread::scope(|scope| {
+                let claude = scope.spawn(crate::harness_discovery::discover_claude_launch);
+                let discovered = crate::harness_discovery::enrich_installed_harness_versions(
+                    &presence,
+                    &state.harness_version_cache,
+                );
+                let claude = claude.join().unwrap_or_else(|_| {
+                    tracing::warn!("Claude launch discovery panicked");
+                    crate::harness_discovery::ClaudeLaunchDiscovery::AdapterVersionUnreadable
+                });
+                (claude, discovered)
+            });
+            state.harnesses.apply_discovery(claude, discovered);
+            let _ = app.emit(
+                "harness-discovery-changed-v1",
+                state.harnesses.definitions(),
+            );
+        });
+    }
+
     pub(crate) async fn lock_active_project(
         &self,
         project_id: &SageProjectId,
@@ -96,9 +129,11 @@ impl AppState {
             settings,
             acp,
             harnesses: HarnessCatalog::with_registry(registry),
+            harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
+            terminals: crate::user_terminal::TerminalSessionPort::desktop(),
         })
     }
 
@@ -122,6 +157,8 @@ impl AppState {
                 "bounded ACP restart recovery failed; durable history was preserved".into(),
             )
         })?;
+        #[cfg(windows)]
+        acp.set_browser_app(app.clone());
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
             let _ = app.emit("acp-session-config-changed-v1", notice);
@@ -131,9 +168,11 @@ impl AppState {
             settings,
             acp,
             harnesses: HarnessCatalog::with_registry(registry),
+            harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
+            terminals: crate::user_terminal::TerminalSessionPort::desktop(),
         })
     }
 
@@ -151,7 +190,7 @@ impl AppState {
         let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
-            std::sync::Arc::new(DesktopProjectionSink(app)),
+            std::sync::Arc::new(DesktopProjectionSink(app.clone())),
             binding,
             registry.clone(),
         )
@@ -160,14 +199,17 @@ impl AppState {
                 "bounded ACP restart recovery failed; durable history was preserved".into(),
             )
         })?;
+        acp.set_browser_app(app);
         Ok(Self {
             database,
             settings,
             acp,
             harnesses: HarnessCatalog::with_registry_and_characterization(registry),
+            harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
+            terminals: crate::user_terminal::TerminalSessionPort::desktop(),
         })
     }
 
@@ -195,9 +237,11 @@ impl AppState {
             settings,
             acp,
             harnesses: HarnessCatalog::with_registry_and_characterization(registry),
+            harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
+            terminals: crate::user_terminal::TerminalSessionPort::desktop(),
         })
     }
 
@@ -250,7 +294,7 @@ mod tests {
 
         let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
         let registry = state.acp.binding_registry();
-        for id in ["unknown", "pi", "claude-code", "oh-my-pi"] {
+        for id in ["unknown", "pi", "oh-my-pi"] {
             assert!(registry.for_harness(id).is_none());
             assert!(matches!(
                 registry.resolve(id),
@@ -262,8 +306,18 @@ mod tests {
                     .accepts_codex_binding(&BindingId::new("bindingId", id).unwrap())
             );
         }
+        assert!(registry.for_harness("claude-code").is_some());
+        assert!(!matches!(
+            registry.resolve("claude-agent-acp"),
+            Err(RegistryUnavailable::UnknownBinding)
+        ));
+        assert!(
+            !state
+                .acp
+                .accepts_codex_binding(&BindingId::new("bindingId", "claude-agent-acp").unwrap())
+        );
         // A known catalog identity must not become launch authority after admission is lost.
-        registry.codex().admission().invalidate_drift();
+        registry.codex_admission().invalidate_drift();
         assert!(matches!(
             registry.resolve("codex-app-server"),
             Err(RegistryUnavailable::Admission(
@@ -282,7 +336,12 @@ mod tests {
             .unwrap();
         assert_ne!(codex.install_state, "available");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
-        for id in ["pi", "claude-code", "oh-my-pi"] {
+        let claude = definitions
+            .iter()
+            .find(|entry| entry.id == "claude-code")
+            .unwrap();
+        assert_eq!(claude.binding_id.as_deref(), Some("claude-agent-acp"));
+        for id in ["pi", "oh-my-pi"] {
             let entry = definitions.iter().find(|entry| entry.id == id).unwrap();
             assert!(entry.binding_id.is_none());
             assert_ne!(entry.install_state, "available");

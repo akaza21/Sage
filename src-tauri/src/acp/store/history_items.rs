@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     contract::{
@@ -69,7 +69,16 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
             break;
         }
         let activity = activities.remove(&row.id).unwrap_or_default();
-        let mut turn = project_turn(row, Vec::new(), activity)?;
+        let usage = load_turn_usage(connection, row)?;
+        let terminal_reason = load_terminal_reason(connection, row)?;
+        let mut turn = project_turn(
+            connection,
+            row,
+            usage,
+            terminal_reason,
+            Vec::new(),
+            activity,
+        )?;
         let turn_bytes = serde_json::to_vec(&turn)
             .map_err(|_| StoreError::Corrupt("turn projection serialization"))?
             .len();
@@ -131,17 +140,18 @@ fn load_turn_items(
 ) -> Result<LoadedItems, StoreError> {
     let remaining = crate::acp::limits::LIMITS.durable.history_page_items as usize
         - (*page_item_count).min(crate::acp::limits::LIMITS.durable.history_page_items as usize);
-    let query_limit = remaining.saturating_add(1).max(1) as i64;
+    let query_limit = i64::try_from(remaining.saturating_add(1).max(1))
+        .map_err(|_| StoreError::Corrupt("history page limit"))?;
     let mut statement = connection.prepare(
         "SELECT i.id,i.project_id,i.chat_id,i.session_id,i.turn_id,i.runtime_epoch,
                 i.ordinal,i.origin,i.activity_id,i.kind,i.lifecycle,i.tool_state,
                 i.external_item_id,i.payload_json,i.payload_bytes,i.payload_digest,
                 i.revision,i.created_at,i.updated_at,i.terminal_at,
-                r.id,r.state,r.normalized_payload_json
+                r.id,r.state,r.normalized_payload_json,r.kind
          FROM items i
          JOIN agent_sessions s ON s.id=i.session_id
          LEFT JOIN server_requests r
-           ON i.kind='permissionRequest' AND r.kind='permission'
+           ON i.kind='permissionRequest' AND r.kind IN ('permission','browserPermission')
           AND r.project_id=i.project_id AND r.chat_id=i.chat_id
           AND r.session_id=i.session_id AND r.turn_id=i.turn_id
           AND r.runtime_epoch=i.runtime_epoch
@@ -206,7 +216,9 @@ fn load_turn_items(
         }
         *used += item_bytes;
         *page_item_count += 1;
-        last_accepted_ordinal = Some(projection.ordinal as i64);
+        last_accepted_ordinal = Some(
+            i64::try_from(projection.ordinal).map_err(|_| StoreError::Corrupt("item ordinal"))?,
+        );
         items.push(projection);
     }
     if more && items.is_empty() {
@@ -215,8 +227,9 @@ fn load_turn_items(
             limit: page_limit as u64,
         });
     }
-    let more_before =
-        more.then_some(last_accepted_ordinal.ok_or(StoreError::Corrupt("item cursor boundary"))?);
+    let more_before = more
+        .then(|| last_accepted_ordinal.ok_or(StoreError::Corrupt("item cursor boundary")))
+        .transpose()?;
     items.reverse();
     Ok(LoadedItems { items, more_before })
 }
@@ -228,27 +241,43 @@ fn permission(
     Option<(
         SageServerRequestId,
         crate::acp::lifecycle::ServerRequestState,
+        crate::acp::projection::PermissionRequestSource,
     )>,
     StoreError,
 > {
     let request_id = row.get::<_, Option<String>>(20)?;
     let state = row.get::<_, Option<String>>(21)?;
     let normalized = row.get::<_, Option<String>>(22)?;
-    match (request_id, state, normalized) {
-        (None, None, None) => Ok(None),
-        (Some(id), Some(state), Some(normalized)) if normalized == item.payload_json => Ok(Some((
-            SageServerRequestId::parse(id).map_err(|_| StoreError::Corrupt("request id"))?,
-            super::state::parse_request_state(&state)?,
-        ))),
+    let kind = row.get::<_, Option<String>>(23)?;
+    match (request_id, state, normalized, kind) {
+        (None, None, None, None) => Ok(None),
+        (Some(id), Some(state), Some(normalized), Some(kind))
+            if normalized == item.payload_json =>
+        {
+            Ok(Some((
+                SageServerRequestId::parse(id).map_err(|_| StoreError::Corrupt("request id"))?,
+                super::state::parse_request_state(&state)?,
+                match kind.as_str() {
+                    "permission" => crate::acp::projection::PermissionRequestSource::Harness,
+                    "browserPermission" => crate::acp::projection::PermissionRequestSource::Browser,
+                    _ => return Err(StoreError::Corrupt("permission source")),
+                },
+            )))
+        }
         _ => Err(StoreError::Corrupt("permission request item link")),
     }
 }
 
 fn project_turn(
+    connection: &rusqlite::Connection,
     row: &TurnRow,
+    usage: Option<crate::acp::projection::TurnUsageProjection>,
+    terminal_reason: Option<crate::acp::projection::TurnTerminalReasonProjection>,
     items: Vec<ItemProjection>,
     activities: Vec<ActivityProjection>,
 ) -> Result<TurnProjection, StoreError> {
+    let (browser_operations, browser_operations_collapsed) =
+        super::browser_operations::load(connection, row)?;
     Ok(TurnProjection {
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
@@ -266,9 +295,64 @@ fn project_turn(
         created_at: row.created_at,
         updated_at: row.updated_at,
         terminal_at: row.terminal_at,
+        usage,
+        terminal_reason,
         items: BoundedVec::new("historyPageItems", items)
             .map_err(|_| StoreError::Corrupt("item page bound"))?,
         activities: BoundedVec::new("turnActivities", activities)
             .map_err(|_| StoreError::Corrupt("activity page bound"))?,
+        browser_operations: BoundedVec::new("browserOperations", browser_operations)
+            .map_err(|_| StoreError::Corrupt("browser operations bound"))?,
+        browser_operations_collapsed,
     })
+}
+
+fn load_terminal_reason(
+    connection: &rusqlite::Connection,
+    turn: &TurnRow,
+) -> Result<Option<crate::acp::projection::TurnTerminalReasonProjection>, StoreError> {
+    if !super::send::parse_turn_state(&turn.state)?.is_terminal() {
+        return Ok(None);
+    }
+    super::terminal_reason::load(connection, turn)
+}
+
+fn load_turn_usage(
+    connection: &rusqlite::Connection,
+    turn: &TurnRow,
+) -> Result<Option<crate::acp::projection::TurnUsageProjection>, StoreError> {
+    let snapshot = connection
+        .query_row(
+            "SELECT input_tokens,output_tokens,context_window
+             FROM acp_turn_usage_snapshots
+             WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND turn_id=?4 AND runtime_epoch=?5",
+            params![turn.project_id, turn.chat_id, turn.session_id, turn.id, turn.runtime_epoch],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((input, output, context)) = snapshot else {
+        return Ok(None);
+    };
+    let corrupt = || StoreError::Corrupt("turn usage");
+    let input_tokens = u64::try_from(input).map_err(|_| corrupt())?;
+    let output_tokens = u64::try_from(output).map_err(|_| corrupt())?;
+    let context_window = context
+        .map(u32::try_from)
+        .transpose()
+        .map_err(|_| corrupt())?;
+    let total_tokens = input_tokens
+        .checked_add(output_tokens)
+        .ok_or_else(corrupt)?;
+    Ok(Some(crate::acp::projection::TurnUsageProjection {
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        context_window,
+    }))
 }

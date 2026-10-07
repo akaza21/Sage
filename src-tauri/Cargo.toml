@@ -17,12 +17,14 @@ tauri-build = { version = "=2.6.3", features = [] }
 [dependencies]
 agent-client-protocol-schema = { version = "=1.4.0", optional = true, default-features = false }
 rusqlite = { version = "=0.40.1", features = ["backup", "bundled", "hooks", "modern_sqlite"] }
+regex = "=1.13.1"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
-tauri = { version = "=2.11.5", features = [] }
+tauri = { version = "=2.11.5", features = ["unstable"] }
 tauri-plugin-dialog = "=2.7.2"
 thiserror = "=2.0.19"
+toml = "=0.8.2"
 tokio = { version = "=1.53.1", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt"] }
@@ -30,19 +32,24 @@ url = "=2.5.8"
 uuid = { version = "=1.24.0", features = ["serde", "v4"] }
 
 [target.'cfg(windows)'.dependencies]
+webview2-com = "=0.38.2"
+webview2-com-sys = "=0.38.2"
 windows = { version = "=0.61.3", default-features = false, features = [
   "std",
   "Win32_Foundation",
   "Win32_System_Com",
   "Win32_UI_Shell",
   "Win32_UI_Shell_Common",
+  "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
+  "Media_SpeechRecognition",
 ] }
 windows-core = { version = "=0.61.2", default-features = false, features = ["std"] }
 windows-sys = { version = "=0.61.2", default-features = false, features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Storage_FileSystem",
+  "Win32_System_Console",
   "Win32_System_JobObjects",
   "Win32_System_Pipes",
   "Win32_System_Performance",
@@ -60,6 +67,11 @@ name = "sage-codex-0145-elevated-helper"
 path = "src/bin/codex_provisioning_helper.rs"
 required-features = ["codex-provisioning-helper"]
 
+[[test]]
+name = "acp_adversarial_fixture"
+path = "tests/acp_adversarial_fixture.rs"
+required-features = ["acp-fixture"]
+
 [features]
 default = []
 acp-fixture = []
@@ -70,6 +82,9 @@ diagnostics = []
 
 [profile.dev]
 incremental = true
+
+[profile.dev.package.sha2]
+opt-level = 3
 
 [profile.release]
 codegen-units = 1

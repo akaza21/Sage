@@ -12,11 +12,11 @@ import {
   type WorkspaceSearchLimitReason,
   type WorkspaceSearchMatch,
   type WorkspaceSearchNavigationRequest,
+  searchResultFileName,
 } from "./workspaceSearchDomain";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import { workspaceSearchDesktop } from "./workspaceSearchDesktop";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
-import { searchResultFileName } from "./searchResultCard";
 import { WorkspaceSearchCommandBar } from "./WorkspaceSearchCommandBar";
 import { FileKindIcon } from "../files/FileKindIcon";
 

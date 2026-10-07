@@ -27,5 +27,4 @@ pub fn admit_installed_role(
 }
 
 #[cfg(test)]
-#[path = "installed_role/tests.rs"]
 mod tests;

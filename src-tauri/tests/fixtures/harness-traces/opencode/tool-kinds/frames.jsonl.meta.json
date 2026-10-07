@@ -1,0 +1,8 @@
+{
+  "command": "opencode",
+  "args": [
+    "acp"
+  ],
+  "reason": "prompt-complete",
+  "stderr": "Error handling notification {\n  jsonrpc: \"2.0\",\n  method: \"initialized\",\n  params: {},\n} {\n  code: -32601,\n  message: \"\\\"Method not found\\\": initialized\",\n  data: {\n    method: \"initialized\",\n  },\n}\n"
+}

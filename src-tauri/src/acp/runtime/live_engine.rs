@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
-    PromptWrite, RuntimeEngine,
+    HostSteerIntent, PromptWrite, RuntimeEngine, SteerCompletionSink,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +54,18 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
         owner: &RuntimeOwner,
         turn_id: &SageTurnId,
     ) -> Result<LiveWrite, HostError>;
+    fn dispatch_steer(&mut self, _intent: &HostSteerIntent) -> Result<(), HostError> {
+        Err(HostError::State)
+    }
+    fn begin_steer(
+        &mut self,
+        intent: &HostSteerIntent,
+        _deadline: Instant,
+        completion: SteerCompletionSink,
+    ) -> Result<(), HostError> {
+        completion.complete(self.dispatch_steer(intent));
+        Ok(())
+    }
     fn observe_send(
         &mut self,
         owner: &RuntimeOwner,
@@ -196,6 +208,22 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
         self.port.begin_cancel(intent)
     }
 
+    fn dispatch_steer(&mut self, intent: &HostSteerIntent) -> Result<(), HostError> {
+        self.port.dispatch_steer(intent)
+    }
+
+    fn begin_steer(
+        &mut self,
+        intent: &HostSteerIntent,
+        deadline: Instant,
+        completion: SteerCompletionSink,
+    ) -> Result<(), HostError> {
+        if self.port.owner() != &intent.owner || self.zero_proof.is_some() {
+            return Err(HostError::Intent);
+        }
+        self.port.begin_steer(intent, deadline, completion)
+    }
+
     fn dispatch_cancel(&mut self, intent: &HostCancelIntent) -> Result<(), HostError> {
         self.port.dispatch_cancel(intent)
     }
@@ -239,7 +267,7 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
 
     fn begin_park(&mut self) -> Result<(), HostError> {
         match self.port.begin_park() {
-            Ok(()) | Err(HostError::Closed | HostError::State | HostError::Intent) => Ok(()),
+            Ok(()) | Err(HostError::Closed | HostError::State) => Ok(()),
             Err(error) => Err(error),
         }
     }

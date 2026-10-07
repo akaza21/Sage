@@ -22,7 +22,8 @@ pub(crate) fn receipt(
     );
     let output = format!("source={source} outcome={outcome} bytes={bytes}");
     NormalizedPayload::ToolCall {
-        category: ToolCategory::File,
+        execution: Default::default(),
+        category: ToolCategory::Read,
         label: SafeText::new("toolLabel", READ_LABEL).expect("fixed label"),
         input_summary: Some(SafeText::new("toolInput", input).expect("bounded canonical identity")),
         output_summary: Some(SafeText::new("toolOutput", output).expect("bounded outcome")),

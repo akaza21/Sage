@@ -1,21 +1,30 @@
-import { Check, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Check, FileText, Globe2, ListFilter, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useStore } from "zustand";
 
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
+import { openAgentArtifact } from "../app/openAgentArtifact";
+import { useAgentArtifactFollowStore } from "../app/agentArtifactFollowStore";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { agentChatMoveDestinations } from "./agentChatRail";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import { projectTaskResources } from "./agentArtifactTabPresentation";
+import "./agent-subagent-summary.css";
 
 export function AgentTaskHeader({
   tab,
   chatCount,
   snapshot,
+  sessionChrome,
 }: {
   tab: WorkbenchTab | null;
   chatCount: number;
   snapshot: ChatLiveSnapshot | null;
+  sessionChrome?: AgentSessionChrome | null;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const projects = useWorkbenchStore((state) => state.projects);
@@ -26,15 +35,44 @@ export function AgentTaskHeader({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const tabs = useWorkbenchStore((state) => state.tabs);
+  const activateTab = useWorkbenchStore((state) => state.activateTab);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [showAllSources, setShowAllSources] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const resourcesPanelRef = useRef<HTMLDivElement | null>(null);
+  const page = useStore(
+    acpProjectionStoreFor(tab?.id ?? null),
+    (state) => state.page,
+  );
+  const { workingAgents, doneAgents, recentAgents, outputs, sources } = useMemo(
+    () => projectTaskResources(resourcesOpen ? page : null, tab?.id ?? null),
+    [page, resourcesOpen, tab?.id],
+  );
 
   useEffect(() => {
     if (renaming) inputRef.current?.focus();
   }, [renaming]);
+
+  useEffect(() => {
+    if (!resourcesOpen) return;
+    resourcesPanelRef.current?.focus();
+    const closeOutside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !resourcesPanelRef.current?.contains(event.target) &&
+        !resourcesTriggerRef.current?.contains(event.target)
+      )
+        setResourcesOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [resourcesOpen]);
 
   if (!tab || !project) return null;
   const currentTab = tab;
@@ -93,7 +131,7 @@ export function AgentTaskHeader({
               aria-label="Save chat name"
               disabled={projectTransitioning}
             >
-              <Check size={13} aria-hidden="true" />
+              <Check size={14} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -104,7 +142,7 @@ export function AgentTaskHeader({
                 setRenameError(null);
               }}
             >
-              <X size={13} aria-hidden="true" />
+              <X size={14} aria-hidden="true" />
             </button>
             {renameError ? <span role="alert">{renameError}</span> : null}
           </form>
@@ -119,8 +157,19 @@ export function AgentTaskHeader({
         role="status"
         aria-label={`Chat status: ${snapshot?.statusLabel ?? "Idle"}`}
       >
+        {snapshot?.statusTone === "working" ? (
+          <span className="agent-chat-chip__spinner" aria-hidden="true" />
+        ) : null}
         {snapshot?.statusLabel ?? "Idle"}
       </span>
+      {sessionChrome ? (
+        <span
+          className="agent-task-header__harness-status"
+          aria-label={`Harness status: ${sessionChrome.harnessStatus}`}
+        >
+          {sessionChrome.harnessStatus}
+        </span>
+      ) : null}
       <ProjectChatActionMenu
         chatTitle={`${title} task`}
         pinned={currentTab.pinned}
@@ -136,7 +185,167 @@ export function AgentTaskHeader({
         }
         onArchive={() => void archiveChat(currentTab.id, currentProject.id)}
         triggerRef={() => undefined}
+        sessionChrome={sessionChrome}
       />
+      <div className="agent-task-header__resources">
+        <button
+          ref={resourcesTriggerRef}
+          type="button"
+          aria-label="Show chat resources"
+          aria-expanded={resourcesOpen}
+          title="Outputs, Subagents, and Sources"
+          onClick={() => setResourcesOpen((open) => !open)}
+        >
+          <ListFilter size={16} aria-hidden="true" />
+        </button>
+        {resourcesOpen ? (
+          <div
+            ref={resourcesPanelRef}
+            className="agent-task-header__resource-panel"
+            role="dialog"
+            aria-label="Chat resources"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setResourcesOpen(false);
+                resourcesTriggerRef.current?.focus();
+              }
+            }}
+          >
+            <section aria-label="Outputs">
+              <strong>Outputs</strong>
+              <span>{outputs.length}</span>
+              {outputs.length === 0 ? <p>Create a file or site</p> : null}
+              {outputs.map((output) => (
+                <button
+                  key={`${output.resource.rootId}:${output.label}`}
+                  className="agent-task-header__resource-row"
+                  type="button"
+                  aria-label={`Open output ${output.label}`}
+                  title={output.label}
+                  onClick={() => {
+                    void openAgentArtifact({
+                      owner: output.owner,
+                      target: output.target,
+                      resource: output.resource,
+                      ...(output.diffRef ? { diffRef: output.diffRef } : {}),
+                    }).then((opened) => {
+                      if (opened) setResourcesOpen(false);
+                    });
+                  }}
+                >
+                  <FileText size={14} aria-hidden="true" />
+                  <span>{output.label}</span>
+                </button>
+              ))}
+            </section>
+            <section
+              aria-label="Subagents"
+              title="Recent subagents from the latest 128 turns and 256 items per turn"
+            >
+              <strong>Subagents</strong>
+              <div className="agent-task-header__agent-summary">
+                <span
+                  className="agent-task-header__agent-metric"
+                  aria-label={`Recent subagents working: ${workingAgents}`}
+                >
+                  <span
+                    className="agent-task-header__agent-glyphs"
+                    aria-hidden="true"
+                  >
+                    {Array.from(
+                      { length: Math.min(workingAgents, 3) },
+                      (_, index) => (
+                        <span
+                          className={`agent-task-header__agent-glyph agent-task-header__agent-glyph--${index}`}
+                          key={index}
+                        >
+                          ✦
+                        </span>
+                      ),
+                    )}
+                  </span>
+                  {workingAgents} working
+                </span>
+                <span
+                  className="agent-task-header__agent-metric"
+                  aria-label={`Recent subagents done: ${doneAgents}`}
+                >
+                  {doneAgents} done
+                </span>
+              </div>
+              {recentAgents.slice(-8).map((agent, index) => (
+                <p className="agent-task-header__agent" key={index}>
+                  <span>{agent.label}</span>
+                  <span>{agent.status}</span>
+                </p>
+              ))}
+            </section>
+            <section aria-label="Sources">
+              <strong>Sources</strong>
+              <span>{sources.length}</span>
+              {(showAllSources ? sources : sources.slice(-3)).map(
+                (source, index) => {
+                  const browserTab = tabs.find(
+                    (candidate) =>
+                      candidate.id === source.tabId &&
+                      candidate.kind === "browser",
+                  );
+                  const content = (
+                    <>
+                      <Globe2 size={14} aria-hidden="true" />
+                      <span>{source.label}</span>
+                    </>
+                  );
+                  return browserTab &&
+                    page?.currentSessionId &&
+                    page.projectId === project.id ? (
+                    <button
+                      key={`${source.label}:${source.tabId}:${index}`}
+                      className="agent-task-header__resource-row"
+                      type="button"
+                      aria-label={`Open source ${source.label}`}
+                      title={browserTab.title}
+                      onClick={() => {
+                        useAgentArtifactFollowStore.getState().pin(
+                          {
+                            projectId: page.projectId,
+                            chatId: page.chatId,
+                            sessionId: page.currentSessionId!,
+                          },
+                          { kind: "tab", tabId: browserTab.id },
+                        );
+                        void activateTab(browserTab.id);
+                        setResourcesOpen(false);
+                      }}
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <span
+                      key={`${source.label}:${index}`}
+                      className="agent-task-header__resource-row"
+                      title={source.label}
+                    >
+                      {content}
+                    </span>
+                  );
+                },
+              )}
+            </section>
+            {sources.length > 3 ? (
+              <button
+                className="agent-task-header__view-all"
+                type="button"
+                onClick={() => setShowAllSources((shown) => !shown)}
+              >
+                {showAllSources ? "Show less" : "View all"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </header>
   );
 }

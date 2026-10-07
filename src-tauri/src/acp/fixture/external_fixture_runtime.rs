@@ -220,6 +220,7 @@ pub(super) async fn prepare_external_case(
     };
     let prompt_intent = HostPromptIntent {
         command: prompt_command.clone(),
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
     };
     let prepared = tokio::time::timeout(
         deadline.operation_before_cleanup(),
@@ -249,7 +250,11 @@ pub(super) async fn prepare_external_case(
         process_capacity,
         process_cleanup,
         mailbox,
-        active: PreparedProcessWrite::new(running, prompt),
+        active: PreparedProcessWrite::new(
+            running,
+            prompt,
+            crate::settings_store::SessionAccessMode::ReadOnly,
+        ),
         journal_cleanup,
         temp_root,
     }

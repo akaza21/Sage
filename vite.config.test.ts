@@ -18,17 +18,24 @@ const runtime = path.join(root, "src/ports/workbenchRuntime.desktop.ts");
 
 const DESKTOP_GROUPS = DESKTOP_NATIVE_CODE_SPLITTING_GROUPS;
 const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
+const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
+  css: "src/features/files/editorLanguageCss.ts",
+  html: "src/features/files/editorLanguageHtml.ts",
+  javascript: "src/features/files/editorLanguageJavaScript.ts",
+  json: "src/features/files/editorLanguageJson.ts",
+  markdown: "src/features/files/editorLanguageMarkdown.ts",
+  python: "src/features/files/editorLanguagePython.ts",
+  rust: "src/features/files/editorLanguageRust.ts",
+} as const;
+
 const REQUIRED_DYNAMIC_FACADES = [
-  "node_modules/@codemirror/lang-html/dist/index.js",
-  "node_modules/@codemirror/lang-json/dist/index.js",
-  "node_modules/@codemirror/lang-markdown/dist/index.js",
-  "node_modules/@codemirror/lang-python/dist/index.js",
-  "node_modules/@codemirror/lang-rust/dist/index.js",
+  ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
   "node_modules/@tauri-apps/api/window.js",
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
+  "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/acp/AcpChatPresentation.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   "src/features/diff/DiffSurface.tsx",
@@ -41,6 +48,11 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
+].sort();
+
+const ORDINARY_DYNAMIC_FACADES = [
+  ...REQUIRED_DYNAMIC_FACADES,
+  "src/workbench/Workbench.tsx",
 ];
 
 const CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST = {
@@ -177,9 +189,9 @@ function languageStaticClosure(
   graph: ReturnType<typeof graphInventory>,
   language: EditorLanguageWithParser,
 ): readonly string[] {
-  const languageModule = `node_modules/@codemirror/lang-${language}/dist/index.js`;
-  const matches = graph.dynamicStaticClosures.filter(({ modules }) =>
-    modules.some((id) => id.endsWith(languageModule)),
+  const facadeModuleId = CODEMIRROR_LANGUAGE_DYNAMIC_FACADES[language];
+  const matches = graph.dynamicStaticClosures.filter(
+    (closure) => closure.facadeModuleId === facadeModuleId,
   );
   expect(matches).toHaveLength(1);
   return matches[0]!.staticClosure;
@@ -283,6 +295,10 @@ describe("desktop-native chunk topology", () => {
       "/src/app/agentDiffAdmission.ts",
       "/src/app/agentDiffLoad.ts",
       "/src/features/diff/snapshotDiff.ts",
+      "/src/workbench/AgentWorkbenchBody.tsx",
+      "/src/workbench/SettingsSurface.tsx",
+      "/src/workbench/SourceControlView.tsx",
+      "/src/workbench/Workbench.tsx",
     ]) {
       expect(
         ordinaryGraph.allModules.some((id) => id.endsWith(snapshotModule)),
@@ -297,7 +313,7 @@ describe("desktop-native chunk topology", () => {
       groupedGraph.allModules.some((id) => id.endsWith(BROWSER_FIXTURE_MODULE)),
     ).toBe(false);
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
-    expect(ordinaryGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
+    expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);
 
     const editorRuntimeClosure = groupedGraph.dynamicStaticClosures.find(
       ({ facadeModuleId }) =>

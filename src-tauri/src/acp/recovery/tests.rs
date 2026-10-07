@@ -22,11 +22,11 @@ fn restart_never_replays_a_prompt() {
         ),
         (
             (TurnState::Running, DeliveryState::Correlated),
-            TurnState::Interrupted,
+            TurnState::Failed,
         ),
         (
             (TurnState::WaitingTool, DeliveryState::Correlated),
-            TurnState::Interrupted,
+            TurnState::Failed,
         ),
     ];
     for ((state, delivery), expected) in cases {

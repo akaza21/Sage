@@ -16,8 +16,8 @@ pub(super) struct PendingTerminal {
     notification: TerminalNotification,
 }
 
-pub(super) fn queue<A, R, T>(
-    state: &WorkerState<A, R, T>,
+pub(super) fn queue<A, R, T, C>(
+    state: &WorkerState<A, R, T, C>,
     host: &Weak<RuntimeHost>,
     notified: &Option<AdapterTurnCursor>,
     pending: &mut Option<PendingTerminal>,
@@ -26,6 +26,8 @@ where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
     if pending.is_some() {
         return Ok(());

@@ -7,8 +7,8 @@ use crate::acp::{
     intent::NormalizedPayload,
     lifecycle::ServerRequestState,
     projection::{
-        FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection, PlanEntry,
-        PlanEntryState, TextRole,
+        FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection,
+        PermissionRequestSource, PlanEntry, PlanEntryState, TextRole,
     },
 };
 
@@ -41,7 +41,11 @@ pub(super) struct ItemRow {
 
 pub(super) fn decode_item(
     row: ItemRow,
-    permission: Option<(SageServerRequestId, ServerRequestState)>,
+    permission: Option<(
+        SageServerRequestId,
+        ServerRequestState,
+        PermissionRequestSource,
+    )>,
     project_roots: &[SageRootId],
 ) -> Result<ItemProjection, StoreError> {
     if row.payload_bytes < 0
@@ -70,6 +74,12 @@ pub(super) fn decode_item(
         .map(SageActivityId::parse)
         .transpose()
         .map_err(|_| StoreError::Corrupt("activity id"))?;
+    if matches!(normalized, NormalizedPayload::Collaboration { .. })
+        && row.origin != "primary"
+        && activity_id.is_none()
+    {
+        return Err(StoreError::Corrupt("collaboration activity"));
+    }
     let lifecycle = super::state::parse_item_lifecycle(&row.lifecycle)?;
     let tool_state = row
         .tool_state
@@ -115,7 +125,11 @@ fn content(
     lifecycle: crate::acp::lifecycle::ItemLifecycle,
     legacy_role: Option<TextRole>,
     activity: Option<&SageActivityId>,
-    permission: Option<(SageServerRequestId, ServerRequestState)>,
+    permission: Option<(
+        SageServerRequestId,
+        ServerRequestState,
+        PermissionRequestSource,
+    )>,
 ) -> Result<ItemContent, StoreError> {
     Ok(match value {
         NormalizedPayload::Text { text } => ItemContent::Text {
@@ -144,20 +158,10 @@ fn content(
             output_summary,
             locations,
             command_activity,
+            execution,
         } => ItemContent::ToolCall {
-            presentation: presentation(category, label, locations, command_activity)?,
+            presentation: presentation(category, label, locations, command_activity, execution)?,
             input_summary,
-            output_summary,
-        },
-        NormalizedPayload::ToolUpdateResult {
-            category,
-            label,
-            output_summary,
-            locations,
-            command_activity,
-        } => ItemContent::ToolUpdateResult {
-            call_item_id: None,
-            presentation: presentation(category, label, locations, command_activity)?,
             output_summary,
         },
         NormalizedPayload::FileChangeDiff {
@@ -171,6 +175,7 @@ fn content(
             new_bytes,
             content_digest,
             pair_available,
+            operation,
         } => {
             let pair = admitted_pair_view(
                 truncated,
@@ -185,7 +190,17 @@ fn content(
                     "fileChanges",
                     vec![FileChangeProjection {
                         resource,
-                        operation: FileOperation::Updated,
+                        operation: match operation {
+                            crate::acp::intent::FileChangeOperation::Created => {
+                                FileOperation::Created
+                            }
+                            crate::acp::intent::FileChangeOperation::Updated => {
+                                FileOperation::Updated
+                            }
+                            crate::acp::intent::FileChangeOperation::Deleted => {
+                                FileOperation::Deleted
+                            }
+                        },
                         original_resource: None,
                         summary,
                         additions: projected_line_count(additions),
@@ -201,30 +216,40 @@ fn content(
                 truncated,
             }
         }
-        NormalizedPayload::Image { media_type, data } => ItemContent::Image {
+        NormalizedPayload::Image {
+            media_type,
+            data,
+            source,
+        } => ItemContent::Image {
             media_type,
             data_url: crate::acp::image_admit::image_data_url(media_type, data.as_str())
                 .map_err(contract)?,
+            source,
         },
-        NormalizedPayload::Usage {
-            input_tokens,
-            output_tokens,
-            context_window,
-        } => ItemContent::Usage {
-            input_tokens: Some(input_tokens),
-            output_tokens: Some(output_tokens),
-            cached_input_tokens: None,
-            total_tokens: input_tokens.checked_add(output_tokens),
-            context_window,
-        },
-        NormalizedPayload::PermissionRequest { summary, .. } => {
-            let (request_id, state) =
+        NormalizedPayload::Usage { .. } => {
+            return Err(StoreError::Corrupt("usage transcript item"));
+        }
+        NormalizedPayload::PermissionRequest {
+            summary,
+            offered_option_kinds,
+            ..
+        } => {
+            let (request_id, state, source) =
                 permission.ok_or(StoreError::Corrupt("permission request projection"))?;
             ItemContent::PermissionRequest {
                 request_id,
                 state,
-                label: SafeText::new("permissionLabel", "Permission request").map_err(contract)?,
+                label: SafeText::new(
+                    "permissionLabel",
+                    match source {
+                        PermissionRequestSource::Browser => "Browser permission",
+                        PermissionRequestSource::Harness => "Permission request",
+                    },
+                )
+                .map_err(contract)?,
                 summary,
+                source,
+                offered_option_kinds,
             }
         }
         NormalizedPayload::Error {
@@ -248,13 +273,19 @@ fn content(
             label,
             message,
             receiver_labels,
+            operation,
+            agent_key,
+            agent_keys,
+            agent_states,
         } => ItemContent::Collaboration {
-            activity_id: activity
-                .cloned()
-                .ok_or(StoreError::Corrupt("collaboration activity"))?,
+            activity_id: activity.cloned(),
             label,
             summary: message.unwrap_or(SafeText::new("summary", "").map_err(contract)?),
             receiver_labels,
+            operation,
+            agent_key,
+            agent_keys,
+            agent_states,
         },
     })
 }
@@ -342,39 +373,4 @@ fn contract(_: ContractError) -> StoreError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
-        let payload = NormalizedPayload::Plan {
-            summary: SafeText::new("plan", "Inspect the project").unwrap(),
-        };
-        let streaming = content(
-            payload.clone(),
-            crate::acp::lifecycle::ItemLifecycle::Streaming,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        let completed = content(
-            payload,
-            crate::acp::lifecycle::ItemLifecycle::Completed,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        assert!(matches!(
-            streaming,
-            ItemContent::Plan { ref entries }
-                if entries.as_slice()[0].state == PlanEntryState::InProgress
-        ));
-        assert!(matches!(
-            completed,
-            ItemContent::Plan { ref entries }
-                if entries.as_slice()[0].state == PlanEntryState::Completed
-        ));
-    }
-}
+mod tests;

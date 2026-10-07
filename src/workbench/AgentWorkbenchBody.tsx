@@ -4,10 +4,7 @@ import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { LeftSidebar } from "./LeftSidebar";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
-import {
-  AGENT_ARTIFACT_WIDTH,
-  AGENT_LEFT_RAIL_WIDTH,
-} from "./workbenchSidebarResize";
+import type { WorkbenchSidebarWidth } from "./workbenchSidebarResize";
 
 export function AgentWorkbenchBody({
   compact,
@@ -18,10 +15,13 @@ export function AgentWorkbenchBody({
   artifactExpanded,
   onArtifactExpandedChange,
   agentLeftRailWidth,
+  agentLeftRailWidthBounds,
   onAgentLeftRailWidthChange,
   agentArtifactWidth,
+  agentArtifactWidthBounds,
   onAgentArtifactWidthChange,
   onOpenArtifactInEditor,
+  onOpenSettings,
 }: {
   compact: boolean;
   style: CSSProperties | undefined;
@@ -31,10 +31,13 @@ export function AgentWorkbenchBody({
   artifactExpanded: boolean;
   onArtifactExpandedChange: (expanded: boolean) => void;
   agentLeftRailWidth: number;
+  agentLeftRailWidthBounds: WorkbenchSidebarWidth;
   onAgentLeftRailWidthChange: (width: number) => void;
   agentArtifactWidth: number;
+  agentArtifactWidthBounds: WorkbenchSidebarWidth;
   onAgentArtifactWidthChange: (width: number) => void;
   onOpenArtifactInEditor: (tabId: string) => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="workbench__body" style={style}>
@@ -42,13 +45,14 @@ export function AgentWorkbenchBody({
         compact={compact}
         open={navigationOpen}
         onOpenChange={onNavigationOpenChange}
+        onOpenSettings={onOpenSettings}
       />
       {!compact ? (
         <WorkbenchSidebarSplitter
           ariaLabel="Resize project and chat rail"
           side="leading"
           value={agentLeftRailWidth}
-          width={AGENT_LEFT_RAIL_WIDTH}
+          width={agentLeftRailWidthBounds}
           onChange={onAgentLeftRailWidthChange}
         />
       ) : null}
@@ -64,7 +68,7 @@ export function AgentWorkbenchBody({
           ariaLabel="Resize files and preview"
           side="trailing"
           value={agentArtifactWidth}
-          width={AGENT_ARTIFACT_WIDTH}
+          width={agentArtifactWidthBounds}
           onChange={onAgentArtifactWidthChange}
         />
       ) : null}

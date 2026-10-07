@@ -14,8 +14,8 @@ export function AgentArtifactCollapsedPane({
 }) {
   const label =
     count > 0
-      ? `Open files, changes, and preview, ${count} ${count === 1 ? "resource" : "resources"}`
-      : "Open files, changes, and preview";
+      ? `Show preview · Ready · ${count} ${count === 1 ? "resource" : "resources"}`
+      : "Show preview · Waiting";
   return (
     <aside
       ref={paneRef}
@@ -27,18 +27,17 @@ export function AgentArtifactCollapsedPane({
         className="agent-artifact-pane__edge-action"
         type="button"
         aria-label={label}
-        title={count > 0 ? `Open resources (${count})` : "Open resources"}
+        title={label}
         onClick={onExpand}
       >
         <PanelRightOpen size={17} strokeWidth={1.8} aria-hidden="true" />
-        <span className="agent-artifact-pane__edge-copy" aria-hidden="true">
-          {count > 0 ? "Ready" : "Waiting"}
-        </span>
         {count > 0 ? (
           <span className="agent-artifact-pane__count" aria-hidden="true">
             {count}
           </span>
-        ) : null}
+        ) : (
+          <span className="agent-artifact-pane__edge-dot" aria-hidden="true" />
+        )}
       </button>
     </aside>
   );

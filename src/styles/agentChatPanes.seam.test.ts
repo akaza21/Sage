@@ -15,21 +15,24 @@ describe("Agent Chat panes stylesheet seam", () => {
     expect(modeCss).not.toMatch(/^\.agent-chat-panes\b/m);
     expect(modeCss).not.toMatch(/^\.agent-chat-pane\b/m);
     expect(panesCss).toMatch(
-      /\.agent-chat-pane\s*\{[^}]*grid-template-rows:\s*32px minmax\(0, 1fr\);/s,
+      /\.agent-chat-pane\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/s,
     );
     expect(panesCss).toMatch(
-      /\.agent-chat-pane--focused \.agent-chat-pane__header\s*\{[^}]*box-shadow:\s*inset 2px 0 0 var\(--color-accent\);/s,
+      /\.agent-chat-pane--focused \.surface-header\s*\{[^}]*box-shadow:\s*inset 2px 0 0 var\(--color-accent\);/s,
     );
     expect(panesCss).toMatch(
       /\.agent-chat-pane__title\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/s,
     );
     expect(panesCss).toContain(".agent-chat-chip--failed");
     expect(panesCss).toMatch(
-      /\.agent-chat-panes--split \.composer__shortcut,\s*\.agent-chat-panes--split \.access-mode\s*\{[^}]*display:\s*none;/s,
+      /\.agent-chat-panes--split \.composer__shortcut\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(panesCss).not.toMatch(
+      /\.agent-chat-panes--split \.access-mode\s*\{[^}]*display:\s*none;/s,
     );
     expect(modeCss).not.toContain(".composer__shortcut");
     expect(panesCss).toMatch(
-      /@media \(forced-colors: active\)[\s\S]*?\.agent-chat-pane--focused \.agent-chat-pane__header\s*\{[^}]*outline:\s*2px solid Highlight;/,
+      /@media \(forced-colors: active\)[\s\S]*?\.agent-chat-pane--focused \.surface-header\s*\{[^}]*outline:\s*2px solid Highlight;/,
     );
   });
 

@@ -1,0 +1,38 @@
+{
+  "scenario": "smoke",
+  "harness": "claude-code",
+  "handshake": "session",
+  "turn": { "terminal": "completed" },
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    {
+      "event": "unsupported",
+      "externalKind": "_auth/status_update",
+      "chunks": 2
+    },
+    { "event": "turn", "state": "running" },
+    { "event": "unsupported", "externalKind": "_auth/status_update" },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "ok"
+    },
+    {
+      "event": "usage",
+      "inputTokens": 2,
+      "outputTokens": 4,
+      "contextWindow": 1000000
+    },
+    { "event": "turn", "state": "completed" }
+  ],
+  "notes": [
+    "Real captured turn against a signed-in Claude session. The captured initialize result pins claude-agent-acp 0.76.0.",
+    "_auth/status_update is a Claude-only notification outside the ACP method set. It is recorded as an unsupported item rather than refused, so no harness event is dropped.",
+    "The capture tool redacts the account identity carried by _auth/status_update. Only authStatus.kind survives, which is the behavioural signal this fixture depends on.",
+    "The three _auth/status_update events are consecutive apart from the running transition because the two available_commands_update frames interleaved between them are absorbed, not surfaced.",
+    "The running transition lands on the first session/update of the turn, which is the first usage_update. Without it the turn never leaves Sending and the adapter journal rejects the terminal batch as an invalid transition.",
+    "usage_update carries the context window but no token split, so it is absorbed rather than surfaced. The split arrives on the prompt result; combining the two stated facts yields one turn-scoped usage snapshot and infers nothing."
+  ]
+}

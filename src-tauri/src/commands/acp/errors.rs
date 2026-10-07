@@ -26,11 +26,28 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             resource: AcpConflictResource::Session,
             message: safe_message("The native session identity is stale or foreign."),
         },
+        crate::acp::service::CodexSessionError::SteerOutcomeUnknown => AcpIpcError::Conflict {
+            resource: AcpConflictResource::SteerOutcomeUnknown,
+            message: safe_message(
+                "Steer acknowledgement timed out. The message may have been delivered; the session is still live. Retry the queued message explicitly.",
+            ),
+        },
         crate::acp::service::CodexSessionError::Capacity => AcpIpcError::Capacity {
             resource: AcpCapacityResource::LiveTree,
             limit: crate::acp::limits::LIMITS.process.operational_live_trees,
             message: safe_message("The native live runtime capacity is occupied."),
         },
+        crate::acp::service::CodexSessionError::SignInRequired => AcpIpcError::SignInRequired {
+            message: safe_message("The harness requires sign-in before it can continue."),
+        },
+        crate::acp::service::CodexSessionError::BrowserToolsUnavailable => {
+            AcpIpcError::Unavailable {
+                reason: AcpUnavailableReason::CapabilityUnavailable,
+                message: safe_message(
+                    "Codex browser tools are unavailable for this session; this Codex version or browser helper could not be verified.",
+                ),
+            }
+        }
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
             message: safe_message("The native runtime requires authoritative recovery."),
         },
@@ -96,6 +113,12 @@ pub(super) fn codex_discovery_error(error: CodexDiscoveryRunError) -> AcpIpcErro
             message: safe_message("Codex discovery is unsupported on this platform."),
         },
         CodexDiscoveryRunError::BindingUnavailable => binding_unavailable(),
+        CodexDiscoveryRunError::CapabilityProjectionUnavailable => AcpIpcError::Unavailable {
+            reason: AcpUnavailableReason::CapabilityUnavailable,
+            message: safe_message(
+                "Codex capabilities could not be safely projected; retry discovery.",
+            ),
+        },
         CodexDiscoveryRunError::InvalidScope => AcpIpcError::InvalidRequest {
             message: safe_message("The Codex discovery scope is invalid."),
         },
@@ -281,6 +304,28 @@ mod tests {
             AcpIpcError::RecoveryRequired { message }
                 if message.as_str()
                     == "Native activation requires authoritative projection recovery."
+        ));
+    }
+
+    #[test]
+    fn sign_in_refusal_has_a_stable_distinct_ipc_kind() {
+        let error = session_error(crate::acp::service::CodexSessionError::SignInRequired);
+        assert_eq!(
+            serde_json::to_value(error).expect("serializes"),
+            serde_json::json!({
+                "kind": "signInRequired",
+                "message": "The harness requires sign-in before it can continue."
+            })
+        );
+    }
+
+    #[test]
+    fn unavailable_codex_browser_route_has_a_readable_ipc_message() {
+        let error = session_error(crate::acp::service::CodexSessionError::BrowserToolsUnavailable);
+        assert!(matches!(
+            error,
+            AcpIpcError::Unavailable { message, .. }
+                if message.as_str().contains("Codex browser tools are unavailable")
         ));
     }
 

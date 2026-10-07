@@ -120,7 +120,8 @@ function remoteValue(result) {
     typeof result !== "object" ||
     Array.isArray(result) ||
     !Object.hasOwn(result, "result") ||
-    result.exceptionDetails !== undefined ||
+    (result.exceptionDetails !== undefined &&
+      result.exceptionDetails !== null) ||
     Object.keys(result).some(
       (key) => key !== "result" && key !== "exceptionDetails",
     )
@@ -137,7 +138,9 @@ function remoteValue(result) {
     Object.keys(remote).some(
       (key) => !["type", "subtype", "value", "description"].includes(key),
     ) ||
-    (remote.subtype !== undefined && typeof remote.subtype !== "string") ||
+    (remote.subtype !== undefined &&
+      remote.subtype !== null &&
+      typeof remote.subtype !== "string") ||
     (remote.description !== undefined &&
       (typeof remote.description !== "string" ||
         bytes(remote.description) > MAX_EVALUATE_BYTES)) ||

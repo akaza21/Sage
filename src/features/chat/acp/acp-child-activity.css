@@ -125,6 +125,35 @@
   content: "";
 }
 
+.acp-subagent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.acp-subagent-row__glyphs {
+  display: inline-flex;
+  min-width: 16px;
+  padding-left: 4px;
+}
+
+.acp-subagent-row__glyph {
+  margin-left: -4px;
+  color: var(--agent-subagent-violet);
+}
+
+.acp-subagent-row__glyph--1 {
+  color: var(--agent-subagent-teal);
+}
+
+.acp-subagent-row__glyph--2 {
+  color: var(--agent-subagent-coral);
+}
+
 .acp-collaboration {
   min-width: 0;
   padding: var(--space-1) var(--space-2);

@@ -12,19 +12,18 @@ use super::{
     state::{CodexAdapter, ScopedExternalId},
 };
 
-#[path = "incoming_support.rs"]
-mod support;
-pub(in crate::acp::bindings::codex) use support::*;
+pub(super) mod support;
+use support::{
+    capability, content, error_payload, identity, parse_models, permission, text, unsupported,
+};
+pub(in crate::acp::bindings::codex) use support::{command_output_token, sanitize, validate_shape};
 
-#[path = "incoming_items.rs"]
 mod items;
 use items::{normalize_item, normalize_materialized_command};
 
-#[path = "incoming_requests.rs"]
 mod requests;
 use requests::server_request;
 
-#[path = "incoming_notifications.rs"]
 mod notifications;
 use notifications::notification;
 
@@ -33,6 +32,17 @@ pub(crate) trait ResourceMapper {
         &self,
         absolute_path: &str,
     ) -> Result<SafeResourceRef, UnavailableResourceReason>;
+
+    fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
+        None
+    }
+}
+
+pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
+    "Codex emitted a message Sage does not project";
+
+pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
+    tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,11 +58,7 @@ pub(crate) struct DenyResponse {
     pub(crate) bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ItemUpdateMode {
-    Append,
-    Replace,
-}
+pub(crate) use crate::acp::bindings::adapter::ItemUpdateMode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IncomingEvent {
@@ -93,8 +99,17 @@ pub(crate) enum IncomingEvent {
     HostToolReply {
         bytes: Vec<u8>,
     },
+    PermissionResolved {
+        turn_id: ScopedExternalId,
+        external_request: ScopedExternalId,
+        state: crate::acp::lifecycle::ServerRequestState,
+    },
     Acknowledged {
         closes_session: bool,
+    },
+    SteerResponse {
+        request_id: u64,
+        accepted: bool,
     },
     Unsupported(NormalizedPayload),
     Error(NormalizedPayload),
@@ -177,6 +192,14 @@ fn ingest_inner<M: ResourceMapper>(
     if object.contains_key("id") {
         return server_request(adapter, object, method, params);
     }
+    let thread = params.get("threadId").and_then(Value::as_str).or_else(|| {
+        (method == "thread/started")
+            .then(|| params.get("thread")?.get("id")?.as_str())
+            .flatten()
+    });
+    if thread.is_some_and(|thread| adapter.ignore_unbound_thread_notification(thread)) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
     notification(adapter, method, params, mapper, declarations)
 }
 
@@ -227,6 +250,13 @@ fn response(
                 IncomingEvent::Acknowledged {
                     closes_session: false,
                 },
+            ])),
+            RequestKind::Steer => Ok(IngressDisposition::Events(vec![
+                IncomingEvent::SteerResponse {
+                    request_id: id,
+                    accepted: false,
+                },
+                IncomingEvent::Error(payload),
             ])),
             _ => Ok(IncomingEvent::Error(payload).into()),
         };
@@ -294,6 +324,16 @@ fn response(
         RequestKind::Interrupt => IncomingEvent::Acknowledged {
             closes_session: false,
         },
+        RequestKind::Steer => {
+            let turn_id = text(result, "turnId", 512)?;
+            if !adapter.has_active_turn() || adapter.expect_turn(turn_id).is_err() {
+                return Err(IngressError::Malformed);
+            }
+            IncomingEvent::SteerResponse {
+                request_id: id,
+                accepted: true,
+            }
+        }
         RequestKind::Unsubscribe => {
             adapter.clear_command_items();
             IncomingEvent::Acknowledged {
@@ -301,5 +341,30 @@ fn response(
             }
         }
     };
+    if matches!(
+        kind,
+        RequestKind::Start | RequestKind::Resume | RequestKind::Read
+    ) {
+        let external = result
+            .get("thread")
+            .and_then(Value::as_object)
+            .and_then(|thread| thread.get("id"))
+            .and_then(Value::as_str)
+            .ok_or(IngressError::Malformed)?;
+        if adapter.take_browser_mcp_failure_for_thread(external) {
+            return Ok(IngressDisposition::Events(vec![
+                event,
+                browser_mcp_unavailable()?,
+            ]));
+        }
+    }
     Ok(event.into())
+}
+
+fn browser_mcp_unavailable() -> Result<IncomingEvent, IngressError> {
+    Ok(IncomingEvent::Error(error_payload(
+        "browserMcpUnavailable",
+        "Browser tools are unavailable for this Codex chat. You can continue chatting, but browser actions will not work until a new chat starts with a working browser helper.",
+        false,
+    )?))
 }

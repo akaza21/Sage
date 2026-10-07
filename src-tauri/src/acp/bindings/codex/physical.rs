@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use super::manifest::{MetadataValidatedPacket, Platform};
 
 #[cfg(windows)]
-#[path = "physical/windows.rs"]
 mod windows;
 
 const PACKAGE_ENTRY_MAX: usize = 64;
@@ -279,7 +278,6 @@ fn hex_nibble(value: u8) -> Result<u8, PhysicalInspectionError> {
 }
 
 #[cfg(all(test, windows))]
-#[path = "physical/tests.rs"]
 mod tests;
 
 #[cfg(all(test, not(windows)))]

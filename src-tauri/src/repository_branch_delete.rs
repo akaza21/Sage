@@ -1,8 +1,6 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository,
+    git_budget, repository,
     repository_branches::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, list_local_branches, named_branch,
         valid_branch_name,
@@ -10,7 +8,6 @@ use crate::{
     workspace::Workspace,
 };
 
-const GIT_DELETE_BRANCH_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_GIT_DELETE_BRANCH_OUTPUT_BYTES: usize = 64 * 1024;
 
 pub(crate) fn admit_listed_local_branch_delete<'a>(
@@ -55,7 +52,7 @@ pub(crate) async fn delete_listed_local_branch(
     delete_listed_local_branch_with_policy(
         workspace,
         requested,
-        repository::GitProcessPolicy::mutation(GIT_DELETE_BRANCH_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }

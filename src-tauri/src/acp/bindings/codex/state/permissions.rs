@@ -4,18 +4,23 @@ use crate::acp::{
 
 use super::{
     AdapterError, CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestEntry,
+    PermissionRequestParams,
 };
 
 impl CodexAdapter {
     pub(crate) fn register_permission_request(
         &mut self,
-        request_id: &str,
-        fingerprint: u64,
-        method: &str,
-        turn_id: &str,
-        item_id: &str,
-        response: &[u8],
+        params: PermissionRequestParams<'_>,
     ) -> Result<PermissionRegistration, AdapterError> {
+        let PermissionRequestParams {
+            request_id,
+            fingerprint,
+            method,
+            allow_always,
+            turn_id,
+            item_id,
+            response,
+        } = params;
         self.expect_turn(turn_id)?;
         if let Some(existing) = self
             .permission_requests
@@ -26,6 +31,7 @@ impl CodexAdapter {
                 && existing.response.is_empty();
             if existing.fingerprint != fingerprint
                 || existing.method != method
+                || existing.allow_always != allow_always
                 || existing.turn_id != turn_id
                 || existing.item_id != item_id
                 || (!allow_response_queued
@@ -75,6 +81,7 @@ impl CodexAdapter {
             id: request_id.to_owned(),
             fingerprint,
             method: method.to_owned(),
+            allow_always,
             turn_id: turn_id.to_owned(),
             item_id: item_id.to_owned(),
             response: response.to_vec(),
@@ -156,7 +163,10 @@ impl CodexAdapter {
                 entry.state = ServerRequestState::Asked;
                 Ok(None)
             }
-            PermissionDecision::AllowOnce => {
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+                if decision == PermissionDecision::AllowAlways && !entry.allow_always {
+                    return Err(AdapterError::PermissionTeardownRequired);
+                }
                 entry.state = ServerRequestState::AllowPending;
                 entry.state = ServerRequestState::AllowCommitted;
                 let mut value: serde_json::Value = serde_json::from_slice(&entry.response)
@@ -164,7 +174,7 @@ impl CodexAdapter {
                 let result = if entry.method == "item/permissions/requestApproval" {
                     serde_json::json!({"permissions": {}})
                 } else {
-                    serde_json::json!({"decision": "accept"})
+                    serde_json::json!({"decision": if decision == PermissionDecision::AllowAlways { "acceptForSession" } else { "accept" }})
                 };
                 value
                     .as_object_mut()

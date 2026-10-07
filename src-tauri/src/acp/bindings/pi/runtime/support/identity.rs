@@ -255,26 +255,16 @@ pub(super) fn text_payload(value: impl Into<String>) -> NormalizedPayload {
 
 pub(super) fn tool_payload(
     label: impl Into<String>,
-    update: bool,
 ) -> Result<NormalizedPayload, AdapterRuntimeError> {
     let label = SafeText::new("toolLabel", label).map_err(|_| AdapterRuntimeError::Frame)?;
-    Ok(if update {
-        NormalizedPayload::ToolUpdateResult {
-            category: ToolCategory::Other,
-            label,
-            output_summary: None,
-            locations: Default::default(),
-            command_activity: Default::default(),
-        }
-    } else {
-        NormalizedPayload::ToolCall {
-            category: ToolCategory::Other,
-            label,
-            input_summary: None,
-            output_summary: None,
-            locations: Default::default(),
-            command_activity: Default::default(),
-        }
+    Ok(NormalizedPayload::ToolCall {
+        execution: Default::default(),
+        category: ToolCategory::Other,
+        label,
+        input_summary: None,
+        output_summary: None,
+        locations: Default::default(),
+        command_activity: Default::default(),
     })
 }
 

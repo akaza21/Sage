@@ -1,13 +1,42 @@
 import { ChevronRight } from "lucide-react";
 
-import { fileBreadcrumbSegments } from "./editorPathBreadcrumb";
 import { FileKindIcon } from "./FileKindIcon";
 
-export function FilePathChips({ path }: { path: string }) {
-  const segments = fileBreadcrumbSegments(path);
-  if (segments.length === 0) {
+export const MAX_BREADCRUMB_PATH_LENGTH = 4096;
+export const MAX_BREADCRUMB_SEGMENTS = 6;
+
+export function fileBreadcrumbSegments(path: string): string[] {
+  if (path.length === 0 || path.length > MAX_BREADCRUMB_PATH_LENGTH) {
+    return [];
+  }
+  const segments = path.split(/[\\/]/).filter((segment) => segment.length > 0);
+  if (segments.length <= MAX_BREADCRUMB_SEGMENTS) {
+    return segments;
+  }
+  return [segments[0]!, "…", ...segments.slice(-(MAX_BREADCRUMB_SEGMENTS - 2))];
+}
+
+export function FilePathChips({
+  path,
+  projectName,
+}: {
+  path: string;
+  projectName?: string;
+}) {
+  const pathSegments = fileBreadcrumbSegments(path);
+  if (pathSegments.length === 0) {
     return <span className="file-breadcrumb__empty">{path}</span>;
   }
+  const segments = projectName
+    ? pathSegments.length < MAX_BREADCRUMB_SEGMENTS
+      ? [projectName, ...pathSegments]
+      : [
+          projectName,
+          pathSegments[0]!,
+          "…",
+          ...pathSegments.slice(-(MAX_BREADCRUMB_SEGMENTS - 3)),
+        ]
+    : pathSegments;
   return (
     <nav className="file-breadcrumb" aria-label="File path">
       {segments.map((segment, index) => {

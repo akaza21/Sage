@@ -405,6 +405,21 @@ describe("live Project workspace notify bind", () => {
     });
   });
 
+  it("identifies the failed close stage without issuing native destroy", async () => {
+    await useWorkbenchStore.getState().initialize();
+    useWorkbenchStore.setState({
+      flushActiveEditor: vi
+        .fn()
+        .mockRejectedValue(new Error("snapshot failed")),
+    });
+    const close = vi.spyOn(projectPort, "persistProjectLayoutAndClose");
+
+    await expect(useWorkbenchStore.getState().closeWorkbench()).rejects.toThrow(
+      "Close editorFlush failed: snapshot failed",
+    );
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it("waits for the latest editor appearance before native close", async () => {
     let finishSave: (() => void) | undefined;
     let finishUnwatch: (() => void) | undefined;

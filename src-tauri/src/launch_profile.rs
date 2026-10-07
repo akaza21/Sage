@@ -13,6 +13,10 @@ use crate::acp::service::{
 const PROFILE_MARKER_NAME: &str = ".sage-disposable-profile-v1";
 const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
 
+#[cfg(all(test, not(target_os = "macos")))]
+#[path = "launch_profile/browser_tests.rs"]
+mod browser_tests;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LaunchProfile {
     Normal {
@@ -205,7 +209,7 @@ fn is_local_absolute(path: &Path) -> bool {
     path.is_absolute()
 }
 
-fn normalize_without_creating(path: &Path) -> io::Result<PathBuf> {
+pub(crate) fn normalize_without_creating(path: &Path) -> io::Result<PathBuf> {
     if !path.is_absolute() {
         return Err(invalid_profile());
     }
@@ -259,7 +263,7 @@ fn open_marker(path: &Path) -> io::Result<File> {
 }
 
 fn require_profile_inventory(root: &Path) -> io::Result<()> {
-    let allowed = [PROFILE_MARKER_NAME, "durable", "webview"];
+    let allowed = [PROFILE_MARKER_NAME, "durable", "webview", "browser"];
     let mut count = 0;
     for entry in fs::read_dir(root)? {
         let entry = entry?;
@@ -290,7 +294,7 @@ fn ensure_plain_child(root: &Path, name: &str) -> io::Result<PathBuf> {
     Ok(canonical)
 }
 
-fn require_plain_directory(path: &Path) -> io::Result<()> {
+pub(crate) fn require_plain_directory(path: &Path) -> io::Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.file_type().is_dir() || is_reparse(&metadata) {
         return Err(invalid_profile());

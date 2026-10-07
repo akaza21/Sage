@@ -16,13 +16,9 @@ const AUTH_URL_BYTES: usize = 16_384;
 const LOGIN_ID_BYTES: usize = 64;
 const AUTH_ERROR_BYTES: usize = 8_192;
 
-#[path = "auth/browser.rs"]
 mod browser;
-#[path = "auth/router.rs"]
 mod router;
-#[path = "auth/runner.rs"]
 mod runner;
-#[path = "auth/transport.rs"]
 mod transport;
 pub(crate) use browser::NativeBrowser;
 pub(crate) use runner::{
@@ -435,5 +431,4 @@ impl crate::acp::bindings::codex::incoming::ResourceMapper for NoResources {
 }
 
 #[cfg(test)]
-#[path = "auth/tests.rs"]
 mod tests;

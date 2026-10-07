@@ -144,6 +144,7 @@ fn running(runtime: &mut PiRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-pi-1").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let value = deliver(runtime, prompt);
@@ -546,6 +547,7 @@ fn text_snapshot_plus_one_poison_and_prompt_rollback_clear_state() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "rollback").expect("prompt"),
             client_message_id: RequiredText::new("client", "rollback-client").expect("client"),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     rollback

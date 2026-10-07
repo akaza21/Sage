@@ -38,6 +38,9 @@ export function StatusBar({
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
   const repositories = useWorkbenchStore((state) => state.repositories);
   const recoveryNotice = useWorkbenchStore((state) => state.recoveryNotice);
+  const browserClearNotice = useWorkbenchStore(
+    (state) => state.browserClearNotice,
+  );
   const tabSize = useEditorAppearanceStore((state) => state.tabSize);
   const caretLabel = caretStatusLabel(
     useEditorCaretStore((state) => state.caret),
@@ -63,10 +66,13 @@ export function StatusBar({
     <footer className="status-bar">
       <div className="status-bar__group">
         <span>
-          <GitBranch size={13} aria-hidden="true" />
+          <GitBranch size={14} aria-hidden="true" />
           {repositoryStatusLabel(repositories)}
         </span>
         {recoveryNotice ? <span role="status">{recoveryNotice}</span> : null}
+        {browserClearNotice ? (
+          <span role="status">{browserClearNotice}</span>
+        ) : null}
       </div>
       <div className="status-bar__group">
         {showEditorSettings && caretLabel ? (

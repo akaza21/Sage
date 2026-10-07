@@ -1,8 +1,12 @@
-import { Search, SquarePen, X, PanelLeftOpen } from "lucide-react";
+import { Search, Settings, SquarePen, X, PanelLeftOpen } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "../features/chatSearch/chatSearchDomain";
+import {
+  shortcutLabel,
+  usesMetaModifier,
+} from "../features/chat/composerChrome";
 import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
 import { CHAT_SEARCH_ALL_FOLDERS_ID } from "../features/chatSearch/chatSearchFanout";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
@@ -21,19 +25,21 @@ import {
   groupAgentRailProjects,
 } from "./agentChatRail";
 import { AgentRailSections } from "./AgentRailSections";
+import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
 import {
   syncAgentRailClock,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
-
 export function LeftSidebar({
   compact = false,
   open = true,
   onOpenChange,
+  onOpenSettings,
 }: {
   compact?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onOpenSettings?: () => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
@@ -41,6 +47,7 @@ export function LeftSidebar({
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
+  const openSettings = useWorkbenchStore((state) => state.openSettings);
   const loadRepositoryInventory = useWorkbenchStore(
     (state) => state.loadRepositoryInventory,
   );
@@ -63,8 +70,11 @@ export function LeftSidebar({
   );
   const [railTick, setRailTick] = useState(0);
   const [query, setQuery] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const wasDrawerOpen = useRef(false);
   const groups = useMemo(
@@ -161,6 +171,16 @@ export function LeftSidebar({
   }, [compact, open]);
 
   useEffect(() => {
+    if (filterOpen) filterInputRef.current?.focus();
+  }, [filterOpen]);
+
+  const closeFilter = () => {
+    setQuery("");
+    setFilterOpen(false);
+    filterTriggerRef.current?.focus();
+  };
+
+  useEffect(() => {
     if (compact && !open && wasDrawerOpen.current) {
       drawerTriggerRef.current?.focus();
     }
@@ -170,61 +190,93 @@ export function LeftSidebar({
   const navigation = (
     <>
       <div className="project-sidebar__actions">
+        <div className="project-sidebar__brand">
+          <strong>Sage</strong>
+          <button
+            ref={filterTriggerRef}
+            type="button"
+            aria-label="Filter tasks"
+            title="Filter tasks"
+            aria-expanded={filterOpen}
+            onClick={() => {
+              if (filterOpen) closeFilter();
+              else setFilterOpen(true);
+            }}
+          >
+            <Search size={15} aria-hidden="true" />
+          </button>
+        </div>
         <button
           className="project-action project-action--primary"
           type="button"
           title="New task"
           aria-label="New task"
+          aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
           onClick={() => void createChat()}
         >
           <SquarePen size={16} aria-hidden="true" />
-          <span>New task</span>
+          <span>New chat</span>
+          <kbd className="project-action__chord">
+            {shortcutLabel("n", usesMetaModifier())}
+          </kbd>
         </button>
-        <div className="agent-rail-search-row">
-          <div className="agent-rail-search">
-            <Search size={14} aria-hidden="true" />
-            <label
-              className="agent-rail-search__label"
-              htmlFor="rail-task-search"
-            >
-              Filter rail tasks
-            </label>
-            <input
-              id="rail-task-search"
-              type="search"
-              aria-label="Search tasks"
-              placeholder="Search tasks…"
-              maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
-              value={query}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-            />
-            {query ? (
-              <button
-                type="button"
-                aria-label="Clear task search"
-                title="Clear task search"
-                onClick={() => setQuery("")}
-              >
-                <X size={12} aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <button
-            ref={searchTriggerRef}
-            className="agent-rail-search-row__global"
-            type="button"
-            aria-label="Search all chats"
-            title="Search all chats"
-            disabled={!project || projectTransitioning}
-            onClick={(event) => {
-              if (!project || projectTransitioning) return;
-              const trigger = event.currentTarget;
-              requestChatSearchInFolder(project.id, () => trigger.focus());
+        {filterOpen ? (
+          <div
+            className="agent-rail-search-row"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                closeFilter();
+              }
             }}
           >
-            <Search size={13} aria-hidden="true" />
-          </button>
-        </div>
+            <div className="agent-rail-search">
+              <Search size={14} aria-hidden="true" />
+              <label
+                className="agent-rail-search__label"
+                htmlFor="rail-task-search"
+              >
+                Filter rail tasks
+              </label>
+              <input
+                ref={filterInputRef}
+                id="rail-task-search"
+                type="search"
+                aria-label="Search tasks"
+                placeholder="Search tasks…"
+                maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
+                value={query}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+              {query ? (
+                <button
+                  type="button"
+                  aria-label="Clear task search"
+                  title="Clear task search"
+                  onClick={() => setQuery("")}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            <button
+              ref={searchTriggerRef}
+              className="agent-rail-search-row__global"
+              type="button"
+              aria-label="Search all chats"
+              title="Search all chats"
+              disabled={!project || projectTransitioning}
+              onClick={(event) => {
+                if (!project || projectTransitioning) return;
+                const trigger = event.currentTarget;
+                requestChatSearchInFolder(project.id, () => trigger.focus());
+              }}
+            >
+              <Search size={14} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="project-sidebar__scroll" data-rail-tick={railTick}>
@@ -256,6 +308,21 @@ export function LeftSidebar({
           <strong>{project?.name ?? "Local"}</strong>
           <span>Local workspace</span>
         </span>
+        <button
+          className="project-sidebar__settings"
+          type="button"
+          title="Open settings"
+          aria-label="Open settings"
+          onClick={() => {
+            if (onOpenSettings) {
+              onOpenSettings();
+              return;
+            }
+            void openSettings();
+          }}
+        >
+          <Settings size={16} aria-hidden="true" />
+        </button>
       </footer>
     </>
   );
@@ -264,6 +331,17 @@ export function LeftSidebar({
     return (
       <aside className="project-sidebar" aria-label="Projects and chats">
         <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
+        <AgentPrimaryNavigation
+          onNewChat={() => void createChat()}
+          onSearch={() => {
+            if (project) requestChatSearchInFolder(project.id);
+          }}
+          onSettings={() => {
+            if (onOpenSettings) onOpenSettings();
+            else void openSettings();
+          }}
+          searchDisabled={!project || projectTransitioning}
+        />
         {navigation}
       </aside>
     );

@@ -1,19 +1,16 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository, repository_branches, repository_conflict,
+    git_budget, repository, repository_branches, repository_conflict,
     workspace::Workspace,
 };
 
-const GIT_PULL_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_GIT_PULL_OUTPUT_BYTES: usize = 64 * 1024;
 
 /// Integrates only a known-behind branch through Git's fast-forward-only mode.
 pub(crate) async fn pull_fast_forward(workspace: &Workspace) -> AppResult<()> {
     pull_fast_forward_with_policy(
         workspace,
-        repository::GitProcessPolicy::mutation(GIT_PULL_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::REMOTE),
     )
     .await
 }

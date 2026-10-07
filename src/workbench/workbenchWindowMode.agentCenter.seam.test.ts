@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import {
   act,
   cleanup,
@@ -17,11 +17,17 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 
 vi.mock("../features/chat/ChatSurface", () => ({
-  ChatSurface: () =>
-    createElement("section", { "aria-label": "Agent chat" }, "Active chat"),
+  ChatSurface: ({ paneHeader }: { paneHeader?: ReactNode }) =>
+    createElement(
+      "section",
+      { "aria-label": "Agent chat" },
+      paneHeader,
+      "Active chat",
+    ),
 }));
 
 let compactViewport = false;
@@ -98,6 +104,16 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
+async function switchWindowMode(mode: "Agent" | "Editor") {
+  fireEvent.click(
+    within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+      "radio",
+      { name: mode },
+    ),
+  );
+  await settleLazyModules();
+}
+
 describe("Agent center workbench window mode seam", () => {
   it("shows Chat in the Agent center without leaking an Editor-opened File into artifacts", async () => {
     const activateTab = vi.fn(async (tabId: string) => {
@@ -129,16 +145,12 @@ describe("Agent center workbench window mode seam", () => {
       activateTab,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
     expect(
       await screen.findByText("Loading src/current.ts…"),
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
     // Agent surfaces are lazy. Settle that module under React act before
     // asserting ownership, rather than relying on suite-load polling.
     await act(async () => {
@@ -178,13 +190,9 @@ describe("Agent center workbench window mode seam", () => {
       createChat,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
       expect(createChat).toHaveBeenCalledTimes(1);
@@ -240,12 +248,14 @@ describe("Agent center workbench window mode seam", () => {
       tabId: "diff:d",
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
     const modeToggle = screen.getByRole("radiogroup", { name: "Window mode" });
     const agentControl = within(modeToggle).getByRole("radio", {
       name: "Agent",
     });
     fireEvent.click(agentControl);
+    await settleLazyModules();
 
     await vi.waitFor(() => {
       expect(screen.getByRole("region", { name: "Agent chat" }));
@@ -256,6 +266,7 @@ describe("Agent center workbench window mode seam", () => {
       screen.getByRole("navigation", { name: "Agent artifact tabs" }),
     );
     fireEvent.click(artifactStrip.getByRole("tab", { name: /changed\.ts/ }));
+    await settleLazyModules();
 
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("diff:d");
@@ -264,6 +275,7 @@ describe("Agent center workbench window mode seam", () => {
     expect(screen.getByRole("region", { name: "Agent chat" }));
 
     fireEvent.click(artifactStrip.getByRole("tab", { name: /current\.ts/ }));
+    await settleLazyModules();
 
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
@@ -300,13 +312,9 @@ describe("Agent center workbench window mode seam", () => {
       createChat,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
     await vi.waitFor(() => {
       expect(
         screen.getByRole("region", { name: "Agent chat" }),
@@ -386,13 +394,9 @@ describe("Agent center workbench window mode seam", () => {
       createChat,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
       expect(createChat).toHaveBeenCalledTimes(1);
@@ -426,13 +430,9 @@ describe("Agent center workbench window mode seam", () => {
       activeTabId: "chat:a",
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
       expect(
@@ -489,31 +489,23 @@ describe("Agent center workbench window mode seam", () => {
       activateTab,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
     expect(
       await screen.findByText("Loading src/current.ts…"),
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
     await vi.waitFor(() => {
       expect(screen.getByRole("region", { name: "Agent chat" }));
     });
 
     fireEvent.click(screen.getByTitle("Open chat B"));
+    await settleLazyModules();
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenCalledWith("chat:b");
     });
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Editor" },
-      ),
-    );
+    await switchWindowMode("Editor");
 
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
@@ -553,13 +545,9 @@ describe("Agent center workbench window mode seam", () => {
       activateTab,
     });
     render(createElement(Workbench));
+    await settleLazyModules();
 
-    fireEvent.click(
-      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
-        "radio",
-        { name: "Agent" },
-      ),
-    );
+    await switchWindowMode("Agent");
 
     await vi.waitFor(() => {
       expect(screen.getByRole("region", { name: "Agent chat" }));

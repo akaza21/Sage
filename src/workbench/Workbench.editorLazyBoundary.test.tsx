@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
 import { Workbench } from "./Workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 
 const runtimeProbe = vi.hoisted(() => ({
   moduleLoaded: vi.fn(),
@@ -122,6 +123,7 @@ it("loads editor runtime only for an active File and destroys it on return to Ch
   expect(runtimeProbe.create).not.toHaveBeenCalled();
 
   act(() => useWorkbenchStore.setState({ activeTabId: "file:lazy" }));
+  await settleLazyModules();
 
   await waitFor(() => expect(runtimeProbe.moduleLoaded).toHaveBeenCalledOnce());
   expect(runtimeProbe.create).toHaveBeenCalledOnce();

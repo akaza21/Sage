@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 mod diagnostic;
+mod exit;
 mod handoff;
 
 use crate::acp::{
@@ -13,17 +14,18 @@ use diagnostic::safe_frame_diagnostic;
 use super::types::tree_exit;
 use super::{
     ControlMessage, DispatchSource, DriverClock, DriverMailbox, DriverProgress,
-    FirstDeliveryUnknown, ProcessTreeControl, ReaderTerminal, StdinTransport, TeardownCause,
+    FirstDeliveryUnknown, PendingExit, ProcessTreeControl, ReaderTerminal, StdinTransport,
+    TeardownCause,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum State {
     Running,
     ProjectionRecovery,
     Teardown(TeardownCause),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ActivationDriverError {
     #[error("the activation owner or runtime epoch is stale")]
     IdentityMismatch,
@@ -63,6 +65,7 @@ where
     clock: Arc<dyn DriverClock>,
     state: State,
     first_delivery_unknown: Option<FirstDeliveryUnknown>,
+    pending_exit: Option<PendingExit>,
 }
 
 pub(crate) type RetainedActivationDriverConstruction<A, J, R, T, C> = Result<
@@ -122,12 +125,15 @@ where
             clock,
             state: State::Running,
             first_delivery_unknown: None,
+            pending_exit: None,
         })
     }
 
     pub(crate) fn fail_before_runner(&mut self) {
         if matches!(self.state, State::Running) {
-            let _ = self.latch(TeardownCause::HostTermination);
+            let _ = self
+                .latch_pending_exit()
+                .unwrap_or_else(|| self.latch(TeardownCause::HostTermination));
         }
     }
 
@@ -168,10 +174,15 @@ where
         mailbox: &DriverMailbox,
     ) -> Result<DriverProgress, ActivationDriverError> {
         self.ensure_running()?;
+        self.settle_due_exit(self.clock.now_millis())?;
         let message = mailbox
-            .wait_next_until(None, self.clock.as_ref())
+            .wait_next_until(self.pending_exit_deadline_millis(), self.clock.as_ref())
             .map_err(|_| ActivationDriverError::Mailbox)?
-            .ok_or(ActivationDriverError::Mailbox)?;
+            .ok_or_else(|| {
+                self.settle_due_exit(self.clock.now_millis())
+                    .err()
+                    .unwrap_or(ActivationDriverError::Mailbox)
+            })?;
         self.dispatch(message, mailbox, self.clock.now_millis())
             .await
     }
@@ -209,25 +220,35 @@ where
             }
             ControlMessage::ReaderTerminal(ReaderTerminal::Eof) => {
                 self.finish_stdout(now_millis).await?;
-                self.log_startup_failure(
-                    "activation.dispatch.reader_eof",
-                    &ActivationDriverError::TeardownRequired(TeardownCause::ReaderEof),
-                );
-                Err(self.latch(TeardownCause::ReaderEof))
+                if let Some(error) = self.latch_pending_exit() {
+                    self.log_startup_failure("activation.dispatch.reader_eof", &error);
+                    return Err(error);
+                }
+                self.record_reader_eof(now_millis);
+                Ok(DriverProgress::default())
             }
             ControlMessage::ReaderTerminal(ReaderTerminal::Io) => {
+                if let Some(error) = self.latch_pending_exit() {
+                    self.log_startup_failure("activation.dispatch.reader_io", &error);
+                    return Err(error);
+                }
                 self.log_startup_failure(
                     "activation.dispatch.reader_io",
                     &ActivationDriverError::TeardownRequired(TeardownCause::ReaderIo),
                 );
                 Err(self.latch(TeardownCause::ReaderIo))
             }
-            ControlMessage::ProcessExit(_) => {
-                self.log_startup_failure(
-                    "activation.dispatch.process_exit",
-                    &ActivationDriverError::TeardownRequired(TeardownCause::ProcessExit),
-                );
-                Err(self.latch(TeardownCause::ProcessExit))
+            ControlMessage::ProcessExit(exit) => {
+                let reader_eof_pending = self
+                    .pending_exit
+                    .is_some_and(|pending| pending.exit.is_none());
+                self.record_exit(exit, now_millis);
+                if reader_eof_pending {
+                    return Err(self
+                        .latch_pending_exit()
+                        .unwrap_or_else(|| self.latch(TeardownCause::ProcessExit)));
+                }
+                Ok(DriverProgress::default())
             }
         }
     }
@@ -289,8 +310,8 @@ where
         while let Some(control) = mailbox.try_pop_control() {
             match control {
                 ControlMessage::Cancel(_) => progress.rejected_controls += 1,
-                ControlMessage::ProcessExit(_) => {
-                    return Err(self.latch(TeardownCause::ProcessExit));
+                ControlMessage::ProcessExit(exit) => {
+                    self.record_exit(exit, self.clock.now_millis());
                 }
                 ControlMessage::ReaderTerminal(_) | ControlMessage::StdoutChunk(_) => {
                     return Err(self.latch(TeardownCause::ProtocolFailure));
@@ -318,7 +339,9 @@ where
                     self.first_delivery_unknown = Some(FirstDeliveryUnknown {
                         source: DispatchSource::Activation,
                     });
-                    return Err(self.latch(TeardownCause::DeliveryUnknown));
+                    return Err(self
+                        .latch_pending_exit()
+                        .unwrap_or_else(|| self.latch(TeardownCause::DeliveryUnknown)));
                 }
                 Err(error) => return Err(self.pump_error(error)),
             }
@@ -326,6 +349,9 @@ where
     }
 
     fn pump_error(&mut self, error: ActivationPumpError) -> ActivationDriverError {
+        if let Some(error) = self.latch_pending_exit() {
+            return error;
+        }
         if matches!(
             error,
             ActivationPumpError::BootstrapRequired | ActivationPumpError::RecoveryRequired
@@ -336,6 +362,9 @@ where
         self.latch(match error {
             ActivationPumpError::Frame | ActivationPumpError::Intent => {
                 TeardownCause::ProtocolFailure
+            }
+            ActivationPumpError::RefusedVersion(observed) => {
+                TeardownCause::RefusedVersion { observed }
             }
             ActivationPumpError::Adapter(
                 crate::acp::bindings::adapter::AdapterRuntimeError::MandatoryDenyTeardown,
@@ -367,16 +396,21 @@ where
         match self.state {
             State::Running => Ok(()),
             State::ProjectionRecovery => Err(ActivationDriverError::ProjectionRecoveryRequired),
-            State::Teardown(cause) => Err(ActivationDriverError::TeardownRequired(cause)),
+            State::Teardown(ref cause) => {
+                Err(ActivationDriverError::TeardownRequired(cause.clone()))
+            }
         }
     }
 
     fn latch(&mut self, cause: TeardownCause) -> ActivationDriverError {
+        if let Some(error) = self.latch_pending_exit() {
+            return error;
+        }
         if matches!(self.state, State::Running) {
             self.pump.force_teardown();
             self.transport.close();
-            let _ = self.control.request_termination(tree_exit(cause));
-            self.state = State::Teardown(cause);
+            let _ = self.control.request_termination(tree_exit(cause.clone()));
+            self.state = State::Teardown(cause.clone());
         }
         ActivationDriverError::TeardownRequired(cause)
     }

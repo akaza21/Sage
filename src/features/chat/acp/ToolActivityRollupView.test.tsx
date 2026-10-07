@@ -6,6 +6,8 @@ import { ToolActivityRollup } from "./ToolActivityRollupView";
 import {
   groupPrimaryActivities,
   toolRollupLabel,
+  toolRollupDurationLabel,
+  toolRollupLeadDetail,
   toolRollupState,
 } from "./toolActivityRollup";
 
@@ -19,33 +21,64 @@ function tool(
   resources: readonly SafeResourceLocation[] = [],
 ): ToolItem {
   const presentation =
-    kind === "file" || kind === "diff"
+    kind === "read" || kind === "edit" || kind === "delete"
       ? { kind, label: `${kind} activity`, resources }
-      : kind === "command"
+      : kind === "move"
         ? {
             kind,
-            label: "Command activity",
-            summary: null,
-            resources: [],
-            activity: "ordinary" as const,
+            label: "Move activity",
+            resources,
+            originalResources: [],
           }
-        : kind === "search"
+        : kind === "execute"
           ? {
               kind,
-              label: "Search activity",
-              querySummary: "needle",
+              label: "Command activity",
+              summary: null,
+              cwd: null,
+              exitCode: null,
+              outputTail: null,
+              outputTruncated: false,
               resources: [],
+              activity: "ordinary" as const,
             }
-          : kind === "mcp"
+          : kind === "search"
             ? {
                 kind,
-                label: "MCP activity",
-                serverLabel: "server",
-                toolLabel: "tool",
+                label: "Search activity",
+                querySummary: "needle",
+                resources: [],
+                matchCount: null,
+                truncated: false,
               }
-            : kind === "subagent"
-              ? { kind, label: "Subagent activity", activityId: null }
-              : { kind, label: `${kind} activity`, summary: null };
+            : kind === "mcp"
+              ? {
+                  kind,
+                  label: "MCP activity",
+                  serverLabel: "server",
+                  toolLabel: "tool",
+                  argumentsSummary: null,
+                  resultSummary: null,
+                }
+              : kind === "subagent"
+                ? { kind, label: "Subagent activity", activityId: null }
+                : kind === "fetch"
+                  ? { kind, label: "Web activity", url: null, summary: null }
+                  : kind === "switchMode"
+                    ? {
+                        kind,
+                        label: "Mode activity",
+                        modeId: null,
+                        modeLabel: null,
+                      }
+                    : kind === "think"
+                      ? { kind, label: "Thinking", summary: null }
+                      : {
+                          kind,
+                          label: `${kind} activity`,
+                          rawKind: null,
+                          summary: null,
+                        };
   return {
     id,
     projectId: "project-1",
@@ -89,75 +122,204 @@ const unavailableFile: SafeResourceLocation = {
 };
 
 describe("ToolActivityRollup", () => {
-  it("groups only consecutive presentation kinds and bounds a group", () => {
+  it("groups adjacent completed tools in order and bounds a group", () => {
     const items = [
-      tool("file-1", "file"),
-      tool("file-2", "file"),
-      tool("command", "command"),
-      tool("file-3", "file"),
+      tool("file-1", "read"),
+      tool("file-2", "read"),
+      tool("command", "execute"),
+      tool("file-3", "read"),
     ];
     const grouped = groupPrimaryActivities(items);
 
-    expect(grouped).toHaveLength(3);
+    expect(grouped).toHaveLength(1);
     expect(grouped[0]).toMatchObject({
       kind: "toolRollup",
-      rollup: { kind: "file", items: [{ id: "file-1" }, { id: "file-2" }] },
+      rollup: {
+        kind: "mixed",
+        items: [
+          { id: "file-1" },
+          { id: "file-2" },
+          { id: "command" },
+          { id: "file-3" },
+        ],
+      },
     });
-    expect(grouped[1]).toMatchObject({ kind: "item", item: { id: "command" } });
-    expect(grouped[2]).toMatchObject({ kind: "item", item: { id: "file-3" } });
+    const bounded = groupPrimaryActivities(
+      Array.from({ length: 65 }, (_, index) => tool(`file-${index}`, "read")),
+    );
+    expect(bounded).toHaveLength(2);
+    expect(
+      bounded[0].kind === "toolRollup" && bounded[0].rollup.items,
+    ).toHaveLength(64);
+    expect(bounded[1]).toMatchObject({
+      kind: "toolRollup",
+      rollup: { items: [{ id: "file-64" }] },
+    });
+  });
+
+  it("gives singleton edit, command, and read activity compact disclosures", () => {
+    for (const [kind, item] of [
+      ["edit", tool("edit-one", "edit", [mainFile])],
+      ["execute", tool("command-one", "execute")],
+      ["read", tool("read-one", "read", [otherFile])],
+    ] as const) {
+      expect(groupPrimaryActivities([item])).toMatchObject([
+        { kind: "toolRollup", rollup: { kind, items: [{ id: item.id }] } },
+      ]);
+    }
+  });
+
+  it("keeps a single MCP call in a collapsed row named for its server and tool", () => {
+    const mcp = tool("mcp-one", "mcp");
+    expect(groupPrimaryActivities([mcp])).toMatchObject([
+      {
+        kind: "toolRollup",
+        rollup: { kind: "mcp", items: [{ id: "mcp-one" }] },
+      },
+    ]);
+    render(
+      <ToolActivityRollup
+        rollup={{ kind: "mcp", commandActivity: "ordinary", items: [mcp] }}
+        interactive
+      />,
+    );
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    expect(row).not.toHaveAttribute("open");
+    expect(row?.querySelector("summary")).toHaveTextContent("server · tool");
+    expect(screen.queryByRole("group", { name: "MCP activity" })).toBeNull();
   });
 
   it("counts distinct resource identities for complete file and diff groups", () => {
     const repeatedFile = [
-      tool("file-1", "file", [mainFile]),
-      tool("file-2", "file", [mainFile]),
-      tool("file-3", "file", [mainFile]),
+      tool("file-1", "read", [mainFile]),
+      tool("file-2", "read", [mainFile]),
+      tool("file-3", "read", [mainFile]),
     ];
 
-    expect(toolRollupLabel("file", repeatedFile)).toBe(
-      "File activity · 1 file",
-    );
+    expect(toolRollupLabel("read", repeatedFile)).toBe("Explored 1 file");
     expect(
-      toolRollupLabel("diff", [
-        tool("diff-1", "diff", [mainFile]),
-        tool("diff-2", "diff", [samePathOtherRoot]),
+      toolRollupLabel("edit", [
+        tool("diff-1", "edit", [mainFile]),
+        tool("diff-2", "edit", [samePathOtherRoot]),
       ]),
-    ).toBe("Diff activity · 2 files");
+    ).toBe("Edited 2 files");
   });
 
   it("keeps item counts when a group has no locations", () => {
-    const items = [tool("file-1", "file"), tool("file-2", "file")];
+    const items = [tool("file-1", "read"), tool("file-2", "read")];
 
-    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
   });
 
   it("keeps item counts for mixed location coverage", () => {
-    const items = [tool("file-1", "file", [mainFile]), tool("file-2", "file")];
+    const items = [tool("file-1", "read", [mainFile]), tool("file-2", "read")];
 
-    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
   });
 
   it("keeps item counts when a location is unavailable", () => {
     const items = [
-      tool("file-1", "file", [mainFile]),
-      tool("file-2", "file", [unavailableFile]),
+      tool("file-1", "read", [mainFile]),
+      tool("file-2", "read", [unavailableFile]),
     ];
 
-    expect(toolRollupLabel("file", items)).toBe("File activity · 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
+  });
+
+  it("does not imply one known file in a mixed row with unknown locations", () => {
+    const command = tool("command", "execute");
+    const { rerender } = render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "mixed",
+          commandActivity: "ordinary",
+          items: [tool("edit-unknown", "edit"), command],
+        }}
+        interactive
+      />,
+    );
+    expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
+      "Edited files, ran commands",
+    );
+
+    rerender(
+      <ToolActivityRollup
+        rollup={{
+          kind: "mixed",
+          commandActivity: "ordinary",
+          items: [tool("read-unavailable", "read", [unavailableFile]), command],
+        }}
+        interactive
+      />,
+    );
+    expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
+      "Read files, ran commands",
+    );
   });
 
   it("uses call counts for ordinary commands", () => {
-    expect(toolRollupLabel("command", [tool("command", "command")])).toBe(
-      "Ran 1 command",
+    expect(toolRollupLabel("execute", [tool("command", "execute")])).toBe(
+      "Ran commands",
     );
+  });
+
+  it("shows one muted live command row with its command before expansion", () => {
+    const command: ToolItem = {
+      ...tool("live-command", "execute"),
+      lifecycle: "streaming",
+      toolState: "inProgress",
+      terminalAt: null,
+      payload: {
+        presentation: {
+          kind: "execute",
+          label: "Run command",
+          summary: "powershell -NoProfile -File build.ps1",
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
+          resources: [],
+          activity: "ordinary",
+        },
+        inputSummary: null,
+      },
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [command],
+        }}
+        interactive
+      />,
+    );
+
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    const summary = row?.querySelector("summary");
+    expect(row).not.toHaveAttribute("open");
+    expect(summary).toHaveTextContent(
+      "Running powershell -NoProfile -File build.ps1",
+    );
+    expect(
+      summary?.querySelectorAll('svg[data-activity-icon="execute"]'),
+    ).toHaveLength(1);
+    expect(summary?.querySelector(".acp-tool-rollup__working")).toBeNull();
+    expect(screen.queryByText("In progress")).toBeNull();
+    fireEvent.click(summary!);
+    expect(row).toHaveAttribute("open");
   });
 
   it("rolls up a declared test singleton without a pass count", () => {
     const test = {
-      ...tool("test", "command"),
+      ...tool("test", "execute"),
       payload: {
         presentation: {
-          kind: "command" as const,
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
           label: "Command activity",
           summary: null,
           resources: [],
@@ -171,21 +333,25 @@ describe("ToolActivityRollup", () => {
     expect(grouped).toMatchObject([
       {
         kind: "toolRollup",
-        rollup: { kind: "command", commandActivity: "declaredTest" },
+        rollup: { kind: "execute", commandActivity: "declaredTest" },
       },
     ]);
-    expect(toolRollupLabel("command", [test], "declaredTest")).toBe(
+    expect(toolRollupLabel("execute", [test], "declaredTest")).toBe(
       "Ran tests",
     );
   });
 
   it("shows a failed declared-test rollup without a false success meaning", () => {
     const failed = {
-      ...tool("failed-test", "command"),
+      ...tool("failed-test", "execute"),
       toolState: "failed" as const,
       payload: {
         presentation: {
-          kind: "command" as const,
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
           label: "Command activity",
           summary: null,
           resources: [],
@@ -197,26 +363,29 @@ describe("ToolActivityRollup", () => {
     render(
       <ToolActivityRollup
         rollup={{
-          kind: "command",
+          kind: "execute",
           commandActivity: "declaredTest",
           items: [failed],
         }}
-        linkedResults={new Map()}
         interactive
       />,
     );
 
     expect(screen.getByText("Ran tests")).toBeVisible();
-    expect(screen.getByText("Failed · Show")).toBeVisible();
+    expect(screen.getByText("Failed")).toBeVisible();
   });
 
   it("keeps declared tests separate from ordinary command groups", () => {
-    const ordinary = tool("ordinary", "command");
+    const ordinary = tool("ordinary", "execute");
     const declared = {
-      ...tool("test", "command"),
+      ...tool("test", "execute"),
       payload: {
         presentation: {
-          kind: "command" as const,
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
           label: "Command activity",
           summary: null,
           resources: [],
@@ -228,8 +397,8 @@ describe("ToolActivityRollup", () => {
     const grouped = groupPrimaryActivities([ordinary, declared]);
     expect(grouped).toHaveLength(2);
     expect(grouped[0]).toMatchObject({
-      kind: "item",
-      item: { id: "ordinary" },
+      kind: "toolRollup",
+      rollup: { commandActivity: "ordinary", items: [{ id: "ordinary" }] },
     });
     expect(grouped[1]).toMatchObject({
       kind: "toolRollup",
@@ -239,39 +408,43 @@ describe("ToolActivityRollup", () => {
 
   it("reflects failed, declined, cancelled, or active members in the rollup state", () => {
     const failed = {
-      ...tool("failed", "command"),
+      ...tool("failed", "execute"),
       toolState: "failed" as const,
     };
     const active = {
-      ...tool("active", "command"),
+      ...tool("active", "execute"),
       toolState: "inProgress" as const,
     };
     const declined = {
-      ...tool("declined", "command"),
+      ...tool("declined", "execute"),
       toolState: "declined" as const,
     };
     const cancelled = {
-      ...tool("cancelled", "command"),
+      ...tool("cancelled", "execute"),
       toolState: "cancelled" as const,
     };
-    expect(toolRollupState([failed, tool("completed", "command")])).toBe(
+    expect(toolRollupState([failed, tool("completed", "execute")])).toBe(
       "failed",
     );
-    expect(toolRollupState([active, tool("completed", "command")])).toBe(
+    expect(toolRollupState([active, tool("completed", "execute")])).toBe(
       "inProgress",
     );
-    expect(toolRollupState([declined, tool("completed", "command")])).toBe(
+    expect(toolRollupState([declined, tool("completed", "execute")])).toBe(
       "declined",
     );
-    expect(toolRollupState([cancelled, tool("completed", "command")])).toBe(
+    expect(toolRollupState([cancelled, tool("completed", "execute")])).toBe(
       "cancelled",
     );
 
     const declared = {
-      ...tool("declared", "command"),
+      ...tool("declared", "execute"),
       payload: {
         presentation: {
-          kind: "command" as const,
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
           label: "Command activity",
           summary: null,
           resources: [],
@@ -291,17 +464,190 @@ describe("ToolActivityRollup", () => {
     ).toBe("cancelled");
   });
 
-  it("expands into the existing ToolItem cards", () => {
-    const first = tool("file-1", "file", [mainFile]);
-    const second = tool("file-2", "file", [otherFile]);
+  it("keeps command details inside the expanded activity row", () => {
+    const first = {
+      ...tool("command-1", "execute"),
+      payload: {
+        presentation: {
+          kind: "execute" as const,
+          cwd: null,
+          exitCode: null,
+          outputTail: null,
+          outputTruncated: false,
+          label: "Command activity",
+          summary: "npm run build",
+          resources: [],
+          activity: "ordinary" as const,
+        },
+        inputSummary: null,
+      },
+    };
     render(
       <ToolActivityRollup
         rollup={{
-          kind: "file",
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [first, tool("command-2", "execute")],
+        }}
+        interactive
+      />,
+    );
+
+    const disclosure =
+      document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(screen.getByText("Ran commands")).toBeVisible();
+    expect(screen.queryByText("npm run build")).toBeNull();
+    if (!disclosure) throw new Error("Expected the tool rollup disclosure");
+
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+
+    expect(screen.getByText("npm run build")).toBeVisible();
+  });
+
+  it("uses concise activity labels with semantic icons", () => {
+    const { rerender } = render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "edit",
+          commandActivity: "ordinary",
+          items: [tool("file-1", "edit", [mainFile])],
+        }}
+        interactive
+      />,
+    );
+
+    expect(screen.getByText("Edited 1 file")).toBeVisible();
+    expect(document.querySelector('[data-activity-icon="edit"]')).toBeVisible();
+
+    rerender(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [tool("command-1", "execute")],
+        }}
+        interactive
+      />,
+    );
+
+    expect(screen.getByText("Ran commands")).toBeVisible();
+    expect(
+      document.querySelector('[data-activity-icon="execute"]'),
+    ).toBeVisible();
+  });
+
+  it("omits a lead detail that repeats the rollup label or is absent", () => {
+    expect(
+      toolRollupLeadDetail("Read activity · 2 items", [
+        {
+          ...tool("file-1", "read"),
+          payload: {
+            presentation: {
+              kind: "read" as const,
+              label: "   ",
+              resources: [],
+            },
+            inputSummary: null,
+          },
+        },
+      ]),
+    ).toBeNull();
+    expect(toolRollupLeadDetail("Ran commands", [])).toBeNull();
+    expect(
+      toolRollupLeadDetail("Command activity", [tool("command", "execute")]),
+    ).toBeNull();
+  });
+
+  it("summarises non-command leads without hiding unknown kinds", () => {
+    expect(
+      toolRollupLeadDetail("Search activity · 1 item", [
+        tool("search", "search"),
+      ]),
+    ).toBe("needle");
+    expect(
+      toolRollupLeadDetail("MCP activity · 1 item", [tool("mcp", "mcp")]),
+    ).toBe("server · tool");
+    expect(
+      toolRollupLeadDetail("Tool activity · 1 item", [
+        tool("generic", "other"),
+      ]),
+    ).toBe("other activity");
+  });
+
+  it("keeps a generic write projection out of the edited-file rollup", () => {
+    const genericWrite = tool("write-generic", "other");
+    expect(toolRollupLabel("other", [genericWrite])).toBe(
+      "Tool activity · 1 item",
+    );
+  });
+
+  it("names a schema-defined context compaction as one muted activity row", () => {
+    const compaction = {
+      ...tool("compaction-1", "other"),
+      payload: {
+        presentation: {
+          kind: "other" as const,
+          rawKind: null,
+          label: "Context automatically compacted",
+          summary: null,
+        },
+        inputSummary: null,
+      },
+    };
+    expect(toolRollupLabel("other", [compaction])).toBe(
+      "Context automatically compacted",
+    );
+    expect(groupPrimaryActivities([compaction])).toMatchObject([
+      { kind: "toolRollup", rollup: { items: [{ id: "compaction-1" }] } },
+    ]);
+  });
+
+  it("reports a rollup total duration instead of a wall-clock time", () => {
+    const first = {
+      ...tool("command-1", "execute"),
+      createdAt: 1_000,
+      terminalAt: 3_000,
+    };
+    const second = {
+      ...tool("command-2", "execute"),
+      createdAt: 3_000,
+      terminalAt: 9_500,
+    };
+
+    expect(toolRollupDurationLabel([first, second])).toBe("9s");
+    expect(
+      toolRollupDurationLabel([first, { ...second, terminalAt: null }]),
+    ).toBeNull();
+    expect(toolRollupDurationLabel([])).toBeNull();
+
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
           commandActivity: "ordinary",
           items: [first, second],
         }}
-        linkedResults={new Map()}
+        interactive
+      />,
+    );
+
+    const meta = document.querySelector(".acp-tool-rollup__meta");
+    expect(meta?.querySelector("time")).toBeNull();
+    expect(meta).toHaveTextContent("9s");
+  });
+
+  it("expands into the existing ToolItem cards", () => {
+    const first = tool("file-1", "read", [mainFile]);
+    const second = tool("file-2", "read", [otherFile]);
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "read",
+          commandActivity: "ordinary",
+          items: [first, second],
+        }}
         interactive
       />,
     );
@@ -310,7 +656,7 @@ describe("ToolActivityRollup", () => {
       document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(disclosure).not.toBeNull();
     expect(disclosure).not.toHaveAttribute("open");
-    expect(screen.queryByRole("group", { name: "file activity" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "read activity" })).toBeNull();
     if (!disclosure) throw new Error("Expected the tool rollup disclosure");
 
     disclosure.open = true;
@@ -319,8 +665,10 @@ describe("ToolActivityRollup", () => {
     expect(disclosure.open).toBe(true);
     expect(disclosure).toHaveAttribute("open");
     expect(
-      screen.getAllByRole("group", { name: "file activity" }),
+      screen.getAllByRole("group", { name: "read activity" }),
     ).toHaveLength(2);
-    expect(screen.getByText("Completed · Hide")).toBeVisible();
+    expect(disclosure.querySelector("summary .acp-state")).toHaveTextContent(
+      "Completed",
+    );
   });
 });

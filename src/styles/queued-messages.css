@@ -1,0 +1,114 @@
+.composer__queued {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+  display: grid;
+  max-height: min(320px, 40vh);
+  gap: var(--space-1);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.composer__queued-row {
+  display: flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-plane-raised);
+  font-size: var(--font-size-sm);
+}
+
+.composer__queued-thumbnail {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--composer-fill);
+}
+
+.composer__queued-attachment {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 120px;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.composer__queued-attachment .composer__queued-thumbnail {
+  color: var(--color-accent);
+}
+
+.composer__queued-cue {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__queued-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__queued-state {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.composer__queued-row button,
+.composer__queued-options summary {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer__queued-row .composer__queued-steer {
+  width: auto;
+  padding: 0 var(--space-2);
+  color: var(--color-text-primary);
+}
+
+.composer__queued-options {
+  position: relative;
+}
+
+.composer__queued-options summary {
+  list-style: none;
+}
+
+.composer__queued-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.composer__queued-options > button {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 100%;
+  width: max-content;
+  min-width: 120px;
+  padding: var(--space-2);
+  border: 1px solid var(--composer-border);
+  background: var(--color-plane-raised);
+}

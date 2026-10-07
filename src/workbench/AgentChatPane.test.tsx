@@ -53,7 +53,16 @@ vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
 }));
 
 vi.mock("./surfaceRegistry", () => ({
-  renderRegisteredCanvas: () => <div>focused chat</div>,
+  renderRegisteredCanvas: (
+    _kind: string,
+    _tab: WorkbenchTab,
+    options: { paneHeader?: React.ReactNode } = {},
+  ) => (
+    <div className="surface-header">
+      {options.paneHeader}
+      <span>focused chat</span>
+    </div>
+  ),
 }));
 
 beforeEach(() => {

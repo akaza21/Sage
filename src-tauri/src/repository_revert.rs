@@ -1,6 +1,6 @@
 use crate::{
     error::{AppError, AppResult},
-    repository, repository_conflict,
+    git_budget, repository, repository_conflict,
     workspace::Workspace,
 };
 
@@ -9,7 +9,7 @@ const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
 pub(crate) async fn continue_revert(workspace: &Workspace) -> AppResult<()> {
     continue_revert_with_policy(
         workspace,
-        repository::GitProcessPolicy::mutation(std::time::Duration::from_secs(3)),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }
@@ -72,7 +72,7 @@ pub(crate) async fn continue_revert_with_policy(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command, time::Duration};
+    use std::{fs, path::Path, process::Command};
 
     use uuid::Uuid;
 
@@ -171,7 +171,7 @@ mod tests {
                 &resource,
                 &change,
                 GitFileMutationAction::KeepOurs,
-                repository::GitProcessPolicy::mutation(Duration::from_secs(3)),
+                repository::GitProcessPolicy::mutation(crate::test_wait::BUDGET),
             ))
             .unwrap();
         assert_eq!(
@@ -192,7 +192,7 @@ mod tests {
                 &resource,
                 &change,
                 GitFileMutationAction::KeepOurs,
-                repository::GitProcessPolicy::mutation(Duration::from_secs(3)),
+                repository::GitProcessPolicy::mutation(crate::test_wait::BUDGET),
             ))
             .unwrap();
         runtime.block_on(continue_revert(&workspace)).unwrap();

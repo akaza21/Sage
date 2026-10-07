@@ -26,7 +26,7 @@ const listenMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
-import { AcpDesktopError, acpDesktop } from "./acpDesktop";
+import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
 
 const request: StartAcpSessionRequest = {
   projectId: "project-a" as SageProjectId,
@@ -61,6 +61,35 @@ const cancelRequest: CancelAcpTurnRequest = {
   expectedTurnState: "running",
   expectedTurnRevision: "1" as EntityRevision,
 };
+
+describe("safeFailure", () => {
+  it("preserves the distinct Steer outcome unknown conflict", () => {
+    expect(
+      safeFailure({
+        kind: "conflict",
+        resource: "steerOutcomeUnknown",
+        message: "The message may have been delivered.",
+      }),
+    ).toEqual({
+      kind: "conflict",
+      resource: "steerOutcomeUnknown",
+      message: "The message may have been delivered.",
+    });
+  });
+  it("preserves a nonfatal sign-in refusal from the native command", () => {
+    expect(
+      safeFailure({
+        kind: "signInRequired",
+        message: "The harness requires sign-in before it can continue.",
+        promptDispatch: "unknown",
+      }),
+    ).toEqual({
+      kind: "signInRequired",
+      message: "The harness requires sign-in before it can continue.",
+      promptDispatch: "unknown",
+    });
+  });
+});
 const closeRequest: CloseAcpSessionRequest = sessionRequest;
 
 function setDesktopRuntime(active: boolean): void {
@@ -271,6 +300,29 @@ describe("ACP desktop bridge", () => {
       account: "signedOut",
       models: [],
       defaultModelId: null,
+    });
+  });
+
+  it("accepts a provider-managed discovery projection", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockResolvedValue({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "providerManaged",
+      models: [
+        { id: "provider-model", name: "Provider model", isDefault: true },
+      ],
+      defaultModelId: "provider-model",
+    });
+
+    await expect(
+      acpDesktop.discoverCodex(discoveryRequest),
+    ).resolves.toMatchObject({
+      account: "providerManaged",
+      defaultModelId: "provider-model",
     });
   });
 

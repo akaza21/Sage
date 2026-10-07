@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { useStore } from "zustand";
 
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
+import { useSessionAccessModeStore } from "../../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../../app/store";
-import type { DiffLineCommentContext } from "../../../domain/attachedContext";
+import type { AttachedContext } from "../../../domain/attachedContext";
 import type {
+  AcpCommandFailure,
   CuratedBindingId,
   CuratedModelId,
   ProjectGeneration,
@@ -73,6 +75,13 @@ export function useAcpChatActions(boundChatId?: string | null) {
       ? (state.chatUiById[boundChatId]?.error ?? null)
       : state.chatError,
   );
+  const errorKind = useWorkbenchStore((state) =>
+    boundChatId
+      ? (state.chatUiById[boundChatId]?.errorKind ?? null)
+      : state.activeTabId
+        ? (state.chatUiById[state.activeTabId]?.errorKind ?? null)
+        : null,
+  );
   const modeError = useWorkbenchStore((state) => {
     const chatId = boundChatId ?? state.activeTabId;
     return chatId ? (state.chatUiById[chatId]?.modeError ?? null) : null;
@@ -102,6 +111,20 @@ export function useAcpChatActions(boundChatId?: string | null) {
     () =>
       createAcpActionController({
         getContext: () => currentContext(boundChatId),
+        onUnscopedRefusal: (message) => {
+          const workbench = useWorkbenchStore.getState();
+          const ownership = workbench.captureChatOwnership(
+            boundChatId ?? undefined,
+          );
+          if (!ownership) return;
+          const entry = workbench.chatUiById[ownership.chatId];
+          workbench.setChatActionState(ownership, {
+            sending: entry?.sending ?? false,
+            error: message,
+            errorKind: "invalidRequest",
+          });
+        },
+        settleAccessMode: () => useSessionAccessModeStore.getState().settle(),
         applyAuthoritativePage: (scope, authoritativePage) => {
           return acpProjectionStoreFor(boundChatId)
             .getState()
@@ -136,6 +159,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
               : {
                   sending: state.busy,
                   error: state.error?.message ?? null,
+                  errorKind: state.error?.failure.kind ?? null,
                   modeError:
                     workbench.chatUiById[state.scope.chatId]?.modeError ?? null,
                   modeErrorOwner:
@@ -167,24 +191,28 @@ export function useAcpChatActions(boundChatId?: string | null) {
     [boundChatId],
   );
 
-  // Reading the revision makes authoritative mutation responses re-evaluate the
-  // exact cancellable Turn even though the controller itself is deliberately
-  // detached from disposable React rendering state.
   void projectionRevision;
   return {
     busy: sending,
     error: chatError,
+    errorKind,
     modeError: modeOwnerMatches ? modeError : null,
     modeChanging: modeOwnerMatches && modeChanging,
     cancellableTurnId: page ? cancellableTurnId(page) : null,
     submit: (
       prompt: string,
-      attachedContext: readonly DiffLineCommentContext[],
+      attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
     ) => controller.submit(prompt, attachedContext, bindingId, modelId),
+    steer: (
+      prompt: string,
+      attachedContext: readonly AttachedContext[],
+      queuedMessageId?: Parameters<typeof controller.steer>[2],
+    ) => controller.steer(prompt, attachedContext, queuedMessageId),
     cancel: (turnId: SageTurnId) => controller.cancel(turnId),
     close: () => controller.close(),
+    end: () => controller.end(),
     setSessionMode: controller.setSessionMode,
     setSessionConfigOption: controller.setSessionConfigOption,
     clearError: () => {
@@ -195,6 +223,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
         setChatActionState(ownership, {
           sending: entry?.sending ?? false,
           error: null,
+          errorKind: null,
           modeError: entry?.modeError ?? null,
           modeErrorOwner: entry?.modeErrorOwner ?? null,
         });
@@ -205,12 +234,15 @@ export function useAcpChatActions(boundChatId?: string | null) {
   } satisfies {
     busy: boolean;
     error: string | null;
+    errorKind: AcpCommandFailure["kind"] | null;
     modeError: string | null;
     modeChanging: boolean;
     cancellableTurnId: SageTurnId | null;
     submit: typeof controller.submit;
+    steer: typeof controller.steer;
     cancel: typeof controller.cancel;
     close: typeof controller.close;
+    end: typeof controller.end;
     setSessionMode: typeof controller.setSessionMode;
     setSessionConfigOption: typeof controller.setSessionConfigOption;
     clearError: () => void;

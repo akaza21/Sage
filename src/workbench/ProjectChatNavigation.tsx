@@ -169,7 +169,7 @@ export function ProjectChatNavigation({
                 title="Save chat name"
                 disabled={renameSaving}
               >
-                <Check size={13} aria-hidden="true" />
+                <Check size={14} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -178,7 +178,7 @@ export function ProjectChatNavigation({
                 disabled={renameSaving}
                 onClick={() => closeRename(tab.id)}
               >
-                <X size={13} aria-hidden="true" />
+                <X size={14} aria-hidden="true" />
               </button>
               {renameError ? (
                 <span
@@ -260,23 +260,23 @@ export function ProjectChatNavigation({
                     />
                   ) : null}
                 </span>
-                {branchLabel || workspaceLabel ? (
-                  <span className="project-chat__context" aria-hidden="true">
-                    {workspaceLabel ? (
-                      <span className="project-chat__workspace">
-                        {workspaceLabel}
-                      </span>
-                    ) : null}
-                    {branchLabel ? (
-                      <span className="project-chat__git project-chat__git--chip">
-                        <GitBranch size={10} aria-hidden="true" />
-                        {branchLabel}
-                      </span>
-                    ) : null}
+              </span>
+            </button>
+            {branchLabel || workspaceLabel ? (
+              <span className="project-chat__context" aria-hidden="true">
+                {workspaceLabel ? (
+                  <span className="project-chat__workspace">
+                    {workspaceLabel}
+                  </span>
+                ) : null}
+                {branchLabel ? (
+                  <span className="project-chat__git project-chat__git--chip">
+                    <GitBranch size={10} aria-hidden="true" />
+                    {branchLabel}
                   </span>
                 ) : null}
               </span>
-            </button>
+            ) : null}
             <div className="project-chat__trailing">
               {focused && trailingState && trailingState.kind !== "time" ? (
                 <span

@@ -3,12 +3,17 @@ pub(crate) mod acp;
 use tauri::State;
 
 use crate::{
-    domain::{ModelOption, SimulatorTurnResult},
+    domain::{HarnessDefinition, ModelOption, SimulatorTurnResult},
     harnesses::{SIMULATOR_DEFAULT_MODEL_ID, SIMULATOR_ID},
     state::AppState,
 };
 
 const MAX_PROMPT_BYTES: usize = 100_000;
+
+#[tauri::command]
+pub fn list_harnesses(state: State<'_, AppState>) -> Vec<HarnessDefinition> {
+    state.harnesses.definitions()
+}
 
 #[tauri::command]
 pub fn list_harness_models(
@@ -44,6 +49,9 @@ pub async fn send_simulated_prompt(
     if harness_id != SIMULATOR_ID {
         return Err("install and initialize this harness before sending a prompt".into());
     }
+    if !crate::harnesses::SIMULATOR_IN_CATALOG {
+        return Err("the development simulator is not part of this build".into());
+    }
     let advertised_models = state
         .harnesses
         .models(&harness_id)
@@ -65,5 +73,4 @@ pub async fn send_simulated_prompt(
 }
 
 #[cfg(test)]
-#[path = "commands/tests.rs"]
 mod tests;

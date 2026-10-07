@@ -10,6 +10,7 @@ use super::super::{
     TurnMutationCommand,
     facts::{entity_revision_from_i64, projection_from_i64},
     send::{parse_delivery_state, parse_turn_state, transition_turn_in},
+    terminalize::terminalize_turn_descendants,
 };
 
 pub(super) fn apply(
@@ -76,7 +77,7 @@ pub(super) fn apply(
             });
         }
     };
-    transition_turn_in(
+    let mutation = transition_turn_in(
         transaction,
         TurnMutationCommand {
             project_id: owner.project_id.clone(),
@@ -94,7 +95,17 @@ pub(super) fn apply(
         } else {
             "turnRuntimeState"
         },
-    )
+    )?;
+    if next.is_terminal() && mutation.disposition == MutationDisposition::Applied {
+        terminalize_turn_descendants(
+            transaction,
+            &owner.session_id,
+            owner.runtime_epoch,
+            &owner.turn_id,
+            now_millis,
+        )?;
+    }
+    Ok(mutation)
 }
 
 pub(super) fn cursor(

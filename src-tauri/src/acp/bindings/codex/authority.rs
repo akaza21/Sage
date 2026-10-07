@@ -4,13 +4,9 @@
 //! configuration and cleared environment that a later native launcher must
 //! consume.
 
-#[path = "authority/config.rs"]
 mod config;
-#[path = "authority/environment.rs"]
 mod environment;
-#[path = "authority/retention.rs"]
 mod retention;
-#[path = "authority/storage.rs"]
 mod storage;
 
 pub(crate) use config::{ConfigAuthorityError, VerifiedCodexConfig, verify_codex_config};

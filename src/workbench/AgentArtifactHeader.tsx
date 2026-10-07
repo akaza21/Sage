@@ -1,16 +1,18 @@
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
   FileDiff,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { AcpChatPage } from "../domain/acpProjection";
 import type { WorkbenchTab } from "../domain/workbench";
 import { FileKindIcon } from "../features/files/FileKindIcon";
+import { MenuPopover } from "../ui/MenuPopover";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 
@@ -35,6 +37,9 @@ export function AgentArtifactHeader({
     "idle",
   );
   const [copyFeedbackRevision, setCopyFeedbackRevision] = useState(0);
+  const [openChoices, setOpenChoices] = useState(false);
+  const openChoicesId = useId();
+  const openChoicesTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (copyState === "idle") return;
     const timeout = window.setTimeout(() => setCopyState("idle"), 2_000);
@@ -82,7 +87,7 @@ export function AgentArtifactHeader({
             disabled={!canStep || position === 0}
             onClick={() => onStep(-1)}
           >
-            <ChevronLeft size={15} aria-hidden="true" />
+            <ChevronLeft size={16} aria-hidden="true" />
           </button>
           <span aria-live="polite" aria-atomic="true">
             {position >= 0
@@ -96,19 +101,71 @@ export function AgentArtifactHeader({
             disabled={!canStep || position === total - 1}
             onClick={() => onStep(1)}
           >
-            <ChevronRight size={15} aria-hidden="true" />
+            <ChevronRight size={16} aria-hidden="true" />
           </button>
         </div>
-        <button
-          className="button button--compact agent-artifact-header__editor"
-          type="button"
-          onClick={onOpenInEditor}
-        >
-          <SquareArrowOutUpRight size={15} aria-hidden="true" />
-          <span className="agent-artifact-header__editor-label">
-            Open in Editor
-          </span>
-        </button>
+        {tab.kind === "file" ? (
+          <>
+            <button
+              ref={openChoicesTrigger}
+              className="button button--compact agent-artifact-header__open"
+              type="button"
+              aria-label="Open choices"
+              aria-controls={openChoicesId}
+              aria-expanded={openChoices}
+              aria-haspopup="menu"
+              onClick={() => setOpenChoices((current) => !current)}
+            >
+              Open <ChevronDown size={12} aria-hidden="true" />
+            </button>
+            <MenuPopover
+              id={openChoicesId}
+              open={openChoices}
+              ariaLabel="Open file"
+              className="menu-popover--editor"
+              triggerRef={openChoicesTrigger}
+              onDismiss={() => setOpenChoices(false)}
+            >
+              <button
+                className="menu-item"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpenChoices(false);
+                  onOpenInEditor();
+                  openChoicesTrigger.current?.focus();
+                }}
+              >
+                <SquareArrowOutUpRight size={16} aria-hidden="true" />
+                Open in Editor
+              </button>
+              <button
+                className="menu-item"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpenChoices(false);
+                  void copyPath();
+                  openChoicesTrigger.current?.focus();
+                }}
+              >
+                <Copy size={16} aria-hidden="true" />
+                Copy path
+              </button>
+            </MenuPopover>
+          </>
+        ) : (
+          <button
+            className="button button--compact agent-artifact-header__editor"
+            type="button"
+            onClick={onOpenInEditor}
+          >
+            <SquareArrowOutUpRight size={16} aria-hidden="true" />
+            <span className="agent-artifact-header__editor-label">
+              Open in Editor
+            </span>
+          </button>
+        )}
       </div>
       <div className="agent-artifact-header__path-row">
         <code title={path}>{path}</code>
@@ -136,9 +193,9 @@ export function AgentArtifactHeader({
           onClick={() => void copyPath()}
         >
           {copyState === "copied" ? (
-            <Check size={15} aria-hidden="true" />
+            <Check size={16} aria-hidden="true" />
           ) : (
-            <Copy size={15} aria-hidden="true" />
+            <Copy size={16} aria-hidden="true" />
           )}
           <span>{copyState === "copied" ? "Copied" : "Copy path"}</span>
         </button>

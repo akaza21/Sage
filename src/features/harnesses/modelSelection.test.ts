@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { preferredModelId } from "./modelSelection";
+import { preferredModelId } from "../../app/harnessSlice";
 
 const models = [
   { id: "fast", name: "Fast" },

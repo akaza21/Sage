@@ -51,7 +51,6 @@ pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
 }
 
 impl Database {
-    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn selected_project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,

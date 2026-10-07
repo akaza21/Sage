@@ -190,15 +190,6 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
         .or(rail(page).getByRole("tab", { name: /^agents?$/i })),
   },
   {
-    id: "L15",
-    region: "left rail",
-    element: "settings affordance in the rail footer",
-    scenario: "agent-single",
-    blockedOn: null,
-    probe: (page) =>
-      rail(page).getByRole("button", { name: /settings|preferences/i }),
-  },
-  {
     id: "M14",
     region: "composer",
     element: "globe / web toggle in the control row",
@@ -213,28 +204,13 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
   // `/` affordances now render, disabled with truthful reasons. They are
   // asserted in "renders the affordance row beneath the input" below.
   {
-    id: "C18",
-    region: "centre conversation",
-    element: "leading glyph on an activity row",
-    scenario: "agent-declared-test",
-    blockedOn: null,
-    probe: (page) => toolRollup(page).locator("summary > svg:first-child"),
-  },
-  {
     id: "C20",
     region: "centre conversation",
     element: "timestamp on an activity row",
     scenario: "agent-declared-test",
-    blockedOn: null,
+    blockedOn:
+      "a wall-clock time on the item — the row reports elapsed duration only",
     probe: (page) => toolRollup(page).locator("summary time"),
-  },
-  {
-    id: "C22",
-    region: "centre conversation",
-    element: "trailing chevron on an activity row",
-    scenario: "agent-declared-test",
-    blockedOn: null,
-    probe: (page) => toolRollup(page).locator("summary > svg:last-child"),
   },
   {
     id: "C8",
@@ -288,17 +264,6 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
           }),
         ),
   },
-  {
-    id: "L3",
-    region: "left rail",
-    element: "shortcut hint on `New task`",
-    scenario: "agent-single",
-    // Last on purpose: this is the only entry whose blocker is a correctness
-    // hazard. A fabricated `Ctrl+N` was already removed once by review.
-    blockedOn:
-      "a real keyboard binding — nothing creates a task from a chord today",
-    probe: (page) => rail(page).getByText(/(?:Ctrl\+|Alt\+|⌘)/),
-  },
 ];
 
 function pendingFor(scenario: PendingScenario) {
@@ -340,21 +305,7 @@ test.describe("Agent Panel V1 conformance — pending target elements", () => {
       ids,
       "the pending queue's order mirrors the table in " +
         "docs/design/agent-panel-conformance.md",
-    ).toEqual([
-      "M11",
-      "L1",
-      "L15",
-      "M14",
-      "C18",
-      "C20",
-      "C22",
-      "C8",
-      "C10",
-      "R2",
-      "R5",
-      "R6",
-      "L3",
-    ]);
+    ).toEqual(["M11", "L1", "M14", "C20", "C8", "C10", "R2", "R5", "R6"]);
   });
 
   registerPendingTests("agent-single");
@@ -490,6 +441,69 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toBeGreaterThan(recentBox.y);
   });
 
+  test("opens Settings from the rail footer gear", async ({ page }) => {
+    await openScenario(page, "agent-single", "agent");
+
+    const gear = rail(page)
+      .locator(".project-sidebar__account")
+      .getByRole("button", { name: /settings|preferences/i });
+    await expect(gear).toHaveCount(1);
+    await gear.click();
+
+    await expect(
+      page.getByRole("radio", { name: "Editor" }),
+      "L15: the rail gear leaves Agent mode so Settings is actually reachable",
+    ).toBeChecked();
+  });
+
+  test("creates a task from the chord the rail advertises", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+
+    const newTask = rail(page).getByRole("button", {
+      name: "New task",
+      exact: true,
+    });
+    await expect(
+      newTask,
+      "L3: the rail advertises the chord the keymap actually binds",
+    ).toContainText(/Ctrl\+N|⌘N/);
+  });
+
+  test("gives a pinned chat's title its own row above the metadata", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    const pinned = rail(page).getByRole("region", { name: "Pinned" });
+    const row = pinned.locator(".project-chat-row").first();
+    const label = row.locator(".project-chat__title-label");
+    const context = row.locator(".project-chat__context");
+
+    await expect(label).toBeVisible();
+    await expect(context).toHaveCount(1);
+
+    expect(
+      await label.evaluate((node) => node.scrollWidth - node.clientWidth),
+      "the pinned title is shown whole rather than clipped by its column",
+    ).toBeLessThanOrEqual(0);
+
+    const [copyBox, titleBox, labelBox, contextBox] = await Promise.all([
+      boundsOf(row.locator(".project-chat__copy")),
+      boundsOf(row.locator(".project-chat__title")),
+      boundsOf(label),
+      boundsOf(context),
+    ]);
+    expect(
+      titleBox.width,
+      "the title claims the whole copy column rather than sharing it",
+    ).toBeGreaterThan(copyBox.width - 1);
+    expect(
+      contextBox.y,
+      "the rail metadata sits below the title, not beside it",
+    ).toBeGreaterThanOrEqual(labelBox.y + labelBox.height - 1);
+  });
+
   test("renders Recent entries carrying a trailing state", async ({ page }) => {
     // L13, partly. The target's Recent list is relative-timestamped, and
     // `ProjectChatRailGlyph` does append ` ago` — but only for a chat whose
@@ -588,6 +602,86 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(assistant.locator(".acp-message__meta time")).toHaveCount(1);
   });
 
+  test("runs turn content to the same measure as the composer", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    await settleTranscriptAtEnd(page);
+
+    const items = page.locator(".acp-turn__items").first();
+    const composer = page.locator(".composer").first();
+    const itemsBox = await items.boundingBox();
+    const composerBox = await composer.boundingBox();
+    expect(itemsBox, "the first turn exposes an item column").not.toBeNull();
+    expect(composerBox, "the composer is laid out").not.toBeNull();
+
+    const itemsRight = itemsBox!.x + itemsBox!.width;
+    const composerRight = composerBox!.x + composerBox!.width;
+    expect(
+      composerRight - itemsRight,
+      "turn content reaches the composer's trailing edge",
+    ).toBeLessThanOrEqual(24);
+  });
+
+  test("keeps the user turn a right-aligned bubble narrower than its column", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    await settleTranscriptAtEnd(page);
+
+    const user = page.locator(".acp-message--user").first();
+    const column = page.locator(".acp-turn__items").first();
+    const [userBox, columnBox] = await Promise.all([
+      boundsOf(user),
+      boundsOf(column),
+    ]);
+
+    expect(
+      userBox.width,
+      "C6: the user turn is a bubble, not a full-width block",
+    ).toBeLessThan(columnBox.width - 1);
+    expect(
+      columnBox.x + columnBox.width - (userBox.x + userBox.width),
+      "C6: the bubble hangs off the trailing edge of the column",
+    ).toBeLessThanOrEqual(1);
+    expect(
+      userBox.x,
+      "C6: the bubble leaves leading space rather than starting at the margin",
+    ).toBeGreaterThan(columnBox.x + 1);
+  });
+
+  test("leaves the design gap between the last turn and the composer", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    await settleTranscriptAtEnd(page);
+
+    const transcript = page.locator(".message-list").first();
+    const distance = await transcript.evaluate(
+      (node) => node.scrollHeight - node.scrollTop - node.clientHeight,
+    );
+    expect(
+      distance,
+      "the transcript is anchored at its end",
+    ).toBeLessThanOrEqual(1);
+
+    const [contentBox, transcriptBox, composerBox] = await Promise.all([
+      boundsOf(transcript.locator(".message-list__content")),
+      boundsOf(transcript),
+      boundsOf(composer(page)),
+    ]);
+    expect(
+      transcriptBox.y +
+        transcriptBox.height -
+        (contentBox.y + contentBox.height),
+      "the last line clears the transcript floor by the design spacing",
+    ).toBeGreaterThanOrEqual(23);
+    expect(
+      composerBox.y,
+      "the composer sits below the transcript rather than over it",
+    ).toBeGreaterThanOrEqual(transcriptBox.y + transcriptBox.height - 1);
+  });
+
   test("renders the plan card with per-step state and a collapse control", async ({
     page,
   }) => {
@@ -642,18 +736,27 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       "C25: `N passed` must not be claimed from a lifecycle state",
     ).not.toContainText(/passed/i);
 
-    // C17, C18, C20, C21, C22 — the row is a left-rule strip whose summary is
-    // exactly a label span and a state span. Adding the target's glyph,
-    // timestamp or chevron changes this count and fails here by name.
     await expect(rollup).toHaveClass(/acp-activity-card/);
-    expect(
-      await summary.evaluate((node) => node.childElementCount),
-      "C18/C20/C22: the activity summary still holds exactly a label and a " +
-        "state span — no leading glyph, no timestamp, no trailing chevron",
-    ).toBe(2);
-    await expect(summary.locator(".acp-state")).toContainText(
-      /·\s*(Show|Hide)$/,
+    await expect(
+      summary.locator(".acp-tool-rollup__summary-copy > svg").first(),
+      "C18: the activity row leads with a state glyph",
+    ).toBeVisible();
+    await expect(summary.locator(".acp-tool-rollup__label")).toContainText(
+      "Ran tests",
     );
+    await expect(
+      summary.locator(".acp-tool-rollup__duration"),
+      "C21: the row reports how long the activity took",
+    ).not.toBeEmpty();
+    await expect(
+      summary.locator(".acp-tool-rollup__chevron"),
+      "C22: the row ends on a disclosure chevron",
+    ).toHaveCount(1);
+    await expect(summary.locator(".acp-state")).toHaveText("Completed");
+    await expect(
+      summary.locator("time"),
+      "C20: elapsed duration is not a wall-clock timestamp",
+    ).toHaveCount(0);
 
     // C19 — the row starts collapsed and actually opens. Collapsed state is
     // read from the `<details>` element's own `open`, never from a duplicate
@@ -678,7 +781,6 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       "C19: activating the summary actually opens the row",
     ).toBe(true);
     await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
-    await expect(summary.locator(".acp-state")).toContainText(/·\s*Hide$/);
   });
 });
 
@@ -792,6 +894,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Insert slash command: Slash commands are not available in this composer.",
       "Harness",
       "Model",
+      "Permission mode",
       "Send message",
     ]);
   });
@@ -973,6 +1076,24 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       contextBox.y + contextBox.height,
       "M9: the meter sits above the control row",
     ).toBeLessThanOrEqual(toolbarBox.y + 1);
+
+    const [inputAreaBox, textareaBox, meterBox] = await Promise.all([
+      boundsOf(composer(page).locator(".composer__input-area")),
+      boundsOf(composer(page).getByRole("textbox", { name: "Message agent" })),
+      boundsOf(meter),
+    ]);
+    expect(
+      textareaBox.y + textareaBox.height,
+      "M9: the meter clears the prompt instead of overlapping it",
+    ).toBeLessThanOrEqual(contextBox.y + 1);
+    expect(
+      inputAreaBox.x + inputAreaBox.width - (meterBox.x + meterBox.width),
+      "M9: the meter is pinned to the trailing edge of the input band",
+    ).toBeLessThanOrEqual(16);
+    expect(
+      meterBox.x,
+      "M9: the meter is trailing, not leading",
+    ).toBeGreaterThan(inputAreaBox.x + inputAreaBox.width / 2);
   });
 
   test("keeps the meter honest when capacity is unknown", async ({ page }) => {
@@ -999,7 +1120,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(
       order,
       "M13: the mode picker's settled slot is after model and before send",
-    ).toEqual(["Harness", "Model", "Session mode", "Send message"]);
+    ).toEqual([
+      "Harness",
+      "Model",
+      "Session mode",
+      "Permission mode",
+      "Send message",
+    ]);
 
     const [scope, mode] = await Promise.all([
       boundsOf(composer(page).locator(".project-scope")),

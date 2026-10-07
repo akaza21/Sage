@@ -1,7 +1,3 @@
-use std::io::Write;
-
-use sha2::{Digest, Sha256};
-
 use crate::acp::{
     intent::NormalizedPayload,
     limits::LIMITS,
@@ -10,6 +6,11 @@ use crate::acp::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, ItemIngressCommand,
     },
 };
+
+mod hashing;
+
+pub(super) use hashing::digest;
+use hashing::{CountingDigest, hex};
 
 pub(super) fn build_command(
     intent: &PumpIntent,
@@ -98,8 +99,7 @@ fn event_bytes(
                 DurableAdapterEvent::RuntimePayload { payload, .. }
                     if !matches!(
                         payload,
-                        NormalizedPayload::Usage { .. }
-                            | NormalizedPayload::Error { .. }
+                        NormalizedPayload::Error { .. }
                             | NormalizedPayload::Unsupported { .. }
                     )
             ) {
@@ -111,9 +111,41 @@ fn event_bytes(
                 + payload_digest.len()
                 + payload_bytes)
         }
+        DurableAdapterEvent::UsageSnapshot {
+            scope,
+            input_tokens,
+            output_tokens,
+            context_window,
+            ..
+        } => {
+            verify_scope(intent, scope)?;
+            let payload = NormalizedPayload::Usage {
+                input_tokens: *input_tokens,
+                output_tokens: *output_tokens,
+                context_window: *context_window,
+            };
+            let payload_bytes = serde_json::to_vec(&payload)
+                .map_err(|_| PumpJournalError::Rejected)?
+                .len();
+            if payload_bytes > LIMITS.wire.normalized_item_bytes as usize {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(scope_heap_bytes(scope) + payload_bytes)
+        }
         DurableAdapterEvent::ActivityItem(activity) => {
             super::activity::event_bytes(intent, activity)
         }
+        DurableAdapterEvent::TerminalReason {
+            scope,
+            message,
+            remediation,
+            ..
+        } => super::terminal_reason::event_bytes(
+            intent,
+            scope,
+            message.as_ref(),
+            remediation.as_ref(),
+        ),
         DurableAdapterEvent::FilePair {
             scope,
             external_item_id,
@@ -180,6 +212,18 @@ fn event_bytes(
                 + deny.payload_digest.len()
                 + deny.normalized_payload_digest.len())
         }
+        DurableAdapterEvent::PermissionResolved {
+            scope,
+            request_id,
+            state,
+            ..
+        } => {
+            verify_scope(intent, scope)?;
+            if !state.is_terminal() {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(scope_heap_bytes(scope) + request_id.as_str().len())
+        }
     }
 }
 
@@ -211,6 +255,25 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             now_millis,
         }),
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
+        DurableAdapterEvent::UsageSnapshot {
+            scope: _,
+            input_tokens,
+            output_tokens,
+            context_window,
+            now_millis,
+        } => AdapterInboundEvent::UsageSnapshot(crate::acp::store::TurnUsageSnapshotCommand {
+            input_tokens,
+            output_tokens,
+            context_window,
+            now_millis,
+        }),
+        DurableAdapterEvent::TerminalReason {
+            reason,
+            message,
+            remediation,
+            now_millis,
+            ..
+        } => super::terminal_reason::convert(reason, message, remediation, now_millis),
         DurableAdapterEvent::FilePair {
             scope,
             external_item_id,
@@ -234,6 +297,21 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
         DurableAdapterEvent::PermissionDeny { intent, now_millis } => {
             AdapterInboundEvent::PermissionDeny { intent, now_millis }
         }
+        DurableAdapterEvent::PermissionResolved {
+            scope,
+            request_id,
+            state,
+            now_millis,
+        } => AdapterInboundEvent::PermissionResolved(crate::acp::store::RequestStateCommand {
+            project_id: scope.project_id,
+            chat_id: scope.chat_id,
+            session_id: scope.session_id,
+            turn_id: scope.turn_id,
+            runtime_epoch: scope.runtime_epoch,
+            request_id,
+            state,
+            now_millis,
+        }),
         DurableAdapterEvent::RuntimePayload {
             scope,
             external_item_id,
@@ -277,12 +355,8 @@ pub(super) fn verify_payload(
 ) -> Result<usize, PumpJournalError> {
     let mut sink = CountingDigest::default();
     serde_json::to_writer(&mut sink, payload).map_err(|_| PumpJournalError::Rejected)?;
-    if sink.bytes > LIMITS.wire.normalized_item_bytes as usize
-        || hex(&sink.digest.finalize()) != expected_digest
-    {
-        return Err(PumpJournalError::Rejected);
-    }
-    Ok(sink.bytes)
+    sink.matched(expected_digest)
+        .ok_or(PumpJournalError::Rejected)
 }
 
 fn owner_bytes(intent: &PumpIntent) -> usize {
@@ -305,39 +379,8 @@ pub(super) fn scope_heap_bytes(scope: &TurnScope) -> usize {
 fn runtime_lifecycle(payload: &NormalizedPayload) -> Option<crate::acp::lifecycle::ItemLifecycle> {
     use crate::acp::lifecycle::ItemLifecycle;
     match payload {
-        NormalizedPayload::Usage { .. } => Some(ItemLifecycle::Completed),
         NormalizedPayload::Error { .. } => Some(ItemLifecycle::Failed),
         NormalizedPayload::Unsupported { .. } => Some(ItemLifecycle::Unsupported),
         _ => None,
     }
-}
-
-#[derive(Default)]
-struct CountingDigest {
-    bytes: usize,
-    digest: Sha256,
-}
-
-impl Write for CountingDigest {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes.len())
-            .filter(|total| *total <= LIMITS.wire.normalized_item_bytes as usize)
-            .ok_or_else(|| std::io::Error::other("normalized payload capacity"))?;
-        self.digest.update(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-pub(super) fn digest(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

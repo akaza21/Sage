@@ -1,14 +1,22 @@
 use std::sync::Arc;
 
+mod catalog_definition;
+mod discovery_state;
+use catalog_definition::{CuratedProtocol, definition};
+use discovery_state::DiscoveryState;
+
 use crate::{
     acp::bindings::{
         codex::{CodexHostPresence, observe_codex_host_presence},
         registry::{BindingRegistry, ModelProvider},
     },
-    domain::{HarnessDefinition, HarnessTransport, ModelOption},
+    domain::{HarnessDefinition, HarnessInstallState, HarnessTransport, ModelOption},
     error::{AppError, AppResult},
-    harness_discovery::{InstalledHarness, discover_installed_harnesses},
+    harness_discovery::{InstalledHarness, known_harness_spec},
 };
+
+#[cfg(test)]
+use crate::domain::HarnessUnavailableReason;
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;
@@ -18,11 +26,16 @@ use crate::acp::bindings::codex::startup_codex_binding_registration;
 pub const SIMULATOR_ID: &str = "sage-simulator";
 pub const SIMULATOR_DEFAULT_MODEL_ID: &str = "sim-fast";
 pub const SIMULATOR_DEEP_MODEL_ID: &str = "sim-deep";
+pub const SIMULATOR_IN_CATALOG: bool = cfg!(debug_assertions);
 
-#[derive(Debug)]
+fn simulator_admission(in_catalog: bool) -> Option<HarnessInstallState> {
+    in_catalog.then_some(HarnessInstallState::Available)
+}
+
+#[derive(Debug, Clone)]
 pub struct HarnessCatalog {
     registry: Arc<BindingRegistry>,
-    discovered: Vec<InstalledHarness>,
+    discovered: DiscoveryState,
     #[cfg(test)]
     presence_override: Option<CodexHostPresence>,
     #[cfg(all(windows, feature = "acp-fixture"))]
@@ -39,7 +52,7 @@ impl HarnessCatalog {
     pub(crate) fn with_registry(registry: Arc<BindingRegistry>) -> Self {
         Self {
             registry,
-            discovered: discover_installed_harnesses(),
+            discovered: DiscoveryState::default(),
             #[cfg(test)]
             presence_override: None,
             #[cfg(all(windows, feature = "acp-fixture"))]
@@ -59,22 +72,40 @@ impl HarnessCatalog {
     ) -> Self {
         Self {
             registry: Arc::new(BindingRegistry::with_codex(codex)),
-            discovered: Vec::new(),
+            discovered: DiscoveryState::default(),
             presence_override: Some(presence),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization_available: false,
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn settled_for_test(self) -> Self {
+        self.discovered.replace(Vec::new());
+        self
+    }
+
     pub(crate) fn refresh_codex_registration(
         &self,
     ) -> Result<(), crate::acp::bindings::codex::CodexAdmissionUnavailable> {
-        self.registry.codex().admission().refresh().map(drop)
+        self.registry.codex_admission().refresh().map(drop)
+    }
+
+    pub(crate) fn apply_discovery(
+        &self,
+        claude: crate::harness_discovery::ClaudeLaunchDiscovery,
+        discovered: Vec<InstalledHarness>,
+    ) {
+        self.discovered.apply(&self.registry, claude, discovered);
+    }
+
+    pub(crate) fn apply_presence(&self, discovered: Vec<InstalledHarness>) {
+        self.discovered.apply_presence(discovered);
     }
 
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
-        self.registry.codex().admission().clone()
+        self.registry.codex_admission().clone()
     }
 
     #[cfg(test)]
@@ -93,7 +124,7 @@ impl HarnessCatalog {
     pub(crate) fn with_registry_and_characterization(registry: Arc<BindingRegistry>) -> Self {
         Self {
             registry,
-            discovered: discover_installed_harnesses(),
+            discovered: DiscoveryState::default(),
             #[cfg(test)]
             presence_override: None,
             characterization_available: true,
@@ -108,34 +139,38 @@ impl HarnessCatalog {
         observe_codex_host_presence()
     }
 
-    fn codex_install_state(&self) -> &'static str {
-        if self.registry.codex().admission().is_available() {
-            "available"
+    fn codex_install_state(&self) -> HarnessInstallState {
+        if self.discovered.is_pending() {
+            return HarnessInstallState::Detecting;
+        }
+        if self.registry.codex_admission().is_available() {
+            HarnessInstallState::Available
         } else if self.discovered("codex").is_some() || self.observed_presence().is_present() {
-            "unavailable"
+            HarnessInstallState::Unavailable
         } else {
-            "notInstalled"
+            HarnessInstallState::NotInstalled
         }
     }
 
-    fn install_state(&self, harness_id: &str) -> &'static str {
+    fn install_state(&self, harness_id: &str) -> HarnessInstallState {
+        if self.discovered.is_pending() {
+            return HarnessInstallState::Detecting;
+        }
         if self
             .registry
             .for_harness(harness_id)
             .is_some_and(|record| record.admission_available())
         {
-            "available"
+            HarnessInstallState::Available
         } else if self.discovered(harness_id).is_some() {
-            "unavailable"
+            HarnessInstallState::Unavailable
         } else {
-            "notInstalled"
+            HarnessInstallState::NotInstalled
         }
     }
 
-    fn discovered(&self, harness_id: &str) -> Option<&InstalledHarness> {
-        self.discovered
-            .iter()
-            .find(|candidate| candidate.id == harness_id)
+    fn discovered(&self, harness_id: &str) -> Option<InstalledHarness> {
+        self.discovered.find(harness_id)
     }
 
     fn registered_protocol(&self, harness_id: &str) -> CuratedProtocol<'_> {
@@ -143,26 +178,55 @@ impl HarnessCatalog {
             Some(record) => match record.model_provider {
                 ModelProvider::CodexAccount => CuratedProtocol::account_models(record.binding_id()),
                 ModelProvider::ClaudeAdapter => CuratedProtocol::acp(Some(record.binding_id())),
+                ModelProvider::NoAccountModels => CuratedProtocol::acp(Some(record.binding_id())),
             },
             None => CuratedProtocol::acp(None),
         }
     }
 
     pub fn definitions(&self) -> Vec<HarnessDefinition> {
-        let definitions = vec![
+        self.definitions_for(SIMULATOR_IN_CATALOG)
+    }
+
+    fn definitions_for(&self, simulator_in_catalog: bool) -> Vec<HarnessDefinition> {
+        let mut definitions = vec![
             definition(
                 "codex",
                 "Codex",
                 "Launches the discovered local CLI through curated ACP integration.",
-                self.codex_install_state(),
+                self.codex_install_state().as_str(),
                 "builtIn",
                 self.registered_protocol("codex"),
             ),
             definition(
                 "pi",
                 "Pi",
-                "Local CLI discovery; launch integration remains pending.",
-                self.install_state("pi"),
+                "Discovers the local RPC CLI; a compatible binding is required before launch.",
+                self.install_state("pi").as_str(),
+                "builtIn",
+                CuratedProtocol::acp(None),
+            ),
+            definition(
+                "gemini-cli",
+                "Gemini CLI",
+                "Discovers the local experimental ACP CLI; launch integration remains pending.",
+                self.install_state("gemini-cli").as_str(),
+                "builtIn",
+                CuratedProtocol::acp(None),
+            ),
+            definition(
+                "opencode",
+                "OpenCode",
+                "Launches the discovered local OpenCode CLI over its native ACP transport.",
+                self.install_state("opencode").as_str(),
+                "builtIn",
+                self.registered_protocol("opencode"),
+            ),
+            definition(
+                "cursor-agent",
+                "Cursor Agent",
+                "Discovers the local CLI; its Sage transport has not been characterised.",
+                self.install_state("cursor-agent").as_str(),
                 "builtIn",
                 CuratedProtocol::acp(None),
             ),
@@ -170,7 +234,7 @@ impl HarnessCatalog {
                 "claude-code",
                 "Claude Code",
                 "Launches the discovered local Claude ACP adapter through Node.",
-                self.install_state("claude-code"),
+                self.install_state("claude-code").as_str(),
                 "builtIn",
                 self.registered_protocol("claude-code"),
             ),
@@ -178,22 +242,23 @@ impl HarnessCatalog {
                 "oh-my-pi",
                 "Oh My Pi",
                 "Local CLI discovery; launch integration remains pending.",
-                self.install_state("oh-my-pi"),
+                self.install_state("oh-my-pi").as_str(),
                 "builtIn",
                 CuratedProtocol::acp(None),
             ),
-            definition(
+        ];
+        if let Some(install_state) = simulator_admission(simulator_in_catalog) {
+            definitions.push(definition(
                 SIMULATOR_ID,
                 "Sage ACP Simulator",
                 "Deterministic development harness for contract and recovery tests.",
-                "available",
+                install_state.as_str(),
                 "development",
                 CuratedProtocol::legacy_simulator(),
-            ),
-        ];
+            ));
+        }
         #[cfg(all(windows, feature = "acp-fixture"))]
-        if self.characterization_available {
-            let mut definitions = definitions;
+        if self.characterization_available && simulator_in_catalog {
             let simulator_position = definitions
                 .iter()
                 .position(|entry| entry.id == SIMULATOR_ID)
@@ -209,25 +274,55 @@ impl HarnessCatalog {
                     CuratedProtocol::acp(Some(crate::acp::service::CHARACTERIZATION_BINDING_ID)),
                 ),
             );
-            return self.annotate_discovery(definitions);
+            return self.annotate_discovery(definitions, simulator_in_catalog);
         }
-        self.annotate_discovery(definitions)
+        self.annotate_discovery(definitions, simulator_in_catalog)
     }
 
     fn annotate_discovery(
         &self,
         mut definitions: Vec<HarnessDefinition>,
+        simulator_in_catalog: bool,
     ) -> Vec<HarnessDefinition> {
+        let _ = simulator_in_catalog;
         for definition in &mut definitions {
+            definition.sign_in = known_harness_spec(&definition.id)
+                .and_then(|spec| spec.sign_in)
+                .map(|sign_in| crate::domain::HarnessSignIn {
+                    command: sign_in.command.into(),
+                    hint: sign_in.hint.into(),
+                });
             if let Some(discovered) = self.discovered(&definition.id) {
-                definition.version = safe_display_version(&discovered.version);
+                definition.version = discovered.version.as_deref().and_then(safe_display_version);
+            }
+            definition.version_checking = self.discovered.is_version_checking(&definition.id);
+            let Some(record) = self.registry.for_harness(&definition.id) else {
+                continue;
+            };
+            match record.bound_build() {
+                Some(bound) => {
+                    definition.bound_version = safe_display_version(&bound.reported_version);
+                    definition.characterisation = Some(bound.characterisation);
+                    definition.account_model_discovery = bound.account_model_discovery;
+                }
+                None => {
+                    definition.unavailable_reason = record.unavailable_reason();
+                }
             }
         }
         definitions
     }
 
     pub fn models(&self, harness_id: &str) -> AppResult<Vec<ModelOption>> {
-        if harness_id == SIMULATOR_ID {
+        self.models_for(harness_id, SIMULATOR_IN_CATALOG)
+    }
+
+    fn models_for(
+        &self,
+        harness_id: &str,
+        simulator_in_catalog: bool,
+    ) -> AppResult<Vec<ModelOption>> {
+        if harness_id == SIMULATOR_ID && simulator_in_catalog {
             return Ok(vec![
                 ModelOption {
                     id: SIMULATOR_DEFAULT_MODEL_ID.into(),
@@ -249,7 +344,7 @@ impl HarnessCatalog {
         }
 
         let definition = self
-            .definitions()
+            .definitions_for(simulator_in_catalog)
             .into_iter()
             .find(|definition| definition.id == harness_id)
             .ok_or_else(|| AppError::UnknownHarness(harness_id.into()))?;
@@ -260,6 +355,25 @@ impl HarnessCatalog {
         }
 
         Err(AppError::HarnessUnavailable(harness_id.into()))
+    }
+
+    pub fn default_selected_harness_id(&self) -> Option<String> {
+        self.default_selected_harness_id_for(SIMULATOR_IN_CATALOG)
+    }
+
+    fn default_selected_harness_id_for(&self, simulator_in_catalog: bool) -> Option<String> {
+        let definitions = self.definitions_for(simulator_in_catalog);
+        definitions
+            .iter()
+            .find(|definition| {
+                definition.install_state == "available" && definition.source != "development"
+            })
+            .or_else(|| {
+                definitions
+                    .iter()
+                    .find(|definition| definition.install_state == "available")
+            })
+            .map(|definition| definition.id.clone())
     }
 
     pub fn harness_id_for_binding(&self, binding_id: &str) -> Option<String> {
@@ -286,77 +400,39 @@ fn safe_display_version(version: &str) -> Option<String> {
     version.split_ascii_whitespace().find_map(|token| {
         let token = token.strip_prefix('v').unwrap_or(token);
         let parts: Vec<_> = token.split('.').collect();
-        (token.len() <= 32
+        let numeric = token.len() <= 32
             && (2..=4).contains(&parts.len())
             && parts.iter().all(|part| {
                 !part.is_empty()
                     && part.len() <= 8
                     && part.bytes().all(|byte| byte.is_ascii_digit())
-            }))
+            });
+        if numeric {
+            return Some(token.to_owned());
+        }
+        let (base, prerelease) = token.split_once('-')?;
+        let base_parts: Vec<_> = base.split('.').collect();
+        (token.len() <= 96
+            && base_parts.len() == 3
+            && base_parts.iter().all(|part| {
+                !part.is_empty()
+                    && part.len() <= 8
+                    && part.bytes().all(|byte| byte.is_ascii_digit())
+            })
+            && !prerelease.is_empty()
+            && prerelease.len() <= 64
+            && prerelease
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-'))
         .then(|| token.to_owned())
     })
-}
-
-struct CuratedProtocol<'a> {
-    transport: HarnessTransport,
-    binding_id: Option<&'a str>,
-    account_model_discovery: bool,
-}
-
-impl<'a> CuratedProtocol<'a> {
-    fn account_models(binding_id: &'a str) -> Self {
-        Self {
-            transport: HarnessTransport::Acp,
-            binding_id: Some(binding_id),
-            account_model_discovery: true,
-        }
-    }
-
-    fn acp(binding_id: Option<&'a str>) -> Self {
-        Self {
-            transport: HarnessTransport::Acp,
-            binding_id,
-            account_model_discovery: false,
-        }
-    }
-
-    fn legacy_simulator() -> Self {
-        Self {
-            transport: HarnessTransport::LegacySimulator,
-            binding_id: None,
-            account_model_discovery: false,
-        }
-    }
-}
-
-fn definition(
-    id: &str,
-    name: &str,
-    description: &str,
-    install_state: &str,
-    source: &str,
-    protocol: CuratedProtocol<'_>,
-) -> HarnessDefinition {
-    let definition = HarnessDefinition {
-        id: id.into(),
-        name: name.into(),
-        description: description.into(),
-        install_state: install_state.into(),
-        source: source.into(),
-        transport: protocol.transport,
-        binding_id: protocol.binding_id.map(str::to_owned),
-        account_model_discovery: protocol.account_model_discovery,
-        version: None,
-    };
-    definition
-        .validate_transport_contract()
-        .expect("curated harness metadata must satisfy its transport contract");
-    definition
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use std::fs;
 
     fn by_id(definitions: &[HarnessDefinition], id: &str) -> HarnessDefinition {
         definitions
@@ -364,6 +440,111 @@ mod tests {
             .find(|definition| definition.id == id)
             .unwrap()
             .clone()
+    }
+
+    #[test]
+    fn discovery_commits_claude_admission_with_the_catalog_snapshot() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        );
+
+        assert_eq!(
+            by_id(&catalog.definitions(), "claude-code").install_state,
+            HarnessInstallState::Detecting.as_str()
+        );
+
+        catalog.apply_discovery(
+            crate::harness_discovery::ClaudeLaunchDiscovery::AdapterAbsent,
+            Vec::new(),
+        );
+
+        let claude = by_id(&catalog.definitions(), "claude-code");
+        assert_eq!(
+            claude.install_state,
+            HarnessInstallState::NotInstalled.as_str()
+        );
+        assert_eq!(
+            claude.unavailable_reason,
+            Some(HarnessUnavailableReason::AdapterAbsent)
+        );
+    }
+
+    #[cfg(windows)]
+    fn admitted_opencode_catalog(root: &std::path::Path, version: &str) -> HarnessCatalog {
+        let npm = root.join("npm");
+        let shim = npm.join("opencode.cmd");
+        let executable = npm
+            .join("node_modules")
+            .join("opencode-ai")
+            .join("bin")
+            .join("opencode.exe");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&shim, format!("@echo off\r\necho {version}\r\n")).unwrap();
+        fs::write(&executable, b"native-opencode").unwrap();
+        fs::write(
+            npm.join("node_modules")
+                .join("opencode-ai")
+                .join("package.json"),
+            format!(
+                "{{\"name\":\"opencode-ai\",\"version\":\"{version}\",\"bin\":{{\"opencode\":\"./bin/opencode.exe\"}}}}"
+            ),
+        )
+        .unwrap();
+        let registry = Arc::new(
+            crate::acp::bindings::registry::BindingRegistry::new_with_opencode_for_test(
+                CodexBindingRegistration::unavailable_for_test(),
+                crate::acp::bindings::claude::ClaudeBindingRegistration::absent_for_test(),
+                crate::acp::bindings::standard_acp::OpenCodeBindingRegistration::admitted_for_test(
+                    &shim, version,
+                ),
+            ),
+        );
+        HarnessCatalog::with_registry(registry).settled_for_test()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn admitted_opencode_publishes_a_drivable_characterised_binding() {
+        let root =
+            std::env::temp_dir().join(format!("sage-opencode-drivable-{}", uuid::Uuid::new_v4()));
+        let catalog = admitted_opencode_catalog(&root, "1.18.21");
+        let opencode = by_id(&catalog.definitions(), "opencode");
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            opencode.install_state,
+            HarnessInstallState::Available.as_str()
+        );
+        assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
+        assert_eq!(opencode.bound_version.as_deref(), Some("1.18.21"));
+        assert_eq!(
+            opencode.characterisation,
+            Some(crate::domain::HarnessCharacterisation::Characterised)
+        );
+        assert!(opencode.unavailable_reason.is_none());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_uncharacterised_opencode_build_never_borrows_the_characterised_claims() {
+        let root = std::env::temp_dir().join(format!(
+            "sage-opencode-uncharacterised-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let catalog = admitted_opencode_catalog(&root, "1.19.0");
+        let opencode = by_id(&catalog.definitions(), "opencode");
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            opencode.install_state,
+            HarnessInstallState::Available.as_str()
+        );
+        assert_eq!(opencode.binding_id.as_deref(), Some("opencode-acp"));
+        assert_eq!(opencode.bound_version.as_deref(), Some("1.19.0"));
+        assert_eq!(
+            opencode.characterisation,
+            Some(crate::domain::HarnessCharacterisation::Uncharacterised)
+        );
+        assert!(!opencode.account_model_discovery);
     }
 
     #[test]
@@ -397,27 +578,48 @@ mod tests {
 
     #[test]
     fn catalog_exposes_admission_order_and_explicit_transport_identity() {
-        let definitions = HarnessCatalog::default().definitions();
+        let definitions = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        )
+        .settled_for_test()
+        .definitions();
         assert_eq!(
             definitions
                 .iter()
                 .map(|definition| definition.id.as_str())
                 .collect::<Vec<_>>(),
-            ["codex", "pi", "claude-code", "oh-my-pi", SIMULATOR_ID]
+            [
+                "codex",
+                "pi",
+                "gemini-cli",
+                "opencode",
+                "cursor-agent",
+                "claude-code",
+                "oh-my-pi",
+                SIMULATOR_ID,
+            ]
         );
         assert_eq!(
             by_id(&definitions, "codex").transport,
             HarnessTransport::Acp
         );
-        assert!(matches!(
-            by_id(&definitions, "codex").install_state.as_str(),
-            "notInstalled" | "unavailable" | "available"
-        ));
+        assert_eq!(
+            by_id(&definitions, "codex").install_state,
+            HarnessInstallState::NotInstalled.as_str()
+        );
         assert_eq!(
             by_id(&definitions, "codex").binding_id.as_deref(),
             Some("codex-app-server")
         );
-        for id in ["pi", "claude-code", "oh-my-pi"] {
+        for id in [
+            "pi",
+            "gemini-cli",
+            "opencode",
+            "cursor-agent",
+            "claude-code",
+            "oh-my-pi",
+        ] {
             let entry = by_id(&definitions, id);
             assert_eq!(entry.transport, HarnessTransport::Acp);
             entry.validate_transport_contract().unwrap();
@@ -427,6 +629,23 @@ mod tests {
             HarnessTransport::LegacySimulator
         );
         assert!(by_id(&definitions, SIMULATOR_ID).binding_id.is_none());
+    }
+
+    #[test]
+    fn catalog_projects_an_absent_unbound_acp_harness_without_a_binding() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        )
+        .settled_for_test();
+        let definitions = catalog.definitions();
+        let gemini = by_id(&definitions, "gemini-cli");
+        assert_eq!(gemini.transport, HarnessTransport::Acp);
+        assert!(gemini.binding_id.is_none());
+        assert_eq!(
+            gemini.install_state,
+            HarnessInstallState::NotInstalled.as_str()
+        );
     }
 
     #[test]
@@ -461,21 +680,35 @@ mod tests {
 
     #[test]
     fn harness_bootstrap_projection_drops_native_paths_and_untrusted_version_prose() {
-        let mut catalog = HarnessCatalog::with_codex_registration_and_presence(
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
             CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Absent,
-        );
+        )
+        .settled_for_test();
         let sentinel = std::env::temp_dir().join("private-inventory-sentinel");
-        catalog.discovered = ["codex", "pi", "claude-code", "oh-my-pi"]
+        catalog.discovered.replace(
+            [
+                "codex",
+                "pi",
+                "gemini-cli",
+                "opencode",
+                "cursor-agent",
+                "claude-code",
+                "oh-my-pi",
+            ]
             .into_iter()
-            .map(|id| InstalledHarness {
-                id,
-                executable: sentinel.join(id),
-                version:
-                    "C:\\private-inventory-sentinel\\cli.exe /home/private-inventory-sentinel 1.2.3"
-                        .into(),
+            .map(|id| {
+                InstalledHarness {
+            id,
+            executable: sentinel.join(id),
+            version: Some(
+                "C:\\private-inventory-sentinel\\cli.exe /home/private-inventory-sentinel 1.2.3"
+                    .into(),
+            ),
+        }
             })
-            .collect();
+            .collect(),
+        );
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
         let root =
@@ -495,7 +728,15 @@ mod tests {
         let json = serde_json::to_string(&snapshot).unwrap();
         assert!(!json.contains("private-inventory-sentinel"));
         assert!(!json.contains("executablePath"));
-        for id in ["codex", "pi", "claude-code", "oh-my-pi"] {
+        for id in [
+            "codex",
+            "pi",
+            "gemini-cli",
+            "opencode",
+            "cursor-agent",
+            "claude-code",
+            "oh-my-pi",
+        ] {
             let entry = by_id(&snapshot.harnesses, id);
             assert_eq!(entry.install_state, "unavailable");
             assert_eq!(entry.version.as_deref(), Some("1.2.3"));
@@ -517,11 +758,17 @@ mod tests {
                     "transport",
                     "bindingId",
                     "accountModelDiscovery",
-                    "version"
+                    "version",
+                    "versionChecking",
+                    "boundVersion",
+                    "characterisation",
+                    "unavailableReason",
+                    "signIn"
                 ]
                 .into_iter()
                 .collect()
             );
+            assert!(!entry.version_checking);
             assert!(
                 value
                     .as_object()
@@ -533,7 +780,17 @@ mod tests {
             assert!(catalog.models(id).unwrap().is_empty());
         }
         assert!(!catalog.codex_registration().is_available());
-        for id in ["pi", "claude-code", "oh-my-pi"] {
+        assert_eq!(
+            by_id(&snapshot.harnesses, "claude-code")
+                .binding_id
+                .as_deref(),
+            Some("claude-agent-acp")
+        );
+        assert_eq!(
+            by_id(&snapshot.harnesses, "opencode").binding_id.as_deref(),
+            Some("opencode-acp")
+        );
+        for id in ["pi", "gemini-cli", "cursor-agent", "oh-my-pi"] {
             assert!(by_id(&snapshot.harnesses, id).binding_id.is_none());
         }
     }
@@ -544,6 +801,10 @@ mod tests {
             safe_display_version("codex-cli v1.2.3"),
             Some("1.2.3".into())
         );
+        assert_eq!(
+            safe_display_version("codex-cli 0.155.0-alpha.16.3"),
+            Some("0.155.0-alpha.16.3".into())
+        );
         for text in [
             "C:\\private\\1.2.exe",
             "/home/private/1.2",
@@ -552,9 +813,30 @@ mod tests {
             "1.123456789",
             "",
             "private label",
+            "0.155.0-",
+            "0.155.0-alpha/secret",
         ] {
             assert_eq!(safe_display_version(text), None, "{text}");
         }
+    }
+
+    #[test]
+    fn catalog_projects_sign_in_guidance_from_known_harness_specs() {
+        let definitions = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        )
+        .definitions();
+        let codex = by_id(&definitions, "codex");
+        let sign_in = codex.sign_in.expect("Codex sign-in guidance");
+        assert_eq!(sign_in.command, "codex login");
+        assert_eq!(sign_in.hint, "Sign in to your Codex account.");
+        let cursor = by_id(&definitions, "cursor-agent")
+            .sign_in
+            .expect("Cursor sign-in guidance");
+        assert_eq!(cursor.command, "cursor-agent login");
+        assert_eq!(cursor.hint, "Sign in to Cursor Agent.");
+        assert!(by_id(&definitions, "oh-my-pi").sign_in.is_none());
     }
 
     #[test]
@@ -610,10 +892,175 @@ mod tests {
         let catalog = HarnessCatalog::with_codex_registration_and_presence(
             crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Absent,
-        );
+        )
+        .settled_for_test();
         let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "notInstalled");
         assert!(catalog.models("codex").unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unadmitted_binding_projects_a_redacted_reason_rather_than_silence() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Present,
+        );
+        let definitions = catalog.definitions();
+        let codex = by_id(&definitions, "codex");
+        assert!(codex.bound_version.is_none());
+        assert!(codex.characterisation.is_none());
+        assert_eq!(
+            codex.unavailable_reason,
+            Some(HarnessUnavailableReason::AdmissionIncomplete)
+        );
+        assert_eq!(
+            by_id(&definitions, "claude-code").unavailable_reason,
+            Some(crate::domain::HarnessUnavailableReason::AdapterAbsent),
+        );
+        assert_eq!(
+            by_id(&definitions, "opencode").unavailable_reason,
+            Some(HarnessUnavailableReason::AdmissionIncomplete),
+        );
+        for id in ["pi", "gemini-cli", "cursor-agent", "oh-my-pi"] {
+            assert!(by_id(&definitions, id).unavailable_reason.is_none(), "{id}");
+        }
+    }
+
+    #[test]
+    fn release_policy_omits_and_refuses_the_simulator() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        )
+        .settled_for_test();
+        assert!(
+            catalog
+                .definitions_for(false)
+                .iter()
+                .all(|definition| definition.id != SIMULATOR_ID)
+        );
+        assert!(matches!(
+            catalog.models_for(SIMULATOR_ID, false),
+            Err(AppError::UnknownHarness(_))
+        ));
+        assert_ne!(
+            catalog.default_selected_harness_id_for(false).as_deref(),
+            Some(SIMULATOR_ID)
+        );
+    }
+
+    #[test]
+    fn development_policy_keeps_the_simulator_available() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        );
+        let simulator = by_id(&catalog.definitions_for(true), SIMULATOR_ID);
+        assert_eq!(
+            simulator.install_state,
+            HarnessInstallState::Available.as_str()
+        );
+    }
+
+    #[test]
+    fn development_default_prefers_an_available_curated_harness() {
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::admitted_for_test(),
+            CodexHostPresence::Present,
+        )
+        .settled_for_test();
+
+        assert_eq!(
+            catalog.default_selected_harness_id_for(true).as_deref(),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn configured_catalog_matches_the_current_build_policy() {
+        let definitions = HarnessCatalog::default().definitions();
+        let default_id = HarnessCatalog::default().default_selected_harness_id();
+        if SIMULATOR_IN_CATALOG {
+            let simulator = by_id(&definitions, SIMULATOR_ID);
+            assert_eq!(
+                simulator.install_state,
+                HarnessInstallState::Available.as_str()
+            );
+            let curated = definitions.iter().find(|definition| {
+                definition.install_state == "available" && definition.source != "development"
+            });
+            assert_eq!(
+                default_id.as_deref(),
+                curated
+                    .map(|definition| definition.id.as_str())
+                    .or(Some(SIMULATOR_ID))
+            );
+        } else {
+            assert!(
+                definitions
+                    .iter()
+                    .all(|definition| definition.id != SIMULATOR_ID)
+            );
+            assert_ne!(default_id.as_deref(), Some(SIMULATOR_ID));
+            if let Some(id) = default_id {
+                assert_eq!(by_id(&definitions, &id).install_state, "available");
+            }
+        }
+    }
+
+    #[test]
+    fn the_diagnostics_feature_never_admits_the_simulator_into_a_release_catalog() {
+        assert_eq!(SIMULATOR_IN_CATALOG, cfg!(debug_assertions));
+        assert_eq!(
+            HarnessCatalog::default()
+                .definitions()
+                .iter()
+                .any(|definition| definition.id == SIMULATOR_ID),
+            cfg!(debug_assertions)
+        );
+    }
+
+    #[test]
+    fn a_bound_uncharacterised_build_is_projected_as_uncharacterised() {
+        use crate::acp::bindings::claude::ClaudeBindingRegistration;
+        use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+
+        let root = std::env::temp_dir().join(format!(
+            "sage-catalog-uncharacterised-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let adapter = root.join("adapter.js");
+        let node = root.join("node.exe");
+        std::fs::write(&adapter, b"adapter").unwrap();
+        std::fs::write(&node, b"node").unwrap();
+        let claude = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
+            Box::new(DiscoveredClaudeLaunch {
+                adapter_path: adapter.clone(),
+                adapter_version: "0.99.0".into(),
+                acp_sdk_version: "1.4.0".into(),
+                node_engine: ">=22".into(),
+                node_path: node.clone(),
+                node_version: "22.18.0".into(),
+                adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+                node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+            }),
+        ));
+        let catalog = HarnessCatalog::with_registry(Arc::new(BindingRegistry::new(
+            CodexBindingRegistration::unavailable_for_test(),
+            claude,
+        )))
+        .settled_for_test();
+        let entry = by_id(&catalog.definitions(), "claude-code");
+        std::fs::remove_dir_all(&root).ok();
+
+        assert_eq!(entry.install_state, "available");
+        assert_eq!(
+            entry.characterisation,
+            Some(crate::domain::HarnessCharacterisation::Uncharacterised)
+        );
+        assert_eq!(entry.bound_version.as_deref(), Some("0.99.0"));
+        assert!(entry.unavailable_reason.is_none());
     }
 
     #[test]
@@ -621,7 +1068,8 @@ mod tests {
         let catalog = HarnessCatalog::with_codex_registration_and_presence(
             crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Present,
-        );
+        )
+        .settled_for_test();
         let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "unavailable");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
@@ -636,7 +1084,8 @@ mod tests {
         let catalog = HarnessCatalog::with_codex_registration_and_presence(
             registration,
             CodexHostPresence::Absent,
-        );
+        )
+        .settled_for_test();
         let codex = by_id(&catalog.definitions(), "codex");
         assert_eq!(codex.install_state, "available");
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));

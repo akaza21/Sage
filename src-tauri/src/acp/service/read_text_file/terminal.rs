@@ -58,7 +58,7 @@ pub(super) enum AttemptPhase {
 #[allow(dead_code, reason = "P-02 Decision B delivery state")]
 enum Terminal {
     Failure(Box<ReadTextFailure>),
-    Success(ReadTextCompletion),
+    Success(Box<ReadTextCompletion>),
 }
 #[derive(Clone, Copy)]
 pub(super) struct Classification {

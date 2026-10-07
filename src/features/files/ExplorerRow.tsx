@@ -51,7 +51,7 @@ export const ExplorerRow = memo(
         aria-current={selected ? "page" : undefined}
         aria-expanded={directory ? expanded : undefined}
         title={entry.resource.relativePath}
-        style={{ paddingLeft: 9 + entry.depth * 16 }}
+        style={{ paddingLeft: 8 + entry.depth * 16 }}
         disabled={!directory && !file}
         onClick={() => {
           if (directory) {
@@ -65,7 +65,7 @@ export const ExplorerRow = memo(
         {directory ? (
           <ChevronRight
             className={expanded ? "tree__chevron--expanded" : undefined}
-            size={13}
+            size={14}
             aria-hidden="true"
           />
         ) : (

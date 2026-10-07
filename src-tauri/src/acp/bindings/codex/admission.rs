@@ -1,6 +1,8 @@
 #[cfg(all(test, windows))]
 use std::collections::VecDeque;
 use std::{
+    collections::BTreeSet,
+    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -10,6 +12,7 @@ use super::{
     manifest::MetadataValidatedPacket,
     reproduction::ReproducedPackagePrerequisite,
 };
+use crate::acp::bindings::characterisation::Characterisation;
 
 pub(crate) const BINDING_ID: &str = "codex-app-server";
 const BINDING_DIGEST_INPUT: &[u8] = b"sage:codex-app-server:0.145.0:windows-x86_64:7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
@@ -38,6 +41,7 @@ pub(crate) struct AdmittedCodexBinding {
     binding_digest_hex: String,
     artifact_digest: String,
     harness_version: String,
+    characterisation: Characterisation,
     #[cfg(all(test, windows))]
     journey_test_entrypoint: Option<EntrypointIdentity>,
     #[cfg(all(test, windows))]
@@ -117,6 +121,11 @@ fn observed_environment(
             .and_then(|directory| directory.to_str().map(str::to_owned))
             .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
         entries.insert(0, ("PATH".into(), node_directory));
+        for key in configured_provider_environment_keys()? {
+            if let Some(value) = std::env::var(&key).ok().filter(|value| !value.is_empty()) {
+                entries.push((key, value));
+            }
+        }
         if entries.len() > 16
             || entries
                 .iter()
@@ -126,6 +135,70 @@ fn observed_environment(
         }
         Ok(entries)
     }
+}
+
+fn configured_provider_environment_keys() -> Result<Vec<String>, CodexAdmissionUnavailable> {
+    let home = std::env::var("USERPROFILE")
+        .map(PathBuf::from)
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let path = home.join(".codex").join("config.toml");
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(_) => return Err(CodexAdmissionUnavailable::IndependentAdmission),
+    };
+    if bytes.len() > 64 * 1024 {
+        return Err(CodexAdmissionUnavailable::IndependentAdmission);
+    }
+    provider_environment_keys(
+        std::str::from_utf8(&bytes).map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?,
+    )
+}
+
+fn provider_environment_keys(config: &str) -> Result<Vec<String>, CodexAdmissionUnavailable> {
+    let config = config
+        .parse::<toml::Value>()
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+    let provider = match config.get("model_provider").and_then(toml::Value::as_str) {
+        Some(provider) => provider,
+        None => return Ok(Vec::new()),
+    };
+    let provider = config
+        .get("model_providers")
+        .and_then(toml::Value::as_table)
+        .and_then(|providers| providers.get(provider))
+        .and_then(toml::Value::as_table)
+        .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
+    let mut keys = BTreeSet::new();
+    if let Some(key) = provider.get("env_key").and_then(toml::Value::as_str) {
+        insert_provider_environment_key(&mut keys, key)?;
+    }
+    if let Some(headers) = provider
+        .get("env_http_headers")
+        .and_then(toml::Value::as_table)
+    {
+        for key in headers.values().filter_map(toml::Value::as_str) {
+            insert_provider_environment_key(&mut keys, key)?;
+        }
+    }
+    Ok(keys.into_iter().collect())
+}
+
+fn insert_provider_environment_key(
+    keys: &mut BTreeSet<String>,
+    key: &str,
+) -> Result<(), CodexAdmissionUnavailable> {
+    if key.is_empty()
+        || key.len() > 128
+        || !key.bytes().enumerate().all(|(index, byte)| {
+            byte == b'_'
+                || byte.is_ascii_alphanumeric() && (index > 0 || byte.is_ascii_alphabetic())
+        })
+    {
+        return Err(CodexAdmissionUnavailable::IndependentAdmission);
+    }
+    keys.insert(key.to_owned());
+    Ok(())
 }
 
 mod record;
@@ -142,7 +215,7 @@ pub(crate) use registration::{
 };
 
 mod startup;
-pub(crate) use startup::startup_codex_binding_registration;
+pub(crate) use startup::{admit_discovered_codex, startup_codex_binding_registration};
 
 #[cfg(test)]
 mod test_registration;
@@ -173,6 +246,25 @@ mod tests {
         fs::write(&path, b"changed-codex").expect("change test executable");
         assert_eq!(binding.revalidate(), Err(CodexAdmissionUnavailable::Drift));
         fs::remove_file(path).expect("remove test executable");
+    }
+
+    #[test]
+    fn observed_provider_environment_uses_only_declared_keys_for_the_selected_provider() {
+        let keys = provider_environment_keys(
+            r#"
+model_provider = "cliproxyapi"
+
+[model_providers.cliproxyapi]
+env_key = "CLIPROXY_API_KEY"
+env_http_headers = { "X-Api-Key" = "CLIPROXY_API_KEY", "X-Secondary-Key" = "SECONDARY_PROXY_KEY" }
+
+[model_providers.unselected]
+env_key = "UNSELECTED_PROVIDER_KEY"
+"#,
+        )
+        .expect("provider configuration");
+
+        assert_eq!(keys, ["CLIPROXY_API_KEY", "SECONDARY_PROXY_KEY"]);
     }
 
     #[test]

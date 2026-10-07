@@ -6,6 +6,7 @@ import {
   clearAcpProjectionRegistry,
 } from "../../../app/acpProjectionRegistry";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
+import { useSessionAccessModeStore } from "../../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type {
   AcpChatPage,
@@ -14,6 +15,7 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../../../domain/acp";
+import { DEFAULT_SESSION_ACCESS_MODE } from "../../../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
@@ -100,6 +102,11 @@ beforeEach(() => {
   useAcpProjectionStore.getState().activateScope(scope);
   const intent = useAcpProjectionStore.getState().beginPageLoad(null);
   useAcpProjectionStore.getState().completePageLoad(intent, page());
+  useSessionAccessModeStore.setState({
+    mode: DEFAULT_SESSION_ACCESS_MODE,
+    ready: true,
+    error: null,
+  });
 });
 
 afterEach(() => {
@@ -111,6 +118,21 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it("shows a refusal when a prompt has no authoritative Chat context", async () => {
+    useAcpProjectionStore.getState().clear();
+    const send = vi.spyOn(acpDesktop, "sendTurn");
+    const { result } = renderHook(() => useAcpChatActions("chat-a"));
+
+    await act(async () => {
+      expect(await result.current.submit("PONG", [], bindingId, null)).toBe(
+        "rejected",
+      );
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(result.current.error).toMatch(/Chat.*load|Chat.*ready/i);
+  });
+
   it("keeps a mode failure separate from the prompt error slot", async () => {
     const setSessionMode = vi
       .spyOn(acpDesktop, "setSessionMode")
@@ -143,6 +165,50 @@ describe("useAcpChatActions per-Chat ownership", () => {
     });
   });
 
+  it("keeps a config-option mutation pending and reports its refusal beside config controls", async () => {
+    const pending = deferred<never>();
+    vi.spyOn(acpDesktop, "setSessionConfigOption").mockReturnValue(
+      pending.promise,
+    );
+    const configPage = page();
+    configPage.sessionConfig = {
+      ...configPage.sessionConfig!,
+      configOptions: [
+        {
+          id: "fast",
+          name: "Fast mode",
+          type: "boolean",
+          currentValue: false,
+        },
+      ],
+    };
+    const scope = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-a" as SageChatId,
+    };
+    useAcpProjectionStore.getState().applyAuthoritativePage(scope, configPage);
+    const { result } = renderHook(() => useAcpChatActions());
+
+    const change = result.current.setSessionConfigOption("fast", {
+      type: "boolean",
+      value: true,
+    });
+    await waitFor(() => expect(result.current.modeChanging).toBe(true));
+
+    pending.reject(
+      new AcpDesktopError({
+        kind: "rejected",
+        message: "Fast mode is unavailable for this session.",
+      }),
+    );
+    await expect(change).resolves.toBe("rejected");
+    expect(result.current.error).toBeNull();
+    expect(result.current.modeError).toBe(
+      "Fast mode is unavailable for this session.",
+    );
+  });
+
   it("does not leak a mode error across a runtime epoch change", async () => {
     useWorkbenchStore.setState({
       chatUiById: {
@@ -151,6 +217,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
           attachedContext: [],
           sending: false,
           error: null,
+          errorKind: null,
           modeError: "Old runtime rejected the mode",
           modeErrorOwner: { sessionId: "session-a", runtimeEpoch: "1" },
           modeChanging: false,
@@ -418,5 +485,47 @@ describe("useAcpChatActions per-Chat ownership", () => {
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: "chat-b", prompt: "From B" }),
     );
+  });
+
+  it("does not show a sign-in error kind after the bound Chat changes", async () => {
+    vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
+      new AcpDesktopError({
+        kind: "signInRequired",
+        message: "Sign in before sending a prompt.",
+      }),
+    );
+    const scopeA = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-a" as SageChatId,
+    };
+    const storeA = acpProjectionStoreFor("chat-a");
+    storeA.getState().activateScope(scopeA);
+    const intentA = storeA.getState().beginPageLoad(null);
+    storeA.getState().completePageLoad(intentA, page());
+    const scopeB = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-b" as SageChatId,
+    };
+    const storeB = acpProjectionStoreFor("chat-b");
+    storeB.getState().activateScope(scopeB);
+    const intent = storeB.getState().beginPageLoad(null);
+    storeB.getState().completePageLoad(intent, {
+      ...page(),
+      chatId: "chat-b",
+    } as AcpChatPage);
+    const { result, rerender } = renderHook(
+      ({ chatId }) => useAcpChatActions(chatId),
+      { initialProps: { chatId: "chat-a" } },
+    );
+
+    await act(async () => {
+      await result.current.submit("Need access", [], bindingId, null);
+    });
+    expect(result.current.errorKind).toBe("signInRequired");
+
+    rerender({ chatId: "chat-b" });
+    expect(result.current.errorKind).toBeNull();
   });
 });

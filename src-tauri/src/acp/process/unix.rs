@@ -152,5 +152,4 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
 }
 
 #[cfg(test)]
-#[path = "unix/tests.rs"]
 mod tests;

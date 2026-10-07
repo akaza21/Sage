@@ -25,6 +25,16 @@ import {
   admitEditorAppearance,
   type EditorAppearance,
 } from "../features/files/editorAppearance";
+import {
+  DEFAULT_SESSION_ACCESS_MODE,
+  admitSessionAccessMode,
+  type SessionAccessMode,
+} from "../domain/sessionAccessMode";
+import {
+  DEFAULT_UI_APPEARANCE,
+  admitUiAppearance,
+  type UiAppearance,
+} from "../domain/uiAppearance";
 
 function uncommittedTransition(
   expectedTransitionEpoch: number,
@@ -39,6 +49,8 @@ function uncommittedTransition(
 
 const project: ProjectPort = {
   getBootstrapSnapshot: () => browserDesktop.getBootstrapSnapshot(),
+  getProjectChatQueuedPrompts: async () => ({}),
+  replaceChatQueuedPrompts: async () => {},
   createProjectFromPicker: (
     _expectedActiveProjectId,
     expectedTransitionEpoch,
@@ -173,17 +185,33 @@ const chat: ChatPort = {
 };
 
 const agent: AgentPort = {
+  listHarnesses: () =>
+    browserDesktop
+      .getBootstrapSnapshot()
+      .then((snapshot) => snapshot.harnesses),
   listHarnessModels: (harnessId) => browserDesktop.listHarnessModels(harnessId),
   sendPrompt: (request) => browserDesktop.sendPrompt(request),
 };
 
 let editorAppearance: EditorAppearance = DEFAULT_EDITOR_APPEARANCE;
+let sessionAccessMode: SessionAccessMode = DEFAULT_SESSION_ACCESS_MODE;
+let uiAppearance: UiAppearance = DEFAULT_UI_APPEARANCE;
 
 const settings: SettingsPort = {
   getEditorAppearance: () => Promise.resolve(editorAppearance),
   setEditorAppearance: (appearance) => {
     editorAppearance = admitEditorAppearance(appearance);
     return Promise.resolve(editorAppearance);
+  },
+  getSessionAccessMode: () => Promise.resolve(sessionAccessMode),
+  setSessionAccessMode: (mode) => {
+    sessionAccessMode = admitSessionAccessMode(mode);
+    return Promise.resolve(sessionAccessMode);
+  },
+  getUiAppearance: () => Promise.resolve(uiAppearance),
+  setUiAppearance: (appearance) => {
+    uiAppearance = admitUiAppearance(appearance);
+    return Promise.resolve(uiAppearance);
   },
 };
 

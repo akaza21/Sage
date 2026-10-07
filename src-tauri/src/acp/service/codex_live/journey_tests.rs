@@ -1,7 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use super::*;
@@ -15,7 +14,8 @@ use crate::{
             SageProjectId, SageRootId, SageTurnId,
         },
         intent::{BindingId, Prompt},
-        lifecycle::{SessionState, TurnState},
+        lifecycle::{ItemLifecycle, SessionState, ToolState, TurnState},
+        projection::{ItemContent, ToolPresentation},
         runtime::{
             HostCancelIntent, ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
         },
@@ -28,13 +28,10 @@ use crate::{
     project_registry::ProjectRootAuthority,
 };
 
-#[cfg(windows)]
-static JOURNEY_TEST_LOCK: Mutex<()> = Mutex::new(());
-
 #[test]
 #[cfg(windows)]
 fn unavailable_binding_cannot_start_a_live_codex_session() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup = FixtureSetup::in_memory(CodexBindingRegistration::unavailable_for_test()).await;
 
@@ -68,8 +65,12 @@ fn unavailable_binding_cannot_start_a_live_codex_session() {
 
 #[test]
 #[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
 fn two_sequential_turns_share_one_session_and_converge_to_zero() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -93,13 +94,18 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
 
 #[test]
 #[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
 fn two_chats_are_sequential_on_the_one_runtime_slot() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
                 "characterization-two-turn-success",
                 "characterization-two-turn-success",
+                "characterization-resume-turn-success",
             ]))
             .await;
         let owner_a = setup
@@ -118,11 +124,25 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
             setup.send_and_wait_completed(&owner_a).await,
             setup.send_and_wait_completed(&owner_a).await,
         ];
-        setup.close(&owner_a);
-        assert_job_zero();
 
         setup.activate(&owner_b).await.unwrap();
         setup.wait_for_ready(&owner_b);
+        let parked_a = setup.page(&owner_a);
+        let parked_a_session = parked_a
+            .sessions
+            .as_slice()
+            .iter()
+            .find(|session| session.id == owner_a.session_id)
+            .unwrap();
+        assert_eq!(parked_a_session.state, SessionState::Ready);
+        assert_eq!(
+            parked_a_session.residency,
+            crate::acp::lifecycle::Residency::Cold
+        );
+        assert_eq!(
+            parked_a_session.next_runtime_epoch,
+            Some(RuntimeEpoch::new(2).unwrap())
+        );
         let turns_b = [
             setup.send_and_wait_completed(&owner_b).await,
             setup.send_and_wait_completed(&owner_b).await,
@@ -132,14 +152,92 @@ fn two_chats_are_sequential_on_the_one_runtime_slot() {
 
         setup.close(&owner_b);
         assert_job_zero();
+        let resumed_a = RuntimeOwner {
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            ..owner_a.clone()
+        };
+        setup.activate(&resumed_a).await.unwrap();
+        setup.wait_for_ready(&resumed_a);
+        let resumed_turn = setup.send_and_wait_completed(&resumed_a).await;
+        assert_completed_turns(
+            &setup,
+            &resumed_a,
+            &[turns_a[0].clone(), turns_a[1].clone(), resumed_turn],
+        );
+        setup.close(&resumed_a);
+        assert_job_zero();
         setup.service.shutdown_blocking().unwrap();
     });
 }
 
 #[test]
 #[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
+fn failed_replacement_park_retains_recovery_and_retries_without_a_second_tree() {
+    let _serial = crate::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        let setup = FixtureSetup::in_memory_with_shutdown_phase_failure(
+            CodexBindingRegistration::admitted_for_journey_test(&[
+                "characterization-two-turn-success",
+                "characterization-two-turn-success",
+            ]),
+        )
+        .await;
+        let owner_a = setup
+            .start_and_activate(RuntimeEpoch::new(1).unwrap())
+            .await;
+        let completed = setup.send_and_wait_completed(&owner_a).await;
+        let owner_b = setup
+            .start_session_for_chat(setup.create_chat(), RuntimeEpoch::new(1).unwrap())
+            .await;
+
+        assert!(matches!(
+            setup.activate(&owner_b).await,
+            Err(CodexSessionError::Recovery)
+        ));
+        assert!(
+            crate::acp::process::TreeCapacityPool::global()
+                .observation_usage()
+                .0
+                <= 1
+        );
+        assert!(setup.service.has_retained_live_host_recovery_for(&owner_a));
+        assert_completed_turns(&setup, &owner_a, &[completed]);
+
+        setup.activate(&owner_b).await.unwrap();
+        setup.wait_for_ready(&owner_b);
+        let session = setup
+            .page(&owner_a)
+            .sessions
+            .as_slice()
+            .iter()
+            .find(|session| session.id == owner_a.session_id)
+            .unwrap()
+            .clone();
+        assert_eq!(session.state, SessionState::Ready);
+        assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+        assert_eq!(
+            session.next_runtime_epoch,
+            Some(RuntimeEpoch::new(2).unwrap())
+        );
+        setup.send_and_wait_completed(&owner_b).await;
+        setup.close(&owner_b);
+        assert_job_zero();
+        setup.service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+#[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
 fn restart_resume_then_another_turn_reads_sqlite() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let registration = CodexBindingRegistration::admitted_for_journey_test(&[
             "codex-journey-turn-success",
@@ -210,8 +308,12 @@ fn restart_resume_then_another_turn_reads_sqlite() {
 
 #[test]
 #[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
 fn cancel_then_reuse_session_converges_to_zero_orphans() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -274,8 +376,262 @@ fn cancel_then_reuse_session_converges_to_zero_orphans() {
 
 #[test]
 #[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
+fn child_exit_after_item_completion_fails_the_turn_and_ends_the_runtime_epoch() {
+    let _serial = crate::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        let setup =
+            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
+                "codex-item-completed-then-exit",
+                "codex-item-completed-then-exit",
+            ]))
+            .await;
+        let owner = setup
+            .start_and_activate(RuntimeEpoch::new(1).unwrap())
+            .await;
+
+        setup
+            .service
+            .send_codex_turn(setup.turn_command(&owner))
+            .unwrap();
+        setup.wait_until(|| {
+            let page = setup.page(&owner);
+            page.turns
+                .as_slice()
+                .iter()
+                .any(|turn| turn.session_id == owner.session_id && turn.state.is_terminal())
+                && page.sessions.as_slice().iter().any(|session| {
+                    session.id == owner.session_id && session.state == SessionState::Failed
+                })
+        });
+
+        let owner_turns: i64 = setup
+            .service
+            .database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM turns WHERE session_id=?1",
+                rusqlite::params![owner.session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner_turns, 1);
+
+        let (turn_id, turn_state, delivery_state): (String, String, String) = setup
+            .service
+            .database
+            .connection()
+            .query_row(
+                "SELECT id, state, delivery_state FROM turns WHERE session_id=?1",
+                rusqlite::params![owner.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (turn_state.as_str(), delivery_state.as_str()),
+            ("failed", "correlated")
+        );
+
+        let items = session_items(&setup, &owner);
+        let harness_completed = items
+            .iter()
+            .filter(|item| item.lifecycle == "completed" && !item.external_item_id.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(harness_completed.len(), 1, "items={items:?}");
+        assert_eq!(
+            (
+                harness_completed[0].kind.as_str(),
+                harness_completed[0].lifecycle.as_str(),
+                harness_completed[0].tool_state.as_str(),
+                harness_completed[0].turn_id.as_str(),
+                harness_completed[0].external_item_id.as_str(),
+            ),
+            (
+                "toolCall",
+                "completed",
+                "completed",
+                turn_id.as_str(),
+                "fixture-command-completed",
+            ),
+            "items={items:?}"
+        );
+
+        let page = setup.page(&owner);
+        let history_turn = page
+            .turns
+            .as_slice()
+            .iter()
+            .find(|history_turn| history_turn.id.as_str() == turn_id.as_str())
+            .unwrap();
+        let history_item = history_turn
+            .items
+            .as_slice()
+            .iter()
+            .find(|item| matches!(&item.content, ItemContent::ToolCall { .. }))
+            .unwrap();
+        assert_eq!(history_item.lifecycle, ItemLifecycle::Completed);
+        assert_eq!(history_item.tool_state, Some(ToolState::Completed));
+        let ItemContent::ToolCall {
+            presentation: ToolPresentation::Execute { label, .. },
+            input_summary: Some(input_summary),
+            output_summary: Some(output_summary),
+        } = &history_item.content
+        else {
+            panic!("expected completed fixture command in history");
+        };
+        assert_eq!(label.as_str(), "echo fixture-command-completed");
+        assert_eq!(input_summary.as_str(), "echo fixture-command-completed");
+        assert_eq!(output_summary.as_str(), "fixture command completed");
+
+        let runtime_state: String = setup
+            .service
+            .database
+            .connection()
+            .query_row(
+                "SELECT state FROM session_runtime_epochs WHERE session_id=?1 AND runtime_epoch=?2",
+                rusqlite::params![owner.session_id.as_str(), owner.runtime_epoch.get() as i64],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(runtime_state, "failed");
+
+        assert_job_zero();
+        let replacement = setup
+            .start_session_for_chat(setup.chat_id.clone(), RuntimeEpoch::new(1).unwrap())
+            .await;
+        setup.activate(&replacement).await.unwrap();
+        setup.wait_for_ready(&replacement);
+        setup.service.shutdown_blocking().unwrap();
+    });
+}
+
+#[test]
+#[cfg(windows)]
+#[cfg_attr(
+    not(feature = "acp-fixture"),
+    ignore = "requires acp-fixture; run cargo test --all-features"
+)]
+fn lost_steer_result_keeps_an_outcome_unknown_queue_row_after_reopen() {
+    let _serial = crate::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        use crate::acp::runtime::HostSteerIntent;
+        use crate::chat_queue::{DurableQueuedPrompt, QueuedPromptStatus};
+
+        let setup = FixtureSetup::file_backed(
+            CodexBindingRegistration::admitted_for_observed_steer_journey_test(&[
+                "codex-steer-lost-result",
+            ]),
+        )
+        .await;
+        let owner = setup
+            .start_and_activate(RuntimeEpoch::new(1).unwrap())
+            .await;
+        setup
+            .service
+            .send_codex_turn(setup.turn_command(&owner))
+            .unwrap();
+        let turn_id = setup.wait_for_running_turn(&owner);
+        let queued = DurableQueuedPrompt {
+            id: "same-message-id".into(),
+            text: "Change direction".into(),
+            attached_context: Default::default(),
+            binding_id: "codex-app-server".into(),
+            model_id: None,
+            status: QueuedPromptStatus::Sending,
+        };
+        setup
+            .service
+            .database
+            .replace_chat_queued_prompts(
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                std::slice::from_ref(&queued),
+            )
+            .unwrap();
+        let outcome = setup.service.dispatch_session_steer(
+            &BindingId::new("bindingId", "codex-app-server").unwrap(),
+            HostSteerIntent {
+                owner: owner.clone(),
+                turn_id,
+                prompt: Prompt::new("prompt", &queued.text).unwrap(),
+                client_message_id: crate::acp::contract::RequiredText::new(
+                    "clientMessageId",
+                    &queued.id,
+                )
+                .unwrap(),
+            },
+        );
+        match outcome {
+            Err(crate::acp::service::SessionDispatchError::Operation(
+                CodexSessionError::SteerOutcomeUnknown,
+            )) => {}
+            Err(crate::acp::service::SessionDispatchError::Operation(error)) => {
+                panic!("lost Steer result was classified {error:?}")
+            }
+            Err(crate::acp::service::SessionDispatchError::Binding) => {
+                panic!("observed fixture did not advertise Steer")
+            }
+            Ok(_) => panic!("lost Steer result was acknowledged"),
+        }
+        setup
+            .service
+            .database
+            .replace_chat_queued_prompts(
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                &[DurableQueuedPrompt {
+                    status: QueuedPromptStatus::OutcomeUnknown,
+                    ..queued
+                }],
+            )
+            .unwrap();
+        setup.wait_for_job_zero();
+        let turns_before_reopen: i64 = setup
+            .service
+            .database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
+                [owner.chat_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let database_path = setup.database_path.clone().unwrap();
+        let project_id = owner.project_id.as_str().to_owned();
+        let chat_id = owner.chat_id.as_str().to_owned();
+        let _ = setup.service.shutdown_blocking();
+        drop(setup);
+
+        let reopened = crate::persistence::Database::open(&database_path).unwrap();
+        let restored = reopened.project_chat_queued_prompts(&project_id).unwrap();
+        let row = &restored[&chat_id][0];
+        assert_eq!(row.id, "same-message-id");
+        assert!(matches!(row.status, QueuedPromptStatus::OutcomeUnknown));
+        let turns: i64 = reopened
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
+                [&chat_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            turns, turns_before_reopen,
+            "restoring the queue must not dispatch a Turn"
+        );
+        assert_job_zero();
+        drop(reopened);
+        std::fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+    });
+}
+
+#[test]
+#[cfg(windows)]
 fn unsigned_or_observation_only_cannot_launch() {
-    let _journey = journey_test_lock();
+    let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         for (registration, unavailable) in [
             (
@@ -312,6 +668,12 @@ struct FixtureSetup {
 impl FixtureSetup {
     async fn in_memory(registration: CodexBindingRegistration) -> Self {
         Self::open(Path::new(":memory:"), None, registration).await
+    }
+
+    async fn in_memory_with_shutdown_phase_failure(registration: CodexBindingRegistration) -> Self {
+        let setup = Self::open(Path::new(":memory:"), None, registration).await;
+        setup.service.fail_next_runtime_port_finish_park();
+        setup
     }
 
     async fn file_backed(registration: CodexBindingRegistration) -> Self {
@@ -585,14 +947,9 @@ impl FixtureSetup {
         });
     }
 
+    #[track_caller]
     fn wait_until(&self, condition: impl Fn() -> bool) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while !condition() {
-            if Instant::now() >= deadline {
-                panic!("production Codex journey did not converge before its deadline");
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
+        crate::test_wait::until("production Codex journey", condition);
     }
 }
 
@@ -623,6 +980,39 @@ fn assert_job_zero() {
 }
 
 #[cfg(windows)]
+#[derive(Debug)]
+struct DurableItem {
+    kind: String,
+    lifecycle: String,
+    tool_state: String,
+    turn_id: String,
+    external_item_id: String,
+}
+
+#[cfg(windows)]
+fn session_items(setup: &FixtureSetup, owner: &RuntimeOwner) -> Vec<DurableItem> {
+    let connection = setup.service.database.connection();
+    let mut statement = connection
+        .prepare(
+            "SELECT kind, lifecycle, COALESCE(tool_state, ''), turn_id, COALESCE(external_item_id, '') FROM items \
+             WHERE session_id=?1 ORDER BY ordinal",
+        )
+        .unwrap();
+    let rows = statement
+        .query_map(rusqlite::params![owner.session_id.as_str()], |row| {
+            Ok(DurableItem {
+                kind: row.get(0)?,
+                lifecycle: row.get(1)?,
+                tool_state: row.get(2)?,
+                turn_id: row.get(3)?,
+                external_item_id: row.get(4)?,
+            })
+        })
+        .unwrap();
+    rows.map(Result::unwrap).collect()
+}
+
+#[cfg(windows)]
 fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: &[SageTurnId]) {
     let completed = setup.completed_turns(owner);
     assert_eq!(completed.len(), expected.len());
@@ -632,8 +1022,5 @@ fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: 
 }
 
 #[cfg(windows)]
-pub(crate) fn journey_test_lock() -> MutexGuard<'static, ()> {
-    JOURNEY_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
+#[path = "journey_shutdown_tests.rs"]
+mod journey_shutdown_tests;

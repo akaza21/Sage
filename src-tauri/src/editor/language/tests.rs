@@ -1,8 +1,17 @@
-use std::time::{Duration, Instant};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use tokio::{sync::oneshot, time::sleep};
 
 use super::*;
+
+static LANGUAGE_PROCESS_GUARD: Mutex<()> = Mutex::new(());
+
+fn exclusive_language_process() -> MutexGuard<'static, ()> {
+    LANGUAGE_PROCESS_GUARD
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 #[test]
 fn language_fixture_test_child() {
@@ -22,6 +31,7 @@ fn request(document: &str) -> LanguageFixtureRequest {
 
 #[test]
 fn language_fixture_process_surfaces_one_typescript_diagnostic() {
+    let _guard = exclusive_language_process();
     let report = tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (_keep_alive, receiver) = oneshot::channel();
         run_language_fixture(request("const value = SAGE_TS_DIAGNOSTIC;"), receiver)
@@ -36,6 +46,7 @@ fn language_fixture_process_surfaces_one_typescript_diagnostic() {
 
 #[test]
 fn language_fixture_emits_one_outline_symbol_for_the_active_resource() {
+    let _guard = exclusive_language_process();
     let reports = tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (_keep_alive, receiver) = oneshot::channel();
         run_language_fixture(request("export function example() {}"), receiver)
@@ -50,27 +61,27 @@ fn language_fixture_emits_one_outline_symbol_for_the_active_resource() {
 
 #[test]
 fn language_fixture_cancel_reaps_the_child() {
+    let _guard = exclusive_language_process();
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let started = Instant::now();
         let (cancel, receiver) = oneshot::channel();
-        let cancellation = tokio::spawn(async move {
-            sleep(Duration::from_millis(50)).await;
-            let _ = cancel.send(());
-        });
-
-        let error = run_language_fixture(request("SAGE_TS_FIXTURE_SLEEP"), receiver)
-            .await
-            .unwrap_err();
-
-        cancellation.await.unwrap();
+        let fixture = tokio::spawn(run_language_fixture(
+            request("SAGE_TS_FIXTURE_SLEEP"),
+            receiver,
+        ));
+        while active_language_processes() == 0 {
+            tokio::task::yield_now().await;
+        }
+        let _ = cancel.send(());
+        let error = fixture.await.unwrap().unwrap_err();
         assert!(error.contains("cancelled"));
         assert!(!error.contains("cleanup remains contained"));
-        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(active_language_processes(), 0);
     });
 }
 
 #[test]
 fn language_fixture_overrun_or_crash_fails_closed() {
+    let _guard = exclusive_language_process();
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         for document in ["SAGE_TS_FIXTURE_OVERRUN", "SAGE_TS_FIXTURE_CRASH"] {
             let (_keep_alive, receiver) = oneshot::channel();
@@ -99,6 +110,7 @@ fn language_session_generations_remain_unique_across_resource_switches() {
 
 #[test]
 fn language_session_is_at_most_one_process() {
+    let _guard = exclusive_language_process();
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (cancel, receiver) = oneshot::channel();
         let first = tokio::spawn(run_language_fixture(

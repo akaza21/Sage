@@ -31,6 +31,22 @@ afterEach(() => {
 });
 
 describe("ACP permission decision bridge", () => {
+  it("accepts a browser-source terminal denial but rejects a harness-source terminal denial", async () => {
+    const terminalDenial = {
+      ...permissionRequest,
+      state: "resolvedDeclined",
+    };
+    invokeMock.mockResolvedValueOnce({ ...terminalDenial, source: "browser" });
+    await expect(
+      acpDesktop.resolvePermissionDecision(permissionRequest),
+    ).resolves.toEqual({ ...terminalDenial, source: "browser" });
+
+    invokeMock.mockResolvedValueOnce({ ...terminalDenial, source: "harness" });
+    await expect(
+      acpDesktop.resolvePermissionDecision(permissionRequest),
+    ).rejects.toMatchObject({ failure: { kind: "internal" } });
+  });
+
   it("sends and accepts only the exact six-field permission identity", async () => {
     invokeMock.mockResolvedValue({
       ...permissionRequest,

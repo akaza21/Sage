@@ -25,7 +25,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 self.teardown = true;
                 return Err(AdapterPumpError::TeardownRequired);
             }
-            batch.push_egress(self.adapter.cancel_permission(&pending.intent.request_id)?)?;
+            let external_request_id =
+                SageServerRequestId::parse(pending.intent.external_request_id.as_str())
+                    .map_err(|_| AdapterPumpError::Intent)?;
+            batch.push_egress(self.adapter.cancel_permission(&external_request_id)?)?;
             intents.push(pending.intent.clone());
         }
         let (_, egress) = batch.finish().into_parts();

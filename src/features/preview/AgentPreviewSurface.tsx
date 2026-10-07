@@ -118,7 +118,11 @@ export function AgentPreviewSurface({
     // replace a manually opened page at a different origin once this native
     // origin has already been admitted by the controller.
     const admitted = applyBrowseIntent({ owner, url: projection.origin });
-    if (admitted) queueMicrotask(() => setLastAdmittedNativeOrigin(origin));
+    if (admitted)
+      queueMicrotask(() => {
+        setLastAdmittedNativeOrigin(origin);
+        setError(null);
+      });
   }, [lastAdmittedNativeOrigin, owner, projection]);
 
   // This is deliberately one coalesced check on an actual hidden-to-visible

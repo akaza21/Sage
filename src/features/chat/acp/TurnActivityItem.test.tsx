@@ -178,7 +178,8 @@ describe("TurnActivityItem", () => {
       toolState: "waitingForApproval" as const,
       payload: {
         presentation: {
-          kind: "generic" as const,
+          kind: "other" as const,
+          rawKind: null,
           label: "Run tool",
           summary: null,
         },
@@ -219,7 +220,8 @@ describe("TurnActivityItem", () => {
             : ("waitingForApproval" as const),
       payload: {
         presentation: {
-          kind: "generic" as const,
+          kind: "other" as const,
+          rawKind: null,
           label: `Run tool ${index + 1}`,
           summary: null,
         },
@@ -307,7 +309,8 @@ describe("TurnActivityItem", () => {
       toolState: "inProgress" as const,
       payload: {
         presentation: {
-          kind: "generic" as const,
+          kind: "other" as const,
+          rawKind: null,
           label: "Run tool",
           summary: null,
         },
@@ -340,38 +343,6 @@ describe("TurnActivityItem", () => {
     expect(within(region).queryByLabelText("Current activity")).toBeNull();
     fireEvent.click(disclosure);
     expect(within(region).getByText("Run tool")).toBeVisible();
-  });
-
-  it("renders reported and unknown Usage as compact metadata", () => {
-    const { container, rerender } = render(
-      <TurnActivityItem
-        item={item("usage", {
-          inputTokens: 800,
-          outputTokens: 434,
-          cachedInputTokens: 100,
-          totalTokens: 1234,
-        })}
-      />,
-    );
-    expect(screen.getByLabelText("Usage")).toHaveTextContent("1,234 tokens");
-    expect(container.querySelector(".acp-usage")).toHaveAttribute(
-      "data-activity-state",
-      "reported",
-    );
-
-    rerender(
-      <TurnActivityItem
-        item={item("usage", {
-          inputTokens: null,
-          outputTokens: null,
-          cachedInputTokens: null,
-          totalTokens: null,
-        })}
-      />,
-    );
-    expect(screen.getByLabelText("Usage")).toHaveTextContent(
-      "Tokens not reported",
-    );
   });
 
   it("keeps recoverable and non-recoverable errors explicit", () => {

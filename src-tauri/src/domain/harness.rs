@@ -12,6 +12,68 @@ pub struct HarnessDefinition {
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
     pub version: Option<String>,
+    pub version_checking: bool,
+    pub bound_version: Option<String>,
+    pub characterisation: Option<HarnessCharacterisation>,
+    pub unavailable_reason: Option<HarnessUnavailableReason>,
+    pub sign_in: Option<HarnessSignIn>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HarnessInstallState {
+    Detecting,
+    Available,
+    Unavailable,
+    NotInstalled,
+}
+
+impl HarnessInstallState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Detecting => "detecting",
+            Self::Available => "available",
+            Self::Unavailable => "unavailable",
+            Self::NotInstalled => "notInstalled",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HarnessCharacterisation {
+    Characterised,
+    Uncharacterised,
+}
+
+impl HarnessCharacterisation {
+    pub(crate) fn is_characterised(self) -> bool {
+        matches!(self, Self::Characterised)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HarnessUnavailableReason {
+    PlatformUnsupported,
+    ObservationOnly,
+    AdmissionIncomplete,
+    DriftDetected,
+    AdapterAbsent,
+    AdapterVersionUnreadable,
+    NodeAbsent,
+    NodeVersionUnreadable,
+    NodeEngineMismatch,
+    CandidateInvalid,
+    CapabilityProjectionUnavailable,
+    NoNativeAcpEndpoint,
+    AcpProbeUncharacterised,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessSignIn {
+    pub command: String,
+    pub hint: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

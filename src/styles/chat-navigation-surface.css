@@ -3,20 +3,21 @@
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
+  grid-template-rows: auto auto;
   align-items: center;
   border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-fill);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-highlight);
 }
 
 .project-chat-row--foreign {
   grid-template-columns: minmax(0, 1fr) minmax(28px, auto);
 }
 
-.project-chat-row--flat .project-chat {
-  height: var(--control-height-compact);
-}
-
 .project-chat-row:hover {
-  background: var(--color-surface-hover);
+  background: var(--glass-fill-hover);
 }
 
 .project-chat-row--active {
@@ -25,7 +26,7 @@
 }
 
 .project-chat-more {
-  height: 24px;
+  height: var(--control-height-compact);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -45,15 +46,17 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  height: 32px;
+  min-height: var(--row-height-default);
+  grid-column: 1 / -1;
+  grid-row: 1;
   align-items: center;
-  gap: 7px;
-  padding: 0 4px 0 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   border: 0;
   color: var(--color-text-secondary);
   background: transparent;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   text-align: left;
   cursor: pointer;
 }
@@ -85,8 +88,8 @@
 .project-chat__actions,
 .project-chat-edit button {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
   place-items: center;
   padding: 0;
   border: 0;
@@ -140,7 +143,7 @@
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .project-chat__pinned {
@@ -168,17 +171,17 @@
 
 .project-chat-edit {
   display: grid;
-  min-height: 32px;
+  min-height: var(--row-height-default);
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px;
-  padding: 0 2px 0 25px;
+  padding: 0 2px 0 24px;
 }
 
 .project-chat-edit input {
   min-width: 0;
-  height: 24px;
-  padding: 0 6px;
+  height: var(--control-height-compact);
+  padding: 0 4px;
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -193,7 +196,7 @@
 
 .project-chat-edit__error {
   grid-column: 2 / -1;
-  padding: 1px 4px 4px;
+  padding: 2px 4px 4px;
   color: var(--color-danger);
   font-size: var(--font-size-xs);
   line-height: 1.25;
@@ -203,8 +206,9 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   line-height: 1.2;
 }
 
@@ -218,11 +222,15 @@
 .project-chat__context {
   display: inline-flex;
   min-width: 0;
-  max-width: 42%;
+  max-width: 100%;
+  grid-column: 1;
+  grid-row: 2;
   flex: 0 1 auto;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   overflow: hidden;
+  padding: 0 var(--space-1) var(--space-1)
+    calc(var(--space-2) + 14px + var(--space-2));
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 500;
@@ -235,10 +243,10 @@
   display: grid;
   min-width: 0;
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   align-items: center;
   justify-items: end;
-  padding-right: 4px;
+  padding: 0 4px var(--space-1) 0;
 }
 
 .project-chat__state {
@@ -274,18 +282,20 @@
 .project-chat__status-chip {
   display: inline-flex;
   max-width: 88px;
-  min-height: 18px;
+  min-height: 16px;
   align-items: center;
   gap: 4px;
   overflow: hidden;
-  padding: 0 6px;
-  border: 1px solid currentColor;
+  padding: 0 4px;
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   font-size: var(--font-size-xs);
   font-weight: 600;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-highlight);
 }
 
 .project-chat__status-chip--working,
@@ -306,8 +316,8 @@
 }
 
 .project-chat__state--unread::before {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: var(--radius-circle);
   background: var(--color-accent);
@@ -315,12 +325,13 @@
 }
 
 .project-chat__working {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: var(--radius-circle);
   background: var(--color-accent);
-  animation: sage-working-pulse 1.4s ease-in-out infinite;
+  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
+    infinite;
 }
 
 .project-chat__working--status {
@@ -328,6 +339,7 @@
 }
 
 .project-chat__workspace {
+  flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -336,8 +348,9 @@
 .project-chat__git {
   display: inline-flex;
   min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -348,8 +361,8 @@
 }
 
 .project-chat__git--chip {
-  min-height: 18px;
-  padding: 0 5px;
+  min-height: 16px;
+  padding: 0 4px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);
   background: var(--color-plane-raised);
@@ -376,8 +389,8 @@
   width: calc(100% - 12px);
   align-items: center;
   gap: 8px;
-  margin: 6px;
-  padding: 9px;
+  margin: 4px;
+  padding: 8px;
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
@@ -388,26 +401,43 @@
 
 .project-sidebar__account {
   display: grid;
-  height: 48px;
-  grid-template-columns: auto minmax(0, 1fr);
+  height: 56px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
 }
 
+.project-sidebar__settings {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.project-sidebar__settings:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
 .account-avatar {
   display: grid;
-  width: 23px;
-  height: 23px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-circle);
   color: var(--color-text-secondary);
   background: var(--color-plane-raised);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: 700;
 }
 

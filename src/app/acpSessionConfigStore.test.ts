@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { AcpChatPage } from "../domain/acp";
+import type { AcpChatPage, AgentSessionProjection } from "../domain/acp";
+import {
+  agentSessionFixture,
+  capabilitySetFixture,
+} from "../domain/acpProjection.fixture";
 import {
   createAcpProjectionStore,
   type AcpProjectionScope,
@@ -44,37 +48,19 @@ function page(revision = "1"): AcpChatPage {
     currentSessionId: "session-a",
     sessionConfig: config(revision),
     sessions: [
-      {
-        id: "session-a",
-        ordinal: 0,
-        bindingId: "binding-a",
-        modelId: null,
+      agentSessionFixture({
         state: "ready",
         residency: "hot",
-        runtimeEpoch: "2",
-        nextRuntimeEpoch: null,
-        revision: "1",
-        projectionRevision: "10",
-        legacy: false,
-        capabilities: {
-          schemaVersion: 1,
+        runtimeEpoch: "2" as AgentSessionProjection["runtimeEpoch"],
+        projectionRevision:
+          "10" as AgentSessionProjection["projectionRevision"],
+        capabilities: capabilitySetFixture({
           protocolVersion: "acp-1",
-          newSession: true,
           resumeSession: true,
-          loadSession: false,
-          closeSession: true,
-          prompt: true,
-          cancel: true,
-          nativeSessionFork: false,
-          activeTurnSteer: false,
-          childConversationProjection: false,
-          childTranscriptRead: false,
-          collaborationEventProjection: false,
-          multiRootExtensionSchemaId: null,
           modelCount: 0,
           configCount: 1,
-        },
-      },
+        }),
+      }),
     ],
     turns: [],
     nextCursor: null,

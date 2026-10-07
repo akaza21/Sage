@@ -134,7 +134,11 @@ where
             }
             if !dispatch.is_terminal()
                 && let Err(error) = dispatch
-                    .observe(SendObservation::ProcessLost, candidate.command.now_millis)
+                    .observe(
+                        SendObservation::ProcessLost,
+                        None,
+                        candidate.command.now_millis,
+                    )
                     .await
             {
                 return Err(failure(Self::Candidate(candidate), error.into()));

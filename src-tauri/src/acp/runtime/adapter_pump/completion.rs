@@ -22,7 +22,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
-        let mut config_rejected = false;
+        let mut nonfatal_refusal = None;
         while let Some(current) = frame {
             validate_structure(&current).map_err(|_| AdapterPumpError::Frame)?;
             match self.adapter.ingest(&current, &self.resources) {
@@ -32,15 +32,17 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                         || !events.iter().all(|e| {
                             matches!(
                                 e,
-                                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
+                                AdapterEvent::IgnoredLate
+                                    | AdapterEvent::IgnoredDuplicate
+                                    | AdapterEvent::Absorbed
                             )
                         })
                     {
                         return Err(AdapterPumpError::Frame);
                     }
                 }
-                Err(AdapterRuntimeError::ConfigMutationRejected) => {
-                    config_rejected = true;
+                Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
+                    nonfatal_refusal = Some(refusal.into());
                 }
                 Err(error) => return Err(AdapterPumpError::Adapter(error)),
             }
@@ -49,11 +51,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .drain_pending()
                 .map_err(|_| AdapterPumpError::Frame)?;
         }
-        if config_rejected {
-            Err(AdapterPumpError::ConfigMutationRejected)
-        } else {
-            Ok(())
-        }
+        nonfatal_refusal.map_or(Ok(()), Err)
     }
     pub(crate) fn idle_frame_aligned(&self) -> bool {
         self.idle_decoder.is_frame_aligned()

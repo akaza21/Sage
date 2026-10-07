@@ -1,14 +1,25 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    runtime::SqliteAdapterBatchJournal,
+    runtime::{HostError, SqliteAdapterBatchJournal},
 };
 
 use super::super::{
     CoordinatorZeroToken, PreparedProcessWrite, PreparedWriteError, ProcessTreeControl,
     StdinTransport, WorkerEnvelope,
 };
-use super::turn::map_write;
 use super::{FirstTurnWorkerRecovery, FirstTurnWorkerState};
+
+pub(super) fn map_write(error: &PreparedWriteError) -> HostError {
+    match error {
+        PreparedWriteError::Intent | PreparedWriteError::Fence(_) => HostError::Intent,
+        PreparedWriteError::Driver(super::super::DriverError::Refused(
+            crate::acp::runtime::NonfatalRefusal::SignIn,
+        )) => HostError::SignInRequired,
+        PreparedWriteError::Coordinator(_) | PreparedWriteError::Driver(_) => {
+            HostError::RecoveryRequired
+        }
+    }
+}
 
 // Recovery owns this already-boxed typestate; unboxing and reboxing it at the
 // caller would add churn without reducing the bounded live-state footprint.

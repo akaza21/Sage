@@ -59,6 +59,59 @@
     var(--color-panel)
   );
   --color-selection: #264f78;
+  --glass-fill: rgb(73 82 88 / 0.34);
+  --glass-fill-hover: rgb(88 98 104 / 0.46);
+  --glass-border: rgb(255 255 255 / 0.13);
+  --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
+  --glass-blur: blur(12px);
+  --glass-text: #bec3c7;
+  --title-bar-fill: #111111;
+  --title-bar-control-fill: #171717;
+  --title-bar-control-hover: #202020;
+  --title-bar-switch-fill: #0b0b0b;
+  --title-bar-search-width: 182px;
+  --title-bar-search-height: 32px;
+  --agent-shell-rail: #202020;
+  --agent-shell-sidebar: #1b1b1b;
+  --agent-shell-divider: #2b2b2b;
+  --agent-shell-rail-divider: #252525;
+  --agent-shell-selected: #2d2d2d;
+  --agent-shell-hover: #303030;
+  --agent-shell-center: #181818;
+  --agent-shell-title-divider: #262626;
+  --agent-shell-tab-border: #4c4c4c;
+  --agent-shell-user-bubble: #2f2f2f;
+  --agent-shell-resource-border: #363636;
+  --agent-shell-resource-shadow: 0 12px 24px rgb(0 0 0 / 0.24);
+  --agent-shell-spinner-track: #666;
+  --agent-shell-spinner-head: #b9b9b9;
+  --agent-subagent-violet: #a879df;
+  --agent-subagent-teal: #61bfaa;
+  --agent-subagent-coral: #df8f76;
+  --search-dialog-fill: rgb(43 43 43 / 0.9);
+  --search-dialog-scrim: rgb(0 0 0 / 0.25);
+  --search-dialog-control-fill: #1e1e1e;
+  --search-dialog-control-hover: #303030;
+  --search-dialog-border: rgb(255 255 255 / 0.09);
+  --search-dialog-highlight: inset 0 1px 0 rgb(255 255 255 / 0.11);
+  --search-dialog-text-primary: #ffffff;
+  --search-dialog-text: #f4f4f4;
+  --search-dialog-button-fill: #25486a;
+  --search-dialog-button-hover: #2d587f;
+  --search-dialog-error-fill: #2a1f1f;
+  --browser-chrome-fill: #202020;
+  --browser-chrome-divider: #2b2b2b;
+  --browser-chrome-text: #d6d6d6;
+  --browser-control-hover: #383838;
+  --browser-address-fill: #2d2d2d;
+  --browser-muted-text: #b8b8b8;
+  --browser-control-border: #454545;
+  --browser-control-text: #e8e8e8;
+  --browser-control-fill: var(--color-plane-raised);
+  --browser-menu-divider: #434343;
+  --browser-popover-shadow: 0 12px 28px #0009;
+  --browser-start-fill: #181818;
+  --browser-bright-text: #f4f4f4;
 
   /* File/Diff document authority (AV-03). Single source for the shared
      document palette; consumers alias their generic roles to these tokens.
@@ -127,8 +180,8 @@
     sans-serif;
   --font-family-mono:
     "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
   --font-size-md: 14px;
   --font-size-lg: 16px;
   --font-size-xl: 20px;
@@ -150,10 +203,17 @@
   --control-height-compact: 28px;
   --control-height-default: 32px;
   --control-height-emphasis: 36px;
+  --row-height-compact: 30px;
+  --row-height-default: 32px;
+  --row-height-emphasis: 34px;
+  --tab-height: 36px;
   --chrome-row-height: 40px;
   --icon-size-sm: 14px;
   --icon-size-md: 16px;
   --icon-size-lg: 20px;
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-thumb-hover: #4a4a4a;
   --reading-measure: 72ch;
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
@@ -162,9 +222,24 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-composer-menu: 12px;
   --radius-pill: 999px;
   --radius-none: 0;
   --radius-circle: 50%;
+  --composer-fill: #363636;
+  --composer-border: #383838;
+  --composer-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+  --composer-menu-border: #484848;
+  --composer-menu-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+  --composer-control-text: #e3e3e3;
+  --composer-control-hover: #444;
+  --composer-muted-text: #a8a8a8;
+  --composer-access-text: #c7c7c7;
+  --composer-access-write: #f27c27;
+  --composer-send-text: #171717;
+  --composer-send-hover: #e8e8e8;
+  --composer-send-disabled-text: #606060;
   --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.32);
   --elevation-floating: 0 16px 48px rgb(0 0 0 / 0.24);
   --highlight-focus-edge: color-mix(
@@ -209,6 +284,8 @@
   --opacity-disabled: 0.45;
   --motion-duration-fast: 100ms;
   --motion-duration-normal: 160ms;
+  --motion-duration-pulse: 1.4s;
+  --motion-duration-spin: 900ms;
 
   /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
@@ -247,8 +324,55 @@
   --project-sidebar-width: 248px;
 }
 
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --glass-fill: #292d30;
+    --glass-fill-hover: #343a3e;
+    --glass-blur: none;
+    --search-dialog-fill: #292929;
+    --search-dialog-control-fill: #1e1e1e;
+    --search-dialog-control-hover: #303030;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-fill: #292d30;
+    --glass-fill-hover: #343a3e;
+    --glass-blur: none;
+    --search-dialog-fill: #292929;
+    --search-dialog-control-fill: #1e1e1e;
+    --search-dialog-control-hover: #303030;
+  }
+}
+
 * {
   box-sizing: border-box;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 html,
@@ -264,6 +388,23 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
+  font-size: var(--font-size-md);
+}
+
+.close-failure {
+  position: fixed;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 24px));
+  padding: 12px 16px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  transform: translateX(-50%);
 }
 
 button,
@@ -431,10 +572,24 @@ textarea:disabled,
   }
 }
 
+@keyframes sage-reveal-two-pixel {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-duration-fast: 0ms;
     --motion-duration-normal: 0ms;
+    --motion-duration-pulse: 0ms;
+    --motion-duration-spin: 0ms;
   }
 
   *,

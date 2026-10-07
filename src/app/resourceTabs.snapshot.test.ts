@@ -24,6 +24,31 @@ function initial(): WorkbenchState {
 }
 
 describe("immutable snapshot resource tabs", () => {
+  it("accepts a browser tab in the durable project layout", () => {
+    expect(() =>
+      assertBrowserProjectLayout(
+        {
+          projectId: "project",
+          tabs: [
+            {
+              id: "browser-1",
+              kind: "browser",
+              title: "Browser",
+              position: 0,
+              pinned: false,
+              dirty: false,
+            },
+          ],
+          activeTabId: "browser-1",
+          selectedRootId: "root",
+          selectedResource: null,
+        },
+        "project",
+        [{ id: "root" }],
+      ),
+    ).not.toThrow();
+  });
+
   it("separates two Turns, evolving versions and ordinary Git for one file", () => {
     let state = initial();
     const refs = [reference("one"), reference("two"), reference("one", "2")];

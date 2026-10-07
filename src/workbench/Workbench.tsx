@@ -5,21 +5,20 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-
 import { useWorkbenchStore } from "../app/store";
+import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
 import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
-import { sameResource } from "../domain/resourceIdentity";
+import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
+import { useUiAppearanceStore } from "../app/uiAppearanceStore";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
+import { ActiveEditorCanvas } from "./ActiveEditorCanvas";
 import { DirtyTabDialog } from "./DirtyTabDialog";
-import { EditorWelcome } from "./EditorWelcome";
-import { PlaceholderSurface } from "./PlaceholderSurface";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
-import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
 import {
@@ -33,24 +32,21 @@ import {
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
 import {
-  AGENT_ARTIFACT_WIDTH,
-  AGENT_LEFT_RAIL_WIDTH,
   EDITOR_ACTIVITY_BAR_WIDTH,
   EDITOR_TOOL_RAIL_WIDTH,
+  agentDesktopArtifactWidth,
+  agentDesktopLeftRailWidth,
 } from "./workbenchSidebarResize";
 import {
   readWorkbenchLayout,
   writeWorkbenchLayout,
 } from "./workbenchLayoutStorage";
 import "./workbench-window-mode.css";
+import "./harness-browser-mode.css";
+import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 registerWorkbenchSurfaces();
-
-const loadSettingsSurface = () =>
-  import("./SettingsSurface").then(({ SettingsSurface }) => ({
-    default: SettingsSurface,
-  }));
 
 const loadAgentWorkbenchBody = () =>
   import("./AgentWorkbenchBody").then(({ AgentWorkbenchBody }) => ({
@@ -60,67 +56,6 @@ const loadAgentWorkbenchBody = () =>
 const workbenchGeometryStyle = {
   "--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`,
 } as CSSProperties;
-
-function repositoryMutationTitle(
-  error: NonNullable<
-    ReturnType<typeof useWorkbenchStore.getState>["repositoryMutationError"]
-  >,
-) {
-  const path = error.resource.relativePath;
-  if (error.kind === "containment") {
-    return `Source Control containment blocked ${error.action} for ${path}`;
-  }
-  if (error.kind === "effectUnknown") {
-    return `Source Control could not confirm ${error.action} for ${path}`;
-  }
-  return `Source Control could not ${error.action} ${path}`;
-}
-
-function ActiveCanvas({ onOpenAgent }: { onOpenAgent: () => void }) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const repositoryMutationError = useWorkbenchStore(
-    (state) => state.repositoryMutationError,
-  );
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-  const editorTab =
-    activeTab && isAgentArtifactTabKind(activeTab.kind) ? activeTab : null;
-  const contextualMutationError =
-    editorTab?.resource &&
-    repositoryMutationError &&
-    sameResource(editorTab.resource, repositoryMutationError.resource)
-      ? repositoryMutationError
-      : null;
-  const canvas = editorTab ? renderFileOrDiffCanvas(editorTab) : null;
-  const showEditorEmpty =
-    !editorTab && (!activeTab || activeTab.kind === "chat");
-
-  return (
-    <div className="active-canvas" role="tabpanel">
-      {contextualMutationError ? (
-        <div className="repository-mutation-alert" role="alert">
-          <strong>{repositoryMutationTitle(contextualMutationError)}</strong>
-          <span>{contextualMutationError.message}</span>
-        </div>
-      ) : null}
-      {canvas}
-      {activeTab?.kind === "settings" ? (
-        <LazyModuleBoundary
-          label="Settings"
-          load={loadSettingsSurface}
-          render={(SettingsSurface) => <SettingsSurface />}
-        />
-      ) : null}
-      {activeTab &&
-      !editorTab &&
-      activeTab.kind !== "chat" &&
-      activeTab.kind !== "settings" ? (
-        <PlaceholderSurface tab={activeTab} />
-      ) : null}
-      {showEditorEmpty ? <EditorWelcome onOpenAgent={onOpenAgent} /> : null}
-    </div>
-  );
-}
 
 function EditorContinuityKeeper({
   windowMode,
@@ -238,12 +173,10 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
-  const [agentLeftRailWidth, setAgentLeftRailWidth] = useState(
-    AGENT_LEFT_RAIL_WIDTH.defaultWidth,
-  );
-  const [agentArtifactWidth, setAgentArtifactWidth] = useState(
-    AGENT_ARTIFACT_WIDTH.defaultWidth,
-  );
+  const {
+    changeWidth: changeAgentSidebarWidth,
+    renderedWidths: agentSidebarWidths,
+  } = useAgentDesktopSidebarWidths();
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const [agentNavigationOpen, setAgentNavigationOpen] = useState(false);
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
@@ -251,13 +184,20 @@ export function Workbench() {
   );
   useEffect(() => {
     void useEditorAppearanceStore.getState().restore();
+    void useSessionAccessModeStore.getState().restore();
+    void useUiAppearanceStore.getState().restore();
   }, []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === ",") {
+      if (matchesKeymapChord(keymapBinding("openSettings"), event)) {
         event.preventDefault();
         setWindowMode("editor");
         void useWorkbenchStore.getState().openSettings();
+      }
+      if (matchesKeymapChord(keymapBinding("newTask"), event)) {
+        event.preventDefault();
+        setWindowMode("agent");
+        void useWorkbenchStore.getState().createChat();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -282,7 +222,9 @@ export function Workbench() {
       const before = useWorkbenchStore.getState();
       if (
         before.projectTransitioning ||
-        !before.tabs.some((tab) => tab.id === tabId)
+        !before.tabs.some(
+          (tab) => tab.id === tabId && isAgentArtifactTabKind(tab.kind),
+        )
       )
         return;
       await before.activateTab(tabId);
@@ -296,6 +238,10 @@ export function Workbench() {
       setWindowMode("editor");
     })();
   }, []);
+  const revealSettings = useCallback(() => {
+    setWindowMode("editor");
+    void useWorkbenchStore.getState().openSettings();
+  }, []);
   const drawerOpen =
     isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
     (compact &&
@@ -306,10 +252,10 @@ export function Workbench() {
     : windowMode === "agent"
       ? agentArtifactExpanded
         ? {
-            gridTemplateColumns: `${agentLeftRailWidth}px 8px minmax(0, 1fr) 8px ${agentArtifactWidth}px`,
+            gridTemplateColumns: `${agentSidebarWidths.leftRailWidth}px 8px minmax(0, 1fr) 8px ${agentSidebarWidths.artifactWidth}px`,
           }
         : {
-            gridTemplateColumns: `${agentLeftRailWidth}px 8px minmax(0, 1fr) 44px`,
+            gridTemplateColumns: `${agentSidebarWidths.leftRailWidth}px 8px minmax(0, 1fr) 44px`,
           }
       : {
           gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
@@ -337,11 +283,22 @@ export function Workbench() {
               onNavigationOpenChange={changeAgentNavigation}
               artifactExpanded={agentArtifactExpanded}
               onArtifactExpandedChange={changeAgentArtifact}
-              agentLeftRailWidth={agentLeftRailWidth}
-              onAgentLeftRailWidthChange={setAgentLeftRailWidth}
-              agentArtifactWidth={agentArtifactWidth}
-              onAgentArtifactWidthChange={setAgentArtifactWidth}
+              agentLeftRailWidth={agentSidebarWidths.leftRailWidth}
+              agentLeftRailWidthBounds={agentDesktopLeftRailWidth(
+                window.innerWidth,
+              )}
+              onAgentLeftRailWidthChange={(width) =>
+                changeAgentSidebarWidth("left", width)
+              }
+              agentArtifactWidth={agentSidebarWidths.artifactWidth}
+              agentArtifactWidthBounds={agentDesktopArtifactWidth(
+                window.innerWidth,
+              )}
+              onAgentArtifactWidthChange={(width) =>
+                changeAgentSidebarWidth("artifact", width)
+              }
               onOpenArtifactInEditor={openArtifactInEditor}
+              onOpenSettings={revealSettings}
             />
           )}
         />
@@ -366,7 +323,7 @@ export function Workbench() {
             <div className="workbench__tabs">
               <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
             </div>
-            <ActiveCanvas onOpenAgent={() => setWindowMode("agent")} />
+            <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
           </div>
         </div>
       )}

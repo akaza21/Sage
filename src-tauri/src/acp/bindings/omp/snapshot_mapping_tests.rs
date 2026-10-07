@@ -8,7 +8,10 @@ use super::{
 use crate::acp::{
     contract::SageRootId,
     file_diff::{DIFF_SIDE_BYTES_MAX, admit_pair, pair_digest},
-    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
+    intent::{
+        FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
+        UnavailableResourceReason,
+    },
     lifecycle::ItemLifecycle,
 };
 
@@ -235,4 +238,94 @@ fn omp_oversize_and_foreign_map_to_summary_only_without_partial_text() {
             ..
         }
     )));
+}
+
+fn omp_change_shape(events: &[AdapterEvent]) -> (FileChangeOperation, Option<u64>, Option<u64>) {
+    events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload:
+                    NormalizedPayload::FileChangeDiff {
+                        operation,
+                        additions,
+                        deletions,
+                        ..
+                    },
+                ..
+            } => Some((*operation, *additions, *deletions)),
+            _ => None,
+        })
+        .expect("a file change reports typed diff metadata")
+}
+
+fn omp_creation_events(content: &str) -> Vec<AdapterEvent> {
+    let mut translator = translator(24);
+    initialize(&mut translator);
+    new_session(&mut translator);
+    begin_prompt(&mut translator);
+    tool_call(&mut translator, "tool-created");
+    tool_update(&mut translator, "tool-created", content)
+}
+
+fn omp_change_resource(content: &str) -> SafeResourceLocation {
+    omp_creation_events(content)
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { resource, .. },
+                ..
+            } => Some(resource.clone()),
+            _ => None,
+        })
+        .expect("a file change carries a resource location")
+}
+
+#[test]
+fn omp_creation_of_a_path_the_harness_has_not_written_stays_unavailable() {
+    let resource = omp_change_resource(
+        r#"{"type":"diff","path":"C:\\fixture\\src\\created.rs","oldText":null,"newText":"created\n"}"#,
+    );
+    assert_eq!(
+        resource,
+        SafeResourceLocation::unavailable(UnavailableResourceReason::Foreign)
+    );
+}
+
+#[test]
+fn omp_update_of_a_path_outside_the_roots_stays_unavailable() {
+    let resource = omp_change_resource(
+        r#"{"type":"diff","path":"C:\\fixture\\src\\created.rs","oldText":"old\n","newText":"new\n"}"#,
+    );
+    assert_eq!(
+        resource,
+        SafeResourceLocation::unavailable(UnavailableResourceReason::Foreign)
+    );
+}
+
+#[test]
+fn omp_null_old_text_marks_the_change_created_with_one_addition_and_no_deletion() {
+    let events = omp_creation_events(
+        r#"{"type":"diff","path":"C:\\fixture\\src\\lib.rs","oldText":null,"newText":"created\n"}"#,
+    );
+    assert_eq!(
+        omp_change_shape(&events),
+        (FileChangeOperation::Created, Some(1), Some(0))
+    );
+}
+
+#[test]
+fn omp_absent_old_text_marks_the_change_created() {
+    let events = omp_creation_events(
+        r#"{"type":"diff","path":"C:\\fixture\\src\\lib.rs","newText":"created\n"}"#,
+    );
+    assert_eq!(omp_change_shape(&events).0, FileChangeOperation::Created);
+}
+
+#[test]
+fn omp_explicitly_empty_old_text_stays_an_update_of_an_existing_empty_file() {
+    let events = omp_creation_events(
+        r#"{"type":"diff","path":"C:\\fixture\\src\\lib.rs","oldText":"","newText":"created\n"}"#,
+    );
+    assert_eq!(omp_change_shape(&events).0, FileChangeOperation::Updated);
 }

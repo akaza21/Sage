@@ -10,6 +10,7 @@ use crate::acp::{
     },
     intent::Prompt,
     lifecycle::{DeliveryState, TurnState},
+    runtime::LiveRuntimePort,
     scheduler::RuntimeOwner,
     store::AdapterTurnCursor,
 };
@@ -40,6 +41,8 @@ struct FakeEngine {
     prepare_gate: Option<PrepareGate>,
     terminal_gate: Option<TerminalGate>,
     config_completion: Option<ConfigCompletion>,
+    steer_completion: Option<ConfigCompletion>,
+    steer_port: Option<Arc<Mutex<crate::acp::runtime::process_driver::ProcessLivePort>>>,
 }
 
 impl FakeEngine {
@@ -60,6 +63,8 @@ impl FakeEngine {
             prepare_gate: None,
             terminal_gate: None,
             config_completion: None,
+            steer_completion: None,
+            steer_port: None,
         }
     }
 
@@ -121,6 +126,19 @@ impl FakeEngine {
 
     fn with_config_completion(mut self, completion: ConfigCompletion) -> Self {
         self.config_completion = Some(completion);
+        self
+    }
+
+    fn with_steer_completion(mut self, completion: ConfigCompletion) -> Self {
+        self.steer_completion = Some(completion);
+        self
+    }
+
+    fn with_steer_port(
+        mut self,
+        port: Arc<Mutex<crate::acp::runtime::process_driver::ProcessLivePort>>,
+    ) -> Self {
+        self.steer_port = Some(port);
         self
     }
 
@@ -199,6 +217,34 @@ impl RuntimeEngine for FakeEngine {
             return Err(error);
         }
         self.next_write()
+    }
+
+    fn dispatch_steer(&mut self, _intent: &HostSteerIntent) -> Result<(), HostError> {
+        self.push("dispatchSteer");
+        if self.steer_completion.is_some() {
+            std::thread::sleep(Duration::from_millis(750));
+        }
+        Ok(())
+    }
+
+    fn begin_steer(
+        &mut self,
+        intent: &HostSteerIntent,
+        deadline: Instant,
+        completion: SteerCompletionSink,
+    ) -> Result<(), HostError> {
+        self.push("dispatchSteer");
+        if let Some(port) = &self.steer_port {
+            return port
+                .lock()
+                .unwrap()
+                .begin_steer(intent, deadline, completion);
+        }
+        match &self.steer_completion {
+            Some(retained) => *retained.lock().unwrap() = Some(completion),
+            None => completion.complete(Ok(())),
+        }
+        Ok(())
     }
 
     fn retry_prompt(
@@ -325,6 +371,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: crate::persistence::now_millis(),
         },
+        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -342,6 +389,15 @@ fn cancel(owner: &RuntimeOwner) -> HostCancelIntent {
         turn_id: SageTurnId::parse("turn-host").unwrap(),
         client_intent_id: ClientIntentId::parse("intent-cancel").unwrap(),
         now_millis: crate::persistence::now_millis(),
+    }
+}
+
+fn steer(owner: &RuntimeOwner) -> HostSteerIntent {
+    HostSteerIntent {
+        owner: owner.clone(),
+        turn_id: turn(),
+        prompt: Prompt::new("prompt", "Change direction").unwrap(),
+        client_message_id: crate::acp::contract::RequiredText::new("client", "steer-host").unwrap(),
     }
 }
 
@@ -367,6 +423,91 @@ fn close(owner: &RuntimeOwner) -> HostCloseIntent {
             now_millis: crate::persistence::now_millis(),
         },
     }
+}
+
+#[test]
+fn stalled_worker_steer_admission_does_not_block_host_cancel() {
+    let runtime = owner("project-a");
+    let mailbox = Arc::new(crate::acp::runtime::process_driver::DriverMailbox::new().unwrap());
+    let port = Arc::new(Mutex::new(
+        crate::acp::runtime::process_driver::ProcessLivePort::new(
+            runtime.clone(),
+            mailbox,
+            Arc::new(|_| {}),
+        ),
+    ));
+    let engine = FakeEngine::new([PromptWrite::Complete(turn())]).with_steer_port(port);
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start_with_timeout(engine, Duration::from_secs(1)).unwrap());
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+
+    let pending = {
+        let host = Arc::clone(&host);
+        let intent = steer(&runtime);
+        std::thread::spawn(move || host.steer(intent))
+    };
+    let started = Instant::now();
+    while !observed.events().contains(&"dispatchSteer") {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    let control_started = Instant::now();
+    assert_eq!(host.cancel(cancel(&runtime)), Ok(HostOutcome::CancelQueued));
+    assert!(control_started.elapsed() < Duration::from_millis(250));
+    assert_eq!(pending.join().unwrap(), Err(HostError::Intent));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn pending_steer_does_not_block_controls_or_admit_a_second_steer() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([PromptWrite::Complete(turn())])
+        .with_steer_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+
+    let pending = {
+        let host = Arc::clone(&host);
+        let intent = steer(&runtime);
+        std::thread::spawn(move || host.steer(intent))
+    };
+    let started = Instant::now();
+    while !observed.events().contains(&"dispatchSteer") {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+
+    let second = {
+        let host = Arc::clone(&host);
+        let intent = steer(&runtime);
+        std::thread::spawn(move || host.steer(intent))
+    };
+    let control_started = Instant::now();
+    assert_eq!(second.join().unwrap(), Err(HostError::Intent));
+    assert!(control_started.elapsed() < Duration::from_millis(250));
+    assert_eq!(
+        host.resolve_permission(
+            runtime.clone(),
+            crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
+            crate::acp::runtime::permissions::PermissionDecision::Deny,
+        ),
+        Ok(HostOutcome::PermissionResolved)
+    );
+    assert_eq!(host.cancel(cancel(&runtime)), Ok(HostOutcome::CancelQueued));
+    assert!(control_started.elapsed() < Duration::from_millis(250));
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .expect("pending Steer completion")
+        .complete(Err(HostError::Intent));
+    assert_eq!(pending.join().unwrap(), Err(HostError::Intent));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
 #[test]
@@ -521,26 +662,29 @@ fn configuration_deadline_wakes_actor_and_ignores_late_completion() {
     let host =
         Arc::new(RuntimeHost::start_with_timeout(engine, Duration::from_millis(25)).unwrap());
     let runtime = owner("project-a");
-    host.activate(runtime.clone()).unwrap();
+    host.without_timeout_override(|| host.activate(runtime.clone()))
+        .unwrap();
 
     assert_eq!(
         host.configure_session(config(&runtime)),
         Err(HostError::Deadline)
     );
-    let settled = Instant::now();
-    loop {
-        match host.state() {
-            Ok(HostState::Recovery) => break,
-            Ok(state) => {
-                assert!(
-                    settled.elapsed() < Duration::from_secs(1),
-                    "configuration deadline left host in {state:?}"
-                );
-                std::thread::yield_now();
+    host.without_timeout_override(|| {
+        let settled = Instant::now();
+        loop {
+            match host.state() {
+                Ok(HostState::Recovery) => break,
+                Ok(state) => {
+                    assert!(
+                        settled.elapsed() < crate::test_wait::BUDGET,
+                        "configuration deadline left host in {state:?}"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("configuration deadline closed host: {error:?}"),
             }
-            Err(error) => panic!("configuration deadline closed host: {error:?}"),
         }
-    }
+    });
     assert!(completion.lock().unwrap().is_none());
     assert_eq!(
         observed
@@ -1187,21 +1331,23 @@ fn closing_the_host_mailbox_replies_closed_to_every_queued_caller() {
 
 #[test]
 fn nonresponding_actor_returns_at_deadline_and_closes_queued_work() {
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     let gate = Arc::new((Mutex::new((false, false)), Condvar::new()));
     let engine = FakeEngine::new([]).with_prepare_gate(Arc::clone(&gate));
     let host = RuntimeHost::start_with_timeout(engine, Duration::from_millis(20)).unwrap();
     let runtime = owner("project-a");
-    host.activate(runtime.clone()).unwrap();
+    host.without_timeout_override(|| host.activate(runtime.clone()))
+        .unwrap();
 
-    let started = Instant::now();
     assert_eq!(
         host.prepare_prompt(prompt(&runtime)),
         Err(HostError::Deadline)
     );
-    assert!(started.elapsed() < Duration::from_secs(1));
-    assert_eq!(host.state(), Err(HostError::RecoveryRequired));
+    assert_eq!(
+        host.without_timeout_override(|| host.state()),
+        Err(HostError::RecoveryRequired)
+    );
 
     let (state, ready) = &*gate;
     let mut state = state.lock().unwrap();

@@ -5,9 +5,12 @@ import type { ChatMessage } from "../../domain/chat";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import { AcpChatProjection, type OpenResourceTarget } from "./acp";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
+import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import "./chat-transcript-polish.css";
 
 export function ChatTranscript({
   transcriptRef,
+  contentRef,
   endRef,
   onScroll,
   projectTransitioning,
@@ -23,10 +26,12 @@ export function ChatTranscript({
   onLoadEarlier,
   messages,
   developmentSimulator,
+  onRetry,
   followingEnd,
   onJumpToLatest,
 }: {
   transcriptRef: RefObject<HTMLDivElement | null>;
+  contentRef: RefObject<HTMLDivElement | null>;
   endRef: RefObject<HTMLDivElement | null>;
   onScroll: () => void;
   projectTransitioning: boolean;
@@ -50,35 +55,43 @@ export function ChatTranscript({
   onLoadEarlier: () => void;
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
+  onRetry?: () => void;
   followingEnd: boolean;
   onJumpToLatest: () => void;
 }) {
   return (
     <>
       <div ref={transcriptRef} className="message-list" onScroll={onScroll}>
-        {projectTransitioning ? (
-          <div className="composer__notice" role="status">
-            Loading the authoritative project…
-          </div>
-        ) : useNativeAcp && page ? (
-          <AcpChatProjection
-            page={page}
-            active
-            focused={focused}
-            projectRoots={projectRoots}
-            retentionIncomplete={retentionIncomplete}
-            onOpenResource={onOpenResource}
-            hasEarlier={hasEarlier}
-            loadingEarlier={loadingEarlier}
-            historyError={historyError}
-            onLoadEarlier={onLoadEarlier}
-          />
-        ) : (
-          <ChatLegacyTranscript
+        <div ref={contentRef} className="message-list__content">
+          {projectTransitioning ? (
+            <div className="composer__notice" role="status">
+              Loading the authoritative project…
+            </div>
+          ) : useNativeAcp && page ? (
+            <AcpChatProjection
+              page={page}
+              active
+              focused={focused}
+              projectRoots={projectRoots}
+              retentionIncomplete={retentionIncomplete}
+              onOpenResource={onOpenResource}
+              hasEarlier={hasEarlier}
+              loadingEarlier={loadingEarlier}
+              historyError={historyError}
+              onLoadEarlier={onLoadEarlier}
+            />
+          ) : (
+            <ChatLegacyTranscript
+              messages={messages}
+              developmentSimulator={developmentSimulator}
+            />
+          )}
+          <ChatTranscriptFooter
+            page={useNativeAcp ? page : null}
             messages={messages}
-            developmentSimulator={developmentSimulator}
+            onRetry={useNativeAcp ? onRetry : undefined}
           />
-        )}
+        </div>
         <div ref={endRef} />
       </div>
       {!followingEnd ? (

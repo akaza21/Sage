@@ -1,6 +1,9 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    runtime::{ConfigCompletionSink, DriverClock, DriverError, HostError, ProjectIntentAuthority},
+    runtime::{
+        ConfigCompletionSink, DriverClock, DriverError, HostError, NonfatalRefusal,
+        ProjectIntentAuthority,
+    },
     store::AdapterTurnCursor,
 };
 
@@ -33,17 +36,45 @@ impl PendingConfig {
     }
 }
 
-pub(super) async fn handle_worker<A, R, T, Auth>(
-    state: WorkerState<A, R, T>,
+pub(super) fn pending_deadline_millis(
+    pending: &Option<PendingConfig>,
+    clock: &dyn DriverClock,
+) -> Option<i64> {
+    pending.as_ref().map(|config| config.deadline_millis(clock))
+}
+
+pub(super) fn fail_pending_config(pending: &mut Option<PendingConfig>, error: HostError) {
+    if let Some(config) = pending.take() {
+        config.complete(Err(error));
+    }
+}
+
+pub(super) fn settle_pending_config(pending: &mut Option<PendingConfig>, config_pending: bool) {
+    let Some(config) = pending.take() else {
+        return;
+    };
+    if !config_pending {
+        config.complete(Ok(()));
+    } else if config.expired() {
+        config.complete(Err(HostError::Deadline));
+    } else {
+        *pending = Some(config);
+    }
+}
+
+pub(super) async fn handle_worker<A, R, T, Auth, C>(
+    state: WorkerState<A, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
     pending_config: &mut Option<PendingConfig>,
-) -> (RunnerAction<A, R, T>, Option<AdapterTurnCursor>)
+) -> (RunnerAction<A, R, T, C>, Option<AdapterTurnCursor>)
 where
     A: HarnessAdapter,
     R: ResourceMapper,
     T: StdinTransport,
     Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
     if matches!(&envelope.command, WorkerCommand::Shutdown) {
         if let Some(config) = pending_config.take() {
@@ -149,7 +180,7 @@ where
                     .handle(context, envelope)
                     .await;
             }
-            Err(DriverError::ConfigMutationRejected) => {
+            Err(DriverError::Refused(NonfatalRefusal::ConfigMutation)) => {
                 let Some(config) = pending_config.take() else {
                     return (
                         RunnerAction::Failure(FirstTurnWorkerState::Active(active)),
@@ -157,6 +188,12 @@ where
                     );
                 };
                 config.complete(Err(HostError::ConfigMutationRejected));
+                return (
+                    RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                    terminal_callback,
+                );
+            }
+            Err(DriverError::Refused(NonfatalRefusal::SignIn)) => {
                 return (
                     RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
                     terminal_callback,

@@ -7,7 +7,10 @@ use crate::acp::{
     contract::{SageServerRequestId, SageTurnId},
     process::TreeExit,
     runtime::permissions::PermissionDecision,
-    runtime::{ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, LiveWrite},
+    runtime::{
+        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
+        LiveWrite, SteerCompletionSink,
+    },
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
@@ -35,6 +38,10 @@ pub(crate) enum WorkerCommand {
     DispatchPrompt {
         owner: RuntimeOwner,
         turn_id: SageTurnId,
+    },
+    Steer {
+        intent: HostSteerIntent,
+        completion: SteerCompletionSink,
     },
     ObserveSend {
         owner: RuntimeOwner,
@@ -95,9 +102,10 @@ impl WorkerCommand {
             | Self::BeginPark
             | Self::ParkAfterZero { .. }
             | Self::Shutdown => LIMITS.deadlines_ms.explicit_close,
-            Self::PreparePrompt(_) | Self::DispatchPrompt { .. } | Self::ObserveSend { .. } => {
-                LIMITS.deadlines_ms.ordinary_rpc
-            }
+            Self::PreparePrompt(_)
+            | Self::DispatchPrompt { .. }
+            | Self::Steer { .. }
+            | Self::ObserveSend { .. } => LIMITS.deadlines_ms.ordinary_rpc,
         }
     }
 
@@ -138,6 +146,10 @@ impl WorkerCommand {
                     .checked_add(turn_id.as_str().len())?
                     .checked_add(std::mem::size_of::<SendObservation>())
             }
+            Self::Steer { intent, .. } => owner_bytes(&intent.owner)
+                .checked_add(intent.turn_id.as_str().len())?
+                .checked_add(intent.prompt.as_str().len())?
+                .checked_add(intent.client_message_id.as_str().len()),
             Self::BeginCancel(intent) | Self::DispatchCancel(intent) => owner_bytes(&intent.owner)
                 .checked_add(intent.turn_id.as_str().len())?
                 .checked_add(intent.client_intent_id.as_str().len())?
@@ -203,6 +215,8 @@ pub(crate) struct ProcessLivePort {
     pub(super) managed_runner: Option<Arc<super::LiveRunnerHandle>>,
     #[cfg(test)]
     timeout_override_millis: Option<u64>,
+    #[cfg(test)]
+    finish_park_failure: bool,
 }
 
 pub(crate) trait WorkerDeadlineAbort: Send + Sync + 'static {
@@ -231,6 +245,8 @@ impl ProcessLivePort {
             managed_runner: None,
             #[cfg(test)]
             timeout_override_millis: None,
+            #[cfg(test)]
+            finish_park_failure: false,
         }
     }
 
@@ -244,7 +260,14 @@ impl ProcessLivePort {
             managed_runner: Some(runner),
             #[cfg(test)]
             timeout_override_millis: None,
+            #[cfg(test)]
+            finish_park_failure: false,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_finish_park_failure(&mut self) {
+        self.finish_park_failure = true;
     }
 
     #[cfg(test)]
@@ -260,6 +283,7 @@ impl ProcessLivePort {
             deadline_abort,
             managed_runner: None,
             timeout_override_millis: Some(timeout_millis),
+            finish_park_failure: false,
         }
     }
 

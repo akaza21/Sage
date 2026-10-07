@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
 use serde::{Deserialize, Serialize};
 
-#[path = "transaction/remove.rs"]
 mod remove;
-#[path = "transaction/update.rs"]
 mod update;
 
 pub(super) use remove::execute_boundary_remove;
@@ -363,5 +361,4 @@ fn seal_payload(
 }
 
 #[cfg(test)]
-#[path = "transaction/tests.rs"]
 mod tests;

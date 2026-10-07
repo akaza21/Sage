@@ -2,9 +2,13 @@ import type { StoreApi } from "zustand";
 
 import { childResource } from "../domain/resourceIdentity";
 import type { BootstrapSnapshot } from "../domain/workbench";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { projectChatOwnership } from "./chatOwnershipProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
-import { snapshotProjection } from "./projectProjection";
+import {
+  reconcileLiveBrowserTabs,
+  snapshotProjection,
+} from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
 
@@ -15,10 +19,22 @@ export async function loadProjectProjection(
   generation: number,
   preserveChatOwnership: boolean,
 ) {
+  snapshot = await reconcileLiveBrowserTabs(snapshot);
+  if (get().projectGeneration !== generation) return;
   const projectId = snapshot.project?.id ?? null;
+  const restoredQueues =
+    projectId && (!preserveChatOwnership || get().project?.id !== projectId)
+      ? await getWorkbenchPorts().project.getProjectChatQueuedPrompts(projectId)
+      : {};
+  if (get().projectGeneration !== generation) return;
   set({
     ...snapshotProjection(snapshot),
-    ...projectChatOwnership(get(), snapshot, preserveChatOwnership),
+    ...projectChatOwnership(
+      get(),
+      snapshot,
+      preserveChatOwnership,
+      restoredQueues,
+    ),
     projectGeneration: generation,
     repositoryRequestGeneration: nextProjectGeneration(
       get().repositoryRequestGeneration,

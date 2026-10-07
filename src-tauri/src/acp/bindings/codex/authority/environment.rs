@@ -11,7 +11,6 @@ use crate::acp::{
 use super::VerifiedCodexConfig;
 
 #[cfg(windows)]
-#[path = "environment/windows.rs"]
 mod windows;
 
 #[cfg(all(test, windows))]

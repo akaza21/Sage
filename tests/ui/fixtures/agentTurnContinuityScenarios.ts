@@ -81,17 +81,20 @@ export function registerAgentTurnContinuityScenarios() {
     await expect(
       alpha.getByRole("button", { name: "Jump to latest" }),
     ).toBeVisible();
+    const latestMessage = alpha.getByText("Latest while scrolled away").last();
+    await expect(latestMessage).not.toBeInViewport();
     await alpha.getByRole("button", { name: "Jump to latest" }).click();
     await expect(
       alpha.getByRole("button", { name: "Jump to latest" }),
     ).toHaveCount(0);
+    await expect(latestMessage).toBeInViewport();
     await expect
       .poll(() =>
         transcript.evaluate(
-          (node) => node.scrollHeight - node.scrollTop - node.clientHeight <= 1,
+          (node) => node.scrollHeight - node.scrollTop - node.clientHeight,
         ),
       )
-      .toBe(true);
+      .toBeLessThanOrEqual(1);
     await evidence("jumped-to-latest");
 
     const beta = await focusPane(page, "Beta");

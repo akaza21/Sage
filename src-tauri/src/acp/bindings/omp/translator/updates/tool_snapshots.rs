@@ -112,7 +112,7 @@ pub(super) fn path_locations(
 ) -> Result<Option<BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>>, TranslationError> {
     if !matches!(
         category,
-        ToolCategory::File | ToolCategory::Diff | ToolCategory::Command
+        ToolCategory::Read | ToolCategory::Edit | ToolCategory::Execute
     ) {
         return Ok(None);
     }

@@ -217,7 +217,7 @@ fn recovery_turn_state(
             | TurnState::WaitingUser
             | TurnState::Cancelling,
             _,
-        ) => Ok((TurnState::Interrupted, delivery)),
+        ) => Ok((TurnState::Failed, delivery)),
         _ => Err(StoreError::Corrupt("invalid recovery turn state")),
     }
 }

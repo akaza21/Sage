@@ -3,6 +3,8 @@ import { editorLanguageForPath } from "./editorLanguage";
 export const MAX_MARKDOWN_PREVIEW_BLOCKS = 64;
 export const MAX_MARKDOWN_PREVIEW_BLOCK_CHARS = 4096;
 export const MAX_MARKDOWN_PREVIEW_SOURCE_BYTES = 256 * 1024;
+export const MAX_CHAT_FILE_LINKS = 8;
+export const MAX_CHAT_FILE_LINK_PATH_BYTES = 4096;
 import { utf8Bytes } from "../../domain/text";
 
 export type MarkdownPreviewBlock =
@@ -14,6 +16,13 @@ export type MarkdownPreviewBlock =
 
 export interface MarkdownPreviewDocument {
   blocks: readonly MarkdownPreviewBlock[];
+  fileLinks: readonly {
+    label: string;
+    destination: string;
+    blockIndex: number;
+    itemIndex?: number;
+    offset: number;
+  }[];
   truncated: boolean;
   sourceLimitExceeded: boolean;
 }
@@ -33,6 +42,13 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     .replace(/\r\n/gu, "\n")
     .split("\n");
   const blocks: MarkdownPreviewBlock[] = [];
+  const fileLinks: {
+    label: string;
+    destination: string;
+    blockIndex: number;
+    itemIndex?: number;
+    offset: number;
+  }[] = [];
   let truncated = false;
   let paragraph: string[] = [];
   let list: string[] = [];
@@ -41,10 +57,40 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
 
   const stop = { value: false };
 
+  const collectFileLinks = (
+    raw: string,
+    visible: string,
+    blockIndex: number,
+    itemIndex?: number,
+  ) => {
+    if (fileLinks.length === MAX_CHAT_FILE_LINKS) return;
+    for (const match of raw.matchAll(
+      /(?<!!)\[([^\]\n]{1,128})\]\(([^)\n]+)\)/gu,
+    )) {
+      const destination = match[2];
+      if (!fileLinkCandidate(destination)) continue;
+      const offset = visible.indexOf(
+        match[1],
+        visibleInlineText(raw.slice(0, match.index)).length,
+      );
+      if (offset < 0) continue;
+      fileLinks.push({
+        label: match[1],
+        destination,
+        blockIndex,
+        itemIndex,
+        offset,
+      });
+      if (fileLinks.length === MAX_CHAT_FILE_LINKS) break;
+    }
+  };
+
   const flushParagraph = () => {
-    const text = visibleInlineText(paragraph.join(" "));
+    const raw = paragraph.join(" ");
+    const text = visibleInlineText(raw);
     paragraph = [];
     if (text.length > 0) {
+      collectFileLinks(raw, text, blocks.length);
       truncated = pushBlock(
         blocks,
         { kind: "paragraph", text },
@@ -58,13 +104,18 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       return;
     }
     const items = list.map((item) => visibleInlineText(item));
+    list.forEach((item, index) =>
+      collectFileLinks(item, items[index], blocks.length, index),
+    );
     list = [];
     truncated = pushBlock(blocks, { kind: "list", items }, truncated, stop);
   };
   const flushQuote = () => {
-    const text = visibleInlineText(quote.join(" "));
+    const raw = quote.join(" ");
+    const text = visibleInlineText(raw);
     quote = [];
     if (text.length > 0) {
+      collectFileLinks(raw, text, blocks.length);
       truncated = pushBlock(blocks, { kind: "quote", text }, truncated, stop);
     }
   };
@@ -113,6 +164,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     if (heading) {
       flushFlow();
       const level = heading[1].length as 1 | 2 | 3;
+      collectFileLinks(
+        heading[2],
+        visibleInlineText(heading[2]),
+        blocks.length,
+      );
       truncated = pushBlock(
         blocks,
         { kind: "heading", level, text: visibleInlineText(heading[2]) },
@@ -159,9 +215,32 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
 
   return {
     blocks,
+    fileLinks,
     truncated,
     sourceLimitExceeded: windowed.exceeded,
   };
+}
+
+function fileLinkCandidate(destination: string): boolean {
+  if (
+    utf8Bytes(destination).length > MAX_CHAT_FILE_LINK_PATH_BYTES ||
+    destination.startsWith("//") ||
+    destination.startsWith("\\\\")
+  )
+    return false;
+  const path = destination.replace(/:[1-9][0-9]*$/u, "");
+  if (
+    path.includes("?") ||
+    path.includes("#") ||
+    path.split(/[\\/]/u).includes("..") ||
+    Array.from(path).some(
+      (character) =>
+        character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127,
+    )
+  )
+    return false;
+  const scheme = /^[a-z][a-z0-9+.-]*:/iu.test(path);
+  return !scheme || /^[a-z]:[\\/]/iu.test(path);
 }
 
 function sourceWindow(source: string): { text: string; exceeded: boolean } {

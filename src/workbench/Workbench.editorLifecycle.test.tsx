@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 
 vi.mock("../features/chat/ChatSurface", () => ({
@@ -81,6 +82,7 @@ it("destroys the heavy editor when a non-File tab becomes active", async () => {
     },
   });
   const { container } = render(<Workbench />);
+  await settleLazyModules();
   const editor = await screen.findByRole("textbox", {
     name: "Edit src/current.ts",
   });

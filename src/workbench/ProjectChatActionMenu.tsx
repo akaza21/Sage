@@ -1,6 +1,7 @@
 import {
   Archive,
   ArrowLeft,
+  ArrowRightLeft,
   Folder,
   FolderInput,
   Laptop,
@@ -12,6 +13,8 @@ import {
 import { useId, useRef, useState } from "react";
 
 import { MenuPopover } from "../ui/MenuPopover";
+import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
+import type { AgentSessionChrome } from "../app/agentChatOwner";
 import type { AgentChatMoveDestination } from "./agentChatRail";
 
 export function ProjectChatActionMenu({
@@ -27,6 +30,7 @@ export function ProjectChatActionMenu({
   onMove,
   onArchive,
   triggerRef,
+  sessionChrome,
 }: {
   chatTitle: string;
   pinned: boolean;
@@ -40,6 +44,7 @@ export function ProjectChatActionMenu({
   onMove: (projectId: string) => void;
   onArchive: () => void;
   triggerRef: (node: HTMLButtonElement | null) => void;
+  sessionChrome?: AgentSessionChrome | null;
 }) {
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
@@ -84,7 +89,7 @@ export function ProjectChatActionMenu({
           onOpenChange(true);
         }}
       >
-        <MoreHorizontal size={15} aria-hidden="true" />
+        <MoreHorizontal size={16} aria-hidden="true" />
       </button>
       <MenuPopover
         id={menuId}
@@ -94,6 +99,7 @@ export function ProjectChatActionMenu({
         focusKey={moving}
         initialFocus={openingFocus}
         triggerRef={localTriggerRef}
+        keepMounted={Boolean(sessionChrome)}
         onDismiss={() => {
           setMoving(false);
           onOpenChange(false);
@@ -135,6 +141,53 @@ export function ProjectChatActionMenu({
           </>
         ) : (
           <>
+            {sessionChrome ? (
+              <>
+                <ChatHandoffControl
+                  acpPage={sessionChrome.acpPage}
+                  messages={sessionChrome.messages}
+                  busy={sessionChrome.busy}
+                  onCommitted={() =>
+                    sessionChrome.actions.current.focusComposer()
+                  }
+                  menuItem
+                  returnFocusRef={localTriggerRef}
+                  onOpen={() => onOpenChange(false)}
+                />
+                {sessionChrome.canCloseSession ? (
+                  <button
+                    className="menu-item"
+                    type="button"
+                    role="menuitem"
+                    disabled={sessionChrome.busy}
+                    onClick={() =>
+                      completeAction(() =>
+                        sessionChrome.actions.current.closeSession(),
+                      )
+                    }
+                  >
+                    <ArrowRightLeft size={14} aria-hidden="true" />
+                    <span>Close session</span>
+                  </button>
+                ) : null}
+                {sessionChrome.canEndSession ? (
+                  <button
+                    className="menu-item"
+                    type="button"
+                    role="menuitem"
+                    disabled={sessionChrome.busy}
+                    onClick={() =>
+                      completeAction(() =>
+                        sessionChrome.actions.current.endSession(),
+                      )
+                    }
+                  >
+                    <ArrowRightLeft size={14} aria-hidden="true" />
+                    <span>End session</span>
+                  </button>
+                ) : null}
+              </>
+            ) : null}
             <button
               className="menu-item"
               type="button"

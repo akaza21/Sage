@@ -15,6 +15,7 @@ use super::{
 
 mod activity;
 mod command;
+mod terminal_reason;
 
 #[cfg(test)]
 use crate::acp::limits::LIMITS;
@@ -95,6 +96,7 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                     }
                 )
             });
+            let rejection_context = JournalRejectionContext::from_events(&events);
             let command = build_command(&self.intent, events, actual_bytes)?;
             let ticket = self
                 .handle
@@ -103,8 +105,14 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                     StoreMutation::AdapterInboundBatch(command),
                     self.next_deadline(),
                 )
-                .map_err(map_journal)?;
-            let committed = ticket.committed().await.map_err(map_journal)?;
+                .map_err(|error| {
+                    log_adapter_batch_rejection("enqueue", &rejection_context, &error);
+                    map_journal(error)
+                })?;
+            let committed = ticket.committed().await.map_err(|error| {
+                log_adapter_batch_rejection("commit", &rejection_context, &error);
+                map_journal(error)
+            })?;
             let projection_revision = committed.projection_revision;
             let mut results = committed.results;
             let Some(StoreMutationResult::AdapterBatch(result)) = results.pop() else {
@@ -199,6 +207,140 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
     }
 }
 
+struct JournalRejectionContext {
+    items: Vec<JournalRejectionItem>,
+}
+
+struct JournalRejectionItem {
+    kind: &'static str,
+    external_item_id: String,
+}
+
+impl JournalRejectionContext {
+    fn from_events(events: &[DurableAdapterEvent]) -> Self {
+        let items = events
+            .iter()
+            .filter_map(|event| match event {
+                DurableAdapterEvent::Item {
+                    external_item_id,
+                    payload,
+                    ..
+                }
+                | DurableAdapterEvent::RuntimePayload {
+                    external_item_id,
+                    payload,
+                    ..
+                } => Some(JournalRejectionItem {
+                    kind: payload.kind().as_str(),
+                    external_item_id: external_item_id.as_str().to_owned(),
+                }),
+                DurableAdapterEvent::ActivityItem(activity) => Some(JournalRejectionItem {
+                    kind: activity.payload.kind().as_str(),
+                    external_item_id: activity.external_item_id.as_str().to_owned(),
+                }),
+                DurableAdapterEvent::FilePair {
+                    external_item_id, ..
+                } => Some(JournalRejectionItem {
+                    kind: "fileChangeDiff",
+                    external_item_id: external_item_id.as_str().to_owned(),
+                }),
+                DurableAdapterEvent::PermissionRequest { intent, .. }
+                | DurableAdapterEvent::PermissionDeny { intent, .. } => {
+                    Some(JournalRejectionItem {
+                        kind: "permissionRequest",
+                        external_item_id: intent.external_request_id.as_str().to_owned(),
+                    })
+                }
+                DurableAdapterEvent::PermissionResolved { request_id, .. } => {
+                    Some(JournalRejectionItem {
+                        kind: "permissionResolved",
+                        external_item_id: request_id.as_str().to_owned(),
+                    })
+                }
+                DurableAdapterEvent::UsageSnapshot { .. } => Some(JournalRejectionItem {
+                    kind: "usage",
+                    external_item_id: "turn-scoped".to_owned(),
+                }),
+                DurableAdapterEvent::TerminalReason { .. } => Some(JournalRejectionItem {
+                    kind: "terminalReason",
+                    external_item_id: "turn-scoped".to_owned(),
+                }),
+                DurableAdapterEvent::Turn { .. } => None,
+            })
+            .collect();
+        Self { items }
+    }
+}
+
+fn log_adapter_batch_rejection(
+    journal_phase: &'static str,
+    context: &JournalRejectionContext,
+    error: &JournalError,
+) {
+    let (sqlite_code, sqlite_extended_code, sqlite_message) = match error {
+        JournalError::Store(StoreError::Database(rusqlite::Error::SqliteFailure(
+            sqlite,
+            message,
+        ))) => (
+            format!("{:?}", sqlite.code),
+            sqlite.extended_code.to_string(),
+            message.as_deref().unwrap_or("none"),
+        ),
+        _ => ("none".to_owned(), "none".to_owned(), "none"),
+    };
+
+    if context.items.is_empty() {
+        tracing::warn!(
+            journal_phase,
+            journal_rejection = journal_error_variant(error),
+            journal_error = ?error,
+            sqlite_code,
+            sqlite_extended_code,
+            sqlite_message,
+            "ACP adapter journal rejected inbound batch without an item"
+        );
+    }
+    for item in &context.items {
+        tracing::warn!(
+            journal_phase,
+            journal_rejection = journal_error_variant(error),
+            journal_error = ?error,
+            sqlite_code,
+            sqlite_extended_code,
+            sqlite_message,
+            item_kind = item.kind,
+            external_item_id = item.external_item_id,
+            "ACP adapter journal rejected inbound item"
+        );
+    }
+}
+
+fn journal_error_variant(error: &JournalError) -> &'static str {
+    match error {
+        JournalError::Capacity { .. } => "capacity",
+        JournalError::BatchLimit => "batchLimit",
+        JournalError::Closed => "closed",
+        JournalError::SequenceExhausted => "sequenceExhausted",
+        JournalError::Deadline => "deadline",
+        JournalError::Store(error) => store_error_variant(error),
+    }
+}
+
+fn store_error_variant(error: &StoreError) -> &'static str {
+    match error {
+        StoreError::Database(_) => "database",
+        StoreError::Capacity { .. } => "capacity",
+        StoreError::Conflict { .. } => "conflict",
+        StoreError::InvalidTransition { .. } => "invalidTransition",
+        StoreError::TerminalConflict { .. } => "terminalConflict",
+        StoreError::Corrupt(_) => "corrupt",
+        StoreError::PayloadTooLarge => "payloadTooLarge",
+        StoreError::BatchShape => "batchShape",
+        StoreError::CommitUnknown => "commitUnknown",
+        StoreError::CounterExhausted => "counterExhausted",
+    }
+}
+
 fn map_journal(error: JournalError) -> PumpJournalError {
     match error {
         JournalError::Store(StoreError::CommitUnknown) => PumpJournalError::CommitUnknown,
@@ -207,5 +349,4 @@ fn map_journal(error: JournalError) -> PumpJournalError {
 }
 
 #[cfg(test)]
-#[path = "adapter_store_journal/tests.rs"]
 mod tests;

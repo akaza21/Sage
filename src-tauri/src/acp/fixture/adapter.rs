@@ -154,13 +154,15 @@ impl FixtureAdapter {
                 _ => ItemLifecycle::Streaming,
             },
             tool_state: Some(state),
-            payload: NormalizedPayload::ToolUpdateResult {
+            payload: NormalizedPayload::ToolCall {
                 category: crate::acp::intent::ToolCategory::Other,
                 label: SafeText::new("toolLabel", "Fixture tool")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
+                input_summary: None,
                 output_summary: None,
                 locations: Default::default(),
                 command_activity: Default::default(),
+                execution: Default::default(),
             },
         })
     }

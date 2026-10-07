@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { WorkbenchTab } from "../domain/workbench";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
@@ -25,6 +27,10 @@ const loadDiffSurface = () =>
 const loadFileSurface = () =>
   import("../features/files/FileSurface").then(({ FileSurface }) => ({
     default: FileSurface,
+  }));
+const loadBrowserSurface = () =>
+  import("../features/browser/BrowserSurface").then(({ BrowserSurface }) => ({
+    default: BrowserSurface,
   }));
 
 function LazyToolSurface({
@@ -65,8 +71,14 @@ function LazyCanvasSurface({
   );
 }
 
-function ChatCanvas({ tab }: { tab: WorkbenchTab }) {
-  return <ChatSurface chatId={tab.id} />;
+function ChatCanvas({
+  tab,
+  paneHeader,
+}: {
+  tab: WorkbenchTab;
+  paneHeader?: ReactNode;
+}) {
+  return <ChatSurface chatId={tab.id} paneHeader={paneHeader} />;
 }
 
 let registered = false;
@@ -89,6 +101,9 @@ export function registerWorkbenchSurfaces(): void {
       label="File"
       load={loadFileSurface}
     />
+  ));
+  registerCanvasSurface("browser", ({ tab }) => (
+    <LazyCanvasSurface tab={tab} label="Browser" load={loadBrowserSurface} />
   ));
   registerToolSurface("explorer", ExplorerSurface);
   registerToolSurface("search", () => (

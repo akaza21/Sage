@@ -60,6 +60,7 @@ fn stopping_an_unstarted_target_does_not_cancel_the_next_epoch_start() {
 
 #[test]
 fn same_epoch_rediscovery_stops_a_starting_child_that_cannot_be_promoted() {
+    let _serial = crate::test_wait::serial_process_guard();
     let root = std::env::temp_dir().join(format!("sage-preview-start-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
@@ -87,7 +88,7 @@ server.listen(0, "127.0.0.1", () => {
     let start = lifecycle::reserve_start(target.clone()).unwrap();
     lifecycle::mark_waiting_for_origin(&target, &|_| Ok(())).unwrap();
     let port_file = root.join("preview-port");
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + crate::test_wait::BUDGET;
     let port = loop {
         if let Ok(value) = fs::read_to_string(&port_file)
             && let Ok(port) = value.parse()
@@ -112,7 +113,7 @@ server.listen(0, "127.0.0.1", () => {
             ..
         })
     ));
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + crate::test_wait::BUDGET;
     loop {
         match TcpListener::bind(("127.0.0.1", port)) {
             Ok(listener) => {
@@ -133,29 +134,36 @@ fn https_health_is_fail_closed() {
 
 #[test]
 fn child_owning_failures_reap_before_terminal_projection() {
+    let _serial = crate::test_wait::serial_process_guard();
+    let generous = crate::test_wait::BUDGET.as_millis() as u64;
     let cases = [
         (
             "console.log('http://example.com:3000'); setInterval(() => {}, 1000);",
+            generous,
             PreviewPhase::HealthFailed,
             PreviewFailure::OriginNotLoopback,
         ),
         (
             "process.exit(2);",
+            generous,
             PreviewPhase::Exited,
             PreviewFailure::ExitedEarly,
         ),
         (
             "setInterval(() => {}, 1000);",
+            1_000,
             PreviewPhase::HealthFailed,
             PreviewFailure::StartupTimeout,
         ),
         (
             "console.log('http://127.0.0.1:9'); setInterval(() => {}, 1000);",
+            generous,
             PreviewPhase::HealthFailed,
             PreviewFailure::HealthTimeout,
         ),
     ];
-    for (script, expected_phase, expected_failure) in cases {
+    for (script, startup_wait_ms, expected_phase, expected_failure) in cases {
+        super::lifecycle_process::test_override_startup_wait(startup_wait_ms);
         let root =
             std::env::temp_dir().join(format!("sage-preview-failure-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -179,7 +187,9 @@ fn child_owning_failures_reap_before_terminal_projection() {
         lifecycle::begin_start(&target, &observer).unwrap();
         let reservation = lifecycle::reserve_start(target.clone()).unwrap();
         lifecycle::mark_waiting_for_origin(&target, &observer).unwrap();
-        assert!(lifecycle::finish_start(reservation, &observer).is_err());
+        let outcome = lifecycle::finish_start(reservation, &observer);
+        super::lifecycle_process::test_override_startup_wait(0);
+        assert!(outcome.is_err());
         assert_eq!(lifecycle::test_owned_child_count(), 0);
         assert_eq!(
             observed.lock().unwrap().last().copied(),

@@ -49,7 +49,7 @@ impl LiveRuntimePort for Port {
             .map_err(|_| HostError::Intent)?;
         let expected = match decision {
             PermissionDecision::Ask => "asked",
-            PermissionDecision::AllowOnce => "allowPending",
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => "allowPending",
             PermissionDecision::Deny => "declinePending",
         };
         if state != expected {
@@ -118,8 +118,15 @@ impl LiveRuntimePort for Port {
     }
 }
 
-pub(super) fn service_with_pending_requests(
+pub(crate) fn service_with_pending_requests(
     commands: Arc<Mutex<Vec<AdapterCommand>>>,
+) -> (AcpService, RuntimeOwner) {
+    service_with_pending_requests_and_deny_id(commands, "request-deny")
+}
+
+pub(crate) fn service_with_pending_requests_and_deny_id(
+    commands: Arc<Mutex<Vec<AdapterCommand>>>,
+    deny_id: &str,
 ) -> (AcpService, RuntimeOwner) {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let project = database
@@ -177,21 +184,41 @@ pub(super) fn service_with_pending_requests(
             ],
         )
         .unwrap();
-    for request_id in ["request-deny", "request-allow", "request-ask"] {
+    for (request_id, external_request_id) in [
+        (deny_id, "request-deny"),
+        ("request-allow", "request-allow"),
+        ("request-ask", "request-ask"),
+    ] {
+        let offered = if external_request_id == "request-allow" {
+            vec![crate::acp::intent::PermissionOptionKind::AllowOnce]
+        } else {
+            vec![crate::acp::intent::PermissionOptionKind::RejectOnce]
+        };
+        let payload =
+            serde_json::to_string(&crate::acp::intent::NormalizedPayload::PermissionRequest {
+                category: crate::acp::intent::ToolCategory::Other,
+                summary: crate::acp::contract::SafeText::new("summary", "Permission").unwrap(),
+                offered_option_kinds: Some(
+                    crate::acp::contract::BoundedVec::new("offered", offered).unwrap(),
+                ),
+            })
+            .unwrap();
         connection
             .execute(
                 "INSERT INTO server_requests(
                    id,project_id,chat_id,session_id,turn_id,runtime_epoch,binding_digest,
                    external_request_id,kind,payload_digest_version,payload_digest,state,
                    normalized_payload_json,revision,created_at,updated_at,resolved_at
-                 ) VALUES(?1,?2,?3,?4,'turn-permission',1,?5,?1,'permission',1,?5,
-                          'received','{}',0,1,1,NULL)",
+                 ) VALUES(?1,?2,?3,?4,'turn-permission',1,?5,?7,'permission',1,?5,
+                          'received',?6,0,1,1,NULL)",
                 rusqlite::params![
                     request_id,
                     owner.project_id.as_str(),
                     owner.chat_id.as_str(),
                     owner.session_id.as_str(),
                     &digest,
+                    payload,
+                    external_request_id,
                 ],
             )
             .unwrap();
@@ -242,11 +269,18 @@ pub(super) fn service_with_pending_requests(
 }
 
 pub(super) fn permission_snapshot(service: &AcpService) -> (String, i64, i64, i64) {
+    permission_snapshot_for(service, "request-deny")
+}
+
+pub(super) fn permission_snapshot_for(
+    service: &AcpService,
+    request_id: &str,
+) -> (String, i64, i64, i64) {
     let connection = service.database.connection();
     let (state, revision) = connection
         .query_row(
-            "SELECT state,revision FROM server_requests WHERE id='request-deny'",
-            [],
+            "SELECT state,revision FROM server_requests WHERE id=?1",
+            [request_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();

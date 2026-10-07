@@ -18,6 +18,7 @@ import {
 import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
 import { closeLiveWorkbench } from "./workspaceNotifyLifecycle";
+import { hasActiveAcpTurn } from "./acpProjectionRegistry";
 
 export interface ProjectSlice {
   projectGeneration: number;
@@ -202,13 +203,9 @@ export const createProjectSlice: StateCreator<
       const generation = invalidateProjectIntents();
       set({ phase: "booting", error: null });
       try {
-        await loadProjectProjection(
-          set,
-          get,
-          await getWorkbenchPorts().project.getBootstrapSnapshot(),
-          generation,
-          false,
-        );
+        const snapshot =
+          await getWorkbenchPorts().project.getBootstrapSnapshot();
+        await loadProjectProjection(set, get, snapshot, generation, false);
       } catch (error) {
         set({
           phase: "error",
@@ -373,8 +370,21 @@ export const createProjectSlice: StateCreator<
       }
     },
 
-    switchProject: (projectId) =>
-      runSwitchProject(projectId, {
+    switchProject: (projectId) => {
+      const state = get();
+      const activeChatId =
+        state.tabs.find(
+          (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+        )?.id ?? null;
+      if (
+        state.sending ||
+        Object.values(state.chatUiById).some(
+          (chat) => chat.sending || chat.modeChanging,
+        ) ||
+        hasActiveAcpTurn(activeChatId)
+      )
+        return Promise.resolve();
+      return runSwitchProject(projectId, {
         get,
         begin: beginProjectTransition,
         invalidate: invalidateProjectIntents,
@@ -384,6 +394,7 @@ export const createProjectSlice: StateCreator<
         fail: failProjectTransition,
         blockCommitted: blockCommittedTransition,
         setUnchangedError: (error) => set({ error: errorMessage(error) }),
-      }),
+      });
+    },
   };
 };

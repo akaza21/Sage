@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   fileBreadcrumbSegments,
   MAX_BREADCRUMB_PATH_LENGTH,
-} from "./editorPathBreadcrumb";
+} from "./FilePathChips";
 
 describe("fileBreadcrumbSegments", () => {
   it("splits a short editor path into VS Code-like chips", () => {

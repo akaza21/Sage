@@ -1,0 +1,16 @@
+{
+  "scenario": "smoke",
+  "harness": "gemini-cli",
+  "status": "blocked",
+  "blocker": "session/new returns -32000 \"Authentication required\"; the captured account needs GOOGLE_CLOUD_PROJECT set before an ACP session can open, so no session and no turn exist to project",
+  "handshake": "signInRequired",
+  "turn": { "terminal": "none" },
+  "events": [],
+  "notes": [
+    "Real captured handshake. The contract covers the frames that exist rather than the turn that never happened: initialize succeeds, the agent advertises oauth-personal, gemini-api-key and vertex-ai, and session/new is refused.",
+    "The empty events array is asserted, not skipped. It states that a refused session produces no transcript items at all, which is the behaviour a regression would break by inventing an item or a turn.",
+    "handshake signInRequired asserts that StandardAcpRuntime maps -32000 \"Authentication required\" onto SignInRequired rather than a frame error, which is the whole of what this trace can prove.",
+    "The capture contains a non-JSON stdout line before the first frame (\"Data collection is disabled.\"), recorded as a raw entry. wire.rs stays strict about frame decoding; skipping that preamble belongs in the stdout line-splitting layer, bounded to before the first successful frame and surfaced as a diagnostic.",
+    "Re-record the turn scenarios once GOOGLE_CLOUD_PROJECT is available, then replace the empty events array with the projected turn."
+  ]
+}

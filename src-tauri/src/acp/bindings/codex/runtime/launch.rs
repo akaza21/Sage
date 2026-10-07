@@ -20,11 +20,18 @@ impl CodexRuntime {
         let entrypoint = binding.entrypoint();
         #[cfg(all(test, windows))]
         let entrypoint = binding.journey_test_entrypoint().unwrap_or(entrypoint);
-        let environment = binding
+        let mut environment: Vec<_> = binding
             .launch_environment()
             .iter()
             .map(|(key, value)| (OsString::from(key), OsString::from(value)))
             .collect();
+        environment.extend(
+            self.mcp
+                .codex_environment()
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?
+                .into_iter()
+                .map(|(key, value)| (OsString::from(key), OsString::from(value))),
+        );
         let binding_id = digest_identity(binding.binding_digest());
         let runtime_epoch = self.inner.runtime_epoch().get();
         #[cfg(windows)]

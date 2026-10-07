@@ -7,6 +7,7 @@ use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
     contract::{RequiredText, SafeText, SchemaVersionV1},
     intent::{NormalizedPayload, SafeResourceRef},
+    transport::Frame,
 };
 
 use super::*;
@@ -195,6 +196,172 @@ fn initialize_new_session_commits_exact_effective_identity_before_ready() {
         assert_eq!(committed[0].runtime_epoch.get(), 7);
         assert_eq!(committed[0].external_session_id.as_str(), "external-1");
         assert!(committed[0].capabilities_json.contains("\"cancel\":false"));
+    });
+}
+
+#[test]
+fn prompt_capability_stays_enabled_without_a_model_catalog() {
+    runtime().block_on(async {
+        let mut advertised = capabilities(true, true);
+        advertised.model_count = 0;
+        let notification = AdapterEgress::new(
+            crate::acp::transport::OutboundFrame::new(b"{\"method\":\"initialized\"}".to_vec())
+                .unwrap(),
+            EgressToken::protocol_notification(),
+        );
+        let batches = vec![
+            AdapterBatch::new(
+                vec![AdapterEvent::Initialized {
+                    capabilities: advertised.clone(),
+                }],
+                vec![notification],
+            )
+            .unwrap(),
+            AdapterBatch::new(
+                vec![AdapterEvent::SessionReady {
+                    id: identity("external-no-models", RuntimeEpoch::new(7).unwrap()),
+                    loaded: false,
+                }],
+                vec![],
+            )
+            .unwrap(),
+        ];
+        let (journal, _commands) = journal(Ok(ActivationReceipt {
+            projection_revision: ProjectionRevision::new(9).unwrap(),
+        }));
+        let mut activation_intent = intent(ActivationMode::New {
+            native_root: r"C:\repo".into(),
+            model: None,
+        });
+        activation_intent.curated_ceiling.model_count = 0;
+        activation_intent.sage_policy.model_count = 0;
+        let mut pump = ActivationPump::new(
+            adapter(advertised, batches),
+            journal,
+            NoResources(17),
+            activation_intent,
+        )
+        .unwrap();
+        let mut transport = Transport(VecDeque::new());
+        pump.begin().unwrap();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        push_frame(&mut pump, 10).await.unwrap();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        push_frame(&mut pump, 11).await.unwrap();
+
+        let parts = pump.try_into_idle_parts().ok().unwrap();
+        let (_, _, _, ready) = parts.into_parts();
+        assert!(ready.models.is_empty());
+        assert_eq!(ready.capabilities.model_count, 0);
+        assert!(ready.capabilities.prompt);
+    });
+}
+
+#[test]
+fn available_commands_update_requires_the_activated_session_identity() {
+    let mut decoder = crate::acp::transport::IncrementalFrameDecoder::new();
+    let frame = decoder
+        .push_chunk(
+            b"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"external-1\",\"update\":{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[]}}}\n",
+        )
+        .unwrap()
+        .unwrap();
+
+    assert!(is_available_commands_update(&frame, "external-1"));
+    assert!(!is_available_commands_update(&frame, "foreign-session"));
+
+    let missing_jsonrpc = decoder
+        .push_chunk(
+            b"{\"method\":\"session/update\",\"params\":{\"sessionId\":\"external-1\",\"update\":{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[]}}}\n",
+        )
+        .unwrap()
+        .unwrap();
+    assert!(!is_available_commands_update(
+        &missing_jsonrpc,
+        "external-1"
+    ));
+
+    let mixed_response = decoder
+        .push_chunk(
+            b"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"result\":{},\"params\":{\"sessionId\":\"external-1\",\"update\":{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[]}}}\n",
+        )
+        .unwrap()
+        .unwrap();
+    assert!(!is_available_commands_update(&mixed_response, "external-1"));
+}
+
+#[test]
+fn an_absorbed_harness_state_notification_between_initialize_and_session_does_not_fail_activation()
+{
+    runtime().block_on(async {
+        let advertised = capabilities(true, true);
+        let notification = AdapterEgress::new(
+            crate::acp::transport::OutboundFrame::new(b"{\"method\":\"initialized\"}".to_vec())
+                .unwrap(),
+            EgressToken::protocol_notification(),
+        );
+        let batches = vec![
+            AdapterBatch::new(
+                vec![AdapterEvent::Initialized {
+                    capabilities: advertised.clone(),
+                }],
+                vec![notification],
+            )
+            .unwrap(),
+            AdapterBatch::new(vec![AdapterEvent::Absorbed], vec![]).unwrap(),
+            AdapterBatch::new(
+                vec![AdapterEvent::SessionReady {
+                    id: identity("external-1", RuntimeEpoch::new(7).unwrap()),
+                    loaded: false,
+                }],
+                vec![],
+            )
+            .unwrap(),
+        ];
+        let (journal, _commands) = journal(Ok(ActivationReceipt {
+            projection_revision: ProjectionRevision::new(9).unwrap(),
+        }));
+        let mut pump = ActivationPump::new(
+            adapter(advertised, batches),
+            journal,
+            NoResources(17),
+            intent(ActivationMode::New {
+                native_root: r"C:\repo".into(),
+                model: None,
+            }),
+        )
+        .unwrap();
+        let mut transport = Transport(VecDeque::new());
+        pump.begin().unwrap();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        push_frame(&mut pump, 10).await.unwrap();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            ActivationFlush::Written
+        );
+        push_frame(&mut pump, 11)
+            .await
+            .expect("an absorbed harness state notification is not a protocol error");
+        push_frame(&mut pump, 12).await.unwrap();
+        let parts = pump.try_into_idle_parts().ok().unwrap();
+        assert_eq!(parts.session().external_session_id.as_str(), "external-1");
     });
 }
 

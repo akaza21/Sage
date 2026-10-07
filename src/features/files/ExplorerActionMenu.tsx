@@ -90,7 +90,7 @@ export function ExplorerActionMenu() {
           setOpen(true);
         }}
       >
-        <Ellipsis size={15} aria-hidden="true" />
+        <Ellipsis size={16} aria-hidden="true" />
       </button>
       <MenuPopover
         id={menuId}

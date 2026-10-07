@@ -68,6 +68,7 @@ export async function acpTransportParityErrors(root) {
       path.join(root, "src-tauri/src/acp/intent.rs"),
       "utf8",
     ).catch(() => ""),
+    await readSources(root, "src-tauri/src/acp/intent", [".rs"]),
     await readFile(
       path.join(root, "src-tauri/src/acp/projection.rs"),
       "utf8",

@@ -2,8 +2,15 @@ use super::*;
 use crate::acp::{
     contract::SageRootId,
     file_diff::{DIFF_SIDE_BYTES_MAX, pair_digest},
-    intent::{SafeResourceLocation, SafeResourceRef},
+    intent::{
+        FileChangeFacts, FileChangeOperation, SafeResourceLocation, SafeResourceRef,
+        UnavailableResourceReason,
+    },
+    projection::{FileOperation, FilePairState},
 };
+
+mod codex_file_change_tests;
+mod creation_promotion_tests;
 
 fn snapshot_fixture() -> Fixture {
     let fixture = fixture();
@@ -22,13 +29,19 @@ fn pair_batch(
 ) -> AdapterInboundBatchCommand {
     let mut metadata = item(owner, key);
     metadata.payload = NormalizedPayload::file_admitted(
-        SafeResourceLocation::Resource {
-            resource: SafeResourceRef::new(SageRootId::parse("root-one").unwrap(), "src/lib.rs")
+        crate::acp::intent::FileChangeFacts {
+            resource: SafeResourceLocation::Resource {
+                resource: SafeResourceRef::new(
+                    SageRootId::parse("root-one").unwrap(),
+                    "src/lib.rs",
+                )
                 .unwrap(),
+            },
+            summary: SafeText::new("summary", "File changed").unwrap(),
+            additions: Some(1),
+            deletions: Some(1),
+            operation: crate::acp::intent::FileChangeOperation::Updated,
         },
-        SafeText::new("summary", "File changed").unwrap(),
-        Some(1),
-        Some(1),
         0,
         (old.len() as u64, new.len() as u64),
         pair_digest(old.as_bytes(), new.as_bytes()),
@@ -68,6 +81,183 @@ fn pair_count(fixture: &Fixture) -> i64 {
             |row| row.get(0),
         )
         .unwrap()
+}
+
+fn created_pair_batch(
+    owner: &AdapterStoreOwner,
+    key: &str,
+    new: &str,
+) -> AdapterInboundBatchCommand {
+    let mut metadata = item(owner, key);
+    metadata.payload = NormalizedPayload::file_admitted(
+        FileChangeFacts {
+            resource: SafeResourceLocation::Resource {
+                resource: SafeResourceRef::new(
+                    SageRootId::parse("root-one").unwrap(),
+                    "src/new.rs",
+                )
+                .unwrap(),
+            },
+            summary: SafeText::new("summary", "File created").unwrap(),
+            additions: Some(1),
+            deletions: Some(0),
+            operation: FileChangeOperation::Created,
+        },
+        0,
+        (0, new.len() as u64),
+        pair_digest(b"", new.as_bytes()),
+    );
+    metadata.payload_digest =
+        facts::hex_digest(serde_json::to_string(&metadata.payload).unwrap().as_bytes());
+    let pair = FilePairCommand {
+        project_id: owner.project_id.clone(),
+        chat_id: owner.chat_id.clone(),
+        session_id: owner.session_id.clone(),
+        turn_id: owner.turn_id.clone(),
+        runtime_epoch: owner.runtime_epoch,
+        external_item_id: metadata.external_item_id.clone(),
+        old_text: String::new(),
+        new_text: new.into(),
+        now_millis: 6,
+    };
+    let bytes = new.len() + 1024;
+    AdapterInboundBatchCommand::new(
+        owner.clone(),
+        bytes,
+        bytes,
+        vec![
+            AdapterInboundEvent::Item(metadata),
+            AdapterInboundEvent::FilePair(pair),
+        ],
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_created_file_keeps_its_operation_through_pair_persistence_and_projection() {
+    let mut fixture = snapshot_fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        created_pair_batch(&fixture.owner, "created", "created\n"),
+    )
+    .unwrap();
+    let page = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
+    let change = page
+        .turns
+        .as_slice()
+        .iter()
+        .flat_map(|turn| turn.items.as_slice())
+        .find_map(|item| match &item.content {
+            ItemContent::FileChangeDiff { changes, .. } => Some(changes.as_slice()[0].clone()),
+            _ => None,
+        })
+        .expect("the created file change is projected");
+    assert_eq!(change.operation, FileOperation::Created);
+    assert_eq!((change.additions, change.deletions), (Some(1), Some(0)));
+}
+
+fn unverified_creation_batch(owner: &AdapterStoreOwner, key: &str) -> AdapterInboundBatchCommand {
+    let mut metadata = item(owner, key);
+    metadata.payload = NormalizedPayload::file_summary_only(
+        FileChangeFacts {
+            resource: SafeResourceLocation::unavailable(UnavailableResourceReason::Missing),
+            summary: SafeText::new("summary", "File created").unwrap(),
+            additions: Some(1),
+            deletions: Some(0),
+            operation: FileChangeOperation::Created,
+        },
+        false,
+    );
+    metadata.payload_digest =
+        facts::hex_digest(serde_json::to_string(&metadata.payload).unwrap().as_bytes());
+    AdapterInboundBatchCommand::new(
+        owner.clone(),
+        1024,
+        1024,
+        vec![AdapterInboundEvent::Item(metadata)],
+    )
+    .unwrap()
+}
+
+fn projected_change(
+    connection: &rusqlite::Connection,
+) -> crate::acp::projection::FileChangeProjection {
+    load_chat_page(connection, project(), chat(), None)
+        .unwrap()
+        .turns
+        .as_slice()
+        .iter()
+        .flat_map(|turn| turn.items.as_slice())
+        .find_map(|item| match &item.content {
+            ItemContent::FileChangeDiff { changes, .. } => Some(changes.as_slice()[0].clone()),
+            _ => None,
+        })
+        .expect("the file change is projected")
+}
+
+#[test]
+fn an_unverified_creation_is_promoted_to_one_openable_pair_at_completion() {
+    let mut fixture = snapshot_fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        unverified_creation_batch(&fixture.owner, "created"),
+    )
+    .unwrap();
+    let pending = projected_change(&fixture.connection);
+    assert_eq!(pending.pair_state, FilePairState::Unavailable);
+    assert_eq!(
+        pending.resource,
+        SafeResourceLocation::unavailable(UnavailableResourceReason::Missing)
+    );
+    assert_eq!(pair_count(&fixture), 0);
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        created_pair_batch(&fixture.owner, "created", "created\n"),
+    )
+    .unwrap();
+    let promoted = projected_change(&fixture.connection);
+    assert_eq!(promoted.pair_state, FilePairState::Available);
+    assert_eq!(promoted.operation, FileOperation::Created);
+    assert!(matches!(
+        promoted.resource,
+        SafeResourceLocation::Resource { .. }
+    ));
+    assert_eq!(pair_count(&fixture), 1);
+    assert_reconciled(&fixture);
+}
+
+#[test]
+fn a_persisted_pair_is_never_revoked_or_redirected_by_a_later_resource() {
+    let mut fixture = snapshot_fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        created_pair_batch(&fixture.owner, "created", "created\n"),
+    )
+    .unwrap();
+    let before = projection(&fixture.connection);
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            unverified_creation_batch(&fixture.owner, "created")
+        ),
+        Err(StoreError::Conflict {
+            resource: "filePairResource",
+            ..
+        })
+    ));
+    assert!(matches!(
+        apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            pair_batch(&fixture.owner, "created", "old", "new")
+        ),
+        Err(StoreError::Conflict {
+            resource: "filePairResource",
+            ..
+        })
+    ));
+    assert_eq!(projection(&fixture.connection), before);
+    assert_eq!(pair_count(&fixture), 1);
+    assert_reconciled(&fixture);
 }
 
 fn assert_reconciled(fixture: &Fixture) {

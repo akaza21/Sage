@@ -1,0 +1,381 @@
+use super::capability::{DevtoolsCapability, DevtoolsPort};
+use super::diagnostics::DiagnosticRings;
+use super::events::ingest;
+use super::screenshot::admit_jpeg;
+use super::snapshot::{DocumentStamp, NativeNode};
+use super::wait::{WaitBudget, WaitStep};
+use crate::acp::{
+    browser::{
+        BrowserAction, BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest,
+        BrowserResult, BrowserScope, ViewportRegion, WaitCondition, dispatch,
+    },
+    limits::BROWSER_LIMITS,
+};
+use std::sync::{Arc, Mutex};
+
+#[test]
+fn diagnostic_ring_bounds_entries_and_rejects_a_lost_cursor() {
+    let mut ring = DiagnosticRings::default();
+    for index in 0..=BROWSER_LIMITS.diagnostic_entries {
+        ring.push_console("log", &format!("entry-{index}"));
+    }
+    assert_eq!(ring.console(Some(0), 64), Err(BrowserFailure::Capacity));
+    let (cursor, entries) = ring.console(Some(1), 64).unwrap();
+    assert_eq!(entries.len(), BROWSER_LIMITS.diagnostic_entries);
+    assert_eq!(cursor, BROWSER_LIMITS.diagnostic_entries as u64 + 1);
+}
+
+#[test]
+fn diagnostics_are_redacted_before_they_leave_the_ring() {
+    let mut ring = DiagnosticRings::default();
+    ring.push_console("log", "Authorization: Bearer private-value");
+    ring.push_network("GET", "https://site.test/?token=private-value", 200);
+    let (_, console) = ring.console(None, 1).unwrap();
+    let (_, network) = ring.network(None, 1).unwrap();
+    assert!(!console[0].text.contains("private-value"));
+    assert!(!network[0].url.contains("private-value"));
+    assert!(!format!("{:?}", ring).contains("private-value"));
+}
+
+#[test]
+fn cdp_network_events_keep_metadata_but_discard_cookies_and_bodies() {
+    let rings = Arc::new(Mutex::new(DiagnosticRings::default()));
+    ingest(
+        &rings,
+        "Network.requestWillBeSent",
+        r#"{"request":{"method":"POST","url":"https://site.test/?token=private","headers":{"Cookie":"session=leak"},"postData":"body-secret"}}"#,
+    );
+    ingest(
+        &rings,
+        "Network.responseReceived",
+        r#"{"response":{"url":"https://site.test/","status":200,"headers":{"Set-Cookie":"session=leak"},"body":"body-secret"}}"#,
+    );
+    let ring = rings.lock().unwrap();
+    let (_, entries) = ring.network(None, 2).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].method, "POST");
+    assert_eq!(entries[1].status, 200);
+    let debug = format!("{ring:?}");
+    for secret in ["private", "session=leak", "body-secret"] {
+        assert!(!debug.contains(secret));
+    }
+}
+
+#[test]
+fn screenshot_rejects_oversized_or_non_jpeg_payloads() {
+    assert!(admit_jpeg(640, 480, "/9j/AA==").is_ok());
+    assert_eq!(
+        admit_jpeg(BROWSER_LIMITS.screenshot_width + 1, 480, "/9j/AA=="),
+        Err(BrowserFailure::Capacity)
+    );
+    assert_eq!(
+        admit_jpeg(640, 480, "not-jpeg"),
+        Err(BrowserFailure::InvalidRequest)
+    );
+}
+
+#[test]
+fn wait_budget_bounds_probes_and_observes_cancellation() {
+    let budget = WaitBudget::new(250).unwrap();
+    assert_eq!(budget.step(0, false), WaitStep::Probe);
+    assert_eq!(budget.step(100, false), WaitStep::Probe);
+    assert_eq!(budget.step(249, false), WaitStep::Probe);
+    assert_eq!(budget.step(250, false), WaitStep::TimedOut);
+    assert_eq!(budget.step(10, true), WaitStep::Cancelled);
+    assert_eq!(WaitBudget::new(0), Err(BrowserFailure::Capacity));
+}
+
+#[derive(Clone)]
+struct FakePort;
+
+impl DevtoolsPort for FakePort {
+    fn navigate(&mut self, url: &str) -> Result<(String, u64), BrowserFailure> {
+        Ok((url.to_owned(), 8))
+    }
+    fn snapshot(&mut self) -> Result<(DocumentStamp, Vec<NativeNode>), BrowserFailure> {
+        Ok((
+            DocumentStamp {
+                navigation_id: 7,
+                generation: 1,
+            },
+            vec![NativeNode {
+                backend_id: 10,
+                depth: 1,
+                role: "button".into(),
+                name: "Continue token=private-value".into(),
+            }],
+        ))
+    }
+    fn act(
+        &mut self,
+        stamp: DocumentStamp,
+        backend_id: u64,
+        _action: &BrowserAction,
+    ) -> Result<bool, BrowserFailure> {
+        Ok(stamp.navigation_id == 7 && backend_id == 10)
+    }
+    fn capture(&mut self, region: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure> {
+        let region = region.ok_or(BrowserFailure::InvalidRequest)?;
+        let jpeg_base64 = "/9j/AA==";
+        admit_jpeg(region.width, region.height, jpeg_base64)?;
+        Ok(BrowserResult::Screenshot {
+            width: region.width,
+            height: region.height,
+            jpeg_base64: jpeg_base64.into(),
+        })
+    }
+
+    fn matches(
+        &mut self,
+        condition: &WaitCondition,
+        _remaining: std::time::Duration,
+    ) -> Result<bool, BrowserFailure> {
+        Ok(matches!(condition, WaitCondition::Text { text } if text == "ready"))
+    }
+}
+
+#[test]
+fn capability_routes_admitted_navigation_through_the_port() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut capability = DevtoolsCapability::new(scope.clone(), FakePort);
+    let response = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::Navigate {
+                url: "https://example.com/target".into(),
+            },
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(response.result, BrowserResult::Navigate { ref url, navigation_epoch: 8 } if url == "https://example.com/target")
+    );
+    let blocked = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope,
+            command: BrowserCommand::Navigate {
+                url: "javascript:alert(1)".into(),
+            },
+        },
+    );
+    assert_eq!(blocked, Err(BrowserFailure::InvalidRequest));
+}
+
+#[test]
+fn capability_seam_gates_explicit_capture_read_and_wait_for_a_fake_port() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut capability = DevtoolsCapability::new(scope.clone(), FakePort);
+    let screenshot = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::Screenshot {
+                region: Some(ViewportRegion {
+                    x: 0,
+                    y: 0,
+                    width: 640,
+                    height: 480,
+                }),
+            },
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        screenshot.result,
+        BrowserResult::Screenshot {
+            width: 640,
+            height: 480,
+            ..
+        }
+    ));
+    capability
+        .diagnostics()
+        .lock()
+        .unwrap()
+        .push_console("log", "token=private");
+    let console = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::ReadConsole {
+                cursor: None,
+                limit: 1,
+            },
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(console.result, BrowserResult::ReadConsole { entries, .. } if entries.len() == 1 && !entries[0].text.contains("private"))
+    );
+    let wait = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::WaitFor {
+                condition: WaitCondition::Text {
+                    text: "ready".into(),
+                },
+                timeout_ms: 100,
+            },
+        },
+    )
+    .unwrap();
+    assert_eq!(wait.result, BrowserResult::WaitFor { matched: true });
+    capability.cancel();
+    assert_eq!(
+        capability.perform(&BrowserRequest {
+            scope,
+            command: BrowserCommand::ReadNetwork {
+                cursor: None,
+                limit: 1
+            },
+        }),
+        Err(BrowserFailure::Denied)
+    );
+}
+
+#[test]
+fn snapshot_page_issues_bounded_redacted_document_handles() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut capability = DevtoolsCapability::new(scope.clone(), FakePort);
+    let result = dispatch(
+        &mut capability,
+        BrowserRequest {
+            scope,
+            command: BrowserCommand::SnapshotPage {},
+        },
+    )
+    .unwrap();
+    let BrowserResult::SnapshotPage { nodes, text, .. } = result.result else {
+        panic!("expected snapshot");
+    };
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].role, "button");
+    assert_eq!(nodes[0].name, "Continue token=[redacted]");
+    assert!(!text.contains("private-value"));
+}
+
+#[test]
+fn action_uses_the_document_handle_from_the_latest_snapshot() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut capability = DevtoolsCapability::new(scope.clone(), FakePort);
+    let snapshot = capability
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap();
+    let BrowserResult::SnapshotPage { nodes, .. } = snapshot else {
+        panic!("expected snapshot")
+    };
+    let result = capability.perform(&BrowserRequest {
+        scope,
+        command: BrowserCommand::Act {
+            action: BrowserAction::Click {
+                handle: nodes[0].handle.clone(),
+            },
+        },
+    });
+    assert_eq!(result, Ok(BrowserResult::Act { applied: true }));
+}
+
+#[test]
+fn action_rejects_replaced_and_foreign_snapshot_handles() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut first = DevtoolsCapability::new(scope.clone(), FakePort);
+    let BrowserResult::SnapshotPage { nodes: old, .. } = first
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    let mut other = DevtoolsCapability::new(scope.clone(), FakePort);
+    let BrowserResult::SnapshotPage { nodes: foreign, .. } = other
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    let BrowserResult::SnapshotPage { .. } = first
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    for handle in [old[0].handle.clone(), foreign[0].handle.clone()] {
+        assert_eq!(
+            first.perform(&BrowserRequest {
+                scope: scope.clone(),
+                command: BrowserCommand::Act {
+                    action: BrowserAction::Click { handle }
+                }
+            }),
+            Err(BrowserFailure::StaleHandle)
+        );
+    }
+}
+
+#[test]
+fn snapshot_handles_survive_a_dispatch_clone() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut cached = DevtoolsCapability::new(scope.clone(), FakePort);
+    let mut dispatched = cached.clone();
+    let BrowserResult::SnapshotPage { nodes, .. } = dispatched
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    assert_eq!(
+        cached.perform(&BrowserRequest {
+            scope,
+            command: BrowserCommand::Act {
+                action: BrowserAction::Click {
+                    handle: nodes[0].handle.clone()
+                }
+            },
+        }),
+        Ok(BrowserResult::Act { applied: true })
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn native_port_implements_the_same_browser_capability_seam() {
+    fn assert_capability<T: BrowserCapability>() {}
+    assert_capability::<super::native::NativeDevtools>();
+}
+
+mod handle_invalidation;

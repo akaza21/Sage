@@ -135,6 +135,7 @@ describe("visual scenario surface ownership", () => {
       "agent-long",
       "agent-activity-family",
       "agent-declared-test",
+      "agent-command-rollup",
       "agent-image",
       "agent-child-activity",
       "agent-picker-harness-model",
@@ -169,7 +170,7 @@ describe("visual scenario surface ownership", () => {
     const command = activityTurn?.items.find(
       (item) =>
         item.kind === "toolCall" &&
-        item.payload.presentation.kind === "command" &&
+        item.payload.presentation.kind === "execute" &&
         item.payload.presentation.label === "Run focused checks",
     );
 
@@ -238,20 +239,14 @@ describe("visual scenario surface ownership", () => {
       },
       {
         id: "visual-turn-visual-chat-activity-family-1-item-8",
-        kind: "usage",
+        kind: "error",
         ordinal: 8,
         revision: "1",
       },
       {
         id: "visual-turn-visual-chat-activity-family-1-item-9",
-        kind: "error",
-        ordinal: 9,
-        revision: "1",
-      },
-      {
-        id: "visual-turn-visual-chat-activity-family-1-item-10",
         kind: "unsupported",
-        ordinal: 10,
+        ordinal: 9,
         revision: "1",
       },
     ]);
@@ -329,6 +324,7 @@ describe("visual scenario surface ownership", () => {
       "agent-long": "agent",
       "agent-activity-family": "agent",
       "agent-declared-test": "agent",
+      "agent-command-rollup": "agent",
       "agent-image": "agent",
       "agent-child-activity": "agent",
       "agent-picker-harness-model": "agent",
@@ -593,7 +589,7 @@ describe("visual scenario surface ownership", () => {
     expect(listBrowseSessions()).toHaveLength(1);
   });
 
-  it("keeps Preview selected and idle after the mounted fixture clears browsing", async () => {
+  it("removes Preview after the mounted fixture clears browsing", async () => {
     const view = render(
       createElement(
         "div",
@@ -605,12 +601,9 @@ describe("visual scenario surface ownership", () => {
     await installVisualScenario("preview");
     await installVisualAgentPreviewIdleFixture();
     await waitFor(() =>
-      expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      ),
+      expect(view.queryByRole("tab", { name: "Preview" })).toBeNull(),
     );
-    expect(view.getByText("Preview is idle")).toBeInTheDocument();
+    expect(view.queryByTitle("Sage browser")).toBeNull();
   });
 
   it("runs the diff fixture card through the real snapshot loader without Git", async () => {

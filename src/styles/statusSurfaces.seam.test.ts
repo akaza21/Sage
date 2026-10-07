@@ -49,4 +49,19 @@ describe("Status surfaces stylesheet seam", () => {
       /^\.resource-state__icon,\n\.placeholder-surface__icon/m,
     );
   });
+
+  it("anchors the placeholder heading to the large font token rather than a literal", async () => {
+    const [surfaceCss, editorCss] = await Promise.all([
+      readFile(resolve("src/styles/status-surfaces.css"), "utf8"),
+      readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
+    ]);
+
+    expect(surfaceCss).toMatch(
+      /\.placeholder-surface h1 \{[^}]*font-size: var\(--font-size-lg\);/s,
+    );
+    expect(surfaceCss).not.toMatch(/font-size:\s*19px/);
+    expect(editorCss).not.toMatch(
+      /\.workbench--editor \.placeholder-surface h1 \{[^}]*font-size:/s,
+    );
+  });
 });

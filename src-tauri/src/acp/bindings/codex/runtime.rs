@@ -12,25 +12,19 @@ use super::{
     state::CodexAdapter,
 };
 
-#[path = "runtime/support.rs"]
 mod support;
 use support::*;
 
-#[path = "runtime/admission.rs"]
 mod admission;
 
-#[path = "runtime/authority.rs"]
 pub(super) mod authority;
 use authority::RuntimeLaunchAuthority;
 
-#[path = "runtime/launch.rs"]
 mod launch;
 
-#[path = "runtime/snapshots.rs"]
 mod snapshots;
 use snapshots::ItemSnapshots;
 
-#[path = "runtime/harness.rs"]
 mod harness;
 
 mod factory;
@@ -38,11 +32,14 @@ pub(crate) use factory::CodexRuntimeFactory;
 
 pub(crate) struct CodexRuntime {
     launch_authority: RuntimeLaunchAuthority,
+    mcp: crate::acp::mcp::McpAdmission,
     declared_test_commands: DeclaredTestCommands,
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,
     poisoned: bool,
+    pending_browser_failure_details: Vec<(String, String, usize)>,
+    browser_failure_warning_logged: bool,
 }
 
 impl CodexRuntime {
@@ -216,12 +213,34 @@ impl CodexRuntime {
                 None,
             ),
             IncomingEvent::HostToolReply { .. } => unreachable!("handled before translation"),
+            IncomingEvent::PermissionResolved {
+                turn_id,
+                external_request,
+                state,
+            } => (
+                AdapterEvent::PermissionResolved {
+                    turn_id: identity(turn_id),
+                    external_request_id: external_request.external_id,
+                    state,
+                },
+                None,
+            ),
             IncomingEvent::Acknowledged { closes_session } => {
                 if closes_session {
                     self.snapshots.clear();
                 }
                 (AdapterEvent::Acknowledged, None)
             }
+            IncomingEvent::SteerResponse {
+                request_id,
+                accepted,
+            } => (
+                AdapterEvent::SteerResponse {
+                    request_id,
+                    accepted,
+                },
+                None,
+            ),
             IncomingEvent::Unsupported(payload) => (AdapterEvent::Unsupported(payload), None),
             IncomingEvent::Error(payload) => (AdapterEvent::Error(payload), None),
         };
@@ -230,5 +249,4 @@ impl CodexRuntime {
 }
 
 #[cfg(test)]
-#[path = "runtime/tests.rs"]
 mod tests;

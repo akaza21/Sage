@@ -150,6 +150,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
           attachedContext: [],
           sending: false,
           error: null,
+          errorKind: null,
           requestGeneration: 0,
         },
       },

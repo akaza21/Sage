@@ -4,8 +4,8 @@ use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
     contract::{EntityRevision, SafeText, SchemaVersionV1},
     intent::{
-        ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, SafeResourceRef,
-        ToolCategory,
+        ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, Prompt,
+        SafeResourceLocation, SafeResourceRef, ToolCategory, UnavailableResourceReason,
     },
     lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
     projection::ActivityRole,
@@ -14,6 +14,7 @@ use crate::acp::{
 
 use super::coalescer::{NormalizedFact, PendingIngress};
 use super::*;
+use crate::acp::bindings::adapter::RefusalDetail;
 
 #[derive(Default)]
 struct FakeState {
@@ -22,9 +23,11 @@ struct FakeState {
     resolutions: Vec<EgressResolution>,
     durable_batches: Vec<Vec<DurableAdapterEvent>>,
     request_states: Vec<ServerRequestState>,
+    resolved_request_ids: Vec<String>,
     permission_failure: Option<(ServerRequestState, PumpJournalError)>,
     log: Vec<&'static str>,
     ingest_error: Option<AdapterRuntimeError>,
+    refusal_detail: Option<RefusalDetail>,
 }
 
 #[derive(Clone)]
@@ -40,15 +43,30 @@ impl HarnessAdapter for FakeAdapter {
         None
     }
 
+    fn refusal_detail(&self) -> Option<RefusalDetail> {
+        self.shared.0.lock().unwrap().refusal_detail.clone()
+    }
+
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if let AdapterCommand::ResolvePermission { decision, .. } = command {
+        if let AdapterCommand::ResolvePermission {
+            request_id: resolved_request_id,
+            decision,
+        } = command
+        {
+            self.shared
+                .0
+                .lock()
+                .unwrap()
+                .resolved_request_ids
+                .push(resolved_request_id.as_str().to_owned());
             let request_id = ExternalId::new("request", "external-request")
                 .map_err(|_| AdapterRuntimeError::Frame)?;
             let token = match decision {
                 crate::acp::runtime::permissions::PermissionDecision::Ask => {
                     EgressToken::protocol_notification()
                 }
-                crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
                     EgressToken::permission_allow(request_id)
                 }
                 crate::acp::runtime::permissions::PermissionDecision::Deny => {
@@ -426,6 +444,46 @@ fn store_minted_turn_identity_starts_without_an_external_alias() {
 }
 
 #[test]
+fn steer_acknowledgment_waits_for_the_exact_response_and_rejects_late_ids() {
+    runtime().block_on(async {
+        let (mut pump, _) = build_pump(vec![
+            owned(
+                vec![AdapterEvent::SteerResponse {
+                    request_id: 99,
+                    accepted: true,
+                }],
+                Vec::new(),
+            ),
+            owned(
+                vec![AdapterEvent::SteerResponse {
+                    request_id: 1,
+                    accepted: false,
+                }],
+                Vec::new(),
+            ),
+        ]);
+        let (_, request_id) = pump
+            .queue_steer(
+                Prompt::new("prompt", "Change direction").unwrap(),
+                RequiredText::new("client", "steer-one").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(request_id, 1);
+        let mut transport = CountingTransport::default();
+        assert_eq!(
+            pump.flush_one(&mut transport).unwrap(),
+            FlushDisposition::Written
+        );
+        assert_eq!(pump.take_steer_response(request_id), None);
+        pump.push_stdout_chunk(b"{}\n", 1).await.unwrap();
+        assert_eq!(pump.take_steer_response(request_id), None);
+        pump.push_stdout_chunk(b"{}\n", 2).await.unwrap();
+        assert_eq!(pump.take_steer_response(request_id), Some(false));
+        assert_eq!(pump.take_steer_response(request_id), None);
+    });
+}
+
+#[test]
 fn queue_backpressure_and_write_evidence_are_distinct() {
     let (mut pump, shared) = pump_with_queue(Vec::new(), queue_with(1, 64, 0, 0));
     assert_eq!(
@@ -522,7 +580,8 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
                     && intent.session_id == session("one")
                     && intent.turn_id == turn("one")
                     && intent.runtime_epoch == RuntimeEpoch::new(1).unwrap()
-                    && intent.request_id.as_str() == "request-external"
+                    && intent.request_id.as_str().starts_with("permission:")
+                    && intent.request_id.as_str() != "request-external"
                     && intent.external_request_id.as_str() == "request-external"
         ));
         assert!(state.request_states.is_empty());
@@ -535,6 +594,70 @@ fn permission_ingress_journals_a_request_and_waits_for_a_later_decision() {
         );
         assert_eq!(transport.0, 0);
     });
+}
+
+fn permission_id_for_binding_session(
+    binding_digest: [u8; 32],
+    session_name: &str,
+    external_request: &str,
+) -> (SageServerRequestId, ExternalId) {
+    let mut item_id = identity("permission-item");
+    item_id.binding_digest = binding_digest;
+    item_id.session_id = session(session_name);
+    let mut turn_id = identity("turn-envelope");
+    turn_id.binding_digest = binding_digest;
+    turn_id.session_id = session(session_name);
+    let event = AdapterEvent::PermissionRequest {
+        turn_id,
+        item_id,
+        external_request_id: ExternalId::new("permissionRequest", external_request).unwrap(),
+        payload: permission(),
+        request_payload_digest: [1; 32],
+    };
+    let mut intent = session_intent();
+    intent.binding_digest = binding_digest;
+    intent.session_id = session(session_name);
+    let (mut pump, shared) = pump_configured_for_scope(
+        vec![owned(vec![event], Vec::new())],
+        VecDeque::new(),
+        VecDeque::new(),
+        queue_with(
+            LIMITS.queues.egress_frames as usize,
+            LIMITS.queues.egress_bytes as usize,
+            LIMITS.queues.egress_control_frames_inside_total as usize,
+            LIMITS.queues.egress_control_bytes_inside_total as usize,
+        ),
+        intent,
+    );
+    runtime()
+        .block_on(pump.push_stdout_chunk(b"{}\n", 20))
+        .unwrap();
+    let state = shared.0.lock().unwrap();
+    match &state.durable_batches[0][0] {
+        DurableAdapterEvent::PermissionRequest { intent, .. } => (
+            intent.request_id.clone(),
+            intent.external_request_id.clone(),
+        ),
+        _ => panic!("permission request must be durable"),
+    }
+}
+
+#[test]
+fn claude_reused_wire_permission_id_is_distinct_across_sessions() {
+    let first = permission_id_for_binding_session([0x11; 32], "claude-one", "string:1");
+    let second = permission_id_for_binding_session([0x11; 32], "claude-two", "string:1");
+    assert_ne!(first.0, second.0);
+    assert_eq!(first.1.as_str(), "string:1");
+    assert_eq!(second.1.as_str(), "string:1");
+}
+
+#[test]
+fn codex_reused_wire_permission_id_is_distinct_across_sessions() {
+    let first = permission_id_for_binding_session([0x22; 32], "codex-one", "number:0");
+    let second = permission_id_for_binding_session([0x22; 32], "codex-two", "number:0");
+    assert_ne!(first.0, second.0);
+    assert_eq!(first.1.as_str(), "number:0");
+    assert_eq!(second.1.as_str(), "number:0");
 }
 
 #[test]
@@ -647,6 +770,7 @@ fn later_deny_resolves_only_after_complete_write() {
             ]
         );
         assert_eq!(state.commands, ["permission"]);
+        assert_eq!(state.resolved_request_ids, ["external-request"]);
     });
 }
 
@@ -671,11 +795,11 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
             Err(AdapterPumpError::TeardownRequired)
         ));
         let mut queued = CountingTransport::default();
-        assert_eq!(
-            queue_failure.flush_one(&mut queued).unwrap(),
-            FlushDisposition::Written
-        );
-        assert_eq!(queued.0, 1);
+        assert!(matches!(
+            queue_failure.flush_one(&mut queued),
+            Err(AdapterPumpError::TeardownRequired)
+        ));
+        assert_eq!(queued.0, 0);
         assert_eq!(
             shared.0.lock().unwrap().request_states,
             [ServerRequestState::DeclineCommitted]
@@ -853,7 +977,7 @@ fn unknown_commit_and_projection_recovery_are_typed_fail_closed_boundaries() {
         );
         assert!(matches!(
             pump.push_stdout_chunk(b"{}\n", 1).await,
-            Err(AdapterPumpError::TeardownRequired)
+            Err(AdapterPumpError::Journal(PumpJournalError::CommitUnknown))
         ));
         assert!(pump.teardown_required());
         assert_eq!(shared.0.lock().unwrap().log, ["journal"]);
@@ -908,7 +1032,7 @@ fn rejected_config_mutation_is_nonfatal_and_pump_remains_usable() {
 
         assert!(matches!(
             pump.push_stdout_chunk(b"{}\n", 1).await,
-            Err(AdapterPumpError::ConfigMutationRejected)
+            Err(AdapterPumpError::Refused(NonfatalRefusal::ConfigMutation))
         ));
         assert!(!pump.teardown_required());
 
@@ -938,7 +1062,7 @@ fn idle_config_rejection_drains_following_frame_and_stays_aligned() {
 
         assert!(matches!(
             parts.accept_idle_stdout_chunk(b"{}\n{}\n"),
-            Err(AdapterPumpError::ConfigMutationRejected)
+            Err(AdapterPumpError::Refused(NonfatalRefusal::ConfigMutation))
         ));
         assert!(parts.idle_frame_aligned());
 
@@ -1077,6 +1201,94 @@ fn deferred_snapshots_coalesce_by_identity_and_publish_once() {
 }
 
 #[test]
+fn cursor_tool_lifecycle_coalesces_into_one_item_under_one_external_id() {
+    runtime().block_on(async {
+        let external = "call-98fc79df-e1f3-4bef-8df7-b01cec8e0fa4-0\nfc_2f34589c-2f13-9b7d-a509-58a49716544b_0";
+        let started = AdapterEvent::Item {
+            id: identity(external),
+            lifecycle: ItemLifecycle::Started,
+            tool_state: Some(ToolState::Pending),
+            payload: NormalizedPayload::ToolCall {
+                execution: Default::default(),
+                category: ToolCategory::Read,
+                label: SafeText::new("label", "read").unwrap(),
+                input_summary: None,
+                output_summary: None,
+                locations: Default::default(),
+                command_activity: Default::default(),
+            },
+        };
+        let progressed = |lifecycle, tool_state| AdapterEvent::Item {
+            id: identity(external),
+            lifecycle,
+            tool_state: Some(tool_state),
+            payload: NormalizedPayload::ToolCall {
+                execution: Default::default(),
+                category: ToolCategory::Read,
+                label: SafeText::new("label", "read").unwrap(),
+                input_summary: None,
+                output_summary: None,
+                locations: Default::default(),
+                command_activity: Default::default(),
+            },
+        };
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![started], Vec::new()),
+            owned(
+                vec![progressed(ItemLifecycle::Streaming, ToolState::InProgress)],
+                Vec::new(),
+            ),
+            owned(
+                vec![progressed(ItemLifecycle::Completed, ToolState::Completed)],
+                Vec::new(),
+            ),
+        ]);
+        for now in 1..=3 {
+            pump.push_stdout_chunk_deferred(b"{}\n", now).await.unwrap();
+        }
+        assert!(pump.flush_deferred().await.unwrap());
+        let state = shared.0.lock().unwrap();
+        assert_eq!(state.durable_batches.len(), 1);
+        assert!(matches!(
+            state.durable_batches[0].as_slice(),
+            [DurableAdapterEvent::Item {
+                external_item_id,
+                lifecycle: ItemLifecycle::Completed,
+                tool_state: Some(ToolState::Completed),
+                payload: NormalizedPayload::ToolCall { .. },
+                ..
+            }] if external_item_id.as_str() == external
+        ));
+    });
+}
+
+#[test]
+fn admitted_file_diff_items_stay_adjacent_to_their_pair() {
+    let mut pending = PendingIngress::new();
+    pending
+        .push(vec![normalized_fact("diff", admitted_diff())], 1, 0)
+        .unwrap();
+    pending.push(vec![file_pair_fact("diff")], 1, 1).unwrap();
+    pending
+        .push(vec![normalized_fact("diff", text("late"))], 1, 2)
+        .unwrap();
+    assert!(matches!(
+        pending.take().unwrap().0.as_slice(),
+        [
+            DurableAdapterEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { .. },
+                ..
+            },
+            DurableAdapterEvent::FilePair { .. },
+            DurableAdapterEvent::Item {
+                payload: NormalizedPayload::Text { .. },
+                ..
+            }
+        ]
+    ));
+}
+
+#[test]
 fn deferred_usage_snapshots_coalesce_on_one_turn_scoped_identity() {
     runtime().block_on(async {
         let usage = |input_tokens, context_window| AdapterEvent::Usage {
@@ -1098,15 +1310,12 @@ fn deferred_usage_snapshots_coalesce_on_one_turn_scoped_identity() {
         let state = shared.0.lock().unwrap();
         assert!(matches!(
             state.durable_batches[0].as_slice(),
-            [DurableAdapterEvent::RuntimePayload {
-                external_item_id,
-                payload: NormalizedPayload::Usage {
-                    input_tokens: 8,
-                    context_window: None,
-                    ..
-                },
+            [DurableAdapterEvent::UsageSnapshot {
+                input_tokens: 8,
+                output_tokens: 2,
+                context_window: None,
                 ..
-            }] if external_item_id.as_str() == "external-turn"
+            }]
         ));
     });
 }
@@ -1147,7 +1356,7 @@ fn deferred_deadline_and_terminal_flush_without_polling_or_reordering() {
 }
 
 #[test]
-fn pending_actual_bytes_are_exact_and_kind_conflicts_are_not_hidden() {
+fn pending_actual_bytes_are_exact_and_one_identity_coalesces_across_kinds() {
     let maximum = LIMITS.queues.journal_bytes_per_transaction as usize;
     let fact = normalized_fact("same", text("one"));
     let mut exact = PendingIngress::new();
@@ -1158,15 +1367,16 @@ fn pending_actual_bytes_are_exact_and_kind_conflicts_are_not_hidden() {
     let plus_one = normalized_fact("same", text("one"));
     assert!(PendingIngress::new().would_exceed(std::slice::from_ref(&plus_one), maximum + 1));
 
-    let mut kinds = PendingIngress::new();
-    kinds
+    let mut identities = PendingIngress::new();
+    identities
         .push(vec![normalized_fact("same", text("text"))], 1, 0)
         .unwrap();
-    kinds
+    identities
         .push(
             vec![normalized_fact(
                 "same",
                 NormalizedPayload::ToolCall {
+                    execution: Default::default(),
                     category: ToolCategory::Other,
                     label: SafeText::new("label", "tool").unwrap(),
                     input_summary: None,
@@ -1179,7 +1389,7 @@ fn pending_actual_bytes_are_exact_and_kind_conflicts_are_not_hidden() {
             1,
         )
         .unwrap();
-    assert_eq!(kinds.take().unwrap().0.len(), 2);
+    assert_eq!(identities.take().unwrap().0.len(), 1);
 }
 
 #[test]
@@ -1236,6 +1446,80 @@ fn completed_turn_handoff_keeps_synthetic_item_identity_unique() {
     });
 }
 
+#[test]
+fn stdout_preamble_is_skipped_only_before_the_first_frame_and_stays_fatal_after_it() {
+    runtime().block_on(async {
+        let (mut pump, _shared) = build_pump(vec![owned(vec![item("item-one")], Vec::new())]);
+        assert!(matches!(
+            pump.push_stdout_chunk(b"Loaded cached credentials.\n", 10)
+                .await,
+            Ok(false)
+        ));
+        assert!(matches!(
+            pump.push_stdout_chunk(b"{}\n", 11).await,
+            Ok(true)
+        ));
+        assert!(matches!(
+            pump.push_stdout_chunk(b"Loaded cached credentials.\n", 12)
+                .await,
+            Err(AdapterPumpError::Frame)
+        ));
+    });
+}
+
+#[test]
+fn stdout_preamble_stops_being_tolerated_past_its_line_bound() {
+    runtime().block_on(async {
+        let (mut pump, _shared) = build_pump(vec![owned(vec![item("item-one")], Vec::new())]);
+        for line in 0..STDOUT_PREAMBLE_MAX_LINES {
+            assert!(matches!(
+                pump.push_stdout_chunk(b"Loaded cached credentials.\n", i64::from(line))
+                    .await,
+                Ok(false)
+            ));
+        }
+        assert!(matches!(
+            pump.push_stdout_chunk(b"Loaded cached credentials.\n", 100)
+                .await,
+            Err(AdapterPumpError::Frame)
+        ));
+    });
+}
+
+#[test]
+fn malformed_json_is_never_mistaken_for_stdout_preamble() {
+    runtime().block_on(async {
+        for malformed in [
+            b"{]\n".as_slice(),
+            b"[}\n".as_slice(),
+            b"  {oops}\n".as_slice(),
+        ] {
+            let (mut pump, _shared) = build_pump(Vec::new());
+            assert!(matches!(
+                pump.push_stdout_chunk(malformed, 10).await,
+                Err(AdapterPumpError::Frame)
+            ));
+        }
+    });
+}
+
+#[test]
+fn stdout_preamble_stops_being_tolerated_past_its_byte_bound() {
+    runtime().block_on(async {
+        let (mut pump, _shared) = build_pump(vec![owned(vec![item("item-one")], Vec::new())]);
+        let mut line = "x".repeat(STDOUT_PREAMBLE_MAX_BYTES / 2 + 1);
+        line.push('\n');
+        assert!(matches!(
+            pump.push_stdout_chunk(line.as_bytes(), 10).await,
+            Ok(false)
+        ));
+        assert!(matches!(
+            pump.push_stdout_chunk(line.as_bytes(), 11).await,
+            Err(AdapterPumpError::Frame)
+        ));
+    });
+}
+
 fn build_pump(
     batches: Vec<AdapterBatch>,
 ) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
@@ -1281,6 +1565,22 @@ fn pump_configured(
     publisher_outcomes: VecDeque<Result<ProjectionPublishStatus, ProjectionPublishError>>,
     queue: ReservedQueue<AdapterEgress>,
 ) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
+    pump_configured_for_scope(
+        batches,
+        journal_outcomes,
+        publisher_outcomes,
+        queue,
+        session_intent(),
+    )
+}
+
+fn pump_configured_for_scope(
+    batches: Vec<AdapterBatch>,
+    journal_outcomes: VecDeque<Result<ProjectionRevision, PumpJournalError>>,
+    publisher_outcomes: VecDeque<Result<ProjectionPublishStatus, ProjectionPublishError>>,
+    queue: ReservedQueue<AdapterEgress>,
+    session_scope: SessionPumpIntent,
+) -> (AdapterPump<FakeAdapter, FakeJournal, Mapper>, Shared) {
     let shared = Shared(Arc::new(Mutex::new(FakeState {
         batches: batches.into(),
         ..FakeState::default()
@@ -1305,7 +1605,7 @@ fn pump_configured(
         },
         Mapper,
         publisher,
-        session_intent().bind_turn(ActiveTurnIntent {
+        session_scope.bind_turn(ActiveTurnIntent {
             turn_id: turn("one"),
             external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()),
             client_message_id: message(),
@@ -1362,14 +1662,7 @@ fn activity_item(parent_item_id: AdapterIdentity) -> AdapterEvent {
 fn normalized_fact(external: &str, payload: NormalizedPayload) -> NormalizedFact {
     NormalizedFact::new(
         DurableAdapterEvent::Item {
-            scope: TurnScope {
-                project_id: SageProjectId::parse("project-one").unwrap(),
-                chat_id: SageChatId::parse("chat-one").unwrap(),
-                session_id: session("one"),
-                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-                turn_id: turn("one"),
-                binding_digest: "07".repeat(32),
-            },
+            scope: fact_scope(),
             external_item_id: ExternalId::new("item", external).unwrap(),
             lifecycle: ItemLifecycle::Streaming,
             tool_state: None,
@@ -1378,6 +1671,45 @@ fn normalized_fact(external: &str, payload: NormalizedPayload) -> NormalizedFact
             now_millis: 0,
         },
         1,
+    )
+}
+
+fn fact_scope() -> TurnScope {
+    TurnScope {
+        project_id: SageProjectId::parse("project-one").unwrap(),
+        chat_id: SageChatId::parse("chat-one").unwrap(),
+        session_id: session("one"),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        turn_id: turn("one"),
+        binding_digest: "07".repeat(32),
+    }
+}
+
+fn file_pair_fact(external: &str) -> NormalizedFact {
+    NormalizedFact::new(
+        DurableAdapterEvent::FilePair {
+            scope: fact_scope(),
+            external_item_id: ExternalId::new("item", external).unwrap(),
+            old_text: "old".into(),
+            new_text: "new".into(),
+            now_millis: 0,
+        },
+        1,
+    )
+}
+
+fn admitted_diff() -> NormalizedPayload {
+    NormalizedPayload::file_admitted(
+        crate::acp::intent::FileChangeFacts {
+            resource: SafeResourceLocation::unavailable(UnavailableResourceReason::Missing),
+            summary: SafeText::new("summary", "lib.rs").unwrap(),
+            additions: Some(1),
+            deletions: Some(1),
+            operation: crate::acp::intent::FileChangeOperation::Updated,
+        },
+        1,
+        (3, 3),
+        "0a".repeat(32),
     )
 }
 
@@ -1424,6 +1756,7 @@ fn permission() -> NormalizedPayload {
     NormalizedPayload::PermissionRequest {
         category: ToolCategory::Other,
         summary: SafeText::new("summary", "denied by policy").unwrap(),
+        offered_option_kinds: None,
     }
 }
 
@@ -1475,3 +1808,6 @@ mod cancel_tests;
 
 #[path = "completion_tests.rs"]
 mod completion_tests;
+
+#[path = "sign_in_tests.rs"]
+mod sign_in_tests;

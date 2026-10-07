@@ -57,6 +57,7 @@ import {
 } from "../app/agentArtifactFollowStore";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 
@@ -79,6 +80,13 @@ function admit(tabId: string): void {
   useAgentArtifactAdmissionStore.getState().admit({
     owner: focusedOwner,
     tabId,
+  });
+}
+
+function openPreviewSession(): void {
+  applyBrowseIntent({
+    owner: previewOwner,
+    url: "http://127.0.0.1:5173/native",
   });
 }
 
@@ -247,7 +255,7 @@ describe("Agent artifact file chips", () => {
     );
 
     const expand = screen.getByRole("button", {
-      name: "Open files, changes, and preview",
+      name: "Show preview · Waiting",
     });
     expect(expand).toBeVisible();
     expect(within(expand).queryByText("Files")).toBeNull();
@@ -282,7 +290,7 @@ describe("Agent artifact file chips", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview",
+        name: "Show preview · Waiting",
       }),
     ).toHaveFocus();
   });
@@ -330,20 +338,15 @@ describe("Agent artifact file chips", () => {
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 
-  it("keeps an idle Preview tab reachable without a browse session", async () => {
+  it("does not append Preview before it is open and keeps File kind in accessible metadata", () => {
     render(<AgentArtifactPane />);
 
-    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    const fileTab = screen.getByRole("tab", { name: "File src/app.ts" });
+    expect(fileTab).toHaveAttribute("title", "File src/app.ts");
+    expect(within(fileTab).queryByText("File")).toBeNull();
     expect(
       screen.getByText(/Open a file or change from the conversation/),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
-    expect(await screen.findByText("Preview is idle")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Preview shows loopback development servers started from this Chat/,
-      ),
     ).toBeInTheDocument();
     expect(screen.queryByTitle("Sage browser")).toBeNull();
   });
@@ -352,16 +355,17 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
 
     const matched = screen.getByRole("tab", { name: /app\.ts/ });
-    expect(within(matched).getByText("File")).toBeInTheDocument();
+    expect(matched).toHaveAttribute("aria-label", "File src/app.ts");
     expect(within(matched).getByText("+3")).toBeInTheDocument();
     expect(within(matched).getByText("-1")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /other\.ts$/ })).toBeNull();
 
-    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
   it("renders a truthful artifact header and pins navigation through its ordered targets", () => {
     admit("file:app");
+    openPreviewSession();
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
@@ -397,6 +401,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("copies the repository-relative path", async () => {
+    openPreviewSession();
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", {
       ...navigator,
@@ -419,13 +424,48 @@ describe("Agent artifact file chips", () => {
     );
   });
 
-  it("opens Agent Preview as a loopback browser without the app-script starter", () => {
+  it("opens an Agent file in Editor from the File pane Open menu", () => {
+    const onOpenInEditor = vi.fn();
+    admit("file:app");
+    render(<AgentArtifactPane onOpenInEditor={onOpenInEditor} />);
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
+    const menu = screen.getByRole("menu", { name: "Open file" });
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Open in Editor" }),
+    );
+
+    expect(onOpenInEditor).toHaveBeenCalledExactlyOnceWith("file:app");
+    expect(screen.getByRole("button", { name: "Open choices" })).toHaveFocus();
+  });
+
+  it("returns focus after copying from the File pane Open menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: "Open file" })).getByRole(
+        "menuitem",
+        { name: "Copy path" },
+      ),
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("src/app.ts"));
+    expect(screen.getByRole("button", { name: "Open choices" })).toHaveFocus();
+  });
+
+  it("opens Agent Preview as a loopback browser without the app-script starter", async () => {
     applyBrowseIntent({
       owner: previewOwner,
       url: "http://127.0.0.1:5173/",
     });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     expect(screen.getByLabelText("Sage browser")).toBeInTheDocument();
     expect(screen.getByLabelText("Preview address")).toBeInTheDocument();
     expect(
@@ -434,7 +474,7 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
-  it("counts an idle Preview on the collapsed edge for a focused Chat", () => {
+  it("keeps the collapsed edge waiting without a Preview session", () => {
     const onExpandedChange = vi.fn();
     useWorkbenchStore.setState({
       tabs: [
@@ -459,9 +499,9 @@ describe("Agent artifact file chips", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview, 1 resource",
+        name: "Show preview · Waiting",
       }),
-    ).toHaveTextContent("Ready");
+    ).not.toHaveTextContent("1");
   });
 
   it("counts a live Preview on the collapsed edge without File or Diff tabs", () => {
@@ -493,12 +533,12 @@ describe("Agent artifact file chips", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Open files, changes, and preview, 1 resource",
+        name: "Show preview · Ready · 1 resource",
       }),
-    ).toHaveTextContent("Ready");
+    ).toHaveTextContent("1");
   });
 
-  it("keeps a standalone manual browser quiet when native Preview is unavailable", () => {
+  it("keeps a standalone manual browser quiet when native Preview is unavailable", async () => {
     previewBridge.available.mockReturnValue(false);
     applyBrowseIntent({
       owner: previewOwner,
@@ -506,6 +546,7 @@ describe("Agent artifact file chips", () => {
     });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
       "http://127.0.0.1:5173/manual",
@@ -524,6 +565,7 @@ describe("Agent artifact file chips", () => {
     });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Preview listener registration failed",
@@ -536,7 +578,63 @@ describe("Agent artifact file chips", () => {
     expect(previewBridge.discover).not.toHaveBeenCalled();
   });
 
+  it("clears a rejected discovery notice once native Preview reports an active origin", async () => {
+    let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
+    previewBridge.subscribe.mockImplementation(async (handler) => {
+      receive = handler;
+      return vi.fn();
+    });
+    previewBridge.discover.mockRejectedValue(
+      new Error("Preview request identity is invalid."),
+    );
+    const target = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      expectedTransitionEpoch: 0,
+      chatId: "chat-focused",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      rootId: "root-a",
+      scriptName: "dev",
+    } as const;
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/manual",
+    });
+    render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Preview request identity is invalid.",
+      ),
+    );
+
+    act(() =>
+      receive?.({
+        kind: "preview",
+        preview: {
+          ...previewOwner,
+          previewRevision: "2",
+          phase: "active",
+          failure: null,
+          target,
+          origin: "http://127.0.0.1:5173/native",
+        },
+      } as PreviewProjectionChangedEvent),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Preview is unavailable")).toBeNull(),
+    );
+    expect(screen.getByTitle("Sage browser")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:5173/native",
+    );
+  });
+
   it("keeps the native controller through File, tab, and collapse sleep-resume", async () => {
+    openPreviewSession();
     const unlisten = vi.fn();
     previewBridge.subscribe.mockResolvedValue(unlisten);
     const onExpandedChange = vi.fn();
@@ -546,10 +644,12 @@ describe("Agent artifact file chips", () => {
 
     expect(previewBridge.discover).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(previewBridge.discover).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
     expect(screen.queryByLabelText("Sage browser")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     expect(previewBridge.discover).toHaveBeenCalledOnce();
     expect(previewBridge.stop).not.toHaveBeenCalled();
 
@@ -568,6 +668,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("waits for the Agent listener before discovering and enabling Start", async () => {
+    openPreviewSession();
     let ready: ((unlisten: () => void) => void) | null = null;
     const target = {
       projectId: "project-a",
@@ -588,6 +689,7 @@ describe("Agent artifact file chips", () => {
     previewBridge.discover.mockResolvedValue({ targets: [target] });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(previewBridge.subscribe).toHaveBeenCalledOnce());
     expect(previewBridge.discover).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
@@ -601,6 +703,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("renders compact bounded Preview targets and one typed native failure notice", async () => {
+    openPreviewSession();
     let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
     const target = {
       projectId: "project-a",
@@ -619,6 +722,7 @@ describe("Agent artifact file chips", () => {
     previewBridge.discover.mockResolvedValue({ targets: [target] });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
 
     const targets = await screen.findByRole("group", {
       name: "Preview targets",
@@ -672,6 +776,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("stops the captured target exactly once when focused ownership disposes the controller", async () => {
+    openPreviewSession();
     let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
     previewBridge.subscribe.mockImplementation(async (handler) => {
       receive = handler;
@@ -689,6 +794,7 @@ describe("Agent artifact file chips", () => {
     } as const;
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(receive).not.toBeNull());
     act(() =>
       receive?.({
@@ -708,6 +814,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("bridges active native Preview and hides only its matching-origin terminal frame", async () => {
+    openPreviewSession();
     let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
     previewBridge.subscribe.mockImplementation(async (handler) => {
       receive = handler;
@@ -726,6 +833,7 @@ describe("Agent artifact file chips", () => {
     previewBridge.discover.mockResolvedValue({ targets: [target] });
     const view = render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(receive).not.toBeNull());
     act(() =>
       receive?.({
@@ -748,6 +856,7 @@ describe("Agent artifact file chips", () => {
     );
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(previewBridge.health).toHaveBeenCalledOnce());
     act(() =>
       receive?.({
@@ -868,6 +977,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("suppresses a stopped native frame while preserving a different manual origin", async () => {
+    openPreviewSession();
     let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
     previewBridge.subscribe.mockImplementation(async (handler) => {
       receive = handler;
@@ -904,6 +1014,7 @@ describe("Agent artifact file chips", () => {
 
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(receive).not.toBeNull());
     emit("2", "active", "http://127.0.0.1:5173/native");
     await waitFor(() =>
@@ -948,6 +1059,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("uses only emitted phases for first-native notices and leaves idle native states as the browser shell", async () => {
+    openPreviewSession();
     let receive: ((event: PreviewProjectionChangedEvent) => void) | null = null;
     previewBridge.subscribe.mockImplementation(async (handler) => {
       receive = handler;
@@ -955,6 +1067,7 @@ describe("Agent artifact file chips", () => {
     });
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     await waitFor(() => expect(receive).not.toBeNull());
     const target = {
       projectId: "project-a",
@@ -1129,11 +1242,7 @@ describe("Agent artifact file chips", () => {
       "true",
     );
     act(() => clearBrowseSession(previewOwner));
-    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
   it("keeps a spaced tab id connected to its pending description", () => {
@@ -1322,7 +1431,7 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
 
     const matched = screen.getByRole("tab", { name: /app\.ts/ });
-    expect(within(matched).getByText("Diff")).toBeInTheDocument();
+    expect(matched).toHaveAttribute("aria-label", "Diff src/app.ts");
     expect(within(matched).getByText("+3")).toBeInTheDocument();
     expect(within(matched).getByText("-1")).toBeInTheDocument();
   });
@@ -1387,7 +1496,7 @@ describe("Agent artifact file chips", () => {
         "Unsaved changes",
       ),
     ).toBeNull();
-    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
   it("closes an Agent artifact without adding a close control to Preview", () => {
@@ -1398,12 +1507,77 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Close Preview" })).toBeNull();
   });
 
+  it("shows browser tabs beside artifacts but keeps them out of Editor", () => {
+    const openBrowser = vi.fn(async () => undefined);
+    const onOpenInEditor = vi.fn();
+    useWorkbenchStore.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          id: "browser:a",
+          kind: "browser",
+          title: "New tab",
+          favicon: "data:image/png;base64,iVBORw0KGgo=",
+          position: 8,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      openBrowser,
+    }));
+    render(<AgentArtifactPane onOpenInEditor={onOpenInEditor} />);
+    expect(
+      screen.getByRole("tab", { name: "Browser New tab" }),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("tab", { name: "Browser New tab" })
+        .querySelector("img.tab__favicon"),
+    ).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+    fireEvent.error(
+      screen
+        .getByRole("tab", { name: "Browser New tab" })
+        .querySelector("img.tab__favicon")!,
+    );
+    expect(
+      screen
+        .getByRole("tab", { name: "Browser New tab" })
+        .querySelector("svg.lucide"),
+    ).toBeInTheDocument();
+    act(() =>
+      useWorkbenchStore.setState((state) => ({
+        tabs: state.tabs.map((item) =>
+          item.id === "browser:a"
+            ? { ...item, favicon: "data:image/png;base64,iVBORw0KGgoAAA=" }
+            : item,
+        ),
+      })),
+    );
+    expect(
+      screen
+        .getByRole("tab", { name: "Browser New tab" })
+        .querySelector("img.tab__favicon"),
+    ).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgoAAA=");
+    expect(
+      within(screen.getByRole("tab", { name: "Browser New tab" })).queryByText(
+        "Browser",
+      ),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Browser New tab" }));
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(openBrowser).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "Pop out active tab" }),
+    ).toBeDisabled();
+    expect(onOpenInEditor).not.toHaveBeenCalled();
+  });
+
   it("exposes full paths in accessible tab names with basename-visible middle ellipsis", () => {
     admit("diff:other");
     render(<AgentArtifactPane />);
 
     const fileTab = screen.getByRole("tab", { name: "File src/app.ts" });
-    expect(fileTab).toHaveAttribute("title", "src/app.ts");
+    expect(fileTab).toHaveAttribute("title", "File src/app.ts");
     const filePath = fileTab.querySelector(".tab__path");
     expect(filePath).not.toBeNull();
     expect(filePath?.querySelector(".tab__dir")?.textContent).toBe("src/");
@@ -1412,7 +1586,7 @@ describe("Agent artifact file chips", () => {
     );
 
     const diffTab = screen.getByRole("tab", { name: "Diff src/other.ts" });
-    expect(diffTab).toHaveAttribute("title", "src/other.ts");
+    expect(diffTab).toHaveAttribute("title", "Diff src/other.ts");
     expect(diffTab.querySelector(".tab__basename")?.textContent).toBe(
       "other.ts",
     );
@@ -1428,39 +1602,46 @@ describe("Agent artifact file chips", () => {
     );
 
     const toggle = screen.getByRole("button", {
-      name: "Open files, changes, and preview, 2 resources",
+      name: "Show preview · Ready · 1 resource",
     });
-    expect(toggle).toHaveAttribute("title", "Open resources (2)");
-    expect(within(toggle).getByText("2")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute(
+      "title",
+      "Show preview · Ready · 1 resource",
+    );
+    expect(within(toggle).getByText("1")).toBeInTheDocument();
   });
 
-  it("moves Preview through idle -> active -> close -> idle in the actual pane", () => {
+  it("keeps the collapsed pane compact while announcing its ready state", () => {
+    render(<AgentArtifactPane expanded={false} />);
+    const toggle = screen.getByRole("button", {
+      name: /Show preview · Ready · 1 resource/,
+    });
+    expect(toggle).toHaveAttribute(
+      "title",
+      "Show preview · Ready · 1 resource",
+    );
+    expect(toggle.querySelector(".agent-artifact-pane__edge-copy")).toBeNull();
+    expect(toggle).not.toHaveTextContent("Ready");
+    expect(within(toggle).getByText("1")).toBeInTheDocument();
+  });
+
+  it("shows Preview for a browse session and removes it when the browser closes", async () => {
+    openPreviewSession();
     render(<AgentArtifactPane />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
-    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
-
-    act(() => {
-      applyBrowseIntent({
-        owner: previewOwner,
-        url: "http://127.0.0.1:5173/app",
-      });
-    });
+    await settleLazyModules();
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
-      "http://127.0.0.1:5173/app",
+      "http://127.0.0.1:5173/native",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
     expect(screen.queryByTitle("Sage browser")).toBeNull();
-    expect(screen.getByText("Preview is idle")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Preview" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
-  it("keeps Preview sessions isolated per Chat in the actual pane", () => {
+  it("keeps Preview sessions isolated per Chat in the actual pane", async () => {
     const secondOwner = {
       projectId: "project-a",
       projectGeneration: "0",
@@ -1514,6 +1695,7 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
     setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(
       "src",
       "http://127.0.0.1:5173/focused",
@@ -1541,7 +1723,7 @@ describe("Agent artifact file chips", () => {
     );
   });
 
-  it("keeps Preview chrome order and returns focus when collapsing", () => {
+  it("keeps Preview chrome order and returns focus when collapsing", async () => {
     const onExpandedChange = vi.fn();
     applyBrowseIntent({
       owner: previewOwner,
@@ -1549,6 +1731,7 @@ describe("Agent artifact file chips", () => {
     });
     render(<AgentArtifactPane expanded onExpandedChange={onExpandedChange} />);
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
 
     const chrome = screen.getByRole("region", { name: "Sage browser" });
     expect(

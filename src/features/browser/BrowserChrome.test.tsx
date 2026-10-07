@@ -1,0 +1,566 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { WorkbenchTab } from "../../domain/workbench";
+import { BrowserSurface } from "./BrowserSurface";
+import { BrowserNewTab } from "./BrowserNavigationControls";
+import { useWorkbenchStore } from "../../app/store";
+import { pinAgentChatOwner } from "../../app/agentChatOwner";
+const browserStatus = vi.fn();
+const openBrowser = vi.fn(async (_url?: string) => "browser-new");
+const browserPageContext = vi.fn();
+const browserZoom = vi.fn(
+  async (_tabId: string, _percent: number) => undefined,
+);
+const browserFind = vi.fn(
+  async (_tabId: string, _action: string, _query?: string) => undefined,
+);
+const browserOpenExternal = vi.fn(async (_tabId: string) => undefined);
+const browserNavigate = vi.fn(
+  async (_tabId: string, _url: string) => undefined,
+);
+const hideBrowser = vi.fn(async (_tabId: string) => undefined);
+const positionBrowser = vi.fn(
+  async (_tabId: string, _bounds: unknown) => undefined,
+);
+const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
+const browserHistory = vi.fn(async (_tabId: string) => [
+  "https://example.com/",
+]);
+const detachBrowserTab = vi.fn(
+  async (_projectId: string, _chatId: string) => undefined,
+);
+const stopBrowserTab = vi.fn(async (_tabId: string) => undefined);
+vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
+vi.mock("../../ports/nativeBrowserPort", () => ({
+  openBrowser: (url?: string) => openBrowser(url),
+  closeBrowser: vi.fn(async () => undefined),
+  browserStatus: (tabId: string) => browserStatus(tabId),
+  browserPageContext: (tabId: string, revision: string) =>
+    browserPageContext(tabId, revision),
+  browserZoom: (tabId: string, percent: number) => browserZoom(tabId, percent),
+  browserFind: (tabId: string, action: string, query?: string) =>
+    browserFind(tabId, action, query),
+  browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
+  browserSuggestedSites: () => browserSuggestedSites(),
+  browserHistory: (tabId: string) => browserHistory(tabId),
+  attachBrowserTab: vi.fn(),
+  detachBrowserTab: (projectId: string, chatId: string) =>
+    detachBrowserTab(projectId, chatId),
+  stopBrowserTab: (tabId: string) => stopBrowserTab(tabId),
+  browserAttachmentStatus: vi.fn(async () => null),
+  browserPermissionStatus: vi.fn(async (tabId: string) => ({
+    tabId,
+    origin: "unavailable",
+    pending: [],
+    decisions: [],
+  })),
+  browserControl: vi.fn(),
+  browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
+  hideBrowser: (tabId: string) => hideBrowser(tabId),
+  positionBrowser: (tabId: string, bounds: unknown) =>
+    positionBrowser(tabId, bounds),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => undefined),
+}));
+const tab: WorkbenchTab = {
+  id: "browser-1",
+  kind: "browser",
+  title: "Example",
+  position: 0,
+  pinned: false,
+  dirty: false,
+};
+it("shows an inert new tab with Sage tools and suggested sites", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "",
+    revision: "0",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  render(<BrowserSurface tab={tab} />);
+  expect(await screen.findByText("Tools")).toBeInTheDocument();
+  expect(screen.getByText("Suggested")).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Search or enter a URL"),
+  ).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "example.com" }));
+  await waitFor(() =>
+    expect(browserNavigate).toHaveBeenCalledWith(
+      tab.id,
+      "https://example.com/",
+    ),
+  );
+});
+it("shows a known open page title on its suggested tile", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ tabs: [tab] });
+  browserStatus.mockImplementation(async (tabId: string) => ({
+    tabId,
+    url: tabId === tab.id ? "https://example.com/" : "",
+    title: tabId === tab.id ? "Example Domain" : null,
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  }));
+  render(<BrowserSurface tab={{ ...tab, id: "browser-new-tab" }} />);
+  expect(
+    await screen.findByRole("button", { name: "Example Domain" }),
+  ).toBeInTheDocument();
+  useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("shows a known favicon on its suggested tile and keeps the glyph fallback", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ tabs: [tab] });
+  browserSuggestedSites.mockResolvedValueOnce([
+    "https://example.com/",
+    "https://plain.example/",
+  ]);
+  browserStatus.mockImplementation(async (tabId: string) => ({
+    tabId,
+    url: tabId === tab.id ? "https://example.com/" : "",
+    title: "Example Domain",
+    favicon: "data:image/png;base64,iVBORw0KGgo=",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  }));
+  render(<BrowserSurface tab={{ ...tab, id: "browser-new-tab" }} />);
+  await waitFor(() => expect(browserSuggestedSites).toHaveBeenCalledTimes(1));
+  expect(await browserSuggestedSites.mock.results[0]?.value).toEqual([
+    "https://example.com/",
+    "https://plain.example/",
+  ]);
+  const illustrated = await screen.findByRole("button", {
+    name: "Example Domain",
+  });
+  expect(illustrated.querySelector("img")).toHaveAttribute(
+    "src",
+    "data:image/png;base64,iVBORw0KGgo=",
+  );
+  expect(
+    screen.getByRole("button", { name: "plain.example" }).querySelector("img"),
+  ).toBeNull();
+  useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("falls back when a suggested favicon cannot decode and retries a changed URL", () => {
+  const first = "data:image/png;base64,iVBORw0KGgo=";
+  const next = "data:image/png;base64,iVBORw0KGgoAAA=";
+  const props = {
+    onNavigate: vi.fn(),
+    onAddress: vi.fn(),
+    onNewTab: vi.fn(),
+  };
+  const view = render(
+    <BrowserNewTab
+      {...props}
+      suggestions={[{ url: "https://example.com/", favicon: first }]}
+    />,
+  );
+  const tile = screen.getByRole("button", { name: "example.com" });
+  fireEvent.error(tile.querySelector("img")!);
+  expect(tile.querySelector("img")).toBeNull();
+  expect(tile).toHaveTextContent("◎");
+  view.rerender(
+    <BrowserNewTab
+      {...props}
+      suggestions={[{ url: "https://example.com/", favicon: next }]}
+    />,
+  );
+  expect(tile.querySelector("img")).toHaveAttribute("src", next);
+});
+it("replaces suggested sites when switching projects between new tabs", async () => {
+  const previous = useWorkbenchStore.getState();
+  browserSuggestedSites.mockImplementation(async () =>
+    useWorkbenchStore.getState().project?.id === "project-b"
+      ? ["https://project-b.example/"]
+      : ["https://project-a.example/"],
+  );
+  browserStatus.mockImplementation(async (tabId: string) => ({
+    tabId,
+    url: "",
+    revision: "0",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  }));
+  useWorkbenchStore.setState({
+    project: { id: "project-a" } as typeof previous.project,
+  });
+  const view = render(<BrowserSurface tab={{ ...tab, id: "browser-a" }} />);
+  expect(
+    await screen.findByRole("button", { name: "project-a.example" }),
+  ).toBeInTheDocument();
+  useWorkbenchStore.setState({
+    project: { id: "project-b" } as typeof previous.project,
+  });
+  view.rerender(<BrowserSurface tab={{ ...tab, id: "browser-b" }} />);
+  expect(
+    await screen.findByRole("button", { name: "project-b.example" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "project-a.example" }),
+  ).toBeNull();
+  useWorkbenchStore.setState({ project: previous.project });
+});
+it("opens the UI New tab action without a URL and renders native blank state", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    project: { id: "project-new-tab", name: "Project", roots: [] },
+    projectTransitioning: false,
+    tabs: [],
+    activeTabId: null,
+  });
+  browserStatus.mockResolvedValueOnce({
+    tabId: "browser-new",
+    url: "",
+    revision: "0",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  await act(async () => useWorkbenchStore.getState().openBrowser());
+  expect(openBrowser).toHaveBeenCalledWith(undefined);
+  const newTab = useWorkbenchStore
+    .getState()
+    .tabs.find((item) => item.id === "browser-new");
+  expect(newTab?.title).toBe("New tab");
+  render(<BrowserSurface tab={newTab!} />);
+  expect(await screen.findByText("Tools")).toBeInTheDocument();
+  useWorkbenchStore.setState({
+    project: previous.project,
+    tabs: previous.tabs,
+    activeTabId: previous.activeTabId,
+  });
+});
+it("labels a committed browser tab with its host instead of a generic Browser title", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ tabs: [tab] });
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().tabs[0]?.title).toBe("example.com"),
+  );
+  useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("uses the bounded document title and falls back to the host", () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ tabs: [tab] });
+  const update = useWorkbenchStore.getState().updateBrowserTabTitle;
+  update(
+    tab.id,
+    "https://example.com/article",
+    "Example Domain\u0000\n Guide",
+    "1",
+  );
+  expect(useWorkbenchStore.getState().tabs[0]?.title).toBe(
+    "Example Domain Guide",
+  );
+  update(tab.id, "https://example.com/article", "\u0000\n", "2");
+  expect(useWorkbenchStore.getState().tabs[0]?.title).toBe("example.com");
+  update(tab.id, "https://example.com/article", "x".repeat(200), "3");
+  expect(useWorkbenchStore.getState().tabs[0]?.title).toHaveLength(80);
+  useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("applies a native browser status title to the workbench tab", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ tabs: [tab] });
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "https://example.com/",
+    title: "Example Domain",
+    revision: "2",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().tabs[0]?.title).toBe("Example Domain"),
+  );
+  useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("groups supported page controls in an overflow menu without dead features", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("textbox", { name: "Address or search" });
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  expect(
+    screen.getByRole("menuitem", { name: "Find in page" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "History" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("menuitem", { name: "Downloads" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("menuitem", { name: "Browser settings" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Print")).toBeNull();
+  expect(screen.queryByText("Show device toolbar")).toBeNull();
+  expect(screen.queryByText("Take a screenshot")).toBeNull();
+  expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
+  expect(
+    screen.getByRole("textbox", { name: "Find text" }),
+  ).toBeInTheDocument();
+});
+it("dismisses the browser menu with Escape and restores trigger focus", async () => {
+  render(<BrowserSurface tab={tab} />);
+  const trigger = screen.getByRole("button", { name: "More options" });
+  fireEvent.click(trigger);
+  const menu = screen.getByRole("menu", { name: "Browser menu" });
+  expect(menu).toBeInTheDocument();
+  fireEvent.keyDown(menu, { key: "Escape" });
+  expect(menu).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
+it("moves keyboard focus through browser menu items and closes from the trigger", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  const trigger = screen.getByRole("button", { name: "More options" });
+  fireEvent.click(trigger);
+  const items = screen.getAllByRole("menuitem");
+  expect(items[0]).toHaveFocus();
+  expect(
+    screen.getByRole("menuitem", { name: "Zoom out" }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(items[0], { key: "ArrowDown" });
+  expect(items[1]).toHaveFocus();
+  fireEvent.keyDown(items[1], { key: "End" });
+  expect(items.at(-1)).toHaveFocus();
+  fireEvent.keyDown(items.at(-1)!, { key: "Home" });
+  expect(items[0]).toHaveFocus();
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+it("returns focus to the overflow trigger when clearing data is cancelled", async () => {
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => false),
+  );
+  render(<BrowserSurface tab={tab} />);
+  const trigger = screen.getByRole("button", { name: "More options" });
+  fireEvent.click(trigger);
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Clear browsing data" }),
+  );
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+it("hides the native browser when its host pane unmounts", () => {
+  const view = render(<BrowserSurface tab={tab} />);
+  view.unmount();
+  expect(hideBrowser).toHaveBeenCalledWith(tab.id);
+});
+it("contains browser chrome inside the Agent canvas and styles page actions", async () => {
+  const css = await readFile(
+    resolve("src/features/browser/browser.css"),
+    "utf8",
+  );
+  expect(css).toMatch(
+    /\.agent-artifact-pane__canvas > \.browser-surface\s*\{[^}]*position:\s*relative;[^}]*width:\s*100%;[^}]*height:\s*100%;/s,
+  );
+  expect(css).toMatch(
+    /\.browser-surface__attachment\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s,
+  );
+  expect(css).toMatch(
+    /\.browser-surface__attachment (?:button|select)[^}]*background:\s*var\(--browser-control-fill\);/s,
+  );
+  expect(css).toMatch(
+    /\.browser-surface__menu button\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
+  );
+  expect(css).toMatch(/\.browser-surface__toolbar\s*\{[^}]*height:\s*44px;/s);
+  expect(css).toMatch(
+    /\.browser-surface__nav-group\s*\{[^}]*background:\s*var\(--browser-control-fill\);/s,
+  );
+  expect(css).toMatch(/\.browser-surface__toolbar button:focus-visible\s*\{/s);
+  expect(css).toMatch(
+    /\.browser-surface__address input\s*\{[^}]*height:\s*32px;[^}]*background:\s*var\(--browser-address-fill\);/s,
+  );
+  const tokens = await readFile(resolve("src/styles/global.css"), "utf8");
+  expect(tokens).toContain("--browser-address-fill: #2d2d2d;");
+});
+
+it("clips native webview bounds to the Agent canvas below browser chrome", async () => {
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+    }) as DOMRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.classList.contains("agent-artifact-pane__canvas"))
+        return rect(630, 100, 740, 760);
+      if (this.classList.contains("browser-surface__toolbar"))
+        return rect(630, 100, 740, 40);
+      if (this.classList.contains("browser-surface__frame"))
+        return rect(600, 110, 800, 800);
+      return rect(0, 0, 0, 0);
+    },
+  );
+  render(
+    <div className="agent-artifact-pane__canvas">
+      <BrowserSurface tab={tab} />
+    </div>,
+  );
+  await waitFor(() =>
+    expect(positionBrowser).toHaveBeenCalledWith(tab.id, {
+      x: 630,
+      y: 140,
+      width: 740,
+      height: 720,
+    }),
+  );
+});
+
+it("keeps Editor browser bounds at the frame rect", async () => {
+  const rect = {
+    left: 42,
+    top: 90,
+    right: 542,
+    bottom: 490,
+    width: 500,
+    height: 400,
+  } as DOMRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    rect,
+  );
+  render(
+    <div className="center-region">
+      <BrowserSurface tab={tab} />
+    </div>,
+  );
+  await waitFor(() =>
+    expect(positionBrowser).toHaveBeenCalledWith(tab.id, {
+      x: 42,
+      y: 90,
+      width: 500,
+      height: 400,
+    }),
+  );
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/path",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  pinAgentChatOwner(null);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+it("offers committed origin, copy, external open, zoom and find on the active tab", async () => {
+  const clipboard = { writeText: vi.fn(async () => undefined) };
+  vi.stubGlobal("navigator", { ...navigator, clipboard });
+  render(<BrowserSurface tab={tab} />);
+
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Copy URL" }));
+  await waitFor(() =>
+    expect(clipboard.writeText).toHaveBeenCalledWith(
+      "https://example.com/path",
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open externally" }));
+  await waitFor(() => expect(browserOpenExternal).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Zoom in" }));
+  await waitFor(() => expect(browserZoom).toHaveBeenCalledWith(tab.id, 125));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+    target: { value: "example" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Find$/ }));
+  await waitFor(() =>
+    expect(browserFind).toHaveBeenCalledWith(tab.id, "start", "example"),
+  );
+});
+it("does not share a provisional URL while the page is loading", async () => {
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "https://redirect.example/",
+    revision: "2",
+    loading: true,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  render(<BrowserSurface tab={tab} />);
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole("textbox", { name: "Address or search" }),
+    ).toHaveValue("https://redirect.example/"),
+  );
+  expect(screen.getByLabelText("No page")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  expect(screen.queryByRole("menuitem", { name: "Copy URL" })).toBeNull();
+  expect(
+    screen.queryByRole("menuitem", { name: "Open externally" }),
+  ).toBeNull();
+});
+it("shows a failed history retry without offering a mismatched origin", async () => {
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "",
+    revision: "2",
+    loading: false,
+    canGoBack: true,
+    canGoForward: false,
+    zoomPercent: 100,
+    error: "Back or Forward could not reach the saved page",
+  });
+  render(<BrowserSurface tab={tab} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Back or Forward could not reach the saved page",
+  );
+  expect(screen.getByLabelText("No page")).toBeInTheDocument();
+  expect(screen.queryByText("Suggested")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  expect(screen.queryByRole("menuitem", { name: "Copy URL" })).toBeNull();
+  expect(
+    screen.queryByRole("menuitem", { name: "Open externally" }),
+  ).toBeNull();
+});

@@ -47,7 +47,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Ok(());
         }
         let egress = self.adapter.command(AdapterCommand::ResolvePermission {
-            request_id: request_id.clone(),
+            request_id: SageServerRequestId::parse(pending.intent.external_request_id.as_str())
+                .map_err(|_| AdapterPumpError::Intent)?,
             decision,
         })?;
         let intent = pending.intent.clone();
@@ -61,7 +62,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             return Err(AdapterPumpError::TeardownRequired);
         }
         let committed = match decision {
-            crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+            crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+            | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
                 ServerRequestState::AllowCommitted
             }
             crate::acp::runtime::permissions::PermissionDecision::Deny => {
@@ -69,18 +71,38 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             }
             crate::acp::runtime::permissions::PermissionDecision::Ask => unreachable!(),
         };
-        let revision = self
+        let revision = match self
             .journal
             .transition_permission(&intent, committed, now_millis)
             .await
-            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        {
+            Ok(revision) => revision,
+            Err(error @ PumpJournalError::CommitUnknown) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::Journal(error));
+            }
+            Err(PumpJournalError::Rejected) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::TeardownRequired);
+            }
+        };
         self.publish_revision(revision)?;
         self.enqueue(egress)?;
-        let revision = self
+        let revision = match self
             .journal
             .transition_permission(&intent, ServerRequestState::ResponseQueued, now_millis)
             .await
-            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        {
+            Ok(revision) => revision,
+            Err(error @ PumpJournalError::CommitUnknown) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::Journal(error));
+            }
+            Err(PumpJournalError::Rejected) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::TeardownRequired);
+            }
+        };
         let pending = self
             .pending_permissions
             .iter_mut()
@@ -94,6 +116,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         &mut self,
         prompt: crate::acp::intent::Prompt,
         client_message_id: &RequiredText<512>,
+        access_mode: crate::settings_store::SessionAccessMode,
     ) -> Result<QueueDisposition, AdapterPumpError> {
         self.ensure_live()?;
         let active = &self.intent.active_turn;
@@ -103,8 +126,56 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let egress = self.adapter.command(AdapterCommand::Prompt {
             prompt,
             client_message_id: client_message_id.clone(),
+            access_mode,
         })?;
         self.enqueue(egress)
+    }
+
+    pub(crate) fn queue_steer(
+        &mut self,
+        prompt: crate::acp::intent::Prompt,
+        client_message_id: RequiredText<512>,
+    ) -> Result<(QueueDisposition, u64), AdapterPumpError> {
+        self.ensure_live()?;
+        if self.terminal.is_some() {
+            return Err(AdapterPumpError::NoActiveTurn);
+        }
+        let egress = self
+            .adapter
+            .command(AdapterCommand::Steer {
+                prompt,
+                client_message_id,
+            })
+            .map_err(|error| match error {
+                AdapterRuntimeError::Operation | AdapterRuntimeError::UnsupportedCommand => {
+                    AdapterPumpError::Intent
+                }
+                other => AdapterPumpError::Adapter(other),
+            })?;
+        let request_id = egress
+            .token()
+            .request_id()
+            .ok_or(AdapterPumpError::Intent)?;
+        let disposition = self.enqueue(egress)?;
+        self.pending_steer_request = Some(request_id);
+        self.steer_response = None;
+        Ok((disposition, request_id))
+    }
+
+    pub(crate) fn take_steer_response(&mut self, request_id: u64) -> Option<bool> {
+        if self.pending_steer_request != Some(request_id) {
+            return None;
+        }
+        let response = self.steer_response.take()?;
+        self.pending_steer_request = None;
+        Some(response)
+    }
+
+    pub(crate) fn expire_steer(&mut self, request_id: u64) {
+        if self.pending_steer_request == Some(request_id) {
+            self.pending_steer_request = None;
+            self.steer_response = None;
+        }
     }
 
     pub(crate) fn flush_one<T: EgressTransport>(
@@ -152,6 +223,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 pending.decision,
                 Some(
                     crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                        | crate::acp::runtime::permissions::PermissionDecision::AllowAlways
                         | crate::acp::runtime::permissions::PermissionDecision::Deny
                 )
             )
@@ -191,7 +263,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .transition_permission(
                 &intent,
                 match decision {
-                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                    | crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
                         ServerRequestState::ResolvedAllowed
                     }
                     crate::acp::runtime::permissions::PermissionDecision::Deny => {
@@ -206,7 +279,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .await
         {
             Ok(revision) => revision,
-            Err(PumpJournalError::CommitUnknown | PumpJournalError::Rejected) => {
+            Err(error @ PumpJournalError::CommitUnknown) => {
+                self.teardown = true;
+                return Err(AdapterPumpError::Journal(error));
+            }
+            Err(PumpJournalError::Rejected) => {
                 self.teardown = true;
                 return Err(AdapterPumpError::TeardownRequired);
             }

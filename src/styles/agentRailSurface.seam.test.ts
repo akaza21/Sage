@@ -52,7 +52,7 @@ describe("Agent rail stylesheet seam", () => {
     expect(component).toContain('placeholder="Search tasks…"');
     expect(component).toContain('aria-label="Search tasks"');
     expect(surfaceCss).toMatch(
-      /\.agent-rail-search\s*\{[^}]*height:\s*var\(--control-height-compact\);[^}]*border-radius:\s*var\(--radius-sm\);/s,
+      /\.agent-rail-search\s*\{[^}]*height:\s*var\(--control-height-default\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );
     expect(chatCss).toMatch(
       /\.project-chat__status-chip\s*\{[^}]*border-radius:\s*var\(--radius-pill\);/s,

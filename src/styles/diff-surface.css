@@ -7,7 +7,7 @@
 
 .diff-header__counts {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -39,7 +39,7 @@
 }
 
 .diff-header {
-  padding: 0 14px;
+  padding: 0 12px;
   background: var(--color-panel);
 }
 
@@ -59,14 +59,52 @@
 }
 
 .diff-toolbar {
-  padding: 0 14px;
+  padding: 0 12px;
   color: var(--color-text-secondary);
   background: var(--color-panel);
   font-size: var(--font-size-xs);
 }
 
+.diff-toolbar__scope {
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.diff-toolbar__actions {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
 .diff-toolbar__hint {
+  margin-left: auto;
+  margin-right: 8px;
   color: var(--color-text-muted);
+}
+
+.diff-toolbar__actions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.diff-toolbar__actions button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.diff-toolbar__actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .diff-editor {
@@ -78,13 +116,13 @@
 }
 
 .diff-hunk + .diff-hunk {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .diff-hunk__header {
   min-width: 720px;
-  min-height: 27px;
-  padding: 6px 14px 5px 104px;
+  min-height: 28px;
+  padding: 4px 12px 4px 104px;
   color: var(--color-diff-add);
   background: var(--color-diff-add-muted);
   font-size: var(--font-size-xs);
@@ -93,7 +131,7 @@
 .diff-line {
   display: grid;
   min-width: 720px;
-  min-height: 26px;
+  min-height: 24px;
   grid-template-columns: 46px 46px 0 minmax(0, 1fr);
   align-items: center;
   border-left: 3px solid transparent;
@@ -101,7 +139,7 @@
 
 .diff-line > span {
   align-self: stretch;
-  padding: 6px 8px 0 0;
+  padding: 4px 8px 0 0;
   border-right: 1px solid var(--resource-document-gutter-divider);
   color: var(--resource-document-gutter-foreground);
   text-align: right;
@@ -110,7 +148,7 @@
 
 .diff-line__comment-gutter {
   position: relative;
-  min-height: 26px;
+  min-height: 24px;
 }
 
 .diff-line__comment-trigger {
@@ -119,8 +157,8 @@
   top: 2px;
   left: 3px;
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   place-items: center;
   border: 0;

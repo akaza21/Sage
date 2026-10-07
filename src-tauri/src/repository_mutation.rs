@@ -1,7 +1,7 @@
 use crate::{
     domain::{GitFileMutationAction, ResourceRef},
     error::{AppError, AppResult},
-    repository,
+    git_budget, repository,
     workspace::Workspace,
 };
 use std::time::Duration;
@@ -15,7 +15,7 @@ pub(crate) async fn mutate_file(
     resource: &ResourceRef,
     action: GitFileMutationAction,
 ) -> AppResult<()> {
-    mutate_file_with_timeout(workspace, resource, action, Duration::from_secs(3)).await
+    mutate_file_with_timeout(workspace, resource, action, git_budget::MUTATION).await
 }
 
 pub(crate) async fn mutate_file_with_timeout(

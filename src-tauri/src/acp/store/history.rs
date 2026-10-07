@@ -204,11 +204,14 @@ fn load_sessions(
         } else {
             None
         };
+        let binding_id =
+            BindingId::new("bindingId", row.2).map_err(|_| StoreError::Corrupt("binding id"))?;
+        let capabilities = serde_json::from_str::<CapabilitySnapshotV1>(&row.8)
+            .map_err(|_| StoreError::Corrupt("capabilities"))?;
         result.push(SessionProjection {
             id: SageAgentSessionId::parse(row.0).map_err(|_| StoreError::Corrupt("session id"))?,
             ordinal: u64::try_from(row.1).map_err(|_| StoreError::Corrupt("session ordinal"))?,
-            binding_id: BindingId::new("bindingId", row.2)
-                .map_err(|_| StoreError::Corrupt("binding id"))?,
+            binding_id: binding_id.clone(),
             model_id: row
                 .3
                 .map(|v| ModelId::new("modelId", v))
@@ -218,8 +221,8 @@ fn load_sessions(
             residency,
             runtime_epoch,
             next_runtime_epoch,
-            capabilities: serde_json::from_str::<CapabilitySnapshotV1>(&row.8)
-                .map_err(|_| StoreError::Corrupt("capabilities"))?,
+            permission_requests: permission_requests_supported(&binding_id, &capabilities),
+            capabilities,
             revision: EntityRevision::new(row.9 as u64)
                 .map_err(|_| StoreError::Corrupt("session revision"))?,
             projection_revision: ProjectionRevision::new(row.10 as u64)
@@ -232,6 +235,23 @@ fn load_sessions(
         });
     }
     Ok(result)
+}
+
+const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
+
+fn permission_requests_supported(
+    binding_id: &BindingId,
+    capabilities: &CapabilitySnapshotV1,
+) -> bool {
+    match binding_id.as_str() {
+        "codex-app-server" => {
+            capabilities.protocol_version.as_str() == "codex-app-server-observed-0.146.0"
+                && capabilities.active_turn_steer
+                && CODEX_ASK_NATIVE_APPROVAL_PROVEN
+        }
+        "claude-agent-acp" | "cursor-agent-acp" | "opencode-acp" | "gemini-cli-acp" => true,
+        _ => false,
+    }
 }
 
 fn load_turn_rows(
@@ -309,4 +329,53 @@ fn load_turn_rows(
         first.item_before = boundary.item_before;
     }
     Ok((result, more))
+}
+
+#[cfg(test)]
+mod permission_request_tests {
+    use super::*;
+
+    fn capabilities(protocol_version: &str) -> CapabilitySnapshotV1 {
+        serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "protocolVersion": protocol_version,
+            "newSession": true,
+            "resumeSession": true,
+            "loadSession": true,
+            "closeSession": true,
+            "prompt": true,
+            "cancel": true,
+            "nativeSessionFork": false,
+            "activeTurnSteer": false,
+            "childConversationProjection": false,
+            "childTranscriptRead": false,
+            "collaborationEventProjection": false,
+            "multiRootExtensionSchemaId": null,
+            "modelCount": 0,
+            "configCount": 0,
+        }))
+        .expect("capabilities")
+    }
+
+    #[test]
+    fn codex_ask_projection_requires_native_approval_evidence() {
+        let codex = BindingId::new("bindingId", "codex-app-server").expect("Codex binding");
+        assert!(!permission_requests_supported(
+            &codex,
+            &capabilities("codex-app-server-0.145.0-7b0ab167")
+        ));
+        let mut observed = capabilities("codex-app-server-observed-0.146.0");
+        assert!(!permission_requests_supported(&codex, &observed));
+        observed.active_turn_steer = true;
+        assert!(!permission_requests_supported(&codex, &observed));
+
+        let claude = BindingId::new("bindingId", "claude-agent-acp").expect("Claude binding");
+        assert!(permission_requests_supported(&claude, &capabilities("1")));
+
+        let unknown = BindingId::new("bindingId", "fixture").expect("fixture binding");
+        assert!(!permission_requests_supported(
+            &unknown,
+            &capabilities("fixture-1")
+        ));
+    }
 }

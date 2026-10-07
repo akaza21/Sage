@@ -37,6 +37,7 @@ export async function runLoadAgentDiff(
   const key = agentDiffKey(ref);
   const revision = snapshotProjectionRevision(get(), ref);
   const generation = get().projectGeneration;
+  const transitionEpoch = get().nativeTransitionEpoch;
   const existing = get().diffs[key];
   if (revision === null) {
     set((state) => ({
@@ -84,7 +85,7 @@ export async function runLoadAgentDiff(
   try {
     const snapshot = await acpDesktop.getFileSnapshot({
       ...ref,
-      projectGeneration: String(generation) as Parameters<
+      projectGeneration: String(transitionEpoch) as Parameters<
         typeof acpDesktop.getFileSnapshot
       >[0]["projectGeneration"],
       expectedProjectionRevision: revision,

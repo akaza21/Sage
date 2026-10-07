@@ -103,6 +103,7 @@ export function seedSnapshotOwner() {
       ],
     },
     projectGeneration: 1,
+    nativeTransitionEpoch: 1,
     projectTransitioning: false,
     tabs: [],
     activeTabId: null,

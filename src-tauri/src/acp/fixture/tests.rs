@@ -47,6 +47,26 @@ fn fixture_accepts_only_exact_frozen_arguments() {
 }
 
 #[test]
+fn codex_lost_steer_result_case_waits_for_the_write_then_exits_without_reply() {
+    let invocation = FixtureInvocation::parse(
+        ["--case", "codex-steer-lost-result", "--seed", "0"].map(OsString::from),
+    )
+    .unwrap();
+    let steps: Vec<Value> = serde_json::from_str(invocation.steps_json).unwrap();
+    assert_eq!(
+        steps[7],
+        serde_json::json!({"op":"awaitClient","kind":"codexSteer"})
+    );
+    assert_eq!(steps[8], serde_json::json!({"op":"exit","code":17}));
+    assert!(
+        !steps
+            .iter()
+            .skip(8)
+            .any(|step| step["op"] == "emitKnownFrame")
+    );
+}
+
+#[test]
 fn all_179_frozen_case_ids_and_steps_are_unique_bounded_and_recognized() {
     assert_eq!(FROZEN_CASES.len(), 179);
     let mut ids = BTreeSet::new();
@@ -453,6 +473,7 @@ fn fixture_adapter_requires_written_prompt_and_emits_one_bounded_text_lifecycle(
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "read only").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     assert!(matches!(

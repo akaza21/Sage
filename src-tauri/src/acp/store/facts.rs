@@ -141,7 +141,7 @@ pub(crate) fn publish_projection(
     )?,"session projection")
 }
 
-fn ensure_fact_capacity(
+pub(crate) fn ensure_fact_capacity(
     transaction: &Transaction<'_>,
     session_id: &str,
     bytes: i64,

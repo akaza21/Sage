@@ -28,6 +28,67 @@ afterEach(() => {
 });
 
 describe("SettingsSurface", () => {
+  it("lists the settings pages in a nav and opens Editor first", () => {
+    render(<SettingsSurface />);
+    const nav = screen.getByRole("navigation", { name: "Settings pages" });
+    expect(
+      within(nav)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Editor", "Keyboard"]);
+    expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("shows the real chord for each shortcut on the Keyboard page", () => {
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
+    expect(
+      screen.getByRole("heading", { name: "Keyboard Shortcuts" }),
+    ).toBeInTheDocument();
+    const save = screen.getByText("Save file").closest("tr");
+    expect(save).not.toBeNull();
+    expect(within(save as HTMLElement).getByText("Ctrl+S")).toBeInTheDocument();
+    expect(screen.getByText("Go to symbol").closest("tr")).toHaveTextContent(
+      "F12",
+    );
+  });
+
+  it("keeps the Keyboard page read-only", () => {
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("marks nav pages that have no match for the current query", () => {
+    render(<SettingsSurface />);
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "go to symbol" },
+    });
+    const nav = screen.getByRole("navigation", { name: "Settings pages" });
+    expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
+      "data-matches",
+      "false",
+    );
+    expect(within(nav).getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
+      "data-matches",
+      "true",
+    );
+  });
+
+  it("filters the Keyboard page rows by the same query", () => {
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole("tab", { name: "Keyboard" }));
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "go to symbol" },
+    });
+    expect(screen.getByText("Go to symbol")).toBeInTheDocument();
+    expect(screen.queryByText("Save file")).toBeNull();
+  });
+
   it("explains, changes, and resets the five honest Editor Appearance settings", async () => {
     render(<SettingsSurface />);
 

@@ -4,7 +4,13 @@
 //! A validated executable whose version cannot be read remains truthfully
 //! present-but-unreadable rather than becoming absent or acquiring a guess.
 
-use std::{path::Path, path::PathBuf, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    time::{Duration, SystemTime},
+};
 
 mod candidates;
 mod claude;
@@ -12,19 +18,22 @@ mod parsing;
 mod validation;
 mod version_probe;
 
+#[cfg(all(test, windows))]
+mod hash_tests;
 #[cfg(test)]
 mod tests;
 
-use candidates::{legacy_candidates, production_candidates};
+#[cfg(test)]
+pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
 };
-use parsing::{normalized_legacy_version, parse_harness_version};
-use validation::{authentic_harness_file as validate_harness_file, legacy_basenames};
+use parsing::parse_harness_display_version;
+#[cfg(test)]
+use parsing::parse_harness_version;
+use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
-/// At most this many `PATH` directories are inspected for one harness.
-pub(crate) const PATH_DIR_CAP: usize = 16;
 /// The probe rejects paths whose platform-native byte representation is larger
 /// than this value.
 pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
@@ -34,20 +43,102 @@ pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
 pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
-/// The two harness executables covered by host discovery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HarnessExecutable {
     Codex,
     Claude,
+    Pi,
+    Gemini,
+    OpenCode,
+    CursorAgent,
+    OhMyPi,
 }
 
-impl HarnessExecutable {
-    pub(super) fn identifier(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Claude => "claude-code",
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InstallLayout {
+    NpmGlobal,
+    CursorAgent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KnownHarnessSpec {
+    pub(crate) id: &'static str,
+    pub(crate) executable: HarnessExecutable,
+    pub(crate) install_layout: InstallLayout,
+    pub(crate) sign_in: Option<KnownHarnessSignIn>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KnownHarnessSignIn {
+    pub(crate) command: &'static str,
+    pub(crate) hint: &'static str,
+}
+
+pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
+    KnownHarnessSpec {
+        id: "codex",
+        executable: HarnessExecutable::Codex,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "codex login",
+            hint: "Sign in to your Codex account.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "claude-code",
+        executable: HarnessExecutable::Claude,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "claude",
+            hint: "Then run /login.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "pi",
+        executable: HarnessExecutable::Pi,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "pi",
+            hint: "Then run /login.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "gemini-cli",
+        executable: HarnessExecutable::Gemini,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "gemini",
+            hint: "Follow the sign-in prompts.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "opencode",
+        executable: HarnessExecutable::OpenCode,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "opencode auth login",
+            hint: "Choose the provider to sign in.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "cursor-agent",
+        executable: HarnessExecutable::CursorAgent,
+        install_layout: InstallLayout::CursorAgent,
+        sign_in: Some(KnownHarnessSignIn {
+            command: "cursor-agent login",
+            hint: "Sign in to Cursor Agent.",
+        }),
+    },
+    KnownHarnessSpec {
+        id: "oh-my-pi",
+        executable: HarnessExecutable::OhMyPi,
+        install_layout: InstallLayout::NpmGlobal,
+        sign_in: None,
+    },
+];
+
+pub(crate) fn known_harness_spec(id: &str) -> Option<&'static KnownHarnessSpec> {
+    KNOWN_HARNESS_SPECS.iter().find(|spec| spec.id == id)
 }
 
 /// A conservative, normalized semantic version. Pre-release and build
@@ -74,6 +165,7 @@ pub(crate) enum DiscoverySource {
 }
 
 /// A validated harness executable with a strictly parsed version.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveredHarness {
     pub(crate) executable: PathBuf,
@@ -82,6 +174,7 @@ pub(crate) struct DiscoveredHarness {
 }
 
 /// The complete truthful result of inspecting one named harness.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HarnessDiscovery {
     Absent,
@@ -107,23 +200,18 @@ impl ProbeLimits {
     };
 }
 
-/// Discovers Codex or Claude using only bounded, validated candidate paths.
-///
-/// The worst case for one call is inspection of 16 `PATH` roots plus four
-/// known-install roots, followed by one version probe capped at 2 seconds and
-/// a 250 ms reap attempt. Stdout and stderr retain at most 16 KiB each.
-pub(crate) fn discover_harness(harness: HarnessExecutable) -> HarnessDiscovery {
-    discover_from_candidates(
-        harness,
-        production_candidates(harness),
-        ProbeLimits::PRODUCTION,
-    )
-}
-
 /// Shared validation used by legacy Codex host-presence reporting. This checks
 /// the same path and link discipline as full discovery without running a child.
 pub(crate) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
     validate_harness_file(path, expected_basename)
+}
+
+pub(crate) fn authentic_regular_file(path: &Path) -> bool {
+    validation::authentic_regular_file(path)
+}
+
+pub(crate) fn authentic_npm_global_descendant(root: &Path, relative: impl AsRef<Path>) -> bool {
+    validation::authentic_descendant_file(root, relative)
 }
 
 /// Returns candidates formed from the first bounded set of valid PATH roots.
@@ -133,6 +221,7 @@ pub(crate) fn path_candidates_for_basename(expected_basename: &str) -> Vec<PathB
     candidates::path_candidates_for_basename(expected_basename)
 }
 
+#[cfg(test)]
 fn discover_from_candidates(
     harness: HarnessExecutable,
     candidates: Vec<candidates::Candidate>,
@@ -167,6 +256,18 @@ fn discover_from_candidates(
     }
 }
 
+#[cfg(test)]
+fn present_candidate(
+    harness: HarnessExecutable,
+    candidates: Vec<candidates::Candidate>,
+) -> Option<candidates::Candidate> {
+    candidates.into_iter().find(|candidate| {
+        validation::expected_basenames(harness)
+            .iter()
+            .any(|basename| validate_harness_file(&candidate.executable, basename))
+    })
+}
+
 // The pre-HR-1 projection still consumes the legacy installed-harness shape.
 // Keep that adapter here so it shares candidate validation and the bounded
 // version process rather than growing a parallel discovery path.
@@ -174,62 +275,124 @@ fn discover_from_candidates(
 pub(crate) struct InstalledHarness {
     pub(crate) id: &'static str,
     pub(crate) executable: PathBuf,
-    pub(crate) version: String,
+    pub(crate) version: Option<String>,
 }
 
-#[derive(Clone, Copy)]
-enum InstalledHarnessSpec {
-    Shared(HarnessExecutable),
-    Legacy {
-        id: &'static str,
-        command: &'static str,
-    },
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DisplayFileIdentity {
+    canonical_path: PathBuf,
+    byte_len: u64,
+    modified: SystemTime,
 }
 
-const INSTALLED_HARNESS_SPECS: &[InstalledHarnessSpec] = &[
-    InstalledHarnessSpec::Shared(HarnessExecutable::Codex),
-    InstalledHarnessSpec::Shared(HarnessExecutable::Claude),
-    InstalledHarnessSpec::Legacy {
-        id: "oh-my-pi",
-        command: "omp",
-    },
-    InstalledHarnessSpec::Legacy {
-        id: "pi",
-        command: "pi",
-    },
-];
+#[derive(Debug, Default)]
+pub(crate) struct DisplayVersionCache {
+    entries: Mutex<HashMap<DisplayFileIdentity, Option<String>>>,
+}
 
-pub(crate) fn discover_installed_harnesses() -> Vec<InstalledHarness> {
-    INSTALLED_HARNESS_SPECS
-        .iter()
-        .filter_map(|spec| match *spec {
-            InstalledHarnessSpec::Shared(harness) => match discover_harness(harness) {
-                HarnessDiscovery::Present(discovered) => Some(InstalledHarness {
-                    id: harness.identifier(),
-                    executable: discovered.executable,
-                    version: discovered.version.to_string(),
-                }),
-                HarnessDiscovery::Absent | HarnessDiscovery::PresentVersionUnreadable { .. } => {
-                    None
-                }
-            },
-            InstalledHarnessSpec::Legacy { id, command } => discover_legacy(id, command),
+impl DisplayVersionCache {
+    fn version(&self, identity: &DisplayFileIdentity) -> Option<Option<String>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(identity)
+            .cloned()
+    }
+
+    fn insert(&self, identity: DisplayFileIdentity, version: Option<String>) {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(identity, version);
+    }
+
+    fn retain(&self, identities: &HashSet<DisplayFileIdentity>) {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|identity, _| identities.contains(identity));
+    }
+}
+
+fn display_file_identity(path: &Path) -> Option<DisplayFileIdentity> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(DisplayFileIdentity {
+        canonical_path: path.canonicalize().ok()?,
+        byte_len: metadata.len(),
+        modified: metadata.modified().ok()?,
+    })
+}
+
+pub(crate) fn discover_installed_harness_presence() -> Vec<InstalledHarness> {
+    candidates::production_present_candidates(KNOWN_HARNESS_SPECS)
+        .into_iter()
+        .map(|(id, candidate)| InstalledHarness {
+            id,
+            executable: candidate.executable,
+            version: None,
         })
         .collect()
 }
 
-fn discover_legacy(id: &'static str, command: &'static str) -> Option<InstalledHarness> {
-    let candidate = legacy_candidates(command).into_iter().find(|candidate| {
-        legacy_basenames(command)
+pub(crate) fn enrich_installed_harness_versions(
+    present: &[InstalledHarness],
+    cache: &DisplayVersionCache,
+) -> Vec<InstalledHarness> {
+    let identities = present
+        .iter()
+        .filter_map(|harness| display_file_identity(&harness.executable))
+        .collect::<HashSet<_>>();
+    cache.retain(&identities);
+    std::thread::scope(|scope| {
+        let probes = present
             .iter()
-            .any(|basename| validate_harness_file(&candidate.executable, basename))
-    })?;
-    let output = run_version_command(&candidate.executable, ProbeLimits::PRODUCTION)?;
-    let version = normalized_legacy_version(&output.stdout)
-        .or_else(|| normalized_legacy_version(&output.stderr))?;
-    Some(InstalledHarness {
-        id,
-        executable: candidate.executable,
-        version,
+            .cloned()
+            .map(|harness| {
+                scope.spawn(move || {
+                    let identity = display_file_identity(&harness.executable);
+                    let version = identity
+                        .as_ref()
+                        .and_then(|identity| cache.version(identity))
+                        .unwrap_or_else(|| {
+                            let version = known_harness_spec(harness.id).and_then(|spec| {
+                                run_version_command(&harness.executable, ProbeLimits::PRODUCTION)
+                                    .and_then(|output| {
+                                        parse_harness_display_version(
+                                            spec.executable,
+                                            &output.stdout,
+                                        )
+                                        .or_else(|| {
+                                            parse_harness_display_version(
+                                                spec.executable,
+                                                &output.stderr,
+                                            )
+                                        })
+                                        .map(|version| version.to_string())
+                                    })
+                            });
+                            if let Some(identity) = identity {
+                                cache.insert(identity, version.clone());
+                            }
+                            version
+                        });
+                    InstalledHarness { version, ..harness }
+                })
+            })
+            .collect::<Vec<_>>();
+        probes
+            .into_iter()
+            .filter_map(|probe| probe.join().ok())
+            .collect()
     })
+}
+
+pub(crate) fn revalidate_harness_version(id: &str, executable: &Path) -> Option<String> {
+    let spec = known_harness_spec(id)?;
+    validation::expected_basenames(spec.executable)
+        .iter()
+        .any(|basename| validate_harness_file(executable, basename))
+        .then_some(())?;
+    let output = run_version_command(executable, ProbeLimits::PRODUCTION)?;
+    parse_harness_display_version(spec.executable, &output.stdout)
+        .or_else(|| parse_harness_display_version(spec.executable, &output.stderr))
 }

@@ -26,6 +26,10 @@ import {
   createAcpActionController,
 } from "./acpActionController";
 import { createClientIntentFactory } from "./clientIntent";
+import {
+  agentSessionFixture,
+  capabilitySetFixture,
+} from "../../../domain/acpProjection.fixture";
 
 const scope: AcpProjectionScope = {
   projectId: "project-a" as SageProjectId,
@@ -36,33 +40,19 @@ const commandProjectGeneration = "11" as ProjectGeneration;
 const bindingId = "binding-a" as CuratedBindingId;
 const modelId = "model-a" as CuratedModelId;
 
-const capabilities: AcpCapabilitySet = {
-  schemaVersion: 1,
+const capabilities: AcpCapabilitySet = capabilitySetFixture({
   protocolVersion: "1",
-  newSession: true,
   resumeSession: true,
   loadSession: true,
-  closeSession: true,
-  prompt: true,
-  cancel: true,
-  nativeSessionFork: false,
-  activeTurnSteer: false,
-  childConversationProjection: false,
-  childTranscriptRead: false,
-  collaborationEventProjection: false,
-  multiRootExtensionSchemaId: null,
-  modelCount: 1,
-  configCount: 0,
-};
+});
 
 function session(
   residency: AgentSessionProjection["residency"],
   runtimeEpoch: string | null,
   nextRuntimeEpoch: string | null,
 ): AgentSessionProjection {
-  return {
+  return agentSessionFixture({
     id: "session-a" as SageAgentSessionId,
-    ordinal: 0,
     bindingId,
     modelId,
     state: residency === "cold" ? "ready" : "active",
@@ -70,10 +60,7 @@ function session(
     runtimeEpoch: runtimeEpoch as RuntimeEpoch | null,
     nextRuntimeEpoch: nextRuntimeEpoch as RuntimeEpoch | null,
     capabilities,
-    revision: "1" as EntityRevision,
-    projectionRevision: "1" as ProjectionRevision,
-    legacy: false,
-  };
+  });
 }
 
 function turn(
@@ -94,6 +81,8 @@ function turn(
     terminalAt: null,
     items: [],
     activities: [],
+    browserOperations: [],
+    browserOperationsCollapsed: 0,
   };
 }
 
@@ -129,7 +118,10 @@ async function nextMicrotask(): Promise<void> {
   await Promise.resolve();
 }
 
-function harness(initialPage: AcpChatPage) {
+function harness(
+  initialPage: AcpChatPage,
+  settleAccessMode?: () => Promise<boolean>,
+) {
   let context: AcpActionContext | null = {
     scope,
     ownershipEpoch: 1,
@@ -151,13 +143,16 @@ function harness(initialPage: AcpChatPage) {
     activateSession: vi.fn(),
     sendTurn: vi.fn(),
     cancelTurn: vi.fn(),
+    steerTurn: vi.fn(),
     closeSession: vi.fn(),
+    endSession: vi.fn(),
     setSessionMode: vi.fn(),
     setSessionConfigOption: vi.fn(),
   } as unknown as AcpActionCommands;
   const controller = createAcpActionController({
     commands,
     getContext: () => context,
+    ...(settleAccessMode ? { settleAccessMode } : {}),
     applyAuthoritativePage: (_scope, authoritative) => {
       applied.push(authoritative);
       if (context) context = { ...context, page: authoritative };
@@ -431,6 +426,29 @@ describe("ACP action controller", () => {
     expect(test.cleared).toEqual([{ prompt: "Fix it", attachedContext }]);
   });
 
+  it("sends a reviewed browser page context only with an explicit submit", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    const sent = page("6", session("hot", "1", null));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: sent });
+    const attachedContext = [
+      {
+        kind: "browserPage" as const,
+        tabId: "browser-1",
+        url: "https://example.com/article",
+        title: "Example article",
+        text: "Article text",
+      },
+    ];
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+    await expect(
+      test.controller.submit("Summarize", attachedContext, bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ attachedContext }),
+    );
+    expect(test.cleared).toEqual([{ prompt: "Summarize", attachedContext }]);
+  });
+
   it("activates a cold durable session at nextRuntimeEpoch before sending", async () => {
     const test = harness(page("5", session("cold", null, "4")));
     const active = page("6", session("hot", "4", null));
@@ -449,6 +467,42 @@ describe("ACP action controller", () => {
     expect(test.commands.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({ runtimeEpoch: "4", prompt: "resume" }),
     );
+  });
+
+  it("holds the prompt until the pending permission mode has settled", async () => {
+    const settling = deferred<boolean>();
+    const test = harness(
+      page("5", session("hot", "2", null)),
+      () => settling.promise,
+    );
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("6", session("hot", "2", null)),
+    });
+
+    const action = test.controller.submit("gated", [], bindingId, modelId);
+    await nextMicrotask();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+
+    settling.resolve(true);
+    await action;
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "gated" }),
+    );
+  });
+
+  it("never dispatches under a permission mode that failed to persist", async () => {
+    const test = harness(page("5", session("hot", "2", null)), () =>
+      Promise.resolve(false),
+    );
+
+    await expect(
+      test.controller.submit("unsafe", [], bindingId, modelId),
+    ).resolves.toBe("rejected");
+
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+    expect(test.commands.startSession).not.toHaveBeenCalled();
+    expect(test.restored).toEqual([{ prompt: "unsafe", attachedContext: [] }]);
+    expect(test.states.at(-2)?.error).not.toBeNull();
   });
 
   it("retains the source prompt when its Chat changes during session start", async () => {
@@ -809,6 +863,131 @@ describe("ACP action controller", () => {
     );
   });
 
+  it("steers only the currently scoped live Turn with its exact revision", async () => {
+    const activeTurn = turn("turn-active", 2, "waitingTool");
+    const activeSession = agentSessionFixture({
+      ...session("hot", "1", null),
+      capabilities: capabilitySetFixture({ activeTurnSteer: true }),
+    });
+    const current = page("8", activeSession, [
+      { ...turn("turn-old", 1, "completed"), terminalAt: 2 },
+      activeTurn,
+    ]);
+    const test = harness(current);
+    vi.mocked(test.commands.steerTurn!).mockResolvedValue({
+      projection: page("9", activeSession, [activeTurn]),
+    });
+
+    await expect(test.controller.steer(" Change direction ", [])).resolves.toBe(
+      "applied",
+    );
+    expect(test.commands.steerTurn).toHaveBeenCalledExactlyOnceWith({
+      ...scope,
+      projectGeneration: commandProjectGeneration,
+      expectedProjectionRevision: "8",
+      clientIntentId: "intent-1",
+      sessionId: "session-a",
+      runtimeEpoch: "1",
+      turnId: "turn-active",
+      expectedTurnRevision: "7",
+      prompt: "Change direction",
+    });
+  });
+
+  it("rejects an unavailable or changed Steer target without dispatching", async () => {
+    const activeTurn = turn("turn-active", 2, "running");
+    const activeSession = agentSessionFixture({
+      ...session("hot", "1", null),
+      capabilities: capabilitySetFixture({ activeTurnSteer: true }),
+    });
+    const test = harness(page("8", activeSession, [activeTurn]));
+    const pending = test.controller.steer("Change direction", []);
+    test.setContext({
+      scope,
+      ownershipEpoch: 1,
+      commandProjectGeneration,
+      page: page("9", activeSession, [
+        { ...activeTurn, state: "completed", terminalAt: 3 },
+      ]),
+    });
+    await expect(pending).resolves.toBe("rejected");
+    expect(test.commands.steerTurn).not.toHaveBeenCalled();
+
+    const unavailable = harness(
+      page("8", session("hot", "1", null), [activeTurn]),
+    );
+    await expect(
+      unavailable.controller.steer("Change direction", []),
+    ).resolves.toBe("rejected");
+    expect(unavailable.commands.steerTurn).not.toHaveBeenCalled();
+  });
+
+  it("keeps Steer rejected when native dispatch rejects it", async () => {
+    const activeTurn = turn("turn-active", 1, "running");
+    const activeSession = agentSessionFixture({
+      ...session("hot", "1", null),
+      capabilities: capabilitySetFixture({ activeTurnSteer: true }),
+    });
+    const test = harness(page("8", activeSession, [activeTurn]));
+    vi.mocked(test.commands.steerTurn!).mockRejectedValue(
+      new AcpDesktopError({
+        kind: "conflict",
+        resource: "turnRevision",
+        message: "The active Turn changed.",
+      }),
+    );
+
+    await expect(test.controller.steer("Change direction", [])).resolves.toBe(
+      "rejected",
+    );
+    expect(test.states.at(-1)).toMatchObject({
+      busy: false,
+      error: { message: "The active Turn changed." },
+    });
+    expect(test.applied).toEqual([]);
+  });
+
+  it("reuses the queued message identity after a Steer acknowledgement timeout", async () => {
+    const activeTurn = turn("turn-active", 1, "running");
+    const activeSession = agentSessionFixture({
+      ...session("hot", "1", null),
+      capabilities: capabilitySetFixture({ activeTurnSteer: true }),
+    });
+    const test = harness(page("8", activeSession, [activeTurn]));
+    vi.mocked(test.commands.steerTurn!)
+      .mockRejectedValueOnce(
+        new AcpDesktopError({
+          kind: "conflict",
+          resource: "steerOutcomeUnknown",
+          message: "The message may have been delivered.",
+        }),
+      )
+      .mockResolvedValueOnce({
+        projection: page("9", activeSession, [activeTurn]),
+      });
+
+    await expect(
+      test.controller.steer("Change direction", [], "queue-1" as never),
+    ).resolves.toBe("outcomeUnknown");
+    await expect(
+      test.controller.steer("Change direction", [], "queue-1" as never),
+    ).resolves.toBe("applied");
+    expect(test.commands.steerTurn).toHaveBeenCalledTimes(2);
+    expect(
+      vi
+        .mocked(test.commands.steerTurn!)
+        .mock.calls.map(([request]) => request.clientIntentId),
+    ).toEqual(["queue-1", "queue-1"]);
+  });
+
+  it("does not expose a queued Turn as cancellable", () => {
+    const current = page("8", session("hot", "1", null), [
+      turn("turn-queued", 2, "queued"),
+    ]);
+
+    expect(cancellableTurnId(current)).toBeNull();
+  });
+
   it("restores a prompt only when typed failure proves it was not dispatched", async () => {
     const definite = harness(page("5", session("hot", "1", null)));
     vi.mocked(definite.commands.sendTurn).mockRejectedValue(
@@ -883,6 +1062,30 @@ describe("ACP action controller", () => {
         clientIntentId: "intent-1",
       }),
     );
+  });
+
+  it("ends an exact active session when protocol close is unavailable", async () => {
+    const unavailable = page("5", {
+      ...session("hot", "3", null),
+      capabilities: { ...capabilities, cancel: true, closeSession: false },
+    });
+    const test = harness(unavailable);
+    vi.mocked(test.commands.endSession).mockResolvedValue({
+      projection: page("6", null),
+    });
+
+    await expect(test.controller.end()).resolves.toBe("applied");
+    expect(test.commands.endSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeEpoch: "3",
+        expectedProjectionRevision: "5",
+        clientIntentId: "intent-1",
+      }),
+    );
+
+    const characterized = harness(page("5", session("hot", "3", null)));
+    await expect(characterized.controller.end()).resolves.toBe("rejected");
+    expect(characterized.commands.endSession).not.toHaveBeenCalled();
   });
 
   it("creates bounded monotonic intent IDs with a stable per-controller prefix", () => {

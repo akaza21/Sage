@@ -86,35 +86,35 @@ export async function loadEditorLanguage(
     case "javascript-jsx":
     case "typescript":
     case "typescript-jsx": {
-      const { javascript } = await import("@codemirror/lang-javascript");
-      return javascript({
-        jsx: language.endsWith("jsx"),
-        typescript: language.startsWith("typescript"),
-      });
+      const { loadJavaScriptEditorLanguage } =
+        await import("./editorLanguageJavaScript");
+      return loadJavaScriptEditorLanguage(language);
     }
     case "json": {
-      const { json } = await import("@codemirror/lang-json");
-      return json();
+      const { loadJsonEditorLanguage } = await import("./editorLanguageJson");
+      return loadJsonEditorLanguage();
     }
     case "css": {
-      const { cssLanguage } = await import("@codemirror/lang-css");
-      return cssLanguage;
+      const { loadCssEditorLanguage } = await import("./editorLanguageCss");
+      return loadCssEditorLanguage();
     }
     case "html": {
-      const { htmlLanguage } = await import("@codemirror/lang-html");
-      return htmlLanguage.configure({ dialect: "noMatch" });
+      const { loadHtmlEditorLanguage } = await import("./editorLanguageHtml");
+      return loadHtmlEditorLanguage();
     }
     case "markdown": {
-      const { markdown } = await import("@codemirror/lang-markdown");
-      return markdown({ addKeymap: false });
+      const { loadMarkdownEditorLanguage } =
+        await import("./editorLanguageMarkdown");
+      return loadMarkdownEditorLanguage();
     }
     case "python": {
-      const { pythonLanguage } = await import("@codemirror/lang-python");
-      return pythonLanguage;
+      const { loadPythonEditorLanguage } =
+        await import("./editorLanguagePython");
+      return loadPythonEditorLanguage();
     }
     case "rust": {
-      const { rust } = await import("@codemirror/lang-rust");
-      return rust();
+      const { loadRustEditorLanguage } = await import("./editorLanguageRust");
+      return loadRustEditorLanguage();
     }
     case "plain":
       return [];

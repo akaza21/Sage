@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::lifecycle::{DeliveryState, TurnState};
+use crate::acp::lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome, TurnTerminalReason};
 
 use super::{
     MutationDisposition, SendObservation, StoreError, TurnMutation, TurnMutationCommand,
@@ -8,6 +8,7 @@ use super::{
         append_fact, entity_revision_from_i64, next_projection_revision, projection_from_i64,
         publish_projection,
     },
+    terminal_reason,
 };
 
 pub(crate) fn begin_send(
@@ -41,7 +42,7 @@ pub(crate) fn record_send_observation(
     observation: SendObservation,
 ) -> Result<TurnMutation, StoreError> {
     let transaction = connection.transaction()?;
-    let mutation = record_send_observation_in(&transaction, command, observation)?;
+    let mutation = record_send_observation_in(&transaction, command, observation, None)?;
     transaction
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;
@@ -52,6 +53,7 @@ pub(super) fn record_send_observation_in(
     transaction: &Transaction<'_>,
     command: TurnMutationCommand,
     observation: SendObservation,
+    outcome: Option<TurnTerminalOutcome>,
 ) -> Result<TurnMutation, StoreError> {
     let (state, delivery) = current_turn(transaction, &command)?;
     let (next_state, next_delivery, fact) = match (observation, state, delivery) {
@@ -147,7 +149,32 @@ pub(super) fn record_send_observation_in(
         ) => (TurnState::Interrupted, delivery, "turnInterrupted"),
         _ => return Err(StoreError::InvalidTransition { resource: "send" }),
     };
-    transition_turn_in(transaction, command, next_state, next_delivery, fact)
+    let mutation = transition_turn_in(
+        transaction,
+        command.clone(),
+        next_state,
+        next_delivery,
+        fact,
+    )?;
+    if matches!(
+        next_state,
+        TurnState::Failed
+            | TurnState::Cancelled
+            | TurnState::Interrupted
+            | TurnState::DeliveryUnknown
+    ) && (mutation.disposition == MutationDisposition::Applied || outcome.is_some())
+    {
+        let outcome = outcome.unwrap_or_else(|| TurnTerminalReason::Other.into());
+        terminal_reason::record_in(
+            transaction,
+            (&command).into(),
+            outcome.reason,
+            outcome.message.as_deref(),
+            outcome.remediation.as_deref(),
+            command.now_millis,
+        )?;
+    }
+    Ok(mutation)
 }
 
 pub(crate) fn transition_turn(

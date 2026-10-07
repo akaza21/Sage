@@ -1,5 +1,6 @@
 use crate::acp::{
     contract::ClientIntentId,
+    lifecycle::TurnTerminalOutcome,
     store::{AdapterTurnCursor, BeginCancelCommand, MutationDisposition},
 };
 
@@ -82,6 +83,10 @@ impl ActiveDispatch {
         self.accepted_state.is_terminal()
     }
 
+    pub(crate) fn state(&self) -> crate::acp::lifecycle::TurnState {
+        self.accepted_state
+    }
+
     pub(crate) fn projection_retry_pending(&self) -> bool {
         self.projection_retry_pending
     }
@@ -161,6 +166,7 @@ impl ActiveDispatch {
     pub(crate) async fn observe(
         &mut self,
         observation: SendObservation,
+        terminal_reason: Option<TurnTerminalOutcome>,
         now_millis: i64,
     ) -> Result<TurnMutation, CoordinatorError> {
         self.command.now_millis = now_millis;
@@ -176,6 +182,7 @@ impl ActiveDispatch {
                 StoreMutation::ObserveSend {
                     command: self.command.clone(),
                     observation,
+                    terminal_reason,
                 },
                 deadline(
                     now_millis,

@@ -83,8 +83,8 @@ describe("Wave 2 visual-system tokens", () => {
   });
 
   it("uses one typography, four-pixel spacing, density, radius, and icon ramp", () => {
-    expect(rootBlock).toMatch(/--font-size-xs:\s*11px;/);
-    expect(rootBlock).toMatch(/--font-size-sm:\s*12px;/);
+    expect(rootBlock).toMatch(/--font-size-xs:\s*12px;/);
+    expect(rootBlock).toMatch(/--font-size-sm:\s*13px;/);
     expect(rootBlock).toMatch(/--font-size-md:\s*14px;/);
     expect(rootBlock).toMatch(/--font-size-lg:\s*16px;/);
     expect(rootBlock).toMatch(/--font-size-xl:\s*20px;/);
@@ -100,6 +100,7 @@ describe("Wave 2 visual-system tokens", () => {
     expect(rootBlock).toMatch(/--radius-sm:\s*6px;/);
     expect(rootBlock).toMatch(/--radius-md:\s*8px;/);
     expect(rootBlock).toMatch(/--radius-lg:\s*12px;/);
+    expect(rootBlock).toMatch(/--radius-xl:\s*16px;/);
     expect(rootBlock).toMatch(/--radius-pill:\s*999px;/);
     expect(rootBlock).toMatch(/--radius-none:\s*0;/);
     expect(rootBlock).toMatch(/--radius-circle:\s*50%;/);

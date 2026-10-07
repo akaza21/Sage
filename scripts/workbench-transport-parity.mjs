@@ -31,13 +31,18 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
   HarnessDefinition: [
     "accountModelDiscovery",
     "bindingId",
+    "boundVersion",
+    "characterisation",
     "description",
     "id",
     "installState",
     "name",
+    "signIn",
     "source",
     "transport",
+    "unavailableReason",
     "version",
+    "versionChecking",
   ],
   ModelOption: ["contextWindow", "description", "id", "isDefault", "name"],
 });

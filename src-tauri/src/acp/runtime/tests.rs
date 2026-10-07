@@ -80,6 +80,7 @@ impl AcpStore for FakeStore {
             StoreMutation::ObserveSend {
                 command,
                 observation,
+                ..
             } => {
                 let terminal = matches!(
                     observation,
@@ -359,7 +360,14 @@ impl AcpStore for BlockingCommitStore {
         state.0 = true;
         ready.notify_all();
         while !state.1 {
-            state = ready.wait(state).unwrap();
+            let (next, timed) = ready
+                .wait_timeout(state, crate::test_wait::HANG_GUARD)
+                .unwrap();
+            state = next;
+            assert!(
+                !timed.timed_out() || state.1,
+                "the blocking commit store was never released by its test"
+            );
         }
         Ok(StoreCommit {
             projection_revision: ProjectionRevision::new(1).unwrap(),
@@ -374,21 +382,30 @@ fn in_flight_ticket_timeout_is_commit_unknown_and_retains_capacity() {
     let (handle, runner) = JournalHandle::new(BlockingCommitStore {
         gate: Arc::clone(&gate),
     });
-    let ticket = handle
+    let mut ticket = handle
         .enqueue_one(
             JournalLane::Data,
             begin_mutation("in-flight-timeout"),
-            super::journal::now_millis().saturating_add(100),
+            super::journal::now_millis()
+                .saturating_add(u64::try_from(crate::test_wait::BUDGET.as_millis()).unwrap()),
         )
         .unwrap();
     let thread = std::thread::spawn(move || runner.run_blocking());
     let (ready, state_lock) = &*gate;
     let mut state = state_lock.lock().unwrap();
     while !state.0 {
-        state = ready.wait(state).unwrap();
+        let (next, timed) = ready
+            .wait_timeout(state, crate::test_wait::HANG_GUARD)
+            .unwrap();
+        state = next;
+        assert!(
+            !timed.timed_out() || state.0,
+            "the journal runner never entered the blocking commit store"
+        );
     }
     drop(state);
 
+    ticket.expire_deadline_for_test();
     assert!(matches!(
         ticket.blocking_committed(),
         Err(JournalError::Store(StoreError::CommitUnknown))
@@ -543,6 +560,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
             dispatch
                 .observe(
                     SendObservation::ProcessLost,
+                    None,
                     super::journal::now_millis() as i64
                 )
                 .await,
@@ -709,7 +727,7 @@ fn adapter_cursor_progression_releases_capacity_only_after_exact_durable_termina
         let now = super::journal::now_millis() as i64;
         active.begin_send(now).await.unwrap();
         active
-            .observe(SendObservation::Correlated, now.saturating_add(1))
+            .observe(SendObservation::Correlated, None, now.saturating_add(1))
             .await
             .unwrap();
 
@@ -797,7 +815,7 @@ fn cancel_intent_commits_on_control_lane_before_adapter_queue_and_replays_once()
         let now = super::journal::now_millis() as i64;
         active.begin_send(now).await.unwrap();
         active
-            .observe(SendObservation::Correlated, now.saturating_add(1))
+            .observe(SendObservation::Correlated, None, now.saturating_add(1))
             .await
             .unwrap();
         let intent = ClientIntentId::parse("cancel-one").unwrap();

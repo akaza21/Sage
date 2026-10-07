@@ -32,6 +32,12 @@ use crate::acp::{
 };
 
 mod bootstrap;
+mod browser_attachment;
+#[cfg(windows)]
+mod browser_mcp;
+mod browser_operation;
+pub(crate) mod browser_permission;
+mod browser_shutdown;
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
 mod codex_auth;
@@ -39,10 +45,12 @@ mod codex_discovery;
 mod codex_launch_failure;
 mod codex_live;
 mod codex_operation;
-mod codex_session;
 mod configuration;
+mod debug;
 mod intent_snapshot;
 mod permission;
+mod session;
+mod session_close;
 pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;
@@ -91,8 +99,14 @@ pub(crate) enum CodexSessionError {
     Session(#[from] SessionCoordinatorError),
     #[error("Codex runtime capacity is occupied")]
     Capacity,
+    #[error("the harness requires sign-in before it can continue")]
+    SignInRequired,
+    #[error("Codex browser tools are unavailable for this session")]
+    BrowserToolsUnavailable,
     #[error("Codex live runtime requires recovery")]
     Recovery,
+    #[error("the Steer acknowledgement timed out; the message may have been delivered")]
+    SteerOutcomeUnknown,
     #[error("Codex process launch failed: {0:?}")]
     LaunchFailure(crate::acp::process::LaunchError),
     #[error("Codex process launch setup failed: {0:?}")]
@@ -145,6 +159,15 @@ pub(crate) struct AcpService {
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
     read_text_files: ReadTextFileService,
+    browser_permissions: Mutex<
+        std::collections::HashMap<
+            crate::acp::contract::SageServerRequestId,
+            browser_permission::PendingBrowserPermission,
+        >,
+    >,
+    browser_attachments: crate::acp::browser::attachment::BrowserAttachments,
+    #[cfg(windows)]
+    browser_app: Mutex<Option<tauri::AppHandle>>,
     registry: Arc<BindingRegistry>,
     codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
@@ -162,6 +185,8 @@ pub(crate) struct AcpService {
     last_shutdown_stage: Mutex<&'static str>,
     #[cfg(all(test, windows))]
     last_cancel_stage: Mutex<&'static str>,
+    #[cfg(test)]
+    runtime_port_finish_park_failure: Mutex<bool>,
 }
 
 impl AcpService {
@@ -205,7 +230,7 @@ impl AcpService {
 
     #[cfg(test)]
     pub(crate) fn codex_registration(&self) -> CodexBindingRegistration {
-        self.registry.codex().admission().clone()
+        self.registry.codex_admission().clone()
     }
 
     #[cfg(test)]
@@ -224,13 +249,17 @@ impl AcpService {
             .refresh_codex_binding()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         CodexRuntime::from_admitted_binding(
-            Arc::clone(binding.binding()),
+            Arc::clone(
+                binding
+                    .codex_binding()
+                    .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
+            ),
             project_root,
             runtime_epoch,
             session_id,
         )
         .inspect_err(|_| {
-            self.registry.codex().admission().invalidate_drift();
+            self.registry.codex_admission().invalidate_drift();
         })
     }
 
@@ -240,6 +269,17 @@ impl AcpService {
 
     pub(crate) fn codex_auth_manager(&self) -> Arc<CodexAuthManager> {
         Arc::clone(&self.codex_auth)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hold_live_operation_for_test(&self) -> impl Sized {
+        let prepared = self
+            .codex_gate
+            .prepare_live()
+            .expect("a fresh gate admits one live operation");
+        self.codex_gate
+            .begin(&prepared)
+            .expect("a prepared live operation begins")
     }
 
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
@@ -280,6 +320,7 @@ impl AcpService {
         &self,
         requested: &BindingId,
     ) -> Result<AdmittedBindingRecord<'_>, RegistryUnavailable> {
+        self.session_operation_binding(requested)?;
         self.registry
             .resolve(requested.as_str())
             .inspect_err(|error| {
@@ -295,14 +336,25 @@ impl AcpService {
             })
     }
 
+    fn session_operation_binding(
+        &self,
+        requested: &BindingId,
+    ) -> Result<&crate::acp::bindings::registry::BindingRecord, RegistryUnavailable> {
+        let binding = self.registry.route(requested.as_str())?;
+        binding
+            .session_operations_enabled()
+            .then_some(binding)
+            .ok_or(RegistryUnavailable::UnknownBinding)
+    }
+
     pub(crate) fn dispatch_session_turn(
         &self,
         binding_id: &BindingId,
-        command: crate::acp::store::PrepareTurnCommand,
+        intent: crate::acp::runtime::HostPromptIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, PromptSendError<SessionDispatchError>> {
         self.resolve_session_binding(binding_id)
             .map_err(|_| PromptSendError::not_started(SessionDispatchError::Binding))?
-            .dispatch_turn(self, command)
+            .dispatch_turn(self, intent)
             .map_err(|failure| failure.map(SessionDispatchError::Operation))
     }
 
@@ -311,22 +363,9 @@ impl AcpService {
         binding_id: &BindingId,
         intent: crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
-        self.registry
-            .route(binding_id.as_str())
+        self.session_operation_binding(binding_id)
             .map_err(|_| SessionDispatchError::Binding)?
             .dispatch_cancel(self, intent)
-            .map_err(SessionDispatchError::Operation)
-    }
-
-    pub(crate) fn dispatch_session_close(
-        &self,
-        binding_id: &BindingId,
-        command: crate::acp::store::CloseSessionCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, SessionDispatchError> {
-        self.registry
-            .route(binding_id.as_str())
-            .map_err(|_| SessionDispatchError::Binding)?
-            .dispatch_close(self, command)
             .map_err(SessionDispatchError::Operation)
     }
 
@@ -389,24 +428,6 @@ impl AcpService {
         runtime: Arc<crate::acp::runtime::RuntimeHost>,
     ) {
         self.runtime.claim(owner, runtime).expect("empty test slot");
-    }
-}
-
-impl std::fmt::Debug for AcpService {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("AcpService")
-            .field("database", &self.database)
-            .field("scheduler", &self.scheduler)
-            .field("journal", &self.journal)
-            .field("sessions", &self.sessions)
-            .field("runtime_active", &self.runtime.is_active())
-            .field(
-                "codex_admitted",
-                &self.registry.codex().admission().is_available(),
-            )
-            .field("notification_active", &self.notifier.is_some())
-            .finish_non_exhaustive()
     }
 }
 

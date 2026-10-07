@@ -1,4 +1,4 @@
-import { FileDiff } from "lucide-react";
+import { FileDiff, FileText, RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
@@ -101,11 +101,27 @@ function DiffDocument({
       }
     : cached;
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
+  const openFile = useWorkbenchStore((state) => state.openFile);
   const change = isSnapshotDiffTab(tab)
     ? undefined
     : repositories.roots
         .flatMap((repository) => repository.changes)
         .find((candidate) => sameResource(candidate.resource, tabResource));
+  const visibleCounts =
+    diff?.phase === "ready" && !diff.value.binary && !diff.value.truncated
+      ? diff.value.hunks.reduce(
+          (counts, hunk) => {
+            for (const line of hunk.lines) {
+              if (line.kind === "added") counts.additions += 1;
+              if (line.kind === "removed") counts.deletions += 1;
+            }
+            return counts;
+          },
+          { additions: 0, deletions: 0 },
+        )
+      : null;
+  const additions = change?.additions ?? visibleCounts?.additions;
+  const deletions = change?.deletions ?? visibleCounts?.deletions;
 
   const canComment =
     commentEnabled &&
@@ -116,6 +132,18 @@ function DiffDocument({
     if (!canComment || !focusedChatId) return false;
     const intent = captureChatOwnership(focusedChatId);
     return intent ? attachChatContext(intent, context) : false;
+  };
+
+  const refreshDiff = () => {
+    if (!tabResource || unavailable || !diff || diff.phase === "loading")
+      return;
+    const key = diffCacheKey(tabRepository, tabResource, tab.diffRef);
+    useWorkbenchStore.setState((state) => {
+      const diffs = { ...state.diffs };
+      delete diffs[key];
+      return { diffs };
+    });
+    void loadDiff(tabResource, tabRepository, tab.diffRef);
   };
 
   useEffect(() => {
@@ -136,17 +164,44 @@ function DiffDocument({
           <span>{path}</span>
         </div>
         <div className="diff-header__counts">
-          <span>{change?.additions == null ? "" : `+${change.additions}`}</span>
-          <span>{change?.deletions == null ? "" : `-${change.deletions}`}</span>
+          <span>{additions == null ? "" : `+${additions}`}</span>
+          <span>{deletions == null ? "" : `-${deletions}`}</span>
         </div>
       </header>
       <div className="diff-toolbar">
-        <span>
+        <span className="diff-toolbar__scope">
           {isSnapshotDiffTab(tab)
             ? "Saved agent change"
-            : "Working tree changes"}
+            : "Changes since HEAD (or initial tree)"}
         </span>
         <span className="diff-toolbar__hint">Read-only</span>
+        <div
+          className="diff-toolbar__actions"
+          role="group"
+          aria-label="Diff actions"
+        >
+          {tabResource && !unavailable ? (
+            <button
+              type="button"
+              aria-label="Refresh diff"
+              title="Refresh diff"
+              disabled={!diff || diff.phase === "loading"}
+              onClick={refreshDiff}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+          {tabResource && !isSnapshotDiffTab(tab) ? (
+            <button
+              type="button"
+              aria-label="Open file"
+              title="Open file"
+              onClick={() => void openFile(tabResource)}
+            >
+              <FileText size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       </div>
       {!diff || diff.phase === "loading" ? (
         <ResourceStateNotice state="loading" title="Loading diff…" />

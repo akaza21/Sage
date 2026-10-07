@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::harness_discovery::{
-    PATH_BYTES_MAX, PATH_DIR_CAP, authentic_harness_file, path_candidates_for_basename,
+    PATH_BYTES_MAX, authentic_harness_file, path_candidates_for_basename,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,6 @@ pub(crate) fn observe_codex_host_presence() -> CodexHostPresence {
 pub(crate) fn observe_codex_host_presence_among(candidates: &[PathBuf]) -> CodexHostPresence {
     if candidates
         .iter()
-        .take(PATH_DIR_CAP)
         .any(|candidate| authentic_codex_file(candidate))
     {
         CodexHostPresence::Present
@@ -125,9 +124,9 @@ mod tests {
     }
 
     #[test]
-    fn seventeenth_candidate_is_ignored() {
+    fn seventeenth_candidate_is_observed() {
         let dir = scratch_dir();
-        let mut candidates: Vec<PathBuf> = (0..PATH_DIR_CAP)
+        let mut candidates: Vec<PathBuf> = (0..16)
             .map(|index| {
                 dir.join(format!("missing-{index}"))
                     .join(expected_codex_basename())
@@ -136,7 +135,7 @@ mod tests {
         candidates.push(write_regular(&dir, expected_codex_basename()));
         assert_eq!(
             observe_codex_host_presence_among(&candidates),
-            CodexHostPresence::Absent
+            CodexHostPresence::Present
         );
         fs::remove_dir_all(dir).unwrap();
     }

@@ -137,6 +137,8 @@ pub(crate) enum CodexDiscoveryRunError {
     Unavailable,
     #[error("Codex discovery binding is not admitted")]
     BindingUnavailable,
+    #[error("Codex discovery cannot project the admitted binding's capabilities")]
+    CapabilityProjectionUnavailable,
     #[error("Codex discovery authority drifted")]
     Drift,
     #[error("Codex discovery scope is invalid")]
@@ -223,12 +225,50 @@ fn execute(
     deadline.ensure_operation()?;
     transport.revalidate(RevalidationCheckpoint::Account)?;
     let request = protocol.account_request()?;
+    let account_id = request.id();
     write(transport, request.into_frame(), deadline)?;
-    protocol.accept_account(&read(
-        transport,
-        deadline,
-        crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
-    )?)?;
+
+    deadline.ensure_operation()?;
+    transport.revalidate(RevalidationCheckpoint::ModelPage)?;
+    let request = protocol.model_request()?;
+    let first_model_id = request.id();
+    write(transport, request.into_frame(), deadline)?;
+    let mut awaiting_account = true;
+    let mut awaiting_first_model = true;
+    let mut first_model_completed_before_account = false;
+    while awaiting_account || awaiting_first_model {
+        let frame = read(
+            transport,
+            deadline,
+            crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+        )?;
+        match response_id(&frame)? {
+            id if id == account_id && awaiting_account => {
+                protocol.accept_account(&frame)?;
+                awaiting_account = false;
+                if first_model_completed_before_account {
+                    deadline.ensure_operation()?;
+                    transport.revalidate(RevalidationCheckpoint::Publish)?;
+                    return protocol.take_completed_content().map_err(Into::into);
+                }
+            }
+            id if id == first_model_id && awaiting_first_model => {
+                match protocol.accept_model_page(&frame)? {
+                    ProtocolProgress::More => {}
+                    ProtocolProgress::AwaitingAccount => {
+                        first_model_completed_before_account = true;
+                    }
+                    ProtocolProgress::Complete(content) => {
+                        deadline.ensure_operation()?;
+                        transport.revalidate(RevalidationCheckpoint::Publish)?;
+                        return Ok(content);
+                    }
+                }
+                awaiting_first_model = false;
+            }
+            _ => return Err(CodexDiscoveryRunError::Protocol),
+        }
+    }
 
     loop {
         deadline.ensure_operation()?;
@@ -241,6 +281,7 @@ fn execute(
             crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
         )?)? {
             ProtocolProgress::More => {}
+            ProtocolProgress::AwaitingAccount => return Err(CodexDiscoveryRunError::Protocol),
             ProtocolProgress::Complete(content) => {
                 deadline.ensure_operation()?;
                 transport.revalidate(RevalidationCheckpoint::Publish)?;
@@ -248,6 +289,19 @@ fn execute(
             }
         }
     }
+}
+
+fn response_id(frame: &Frame) -> Result<u64, CodexDiscoveryRunError> {
+    let response_id = serde_json::from_slice::<Value>(frame.as_bytes())
+        .ok()
+        .and_then(|value| value.get("id").and_then(Value::as_u64))
+        .ok_or(CodexDiscoveryRunError::Protocol)?;
+    tracing::info!(
+        json_rpc_response_id = response_id,
+        response_bytes = frame.as_bytes().len(),
+        "Codex discovery response frame received"
+    );
+    Ok(response_id)
 }
 
 fn read(
@@ -327,5 +381,4 @@ fn log_request(frame: &OutboundFrame) {
 }
 
 #[cfg(test)]
-#[path = "runner_tests.rs"]
 mod tests;

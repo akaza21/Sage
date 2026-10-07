@@ -3,6 +3,7 @@ use crate::acp::{
         RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
         SageTurnId,
     },
+    intent::{NormalizedPayload, PermissionOptionKind},
     lifecycle::ServerRequestState,
     runtime::{HostError, JournalLane, permissions::PermissionDecision},
     scheduler::RuntimeOwner,
@@ -10,6 +11,7 @@ use crate::acp::{
 };
 
 use super::AcpService;
+use rusqlite::OptionalExtension;
 
 pub(crate) struct PermissionDecisionIntent {
     pub(crate) project_id: SageProjectId,
@@ -48,9 +50,37 @@ impl AcpService {
             request_id,
             decision,
         } = intent;
+        if matches!(
+            decision,
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways
+        ) {
+            let epoch = i64::try_from(runtime_epoch.get()).map_err(|_| HostError::Intent)?;
+            let payload_json: Option<String> = self.database.connection().query_row(
+                "SELECT normalized_payload_json FROM server_requests WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND session_id=?4 AND turn_id=?5 AND runtime_epoch=?6 AND kind='permission' AND state IN ('received','asked')",
+                rusqlite::params![request_id.as_str(), project_id.as_str(), chat_id.as_str(), session_id.as_str(), turn_id.as_str(), epoch],
+                |row| row.get(0),
+            ).optional().map_err(|_| HostError::RecoveryRequired)?;
+            let allowed = payload_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str::<NormalizedPayload>(json).ok())
+                .is_some_and(|payload| {
+                    matches!(payload,
+                    NormalizedPayload::PermissionRequest { offered_option_kinds: Some(kinds), .. }
+                    if kinds.as_slice().contains(&match decision {
+                        PermissionDecision::AllowOnce => PermissionOptionKind::AllowOnce,
+                        PermissionDecision::AllowAlways => PermissionOptionKind::AllowAlways,
+                        _ => unreachable!(),
+                    }))
+                });
+            if !allowed {
+                return Err(HostError::Intent);
+            }
+        }
         let state = match decision {
             PermissionDecision::Ask => ServerRequestState::Asked,
-            PermissionDecision::AllowOnce => ServerRequestState::AllowPending,
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+                ServerRequestState::AllowPending
+            }
             PermissionDecision::Deny => ServerRequestState::DeclinePending,
         };
         self.journal
@@ -101,4 +131,4 @@ impl AcpService {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

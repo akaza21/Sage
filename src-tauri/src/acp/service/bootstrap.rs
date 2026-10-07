@@ -54,6 +54,15 @@ impl AcpService {
                 .err()
                 .unwrap_or(StoreError::Corrupt("recovery journal result")));
         }
+        {
+            let mut connection = database
+                .write_connection()
+                .map_err(|_| StoreError::Corrupt("browser recovery storage"))?;
+            crate::acp::store::browser_operations::recover_started(
+                &mut connection,
+                crate::persistence::now_millis(),
+            )?;
+        }
         let scheduler = Scheduler::new();
         let sessions =
             SessionCoordinator::new(journal.clone(), scheduler.clone(), Arc::clone(&publisher));
@@ -67,23 +76,34 @@ impl AcpService {
         let record = configuration.registry.codex();
         let codex_discovery = match record.model_provider {
             ModelProvider::CodexAccount => CodexDiscoveryManager::with_gate(
-                record.admission().clone(),
+                configuration.registry.codex_admission().clone(),
                 Arc::clone(&codex_gate),
             ),
             ModelProvider::ClaudeAdapter => {
                 unreachable!("Codex bootstrap always uses the Codex record")
             }
+            ModelProvider::NoAccountModels => {
+                unreachable!("Codex bootstrap always uses the Codex record")
+            }
         };
         let codex_auth = match record.auth_provider {
-            AuthProvider::CodexHarness => {
-                CodexAuthManager::new(record.admission().clone(), Arc::clone(&codex_gate))
+            AuthProvider::Codex => CodexAuthManager::new(
+                configuration.registry.codex_admission().clone(),
+                Arc::clone(&codex_gate),
+            ),
+            AuthProvider::Claude => {
+                unreachable!("Codex bootstrap always uses the Codex record")
             }
-            AuthProvider::ClaudeHarness => {
+            AuthProvider::None => {
                 unreachable!("Codex bootstrap always uses the Codex record")
             }
         };
         Ok(Self {
             read_text_files: super::ReadTextFileService::new(database.clone()),
+            browser_permissions: std::sync::Mutex::new(std::collections::HashMap::new()),
+            browser_attachments: crate::acp::browser::attachment::BrowserAttachments::default(),
+            #[cfg(windows)]
+            browser_app: std::sync::Mutex::new(None),
             database,
             scheduler,
             journal,
@@ -110,6 +130,8 @@ impl AcpService {
             last_shutdown_stage: std::sync::Mutex::new("none"),
             #[cfg(all(test, windows))]
             last_cancel_stage: std::sync::Mutex::new("none"),
+            #[cfg(test)]
+            runtime_port_finish_park_failure: std::sync::Mutex::new(false),
         })
     }
 }

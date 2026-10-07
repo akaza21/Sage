@@ -14,7 +14,7 @@ use tokio::{
 use crate::error::{AppError, AppResult};
 
 use super::{
-    GIT_ADMISSION_TIMEOUT, GIT_REAP_TIMEOUT, GitProcessPolicy,
+    GitProcessPolicy,
     containment::{self, ContainmentRegistry},
 };
 
@@ -126,14 +126,13 @@ impl DeadlineWaitGate {
 }
 
 impl DeadlineWaitGateHandle {
-    pub(crate) async fn wait_for_entry(&mut self, deadline: Duration) -> AppResult<()> {
+    pub(crate) async fn wait_for_entry(&mut self) -> AppResult<()> {
         let entered = self
             .entered
             .take()
             .ok_or_else(|| AppError::Git("the Git deadline gate was awaited twice".into()))?;
-        timeout(deadline, entered)
+        entered
             .await
-            .map_err(|_| AppError::Git("the Git deadline gate was not reached in time".into()))?
             .map_err(|_| AppError::Git("the Git deadline gate closed before entry".into()))
     }
 
@@ -168,8 +167,8 @@ impl GitProcessPolicy {
     pub(crate) fn post_reap_failure(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            admission_timeout: crate::git_budget::ADMISSION,
+            reap_timeout: Some(crate::git_budget::REAP),
             mutation: true,
             visible_effect: true,
             post_reap_failure: true,
@@ -192,8 +191,8 @@ impl GitProcessPolicy {
     pub(crate) fn post_spawn_failure(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            admission_timeout: crate::git_budget::ADMISSION,
+            reap_timeout: Some(crate::git_budget::REAP),
             mutation: true,
             visible_effect: true,
             post_reap_failure: false,
@@ -210,8 +209,8 @@ impl GitProcessPolicy {
     pub(crate) fn stdout_reader_failure(command_timeout: Duration) -> Self {
         Self {
             command_timeout,
-            admission_timeout: GIT_ADMISSION_TIMEOUT,
-            reap_timeout: Some(GIT_REAP_TIMEOUT),
+            admission_timeout: crate::git_budget::ADMISSION,
+            reap_timeout: Some(crate::git_budget::REAP),
             mutation: true,
             visible_effect: true,
             post_reap_failure: false,
@@ -324,7 +323,7 @@ impl GitProcessTestHarness {
         (
             GitProcessPolicy {
                 command_timeout,
-                admission_timeout: GIT_ADMISSION_TIMEOUT,
+                admission_timeout: crate::git_budget::ADMISSION,
                 reap_timeout: None,
                 mutation: true,
                 visible_effect: true,

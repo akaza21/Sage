@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ffi::OsString, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use serde_json::{Value, json};
 
@@ -7,25 +7,27 @@ use crate::acp::{
         adapter::{
             AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
             AdapterEvent as SharedEvent, AdapterModel, AdapterRuntimeError, EgressResolution,
-            EgressToken, HarnessAdapter, ResourceMapper as SharedResourceMapper,
+            EgressToken, HarnessAdapter, RefusalDetail, ResourceMapper as SharedResourceMapper,
         },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
+        standard_acp::{
+            AcpLaunchAuthority, ClaudeLaunch, profile_for, surface::auth_refusal_detail,
+        },
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::TurnState,
     limits::LIMITS,
-    process::{
-        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
-        RequiredContainment, TreeLimits,
-    },
+    mcp::{McpAdmission, McpCapabilities},
+    process::LaunchSpec,
     runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
     transport::{Frame, OutboundFrame, request_payload_digest},
 };
 
 use super::{
-    AdapterEvent, CandidateManifest, ClaudeCapabilityOffer, ClaudeTranslator, PromptTerminal,
-    admission::AdmittedClaudeBinding, negotiate_capabilities, validate_research_candidate,
+    AdapterEvent, CLAUDE_PROFILE_ID, CandidateManifest, ClaudeAuthState, ClaudeCapabilityOffer,
+    ClaudeTranslator, PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
+    decode_auth_status_update, negotiate_capabilities, validate_research_candidate,
     wire::decode_frame,
 };
 
@@ -34,7 +36,6 @@ mod commands;
 mod egress;
 mod ingress;
 mod session_config;
-#[path = "runtime/support.rs"]
 mod support;
 use ingress::terminal_state;
 use support::*;
@@ -49,12 +50,17 @@ pub(crate) struct ClaudeRuntime {
     session_id: SageAgentSessionId,
     next_request_id: u64,
     capabilities: Option<CapabilitySnapshotV1>,
+    mcp: McpAdmission,
+    mcp_capabilities: McpCapabilities,
     default_model: Option<crate::acp::intent::ModelId>,
     pending: BTreeMap<u64, PendingRequest>,
     active: Option<ActiveSession>,
+    auth: ClaudeAuthState,
     denials: BTreeMap<String, DenialRecord>,
     next_denial_sequence: u64,
     delivery_unknown: Option<DeliveryUnknown>,
+    refusal_detail: Option<RefusalDetail>,
+    deferred: Vec<AdapterEvent>,
 }
 
 struct ActiveSession {
@@ -94,13 +100,15 @@ struct DenialRecord {
     sequence: u64,
     translator_id: String,
     wire_id: Value,
-    allow_once_option_id: String,
+    allow_once_option_id: Option<String>,
+    allow_always_option_id: Option<String>,
     reply: PermissionReply,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PermissionReply {
     AllowOnce,
+    AllowAlways,
     Deny,
     Cancelled,
 }
@@ -114,12 +122,11 @@ enum DeliveryUnknown {
 impl ClaudeRuntime {
     pub(crate) fn from_candidate(
         candidate: CandidateManifest,
-        forbidden_state_dirs: &[std::path::PathBuf],
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,
         session_id: SageAgentSessionId,
     ) -> Result<Self, AdapterRuntimeError> {
-        let candidate = validate_research_candidate(candidate, forbidden_state_dirs)
+        let candidate = validate_research_candidate(candidate)
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         candidate
             .require_launch_admission()
@@ -167,12 +174,17 @@ impl ClaudeRuntime {
             session_id,
             next_request_id: 0,
             capabilities: None,
+            mcp: McpAdmission::default(),
+            mcp_capabilities: McpCapabilities::default(),
             default_model: None,
             pending: BTreeMap::new(),
             active: None,
+            auth: ClaudeAuthState::default(),
             denials: BTreeMap::new(),
             next_denial_sequence: 0,
             delivery_unknown: None,
+            refusal_detail: None,
+            deferred: Vec::new(),
         }
     }
 
@@ -230,68 +242,31 @@ impl ClaudeRuntime {
             .revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         let candidate = binding.candidate();
-        let metadata = std::fs::metadata(&candidate.runtime_path)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let artifact = ArtifactExpectation::new(
-            digest_identity(self.binding_digest),
-            candidate.runtime_path.clone(),
-            parse_digest(&candidate.runtime_sha256)?,
-            metadata.len(),
-        )
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let fixed_args = BoundedOsArgs::new(vec![OsString::from(&candidate.artifact_path)])
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let environment = BoundedEnvironment::new(
+        let environment = crate::acp::process::BoundedEnvironment::new(
             binding
                 .launch_environment()
                 .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?,
         )
         .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        project_root
-            .revalidate()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(LaunchSpec {
-            binding_id: digest_identity(self.binding_digest),
+        AcpLaunchAuthority::for_claude(ClaudeLaunch {
+            binding_digest: self.binding_digest,
             runtime_epoch: self.runtime_epoch.get(),
-            artifact,
-            fixed_args,
+            runtime_path: candidate.runtime_path.clone(),
+            runtime_sha256: candidate.runtime_sha256.clone(),
+            runtime_byte_len: std::fs::metadata(&candidate.runtime_path)
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?
+                .len(),
+            entrypoint: candidate.artifact_path.clone(),
             environment,
-            project_root,
-            required_guarantee: if cfg!(windows) {
-                RequiredContainment::EnforcedTree
-            } else {
-                RequiredContainment::TrustedCooperativeTree
-            },
-            limits: TreeLimits::ade_0006a(),
-            deadlines: ProcessDeadlines::ade_0006a(),
-            absolute_cleanup_deadline: None,
-            #[cfg(all(test, windows))]
-            test_after_artifact_verified: None,
-        })
+        })?
+        .into_launch_spec(project_root)
     }
-}
-
-fn parse_digest(value: &str) -> Result<[u8; 32], AdapterRuntimeError> {
-    if value.len() != 64 {
-        return Err(AdapterRuntimeError::LaunchUnavailable);
-    }
-    let mut digest = [0_u8; 32];
-    for (index, byte) in digest.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-    }
-    Ok(digest)
-}
-
-fn digest_identity(digest: [u8; 32]) -> uuid::Uuid {
-    let mut identity = [0_u8; 16];
-    identity.copy_from_slice(&digest[..16]);
-    uuid::Uuid::from_bytes(identity)
 }
 
 pub(crate) struct ClaudeRuntimeFactory {
     binding: Arc<AdmittedClaudeBinding>,
     project_root: crate::project_registry::ProjectRootAuthority,
+    mcp: McpAdmission,
 }
 
 impl ClaudeRuntimeFactory {
@@ -299,9 +274,18 @@ impl ClaudeRuntimeFactory {
         binding: Arc<AdmittedClaudeBinding>,
         project_root: crate::project_registry::ProjectRootAuthority,
     ) -> Self {
+        Self::with_mcp(binding, project_root, McpAdmission::default())
+    }
+
+    pub(crate) fn with_mcp(
+        binding: Arc<AdmittedClaudeBinding>,
+        project_root: crate::project_registry::ProjectRootAuthority,
+        mcp: McpAdmission,
+    ) -> Self {
         Self {
             binding,
             project_root,
+            mcp,
         }
     }
 }
@@ -315,8 +299,10 @@ impl RuntimeFactory for ClaudeRuntimeFactory {
         let Self {
             binding,
             project_root,
+            mcp,
         } = *self;
         let mut runtime = ClaudeRuntime::from_admitted_binding(binding, runtime_epoch, session_id)?;
+        runtime.mcp = mcp;
         runtime.pending_project_root = Some(project_root);
         Ok(NativeRuntime::new(runtime))
     }
@@ -335,6 +321,9 @@ impl LaunchableRuntime for ClaudeRuntime {
 impl HarnessAdapter for ClaudeRuntime {
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.active.as_ref().map(|a| a.config.clone())
+    }
+    fn refusal_detail(&self) -> Option<RefusalDetail> {
+        self.refusal_detail.clone()
     }
     fn config_pending(&self) -> bool {
         self.pending
@@ -389,7 +378,10 @@ impl HarnessAdapter for ClaudeRuntime {
 }
 
 #[cfg(test)]
+mod browser_mcp_tests;
+#[cfg(test)]
 mod config_tests;
 #[cfg(test)]
-#[path = "runtime/tests.rs"]
+mod durable_turn_tests;
+#[cfg(test)]
 mod tests;

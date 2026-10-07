@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 
-import type { DiffLineCommentContext } from "../domain/attachedContext";
+import type { AttachedContext } from "../domain/attachedContext";
+import type { AcpCommandFailure } from "../domain/acp";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   boundedChatError,
@@ -18,10 +19,14 @@ export interface ChatOwnershipSlice {
   chatUiById: Record<string, ChatOwnershipEntry>;
   chatError: string | null;
   captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
+  setChatHarnessSelection: (
+    intent: ChatOwnershipIntent,
+    selection: { harnessId: string | null; modelId: string | null },
+  ) => boolean;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
   attachChatContext: (
     intent: ChatOwnershipIntent,
-    context: DiffLineCommentContext,
+    context: AttachedContext,
   ) => boolean;
   detachChatContext: (
     intent: ChatOwnershipIntent,
@@ -30,18 +35,19 @@ export interface ChatOwnershipSlice {
   clearChatComposer: (
     intent: ChatOwnershipIntent,
     expectedPrompt: string,
-    expectedContext: readonly DiffLineCommentContext[],
+    expectedContext: readonly AttachedContext[],
   ) => boolean;
   restoreChatComposer: (
     intent: ChatOwnershipIntent,
     prompt: string,
-    context: readonly DiffLineCommentContext[],
+    context: readonly AttachedContext[],
   ) => boolean;
   setChatActionState: (
     intent: ChatOwnershipIntent,
     state: {
       sending: boolean;
       error: string | null;
+      errorKind?: AcpCommandFailure["kind"] | null;
       modeError?: string | null;
       modeErrorOwner?: { sessionId: string; runtimeEpoch: string } | null;
       modeChanging?: boolean;
@@ -106,6 +112,18 @@ export const createChatOwnershipSlice: StateCreator<
       projectGeneration: state.projectGeneration,
       transitionEpoch: state.nativeTransitionEpoch,
     };
+  },
+  setChatHarnessSelection: (intent, selection) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    set({
+      chatUiById: {
+        ...state.chatUiById,
+        [intent.chatId]: { ...entry, ...selection },
+      },
+    });
+    return true;
   },
   setChatComposer: (intent, text) => {
     const state = get();
@@ -181,6 +199,10 @@ export const createChatOwnershipSlice: StateCreator<
       sending: actionState.sending,
       error:
         actionState.error === null ? null : boundedChatError(actionState.error),
+      errorKind:
+        actionState.errorKind === undefined
+          ? entry.errorKind
+          : actionState.errorKind,
       modeError:
         actionState.modeError === undefined
           ? entry.modeError
@@ -255,11 +277,20 @@ export const createChatOwnershipSlice: StateCreator<
     const state = get();
     const chatId = activeChatId(state);
     const text = state.composerText.trim();
+    const chatSelection = chatId ? state.chatUiById[chatId] : null;
+    const selectedHarnessId = chatId
+      ? (chatSelection?.harnessId ?? state.selectedHarnessId)
+      : null;
+    const selectedModelId = chatId
+      ? chatSelection?.harnessId
+        ? (chatSelection.modelId ?? null)
+        : state.selectedModelId
+      : null;
     if (
       !text ||
       !chatId ||
       !state.project ||
-      !state.selectedHarnessId ||
+      !selectedHarnessId ||
       state.sending ||
       state.projectTransitioning
     ) {
@@ -298,8 +329,8 @@ export const createChatOwnershipSlice: StateCreator<
     try {
       const result = await getWorkbenchPorts().agent.sendPrompt({
         chatId,
-        harnessId: state.selectedHarnessId,
-        modelId: state.selectedModelId,
+        harnessId: selectedHarnessId,
+        modelId: selectedModelId,
         text,
       });
       const current = get();

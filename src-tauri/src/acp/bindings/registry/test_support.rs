@@ -27,6 +27,7 @@ pub(crate) fn take_test_close_dispatch_for_test() -> bool {
 pub(super) fn launch_factory(
     binding: AdmittedBinding,
     root: BindingProjectRoot,
+    _mcp: crate::acp::mcp::McpAdmission,
 ) -> Box<dyn RuntimeFactory> {
     let (AdmittedBinding::Codex(binding), BindingProjectRoot::Codex(root)) = (binding, root) else {
         unreachable!("test binding uses Codex authority")
@@ -38,7 +39,7 @@ pub(super) fn launch_factory(
 
 pub(super) fn turn_dispatch(
     _: &crate::acp::service::AcpService,
-    _: crate::acp::store::PrepareTurnCommand,
+    _: crate::acp::runtime::HostPromptIntent,
 ) -> Result<
     crate::acp::runtime::HostOutcome,
     crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,

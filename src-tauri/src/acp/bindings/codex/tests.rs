@@ -6,8 +6,12 @@ use crate::acp::{
     lifecycle::{ServerRequestState, TurnState},
 };
 
+use super::hard_failure_tests::with_captured_diagnostics;
+use super::incoming::UNPROJECTED_DIAGNOSTIC;
 use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
+
+mod file_change_sequence_tests;
 
 struct Mapper;
 
@@ -899,6 +903,58 @@ fn codex_0146_uses_captured_read_only_spellings_per_request_shape() {
 }
 
 #[test]
+fn pinned_codex_0145_rejects_write_modes_before_turn_start() {
+    for mode in [
+        crate::settings_store::SessionAccessMode::Ask,
+        crate::settings_store::SessionAccessMode::WorkspaceWrite,
+    ] {
+        let mut candidate = adapter();
+        negotiate(&mut candidate);
+        let root = candidate.project_root(r"C:\repo".into()).unwrap();
+        candidate.start(1, &root, None).unwrap();
+        candidate
+            .ingest(
+                br#"{"id":1,"result":{"thread":{"id":"thread-1"}}}"#,
+                &Mapper,
+            )
+            .unwrap();
+        let result = candidate.prompt_with_access_mode(
+            2,
+            &Prompt::new("prompt", "inspect").unwrap(),
+            &RequiredText::new("client", "client-access-mode").unwrap(),
+            mode,
+        );
+        assert!(matches!(
+            result,
+            Err(AdapterError::Request(
+                request::RequestError::UnsupportedAccessMode
+            ))
+        ));
+    }
+}
+
+#[test]
+fn pinned_codex_0145_dispatches_saved_ask_as_read_only() {
+    use crate::settings_store::SessionAccessMode;
+
+    let mut candidate = adapter();
+    ready(&mut candidate);
+    let requested = SessionAccessMode::Ask;
+    let turn = candidate.prompt_with_access_mode(
+        2,
+        &Prompt::new("prompt", "inspect").unwrap(),
+        &RequiredText::new("client", "client-ask").unwrap(),
+        requested.effective(false),
+    );
+    assert!(turn.is_ok());
+    let wire: Value = serde_json::from_slice(&turn.unwrap().bytes).unwrap();
+    assert_eq!(wire["method"], "turn/start");
+    assert_eq!(wire["params"]["approvalPolicy"], "never");
+    assert_eq!(wire["params"]["sandboxPolicy"]["type"], "readOnly");
+    assert_eq!(requested, SessionAccessMode::Ask);
+}
+
+#[test]
 fn request_ledger_is_bounded_and_rejects_duplicate_ids() {
     let mut adapter = adapter();
     negotiate(&mut adapter);
@@ -984,7 +1040,7 @@ fn observed_codex_0146_initialize_accepts_its_cli_identity_and_home() {
         &result,
         "codex-cli 0.146.0",
         "",
-        true,
+        super::state::capabilities::InitializeIdentity::Observed,
     ));
     result.insert(
         "userAgent".into(),
@@ -994,8 +1050,51 @@ fn observed_codex_0146_initialize_accepts_its_cli_identity_and_home() {
         &result,
         "codex-cli 0.146.0",
         "",
-        true,
+        super::state::capabilities::InitializeIdentity::Observed,
     ));
+}
+
+#[test]
+fn the_user_agent_codex_0146_actually_sends_is_accepted_and_forgeries_are_not() {
+    let observed = Map::from_iter([
+        (
+            "userAgent".into(),
+            json!("Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)"),
+        ),
+        (
+            "codexHome".into(),
+            json!(r"C:\Users\Username\AppData\Local\Temp\sage-codex-home-DoXG8r"),
+        ),
+        ("platformFamily".into(), json!("windows")),
+        ("platformOs".into(), json!("windows")),
+    ]);
+    assert!(super::state::capabilities::valid_initialize_result(
+        &observed,
+        "codex-cli 0.146.0",
+        "",
+        super::state::capabilities::InitializeIdentity::Observed,
+    ));
+
+    for forged in [
+        "Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+        "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (notsage; 0.1.0)",
+        "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb",
+        "/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+        "Codex Desktop/0.146.0 (Windows notaversion; x86_64) dumb (sage; 0.1.0)",
+        "Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64)  (sage; 0.1.0)",
+    ] {
+        let mut drifted = observed.clone();
+        drifted.insert("userAgent".into(), json!(forged));
+        assert!(
+            !super::state::capabilities::valid_initialize_result(
+                &drifted,
+                "codex-cli 0.146.0",
+                "",
+                super::state::capabilities::InitializeIdentity::Observed,
+            ),
+            "forged user agent accepted: {forged}"
+        );
+    }
 }
 
 #[test]
@@ -1537,6 +1636,10 @@ fn permission_request_produces_only_a_decline_and_no_raw_authority() {
         payload,
         NormalizedPayload::PermissionRequest { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(payload).unwrap()["payload"]["offeredOptionKinds"],
+        json!(["allow_once", "allow_always", "reject_once"])
+    );
     let response: Value = serde_json::from_slice(&denial.bytes).unwrap();
     assert_eq!(response["result"]["decision"], "decline");
     assert!(
@@ -1581,6 +1684,52 @@ fn permission_request_produces_only_a_decline_and_no_raw_authority() {
             IngressError::PermissionTeardownRequired
         ))
     ));
+}
+
+#[test]
+fn command_approval_receipt_never_projects_untrusted_command_text() {
+    for (index, command) in [
+        "API_KEY=hunter2",
+        "MY_SECRET=hunter2",
+        "--auth-token=abc123",
+        "--password abc123",
+        "Bearer abc123",
+        "Basic abc123",
+        "sk-abc123",
+        "ghp_abc123",
+        "xoxb-abc123",
+        "https://user:pass@example.com/",
+        "$env:API_KEY='hunter2'",
+        "Get-\u{202e}Content",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut adapter = adapter();
+        ready(&mut adapter);
+        arm_turn(&mut adapter, 2, "client-permission");
+        let turn = json!({"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}}});
+        adapter
+            .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+            .unwrap();
+        let request = json!({"id":format!("approval-{index}"),"method":"item/commandExecution/requestApproval","params":{
+            "threadId":"thread-1","turnId":"turn-1","itemId":"item-1","command":command
+        }});
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
+            .unwrap()
+        else {
+            panic!("events")
+        };
+        let IncomingEvent::Permission {
+            payload: NormalizedPayload::PermissionRequest { summary, .. },
+            ..
+        } = &events[0]
+        else {
+            panic!("permission")
+        };
+        assert_eq!(summary.as_str(), "Run a command", "{command}");
+    }
 }
 
 #[test]
@@ -1667,18 +1816,13 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
     assert!(!text.as_str().contains("private"));
 
     let unknown = json!({"method":"`C:\\Users\\private\\method`","params":{}});
-    let IngressDisposition::Events(events) = adapter
-        .ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
-        .unwrap()
-    else {
-        panic!()
-    };
-    let IncomingEvent::Unsupported(NormalizedPayload::Unsupported { external_kind, .. }) =
-        &events[0]
-    else {
-        panic!()
-    };
-    assert_eq!(external_kind.as_str(), "[path]");
+    let (disposition, captured) = with_captured_diagnostics(|| {
+        adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
+    });
+    assert!(matches!(disposition, Ok(IngressDisposition::IgnoredLate)));
+    assert!(captured.contains(UNPROJECTED_DIAGNOSTIC));
+    assert!(captured.contains("[path]"));
+    assert!(!captured.contains("private"));
 
     let file = json!({"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{
         "type":"fileChange","id":"file-1","status":"completed","changes":[{"path":"C:\\foreign\\x.rs","kind":{"type":"update"},"diff":"secret"}]
@@ -1711,19 +1855,21 @@ fn malformed_oversized_and_unknown_inputs_are_bounded() {
     assert!(adapter.ingest(b"{", &Mapper).is_err());
     assert!(adapter.ingest(&vec![b'x'; 1_048_577], &Mapper).is_err());
     let unknown = json!({"method":"future/event","params":{}});
-    let IngressDisposition::Events(events) = adapter
-        .ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
-        .unwrap()
-    else {
-        panic!()
-    };
-    assert!(matches!(&events[0], IncomingEvent::Unsupported(_)));
+    let (disposition, captured) = with_captured_diagnostics(|| {
+        adapter.ingest(&serde_json::to_vec(&unknown).unwrap(), &Mapper)
+    });
+    assert!(matches!(disposition, Ok(IngressDisposition::IgnoredLate)));
+    assert!(captured.contains(UNPROJECTED_DIAGNOSTIC));
 }
 
 #[test]
-fn known_account_updates_and_user_echoes_do_not_create_unsupported_transcript_items() {
+fn known_status_updates_and_user_echoes_do_not_create_unsupported_transcript_items() {
     let mut adapter = adapter();
-    for method in ["account/updated", "account/rateLimits/updated"] {
+    for method in [
+        "account/updated",
+        "account/rateLimits/updated",
+        "skills/changed",
+    ] {
         let account = json!({"method":method,"params":{"account":"ignored"}});
         assert!(matches!(
             adapter.ingest(&serde_json::to_vec(&account).unwrap(), &Mapper),
@@ -1753,7 +1899,7 @@ fn known_account_updates_and_user_echoes_do_not_create_unsupported_transcript_it
 }
 
 #[test]
-fn unsupported_server_request_requires_runtime_teardown() {
+fn a_spoofed_dynamic_tool_call_requires_runtime_teardown() {
     let mut adapter = adapter();
     ready(&mut adapter);
     arm_turn(&mut adapter, 2, "client-unsupported");
@@ -1761,8 +1907,9 @@ fn unsupported_server_request_requires_runtime_teardown() {
     adapter
         .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
         .unwrap();
-    let request = json!({"id":"unsafe-1","method":"future/effectfulRequest","params":{
-        "threadId":"thread-1","turnId":"turn-1","itemId":"item-1"
+    let request = json!({"id":"unsafe-1","method":"item/tool/call","params":{
+        "threadId":"thread-1","turnId":"turn-1","callId":"call-1","tool":"_sage/browse",
+        "arguments":{"url":"http://127.0.0.1:1/"}
     }});
     assert!(matches!(
         adapter.ingest(&serde_json::to_vec(&request).unwrap(), &Mapper),
@@ -1823,7 +1970,6 @@ fn codex_dynamic_browse_call_returns_only_admitted_loopback_text() {
     ));
 }
 
-#[path = "p01_tests.rs"]
 mod p01_tests;
 
 #[test]

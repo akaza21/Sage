@@ -5,7 +5,7 @@ use std::{
 
 use crate::acp::{limits::LIMITS, transport::ReservedQueue};
 
-use super::types::{ConfigCompletion, HostCommand, HostError, HostReply};
+use super::types::{ConfigCompletion, HostCommand, HostError, HostReply, SteerCompletion};
 
 pub(super) struct Envelope {
     pub(super) command: HostCommand,
@@ -16,13 +16,15 @@ pub(super) struct Envelope {
 struct State {
     queue: ReservedQueue<Envelope>,
     config_completion: Option<ConfigCompletion>,
+    steer_completion: Option<SteerCompletion>,
     closed: bool,
 }
 
 pub(super) enum HostMessage {
     Command(Envelope),
     ConfigCompletion(ConfigCompletion),
-    ConfigDeadline,
+    SteerCompletion(SteerCompletion),
+    OperationDeadline,
 }
 
 pub(super) struct HostMailbox {
@@ -43,6 +45,7 @@ impl HostMailbox {
             state: Mutex::new(State {
                 queue,
                 config_completion: None,
+                steer_completion: None,
                 closed: false,
             }),
             ready: Condvar::new(),
@@ -93,13 +96,31 @@ impl HostMailbox {
         }
     }
 
-    pub(super) fn wait_next(&self, config_deadline: Option<Instant>) -> Option<HostMessage> {
+    pub(super) fn complete_steer(&self, completion: SteerCompletion) {
+        let mut state = self.lock();
+        if state.closed {
+            return;
+        }
+        let replace = state
+            .steer_completion
+            .as_ref()
+            .is_none_or(|retained| completion.operation_id > retained.operation_id);
+        if replace {
+            state.steer_completion = Some(completion);
+            self.ready.notify_one();
+        }
+    }
+
+    pub(super) fn wait_next(&self, operation_deadline: Option<Instant>) -> Option<HostMessage> {
         loop {
             let expired = {
                 let mut state = self.lock();
                 loop {
                     if let Some(completion) = state.config_completion.take() {
                         return Some(HostMessage::ConfigCompletion(completion));
+                    }
+                    if let Some(completion) = state.steer_completion.take() {
+                        return Some(HostMessage::SteerCompletion(completion));
                     }
                     match state.queue.pop() {
                         Some(envelope) if Instant::now() >= envelope.deadline => {
@@ -108,11 +129,11 @@ impl HostMailbox {
                         }
                         Some(envelope) => return Some(HostMessage::Command(envelope)),
                         None if state.closed => return None,
-                        None => match config_deadline {
+                        None => match operation_deadline {
                             Some(deadline) => {
                                 let remaining = deadline.saturating_duration_since(Instant::now());
                                 if remaining.is_zero() {
-                                    return Some(HostMessage::ConfigDeadline);
+                                    return Some(HostMessage::OperationDeadline);
                                 }
                                 let (next, timeout) = self
                                     .ready
@@ -121,10 +142,11 @@ impl HostMailbox {
                                 state = next;
                                 if timeout.timed_out()
                                     && state.config_completion.is_none()
+                                    && state.steer_completion.is_none()
                                     && state.queue.data_usage().0 == 0
                                     && state.queue.control_usage().0 == 0
                                 {
-                                    return Some(HostMessage::ConfigDeadline);
+                                    return Some(HostMessage::OperationDeadline);
                                 }
                             }
                             None => {

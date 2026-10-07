@@ -110,7 +110,7 @@ fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
 }
 
 #[test]
-fn account_snapshot_allows_only_managed_chatgpt_or_signed_out_without_identity_data() {
+fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
     let mut signed_in = protocol();
     let account_id = advance_to_account(&mut signed_in);
     let account = signed_in
@@ -135,10 +135,23 @@ fn account_snapshot_allows_only_managed_chatgpt_or_signed_out_without_identity_d
         CodexAccountSnapshot::SignedOut
     );
 
+    let mut provider_managed = protocol();
+    let account_id = advance_to_account(&mut provider_managed);
+    assert_eq!(
+        provider_managed
+            .accept_account(&frame(json!({"id":account_id,"result":{
+                "account":null,"requiresOpenaiAuth":false
+            }})))
+            .unwrap(),
+        CodexAccountSnapshot::ProviderManaged
+    );
+    let model_request = provider_managed.model_request().unwrap();
+    let model_request: Value = serde_json::from_slice(model_request.payload()).unwrap();
+    assert_eq!(model_request["method"], "model/list");
+
     for rejected in [
         json!({"account":{"type":"apiKey"},"requiresOpenaiAuth":true}),
         json!({"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":true}),
-        json!({"account":null,"requiresOpenaiAuth":false}),
     ] {
         let mut candidate = protocol();
         let account_id = advance_to_account(&mut candidate);
@@ -381,11 +394,8 @@ fn unknown_response_server_request_rpc_error_and_wrong_id_fail_closed() {
 
 #[cfg(windows)]
 #[test]
-#[ignore = "requires SAGE_RUN_EXACT_CODEX_DISCOVERY=1 and an interactive managed Codex account"]
+#[ignore = "requires an installed, signed-in Codex CLI"]
 fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
-    if std::env::var_os("SAGE_RUN_EXACT_CODEX_DISCOVERY").is_none() {
-        return;
-    }
     use crate::{
         acp::{
             bindings::codex::{

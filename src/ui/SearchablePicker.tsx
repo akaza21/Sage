@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import { Check, ChevronDown } from "lucide-react";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -22,7 +23,12 @@ export const SEARCHABLE_PICKER_PAGE_SIZE = 10;
 export interface SearchablePickerOption {
   id: string;
   label: string;
+  accessibleLabel?: string;
+  triggerLabel?: string;
   disabledReason?: string;
+  icon?: "claude" | "codex" | "opencode";
+  logo?: string;
+  secondaryLabel?: string;
 }
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
@@ -48,12 +54,16 @@ const PickerOption = memo(function PickerOption({
 }) {
   onRender?.(candidate.id);
   const disabled = Boolean(candidate.disabledReason);
+  const logo =
+    candidate.logo ??
+    (candidate.icon ? `/harness-${candidate.icon}.svg` : null);
   return (
     <button
       ref={(element) => onOptionElement(candidate.id, element)}
       id={id}
       type="button"
       role="option"
+      aria-label={candidate.accessibleLabel}
       className="searchable-picker__option menu-item"
       aria-disabled={disabled || undefined}
       aria-describedby={disabled ? `${id}-reason` : undefined}
@@ -65,7 +75,27 @@ const PickerOption = memo(function PickerOption({
       onMouseMove={() => !disabled && onActivate(candidate.id)}
       onClick={() => !disabled && onSelect(candidate.id)}
     >
-      <span>{candidate.label}</span>
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          aria-hidden="true"
+          data-harness-icon={candidate.icon ?? "generic"}
+        />
+      ) : null}
+      <span className="searchable-picker__option-copy">
+        <span>{candidate.label}</span>
+        {candidate.secondaryLabel ? (
+          <small>{candidate.secondaryLabel}</small>
+        ) : null}
+      </span>
+      {selected && logo ? (
+        <Check
+          className="searchable-picker__selected-check"
+          size={14}
+          aria-hidden="true"
+        />
+      ) : null}
       {candidate.disabledReason ? (
         <span id={`${id}-reason`} className="searchable-picker__reason">
           {candidate.disabledReason}
@@ -84,7 +114,13 @@ export function SearchablePicker({
   candidates,
   className,
   disabled = false,
+  emptyLabel = "Select…",
+  footer,
   onOptionRender,
+  popoverClassName,
+  triggerClassName,
+  sectionLabel,
+  searchable = true,
   onSelect,
   portalTarget = "document",
   selectedId,
@@ -96,7 +132,13 @@ export function SearchablePicker({
   candidates: readonly SearchablePickerOption[];
   className?: string;
   disabled?: boolean;
+  emptyLabel?: string;
+  footer?: string;
   onOptionRender?: (id: string) => void;
+  popoverClassName?: string;
+  triggerClassName?: string;
+  sectionLabel?: string;
+  searchable?: boolean;
   onSelect: (id: string) => void;
   portalTarget?: "closest-dialog" | "document";
   selectedId: string | null;
@@ -255,7 +297,9 @@ export function SearchablePicker({
       <button
         ref={triggerRef}
         type="button"
-        className="searchable-picker__trigger"
+        className={["searchable-picker__trigger", triggerClassName]
+          .filter(Boolean)
+          .join(" ")}
         aria-label={ariaLabel}
         aria-expanded={open && !disabled}
         aria-haspopup="listbox"
@@ -264,11 +308,34 @@ export function SearchablePicker({
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        {selected?.label ?? "Select…"}
+        {selected?.logo || selected?.icon ? (
+          <img
+            src={selected.logo ?? `/harness-${selected.icon}.svg`}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : null}
+        <span className="searchable-picker__trigger-label">
+          {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
+          {selected?.secondaryLabel ? (
+            <small>{selected.secondaryLabel}</small>
+          ) : null}
+        </span>
+        <ChevronDown
+          className="searchable-picker__chevron"
+          size={14}
+          aria-hidden="true"
+        />
       </button>
       <MenuPopover
         ariaLabel={ariaLabel}
-        className="searchable-picker__popover menu-popover--editor"
+        className={[
+          "searchable-picker__popover",
+          "menu-popover--editor",
+          popoverClassName,
+        ]
+          .filter(Boolean)
+          .join(" ")}
         focusStrategy="none"
         id={`${id}-popover`}
         matchTriggerWidth
@@ -285,10 +352,12 @@ export function SearchablePicker({
           aria-label={ariaLabel}
           aria-activedescendant={active ? optionId(id, active.id) : undefined}
           aria-autocomplete="list"
+          readOnly={!searchable}
           aria-controls={`${id}-listbox`}
           aria-expanded={open && !disabled}
           value={draft}
           onChange={(event) => {
+            if (!searchable) return;
             setDraft(event.target.value);
             setActiveId(null);
           }}
@@ -298,6 +367,9 @@ export function SearchablePicker({
           <p className="searchable-picker__current">
             Current: {selected.label}
           </p>
+        ) : null}
+        {sectionLabel ? (
+          <p className="searchable-picker__section-label">{sectionLabel}</p>
         ) : null}
         {state ? (
           <ResourceStateNotice
@@ -332,6 +404,7 @@ export function SearchablePicker({
             </p>
           ) : null}
         </div>
+        {footer ? <p className="searchable-picker__footer">{footer}</p> : null}
       </MenuPopover>
     </div>
   );

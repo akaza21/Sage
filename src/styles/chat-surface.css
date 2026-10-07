@@ -8,15 +8,19 @@
   background: var(--color-canvas);
 }
 
+.chat-surface--agent {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .surface-header {
   display: flex;
   min-width: 0;
-  min-height: 36px;
-  max-height: 36px;
+  min-height: var(--tab-height);
+  max-height: var(--tab-height);
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-1);
-  padding: 3px var(--space-3);
+  padding: 4px var(--space-3);
   overflow: hidden;
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
@@ -59,7 +63,7 @@
   display: inline-flex;
   min-height: var(--control-height-compact);
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0 var(--space-1);
   color: var(--color-text-secondary);
   background: transparent;
@@ -68,8 +72,8 @@
 }
 
 .session-state__dot {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: var(--radius-pill);
   background: var(--color-success);
   box-shadow: 0 0 6px 1px var(--color-success-muted);
@@ -77,19 +81,17 @@
 
 .message-list {
   min-height: 0;
-  padding: var(--space-3) clamp(var(--space-3), 4vw, var(--space-8))
-    var(--space-6);
+  padding: var(--space-3) var(--space-4) var(--space-6);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 .project-intro,
 .message {
-  width: min(100%, var(--reading-measure));
-  margin-right: auto;
-  margin-left: auto;
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
 }
 
 .project-intro {
@@ -136,7 +138,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -144,16 +146,6 @@
 .message__role {
   color: var(--color-text-secondary);
   font-weight: var(--font-weight-semibold);
-}
-
-.message__meta time {
-  opacity: 0;
-  transition: opacity var(--motion-duration-fast) ease;
-}
-
-.message:hover .message__meta time,
-.message:focus-within .message__meta time {
-  opacity: 1;
 }
 
 .message p {
@@ -167,6 +159,7 @@
   width: fit-content;
   max-width: min(82%, var(--reading-measure-compact));
   margin-right: 0;
+  margin-left: auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
@@ -196,7 +189,7 @@
 
 @media (max-width: 640px) {
   .surface-header {
-    padding: 3px var(--space-2);
+    padding: 4px var(--space-2);
   }
 
   .session-controls {
@@ -207,10 +200,6 @@
     max-width: 112px;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .message-list {
-    padding: var(--space-2) var(--space-3) var(--space-6);
   }
 
   .message--user {
@@ -225,7 +214,7 @@
 
   .surface-header h1 {
     margin: 0;
-    font-size: 15px;
+    font-size: var(--font-size-md);
   }
 }
 
@@ -239,8 +228,112 @@
   .chat-follow-end {
     border-color: CanvasText;
   }
+}
 
-  .message__meta time {
-    opacity: 1;
-  }
+.composer__control-trigger:hover,
+.composer__control-trigger:has([aria-expanded="true"]),
+.composer__control-trigger[aria-expanded="true"] {
+  color: var(--color-status-foreground);
+  background: var(--composer-control-hover);
+}
+
+.composer__popover {
+  width: min(300px, calc(100vw - 32px));
+  max-width: min(300px, calc(100vw - 32px));
+  max-height: min(420px, 65vh);
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--composer-menu-border);
+  border-radius: var(--radius-composer-menu);
+  color: var(--composer-control-text);
+  background: var(--color-plane-raised);
+  box-shadow: var(--composer-menu-shadow);
+}
+
+.composer__popover:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.composer__mic {
+  width: 28px;
+  height: 28px;
+  grid-area: mic;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--composer-control-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer__mic:hover:not(:disabled) {
+  background: var(--composer-control-hover);
+}
+.composer__mic:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.composer__plus,
+.composer__control-trigger {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--composer-control-text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.composer__plus {
+  width: 22px;
+  flex: 0 0 auto;
+}
+
+.composer__access-label {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 142px;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--composer-access-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__access-label--write {
+  color: var(--composer-access-write);
+}
+
+.composer__model-trigger {
+  max-width: 155px;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__plus:hover,
+.composer__model-trigger:hover {
+  color: var(--color-status-foreground);
+  background: var(--composer-control-hover);
+}
+
+.composer__plus:focus-visible,
+.composer__model-trigger:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }

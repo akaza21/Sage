@@ -10,6 +10,31 @@ import type {
   FileChangeProjection,
   TurnProjection,
 } from "../../../domain/acp";
+import type { ProjectRootSummary } from "../../../domain/workbench";
+
+type SummaryRoot = Pick<ProjectRootSummary, "id" | "name" | "ordinal">;
+
+export function projectRootLabels(
+  roots: readonly SummaryRoot[],
+): Readonly<Record<string, string>> {
+  const counts = new Map<string, number>();
+  for (const root of roots)
+    counts.set(root.name, (counts.get(root.name) ?? 0) + 1);
+  return Object.fromEntries(
+    roots.map((root) => [
+      root.id,
+      (counts.get(root.name) ?? 0) > 1
+        ? `${root.name} (root ${root.ordinal + 1})`
+        : root.name,
+    ]),
+  );
+}
+
+export function projectRootLabelKey(roots: readonly SummaryRoot[]): string {
+  return roots
+    .map((root) => `${root.id}\0${root.name}\0${root.ordinal}`)
+    .join("\n");
+}
 
 export const MAX_AGENT_EDIT_SUMMARY_FILES = MAX_AGENT_DIFFS_PER_TURN;
 const MAX_PROJECTED_ITEMS_PER_TURN = 1_000;
@@ -93,7 +118,17 @@ function safeLocation(location: FileChangeProjection["resource"]): boolean {
       "noncanonical",
       "unsupported",
     ].includes(location.reason) &&
-    boundedText(location.label, MAX_UNAVAILABLE_LABEL_BYTES)
+    boundedText(location.label, MAX_UNAVAILABLE_LABEL_BYTES) &&
+    (location.displayResource == null ||
+      (location.reason === "missing" &&
+        boundedId(location.displayResource.rootId) &&
+        canonicalRelativePath(location.displayResource.relativePath) &&
+        utf8ByteLength(location.displayResource.relativePath) <=
+          MAX_UNAVAILABLE_LABEL_BYTES &&
+        !Array.from(location.displayResource.relativePath).some((character) => {
+          const code = character.charCodeAt(0);
+          return code < 32 || code === 127;
+        })))
   );
 }
 
@@ -193,7 +228,9 @@ function newerItem(current: AcpItem, candidate: AcpItem): AcpItem | null {
 function changeKey(change: FileChangeProjection): string {
   return change.resource.kind === "resource"
     ? `resource:${resourceKey(change.resource.resource)}`
-    : `unavailable:${change.resource.reason}:${change.resource.label}`;
+    : change.resource.displayResource
+      ? `unavailable:${change.resource.reason}:${resourceKey(change.resource.displayResource)}`
+      : `unavailable:${change.resource.reason}:${change.resource.label}`;
 }
 
 export function projectAgentEditSummary(

@@ -20,6 +20,7 @@ interface TurnEditSummaryProps {
   turn: TurnProjection;
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
+  onOpenFile?: (resource: ResourceRef) => void;
   onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
@@ -45,6 +46,7 @@ export function TurnEditSummary({
   turn,
   rootLabels,
   countIncomplete,
+  onOpenFile,
   onOpenDiff,
   onRecordDisposition,
 }: TurnEditSummaryProps) {
@@ -143,14 +145,22 @@ export function TurnEditSummary({
           {summary.changes.map((change, index) => {
             const location = change.resource;
             if (location.kind === "unavailable") {
+              const deletedDisplay =
+                change.operation === "deleted" && location.reason === "missing"
+                  ? location.displayResource?.relativePath
+                  : null;
               return (
                 <li key={`unavailable:${location.reason}:${index}`}>
                   <span className="acp-resource-unavailable">
-                    {location.label} · unavailable
+                    {deletedDisplay
+                      ? `${deletedDisplay} · Deleted`
+                      : `${location.label} · unavailable`}
                   </span>
-                  <span className="acp-change-operation">
-                    {change.operation}
-                  </span>
+                  {deletedDisplay ? null : (
+                    <span className="acp-change-operation">
+                      {change.operation}
+                    </span>
+                  )}
                   <span className="acp-file-changes__counts">
                     <span>
                       {change.additions === null ? "—" : `+${change.additions}`}
@@ -181,13 +191,19 @@ export function TurnEditSummary({
               change.additions !== null || change.deletions !== null;
             return (
               <li key={resourceKey(resource)}>
-                {onOpenDiff && admitted && change.diffRef ? (
+                {admitted &&
+                ((onOpenDiff && change.diffRef) ||
+                  (onOpenFile &&
+                    !change.diffRef &&
+                    change.operation !== "deleted")) ? (
                   <button
                     type="button"
                     className="acp-resource-action"
-                    aria-label={`Open diff ${qualifiedLabel}`}
+                    aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}
                     onClick={() => {
-                      if (change.diffRef) onOpenDiff(resource, change.diffRef);
+                      if (change.diffRef)
+                        onOpenDiff?.(resource, change.diffRef);
+                      else onOpenFile?.(resource);
                     }}
                   >
                     {chip}

@@ -122,7 +122,7 @@ where
 }
 
 pub(super) fn park_after_zero_active<A, R, T, C, Auth>(
-    active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
+    mut active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -141,6 +141,7 @@ where
         envelope.reject(HostError::Intent);
         return FirstTurnWorkerState::Active(active);
     }
+    active.settle_steer();
     envelope.respond(Ok(WorkerReply::Unit));
     FirstTurnWorkerState::Closed
 }

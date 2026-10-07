@@ -1,0 +1,102 @@
+{
+  "scenario": "file-creation-permission",
+  "harness": "claude-code",
+  "handshake": "session",
+  "toolCallId": "toolu_01LN3a6hp1LoECW8gV6J6Zwt",
+  "events": [
+    {
+      "event": "sessionReady",
+      "loaded": false
+    },
+    {
+      "event": "unsupported",
+      "externalKind": "_auth/status_update"
+    },
+    {
+      "event": "turn",
+      "state": "running"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I'll write"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I'll write that"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I'll write that single"
+    },
+    {
+      "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I'll write that single file."
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "edit",
+      "label": "Preparing file…"
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "edit",
+      "label": "Edited file"
+    },
+    {
+      "event": "item",
+      "externalItemId": "$toolCallId",
+      "kind": "toolCall",
+      "lifecycle": "started",
+      "toolState": "pending",
+      "category": "edit",
+      "label": "Created file"
+    },
+    {
+      "event": "item",
+      "externalItemId": "toolu_01LN3a6hp1LoECW8gV6J6Zwt:diff:0",
+      "kind": "fileChangeDiff",
+      "lifecycle": "streaming"
+    },
+    {
+      "event": "item",
+      "externalItemId": "permission:0",
+      "kind": "permissionRequest",
+      "lifecycle": "streaming",
+      "toolState": "waitingForApproval"
+    }
+  ],
+  "notes": [
+    "Real captured Claude file-creation turn. Claude sends the creation diff with \"oldText\": null, which the ACP schema declares nullable and optional. The translator once refused that frame as malformed, tore the adapter down mid-turn, and cancelled the tool card before any permission card could render.",
+    "The trace is the regression guard for that refusal: a null original side now admits an empty original, so the diff item and the permission request both survive translation.",
+    "The account identity carried by _auth/status_update is redacted, and the captured workspace path is rewritten to the shared fixture workspace root.",
+    "The capture stops at session/request_permission, so the trace asserts no prompt terminal. The absorbed available_commands_update frames are omitted; they surface no event and carry local machine configuration.",
+    "The diff item projects as fileChangeDiff without pair metadata because the conformance resource mapper treats every absolute path as foreign, so no pair is retained."
+  ]
+}

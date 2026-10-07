@@ -10,10 +10,13 @@ pub(super) fn expected_basenames(harness: HarnessExecutable) -> &'static [&'stat
     #[cfg(windows)]
     {
         match harness {
-            // npm global installations provide `.cmd`; native installers
-            // commonly provide `.exe`. Both are exact, expected names.
             HarnessExecutable::Codex => &["codex.exe", "codex.cmd"],
             HarnessExecutable::Claude => &["claude.exe", "claude.cmd"],
+            HarnessExecutable::Pi => &["pi.exe", "pi.cmd"],
+            HarnessExecutable::Gemini => &["gemini.exe", "gemini.cmd"],
+            HarnessExecutable::OpenCode => &["opencode.exe", "opencode.cmd"],
+            HarnessExecutable::CursorAgent => &["cursor-agent.exe", "cursor-agent.cmd"],
+            HarnessExecutable::OhMyPi => &["omp.exe", "omp.cmd"],
         }
     }
     #[cfg(not(windows))]
@@ -21,12 +24,21 @@ pub(super) fn expected_basenames(harness: HarnessExecutable) -> &'static [&'stat
         match harness {
             HarnessExecutable::Codex => &["codex"],
             HarnessExecutable::Claude => &["claude"],
+            HarnessExecutable::Pi => &["pi"],
+            HarnessExecutable::Gemini => &["gemini"],
+            HarnessExecutable::OpenCode => &["opencode"],
+            HarnessExecutable::CursorAgent => &["cursor-agent"],
+            HarnessExecutable::OhMyPi => &["omp"],
         }
     }
 }
 
 pub(super) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
     path.file_name() == Some(OsStr::new(expected_basename)) && authentic_file_with_parents(path)
+}
+
+pub(super) fn authentic_regular_file(path: &Path) -> bool {
+    authentic_file_with_parents(path)
 }
 
 /// Validates a package file relative to a bounded, plain npm-global root. Every
@@ -93,12 +105,28 @@ pub(super) fn is_local_probe_root(dir: &Path) -> bool {
     }
     #[cfg(windows)]
     {
-        use std::path::Prefix;
+        use std::{
+            os::windows::ffi::OsStrExt,
+            path::{PathBuf, Prefix},
+        };
+        let Some(Component::Prefix(prefix)) = dir.components().next() else {
+            return false;
+        };
+        if !matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)) || !dir.is_absolute()
+        {
+            return false;
+        }
+        let mut volume = PathBuf::from(prefix.as_os_str());
+        volume.push(r"\");
+        let mut wide: Vec<u16> = volume.as_os_str().encode_wide().collect();
+        wide.push(0);
+        const DRIVE_REMOVABLE: u32 = 2;
+        const DRIVE_FIXED: u32 = 3;
+        const DRIVE_RAMDISK: u32 = 6;
         matches!(
-            dir.components().next(),
-            Some(Component::Prefix(prefix))
-                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-        ) && dir.is_absolute()
+            unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(wide.as_ptr()) },
+            DRIVE_REMOVABLE | DRIVE_FIXED | DRIVE_RAMDISK
+        )
     }
     #[cfg(not(windows))]
     {
@@ -140,16 +168,5 @@ fn is_link(meta: &Metadata) -> bool {
     {
         let _ = meta;
         false
-    }
-}
-
-pub(super) fn legacy_basenames(command: &str) -> Vec<String> {
-    #[cfg(windows)]
-    {
-        vec![format!("{command}.exe"), format!("{command}.cmd")]
-    }
-    #[cfg(not(windows))]
-    {
-        vec![command.to_owned()]
     }
 }

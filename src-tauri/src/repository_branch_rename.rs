@@ -1,15 +1,12 @@
-use std::time::Duration;
-
 use crate::{
     error::{AppError, AppResult},
-    repository,
+    git_budget, repository,
     repository_branches::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, list_local_branches, valid_branch_name,
     },
     workspace::Workspace,
 };
 
-const GIT_RENAME_BRANCH_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_GIT_RENAME_BRANCH_OUTPUT_BYTES: usize = 64 * 1024;
 
 pub(crate) fn admit_listed_local_branch_rename<'a>(
@@ -60,7 +57,7 @@ pub(crate) async fn rename_listed_local_branch(
         workspace,
         from,
         to,
-        repository::GitProcessPolicy::mutation(GIT_RENAME_BRANCH_TIMEOUT),
+        repository::GitProcessPolicy::mutation(git_budget::MUTATION),
     )
     .await
 }

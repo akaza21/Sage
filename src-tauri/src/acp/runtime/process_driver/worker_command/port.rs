@@ -4,8 +4,8 @@ use crate::acp::{
     contract::{SageServerRequestId, SageTurnId},
     runtime::permissions::PermissionDecision,
     runtime::{
-        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort,
-        LiveWrite,
+        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
+        LiveRuntimePort, LiveWrite, SteerCompletionSink,
     },
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
@@ -95,6 +95,39 @@ impl LiveRuntimePort for ProcessLivePort {
                 Err(HostError::State)
             }
         }
+    }
+
+    fn dispatch_steer(&mut self, intent: &HostSteerIntent) -> Result<(), HostError> {
+        let (sender, response) = std::sync::mpsc::sync_channel(1);
+        let deadline = Instant::now() + std::time::Duration::from_secs(10);
+        self.begin_steer(
+            intent,
+            deadline,
+            SteerCompletionSink::new(move |result| {
+                let _ = sender.send(result);
+            }),
+        )?;
+        response
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|_| HostError::SteerOutcomeUnknown)?
+    }
+
+    fn begin_steer(
+        &mut self,
+        intent: &HostSteerIntent,
+        deadline: Instant,
+        completion: SteerCompletionSink,
+    ) -> Result<(), HostError> {
+        self.mailbox
+            .submit_worker_until(
+                WorkerCommand::Steer {
+                    intent: intent.clone(),
+                    completion,
+                },
+                deadline,
+            )
+            .map_err(super::support::map_mailbox)?;
+        Ok(())
     }
 
     fn observe_send(
@@ -208,16 +241,22 @@ impl LiveRuntimePort for ProcessLivePort {
             },
             deadline,
         ) {
-            Ok(WorkerReply::Zero(_)) => match self.call_until(
-                WorkerCommand::ParkAfterZero {
-                    owner: self.owner.clone(),
-                },
-                deadline,
-            ) {
-                Ok(WorkerReply::Unit) | Err(HostError::Closed | HostError::State) => Ok(()),
-                Ok(_) => Err(HostError::State),
-                Err(error) => Err(error),
-            },
+            Ok(WorkerReply::Zero(_)) => {
+                #[cfg(test)]
+                if std::mem::take(&mut self.finish_park_failure) {
+                    return Err(HostError::Deadline);
+                }
+                match self.call_until(
+                    WorkerCommand::ParkAfterZero {
+                        owner: self.owner.clone(),
+                    },
+                    deadline,
+                ) {
+                    Ok(WorkerReply::Unit) | Err(HostError::Closed | HostError::State) => Ok(()),
+                    Ok(_) => Err(HostError::State),
+                    Err(error) => Err(error),
+                }
+            }
             Err(HostError::Closed | HostError::State) => Ok(()),
             Ok(_) => Err(HostError::State),
             Err(error) => Err(error),

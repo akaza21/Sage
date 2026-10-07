@@ -78,6 +78,17 @@ where
         &self.command
     }
 
+    pub(crate) fn terminal_cursor(&self) -> &crate::acp::store::AdapterTurnCursor {
+        self.parts.terminal_cursor()
+    }
+
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken)
+    where
+        C::ZeroProof: CoordinatorZeroToken,
+    {
+        self.parts.park_after_zero(token).await;
+    }
+
     pub(crate) async fn begin_park(
         parts: CompletedDriverParts<A, J, R, T, C, SessionTreeLease>,
     ) -> Result<ReusableClosingState<A, J, R, T, C>, Box<CloseFailure<Self>>> {
@@ -150,6 +161,14 @@ where
         &self.candidate.parts.owner
     }
 
+    pub(crate) fn terminal_cursor(&self) -> &crate::acp::store::AdapterTurnCursor {
+        self.candidate.parts.terminal_cursor()
+    }
+
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken) {
+        self.candidate.parts.park_after_zero(token).await;
+    }
+
     #[allow(clippy::type_complexity)]
     pub(crate) fn converge_zero(
         self,
@@ -186,6 +205,14 @@ where
 
     pub(crate) fn owner(&self) -> &crate::acp::scheduler::RuntimeOwner {
         &self.candidate.parts.owner
+    }
+
+    pub(crate) fn terminal_cursor(&self) -> &crate::acp::store::AdapterTurnCursor {
+        self.candidate.parts.terminal_cursor()
+    }
+
+    pub(crate) async fn park_after_zero(&mut self, token: crate::acp::process::ZeroProcessToken) {
+        self.candidate.parts.park_after_zero(token).await;
     }
 
     pub(crate) async fn park(mut self) -> Result<(), Box<CloseFailure<Self>>> {

@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::{
     domain::{
@@ -21,17 +21,55 @@ use crate::{
 pub async fn get_bootstrap_snapshot(
     state: State<'_, AppState>,
 ) -> Result<BootstrapSnapshot, String> {
-    let transition_epoch = state.project_transitions.lock().await;
-    build_bootstrap_snapshot(&state, *transition_epoch)
-        .await
-        .map_err(|error| error.to_string())
+    let transition_epoch = *state.project_transitions.lock().await;
+    let database = state.database.clone();
+    let harnesses = state.harnesses.clone();
+    let startup_recovery_notice = state.startup_recovery_notice.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        build_initial_bootstrap_snapshot(
+            &database,
+            &harnesses,
+            startup_recovery_notice.as_deref(),
+            transition_epoch,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())?;
+    Ok(snapshot)
 }
 
 pub(crate) async fn build_bootstrap_snapshot(
     state: &AppState,
     transition_epoch: u64,
 ) -> crate::error::AppResult<BootstrapSnapshot> {
-    let _ = state.harnesses.refresh_codex_registration();
+    build_bootstrap_snapshot_with_repository_status(state, transition_epoch).await
+}
+
+fn build_initial_bootstrap_snapshot(
+    database: &crate::persistence::Database,
+    harnesses: &crate::harnesses::HarnessCatalog,
+    startup_recovery_notice: Option<&str>,
+    transition_epoch: u64,
+) -> crate::error::AppResult<BootstrapSnapshot> {
+    let mut snapshot = database.bootstrap_snapshot_with_catalog(harnesses)?;
+    snapshot.transition_epoch = transition_epoch;
+    snapshot.harnesses = harnesses.definitions();
+    let Some(project) = &snapshot.project else {
+        append_startup_recovery_notice(&mut snapshot, startup_recovery_notice);
+        return Ok(snapshot);
+    };
+    snapshot.recovered_buffers = editor::recovered_buffers(database, &project.id)?;
+    merge_recovered_file_tabs(&mut snapshot);
+    append_startup_recovery_notice(&mut snapshot, startup_recovery_notice);
+    validate_tab_projection(&snapshot.tabs)?;
+    Ok(snapshot)
+}
+
+async fn build_bootstrap_snapshot_with_repository_status(
+    state: &AppState,
+    transition_epoch: u64,
+) -> crate::error::AppResult<BootstrapSnapshot> {
     let mut snapshot = state
         .database
         .bootstrap_snapshot_with_catalog(&state.harnesses)?;
@@ -194,15 +232,19 @@ pub async fn get_file_diff(
 }
 
 #[tauri::command]
-pub fn list_directory(
-    state: State<'_, AppState>,
+pub async fn list_directory(
+    app: AppHandle,
     resource: ResourceRef,
 ) -> Result<DirectoryListing, String> {
-    state
-        .database
-        .resolve_active_resource(&resource)
-        .and_then(|workspace| workspace.list_directory(&resource))
-        .map_err(|error| error.to_string())
+    let database = app.state::<AppState>().database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .resolve_active_resource(&resource)
+            .and_then(|workspace| workspace.list_directory(&resource))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -328,6 +370,26 @@ mod tests {
             },
             revision,
         }
+    }
+
+    #[test]
+    fn initial_bootstrap_defers_repository_status() {
+        let root = std::env::temp_dir().join(format!("sage-initial-bootstrap-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        database.create_project_from_root(&root).unwrap();
+        let state = AppState::new(database);
+
+        let snapshot = build_initial_bootstrap_snapshot(
+            &state.database,
+            &state.harnesses,
+            state.startup_recovery_notice.as_deref(),
+            0,
+        )
+        .unwrap();
+
+        assert!(snapshot.repositories.roots.is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

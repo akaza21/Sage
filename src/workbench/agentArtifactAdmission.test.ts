@@ -71,6 +71,15 @@ describe("agent artifact admission", () => {
   it("shows a tab only when Agent admitted it or the focused chat has stats", () => {
     expect(
       agentArtifactVisible({
+        tabId: "browser:a",
+        kind: "browser",
+        admissions: [],
+        focusedOwner: ownerA,
+        hasFocusedChatStats: false,
+      }),
+    ).toBe(true);
+    expect(
+      agentArtifactVisible({
         tabId: "file:editor",
         kind: "file",
         admissions: [],

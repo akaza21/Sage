@@ -134,6 +134,39 @@ impl Scheduler {
         })
     }
 
+    pub(crate) fn begin_idle_drain(&self, owner: &RuntimeOwner) -> Result<(), SchedulerError> {
+        let mut state = self.lock();
+        if state.turn.is_some() {
+            return Err(SchedulerError::TurnStillActive);
+        }
+        let Some(tree) = state.tree.as_mut() else {
+            return Err(SchedulerError::StaleToken);
+        };
+        if &tree.owner != owner {
+            return Err(SchedulerError::StaleOwner);
+        }
+        if tree.draining {
+            return Err(SchedulerError::TreeCapacity);
+        }
+        tree.draining = true;
+        Ok(())
+    }
+
+    pub(crate) fn cancel_idle_drain(&self, owner: &RuntimeOwner) -> Result<(), SchedulerError> {
+        let mut state = self.lock();
+        if state.turn.is_some() {
+            return Err(SchedulerError::TurnStillActive);
+        }
+        let Some(tree) = state.tree.as_mut() else {
+            return Err(SchedulerError::StaleToken);
+        };
+        if &tree.owner != owner || !tree.draining {
+            return Err(SchedulerError::StaleOwner);
+        }
+        tree.draining = false;
+        Ok(())
+    }
+
     pub(crate) fn project_switched(&self, _active_project: &SageProjectId) {
         // A project switch changes only the disposable projection. A running
         // Turn and its tree retain both global slots in the background.

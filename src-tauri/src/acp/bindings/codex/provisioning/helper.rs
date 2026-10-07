@@ -8,15 +8,12 @@ use crate::acp::bindings::codex::{
     managed::ManagedStagingPrerequisite, manifest::MetadataValidatedPacket,
 };
 
-#[path = "helper/transaction.rs"]
 mod transaction;
 
 #[cfg(windows)]
-#[path = "helper/windows.rs"]
 mod windows;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
-#[path = "helper/boundary.rs"]
 mod boundary;
 
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
@@ -437,5 +434,4 @@ fn lower_even_hex(value: &str, minimum: usize, maximum: usize) -> bool {
 }
 
 #[cfg(all(test, windows, feature = "codex-provisioning-helper"))]
-#[path = "helper/tests.rs"]
 mod tests;

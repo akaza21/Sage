@@ -9,6 +9,7 @@ use super::{WireState, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
 const USER_AGENT: &str = "sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
+const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
 
 pub(super) fn await_request(
     input: &mut impl Read,
@@ -58,9 +59,13 @@ pub(super) fn emit_response(
         };
     };
     let result = match shape {
-        "initialize" => json!({
-            "userAgent": USER_AGENT,
-            "codexHome": std::env::var("CODEX_HOME").map_err(|_| FixtureError::InvalidArguments)?,
+        "initialize" | "initialize0146" => json!({
+            "userAgent": if shape == "initialize0146" { USER_AGENT_0146 } else { USER_AGENT },
+            "codexHome": if shape == "initialize0146" {
+                std::env::temp_dir().to_string_lossy().into_owned()
+            } else {
+                std::env::var("CODEX_HOME").map_err(|_| FixtureError::InvalidArguments)?
+            },
             "platformFamily": "windows",
             "platformOs": "windows"
         }),
@@ -103,6 +108,11 @@ pub(super) fn emit_notification(
             "jsonrpc":"2.0",
             "method":"item/agentMessage/delta",
             "params":{"threadId":THREAD_ID,"turnId":turn_id,"itemId":format!("fixture-message-{turn_id}"),"delta":"ok"}
+        }),
+        "itemCompleted" => json!({
+            "jsonrpc":"2.0",
+            "method":"item/completed",
+            "params":{"threadId":THREAD_ID,"turnId":turn_id,"item":{"type":"commandExecution","id":"fixture-command-completed","status":"completed","command":"echo fixture-command-completed","aggregatedOutput":"fixture command completed"}}
         }),
         "completed" => json!({
             "jsonrpc":"2.0",
@@ -151,4 +161,30 @@ fn emit_json(
     bytes.push(b'\n');
     write_stdout(output, state, &bytes, false)?;
     output.flush().map_err(|_| FixtureError::Io)
+}
+
+#[cfg(test)]
+mod journey_tests {
+    use super::*;
+
+    #[test]
+    fn lost_steer_result_consumes_the_correlated_write_without_emitting_a_reply() {
+        let case = super::super::super::generated_cases::JOURNEY_CASES
+            .iter()
+            .find(|case| case.id == "codex-steer-lost-result")
+            .unwrap();
+        let steps: Vec<Value> = serde_json::from_str(case.steps_json).unwrap();
+        let request = br#"{"jsonrpc":"2.0","id":4,"method":"turn/steer","params":{}}
+"#;
+        let mut input = std::io::Cursor::new(request);
+        let mut output = Vec::new();
+        let mut error = Vec::new();
+        let mut state = super::super::WireState::new();
+        super::super::execute_with_io(&steps[7], &mut state, &mut input, &mut output, &mut error)
+            .unwrap();
+        assert_eq!(input.position(), request.len() as u64);
+        assert!(output.is_empty());
+        assert_eq!(state.last_request_id, Some(4));
+        assert_eq!(steps[8], json!({"op":"exit","code":17}));
+    }
 }

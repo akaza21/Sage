@@ -30,11 +30,9 @@ impl AcpService {
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
         let (operation_deadline, cleanup_deadline) = deadlines()?;
-        // A failed runner can retain the runtime slot after its native tree
-        // has already reached zero. Reclaim only that proven-zero authority;
-        // a live tree stays fail-closed in its recovery slot.
-        self.reclaim_zero_process_runner_capacity(cleanup_deadline)
+        self.reclaim_zero_process_capacity(cleanup_deadline)
             .map_err(|_| CodexSessionError::Recovery)?;
+        self.park_idle_runtime_for_replacement(cleanup_deadline)?;
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
@@ -212,11 +210,26 @@ impl AcpService {
             }
         };
         let runner = LiveRunnerHandle::new(Arc::clone(&mailbox), control);
+        #[cfg(test)]
+        let finish_park_failure = {
+            let mut failure = self
+                .runtime_port_finish_park_failure
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            std::mem::take(&mut *failure)
+        };
+        #[cfg(test)]
+        let port = if finish_park_failure {
+            let mut port = ProcessLivePort::new_managed(abort.owner.clone(), Arc::clone(&runner));
+            port.set_finish_park_failure();
+            port
+        } else {
+            ProcessLivePort::new_managed(abort.owner.clone(), Arc::clone(&runner))
+        };
+        #[cfg(not(test))]
+        let port = ProcessLivePort::new_managed(abort.owner.clone(), Arc::clone(&runner));
         let host = match RuntimeHost::start_with_shutdown_recovery(
-            LiveRuntimeEngine::new(ProcessLivePort::new_managed(
-                abort.owner.clone(),
-                Arc::clone(&runner),
-            )),
+            LiveRuntimeEngine::new(port),
             Arc::clone(&runner),
         ) {
             Ok(host) => Arc::new(host),
@@ -275,6 +288,7 @@ impl AcpService {
             publisher: Arc::clone(&self.publisher),
             clock,
             mailbox,
+            session_recovery: Some(self.sessions.clone()),
             zero_sequence: AtomicU64::new(0),
         };
         let active = Arc::new(std::sync::Mutex::new(Some(active)));
@@ -329,6 +343,18 @@ impl AcpService {
                 &runner.control(),
             );
         }
+        #[cfg(windows)]
+        if let Some(guard) = prepared.browser_mcp_guard.as_mut() {
+            guard.commit();
+        }
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_runtime_port_finish_park(&self) {
+        *self
+            .runtime_port_finish_park_failure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 }

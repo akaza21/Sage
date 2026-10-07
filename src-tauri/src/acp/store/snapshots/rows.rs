@@ -1,5 +1,9 @@
 use super::{FilePairCommand, ItemIngressCommand, StoreError};
-use crate::acp::{contract::SageItemId, intent::NormalizedPayload, limits::LIMITS};
+use crate::acp::{
+    contract::SageItemId,
+    intent::{NormalizedPayload, SafeResourceLocation},
+    limits::LIMITS,
+};
 use rusqlite::{OptionalExtension, Transaction, params};
 
 pub(super) struct Existing {
@@ -60,16 +64,10 @@ pub(super) fn lookup(
     }
     let payload: NormalizedPayload =
         serde_json::from_str(&json).map_err(|_| StoreError::Corrupt("file metadata"))?;
-    match (&payload, &command.payload) {
-        (
-            NormalizedPayload::FileChangeDiff { resource: old, .. },
-            NormalizedPayload::FileChangeDiff { resource: next, .. },
-        ) if old == next => (),
-        _ => {
-            return Err(StoreError::Conflict {
-                resource: "filePairResource",
-            });
-        }
+    if !admissible(&payload, &command.payload) {
+        return Err(StoreError::Conflict {
+            resource: "filePairResource",
+        });
     }
     let existing = Existing {
         id: row.get(0)?,
@@ -82,6 +80,28 @@ pub(super) fn lookup(
         });
     }
     Ok(Some(existing))
+}
+
+fn admissible(existing: &NormalizedPayload, incoming: &NormalizedPayload) -> bool {
+    let (
+        NormalizedPayload::FileChangeDiff {
+            resource: old,
+            pair_available,
+            snapshot_revision,
+            ..
+        },
+        NormalizedPayload::FileChangeDiff { resource: next, .. },
+    ) = (existing, incoming)
+    else {
+        return false;
+    };
+    if old == next {
+        return true;
+    }
+    !*pair_available
+        && *snapshot_revision == 0
+        && matches!(old, SafeResourceLocation::Unavailable { .. })
+        && matches!(next, SafeResourceLocation::Resource { .. })
 }
 
 pub(super) fn current_revision(

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
+import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { EditorAdapterHandle } from "./EditorAdapter";
@@ -11,6 +12,7 @@ import {
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { localSymbolNavigation } from "../language/outlineNavigation";
+import { canPreviewMarkdown } from "./markdownPreview";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 
 export function FileSurface({
@@ -21,6 +23,7 @@ export function FileSurface({
   readOnly?: boolean;
 }) {
   const editorInputRef = useRef<EditorAdapterHandle>(null);
+  const projectName = useWorkbenchStore((state) => state.project?.name);
   const findInputRef = useRef<HTMLInputElement>(null);
   const {
     resource,
@@ -40,10 +43,14 @@ export function FileSurface({
   } = useFileSurfaceModel(tab, editorInputRef, findInputRef);
   const goToInputRef = useRef<HTMLInputElement>(null);
   const [previewSessionKey, setPreviewSessionKey] = useState("");
+  const [sourceSessionKey, setSourceSessionKey] = useState("");
   const [goToSessionKey, setGoToSessionKey] = useState("");
   const [goToQuery, setGoToQuery] = useState("");
   const [goToError, setGoToError] = useState(false);
-  const previewing = previewSessionKey === activeResourceKey;
+  const agentMarkdown = readOnly && canPreviewMarkdown(path);
+  const previewing = agentMarkdown
+    ? sourceSessionKey !== activeResourceKey
+    : previewSessionKey === activeResourceKey;
   const goToOpen = goToSessionKey === activeResourceKey;
 
   const [languageNavigationStatus, setLanguageNavigationStatus] = useState("");
@@ -170,9 +177,11 @@ export function FileSurface({
       }
       languageNavigationStatus={languageNavigationStatus}
       path={path}
+      projectName={readOnly ? projectName : undefined}
       previewing={previewing}
       transitioning={projectTransitioning}
       readOnly={reviewReadOnly}
+      agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onEditorChange={readOnly ? () => undefined : updateEditorContent}
       onSurfaceKeyDown={(event) => {
@@ -196,9 +205,15 @@ export function FileSurface({
       onTogglePreview={() => {
         hideFind();
         setGoToSessionKey("");
-        setPreviewSessionKey((current) =>
-          current === activeResourceKey ? "" : activeResourceKey,
-        );
+        if (agentMarkdown) {
+          setSourceSessionKey((current) =>
+            current === activeResourceKey ? "" : activeResourceKey,
+          );
+        } else {
+          setPreviewSessionKey((current) =>
+            current === activeResourceKey ? "" : activeResourceKey,
+          );
+        }
       }}
     />
   );

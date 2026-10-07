@@ -1,9 +1,20 @@
-import type { FileChange } from "./workbench";
+import type { FileChange, GitFileMutationAction } from "./workbench";
 
 export function isConflictedChange(change: FileChange) {
   return (
     change.indexStatus === "conflicted" ||
     change.worktreeStatus === "conflicted"
+  );
+}
+
+export function canResolveConflictedChange(
+  change: FileChange,
+  action: GitFileMutationAction,
+): boolean {
+  return (
+    (action === "keepOurs" || action === "keepTheirs") &&
+    isConflictedChange(change) &&
+    change.originalResource == null
   );
 }
 

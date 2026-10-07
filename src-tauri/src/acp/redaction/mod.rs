@@ -157,14 +157,14 @@ impl StderrRing {
                 .map(str::to_owned);
             let error_code = error.get("code").and_then(|code| match code {
                 Value::Number(code) => Some(code.to_string()),
-                Value::String(code) => Some(sanitize_stderr_text(code)),
+                Value::String(code) => Some(sanitize_diagnostic_text(code)),
                 _ => None,
             });
             let error_message = error
                 .get("message")
                 .and_then(Value::as_str)
                 .filter(|message| message.len() <= 1024)
-                .map(sanitize_stderr_text);
+                .map(sanitize_diagnostic_text);
             return SafeStderrDiagnostic {
                 method,
                 error_code,
@@ -177,7 +177,7 @@ impl StderrRing {
             .map(|message| SafeStderrDiagnostic {
                 method: None,
                 error_code: Some("child-stderr".to_owned()),
-                error_message: Some(sanitize_stderr_text(message)),
+                error_message: Some(sanitize_diagnostic_text(message)),
             })
             .unwrap_or_else(empty_stderr_diagnostic)
     }
@@ -196,7 +196,7 @@ fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {
     }
 }
 
-fn sanitize_stderr_text(value: &str) -> String {
+pub(crate) fn sanitize_diagnostic_text(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     let mut redact_next = false;
     for part in value.split_inclusive(char::is_whitespace) {

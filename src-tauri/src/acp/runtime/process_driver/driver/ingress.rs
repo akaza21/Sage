@@ -46,13 +46,15 @@ where
         operation_deadline_millis: Option<i64>,
     ) -> Result<DriverStep, DriverError> {
         self.ensure_running()?;
-        let deadline = match (
+        self.settle_due_exit(self.clock.now_millis()).await?;
+        let deadline = [
             self.pump.next_deferred_flush_deadline_millis(),
             operation_deadline_millis,
-        ) {
-            (Some(deferred), Some(operation)) => Some(deferred.min(operation)),
-            (deferred, operation) => deferred.or(operation),
-        };
+            self.pending_exit_deadline_millis(),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         let message = mailbox
             .wait_next_until(deadline, self.clock.as_ref())
             .map_err(DriverError::Mailbox)?;
@@ -61,10 +63,12 @@ where
                 let now_millis = self.clock.now_millis();
                 self.dispatch_step(message, mailbox, now_millis).await
             }
-            None => self
-                .flush_due(self.clock.now_millis())
-                .await
-                .map(DriverStep::Progress),
+            None => {
+                let now_millis = self.clock.now_millis();
+                self.settle_due_exit(now_millis).await?;
+                let progress = self.flush_due(now_millis).await?;
+                Ok(DriverStep::Progress(progress))
+            }
         }
     }
 
@@ -78,7 +82,7 @@ where
             self.clock.now_millis(),
             DriverProgress::default(),
             false,
-            false,
+            None,
         )
         .await
     }
@@ -93,24 +97,65 @@ where
             ControlMessage::StdoutChunk(chunk) => {
                 self.accept_chunk(&chunk, mailbox, now_millis).await
             }
-            ControlMessage::Prompt(intent) => self.prompt(intent).map(DriverStep::Progress),
-            ControlMessage::Cancel(intent) => self
-                .cancel(intent, DispatchSource::Cancel)
-                .await
-                .map(DriverStep::Progress),
+            ControlMessage::Prompt(intent) => {
+                if self.pending_exit.is_some() {
+                    let error = self.settle_exit(now_millis).await;
+                    intent.reject(error.clone());
+                    return Err(error);
+                }
+                self.prompt(intent).map(DriverStep::Progress)
+            }
+            ControlMessage::Cancel(intent) => {
+                if self.pending_exit.is_some() {
+                    return Err(self.settle_exit(now_millis).await);
+                }
+                self.cancel(intent, DispatchSource::Cancel)
+                    .await
+                    .map(DriverStep::Progress)
+            }
             ControlMessage::Worker(envelope) => Ok(DriverStep::YieldWorker {
                 progress: DriverProgress::default(),
                 envelope,
             }),
             ControlMessage::ReaderTerminal(terminal) => match terminal {
                 ReaderTerminal::Eof => {
-                    let _ = self.finish_stdout(now_millis).await;
-                    Err(self.latch(TeardownCause::ReaderEof))
+                    self.observe_reader_eof(now_millis).await?;
+                    Ok(DriverStep::Progress(DriverProgress::default()))
                 }
-                ReaderTerminal::Io => Err(self.latch(TeardownCause::ReaderIo)),
+                ReaderTerminal::Io => Err(self
+                    .latch_after_reader_terminal(TeardownCause::ReaderIo, now_millis)
+                    .await),
             },
-            ControlMessage::ProcessExit(_) => Err(self.latch(TeardownCause::ProcessExit)),
+            ControlMessage::ProcessExit(exit) => {
+                self.observe_process_exit(exit, now_millis).await?;
+                Ok(DriverStep::Progress(DriverProgress::default()))
+            }
         }
+    }
+
+    pub(crate) async fn observe_reader_eof(&mut self, now_millis: i64) -> Result<(), DriverError> {
+        if self.pending_exit.is_some() {
+            return Err(self.settle_exit(now_millis).await);
+        }
+        let _ = self.finish_stdout(now_millis).await;
+        self.record_reader_eof(now_millis);
+        Ok(())
+    }
+
+    pub(crate) async fn observe_process_exit(
+        &mut self,
+        exit: crate::acp::process::TreeExit,
+        now_millis: i64,
+    ) -> Result<(), DriverError> {
+        let reader_eof_pending = self
+            .pending_exit
+            .as_ref()
+            .is_some_and(|pending| pending.exit.is_none());
+        self.record_exit(exit, now_millis);
+        if reader_eof_pending {
+            return Err(self.settle_exit(now_millis).await);
+        }
+        Ok(())
     }
 
     fn prompt(
@@ -119,7 +164,7 @@ where
     ) -> Result<DriverProgress, DriverError> {
         let result = self.dispatch_prompt(intent.prompt, intent.client_message_id);
         let returned = result;
-        let _ = intent.reply.send(returned);
+        let _ = intent.reply.send(returned.clone());
         match returned {
             Err(error @ DriverError::TeardownRequired(_)) => Err(error),
             _ => Ok(DriverProgress::default()),
@@ -132,15 +177,15 @@ where
         mailbox: &DriverMailbox,
         now_millis: i64,
     ) -> Result<DriverStep, DriverError> {
-        let (produced, config_rejected) = match self
+        let (produced, nonfatal_refusal) = match self
             .pump
             .push_stdout_chunk_deferred(chunk, now_millis)
             .await
         {
-            Ok(produced) => (produced, false),
-            Err(error @ crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
+            Ok(produced) => (produced, None),
+            Err(error @ crate::acp::runtime::AdapterPumpError::Refused(refusal)) => {
                 self.log_rejected_inbound_frame(chunk, &error);
-                (false, true)
+                (false, Some(refusal))
             }
             Err(error) => {
                 self.log_rejected_inbound_frame(chunk, &error);
@@ -152,7 +197,7 @@ where
             now_millis,
             DriverProgress::default(),
             produced,
-            config_rejected,
+            nonfatal_refusal,
         )
         .await
     }
@@ -163,7 +208,7 @@ where
         now_millis: i64,
         mut progress: DriverProgress,
         mut produced: bool,
-        mut config_rejected: bool,
+        mut nonfatal_refusal: Option<crate::acp::runtime::NonfatalRefusal>,
     ) -> Result<DriverStep, DriverError> {
         loop {
             if produced {
@@ -171,12 +216,12 @@ where
                 self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
                     .await?;
             }
-            if !config_rejected
+            if nonfatal_refusal.is_none()
                 && let Some(envelope) = self.dispatch_urgent(mailbox, &mut progress).await?
             {
                 return Ok(DriverStep::YieldWorker { progress, envelope });
             }
-            if config_rejected {
+            if nonfatal_refusal.is_some() {
                 loop {
                     let produced = match self
                         .pump
@@ -199,8 +244,8 @@ where
             }
             produced = match self.pump.drain_stdout_deferred(now_millis).await {
                 Ok(produced) => produced,
-                Err(crate::acp::runtime::AdapterPumpError::ConfigMutationRejected) => {
-                    config_rejected = true;
+                Err(crate::acp::runtime::AdapterPumpError::Refused(refusal)) => {
+                    nonfatal_refusal = Some(refusal);
                     false
                 }
                 Err(error) => return Err(self.pump_error(error)),
@@ -209,14 +254,12 @@ where
                 break;
             }
         }
-        if config_rejected {
-            Err(DriverError::ConfigMutationRejected)
-        } else {
-            Ok(DriverStep::Progress(progress))
-        }
+        nonfatal_refusal.map_or(Ok(DriverStep::Progress(progress)), |refusal| {
+            Err(DriverError::Refused(refusal))
+        })
     }
 
-    async fn finish_stdout(&mut self, now_millis: i64) -> Result<(), DriverError> {
+    pub(super) async fn finish_stdout(&mut self, now_millis: i64) -> Result<(), DriverError> {
         loop {
             let produced = match self.pump.finish_stdout_deferred(now_millis).await {
                 Ok(produced) => produced,
@@ -253,6 +296,9 @@ where
         while let Some(control) = mailbox.try_pop_control() {
             match control {
                 ControlMessage::Cancel(intent) => {
+                    if self.pending_exit.is_some() {
+                        return Err(self.settle_exit(self.clock.now_millis()).await);
+                    }
                     match self.cancel(intent, DispatchSource::Cancel).await {
                         Ok(current) => {
                             progress.written_frames += current.written_frames;
@@ -267,10 +313,13 @@ where
                     }
                 }
                 ControlMessage::ReaderTerminal(_) => {
+                    if self.pending_exit.is_some() {
+                        return Err(self.settle_exit(self.clock.now_millis()).await);
+                    }
                     return Err(self.latch(TeardownCause::ProtocolFailure));
                 }
-                ControlMessage::ProcessExit(_) => {
-                    return Err(self.latch(TeardownCause::ProcessExit));
+                ControlMessage::ProcessExit(exit) => {
+                    self.record_exit(exit, self.clock.now_millis());
                 }
                 ControlMessage::StdoutChunk(_) => {
                     return Err(self.latch(TeardownCause::ProtocolFailure));

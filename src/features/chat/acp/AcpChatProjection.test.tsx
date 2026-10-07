@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,7 +12,7 @@ import type {
   AcpChatPage,
   AcpItem,
   HarnessActivityProjection,
-  TurnProjection,
+  SagePermissionRequestId,
 } from "../../../domain/acp";
 import {
   browseSessionForOwner,
@@ -21,6 +22,18 @@ import {
 import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
 import { AcpChatProjection } from "./AcpChatProjection";
+import { AcpChatPresentation } from "./AcpChatPresentation";
+import { page, textItem } from "./acpProjection.fixture";
+import { settleLazyModules } from "../../../test/settleLazyModules";
+import createdFileEvent from "./createdFileEvent.fixture.json";
+import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
+import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+
+async function renderProjection(ui: Parameters<typeof render>[0]) {
+  const result = render(ui);
+  await settleLazyModules();
+  return result;
+}
 
 const browseOwner = {
   projectId: "project-1",
@@ -38,42 +51,27 @@ afterEach(() => {
   clearBrowseSessions();
 });
 
-function textItem(): Extract<AcpItem, { kind: "text" }> {
-  return {
-    id: "item-text",
-    kind: "text",
-    origin: "primary",
-    createdAt: Date.UTC(2026, 7, 31, 9, 5),
-    payload: { role: "assistant", text: "Normalized answer" },
-  } as unknown as Extract<AcpItem, { kind: "text" }>;
-}
-
-function page(state: TurnProjection["state"]): AcpChatPage {
-  return {
-    projectId: "project-1",
-    chatId: "chat-1",
-    title: "Durable chat",
-    projectionRevision: "12",
-    currentSessionId: "session-1",
-    sessions: [{ id: "session-1", runtimeEpoch: "2" }] as never,
-    nextCursor: null,
+it("renders durable browser actions separately from harness tool rows", async () => {
+  const base = page("completed");
+  const browserPage: AcpChatPage = {
+    ...base,
     turns: [
       {
-        id: "turn-1",
-        sessionId: "session-1",
-        runtimeEpoch: "2",
-        ordinal: 1,
-        state,
-        revision: "3",
-        createdAt: 1,
-        updatedAt: 2,
-        terminalAt: state === "completed" ? 2 : null,
-        items: [textItem()],
-        activities: [],
-      } as unknown as TurnProjection,
+        ...base.turns[0],
+        browserOperations: [browserOperationFixture],
+        browserOperationsCollapsed: 3,
+      },
     ],
-  } as unknown as AcpChatPage;
-}
+  };
+  await renderProjection(<AcpChatProjection page={browserPage} active />);
+  const browserActions = screen.getByRole("region", {
+    name: "Browser actions",
+  });
+  expect(browserActions.closest(".chat-transcript-work")).toBeInTheDocument();
+  fireEvent.click(screen.getByText(/^Worked for /));
+  expect(browserActions).toBeVisible();
+  expect(screen.getByText("+3 earlier browser actions")).toBeInTheDocument();
+});
 
 function activity(
   id: string,
@@ -176,347 +174,123 @@ function editItem(
 }
 
 describe("AcpChatProjection", () => {
-  it("replaces only a revised immutable Turn row", async () => {
-    const chatMarkdown = vi.fn(({ text }: { text: string }) => (
-      <span>{text}</span>
-    ));
-    const turnEditSummary = vi.fn(() => null);
-    vi.resetModules();
-    vi.doMock("./ChatMarkdown", () => ({ ChatMarkdown: chatMarkdown }));
-    vi.doMock("./TurnEditSummary", () => ({
-      TurnEditSummary: turnEditSummary,
-    }));
-    const { AcpChatProjection: MemoProjection } =
-      await import("./AcpChatProjection");
-    const initial = page("completed");
-    initial.turns = Array.from({ length: 14 }, (_, index) => {
-      const turn = structuredClone(initial.turns[0]);
-      turn.id = `turn-${index + 1}` as never;
-      turn.ordinal = index + 1;
-      turn.revision = "1" as never;
-      turn.items = [
-        {
-          ...textItem(),
-          id: `item-${index + 1}` as never,
-          turnId: turn.id,
-          revision: "1" as never,
-          payload: { role: "assistant", text: `Retained row ${index + 1}` },
-        } as AcpItem,
-        {
-          ...textItem(),
-          id: `retained-item-${index + 1}` as never,
-          turnId: turn.id,
-          revision: "1" as never,
-          payload: {
-            role: "assistant",
-            text: `Unchanged sibling ${index + 1}`,
-          },
-        } as AcpItem,
-      ];
-      return turn;
-    });
-    const { container, rerender } = render(
-      <MemoProjection page={initial} active />,
-    );
-    await screen.findByText("Retained row 14");
-    chatMarkdown.mockClear();
-    turnEditSummary.mockClear();
-    const before = Array.from(
-      container.querySelectorAll<HTMLElement>(".acp-turn"),
-    );
-    const revised = structuredClone(initial);
-    const changed = revised.turns[6]!;
-    changed.revision = "2" as never;
-    changed.items = changed.items.map((item, index) =>
-      index === 0
-        ? ({
-            ...item,
-            revision: "2" as never,
-            payload: { role: "assistant", text: "Revised row 7" },
-          } as AcpItem)
-        : item,
-    );
-    rerender(<MemoProjection page={revised} active />);
-    await screen.findByText("Revised row 7");
-    const after = Array.from(
-      container.querySelectorAll<HTMLElement>(".acp-turn"),
-    );
-    expect(chatMarkdown).toHaveBeenCalledOnce();
-    expect(turnEditSummary).toHaveBeenCalledOnce();
-    expect(after[0]).toBe(before[0]);
-    expect(after[6]).toBe(before[6]);
-    expect(after[6]).toHaveTextContent("Revised row 7");
-    expect(after[13]).toBe(before[13]);
-    vi.doUnmock("./ChatMarkdown");
-    vi.doUnmock("./TurnEditSummary");
-    vi.resetModules();
-  });
-
-  it("keeps one tool card when an admitted result names its call", async () => {
-    const next = page("completed");
-    const call = activityItem("call", "activity", {
-      origin: "primary",
-      activityId: null,
-      kind: "toolCall",
-      lifecycle: "streaming",
-      terminalAt: null,
-      toolState: "inProgress",
-      payload: {
-        presentation: {
-          kind: "generic",
-          label: "Issue tracker lookup",
-          summary: "Read the admitted issue summary",
-        },
-        inputSummary: "Issue 42",
+  it("renders the Codex added-file projection as a created file card", async () => {
+    const projection = page("completed");
+    projection.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    const file = editItem("file-added", 1, "fixture-root", "unused");
+    if (file.kind !== "fileChangeDiff") throw new Error("fixture");
+    file.payload.changes = [
+      {
+        ...file.payload.changes[0],
+        resource: { kind: "resource", resource: createdFileEvent.resource },
+        operation: createdFileEvent.expected.operation as "created",
+        summary: createdFileEvent.expected.summary,
+        additions: null,
+        deletions: null,
+        pairState: "unavailable",
+        snapshotRevision: "0",
+        oldBytes: null,
+        newBytes: null,
+        contentDigest: null,
       },
-    });
-    const thought = activityItem("thought-linked-tool", "activity", {
-      origin: "primary",
-      activityId: null,
-      kind: "thoughtSummary",
-      toolState: null,
-      payload: { summary: "Checking issue state" },
-    });
-    const result = activityItem("result", "activity", {
-      origin: "primary",
-      activityId: null,
-      kind: "toolUpdateResult",
-      toolState: "completed",
-      payload: {
-        callItemId: "call" as AcpItem["id"],
-        presentation: {
-          kind: "generic",
-          label: "Issue tracker lookup",
-          summary: "Read the admitted issue summary",
-        },
-        outputSummary: "Issue 42 is ready.",
-      },
-    });
-    next.turns[0].items = [thought, call];
-
-    const { container, rerender } = render(
-      <AcpChatProjection page={next} active />,
-    );
-    await screen.findByRole("group", { name: "Issue tracker lookup" });
-    const card = container.querySelector('[data-acp-item-id="call"]');
-    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
-    expect(card).not.toHaveAttribute("data-tool-result-id");
-    expect(card).toHaveAttribute("data-activity-state", "inProgress");
-    expect(container.querySelector(".acp-thought__working")).not.toBeNull();
-
-    const revised = structuredClone(next);
-    revised.turns[0].revision = "4" as never;
-    revised.turns[0].items = [thought, call, result];
-    rerender(<AcpChatProjection page={revised} active />);
-    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
-    expect(container.querySelector('[data-acp-item-id="call"]')).toBe(card);
-    expect(card).toHaveAttribute("data-tool-result-id", "result");
-    expect(card).toHaveAttribute("data-activity-state", "completed");
-    expect(card).toHaveTextContent("Issue 42 is ready.");
-    expect(container.querySelector(".acp-thought__working")).toBeNull();
-  });
-
-  it("keeps a terminal call state and call presentation over a stale result", async () => {
-    const next = page("completed");
-    const call = activityItem("terminal-call", "activity", {
-      origin: "primary",
-      activityId: null,
-      kind: "toolCall",
-      lifecycle: "failed",
-      toolState: "failed",
-      payload: {
-        presentation: {
-          kind: "web",
-          label: "Browse preview",
-          summary: "Opened http://127.0.0.1:5173/from-call",
-        },
-        inputSummary: "http://127.0.0.1:5173/from-input",
-      },
-    });
-    const stale = activityItem("stale-result", "activity", {
-      origin: "primary",
-      activityId: null,
-      kind: "toolUpdateResult",
-      lifecycle: "streaming",
-      terminalAt: null,
-      toolState: "inProgress",
-      payload: {
-        callItemId: "terminal-call" as AcpItem["id"],
-        presentation: {
-          kind: "generic",
-          label: "Wrong replacement",
-          summary: "Wrong result presentation",
-        },
-        outputSummary: "Stale result detail",
-      },
-    });
-    next.turns[0].items = [call, stale];
-
-    const before = structuredClone(next);
-    before.turns[0].items = [call];
-    const { container, rerender } = render(
-      <AcpChatProjection page={before} active />,
-    );
-    const card = await screen.findByRole("group", { name: "Browse preview" });
-    const revised = structuredClone(next);
-    revised.turns[0].revision = "4" as never;
-    rerender(<AcpChatProjection page={revised} active />);
-    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(1);
-    expect(container.querySelector('[data-acp-item-id="terminal-call"]')).toBe(
-      card,
-    );
-    expect(card).toHaveAttribute("data-activity-kind", "web");
-    expect(card).toHaveAttribute("data-activity-state", "failed");
-    expect(container.querySelector(".acp-thought__working")).toBeNull();
-    expect(card).toHaveTextContent("from-call");
-    expect(screen.queryByText("Wrong replacement")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Open in Sage browser" }),
-    ).toBeVisible();
-  });
-
-  it("does not hide activity anchored to a linked result", async () => {
-    const next = page("completed");
-    const call = activityItem("tree-call", "activity-root", {
-      kind: "toolCall",
-      toolState: "inProgress",
-      payload: {
-        presentation: {
-          kind: "generic",
-          label: "Root call",
-          summary: null,
-        },
-        inputSummary: null,
-      },
-    });
-    const result = activityItem("tree-result", "activity-root", {
-      kind: "toolUpdateResult",
-      toolState: "completed",
-      payload: {
-        callItemId: "tree-call" as AcpItem["id"],
-        presentation: {
-          kind: "generic",
-          label: "Root result",
-          summary: null,
-        },
-        outputSummary: "done",
-      },
-    });
-    const child = activityItem("tree-child", "activity-child", {
-      kind: "unsupported",
-      toolState: null,
-      payload: {
-        category: "extension.future",
-        summary: "Retained child",
-        truncated: false,
-      },
-    });
-    next.turns[0].items = [call, result, child];
-    next.turns[0].activities = [
-      activity("activity-root", null, "item-text", 1),
-      activity("activity-child", "activity-root", "tree-result", 2),
     ];
+    projection.turns[0].items = [file];
+
+    await renderProjection(<AcpChatProjection page={projection} active />);
+
+    const card = screen.getByRole("region", { name: "Files edited in turn 1" });
+    expect(
+      within(card).getByText(createdFileEvent.expected.summary),
+    ).toBeVisible();
+    expect(within(card).getByText("new.ts")).toBeVisible();
+    expect(within(card).queryByText(/Path does not exist/)).toBeNull();
+  });
+
+  it("opens a Codex summary-only created file from its changed-file card", async () => {
+    const projection = page("completed");
+    projection.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    const file = editItem("file-added", 1, "fixture-root", "unused");
+    if (file.kind !== "fileChangeDiff") throw new Error("fixture");
+    file.payload.changes = [
+      {
+        ...file.payload.changes[0],
+        resource: { kind: "resource", resource: createdFileEvent.resource },
+        operation: "created",
+        pairState: "unavailable",
+        snapshotRevision: "0",
+        oldBytes: null,
+        newBytes: null,
+        contentDigest: null,
+      },
+    ];
+    projection.turns[0].items = [file];
+    const openResource = vi.fn();
+    await renderProjection(
+      <AcpChatProjection
+        page={projection}
+        active
+        projectRoots={[{ id: "fixture-root", name: "Project", ordinal: 0 }]}
+        onOpenResource={openResource}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open file Project / src/new.ts" }),
+    );
+    expect(openResource).toHaveBeenCalledWith(
+      createdFileEvent.resource,
+      "file",
+      { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+    );
+  });
+  it("badges an assistant message with the Sage avatar beside its role label", async () => {
+    await renderProjection(
+      <AcpChatProjection page={page("completed")} active />,
+    );
+
+    const message = screen
+      .getByText("Normalized answer")
+      .closest(".acp-message");
+    const avatar = message?.querySelector(".acp-message__avatar");
+
+    expect(avatar).not.toBeNull();
+    expect(avatar?.getAttribute("aria-hidden")).toBe("true");
+    expect(avatar?.textContent).toBe("S");
+  });
+
+  it("leaves a user message without an empty avatar placeholder", async () => {
+    await renderProjection(
+      <AcpChatProjection page={page("completed")} active />,
+    );
+
+    const messages = document.querySelectorAll(".acp-message--user");
+
+    for (const message of messages) {
+      expect(message.querySelector(".acp-message__avatar")).toBeNull();
+    }
+  });
+
+  it("keeps reported usage out of the transcript", () => {
+    const base = page("running");
+    const next = {
+      ...base,
+      turns: [
+        {
+          ...base.turns[0],
+          usage: {
+            inputTokens: 1_234,
+            outputTokens: 0,
+            totalTokens: 1_234,
+          },
+          items: [textItem()],
+        },
+      ],
+    } as AcpChatPage;
 
     render(<AcpChatProjection page={next} active />);
-    const group = await screen.findByRole("group", {
-      name: "Harness activity: Root activity",
-    });
-    fireEvent.click(
-      within(group).getByText("Root activity").closest("summary")!,
-    );
-    const resultNode = group.querySelector<HTMLElement>(
-      '[data-sage-id="tree-result"]',
-    )!;
-    resultNode.focus();
-    fireEvent.keyDown(resultNode, { key: "ArrowRight" });
-    expect(
-      within(group)
-        .getAllByRole("treeitem")
-        .find((item) => item.getAttribute("aria-level") === "2"),
-    ).toHaveTextContent("Unsupported activity");
-  });
 
-  it("does not guess a call/result association without an admitted call ID", async () => {
-    const next = page("completed");
-    const presentation = {
-      kind: "generic" as const,
-      label: "Same label",
-      summary: "Same summary",
-    };
-    next.turns[0].items = [
-      activityItem("unlinked-call", "activity", {
-        origin: "primary",
-        activityId: null,
-        kind: "toolCall",
-        toolState: "inProgress",
-        payload: { presentation, inputSummary: null },
-      }),
-      activityItem("unlinked-result", "activity", {
-        origin: "primary",
-        activityId: null,
-        kind: "toolUpdateResult",
-        toolState: "completed",
-        payload: {
-          callItemId: null,
-          presentation,
-          outputSummary: "Retained result",
-        },
-      }),
-    ];
-
-    const { container } = render(<AcpChatProjection page={next} active />);
-    await screen.findByText("Tool activity · 2 items");
-    const rollup =
-      container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
-    if (!rollup) throw new Error("Expected the tool rollup disclosure");
-    rollup.open = true;
-    fireEvent(rollup, new Event("toggle"));
-    expect(container.querySelectorAll(".acp-tool-card")).toHaveLength(2);
-    expect(
-      [...container.querySelectorAll(".acp-tool-card")].map((card) =>
-        card.getAttribute("data-acp-item-id"),
-      ),
-    ).toEqual(["unlinked-call", "unlinked-result"]);
-  });
-
-  it("keeps unlinked tool results in their original turn position", async () => {
-    const next = page("completed");
-    const presentation = {
-      kind: "generic" as const,
-      label: "Ordered activity",
-      summary: null,
-    };
-    next.turns[0].items = [
-      activityItem("call-one", "activity", {
-        origin: "primary",
-        activityId: null,
-        kind: "toolCall",
-        toolState: "completed",
-        payload: { presentation, inputSummary: null },
-      }),
-      textItem(),
-      activityItem("result-one", "activity", {
-        origin: "primary",
-        activityId: null,
-        kind: "toolUpdateResult",
-        toolState: "completed",
-        payload: {
-          callItemId: null,
-          presentation,
-          outputSummary: "Retained result",
-        },
-      }),
-    ];
-
-    const { container } = render(<AcpChatProjection page={next} active />);
-    await screen.findAllByText("Ordered activity");
-    expect(
-      [...container.querySelectorAll("[data-acp-item-id], .acp-message")].map(
-        (element) =>
-          element.getAttribute("data-acp-item-id") ??
-          element.getAttribute("data-message-role"),
-      ),
-    ).toEqual(["call-one", "assistant", "result-one"]);
+    expect(screen.queryByLabelText("Usage")).toBeNull();
+    expect(screen.queryByText("1,234 tokens")).toBeNull();
   });
 
   it("keeps retained Turn status accessible without replaying it", async () => {
@@ -559,6 +333,685 @@ describe("AcpChatProjection", () => {
     expect(container.querySelector(".acp-message--assistant")).toMatchObject({
       dataset: { itemId: "item-text", messageRole: "assistant" },
     });
+  });
+
+  it("keeps a date boundary above the user bubble rather than between the bubble and Work", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        id: "user-prompt" as AcpItem["id"],
+        payload: { role: "user", text: "Please run the tests" },
+      },
+      activityItem("test-command", "command-activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: "all tests passed",
+            outputTruncated: false,
+            label: "Run tests",
+            summary: "npm test",
+            resources: [],
+            activity: "declaredTest",
+          },
+          inputSummary: null,
+        },
+      }),
+      textItem(),
+      editItem("change", 3, "root-one", "updated"),
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+
+    const turn = container.querySelector<HTMLElement>(".acp-turn");
+    const prompt = turn?.querySelector(".acp-message--user");
+    const day = turn?.querySelector(".chat-transcript-day");
+    const work = turn?.querySelector<HTMLDetailsElement>(
+      ".chat-transcript-work",
+    );
+    const answer = turn?.querySelector(".acp-message--assistant");
+    const changedFiles = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    const rollup = work?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+
+    expect(day).toBeNull();
+    expect(turn?.previousElementSibling).toHaveClass("chat-transcript-day");
+    expect(prompt).not.toBeNull();
+    expect(work).not.toBeNull();
+    expect(answer).not.toBeNull();
+    expect(changedFiles).not.toBeNull();
+    expect(
+      prompt!.compareDocumentPosition(work!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      work!.compareDocumentPosition(answer!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      answer!.compareDocumentPosition(changedFiles) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
+    expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
+    expect(within(turn!).getAllByText("Ran tests")).toHaveLength(1);
+    expect(work).not.toHaveAttribute("open");
+    expect(rollup).not.toBeNull();
+    expect(rollup).not.toHaveAttribute("open");
+
+    fireEvent.click(work!.querySelector("summary")!);
+    expect(work).toHaveAttribute("open");
+    expect(within(work!).getByText("Ran tests")).toBeVisible();
+    rollup!.open = true;
+    fireEvent(rollup!, new Event("toggle"));
+    expect(
+      await within(rollup!).findByLabelText("Command line"),
+    ).toHaveTextContent("npm test");
+    fireEvent.click(work!.querySelector("summary")!);
+    expect(work).not.toHaveAttribute("open");
+  });
+
+  it("shows day labels only when the calendar day changes between turns", async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(14, 8, 0, 0);
+    const today = new Date();
+    today.setHours(9, 5, 0, 0);
+    const base = page("completed");
+    const moments = [
+      yesterday.getTime(),
+      yesterday.getTime() + 60_000,
+      today.getTime(),
+    ];
+    const turns = moments.map((createdAt, index) => ({
+      ...base.turns[0],
+      id: `turn-${index + 1}` as AcpChatPage["turns"][number]["id"],
+      ordinal: index + 1,
+      createdAt,
+      items: [
+        {
+          ...textItem(),
+          id: `prompt-${index + 1}` as AcpItem["id"],
+          createdAt,
+          payload: { role: "user" as const, text: `Prompt ${index + 1}` },
+        },
+      ],
+    })) as AcpChatPage["turns"];
+    const { container } = await renderProjection(
+      <AcpChatProjection page={{ ...base, turns }} active />,
+    );
+    const renderedTurns = container.querySelectorAll(".acp-turn");
+    expect(container.querySelectorAll(".chat-transcript-day")).toHaveLength(2);
+    expect(renderedTurns[0]?.previousElementSibling).toHaveClass(
+      "chat-transcript-day",
+    );
+    expect(renderedTurns[1]?.previousElementSibling).toBe(renderedTurns[0]);
+    expect(renderedTurns[2]?.previousElementSibling).toHaveClass(
+      "chat-transcript-day",
+    );
+    expect(renderedTurns[2]?.querySelector(".chat-transcript-day")).toBeNull();
+  });
+
+  it("shows a day label after local midnight without a projection update", () => {
+    vi.useFakeTimers();
+    try {
+      const beforeMidnight = new Date(2026, 9, 2, 23, 59, 59);
+      vi.setSystemTime(beforeMidnight);
+      const chatPage = page("completed");
+      const morning = new Date(2026, 9, 2, 9, 0).getTime();
+      chatPage.turns[0].createdAt = morning;
+      chatPage.turns[0].items = [];
+      const { container, unmount } = render(
+        <AcpChatPresentation
+          page={chatPage}
+          hasEarlier={false}
+          loadingEarlier={false}
+          historyError={null}
+          projectRoots={[]}
+          retentionIncomplete={false}
+        />,
+      );
+      expect(container.querySelector(".chat-transcript-day")).toBeNull();
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(container.querySelector(".chat-transcript-day")).not.toBeNull();
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("omits a date boundary for an unrepresentable turn timestamp", async () => {
+    const base = page("completed");
+    base.turns[0].createdAt = Number.MAX_VALUE;
+    const { container } = await renderProjection(
+      <AcpChatProjection page={base} active />,
+    );
+    expect(container.querySelector(".acp-turn")).not.toBeNull();
+    expect(container.querySelector(".chat-transcript-day")).toBeNull();
+  });
+
+  it("keeps mixed tool details in ordinal order inside the Worked disclosure", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      activityItem("later-read", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 4,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "read",
+            label: "Read source",
+            resources: [
+              {
+                kind: "resource",
+                resource: { rootId: "root-a", relativePath: "src/main.ts" },
+              },
+            ],
+          },
+          inputSummary: null,
+        },
+      }),
+      textItem(),
+      activityItem("earlier-command", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 2,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: "done",
+            outputTruncated: false,
+            label: "Run checks",
+            summary: "npm run check",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      }),
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(work).not.toBeNull();
+    expect(
+      [...work!.querySelectorAll(".acp-tool-rollup__label")].map(
+        (label) => label.textContent,
+      ),
+    ).toEqual(["Ran commands, read a file"]);
+    const rollup =
+      container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    expect(rollup).not.toBeNull();
+    rollup!.open = true;
+    fireEvent(rollup!, new Event("toggle"));
+    expect(
+      [...rollup!.querySelectorAll(".acp-tool-card")].map((card) =>
+        card.getAttribute("data-acp-item-id"),
+      ),
+    ).toEqual(["earlier-command", "later-read"]);
+  });
+
+  it("summarises adjacent mixed completed tools in one chronological row", async () => {
+    const next = page("completed");
+    const file = (
+      id: string,
+      ordinal: number,
+      kind: "edit" | "read",
+      path: string,
+    ) =>
+      activityItem(id, "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind,
+            label: path,
+            resources: [
+              {
+                kind: "resource",
+                resource: { rootId: "root-a", relativePath: path },
+              },
+            ],
+          },
+          inputSummary: null,
+        },
+      });
+    next.turns[0].items = [
+      file("read-two", 3, "read", "src/b.ts"),
+      file("edit", 1, "edit", "src/a.ts"),
+      activityItem("command", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 4,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            label: "Run command",
+            summary: "npm test",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      }),
+      file("read-one", 2, "read", "src/a.ts"),
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(
+      [...work!.querySelectorAll(".acp-tool-rollup__label")].map((row) =>
+        row.textContent?.trim(),
+      ),
+    ).toEqual(["Edited a file, read files, ran commands"]);
+  });
+
+  it("interleaves running assistant prose and activity rows in transcript order", async () => {
+    const next = page("running");
+    const prose = (id: string, ordinal: number, text: string) =>
+      activityItem(id, "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal,
+        kind: "text",
+        payload: { role: "assistant", text },
+      });
+    const command = (id: string, ordinal: number) =>
+      activityItem(id, "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            label: "Run command",
+            summary: "gh --version",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      });
+    next.turns[0].items = [
+      command("second-command", 4),
+      prose("first-prose", 1, "First progress note"),
+      prose("second-prose", 3, "Second progress note"),
+      command("first-command", 2),
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(work).toHaveAttribute("open");
+    expect(
+      [
+        ...work!.querySelectorAll(
+          ".acp-message--assistant .acp-markdown, .acp-tool-rollup__label",
+        ),
+      ].map((row) => row.textContent?.trim()),
+    ).toEqual([
+      "First progress note",
+      "Ran commands",
+      "Second progress note",
+      "Ran commands",
+    ]);
+  });
+
+  it("keeps an intervening error between running activity rows", async () => {
+    const next = page("running");
+    const command = (id: string, ordinal: number) =>
+      activityItem(id, "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            label: "Run command",
+            summary: "gh --version",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      });
+    next.turns[0].items = [
+      command("later-command", 3),
+      activityItem("intervening-error", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 2,
+        kind: "error",
+        payload: {
+          code: "TOOL_RETRY",
+          message: "Retrying command",
+          recoverable: true,
+        },
+      }),
+      command("first-command", 1),
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(
+      [...work!.querySelectorAll(".acp-tool-rollup__label, .acp-error")].map(
+        (row) => row.textContent?.trim(),
+      ),
+    ).toEqual([
+      "Ran commands",
+      "TOOL_RETRYRetry availableRetrying command",
+      "Ran commands",
+    ]);
+  });
+
+  it("keeps completed progress in Worked and the final answer visible", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        id: "final-answer" as AcpItem["id"],
+        ordinal: 4,
+        payload: { role: "assistant", text: "Final answer" },
+      },
+      activityItem("command", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 3,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            label: "Run command",
+            summary: "gh --version",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      }),
+      {
+        ...textItem(),
+        id: "progress-note" as AcpItem["id"],
+        ordinal: 2,
+        payload: { role: "assistant", text: "Progress note" },
+      },
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(work).not.toHaveAttribute("open");
+    expect(work?.querySelector(".acp-markdown")).toHaveTextContent(
+      "Progress note",
+    );
+    expect(work?.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
+      "Ran commands",
+    );
+    expect(work).not.toHaveTextContent("Final answer");
+    expect(
+      container.querySelector(".acp-turn__items > .acp-message--assistant"),
+    ).toHaveTextContent("Final answer");
+  });
+
+  it("collapses trailing progress but leaves only the last assistant answer visible", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        id: "final-answer" as AcpItem["id"],
+        ordinal: 3,
+        payload: { role: "assistant", text: "Final answer" },
+      },
+      activityItem("command", "activity", {
+        origin: "primary",
+        activityId: null,
+        ordinal: 1,
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "execute",
+            cwd: null,
+            exitCode: 0,
+            outputTail: null,
+            outputTruncated: false,
+            label: "Run command",
+            summary: "gh --version",
+            resources: [],
+            activity: "ordinary",
+          },
+          inputSummary: null,
+        },
+      }),
+      {
+        ...textItem(),
+        id: "trailing-progress" as AcpItem["id"],
+        ordinal: 2,
+        payload: { role: "assistant", text: "Trailing progress" },
+      },
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(work).not.toHaveAttribute("open");
+    expect(work).toHaveTextContent("Trailing progress");
+    expect(work).not.toHaveTextContent("Final answer");
+    expect(
+      container.querySelector(".acp-turn__items > .acp-message--assistant"),
+    ).toHaveTextContent("Final answer");
+  });
+
+  it("places a decided permission in the Worked activity, not the answer flow", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      activityItem("decided-permission", "activity", {
+        origin: "primary",
+        activityId: null,
+        kind: "permissionRequest",
+        toolState: "completed",
+        payload: {
+          requestId: "request-1" as SagePermissionRequestId,
+          state: "resolvedAllowed",
+          label: "Read requested",
+          summary: "Allow reading this file",
+        },
+      }),
+      textItem(),
+    ];
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const permission = container.querySelector(".acp-permission--settled");
+    expect(permission).not.toBeNull();
+    expect(permission?.closest(".chat-transcript-work")).not.toBeNull();
+  });
+
+  it("keeps Working time ticking without projection events and freezes on settlement", () => {
+    vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    try {
+      vi.setSystemTime(4_000);
+      const running = page("running").turns[0];
+      running.createdAt = 1_000;
+      const { rerender, unmount } = render(
+        <ChatTranscriptTurnSummary turn={running} hasActivities />,
+      );
+      expect(screen.getByText("Working for 3s")).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(screen.getByText("Working for 5s")).toBeInTheDocument();
+      const settled = {
+        ...running,
+        state: "completed" as const,
+        terminalAt: 6_000,
+      };
+      rerender(<ChatTranscriptTurnSummary turn={settled} hasActivities />);
+      expect(screen.getByText("Worked for 5s")).toBeInTheDocument();
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(screen.getByText("Worked for 5s")).toBeInTheDocument();
+      unmount();
+      const active = render(
+        <ChatTranscriptTurnSummary turn={running} hasActivities />,
+      );
+      const clearCount = clearIntervalSpy.mock.calls.length;
+      active.unmount();
+      expect(clearIntervalSpy.mock.calls.length).toBeGreaterThan(clearCount);
+    } finally {
+      clearIntervalSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps running activity rows visible and closes them after settlement", () => {
+    const running = page("running").turns[0];
+    const { rerender, container } = render(
+      <ChatTranscriptTurnSummary turn={running} hasActivities>
+        <p>Running npm test</p>
+      </ChatTranscriptTurnSummary>,
+    );
+    const work = container.querySelector(".chat-transcript-work");
+    expect(work).toHaveAttribute("open");
+    expect(screen.getByText("Running npm test")).toBeVisible();
+    const settled = {
+      ...running,
+      state: "completed" as const,
+      terminalAt: running.createdAt + 5_000,
+    };
+    rerender(
+      <ChatTranscriptTurnSummary turn={settled} hasActivities>
+        <p>Running npm test</p>
+      </ChatTranscriptTurnSummary>,
+    );
+    expect(work).not.toHaveAttribute("open");
+  });
+
+  it("renders prompt image attachments above the user bubble", async () => {
+    const next = page("completed");
+    const user = {
+      ...textItem(),
+      id: "user-prompt" as AcpItem["id"],
+      ordinal: 1,
+      payload: { role: "user" as const, text: "Look at this" },
+    } as AcpItem;
+    const image = activityItem("prompt-image", "activity", {
+      origin: "primary",
+      activityId: null,
+      ordinal: 2,
+      kind: "image",
+      toolState: null,
+      payload: {
+        mediaType: "image/png",
+        source: "user",
+        dataUrl:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
+      },
+    });
+    next.turns[0].items = [user, image, { ...textItem(), ordinal: 3 }];
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const attachment = container.querySelector(".acp-image");
+    const bubble = container.querySelector(".acp-message--user");
+    const work = container.querySelector(".chat-transcript-work");
+    expect(attachment).not.toBeNull();
+    expect(
+      screen.getByRole("img", { name: "Image attached by you" }),
+    ).toBeInTheDocument();
+    expect(attachment?.closest(".acp-turn__attachments")).not.toBeNull();
+    expect(bubble).not.toBeNull();
+    expect(
+      attachment!.compareDocumentPosition(bubble!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      bubble!.compareDocumentPosition(work!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps an agent image before assistant text in the agent flow", async () => {
+    const next = page("completed");
+    const user = {
+      ...textItem(),
+      id: "user-prompt" as AcpItem["id"],
+      ordinal: 1,
+      payload: { role: "user" as const, text: "Make an image" },
+    } as AcpItem;
+    const image = activityItem("generated-image", "activity", {
+      origin: "primary",
+      activityId: null,
+      ordinal: 2,
+      kind: "image",
+      toolState: null,
+      payload: {
+        mediaType: "image/png",
+        source: "agent",
+        dataUrl:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
+      },
+    });
+    next.turns[0].items = [user, image, { ...textItem(), ordinal: 3 }];
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const bubble = container.querySelector(".acp-message--user")!;
+    const generated = container.querySelector(".acp-image")!;
+    expect(generated.closest(".acp-turn__attachments")).toBeNull();
+    expect(
+      bubble.compareDocumentPosition(generated) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Image provided by the agent" }),
+    ).toBeInTheDocument();
   });
 
   it("renders an admitted png image item", async () => {
@@ -637,7 +1090,7 @@ describe("AcpChatProjection", () => {
     const item = textItem();
     item.payload.text = "```mermaid\ngraph TD\nA --> B\n```";
     next.turns[0].items = [item];
-    render(<AcpChatProjection page={next} active />);
+    await renderProjection(<AcpChatProjection page={next} active />);
     expect(
       await screen.findByRole("img", { name: "Mermaid diagram" }),
     ).toBeInTheDocument();
@@ -669,7 +1122,8 @@ describe("AcpChatProjection", () => {
         toolState: "inProgress",
         payload: {
           presentation: {
-            kind: "web",
+            kind: "fetch",
+            url: null,
             label: "_sage/browse",
             summary: "http://127.0.0.1:5173/app",
           },
@@ -701,15 +1155,16 @@ describe("AcpChatProjection", () => {
         createdAt: 2,
         updatedAt: 2,
         terminalAt: 2,
-        kind: "toolUpdateResult",
+        kind: "toolCall",
         toolState: "completed",
         payload: {
-          callItemId: "item-web-search" as AcpItem["id"],
           presentation: {
-            kind: "web",
+            kind: "fetch",
+            url: null,
             label: "Web search",
             summary: "http://127.0.0.1:5173/returned-by-search",
           },
+          inputSummary: null,
           outputSummary: null,
         },
       } as AcpItem,
@@ -787,7 +1242,8 @@ describe("AcpChatProjection", () => {
         toolState: "inProgress",
         payload: {
           presentation: {
-            kind: "web",
+            kind: "fetch",
+            url: null,
             label: "_sage/browse",
             summary: "http://127.0.0.1:5173/app",
           },
@@ -818,7 +1274,7 @@ describe("AcpChatProjection", () => {
     expect(loadEarlier).toHaveBeenCalledTimes(1);
   });
 
-  it("renders one root-qualified edit summary and opens the existing per-file Diff target", () => {
+  it("renders one root-qualified edit summary and opens the existing per-file Diff target", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [
@@ -829,7 +1285,7 @@ describe("AcpChatProjection", () => {
     ];
     const openResource = vi.fn();
 
-    render(
+    await renderProjection(
       <AcpChatProjection
         page={edited}
         active
@@ -866,7 +1322,7 @@ describe("AcpChatProjection", () => {
     );
   });
 
-  it("turn_edit_summary_shows_bounded_addition_deletion_chips", () => {
+  it("turn_edit_summary_shows_bounded_addition_deletion_chips", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [
@@ -874,7 +1330,7 @@ describe("AcpChatProjection", () => {
       editItem("unknown", 2, "root-two", "unknown"),
     ];
 
-    render(
+    await renderProjection(
       <AcpChatProjection
         page={edited}
         active
@@ -910,13 +1366,13 @@ describe("AcpChatProjection", () => {
     ).toBeNull();
   });
 
-  it("selecting_a_changed_file_opens_the_existing_per_file_diff", () => {
+  it("selecting_a_changed_file_opens_the_existing_per_file_diff", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [editItem("change", 1, "root-one", "updated")];
     const openResource = vi.fn();
 
-    render(
+    await renderProjection(
       <AcpChatProjection
         page={edited}
         active
@@ -970,7 +1426,7 @@ describe("AcpChatProjection", () => {
     );
   });
 
-  it("disambiguates duplicate root names in visible and accessible Diff labels", () => {
+  it("disambiguates duplicate root names in visible and accessible Diff labels", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [
@@ -979,7 +1435,7 @@ describe("AcpChatProjection", () => {
     ];
     const openResource = vi.fn();
 
-    render(
+    await renderProjection(
       <AcpChatProjection
         page={edited}
         active
@@ -1021,13 +1477,15 @@ describe("AcpChatProjection", () => {
     );
   });
 
-  it("discloses same-Turn paging until the full Turn has merged", () => {
+  it("discloses same-Turn paging until the full Turn has merged", async () => {
     const latest = page("completed");
     latest.sessions = [{ id: "session-1", ordinal: 0 } as never];
     latest.nextCursor = "same-turn-cursor" as never;
     latest.turns[0].items = [editItem("newer", 2, "root-a", "newer event")];
 
-    const { rerender } = render(<AcpChatProjection page={latest} active />);
+    const { rerender } = await renderProjection(
+      <AcpChatProjection page={latest} active />,
+    );
 
     let summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
@@ -1051,6 +1509,7 @@ describe("AcpChatProjection", () => {
       ],
     };
     rerender(<AcpChatProjection page={merged} active />);
+    await settleLazyModules();
 
     summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
@@ -1061,14 +1520,16 @@ describe("AcpChatProjection", () => {
     ).toBeNull();
   });
 
-  it("discloses frontend retention eviction without claiming a complete count", () => {
+  it("discloses frontend retention eviction without claiming a complete count", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [
       editItem("retained", 2, "root-a", "retained event"),
     ];
 
-    render(<AcpChatProjection page={edited} active retentionIncomplete />);
+    await renderProjection(
+      <AcpChatProjection page={edited} active retentionIncomplete />,
+    );
 
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
@@ -1079,7 +1540,7 @@ describe("AcpChatProjection", () => {
     ).toBeVisible();
   });
 
-  it("discloses the rendered-file cap and rejected stale entries without enabling them", () => {
+  it("discloses the rendered-file cap and rejected stale entries without enabling them", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     const items: AcpItem[] = Array.from(
@@ -1118,7 +1579,7 @@ describe("AcpChatProjection", () => {
     );
     edited.turns[0].items = items;
 
-    render(<AcpChatProjection page={edited} active />);
+    await renderProjection(<AcpChatProjection page={edited} active />);
 
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
@@ -1137,7 +1598,7 @@ describe("AcpChatProjection", () => {
     expect(within(summary).queryByText("stale")).toBeNull();
   });
 
-  it("keeps unavailable and wholly stale edit records noninteractive", () => {
+  it("keeps unavailable and wholly stale edit records noninteractive", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     const unavailable = editItem("unavailable", 1, "root-a", "unavailable");
@@ -1165,7 +1626,7 @@ describe("AcpChatProjection", () => {
     });
     edited.turns[0].items = [unavailable, stale];
     const openResource = vi.fn();
-    const { rerender } = render(
+    const { rerender } = await renderProjection(
       <AcpChatProjection page={edited} active onOpenResource={openResource} />,
     );
 
@@ -1197,6 +1658,72 @@ describe("AcpChatProjection", () => {
     expect(openResource).not.toHaveBeenCalled();
   });
 
+  it("names a deleted unavailable file without offering an open action", async () => {
+    const edited = page("completed");
+    edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
+    const deleted = editItem("deleted", 1, "root-a", "deleted");
+    if (deleted.kind === "fileChangeDiff") {
+      deleted.payload = {
+        changes: [
+          {
+            resource: {
+              kind: "unavailable",
+              reason: "missing",
+              label: "Path does not exist",
+              displayResource: {
+                rootId: "root-a",
+                relativePath: "cp8-pane-probe.md",
+              },
+            },
+            operation: "deleted",
+            originalResource: null,
+            summary: "Deleted file",
+            additions: null,
+            deletions: null,
+          },
+        ],
+        truncated: false,
+      };
+    }
+    const legacy = editItem("legacy-deleted", 2, "root-a", "legacy-deleted");
+    if (legacy.kind === "fileChangeDiff") {
+      legacy.payload = {
+        changes: [
+          {
+            resource: {
+              kind: "unavailable",
+              reason: "missing",
+              label: "Path does not exist",
+            },
+            operation: "deleted",
+            originalResource: null,
+            summary: "Earlier deletion",
+            additions: null,
+            deletions: null,
+          },
+        ],
+        truncated: false,
+      };
+    }
+    edited.turns[0].items = [deleted, legacy];
+    const openResource = vi.fn();
+    await renderProjection(
+      <AcpChatProjection page={edited} active onOpenResource={openResource} />,
+    );
+
+    const summary = screen.getByRole("region", {
+      name: "Files edited in turn 1",
+    });
+    expect(
+      within(summary).getByText("cp8-pane-probe.md · Deleted"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Path does not exist · unavailable"),
+    ).toBeInTheDocument();
+    expect(within(summary).queryByRole("button")).toBeNull();
+    expect(openResource).not.toHaveBeenCalled();
+  });
+
   it("navigates real nested activity items without removing their controls from Tab order", () => {
     const nested = page("completed");
     nested.turns[0].items = [
@@ -1206,7 +1733,7 @@ describe("AcpChatProjection", () => {
         toolState: "completed",
         payload: {
           presentation: {
-            kind: "file",
+            kind: "read",
             label: "Read source",
             resources: [
               {
@@ -1330,7 +1857,7 @@ describe("AcpChatProjection", () => {
         toolState: "completed",
         payload: {
           presentation: {
-            kind: "file",
+            kind: "read",
             label: "Read source",
             resources: [
               {
@@ -1349,7 +1876,8 @@ describe("AcpChatProjection", () => {
         toolState: "completed",
         payload: {
           presentation: {
-            kind: "web",
+            kind: "fetch",
+            url: null,
             label: "_sage/browse",
             summary: "http://127.0.0.1:5173/old",
           },
@@ -1366,6 +1894,15 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
+
+    const readDisclosure = document.querySelector<HTMLDetailsElement>(
+      '.acp-tool-rollup[data-activity-kind="read"]',
+    );
+    expect(readDisclosure).not.toBeNull();
+    if (!readDisclosure)
+      throw new Error("Expected the read activity disclosure");
+    readDisclosure.open = true;
+    fireEvent(readDisclosure, new Event("toggle"));
 
     expect(screen.getByText("main.ts")).toBeInTheDocument();
     expect(
@@ -1391,7 +1928,7 @@ describe("AcpChatProjection", () => {
         payload: { summary: "Checking the workspace" },
       } as AcpItem,
     ];
-    render(<AcpChatProjection page={next} active />);
+    await renderProjection(<AcpChatProjection page={next} active />);
     const thought = screen.getByText("Thought 18s");
     expect(thought.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(thought);
@@ -1406,7 +1943,11 @@ describe("AcpChatProjection", () => {
         toolState: "inProgress",
         payload: {
           presentation: {
-            kind: "command",
+            kind: "execute",
+            cwd: null,
+            exitCode: null,
+            outputTail: null,
+            outputTruncated: false,
             label: `Tool ${index}`,
             summary: null,
             resources: [],
@@ -1456,6 +1997,8 @@ describe("AcpChatProjection", () => {
         payload: {
           presentation: {
             kind: "search",
+            matchCount: null,
+            truncated: false,
             label: "Search workspace",
             querySummary: "needle",
             resources: [],

@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
@@ -29,6 +29,11 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   DesktopCodeSplitting["groups"]
 > = [
   { name: "initial-deps", tags: ["$initial"], priority: 2 },
+  {
+    name: "workbench-deps",
+    priority: 1,
+    test: /src[\\/]workbench[\\/]Workbench\.tsx$/,
+  },
   {
     name: "codemirror-deps",
     priority: 1,
@@ -125,5 +130,10 @@ export default defineConfig(({ command, mode }) => ({
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     clearMocks: true,
+    exclude: [
+      ...configDefaults.exclude,
+      "**/.claude/worktrees/**",
+      "**/work/**",
+    ],
   },
 }));

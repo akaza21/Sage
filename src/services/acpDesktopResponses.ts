@@ -39,6 +39,13 @@ export function safeText(value: unknown, maximumBytes: number): string | null {
     : null;
 }
 
+export function safeMessage(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > 8192) {
+    return null;
+  }
+  return utf8ByteLength(value) <= 8192 ? value : null;
+}
+
 export function safeOrdinal(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -158,6 +165,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
     runtimeEpoch === undefined ||
     nextRuntimeEpoch === undefined ||
     !capabilities ||
+    typeof value.permissionRequests !== "boolean" ||
     !revision ||
     !projectionRevision ||
     typeof value.legacy !== "boolean"
@@ -174,6 +182,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
     nextRuntimeEpoch:
       nextRuntimeEpoch as AgentSessionProjection["nextRuntimeEpoch"],
     capabilities,
+    permissionRequests: value.permissionRequests,
     revision: revision as AgentSessionProjection["revision"],
     projectionRevision:
       projectionRevision as AgentSessionProjection["projectionRevision"],
@@ -189,7 +198,7 @@ export function safeAcpMutationResponse(
   const projectId = safeIdentifier(projection.projectId);
   const chatId = safeIdentifier(projection.chatId);
   const title = safeText(projection.title, 8192);
-  const projectionRevision = safeCounter(projection.projectionRevision, false);
+  const projectionRevision = safeCounter(projection.projectionRevision, true);
   const currentSessionId =
     projection.currentSessionId === null
       ? null
@@ -304,7 +313,11 @@ export function safeCodexDiscovery(
     !rootId ||
     !bindingId ||
     !runtimeEpoch ||
-    !isOneOf(value.account, ["managedChatgpt", "signedOut"] as const) ||
+    !isOneOf(value.account, [
+      "managedChatgpt",
+      "providerManaged",
+      "signedOut",
+    ] as const) ||
     value.models.length > 128
   )
     return null;

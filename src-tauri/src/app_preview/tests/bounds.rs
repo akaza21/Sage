@@ -142,6 +142,7 @@ fn every_preview_cap_has_an_exact_and_plus_one_boundary() {
         PREVIEW_LIMITS.browse_listeners,
         PREVIEW_LIMITS.frontend_listeners,
         PREVIEW_LIMITS.startup_deadline_ms,
+        PREVIEW_LIMITS.startup_idle_deadline_ms,
         PREVIEW_LIMITS.health_deadline_ms,
         PREVIEW_LIMITS.health_probe_timeout_ms,
         PREVIEW_LIMITS.health_retry_ms,

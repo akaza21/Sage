@@ -20,7 +20,7 @@ pub const MAX_RESOURCE_TABS: usize = 32;
 pub const MAX_RESTORED_TAB_BYTES: i64 = 2 * 1024 * 1024;
 const MAX_LAYOUT_SELECTION_BYTES: i64 = 64 * 1024;
 const ALLOWED_TAB_KINDS: &[&str] = &[
-    "chat", "file", "diff", "terminal", "search", "problems", "output", "settings",
+    "chat", "file", "diff", "terminal", "search", "problems", "output", "settings", "browser",
 ];
 
 pub struct RestoredLayout {
@@ -278,6 +278,11 @@ fn load_tabs(
                         "only persisted File and Diff tabs may carry a resource".into(),
                     ));
                 }
+                let restored_status = if kind == "browser" {
+                    Some("closed".into())
+                } else {
+                    status
+                };
                 Ok(WorkbenchTab {
                     id,
                     kind,
@@ -285,7 +290,7 @@ fn load_tabs(
                     position,
                     pinned,
                     dirty,
-                    status,
+                    status: restored_status,
                     updated_at: admit_tab_updated_at(updated_at),
                     resource,
                     repository,

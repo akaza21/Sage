@@ -15,6 +15,9 @@ where
         intent: &ConfigIntent,
         deadline: std::time::Instant,
     ) -> Result<(), HostError> {
+        if context.mailbox.reader_terminal_queued() {
+            return Err(HostError::RecoveryRequired);
+        }
         if std::time::Instant::now() >= deadline {
             return Err(HostError::Deadline);
         }

@@ -7,7 +7,6 @@ use super::{
 };
 
 #[cfg(windows)]
-#[path = "managed/windows.rs"]
 mod windows;
 
 const MANAGED_NODE_MAX: usize = 64;

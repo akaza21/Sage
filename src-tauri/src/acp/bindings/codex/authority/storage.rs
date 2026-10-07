@@ -13,7 +13,6 @@ use crate::acp::bindings::codex::{
 };
 
 #[cfg(windows)]
-#[path = "storage/windows.rs"]
 mod windows;
 
 #[cfg(all(test, windows))]

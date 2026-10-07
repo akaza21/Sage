@@ -91,6 +91,11 @@ impl JournalTicket {
             Ok(remaining)
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn expire_deadline_for_test(&mut self) {
+        self.timeout = Duration::ZERO;
+    }
 }
 
 impl Drop for JournalTicket {
