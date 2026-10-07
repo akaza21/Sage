@@ -93,6 +93,7 @@ describe("sizing scale tokens", () => {
       "src/styles/problems-outline-surfaces.css",
       "src/features/search/workspace-search.css",
       "src/features/chat/acp/acp-activity-cards.css",
+      "src/features/chat/acp/acp-activity-details.css",
       "src/features/chat/acp/acp-chat.css",
     ]) {
       const source = readFileSync(resolve(process.cwd(), file), "utf8");

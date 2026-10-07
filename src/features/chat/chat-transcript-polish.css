@@ -225,19 +225,6 @@
   display: none;
 }
 
-.chat-transcript-work__groups
-  .acp-tool-rollup
-  > summary
-  > .acp-tool-rollup__summary-copy {
-  color: inherit;
-  font-weight: inherit;
-}
-
-.chat-transcript-work__groups .acp-tool-rollup__label {
-  color: inherit;
-  font-weight: inherit;
-}
-
 .chat-transcript-work__groups .acp-tool-rollup__meta {
   display: contents;
 }
@@ -262,63 +249,6 @@
   > summary:focus-visible
   .acp-tool-rollup__chevron {
   opacity: 1;
-}
-
-.chat-transcript-activity {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-}
-
-.chat-transcript-activity > summary {
-  display: grid;
-  min-height: var(--row-height-compact);
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  list-style: none;
-  transition: color var(--motion-duration-fast) ease;
-}
-
-.chat-transcript-activity > summary::-webkit-details-marker {
-  display: none;
-}
-
-.chat-transcript-activity > summary:hover {
-  color: var(--color-text-primary);
-}
-
-.chat-transcript-activity__icons {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--color-text-muted);
-}
-
-.chat-transcript-activity__chevron {
-  color: var(--color-text-muted);
-  transition: transform var(--motion-duration-fast) ease;
-}
-
-.chat-transcript-activity[open] .chat-transcript-activity__chevron {
-  transform: rotate(180deg);
-}
-
-.chat-transcript-activity > ul {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0 0 var(--space-1) var(--space-3);
-  color: var(--color-text-muted);
-  list-style: none;
-}
-
-.chat-transcript-activity > ul > li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 20px;
 }
 
 .chat-transcript-actions {
@@ -352,8 +282,7 @@
 }
 
 .chat-transcript-actions > button:focus-visible,
-.chat-transcript-work > summary:focus-visible,
-.chat-transcript-activity > summary:focus-visible {
+.chat-transcript-work > summary:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
@@ -378,8 +307,6 @@
 
   .chat-transcript-work > summary,
   .chat-transcript-work > summary::after,
-  .chat-transcript-activity > summary,
-  .chat-transcript-activity__chevron,
   .chat-transcript-work__groups .acp-tool-rollup__chevron {
     transition: none;
   }

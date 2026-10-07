@@ -7,6 +7,7 @@ import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
 import "./acp-activity-cards.css";
+import "./acp-activity-details.css";
 import "./acp-chat-activities.css";
 import "./acp-chat.css";
 import "./acp-child-activity.css";

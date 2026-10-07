@@ -82,10 +82,7 @@ export function ToolActivityRollup({
   const state = toolRollupState(rollup.items);
   const stateLabel = toolRollupStateLabel(state);
   const duration = toolRollupDurationLabel(rollup.items);
-  const liveCommand =
-    rollup.kind === "execute" &&
-    rollup.items.length === 1 &&
-    rollup.items[0]?.toolState === "inProgress";
+  const live = state === "inProgress";
   return (
     <details
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
@@ -96,8 +93,12 @@ export function ToolActivityRollup({
       <summary>
         <span className="acp-tool-rollup__summary-copy">
           <ActivityKindIcon kind={rollup.kind} />
-          {liveCommand ? null : <ToolStateIcon state={state} />}
-          <span className="acp-tool-rollup__label">{label}</span>
+          {live ? null : <ToolStateIcon state={state} />}
+          <span
+            className={`acp-tool-rollup__label${live ? " acp-live-shimmer" : ""}`}
+          >
+            {label}
+          </span>
         </span>
         <span className="acp-tool-rollup__meta">
           {duration ? (
@@ -106,7 +107,7 @@ export function ToolActivityRollup({
               {duration}
             </span>
           ) : null}
-          {liveCommand ? null : <span className="acp-state">{stateLabel}</span>}
+          {live ? null : <span className="acp-state">{stateLabel}</span>}
           <ChevronDown
             className="acp-tool-rollup__chevron"
             aria-hidden="true"

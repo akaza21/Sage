@@ -782,6 +782,43 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     ).toBe(true);
     await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
   });
+
+  test("shows a compact live activity row without a status chip", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-activity-family", "agent");
+
+    const liveRow = page.locator(
+      '.acp-tool-rollup[data-activity-state="inProgress"]',
+    );
+    await expect(liveRow).toHaveCount(1);
+    await expect(liveRow.locator(".acp-tool-rollup__label")).toHaveClass(
+      /acp-live-shimmer/,
+    );
+    await expect(liveRow.locator("summary .acp-state")).toHaveCount(0);
+    await expect(
+      liveRow.locator("summary .acp-tool-rollup__chevron"),
+    ).toBeVisible();
+    const label = liveRow.locator(".acp-tool-rollup__label");
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).backgroundImage),
+    ).toContain("linear-gradient");
+    expect(await label.evaluate((node) => getComputedStyle(node).color)).toBe(
+      "rgba(0, 0, 0, 0)",
+    );
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).animationName),
+    ).toBe("acp-live-shimmer");
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).animationDuration),
+    ).toBe("0s");
+    await page.emulateMedia({ forcedColors: "active" });
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).color),
+    ).not.toBe("rgba(0, 0, 0, 0)");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -310,6 +310,31 @@ describe("ToolActivityRollup", () => {
     expect(row).toHaveAttribute("open");
   });
 
+  it("shows a live edit as one muted shimmering row without a status chip", () => {
+    const edit: ToolItem = {
+      ...tool("live-edit", "edit", [mainFile]),
+      lifecycle: "streaming",
+      toolState: "inProgress",
+      terminalAt: null,
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{ kind: "edit", commandActivity: "ordinary", items: [edit] }}
+        interactive
+      />,
+    );
+
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    expect(row?.querySelector("summary")).toHaveTextContent("Editing files");
+    expect(row?.querySelector(".acp-tool-rollup__label")).toHaveClass(
+      "acp-live-shimmer",
+    );
+    expect(row?.querySelector("summary .acp-state")).toBeNull();
+    expect(
+      row?.querySelector("summary svg[data-activity-icon='edit']"),
+    ).not.toBeNull();
+  });
+
   it("rolls up a declared test singleton without a pass count", () => {
     const test = {
       ...tool("test", "execute"),

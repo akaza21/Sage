@@ -22,9 +22,13 @@ describe("ACP activity-card stylesheet seam", () => {
   });
 
   it("owns the shared card grammar without leaving duplicate selectors", async () => {
-    const [projection, cards, legacy, chat] = await Promise.all([
+    const [projection, cards, details, legacy, chat] = await Promise.all([
       readFile(resolve("src/features/chat/acp/AcpChatProjection.tsx"), "utf8"),
       readFile(resolve("src/features/chat/acp/acp-activity-cards.css"), "utf8"),
+      readFile(
+        resolve("src/features/chat/acp/acp-activity-details.css"),
+        "utf8",
+      ),
       readFile(
         resolve("src/features/chat/acp/acp-chat-activities.css"),
         "utf8",
@@ -33,6 +37,7 @@ describe("ACP activity-card stylesheet seam", () => {
     ]);
 
     expect(projection).toMatch(/import "\.\/acp-activity-cards\.css";/);
+    expect(projection).toMatch(/import "\.\/acp-activity-details\.css";/);
     expect(cards).toMatch(/^\.acp-activity-card\s*\{/m);
     expect(cards).toMatch(
       /^\.acp-activity-card\s*\{[^}]*padding:\s*var\(--space-2\) 0 var\(--space-2\) var\(--space-3\);/ms,
@@ -51,8 +56,8 @@ describe("ACP activity-card stylesheet seam", () => {
     expect(cards).toMatch(
       /\.acp-tool-card__duration\s*\{[^}]*font-variant-numeric:\s*tabular-nums;/s,
     );
-    expect(cards).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
-    expect(cards).toMatch(/@media \(forced-colors: active\)/);
+    expect(details).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
+    expect(details).toMatch(/@media \(forced-colors: active\)/);
     expect(legacy).not.toMatch(/^\.acp-tool-card\b/m);
     expect(legacy).not.toMatch(/^\.acp-plan\b/m);
     expect(legacy).not.toMatch(/^\.acp-thought\b/m);

@@ -25,12 +25,9 @@ describe("Agent motion style seams", () => {
   it("brightens activity rows, fades the hover chevron, and reveals Copy and Retry", async () => {
     const [transcript, activity] = await Promise.all([
       css("src/features/chat/chat-transcript-polish.css"),
-      css("src/features/chat/acp/acp-activity-cards.css"),
+      css("src/features/chat/acp/acp-activity-details.css"),
     ]);
 
-    expect(transcript).toMatch(
-      /\.chat-transcript-activity > summary\s*\{[^}]*transition:\s*color var\(--motion-duration-fast\) ease;/s,
-    );
     expect(transcript).toMatch(
       /\.chat-transcript-actions\s*\{[^}]*animation:\s*sage-reveal-two-pixel var\(--motion-duration-normal\) ease-out both;/s,
     );
@@ -73,6 +70,7 @@ describe("Agent motion style seams", () => {
     const files = await Promise.all([
       css("src/features/chat/chat-transcript-polish.css"),
       css("src/features/chat/acp/acp-activity-cards.css"),
+      css("src/features/chat/acp/acp-activity-details.css"),
       css("src/styles/changed-files-summary.css"),
       css("src/styles/shared-dialogs.css"),
     ]);
@@ -92,9 +90,10 @@ describe("Agent motion style seams", () => {
   });
 
   it("tokens all activity pulses and the chat spinner, including reduced motion", async () => {
-    const [global, activity, chat] = await Promise.all([
+    const [global, activity, detail, chat] = await Promise.all([
       css("src/styles/global.css"),
       css("src/features/chat/acp/acp-activity-cards.css"),
+      css("src/features/chat/acp/acp-activity-details.css"),
       css("src/styles/agent-chat-panes.css"),
     ]);
     expect(global).toMatch(/--motion-duration-pulse:\s*1\.4s;/);
@@ -103,6 +102,7 @@ describe("Agent motion style seams", () => {
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*--motion-duration-pulse:\s*0ms;[\s\S]*--motion-duration-spin:\s*0ms;/,
     );
     expect(activity).not.toMatch(/animation:[^;]*\b(?:1\.4s|900ms)\b/);
+    expect(detail).not.toMatch(/animation:[^;]*\b(?:1\.4s|900ms)\b/);
     expect(activity).toContain(
       "sage-working-pulse var(--motion-duration-pulse)",
     );

@@ -47,6 +47,35 @@ function item<T extends AcpItem["kind"]>(
 }
 
 describe("TurnActivityItem", () => {
+  it("shows a streaming reasoning item as a muted Thinking row", () => {
+    const thought = item("thoughtSummary", { summary: "Checking the files." });
+    thought.lifecycle = "streaming";
+    thought.terminalAt = null;
+    const { container } = render(
+      <TurnActivityItem item={thought} nowMs={4_000} />,
+    );
+    const details = container.querySelector(".acp-thought");
+    expect(details?.querySelector("summary")).toHaveTextContent("Thinking");
+    expect(details?.querySelector(".acp-thought__label")).toHaveClass(
+      "acp-live-shimmer",
+    );
+    expect(details?.querySelector("summary .acp-state")).toBeNull();
+    expect(details).toHaveAttribute("data-activity-state", "inProgress");
+  });
+
+  it("names a sub-second live Thought as Thinking briefly", () => {
+    const thought = item("thoughtSummary", { summary: "Checking the files." });
+    thought.createdAt = 1_000;
+    thought.lifecycle = "streaming";
+    thought.terminalAt = null;
+    render(<TurnActivityItem item={thought} nowMs={1_500} />);
+
+    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking briefly",
+    );
+  });
+
   it("freezes a completed Thought while a streaming Thought advances", () => {
     const thought = item("thoughtSummary", { summary: "Checking the files." });
     thought.createdAt = 1_000;
@@ -66,9 +95,15 @@ describe("TurnActivityItem", () => {
       terminalAt: null,
     } as typeof thought;
     rerender(<TurnActivityItem item={streaming} nowMs={4_000} />);
-    expect(screen.getByText("Thought 3s")).toBeVisible();
+    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking for 3s",
+    );
     rerender(<TurnActivityItem item={streaming} nowMs={5_000} />);
-    expect(screen.getByText("Thought 4s")).toBeVisible();
+    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking for 4s",
+    );
 
     rerender(
       <TurnActivityItem
@@ -101,10 +136,16 @@ describe("TurnActivityItem", () => {
     thought.lifecycle = "streaming";
     act(() => syncAgentRailClock(4_000));
     const { rerender } = render(<TurnActivityItem item={thought} />);
-    expect(screen.getByText("Thought 3s")).toBeVisible();
+    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking for 3s",
+    );
 
     act(() => syncAgentRailClock(5_000));
-    expect(screen.getByText("Thought 4s")).toBeVisible();
+    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking for 4s",
+    );
 
     const terminal = {
       ...thought,
@@ -191,7 +232,8 @@ describe("TurnActivityItem", () => {
     );
     const details = container.querySelector("details");
     expect(details).toHaveAttribute("data-activity-state", "inProgress");
-    expect(within(details!).getByText("In progress")).toBeVisible();
+    expect(within(details!).getByText("Thinking")).toBeVisible();
+    expect(within(details!).queryByText("In progress")).toBeNull();
     expect(within(details!).queryByLabelText("Working tools")).toBeNull();
   });
 
@@ -396,7 +438,8 @@ describe("TurnActivityItem", () => {
       <TurnActivityItem item={thought} workingItems={[working]} />,
     );
 
-    expect(screen.getByText("In progress")).toBeVisible();
+    expect(screen.getByText("Thinking")).toBeVisible();
+    expect(screen.queryByText("In progress")).toBeNull();
     expect(screen.getByText("Search workspace")).not.toBeVisible();
     const details = container.querySelector("details");
     expect(details).not.toBeNull();

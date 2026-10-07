@@ -800,6 +800,43 @@ describe("AcpChatProjection", () => {
     ).toHaveTextContent("Final answer");
   });
 
+  it("keeps a completed Thought inside collapsed Worked", async () => {
+    const next = page("completed");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        id: "final-answer" as AcpItem["id"],
+        ordinal: 3,
+        payload: { role: "assistant", text: "Final answer" },
+      },
+      {
+        ...textItem(),
+        id: "completed-thought" as AcpItem["id"],
+        ordinal: 2,
+        kind: "thoughtSummary",
+        lifecycle: "completed",
+        terminalAt: 4_000,
+        payload: { summary: "Checked the file changes" },
+      } as AcpItem,
+    ];
+
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const work = container.querySelector<HTMLDetailsElement>(
+      ".chat-transcript-work",
+    );
+    expect(work).not.toBeNull();
+    expect(work).not.toHaveAttribute("open");
+    expect(work?.querySelector(".acp-thought__label")).toHaveTextContent(
+      /^Thought/,
+    );
+    expect(work).toHaveTextContent("Checked the file changes");
+    expect(
+      container.querySelector(".acp-turn__items > .acp-message--assistant"),
+    ).toHaveTextContent("Final answer");
+  });
+
   it("collapses trailing progress but leaves only the last assistant answer visible", async () => {
     const next = page("completed");
     next.turns[0].items = [
@@ -1929,7 +1966,11 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     await renderProjection(<AcpChatProjection page={next} active />);
-    const thought = screen.getByText("Thought 18s");
+    const thought = screen.getByText("Thinking");
+    expect(thought.closest("summary")).toHaveAttribute(
+      "aria-label",
+      "Thinking for 18s",
+    );
     expect(thought.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(thought);
     expect(screen.getByText("Checking the workspace")).toBeVisible();
@@ -2008,7 +2049,7 @@ describe("AcpChatProjection", () => {
       }),
     ];
     render(<AcpChatProjection page={next} active />);
-    fireEvent.click(screen.getByText(/^Thought/));
+    fireEvent.click(screen.getByText("Thinking"));
     expect(screen.getByText("Search workspace")).toBeVisible();
     expect(screen.getByText("Searching… needle")).toBeVisible();
   });

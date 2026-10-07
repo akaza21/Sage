@@ -98,6 +98,10 @@ export function toolRollupLabel(
   items: readonly ToolProjectionItem[],
   commandActivity: ToolRollup["commandActivity"] = "ordinary",
 ): string {
+  const live = items.some((item) => item.toolState === "inProgress");
+  if (live && kind === "edit") return "Editing files";
+  if (live && kind === "think") return "Thinking";
+  if (live && kind === "execute" && items.length > 1) return "Running commands";
   if (
     kind === "execute" &&
     items.length === 1 &&

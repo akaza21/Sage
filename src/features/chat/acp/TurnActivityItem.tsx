@@ -144,7 +144,11 @@ function PlanStateIcon({ state }: { state: keyof typeof planStateLabels }) {
   return <Circle size={14} aria-hidden="true" />;
 }
 
-function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
+function thoughtDurationLabel(
+  createdAt: number,
+  endAt: number,
+  live: boolean,
+): string | null {
   if (
     !Number.isFinite(createdAt) ||
     !Number.isFinite(endAt) ||
@@ -152,7 +156,10 @@ function thoughtDurationLabel(createdAt: number, endAt: number): string | null {
   )
     return null;
   const seconds = Math.floor((endAt - createdAt) / 1_000);
-  return seconds > 0 ? `Thought ${seconds}s` : "Thought briefly";
+  const verb = live ? "Thinking" : "Thought";
+  return seconds > 0
+    ? `${verb}${live ? " for" : ""} ${seconds}s`
+    : `${verb} briefly`;
 }
 
 function ThoughtActivity({
@@ -171,19 +178,22 @@ function ThoughtActivity({
     .filter(isWorkingTool)
     .slice(0, MAX_THOUGHT_WORKING_ROWS);
   const terminal = terminalItemLifecycles.has(item.lifecycle);
-  const endAt = terminal ? (item.terminalAt ?? item.updatedAt) : liveNowMs;
-  const label = thoughtDurationLabel(item.createdAt, endAt);
+  const live = !terminal || active.length > 0;
+  const endAt = live ? liveNowMs : (item.terminalAt ?? item.updatedAt);
+  const label = thoughtDurationLabel(item.createdAt, endAt, live);
   return (
     <details
       className="acp-activity-card acp-activity-card--thought acp-details acp-thought"
       data-activity-kind="thought"
-      data-activity-state={active.length > 0 ? "inProgress" : "completed"}
+      data-activity-state={live ? "inProgress" : "completed"}
     >
-      <summary>
-        <span>{label ?? "Thought"}</span>
-        <span className="acp-state">
-          {active.length > 0 ? "In progress" : "Details"}
+      <summary aria-label={live ? (label ?? undefined) : undefined}>
+        <span
+          className={`acp-thought__label${live ? " acp-live-shimmer" : ""}`}
+        >
+          {live ? "Thinking" : (label ?? "Thought")}
         </span>
+        {live ? null : <span className="acp-state">Details</span>}
       </summary>
       <ChatMarkdown
         text={item.payload.summary}
