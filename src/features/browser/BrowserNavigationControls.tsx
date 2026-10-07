@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -18,7 +19,6 @@ import {
 
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
 import { useWorkbenchStore } from "../../app/store";
-import { BrowserFavicon, type BrowserSuggestedSites } from "./browserAddress";
 import type { BrowserPageIdentity } from "./browserAddress";
 
 interface Props {
@@ -64,6 +64,9 @@ export function BrowserNavigationControls({
   const [editing, setEditing] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (editing) addressField.current?.select();
+  }, [editing, addressField]);
   useEffect(() => {
     if (menuOpen)
       menu.current
@@ -282,53 +285,6 @@ export function BrowserNavigationControls({
         ) : null}
       </div>
     </>
-  );
-}
-
-type NewTabProps = {
-  suggestions: BrowserSuggestedSites;
-  onNavigate: (url: string) => void;
-  onAddress: () => void;
-  onNewTab: () => void;
-};
-
-export function BrowserNewTab({
-  suggestions,
-  onNavigate,
-  onAddress,
-  onNewTab,
-}: NewTabProps) {
-  return (
-    <div className="browser-new-tab">
-      <section aria-labelledby="browser-new-tab-tools">
-        <h2 id="browser-new-tab-tools">Tools</h2>
-        <div className="browser-new-tab__tools">
-          <button type="button" onClick={onAddress}>
-            Search the web
-          </button>
-          <button type="button" onClick={onNewTab}>
-            New tab
-          </button>
-        </div>
-      </section>
-      <section aria-labelledby="browser-new-tab-suggested">
-        <h2 id="browser-new-tab-suggested">Suggested</h2>
-        <div className="browser-new-tab__suggestions">
-          {suggestions.map(({ url, title, favicon }) => (
-            <button key={url} type="button" onClick={() => onNavigate(url)}>
-              <span aria-hidden="true">
-                <BrowserFavicon
-                  key={favicon ?? ""}
-                  value={favicon}
-                  fallback="◎"
-                />
-              </span>
-              {title?.trim() || new URL(url).host}
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
   );
 }
 

@@ -107,3 +107,43 @@ test("mixed resource and browser tabs share a 560 px pane without clipping contr
   });
   expect(crowded).toBe(true);
 });
+
+test("loaded browser address remains legible in a 560 px right-pane toolbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto("/tests/ui/fixtures/browser-address.html");
+
+  const toolbar = page.locator(".browser-surface__toolbar");
+  const address = page.getByRole("textbox", { name: "Address or search" });
+  await expect(toolbar).toHaveCSS("height", "44px");
+  await expect(address).toHaveCSS("height", "32px");
+  await expect(address).toHaveValue("en.wikipedia.org");
+  const geometry = await address.evaluate((element) => {
+    const addressBox = element.getBoundingClientRect();
+    const toolbarBox = element
+      .closest(".browser-surface__toolbar")!
+      .getBoundingClientRect();
+    return {
+      width: addressBox.width,
+      offsetFromToolbarCenter:
+        (addressBox.left + addressBox.right) / 2 -
+        (toolbarBox.left + toolbarBox.right) / 2,
+    };
+  });
+  expect(geometry.width).toBeGreaterThanOrEqual(280);
+  expect(Math.abs(geometry.offsetFromToolbarCenter)).toBeLessThanOrEqual(1);
+
+  await address.click();
+  await expect(address).toHaveValue(
+    "https://en.wikipedia.org/wiki/Web_browser",
+  );
+  const selection = await address.evaluate((element: HTMLInputElement) => ({
+    start: element.selectionStart,
+    end: element.selectionEnd,
+  }));
+  expect(selection).toEqual({
+    start: 0,
+    end: "https://en.wikipedia.org/wiki/Web_browser".length,
+  });
+});

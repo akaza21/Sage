@@ -29,8 +29,8 @@ import {
   ClosedBrowserSurface,
   BrowserFindControls,
   BrowserNavigationControls,
-  BrowserNewTab,
 } from "./BrowserNavigationControls";
+import { BrowserNewTab } from "./BrowserNewTab";
 import { useBrowserShortcuts } from "./useBrowserShortcuts";
 import { performBrowserShortcut } from "./browserShortcuts";
 import "./browser.css";

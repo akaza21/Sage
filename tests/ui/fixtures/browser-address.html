@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser address visual fixture</title>
+  </head>
+  <body>
+    <div
+      class="browser-surface"
+      style="position: relative; width: 560px; height: 400px"
+    >
+      <div id="toolbar" class="browser-surface__toolbar"></div>
+    </div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
+      import "/src/styles/global.css";
+      import "/src/features/browser/browser.css";
+
+      const url = "https://en.wikipedia.org/wiki/Web_browser";
+      function Fixture() {
+        const [address, setAddress] = React.useState(url);
+        const addressField = React.useRef(null);
+        return React.createElement(BrowserNavigationControls, {
+          navigation: {
+            tabId: "browser-visual",
+            url,
+            revision: "1",
+            loading: false,
+            canGoBack: true,
+            canGoForward: false,
+            zoomPercent: 100,
+          },
+          page: {
+            origin: "https://en.wikipedia.org",
+            transport: "secure",
+            url,
+          },
+          address,
+          addressField,
+          onAddressChange: setAddress,
+          onNavigate: () => {},
+          onControl: () => {},
+          onFind: () => {},
+          onZoom: () => {},
+          onZoomReset: () => {},
+          onDownloads: () => {},
+          onHistory: () => {},
+          onSettings: () => {},
+          onCopy: () => {},
+          onExternal: () => {},
+          clearDataControl: null,
+          pageControls: React.createElement(
+            "button",
+            { "aria-label": "Attach page" },
+            "▣",
+          ),
+        });
+      }
+      createRoot(document.getElementById("toolbar")).render(
+        React.createElement(Fixture),
+      );
+    </script>
+  </body>
+</html>

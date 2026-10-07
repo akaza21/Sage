@@ -11,7 +11,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { BrowserSurface } from "./BrowserSurface";
-import { BrowserNewTab } from "./BrowserNavigationControls";
+import { BrowserNewTab } from "./BrowserNewTab";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 const browserStatus = vi.fn();
@@ -297,6 +297,19 @@ it("applies a native browser status title to the workbench tab", async () => {
     expect(useWorkbenchStore.getState().tabs[0]?.title).toBe("Example Domain"),
   );
   useWorkbenchStore.setState({ tabs: previous.tabs });
+});
+it("selects the full committed URL when the centered host is focused", async () => {
+  render(<BrowserSurface tab={tab} />);
+  const address = await screen.findByRole<HTMLInputElement>("textbox", {
+    name: "Address or search",
+  });
+  await waitFor(() => expect(address).toHaveValue("example.com"));
+
+  fireEvent.focus(address);
+
+  expect(address).toHaveValue("https://example.com/path");
+  expect(address.selectionStart).toBe(0);
+  expect(address.selectionEnd).toBe("https://example.com/path".length);
 });
 it("groups supported page controls in an overflow menu without dead features", async () => {
   render(<BrowserSurface tab={tab} />);
