@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser New-tab visual fixture</title>
+  </head>
+  <body>
+    <div
+      class="browser-surface"
+      style="position: relative; width: 560px; height: 600px"
+    >
+      <div id="new-tab"></div>
+    </div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserNewTab } from "/src/features/browser/BrowserNewTab.tsx";
+      import "/src/styles/global.css";
+      import "/src/features/browser/browser.css";
+
+      createRoot(document.getElementById("new-tab")).render(
+        React.createElement(BrowserNewTab, {
+          suggestions: [
+            {
+              url: "https://example.com/",
+              title:
+                "A very long suggested page title that must truncate cleanly",
+            },
+            { url: "https://www.wikipedia.org/", title: "Wikipedia" },
+            { url: "https://developer.mozilla.org/", title: "MDN Web Docs" },
+            { url: "https://www.w3.org/", title: "World Wide Web Consortium" },
+          ],
+          onNavigate: () => {},
+          onAddress: () => {},
+          onNewTab: () => {},
+        }),
+      );
+    </script>
+  </body>
+</html>

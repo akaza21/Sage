@@ -1,4 +1,5 @@
 import { BrowserFavicon, type BrowserSuggestedSites } from "./browserAddress";
+import "./BrowserNewTab.css";
 
 type NewTabProps = {
   suggestions: BrowserSuggestedSites;

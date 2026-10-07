@@ -264,63 +264,6 @@
   display: none;
 }
 
-.browser-new-tab {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--browser-start-fill);
-  padding: 28px clamp(24px, 8vw, 72px);
-}
-.browser-new-tab section + section {
-  margin-top: 36px;
-}
-.browser-new-tab h2 {
-  margin: 0 0 12px;
-  color: var(--browser-bright-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-.browser-new-tab__tools {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.browser-new-tab__tools button {
-  border-radius: var(--radius-md);
-  background: var(--browser-chrome-fill);
-  padding: 8px 12px;
-  text-align: left;
-  font-size: 12px;
-}
-
-.browser-new-tab__suggestions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-.browser-new-tab__suggestions button {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--browser-bright-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.browser-new-tab__suggestions span {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  font-size: 25px;
-}
-.browser-new-tab__suggestions img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-}
 .browser-clear-data {
   display: flex;
   padding: 2px 8px;
