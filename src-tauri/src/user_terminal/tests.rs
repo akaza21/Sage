@@ -15,6 +15,7 @@ struct FixtureRecord {
     sizes: Vec<(u16, u16)>,
     terminated: usize,
     fail_terminate: bool,
+    fail_spawn_retained: bool,
     outputs: Vec<TerminalOutputSink>,
 }
 
@@ -47,10 +48,15 @@ impl TerminalFactory for FixtureFactory {
         _columns: u16,
         _rows: u16,
         output: TerminalOutputSink,
-    ) -> Result<Box<dyn TerminalProcess>, TerminalError> {
+    ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
         let mut record = self.0.lock().unwrap();
         record.roots.push(root.as_path().to_owned());
         record.outputs.push(output);
+        if record.fail_spawn_retained {
+            return Err(TerminalSpawnFailure::Retained(Box::new(FixtureProcess(
+                self.0.clone(),
+            ))));
+        }
         Ok(Box::new(FixtureProcess(self.0.clone())))
     }
 }
@@ -66,6 +72,26 @@ struct Fixture {
 impl Fixture {
     fn authority(&self) -> TerminalAuthority<'_> {
         TerminalAuthority(&self.state)
+    }
+
+    fn add_chat_scope(&self) -> TerminalScope {
+        let snapshot = self.state.database.bootstrap_snapshot().unwrap();
+        let layout = crate::domain::ProjectLayoutRequest {
+            project_id: self.scope.project.as_str().to_owned(),
+            tabs: snapshot.tabs,
+            active_tab_id: snapshot.active_tab_id,
+            selected_root_id: snapshot.selected_root_id,
+            selected_resource: snapshot.selected_resource,
+        };
+        let id = self
+            .state
+            .database
+            .create_chat_on(self.scope.project.as_str(), &layout)
+            .unwrap();
+        TerminalScope {
+            chat: SageChatId::parse(id).unwrap(),
+            ..self.scope.clone()
+        }
     }
 
     fn new() -> Self {

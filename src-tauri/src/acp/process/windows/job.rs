@@ -18,6 +18,10 @@ use super::native::NativeHandle;
 pub(crate) struct JobBoundary(NativeHandle);
 
 impl JobBoundary {
+    pub(crate) fn raw(&self) -> HANDLE {
+        self.0.raw()
+    }
+
     pub(crate) fn create(active_limit: u32) -> Result<Self, LaunchError> {
         // SAFETY: null security/name creates an unnamed non-inheritable Job.
         let job = NativeHandle::new(unsafe { CreateJobObjectW(null(), null()) })

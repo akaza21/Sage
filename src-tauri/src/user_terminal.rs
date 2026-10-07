@@ -1,15 +1,17 @@
 use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use rusqlite::OptionalExtension;
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Mutex};
 
+mod output;
 #[cfg(windows)]
 mod windows;
 
+use output::TerminalOutputSink;
+pub use output::TerminalOutputSnapshot;
+
 pub const MAX_PER_CHAT: usize = 4;
 pub const MAX_PER_PROJECT: usize = 16;
+pub const MAX_GLOBAL: usize = 16;
 pub const OUTPUT_BYTES: usize = 1_048_576;
 pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
@@ -52,6 +54,17 @@ trait TerminalProcess: Send {
     fn terminate(&mut self) -> Result<(), TerminalError>;
 }
 
+enum TerminalSpawnFailure {
+    Clean(TerminalError),
+    Retained(Box<dyn TerminalProcess>),
+}
+
+impl From<TerminalError> for TerminalSpawnFailure {
+    fn from(error: TerminalError) -> Self {
+        Self::Clean(error)
+    }
+}
+
 trait TerminalFactory: Send + Sync {
     fn spawn(
         &self,
@@ -59,55 +72,7 @@ trait TerminalFactory: Send + Sync {
         columns: u16,
         rows: u16,
         output: TerminalOutputSink,
-    ) -> Result<Box<dyn TerminalProcess>, TerminalError>;
-}
-
-#[derive(Clone)]
-struct TerminalOutputSink(Arc<Mutex<OutputRing>>);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalOutputSnapshot {
-    pub bytes: Vec<u8>,
-    pub truncations: u64,
-}
-
-#[derive(Default)]
-struct OutputRing {
-    bytes: VecDeque<u8>,
-    lines: usize,
-    truncations: u64,
-}
-
-impl TerminalOutputSink {
-    fn append(&self, chunk: &[u8]) -> Result<(), TerminalError> {
-        if chunk.len() > OUTPUT_CHUNK_BYTES {
-            return Err(TerminalError::Backend);
-        }
-        let mut ring = self.0.lock().map_err(|_| TerminalError::Backend)?;
-        for &byte in chunk {
-            if byte == b'\n' {
-                ring.lines += 1;
-            }
-            ring.bytes.push_back(byte);
-            while ring.bytes.len() > OUTPUT_BYTES || ring.lines >= OUTPUT_LINES {
-                if let Some(removed) = ring.bytes.pop_front() {
-                    if removed == b'\n' {
-                        ring.lines -= 1;
-                    }
-                    ring.truncations = ring.truncations.saturating_add(1);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn snapshot(&self) -> Result<TerminalOutputSnapshot, TerminalError> {
-        let ring = self.0.lock().map_err(|_| TerminalError::Backend)?;
-        Ok(TerminalOutputSnapshot {
-            bytes: ring.bytes.iter().copied().collect(),
-            truncations: ring.truncations,
-        })
-    }
+    ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure>;
 }
 
 pub struct TerminalSessionPort {
@@ -126,6 +91,13 @@ impl std::fmt::Debug for TerminalSessionPort {
 impl Drop for TerminalSessionPort {
     fn drop(&mut self) {
         let _ = self.shutdown();
+        let sessions = self
+            .sessions
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (_, session) in sessions.drain() {
+            std::mem::forget(session);
+        }
     }
 }
 
@@ -140,8 +112,8 @@ impl TerminalFactory for UnsupportedFactory {
         _columns: u16,
         _rows: u16,
         _output: TerminalOutputSink,
-    ) -> Result<Box<dyn TerminalProcess>, TerminalError> {
-        Err(TerminalError::Backend)
+    ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
+        Err(TerminalError::Backend.into())
     }
 }
 
@@ -208,7 +180,10 @@ impl TerminalSessionPort {
             .values()
             .filter(|session| session.scope == *scope)
             .count();
-        if project_count >= MAX_PER_PROJECT || chat_count >= MAX_PER_CHAT {
+        if sessions.len() >= MAX_GLOBAL
+            || project_count >= MAX_PER_PROJECT
+            || chat_count >= MAX_PER_CHAT
+        {
             return Err(TerminalError::Capacity);
         }
         let root = state
@@ -216,8 +191,13 @@ impl TerminalSessionPort {
             .selected_project_root_authority(&context)
             .map_err(|_| TerminalError::InvalidScope)?;
         root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
-        let output = TerminalOutputSink(Arc::new(Mutex::new(OutputRing::default())));
-        let process = self.factory.spawn(&root, columns, rows, output.clone())?;
+        let output = TerminalOutputSink::new();
+        let (process, cleanup_unknown) =
+            match self.factory.spawn(&root, columns, rows, output.clone()) {
+                Ok(process) => (process, false),
+                Err(TerminalSpawnFailure::Clean(error)) => return Err(error),
+                Err(TerminalSpawnFailure::Retained(process)) => (process, true),
+            };
         let id = TerminalSessionId(uuid::Uuid::new_v4());
         let revision = TerminalRevision(1);
         sessions.insert(
@@ -229,7 +209,11 @@ impl TerminalSessionPort {
                 process,
             },
         );
-        Ok(TerminalHandle { id, revision })
+        if cleanup_unknown {
+            Err(TerminalError::Backend)
+        } else {
+            Ok(TerminalHandle { id, revision })
+        }
     }
 
     pub async fn write_input(

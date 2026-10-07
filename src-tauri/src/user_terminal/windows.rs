@@ -9,22 +9,23 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
+    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
     System::{
         Console::{COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole},
         Pipes::CreatePipe,
         Threading::{
             CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW,
             DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT,
-            InitializeProcThreadAttributeList, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            PROCESS_INFORMATION, ResumeThread, STARTUPINFOEXW, TerminateProcess,
-            UpdateProcThreadAttribute, WaitForSingleObject,
+            InitializeProcThreadAttributeList, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION, ResumeThread, STARTUPINFOEXW,
+            UpdateProcThreadAttribute,
         },
     },
 };
 
 use super::{
     OUTPUT_CHUNK_BYTES, TerminalError, TerminalFactory, TerminalOutputSink, TerminalProcess,
+    TerminalSpawnFailure,
 };
 use crate::{acp::process::TerminalJobBoundary, project_registry::ProjectRootAuthority};
 
@@ -40,19 +41,19 @@ impl TerminalFactory for ConPtyFactory {
         columns: u16,
         rows: u16,
         output: TerminalOutputSink,
-    ) -> Result<Box<dyn TerminalProcess>, TerminalError> {
+    ) -> Result<Box<dyn TerminalProcess>, TerminalSpawnFailure> {
         root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
         let shell = std::env::var_os("ComSpec").ok_or(TerminalError::Backend)?;
         let shell = Path::new(&shell)
             .canonicalize()
             .map_err(|_| TerminalError::Backend)?;
         if !shell.is_absolute() || !shell.is_file() {
-            return Err(TerminalError::Backend);
+            return Err(TerminalError::Backend.into());
         }
         let shell_wide = wide(&shell);
         let root_wide = wide(root.as_path());
         if shell_wide.len() > 32_767 || root_wide.len() > 32_767 {
-            return Err(TerminalError::Backend);
+            return Err(TerminalError::Backend.into());
         }
         let mut command = wide_text(&format!("\"{}\"", shell.to_string_lossy()));
         let environment = environment_block()?;
@@ -64,12 +65,14 @@ impl TerminalFactory for ConPtyFactory {
             Y: rows as i16,
         };
         if unsafe { CreatePseudoConsole(size, input_read.0, output_write.0, 0, &mut pseudo) } < 0 {
-            return Err(TerminalError::Backend);
+            return Err(TerminalError::Backend.into());
         }
         let pseudo = PseudoConsole(pseudo);
         drop(input_read);
         drop(output_write);
-        let attributes = AttributeList::new(pseudo.0)?;
+        let job =
+            TerminalJobBoundary::create(DESCENDANT_LIMIT).map_err(|_| TerminalError::Backend)?;
+        let attributes = AttributeList::new(pseudo.0, job.raw())?;
         let mut startup = STARTUPINFOEXW::default();
         startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
         startup.lpAttributeList = attributes.pointer;
@@ -89,26 +92,10 @@ impl TerminalFactory for ConPtyFactory {
             )
         };
         if launched == 0 {
-            return Err(TerminalError::Backend);
+            return Err(TerminalError::Backend.into());
         }
         let process = Handle(created.hProcess);
         let thread = Handle(created.hThread);
-        let job = match TerminalJobBoundary::create(DESCENDANT_LIMIT) {
-            Ok(job) => job,
-            Err(_) => {
-                settle_unassigned(process.0);
-                return Err(TerminalError::Backend);
-            }
-        };
-        if job.assign(process.0).is_err() {
-            settle_unassigned(process.0);
-            return Err(TerminalError::Backend);
-        }
-        if unsafe { ResumeThread(thread.0) } == u32::MAX {
-            let _ = job.terminate();
-            let _ = job.wait_for_zero(DESCENDANT_LIMIT, Instant::now() + SETTLE_DEADLINE);
-            return Err(TerminalError::Backend);
-        }
         let input = input_write.into_file();
         let mut output_file = output_read.into_file();
         let output_thread = std::thread::spawn(move || {
@@ -124,14 +111,21 @@ impl TerminalFactory for ConPtyFactory {
                 }
             }
         });
-        Ok(Box::new(ConPtyProcess {
+        let mut running = ConPtyProcess {
             job,
             process,
             thread,
             pseudo: Some(pseudo),
             input: Some(input),
             output_thread: Some(output_thread),
-        }))
+        };
+        if unsafe { ResumeThread(running.thread.0) } == u32::MAX {
+            return match running.terminate() {
+                Ok(()) => Err(TerminalError::Backend.into()),
+                Err(_) => Err(TerminalSpawnFailure::Retained(Box::new(running))),
+            };
+        }
+        Ok(Box::new(running))
     }
 }
 
@@ -221,28 +215,47 @@ impl Drop for PseudoConsole {
 
 struct AttributeList {
     _storage: Vec<usize>,
+    _pseudo: Box<HPCON>,
+    _jobs: Box<[HANDLE; 1]>,
     pointer: *mut core::ffi::c_void,
 }
 
 impl AttributeList {
-    fn new(pseudo: HPCON) -> Result<Self, TerminalError> {
+    fn new(pseudo: HPCON, job: HANDLE) -> Result<Self, TerminalError> {
         let mut bytes = 0_usize;
-        unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut bytes) };
+        unsafe { InitializeProcThreadAttributeList(null_mut(), 2, 0, &mut bytes) };
         if bytes == 0 {
             return Err(TerminalError::Backend);
         }
         let mut storage = vec![0_usize; bytes.div_ceil(size_of::<usize>())];
         let pointer = storage.as_mut_ptr().cast();
-        if unsafe { InitializeProcThreadAttributeList(pointer, 1, 0, &mut bytes) } == 0 {
+        if unsafe { InitializeProcThreadAttributeList(pointer, 2, 0, &mut bytes) } == 0 {
             return Err(TerminalError::Backend);
         }
+        let pseudo = Box::new(pseudo);
         if unsafe {
             UpdateProcThreadAttribute(
                 pointer,
                 0,
                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
-                (&raw const pseudo).cast(),
+                (&raw const *pseudo).cast(),
                 size_of::<HPCON>(),
+                null_mut(),
+                null(),
+            )
+        } == 0
+        {
+            unsafe { DeleteProcThreadAttributeList(pointer) };
+            return Err(TerminalError::Backend);
+        }
+        let jobs = Box::new([job]);
+        if unsafe {
+            UpdateProcThreadAttribute(
+                pointer,
+                0,
+                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                jobs.as_ptr().cast(),
+                size_of::<HANDLE>(),
                 null_mut(),
                 null(),
             )
@@ -253,6 +266,8 @@ impl AttributeList {
         }
         Ok(Self {
             _storage: storage,
+            _pseudo: pseudo,
+            _jobs: jobs,
             pointer,
         })
     }
@@ -271,12 +286,6 @@ fn pipe() -> Result<(Handle, Handle), TerminalError> {
         return Err(TerminalError::Backend);
     }
     Ok((Handle(read), Handle(write)))
-}
-
-fn settle_unassigned(process: HANDLE) {
-    unsafe { TerminateProcess(process, 1) };
-    let _ = unsafe { WaitForSingleObject(process, SETTLE_DEADLINE.as_millis() as u32) }
-        == WAIT_OBJECT_0;
 }
 
 fn wide(path: &Path) -> Vec<u16> {
@@ -315,3 +324,6 @@ fn environment_block() -> Result<Vec<u16>, TerminalError> {
     }
     Ok(entries)
 }
+
+#[cfg(test)]
+mod tests;
