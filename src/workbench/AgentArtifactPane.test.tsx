@@ -345,9 +345,10 @@ describe("Agent artifact file chips", () => {
     const fileTab = screen.getByRole("tab", { name: "File src/app.ts" });
     expect(fileTab).toHaveAttribute("title", "File src/app.ts");
     expect(within(fileTab).queryByText("File")).toBeNull();
+    expect(fileTab).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByText(/Open a file or change from the conversation/),
-    ).toBeInTheDocument();
+      screen.queryByText(/Open a file or change from the conversation/),
+    ).toBeNull();
     expect(screen.queryByTitle("Sage browser")).toBeNull();
   });
 
@@ -1570,6 +1571,103 @@ describe("Agent artifact file chips", () => {
       screen.getByRole("button", { name: "Pop out active tab" }),
     ).toBeDisabled();
     expect(onOpenInEditor).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest browser selected after returning to its Chat", () => {
+    useWorkbenchStore.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          id: "browser:example",
+          kind: "browser",
+          title: "Example Domain",
+          position: 3,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "browser:wiki",
+          kind: "browser",
+          title: "Web browser - Wikipedia",
+          position: 4,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    }));
+
+    render(<AgentArtifactPane />);
+
+    expect(
+      screen.getByRole("tab", { name: "Browser Web browser - Wikipedia" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("tab", { name: "Browser Example Domain" }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(
+      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+    ).toBeNull();
+  });
+
+  it("keeps a project browser selected when switching between Chats", () => {
+    pinAcpProjectionIds(["chat-focused", "chat-second"]);
+    const secondStore = acpProjectionStoreFor("chat-second");
+    const secondScope = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: "chat-second" as SageChatId,
+    };
+    secondStore.getState().activateScope(secondScope);
+    expect(
+      secondStore.getState().applyAuthoritativePage(secondScope, {
+        projectId: "project-a",
+        chatId: "chat-second",
+        title: "Second",
+        projectionRevision: "1",
+        currentSessionId: "session-b",
+        sessions: [{ id: "session-b", ordinal: 1 }],
+        turns: [],
+        nextCursor: null,
+      } as unknown as AcpChatPage),
+    ).toBe("accepted");
+    useWorkbenchStore.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          id: "chat-second",
+          kind: "chat",
+          title: "Second",
+          position: 3,
+          pinned: false,
+          dirty: false,
+        },
+        {
+          id: "browser:shared",
+          kind: "browser",
+          title: "Example Domain",
+          position: 4,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-focused",
+    }));
+
+    render(<AgentArtifactPane />);
+    const browserTab = screen.getByRole("tab", {
+      name: "Browser Example Domain",
+    });
+    expect(browserTab).toHaveAttribute("aria-selected", "true");
+
+    act(() => {
+      pinAgentChatOwner("chat-second");
+      useWorkbenchStore.setState({ activeTabId: "chat-second" });
+    });
+    expect(browserTab).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+    ).toBeNull();
   });
 
   it("exposes full paths in accessible tab names with basename-visible middle ellipsis", () => {

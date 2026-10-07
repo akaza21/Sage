@@ -145,11 +145,14 @@ export function AgentArtifactPane({
   const activeWorkbenchArtifact = artifacts.find(
     ({ id }) => id === activeTabId,
   );
+  const latestArtifact = artifacts.at(-1);
   const defaultTarget: AgentArtifactTarget | null = activeWorkbenchArtifact
     ? { kind: "tab", tabId: activeWorkbenchArtifact.id }
     : previewOpen
       ? { kind: "preview" }
-      : null;
+      : latestArtifact
+        ? { kind: "tab", tabId: latestArtifact.id }
+        : null;
   const selectedTarget = record
     ? (availableTargets.find((target) =>
         sameAgentArtifactTarget(target, record.selected),
