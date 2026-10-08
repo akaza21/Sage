@@ -22,7 +22,6 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerAttachments } from "./ComposerAttachments";
-import type { ImageThumbnailOwner } from "./ImageAttachmentThumbnail";
 import { ComposerContext } from "./ComposerContext";
 import "../../styles/queued-messages.css";
 
@@ -64,7 +63,6 @@ export function ChatComposerRegion({
   disabledReason,
   onRetryLoad,
   project,
-  imageThumbnailOwner,
   usage,
   goal,
   onSubmit,
@@ -115,7 +113,6 @@ export function ChatComposerRegion({
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
   project: { name: string } | null | undefined;
-  imageThumbnailOwner?: ImageThumbnailOwner;
   usage: ChatUsage | null;
   goal: AcpGoalState;
   onSubmit: FormEventHandler<HTMLFormElement>;
@@ -153,10 +150,7 @@ export function ChatComposerRegion({
         <div className="composer__queued" aria-label="Queued messages">
           {queuedPrompts.map((prompt) => (
             <div className="composer__queued-row" key={prompt.id}>
-              <QueuedAttachmentPreview
-                contexts={prompt.attachedContext}
-                owner={imageThumbnailOwner}
-              />
+              <QueuedAttachmentPreview contexts={prompt.attachedContext} />
               <span className="composer__queued-text" title={prompt.text}>
                 {prompt.text}
               </span>
@@ -305,7 +299,6 @@ export function ChatComposerRegion({
         <div className="composer__attachment-row">
           <ComposerAttachments
             contexts={attachedContext}
-            owner={imageThumbnailOwner}
             disabled={actionBusy || projectTransitioning}
             onRemove={onRemoveContext}
           />

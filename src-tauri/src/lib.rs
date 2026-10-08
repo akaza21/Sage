@@ -30,7 +30,6 @@ mod git_process;
 mod harness_discovery;
 mod harnesses;
 mod helper_entrypoints;
-mod image_artifact_commands;
 mod image_artifacts;
 mod image_attachment;
 mod launch_profile;
@@ -321,8 +320,6 @@ pub fn run() {
                 chat_search_commands::search_project_chats,
                 chat_queue_commands::get_project_chat_queued_prompts,
                 chat_queue_commands::replace_chat_queued_prompts,
-                image_artifact_commands::get_chat_image_thumbnail,
-                image_artifact_commands::discard_pending_chat_image,
                 project_commands::persist_project_layout,
                 project_commands::persist_project_layout_and_close,
                 project_commands::trace_close_stage,

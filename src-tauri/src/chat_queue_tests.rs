@@ -47,17 +47,15 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
     {
         let database = Database::open(&path).unwrap();
         let root = database.image_artifact_root().unwrap();
-        assert!(
-            crate::image_artifacts::load_image_preview(
-                &database.connection(),
-                root,
-                "p",
-                "c",
-                &pending.artifact_id
+        let pending_rows: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM chat_image_artifacts WHERE id=?1",
+                [&pending.artifact_id],
+                |row| row.get(0),
             )
-            .unwrap()
-            .is_none()
-        );
+            .unwrap();
+        assert_eq!(pending_rows, 0);
         assert!(!root.join(format!("{}.full", pending.artifact_id)).exists());
         assert!(!root.join(format!("{}.thumb", pending.artifact_id)).exists());
         assert_eq!(
@@ -74,17 +72,7 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
             )
             .is_ok()
         );
-        assert!(
-            crate::image_artifacts::load_image_preview(
-                &database.connection(),
-                root,
-                "p",
-                "c",
-                &queued.artifact_id
-            )
-            .unwrap()
-            .is_some()
-        );
+        assert!(root.join(format!("{}.thumb", queued.artifact_id)).exists());
     }
     std::fs::remove_dir_all(directory).unwrap();
 }

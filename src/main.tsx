@@ -22,7 +22,6 @@ import "./styles/chat-surface.css";
 import "./styles/changed-files-summary.css";
 import "./styles/agent-chat-panes.css";
 import "./styles/composer-surface.css";
-import "./styles/image-attachment.css";
 import "./styles/problems-outline-surfaces.css";
 import "./styles/agent-rail-surface.css";
 import "./styles/editor-visual-reference.css";

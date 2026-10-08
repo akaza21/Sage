@@ -18,8 +18,6 @@ import type {
   ChatTurnOrder,
   QueuedChatPrompt,
 } from "../../domain/chatOwnership";
-import { boundedChatError } from "../../domain/chatOwnership";
-import { discardPendingChatImage } from "../../services/imageArtifactDesktop";
 
 const EMPTY_ATTACHED_CONTEXT = [] as const;
 const EMPTY_QUEUED_PROMPTS: readonly QueuedChatPrompt[] = [];
@@ -110,47 +108,7 @@ export function useBoundChatComposer(chatId?: string) {
   function removeAttachedContext(contextKey: string) {
     const owner = chatId ?? activeTabId ?? undefined;
     const intent = owner ? captureChatOwnership(owner) : null;
-    if (!intent) return;
-    const context = attachedContext.find(
-      (entry) => attachedContextKey(entry) === contextKey,
-    );
-    if (context?.kind !== "image") {
-      detachChatContext(intent, contextKey);
-      return;
-    }
-    const nativeTransitionEpoch =
-      useWorkbenchStore.getState().nativeTransitionEpoch;
-    void discardPendingChatImage({
-      projectId: intent.projectId,
-      projectGeneration: String(nativeTransitionEpoch),
-      chatId: intent.chatId,
-      artifactId: context.artifactId,
-    })
-      .then((removed) => {
-        if (!removed) throw new Error("Image is no longer pending");
-        detachChatContext(intent, contextKey);
-      })
-      .catch((cause: unknown) => {
-        const message = boundedChatError(String(cause));
-        useWorkbenchStore.setState((state) => {
-          if (
-            state.project?.id !== intent.projectId ||
-            state.chatOwnershipEpoch !== intent.ownershipEpoch
-          )
-            return state;
-          const entry = state.chatUiById[intent.chatId];
-          if (!entry) return state;
-          return {
-            chatUiById: {
-              ...state.chatUiById,
-              [intent.chatId]: { ...entry, error: message },
-            },
-            ...(state.activeTabId === intent.chatId
-              ? { chatError: message }
-              : {}),
-          };
-        });
-      });
+    if (intent) detachChatContext(intent, contextKey);
   }
 
   async function sendBoundPrompt() {
