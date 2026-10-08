@@ -47,6 +47,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
+  "src/workbench/TerminalDock.tsx",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [

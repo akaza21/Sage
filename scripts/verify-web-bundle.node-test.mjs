@@ -1,11 +1,129 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import { verifyWebBundle } from "./verify-web-bundle.mjs";
+
+test("named TerminalDock budget isolates xterm from the core bundle", async () => {
+  const root = await candidate({ dynamic: "ordinary dynamic" });
+  try {
+    await mkdir(path.join(root, "src/workbench"), { recursive: true });
+    await writeFile(
+      path.join(root, "src/workbench/TerminalDock.tsx"),
+      'import "@xterm/xterm";\n',
+    );
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ dependencies: { "@xterm/xterm": "6.0.0" } }),
+    );
+    await writeFile(
+      path.join(root, "dist/assets/terminal.js"),
+      "xterm terminal chunk",
+    );
+    await writeFile(path.join(root, "dist/assets/terminal.css"), ".xterm {}");
+    const manifest = JSON.parse(
+      await readFile(path.join(root, "dist/.vite/manifest.json"), "utf8"),
+    );
+    manifest["index.html"].dynamicImports.push(
+      "src/workbench/TerminalDock.tsx",
+    );
+    manifest["src/workbench/TerminalDock.tsx"] = {
+      file: "assets/terminal.js",
+      src: "src/workbench/TerminalDock.tsx",
+      isDynamicEntry: true,
+      imports: ["index.html"],
+      css: ["assets/terminal.css"],
+    };
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    await writeFile(
+      path.join(root, "docs/performance/budgets.json"),
+      JSON.stringify({
+        bundle: {
+          webEntryJsGzipBytes: 1000,
+          webInitialStaticClosureGzipBytes: 1000,
+          webTotalJsGzipBytes: 1000,
+          webTerminalDockLazyJsGzipBytes: 1000,
+        },
+      }),
+    );
+    await writeFile(
+      path.join(root, "dist/.sage-web-build-receipt.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        target: desktopTarget,
+        gzip: "node:zlib.gzipSync defaults",
+        source: webBuildSourceFingerprint(root),
+      }),
+    );
+    const result = verifyWebBundle(root);
+    assert.ok(result.terminalDockGzipBytes > 0);
+    assert.ok(result.coreTotalGzipBytes < result.totalGzipBytes);
+    const terminalKey = "src/workbench/TerminalDock.tsx";
+    manifest["index.html"].dynamicImports = ["_dynamic.js"];
+    manifest._orphan = {
+      file: "assets/dynamic.js",
+      dynamicImports: [terminalKey],
+    };
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /reachable lazy/i);
+    delete manifest._orphan;
+    manifest["index.html"].dynamicImports.push(terminalKey);
+    manifest._other = { file: "assets/terminal.js" };
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /shared/i);
+    delete manifest._other;
+    manifest["index.html"].imports.push(terminalKey);
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /initial static closure/i);
+    manifest["index.html"].imports.pop();
+    manifest["index.html"].css = ["assets/terminal.css"];
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /xterm CSS/i);
+    delete manifest["index.html"].css;
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    await writeFile(
+      path.join(root, "dist/assets/dynamic.js"),
+      "xterm in a second chunk",
+    );
+    assert.throws(() => verifyWebBundle(root), /xterm.*outside.*TerminalDock/i);
+    await writeFile(
+      path.join(root, "dist/assets/dynamic.js"),
+      "ordinary dynamic",
+    );
+    await writeFile(path.join(root, "dist/assets/terminal.js.map"), "{}");
+    assert.throws(() => verifyWebBundle(root), /source map/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 const desktopTarget = "desktop-native";
 const browserFixtureSentinel =

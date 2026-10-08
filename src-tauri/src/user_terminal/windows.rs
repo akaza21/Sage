@@ -3,22 +3,23 @@ use std::{
     io::{Read, Write},
     mem::size_of,
     os::windows::{ffi::OsStrExt, io::FromRawHandle},
-    path::Path,
+    path::{Path, PathBuf},
     ptr::{null, null_mut},
     time::{Duration, Instant},
 };
 
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
+    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
     System::{
         Console::{COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole},
+        JobObjects::IsProcessInJob,
         Pipes::CreatePipe,
         Threading::{
             CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW,
             DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT,
-            InitializeProcThreadAttributeList, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION, ResumeThread, STARTUPINFOEXW,
-            UpdateProcThreadAttribute,
+            InitializeProcThreadAttributeList, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+            PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+            TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
         },
     },
 };
@@ -50,8 +51,10 @@ impl TerminalFactory for ConPtyFactory {
         if !shell.is_absolute() || !shell.is_file() {
             return Err(TerminalError::Backend.into());
         }
+        let shell = checked_cmd_local_dos_path(&shell)?;
+        let cwd = checked_cmd_local_dos_path(root.as_path())?;
         let shell_wide = wide(&shell);
-        let root_wide = wide(root.as_path());
+        let root_wide = wide(&cwd);
         if shell_wide.len() > 32_767 || root_wide.len() > 32_767 {
             return Err(TerminalError::Backend.into());
         }
@@ -72,9 +75,13 @@ impl TerminalFactory for ConPtyFactory {
         drop(output_write);
         let job =
             TerminalJobBoundary::create(DESCENDANT_LIMIT).map_err(|_| TerminalError::Backend)?;
-        let attributes = AttributeList::new(pseudo.0, job.raw())?;
+        let attributes = AttributeList::new(pseudo.0)?;
         let mut startup = STARTUPINFOEXW::default();
         startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
+        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startup.StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
+        startup.StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
+        startup.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
         startup.lpAttributeList = attributes.pointer;
         let mut created = PROCESS_INFORMATION::default();
         let launched = unsafe {
@@ -96,9 +103,28 @@ impl TerminalFactory for ConPtyFactory {
         }
         let process = Handle(created.hProcess);
         let thread = Handle(created.hThread);
-        let input = input_write.into_file();
+        let mut running = ConPtyProcess {
+            shell_path: shell.to_string_lossy().into_owned(),
+            job,
+            process,
+            thread,
+            assigned: false,
+            pseudo: Some(pseudo),
+            input: Some(input_write.into_file()),
+            output_thread: None,
+        };
+        if contain_and_resume(&mut running, |job, process| {
+            job.assign(process).map_err(|_| TerminalError::Backend)
+        })
+        .is_err()
+        {
+            return match running.abort_launch() {
+                Ok(()) => Err(TerminalError::Backend.into()),
+                Err(_) => Err(TerminalSpawnFailure::Retained(Box::new(running))),
+            };
+        }
         let mut output_file = output_read.into_file();
-        let output_thread = std::thread::spawn(move || {
+        running.output_thread = Some(std::thread::spawn(move || {
             let mut chunk = [0_u8; OUTPUT_CHUNK_BYTES];
             loop {
                 match output_file.read(&mut chunk) {
@@ -110,22 +136,7 @@ impl TerminalFactory for ConPtyFactory {
                     }
                 }
             }
-        });
-        let mut running = ConPtyProcess {
-            shell_path: shell.to_string_lossy().into_owned(),
-            job,
-            process,
-            thread,
-            pseudo: Some(pseudo),
-            input: Some(input),
-            output_thread: Some(output_thread),
-        };
-        if unsafe { ResumeThread(running.thread.0) } == u32::MAX {
-            return match running.terminate() {
-                Ok(()) => Err(TerminalError::Backend.into()),
-                Err(_) => Err(TerminalSpawnFailure::Retained(Box::new(running))),
-            };
-        }
+        }));
         Ok(Box::new(running))
     }
 }
@@ -135,9 +146,48 @@ struct ConPtyProcess {
     job: TerminalJobBoundary,
     process: Handle,
     thread: Handle,
+    assigned: bool,
     pseudo: Option<PseudoConsole>,
     input: Option<File>,
     output_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+fn contain_and_resume(
+    running: &mut ConPtyProcess,
+    assign: impl FnOnce(&TerminalJobBoundary, HANDLE) -> Result<(), TerminalError>,
+) -> Result<(), TerminalError> {
+    assign(&running.job, running.process.0)?;
+    let mut member = 0;
+    if unsafe { IsProcessInJob(running.process.0, running.job.raw(), &mut member) } == 0
+        || member == 0
+    {
+        return Err(TerminalError::Backend);
+    }
+    running.assigned = true;
+    if unsafe { ResumeThread(running.thread.0) } == u32::MAX {
+        return Err(TerminalError::Backend);
+    }
+    Ok(())
+}
+
+impl ConPtyProcess {
+    fn abort_launch(&mut self) -> Result<(), TerminalError> {
+        let _ = unsafe { TerminateProcess(self.process.0, 1) };
+        if unsafe { WaitForSingleObject(self.process.0, SETTLE_DEADLINE.as_millis() as u32) }
+            != WAIT_OBJECT_0
+        {
+            return Err(TerminalError::Backend);
+        }
+        if self.assigned {
+            let _ = self.job.terminate();
+        }
+        self.job
+            .wait_for_zero(DESCENDANT_LIMIT, Instant::now() + SETTLE_DEADLINE)
+            .map_err(|_| TerminalError::Backend)?;
+        self.input.take();
+        self.pseudo.take();
+        Ok(())
+    }
 }
 
 impl TerminalProcess for ConPtyProcess {
@@ -167,6 +217,9 @@ impl TerminalProcess for ConPtyProcess {
     }
 
     fn terminate(&mut self) -> Result<(), TerminalError> {
+        if !self.assigned {
+            return self.abort_launch();
+        }
         let _ = (&self.process, &self.thread);
         self.job.terminate().map_err(|_| TerminalError::Backend)?;
         self.job
@@ -221,47 +274,28 @@ impl Drop for PseudoConsole {
 
 struct AttributeList {
     _storage: Vec<usize>,
-    _pseudo: Box<HPCON>,
-    _jobs: Box<[HANDLE; 1]>,
     pointer: *mut core::ffi::c_void,
 }
 
 impl AttributeList {
-    fn new(pseudo: HPCON, job: HANDLE) -> Result<Self, TerminalError> {
+    fn new(pseudo: HPCON) -> Result<Self, TerminalError> {
         let mut bytes = 0_usize;
-        unsafe { InitializeProcThreadAttributeList(null_mut(), 2, 0, &mut bytes) };
+        unsafe { InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut bytes) };
         if bytes == 0 {
             return Err(TerminalError::Backend);
         }
         let mut storage = vec![0_usize; bytes.div_ceil(size_of::<usize>())];
         let pointer = storage.as_mut_ptr().cast();
-        if unsafe { InitializeProcThreadAttributeList(pointer, 2, 0, &mut bytes) } == 0 {
+        if unsafe { InitializeProcThreadAttributeList(pointer, 1, 0, &mut bytes) } == 0 {
             return Err(TerminalError::Backend);
         }
-        let pseudo = Box::new(pseudo);
         if unsafe {
             UpdateProcThreadAttribute(
                 pointer,
                 0,
                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
-                (&raw const *pseudo).cast(),
+                pseudo as *const core::ffi::c_void,
                 size_of::<HPCON>(),
-                null_mut(),
-                null(),
-            )
-        } == 0
-        {
-            unsafe { DeleteProcThreadAttributeList(pointer) };
-            return Err(TerminalError::Backend);
-        }
-        let jobs = Box::new([job]);
-        if unsafe {
-            UpdateProcThreadAttribute(
-                pointer,
-                0,
-                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-                jobs.as_ptr().cast(),
-                size_of::<HANDLE>(),
                 null_mut(),
                 null(),
             )
@@ -272,8 +306,6 @@ impl AttributeList {
         }
         Ok(Self {
             _storage: storage,
-            _pseudo: pseudo,
-            _jobs: jobs,
             pointer,
         })
     }
@@ -299,6 +331,33 @@ fn wide(path: &Path) -> Vec<u16> {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect()
+}
+
+fn cmd_local_dos_path(path: &Path) -> Result<PathBuf, TerminalError> {
+    let path = path.to_str().ok_or(TerminalError::Backend)?;
+    let path = path.strip_prefix(r"\\?\").unwrap_or(path);
+    let bytes = path.as_bytes();
+    if path.starts_with(r"\\")
+        || bytes.len() < 3
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || bytes[2] != b'\\'
+    {
+        return Err(TerminalError::Backend);
+    }
+    Ok(PathBuf::from(path))
+}
+
+fn checked_cmd_local_dos_path(path: &Path) -> Result<PathBuf, TerminalError> {
+    let dos_path = cmd_local_dos_path(path)?;
+    if dos_path
+        .canonicalize()
+        .map_err(|_| TerminalError::Backend)?
+        != path
+    {
+        return Err(TerminalError::Backend);
+    }
+    Ok(dos_path)
 }
 fn wide_text(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()

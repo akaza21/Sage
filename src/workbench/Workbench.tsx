@@ -45,12 +45,19 @@ import "./workbench-window-mode.css";
 import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+import { isTauriRuntime } from "../ports/nativeInvoke";
+import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 
 registerWorkbenchSurfaces();
 
 const loadAgentWorkbenchBody = () =>
   import("./AgentWorkbenchBody").then(({ AgentWorkbenchBody }) => ({
     default: AgentWorkbenchBody,
+  }));
+
+const loadTerminalDock = () =>
+  import("./TerminalDock").then(({ TerminalDockForWorkbench }) => ({
+    default: TerminalDockForWorkbench,
   }));
 
 const workbenchGeometryStyle = {
@@ -168,6 +175,7 @@ function RendererRecreationPacketCollector({
 
 export function Workbench() {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const compact = useCompactWorkbenchLayout();
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
@@ -260,7 +268,6 @@ export function Workbench() {
       : {
           gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
         };
-
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
@@ -327,10 +334,27 @@ export function Workbench() {
           </div>
         </div>
       )}
+      {terminalOpen ? (
+        <LazyModuleBoundary
+          label="Terminal"
+          load={loadTerminalDock}
+          render={(TerminalDock) => (
+            <TerminalDock
+              setOpen={setTerminalOpen}
+              pinnedChatId={pinnedAgentChatOwner()}
+            />
+          )}
+        />
+      ) : null}
       <StatusBar
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
         showEditorSettings={windowMode === "editor"}
+        onOpenTerminal={
+          !terminalOpen && isTauriRuntime()
+            ? () => setTerminalOpen(true)
+            : undefined
+        }
       />
       <DirtyTabDialog />
     </main>

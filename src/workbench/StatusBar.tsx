@@ -29,10 +29,12 @@ export function StatusBar({
   railLeading = false,
   showSidebarToggle = true,
   showEditorSettings = true,
+  onOpenTerminal,
 }: {
   railLeading?: boolean;
   showSidebarToggle?: boolean;
   showEditorSettings?: boolean;
+  onOpenTerminal?: () => void;
 }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
@@ -75,6 +77,16 @@ export function StatusBar({
         ) : null}
       </div>
       <div className="status-bar__group">
+        {onOpenTerminal ? (
+          <button
+            className="status-bar__button"
+            type="button"
+            aria-label="Open terminal"
+            onClick={onOpenTerminal}
+          >
+            &gt;_
+          </button>
+        ) : null}
         {showEditorSettings && caretLabel ? (
           <span title="Caret position">{caretLabel}</span>
         ) : null}
