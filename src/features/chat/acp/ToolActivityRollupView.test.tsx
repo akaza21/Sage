@@ -196,7 +196,7 @@ describe("ToolActivityRollup", () => {
       tool("file-3", "read", [mainFile]),
     ];
 
-    expect(toolRollupLabel("read", repeatedFile)).toBe("Explored 1 file");
+    expect(toolRollupLabel("read", repeatedFile)).toBe("Read 1 file");
     expect(
       toolRollupLabel("edit", [
         tool("diff-1", "edit", [mainFile]),
@@ -208,13 +208,13 @@ describe("ToolActivityRollup", () => {
   it("keeps item counts when a group has no locations", () => {
     const items = [tool("file-1", "read"), tool("file-2", "read")];
 
-    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Read 2 items");
   });
 
   it("keeps item counts for mixed location coverage", () => {
     const items = [tool("file-1", "read", [mainFile]), tool("file-2", "read")];
 
-    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Read 2 items");
   });
 
   it("keeps item counts when a location is unavailable", () => {
@@ -223,7 +223,7 @@ describe("ToolActivityRollup", () => {
       tool("file-2", "read", [unavailableFile]),
     ];
 
-    expect(toolRollupLabel("read", items)).toBe("Explored 2 items");
+    expect(toolRollupLabel("read", items)).toBe("Read 2 items");
   });
 
   it("does not imply one known file in a mixed row with unknown locations", () => {

@@ -61,7 +61,7 @@ function distinctResourceCount(
 }
 
 function resourceRollupLabel(
-  activity: "Explored" | "Edited" | "Deleted" | "Moved",
+  activity: "Read" | "Edited" | "Deleted" | "Moved",
   items: readonly ToolProjectionItem[],
 ): string {
   const resourceCount = distinctResourceCount(items);
@@ -118,7 +118,7 @@ export function toolRollupLabel(
     case "execute":
       return commandActivity === "declaredTest" ? "Ran tests" : "Ran commands";
     case "read":
-      return resourceRollupLabel("Explored", items);
+      return resourceRollupLabel("Read", items);
     case "edit":
       return resourceRollupLabel("Edited", items);
     case "delete":
