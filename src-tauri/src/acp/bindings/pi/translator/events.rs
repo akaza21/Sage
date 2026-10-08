@@ -67,9 +67,7 @@ impl PiTranslator {
                 let event = value
                     .get("assistantMessageEvent")
                     .or_else(|| value.get("assistant_message_event"));
-                let delta = event
-                    .and_then(|event| event.get("delta"))
-                    .or_else(|| value.get("delta"));
+                let delta = event.and_then(|event| event.get("delta"));
                 let Some(text) = bounded_string(delta, ITEM_BYTES)? else {
                     return Ok(vec![AdapterOutput::Unsupported {
                         kind: "message_update_without_text_delta".into(),
@@ -80,7 +78,7 @@ impl PiTranslator {
                     .and_then(Value::as_str)
                 {
                     Some("thinking_delta") => Ok(vec![AdapterOutput::ThoughtDelta { text }]),
-                    Some("text_delta") | None => Ok(vec![AdapterOutput::TextDelta { text }]),
+                    Some("text_delta") => Ok(vec![AdapterOutput::TextDelta { text }]),
                     _ => Ok(vec![AdapterOutput::Unsupported {
                         kind: "message_update_non_text_delta".into(),
                     }]),

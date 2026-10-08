@@ -270,6 +270,26 @@ fn pi_read_tool_projects_bounded_result_without_losing_identity() {
     let batch = runtime
         .ingest(
             &frame(json!({
+                "type":"tool_execution_update",
+                "toolCallId":"read-result",
+                "partialResult":{"content":[]}
+            })),
+            &Mapper,
+        )
+        .expect("empty replacement snapshot");
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall {
+                output_summary: None,
+                ..
+            },
+            ..
+        }]
+    ));
+    let batch = runtime
+        .ingest(
+            &frame(json!({
                 "type":"tool_execution_end",
                 "toolCallId":"read-result",
                 "result":{"content":[{"type":"text","text":"final line"}]},
@@ -321,6 +341,113 @@ fn pi_read_image_result_projects_agent_image() {
             ..
         }
     )));
+}
+
+#[test]
+fn pi_tool_snapshot_cache_rejects_aggregate_overflow() {
+    let mut runtime = fixture_runtime(46);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let mut overflow = None;
+    for index in 0..129 {
+        let id = format!("read-{index}");
+        runtime
+            .ingest(
+                &frame(json!({"type":"tool_execution_start","toolCallId":id,"toolName":"read"})),
+                &Mapper,
+            )
+            .expect("read start");
+        let result = runtime.ingest(
+            &frame(json!({
+                "type":"tool_execution_update",
+                "toolCallId":id,
+                "partialResult":{"content":[{"type":"text","text":"x".repeat(65_536)}]}
+            })),
+            &Mapper,
+        );
+        if let Err(error) = result {
+            overflow = Some(error);
+            break;
+        }
+    }
+    assert!(matches!(overflow, Some(AdapterRuntimeError::BatchBytes)));
+    assert!(matches!(
+        runtime.command(AdapterCommand::Cancel),
+        Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
+fn pi_unproven_stream_shapes_and_features_remain_unsupported() {
+    let mut runtime = fixture_runtime(47);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(&frame(json!({"type":"message_start"})), &Mapper)
+        .expect("message start");
+    for event in [
+        json!({"type":"message_update","delta":"untyped arguments"}),
+        json!({"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"arguments"}}),
+        json!({"type":"plan","entries":[{"content":"not a Pi plan event","status":"pending"}]}),
+        json!({"type":"subagent_start","id":"unproven-child"}),
+    ] {
+        let batch = runtime
+            .ingest(&frame(event), &Mapper)
+            .expect("unsupported event");
+        assert!(matches!(batch.events(), [AdapterEvent::Unsupported(_)]));
+        assert!(batch.egress().is_empty());
+    }
+}
+
+#[test]
+fn pi_tool_snapshot_budget_is_reused_after_replacement_and_completion() {
+    let mut runtime = fixture_runtime(49);
+    ready(&mut runtime);
+    running(&mut runtime);
+    for index in 0..129 {
+        let id = format!("read-{index}");
+        runtime
+            .ingest(
+                &frame(json!({"type":"tool_execution_start","toolCallId":id,"toolName":"read"})),
+                &Mapper,
+            )
+            .expect("terminal snapshots leave room for the next read");
+        for text in [
+            "x".repeat(65_536),
+            "y".repeat(65_536),
+            "small".into(),
+            "z".repeat(65_536),
+        ] {
+            runtime
+                .ingest(
+                    &frame(json!({
+                        "type":"tool_execution_update",
+                        "toolCallId":id,
+                        "partialResult":{"content":[{"type":"text","text":text}]}
+                    })),
+                    &Mapper,
+                )
+                .expect("snapshots replace rather than accumulate byte reservations");
+        }
+        let batch = runtime
+            .ingest(
+                &frame(json!({
+                    "type":"tool_execution_end",
+                    "toolCallId":id,
+                    "result":{"content":[{"type":"text","text":"final".repeat(13_107)}]},
+                    "isError":false
+                })),
+                &Mapper,
+            )
+            .expect("tool completion releases its retained snapshot");
+        assert!(matches!(
+            batch.events(),
+            [AdapterEvent::Item {
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                ..
+            }]
+        ));
+    }
 }
 
 #[test]
@@ -520,6 +647,47 @@ fn pi_thinking_selection_is_correlated_and_model_bounded() {
     assert!(!runtime.config_pending());
     let after = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
     assert_eq!(after["configOptions"][1]["currentValue"], "off");
+}
+
+#[test]
+fn pi_poisoned_idle_runtime_rejects_config_and_thinking_discovery() {
+    use crate::acp::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
+    };
+
+    let mut runtime = fixture_runtime(48);
+    ready(&mut runtime);
+    let models = runtime
+        .command(AdapterCommand::ModelPage { cursor: None })
+        .expect("models request");
+    runtime
+        .resolve_egress(models.into_token(), EgressResolution::DeliveryUnknown)
+        .expect("unknown delivery poisons runtime");
+    let intent = ConfigIntent {
+        owner: RuntimeOwner {
+            project_id: SageProjectId::parse("project-pi").unwrap(),
+            chat_id: SageChatId::parse("chat-pi").unwrap(),
+            session_id: SageAgentSessionId::parse("session-pi-48").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(48).unwrap(),
+        },
+        expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+        mutation: ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "pi.model").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", "openai:gpt").unwrap(),
+            },
+        },
+    };
+    assert!(matches!(
+        runtime.configure(&intent),
+        Err(AdapterRuntimeError::Operation)
+    ));
+    assert!(matches!(
+        runtime.begin_thinking_discovery(),
+        Err(AdapterRuntimeError::Operation)
+    ));
 }
 
 #[test]
@@ -791,7 +959,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(matches!(
         runtime
             .ingest(
-                &frame(json!({"type":"message_update","delta":"hello"})),
+                &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}})),
                 &Mapper
             )
             .expect("delta")
@@ -803,7 +971,7 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     ));
     let second = runtime
         .ingest(
-            &frame(json!({"type":"message_update","delta":" world"})),
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":" world"}})),
             &Mapper,
         )
         .expect("second delta");
@@ -1027,13 +1195,13 @@ fn text_snapshot_plus_one_poison_and_prompt_rollback_clear_state() {
         .expect("start");
     bounded
         .ingest(
-            &frame(json!({"type":"message_update","delta":"x".repeat(262_144)})),
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"x".repeat(262_144)}})),
             &Mapper,
         )
         .expect("exact bound");
     assert!(matches!(
         bounded.ingest(
-            &frame(json!({"type":"message_update","delta":"x"})),
+            &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"x"}})),
             &Mapper,
         ),
         Err(AdapterRuntimeError::BatchBytes)
@@ -1069,7 +1237,7 @@ fn split_chunk_secrets_and_paths_are_redacted_after_snapshot_join() {
     ] {
         let batch = runtime
             .ingest(
-                &frame(json!({"type":"message_update","delta":delta})),
+                &frame(json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":delta}})),
                 &Mapper,
             )
             .expect("chunk");

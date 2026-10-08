@@ -20,6 +20,7 @@ mod identity;
 mod image;
 mod permission;
 mod requests;
+mod tool_cache;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
@@ -270,11 +271,7 @@ impl PiRuntime {
             } => {
                 let id = external("piItemId", external_id.clone())?;
                 let payload = identity::tool_start_payload(name, path.as_deref(), resources)?;
-                self.active_turn
-                    .as_mut()
-                    .ok_or(AdapterRuntimeError::Operation)?
-                    .tools
-                    .insert(external_id, payload.clone());
+                self.cache_tool(external_id, payload.clone(), false)?;
                 (
                     Some(self.item(
                         id,
@@ -290,7 +287,7 @@ impl PiRuntime {
                 output,
             } => {
                 let id = external("piItemId", external_id.clone())?;
-                let payload = self.update_tool(&external_id, output)?;
+                let payload = self.update_tool(&external_id, output, false)?;
                 (
                     Some(self.item(
                         id,
@@ -307,7 +304,7 @@ impl PiRuntime {
                 output,
             } => {
                 let id = external("piItemId", external_id.clone())?;
-                let payload = self.update_tool(&external_id, output)?;
+                let payload = self.update_tool(&external_id, output, true)?;
                 let (lifecycle, state) = match outcome {
                     ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),
                     ToolOutcome::Failed => (ItemLifecycle::Failed, ToolState::Failed),

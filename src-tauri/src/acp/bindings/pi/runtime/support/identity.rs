@@ -229,22 +229,24 @@ impl PiRuntime {
         &mut self,
         external_id: &str,
         output: Option<String>,
+        terminal: bool,
     ) -> Result<NormalizedPayload, AdapterRuntimeError> {
-        let payload = self
+        let mut payload = self
             .active_turn
-            .as_mut()
+            .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?
             .tools
-            .get_mut(external_id)
+            .get(external_id)
+            .cloned()
             .ok_or(AdapterRuntimeError::Operation)?;
-        if let Some(output) = output {
-            if let NormalizedPayload::ToolCall { output_summary, .. } = payload {
-                *output_summary = Some(
-                    SafeText::new("toolOutput", output).map_err(|_| AdapterRuntimeError::Frame)?,
-                );
-            }
+        if let NormalizedPayload::ToolCall { output_summary, .. } = &mut payload {
+            *output_summary = output
+                .map(|output| SafeText::new("toolOutput", output))
+                .transpose()
+                .map_err(|_| AdapterRuntimeError::Frame)?;
         }
-        Ok(payload.clone())
+        self.cache_tool(external_id.to_owned(), payload.clone(), terminal)?;
+        Ok(payload)
     }
 }
 

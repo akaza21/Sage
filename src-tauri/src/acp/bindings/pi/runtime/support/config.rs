@@ -12,7 +12,8 @@ impl PiRuntime {
     pub(crate) fn begin_thinking_discovery(
         &mut self,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if !self.initialized
+        if self.poisoned
+            || !self.initialized
             || self.external_session.is_none()
             || self.active_turn.is_some()
             || self.thinking_request_command.is_some()
@@ -36,7 +37,8 @@ impl PiRuntime {
         &mut self,
         intent: &ConfigIntent,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if !self.initialized
+        if self.poisoned
+            || !self.initialized
             || self.external_session.is_none()
             || self.active_turn.is_some()
             || self.config_pending()

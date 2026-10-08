@@ -52,6 +52,7 @@ pub(super) struct TurnIntent {
     thought_id: Option<ExternalId>,
     thought_snapshot: Option<String>,
     tools: BTreeMap<String, crate::acp::intent::NormalizedPayload>,
+    tool_snapshot_bytes: usize,
     next_item: u64,
 }
 
@@ -224,6 +225,7 @@ impl HarnessAdapter for PiRuntime {
                     thought_id: None,
                     thought_snapshot: None,
                     tools: BTreeMap::new(),
+                    tool_snapshot_bytes: 0,
                     next_item: 0,
                 });
                 Ok(egress)
