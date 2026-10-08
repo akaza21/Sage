@@ -194,6 +194,33 @@ describe("CollaborationItem", () => {
     expect(screen.queryByRole("button", { name: /B finished/ })).toBeNull();
   });
 
+  it("colours grouped finish dots for the agents that actually completed", () => {
+    const item = {
+      id: "group-colours",
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: "activity-1",
+        label: "wait",
+        summary: "",
+        receiverLabels: ["A", "B", "C"],
+        operation: "wait",
+        agentKeys: ["id-a", "id-b", "id-c"],
+        agentStates: [
+          ["id-a", "running"],
+          ["id-b", "completed"],
+          ["id-c", "completed"],
+        ],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("B and C finished")).toBeVisible();
+    const dots = document.querySelectorAll(".acp-subagent-row__glyph");
+    expect(dots).toHaveLength(2);
+    expect(dots[0]).toHaveClass("acp-subagent-row__glyph--0");
+    expect(dots[1]).toHaveClass("acp-subagent-row__glyph--1");
+  });
+
   it("does not route conflicting singular child identities", () => {
     const item = {
       id: "conflict-1",

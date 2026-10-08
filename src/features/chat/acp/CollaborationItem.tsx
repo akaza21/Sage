@@ -136,7 +136,7 @@ export function CollaborationItem({
           {Array.from({ length: Math.min(count, 3) }, (_, index) => (
             <span
               key={index}
-              className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agentKeys[index] ?? item.payload.agentKey ?? item.id ?? "subagent")}`}
+              className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(visibleKeys[index] ?? item.payload.agentKey ?? item.id ?? "subagent")}`}
             >
               {isFinished ? "●" : "✦"}
             </span>
