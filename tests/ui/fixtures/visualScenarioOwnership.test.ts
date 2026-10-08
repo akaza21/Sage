@@ -622,6 +622,14 @@ describe("visual scenario surface ownership", () => {
       .mockImplementation(snapshotBridge);
     const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
 
+    expect(
+      await screen.findByRole(
+        "region",
+        { name: "Files edited in turn 1" },
+        { timeout: 5_000 },
+      ),
+    ).toHaveTextContent("1 file changed");
+    fireEvent.click(screen.getByRole("button", { name: /file changed/i }));
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
