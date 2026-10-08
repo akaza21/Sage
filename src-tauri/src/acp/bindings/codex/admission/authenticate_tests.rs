@@ -37,11 +37,13 @@ impl AdmittedCodexBinding {
 }
 
 #[derive(Debug)]
-pub(super) struct TestCleanup(PathBuf);
+pub(super) struct TestCleanup(Vec<PathBuf>);
 
 impl Drop for TestCleanup {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        for path in &self.0 {
+            let _ = std::fs::remove_dir_all(path);
+        }
     }
 }
 
@@ -54,8 +56,17 @@ pub(super) fn admitted_binding_fixture() -> AdmittedCodexBinding {
 pub(super) fn admitted_journey_binding_fixture(
     case_ids: &'static [&'static str],
 ) -> AdmittedCodexBinding {
+    admitted_journey_binding_fixture_from(case_ids, &journey_fixture_source())
+}
+
+fn admitted_journey_binding_fixture_from(
+    case_ids: &'static [&'static str],
+    source: &std::path::Path,
+) -> AdmittedCodexBinding {
     let mut binding = admitted_binding_fixture();
-    binding.journey_test_entrypoint = Some(journey_fixture_entrypoint());
+    let (entrypoint, mut cleanup) = journey_fixture_entrypoint(source);
+    binding.journey_test_entrypoint = Some(entrypoint);
+    binding._cleanup.as_mut().unwrap().0.append(&mut cleanup.0);
     binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
     binding
 }
@@ -63,25 +74,43 @@ pub(super) fn admitted_journey_binding_fixture(
 pub(super) fn admitted_observed_steer_journey_fixture(
     case_ids: &'static [&'static str],
 ) -> AdmittedCodexBinding {
-    let entrypoint = journey_fixture_entrypoint();
+    admitted_observed_steer_journey_fixture_from(case_ids, &journey_fixture_source())
+}
+
+fn admitted_observed_steer_journey_fixture_from(
+    case_ids: &'static [&'static str],
+    source: &std::path::Path,
+) -> AdmittedCodexBinding {
+    let (entrypoint, cleanup) = journey_fixture_entrypoint(source);
     let mut binding =
         AdmittedCodexBinding::admit_observed(entrypoint.path.clone(), "codex 0.146.0".into())
             .expect("observed fixture admission");
     binding.journey_test_entrypoint = Some(entrypoint);
     binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
+    binding._cleanup = Some(cleanup);
     binding
 }
 
-fn journey_fixture_entrypoint() -> EntrypointIdentity {
-    let path = std::env::current_exe()
+fn journey_fixture_source() -> PathBuf {
+    std::env::current_exe()
         .expect("journey test executable")
         .parent()
         .expect("journey test executable directory")
         .parent()
         .expect("journey target directory")
         .join("acp-adversarial-fixture.exe")
-        .canonicalize()
-        .expect("already-built ACP fixture");
+}
+
+fn journey_fixture_entrypoint(source: &std::path::Path) -> (EntrypointIdentity, TestCleanup) {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-codex-journey-fixture-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir(&directory).expect("journey fixture directory");
+    let cleanup = TestCleanup(vec![directory.clone()]);
+    let staged = directory.join("acp-adversarial-fixture.exe");
+    std::fs::copy(source, &staged).expect("stage journey fixture");
+    let path = staged.canonicalize().expect("already-built ACP fixture");
     let mut file = std::fs::File::open(&path).expect("fixture artifact");
     let byte_len = file.metadata().expect("fixture metadata").len();
     let mut digest = Sha256::new();
@@ -93,10 +122,40 @@ fn journey_fixture_entrypoint() -> EntrypointIdentity {
         }
         digest.update(&chunk[..read]);
     }
-    EntrypointIdentity {
-        path,
-        sha256: digest.finalize().into(),
-        byte_len,
+    (
+        EntrypointIdentity {
+            path,
+            sha256: digest.finalize().into(),
+            byte_len,
+        },
+        cleanup,
+    )
+}
+
+#[test]
+#[cfg_attr(not(feature = "acp-fixture"), ignore = "requires acp-fixture")]
+fn journey_bindings_keep_admitted_fixture_bytes_after_source_replacement() {
+    let parent = std::env::temp_dir().join(format!(
+        "sage-codex-journey-source-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir(&parent).unwrap();
+    let _source_cleanup = TestCleanup(vec![parent.clone()]);
+    let source = parent.join("fixture.exe");
+    std::fs::copy(journey_fixture_source(), &source).unwrap();
+
+    let observed = admitted_observed_steer_journey_fixture_from(&[], &source);
+    let signed = admitted_journey_binding_fixture_from(&[], &source);
+    std::fs::write(&source, b"a concurrent build replaced the source").unwrap();
+
+    observed
+        .revalidate()
+        .expect("observed admission owns fixture bytes");
+    for binding in [&observed, &signed] {
+        let entrypoint = binding.journey_test_entrypoint.as_ref().unwrap();
+        let current = super::verify::observed_entrypoint_identity(&entrypoint.path).unwrap();
+        assert_eq!(current.sha256, entrypoint.sha256);
+        assert_eq!(current.byte_len, entrypoint.byte_len);
     }
 }
 
@@ -196,7 +255,7 @@ fn signed_role_admission_fixture_at(parent: PathBuf) -> SignedRoleAdmissionFixtu
         reproduced,
         authority,
         environment,
-        TestCleanup(parent),
+        TestCleanup(vec![parent]),
     )
 }
 
@@ -215,7 +274,7 @@ fn shared_admission_fixture_canonicalizes_root_before_deriving_authority() {
     let expected_home = expected_parent
         .join("CodexState")
         .join("codex-app-server-0.145.0-7b0ab167");
-    assert_eq!(cleanup.0, expected_parent);
+    assert_eq!(cleanup.0, vec![expected_parent]);
     assert_eq!(packet.codex_home(), expected_home);
     assert_eq!(
         environment
