@@ -11,29 +11,34 @@ const listeners = new Map<
   string,
   (event: { payload: HarnessDefinition[] }) => void
 >();
-let closeRequested:
-  ((event: { preventDefault: () => void }) => Promise<void>) | undefined;
-
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(
-    async (
-      event: string,
-      listener: (value: { payload: HarnessDefinition[] }) => void,
-    ) => {
-      listeners.set(event, listener);
-      return () => listeners.delete(event);
-    },
-  ),
-}));
-
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    onCloseRequested: vi.fn(async (listener) => {
-      closeRequested = listener;
-      return () => undefined;
-    }),
-  }),
-}));
+let closeEventListener: (() => Promise<void>) | undefined;
+let closeTarget: unknown;
+const closeUnlisten = vi.fn();
+const callbacks = new Map<number, (event: unknown) => void>();
+let callbackId = 0;
+const invoke = vi.fn(
+  async (command: string, args?: Record<string, unknown>) => {
+    if (command === "plugin:event|listen") {
+      const event = args?.event as string;
+      const listener = callbacks.get(args?.handler as number);
+      if (!listener) throw new Error("Tauri callback was not registered");
+      if (event === "tauri://close-requested") {
+        closeEventListener = listener as () => Promise<void>;
+        closeTarget = args?.target;
+      } else {
+        listeners.set(
+          event,
+          listener as (event: { payload: HarnessDefinition[] }) => void,
+        );
+      }
+      return 1;
+    }
+    if (command === "plugin:event|unlisten") {
+      listeners.delete(args?.event as string);
+    }
+    return undefined;
+  },
+);
 
 vi.mock("../workbench/Workbench", () => ({
   Workbench: () => <main>Workbench</main>,
@@ -81,10 +86,31 @@ const detected: HarnessDefinition = {
 describe("App harness discovery event", () => {
   beforeEach(() => {
     listeners.clear();
-    closeRequested = undefined;
+    closeEventListener = undefined;
+    closeTarget = undefined;
+    closeUnlisten.mockClear();
+    invoke.mockClear();
+    callbacks.clear();
+    callbackId = 0;
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
-      value: {},
+      value: {
+        metadata: { currentWindow: { label: "main" } },
+        transformCallback: (callback: (event: unknown) => void) => {
+          const id = ++callbackId;
+          callbacks.set(id, callback);
+          return id;
+        },
+        invoke,
+      },
+    });
+    Object.defineProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__", {
+      configurable: true,
+      value: {
+        unregisterListener: (event: string) => {
+          if (event === "tauri://close-requested") closeUnlisten();
+        },
+      },
     });
     useWorkbenchStore.setState({
       harnesses: [detecting],
@@ -171,17 +197,17 @@ describe("App harness discovery event", () => {
       .mockResolvedValueOnce(undefined);
     useWorkbenchStore.setState({ closeWorkbench });
     const screen = render(<App />);
-    await waitFor(() => expect(closeRequested).toBeTypeOf("function"));
+    await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
 
     await act(async () => {
-      await closeRequested?.({ preventDefault: vi.fn() });
+      await closeEventListener?.();
     });
     expect(screen.getByRole("alert").textContent).toContain(
       "editor flush failed",
     );
 
     await act(async () => {
-      await closeRequested?.({ preventDefault: vi.fn() });
+      await closeEventListener?.();
     });
     expect(closeWorkbench).toHaveBeenCalledTimes(2);
   });
@@ -194,14 +220,70 @@ describe("App harness discovery event", () => {
         .mockRejectedValue(new Error("Close editorFlush failed")),
     });
     const screen = render(<App />);
-    await waitFor(() => expect(closeRequested).toBeTypeOf("function"));
+    await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
 
     await act(async () => {
-      await closeRequested?.({ preventDefault: vi.fn() });
+      await closeEventListener?.();
     });
     expect(screen.getByRole("alert").textContent).toContain(
       "Close editorFlush failed",
     );
+  });
+
+  it("handles close requests for the current window through the event port", async () => {
+    const closeWorkbench = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ closeWorkbench });
+    render(<App />);
+
+    await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
+    expect(closeTarget).toEqual({ kind: "Window", label: "main" });
+    await act(async () => {
+      await closeEventListener?.();
+    });
+
+    expect(closeWorkbench).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalledWith("plugin:window|destroy", {
+      label: "main",
+    });
+  });
+
+  it("destroys the window on a second close request while shutdown is pending", async () => {
+    let finishClose: (() => void) | undefined;
+    const closeWorkbench = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishClose = resolve;
+        }),
+    );
+    useWorkbenchStore.setState({ closeWorkbench });
+    render(<App />);
+    await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
+
+    act(() => {
+      void closeEventListener?.();
+    });
+    await waitFor(() => expect(closeWorkbench).toHaveBeenCalledOnce());
+    await act(async () => {
+      await closeEventListener?.();
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "plugin:window|destroy",
+      { label: "main" },
+      undefined,
+    );
+    await act(async () => {
+      finishClose?.();
+    });
+  });
+
+  it("unsubscribes from close requests when App unmounts", async () => {
+    const screen = render(<App />);
+    await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
+
+    screen.unmount();
+
+    expect(closeUnlisten).toHaveBeenCalledOnce();
   });
 });
 
@@ -211,7 +293,15 @@ describe("App harness selection after bootstrap", () => {
     discoverCodex.mockReset();
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
-      value: {},
+      value: {
+        metadata: { currentWindow: { label: "main" } },
+        transformCallback: (callback: (event: unknown) => void) => {
+          const id = ++callbackId;
+          callbacks.set(id, callback);
+          return id;
+        },
+        invoke,
+      },
     });
     useWorkbenchStore.setState({
       phase: "ready",

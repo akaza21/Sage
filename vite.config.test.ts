@@ -32,7 +32,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
-  "node_modules/@tauri-apps/api/window.js",
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/browser/BrowserSurface.tsx",
@@ -311,6 +310,11 @@ describe("desktop-native chunk topology", () => {
     expect(groupedGraph.initialModules).toEqual(ordinaryGraph.initialModules);
     expect(
       groupedGraph.allModules.some((id) => id.endsWith(BROWSER_FIXTURE_MODULE)),
+    ).toBe(false);
+    expect(
+      ordinaryGraph.allModules.some((id) =>
+        id.endsWith("node_modules/@tauri-apps/api/window.js"),
+      ),
     ).toBe(false);
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);

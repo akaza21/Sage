@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import type { HarnessDefinition } from "../domain/workbench";
+import { invokeNative } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 import { traceCloseStage } from "./workspaceNotifyLifecycle";
@@ -79,26 +80,36 @@ export function App() {
     let disposed = false;
     let closing = false;
     let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
-      const appWindow = getCurrentWindow();
-      const removeListener = await appWindow.onCloseRequested(async (event) => {
-        if (closing) {
-          return;
+    void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      const label = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            metadata: { currentWindow: { label: string } };
+          };
         }
-        event.preventDefault();
-        traceCloseStage("closeRequested", "start");
-        try {
-          closing = true;
-          setCloseFailure(null);
-          await useWorkbenchStore.getState().closeWorkbench();
-        } catch (error) {
-          traceCloseStage("closeRequested", "error");
-          setCloseFailure(
-            error instanceof Error ? error.message : String(error),
-          );
-          closing = false;
-        }
-      });
+      ).__TAURI_INTERNALS__.metadata.currentWindow.label;
+      const removeListener = await listen(
+        "tauri://close-requested",
+        async () => {
+          if (closing) {
+            await invokeNative("plugin:window|destroy", { label });
+            return;
+          }
+          traceCloseStage("closeRequested", "start");
+          try {
+            closing = true;
+            setCloseFailure(null);
+            await useWorkbenchStore.getState().closeWorkbench();
+          } catch (error) {
+            traceCloseStage("closeRequested", "error");
+            setCloseFailure(
+              error instanceof Error ? error.message : String(error),
+            );
+            closing = false;
+          }
+        },
+        { target: { kind: "Window", label } },
+      );
       if (disposed) {
         removeListener();
       } else {
