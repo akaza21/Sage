@@ -43,8 +43,12 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.chat-transcript-work__groups \.acp-tool-rollup > summary:hover[\s\S]*\.acp-tool-rollup__chevron[\s\S]*opacity:\s*1;/,
     );
     expect(transcriptCss).toMatch(
-      /\.chat-transcript-work > summary\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
+      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
     );
+    expect(transcriptCss).toMatch(
+      /\.chat-transcript-work > summary\s*\{[^}]*cursor:\s*pointer;/s,
+    );
+    expect(transcriptCss).not.toMatch(/\.chat-transcript-work__heading::after/);
     expect(transcriptCss).toMatch(
       /\.chat-transcript-work > summary::after\s*\{[^}]*display:\s*none;/s,
     );
@@ -83,7 +87,7 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.message-list__content \.acp-turn__state\s*\{[^}]*display:\s*none;/s,
     );
     expect(css).toMatch(
-      /\.chat-transcript-work > summary\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
+      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
     );
     expect(css).toMatch(
       /\.chat-transcript-work__groups \.acp-tool-rollup__items \.acp-tool-card\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
