@@ -365,7 +365,7 @@ impl NormalizedPayload {
             Self::Text { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
             Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
-            Self::CompactionNotice => ItemKind::Unsupported,
+            Self::CompactionNotice => ItemKind::CompactionNotice,
             Self::ToolCall { .. } => ItemKind::ToolCall,
             Self::FileChangeDiff { .. } => ItemKind::FileChangeDiff,
             Self::Image { .. } => ItemKind::Image,

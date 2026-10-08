@@ -278,6 +278,7 @@ impl PiRuntime {
             }
             AdapterOutput::CompactionStarted => (Some(self.start_compaction()?), None),
             AdapterOutput::CompactionCompleted => (Some(self.finish_compaction()?), None),
+            AdapterOutput::CompactionInterrupted => (Some(self.interrupt_compaction()?), None),
             AdapterOutput::ToolStarted { external_id, name } => {
                 let id = external("piItemId", external_id)?;
                 (

@@ -1,7 +1,11 @@
 use super::*;
 
 mod child_thread;
-pub(super) use child_thread::{apply_through_v16, build_fresh_v16, upgrade_current_through_v9};
+mod item_kind;
+#[cfg(test)]
+pub(super) use child_thread::build_fresh_v16;
+pub(super) use child_thread::{apply_through_v17, build_fresh_v17, upgrade_current_through_v9};
+pub(super) use item_kind::apply_v17_steps;
 
 pub(super) fn apply_through_v11(connection: &mut Connection) -> AppResult<()> {
     let versions = connection

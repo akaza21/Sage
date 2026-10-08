@@ -198,6 +198,7 @@ fn protocol_contract_item_kinds_match_the_rust_wire_set() {
         ItemKind::Text,
         ItemKind::ThoughtSummary,
         ItemKind::Plan,
+        ItemKind::CompactionNotice,
         ItemKind::ToolCall,
         ItemKind::FileChangeDiff,
         ItemKind::Image,
@@ -212,6 +213,7 @@ fn protocol_contract_item_kinds_match_the_rust_wire_set() {
             ItemKind::Text
             | ItemKind::ThoughtSummary
             | ItemKind::Plan
+            | ItemKind::CompactionNotice
             | ItemKind::ToolCall
             | ItemKind::FileChangeDiff
             | ItemKind::Image

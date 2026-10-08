@@ -100,6 +100,7 @@ pub enum AdapterOutput {
     },
     CompactionStarted,
     CompactionCompleted,
+    CompactionInterrupted,
     ToolStarted {
         external_id: String,
         name: String,

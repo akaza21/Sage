@@ -19,6 +19,7 @@
     "text",
     "thoughtSummary",
     "plan",
+    "compactionNotice",
     "toolCall",
     "fileChangeDiff",
     "image",

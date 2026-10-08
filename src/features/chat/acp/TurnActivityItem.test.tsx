@@ -47,10 +47,25 @@ function item<T extends AcpItem["kind"]>(
 }
 
 it("renders context compaction as a compact shared notice", () => {
-  const { container } = render(<TurnActivityItem item={item("compactionNotice", {})} />);
+  const { container } = render(
+    <TurnActivityItem item={item("compactionNotice", {})} />,
+  );
   expect(screen.getByText("Context automatically compacted")).toBeVisible();
-  expect(container.querySelector('[data-activity-kind="compactionNotice"]')).not.toBeNull();
+  expect(
+    container.querySelector('[data-activity-kind="compactionNotice"]'),
+  ).not.toBeNull();
   expect(screen.queryByRole("button", { name: /tool/i })).toBeNull();
+});
+
+it("does not claim a Pi compaction finished until the end arrives", () => {
+  const started = item("compactionNotice", {});
+  started.lifecycle = "started";
+  const { rerender } = render(<TurnActivityItem item={started} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Compacting context…");
+  rerender(<TurnActivityItem item={{ ...started, lifecycle: "cancelled" }} />);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Context compaction interrupted",
+  );
 });
 
 describe("TurnActivityItem", () => {

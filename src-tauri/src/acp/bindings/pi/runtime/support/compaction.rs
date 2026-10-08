@@ -22,16 +22,22 @@ impl PiRuntime {
     }
 
     pub(super) fn finish_compaction(&mut self) -> Result<AdapterEvent, AdapterRuntimeError> {
+        self.terminal_compaction(ItemLifecycle::Completed)
+    }
+
+    pub(super) fn interrupt_compaction(&mut self) -> Result<AdapterEvent, AdapterRuntimeError> {
+        self.terminal_compaction(ItemLifecycle::Cancelled)
+    }
+
+    fn terminal_compaction(
+        &mut self,
+        lifecycle: ItemLifecycle,
+    ) -> Result<AdapterEvent, AdapterRuntimeError> {
         let id = self
             .active_turn
             .as_mut()
             .and_then(|turn| turn.compaction_id.take())
             .ok_or(AdapterRuntimeError::Operation)?;
-        self.item(
-            id,
-            ItemLifecycle::Completed,
-            None,
-            NormalizedPayload::CompactionNotice,
-        )
+        self.item(id, lifecycle, None, NormalizedPayload::CompactionNotice)
     }
 }

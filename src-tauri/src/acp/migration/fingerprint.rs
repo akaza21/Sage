@@ -8,27 +8,13 @@ use crate::{
     project_migration,
 };
 
-use super::legacy;
+use super::{INITIAL, V2, V3, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, legacy};
 
 mod version;
 use version::class_for_version;
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
-const INITIAL: &str = include_str!("../../../migrations/001_initial.sql");
-const V2: &str = include_str!("../../../migrations/002_diff_tabs.sql");
-const V3: &str = include_str!("../../../migrations/003_editor_buffers.sql");
-const V6: &str = include_str!("../../../migrations/006_resource_trash_intents.sql");
-const V7: &str = include_str!("../../../migrations/007_acp_activation_abort.sql");
-const V8: &str = include_str!("../../../migrations/008_permission_decisions.sql");
-const V9: &str = include_str!("../../../migrations/009_cancelled_permissions.sql");
-const V10: &str = include_str!("../../../migrations/010_acp_file_change_snapshots.sql");
-const V11: &str = include_str!("../../../migrations/011_turn_usage_snapshots.sql");
-const V12: &str = include_str!("../../../migrations/012_browser_tabs.sql");
-const V13: &str = include_str!("../../../migrations/013_chat_queued_prompts.sql");
-const V14: &str = include_str!("../../../migrations/014_chat_image_artifacts.sql");
-const V15: &str = include_str!("../../../migrations/015_acp_child_thread_bindings.sql");
-const V16: &str = include_str!("../../../migrations/016_acp_child_thread_transcripts.sql");
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
@@ -56,6 +42,7 @@ pub(super) enum SchemaClass {
     CurrentV14,
     CurrentV15,
     CurrentV16,
+    CurrentV17,
 }
 
 impl SchemaClass {
@@ -85,6 +72,7 @@ impl SchemaClass {
                 | Self::CurrentV13
                 | Self::CurrentV14
                 | Self::CurrentV15
+                | Self::CurrentV16
         )
     }
 }
@@ -130,11 +118,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 17")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 18")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 16
+        || versions.len() > 17
         || versions
             .iter()
             .enumerate()
@@ -379,6 +367,14 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             [],
         )?;
         expected.pragma_update(None, "user_version", 16)?;
+    }
+    if version >= 17 {
+        super::schema_upgrade::apply_v17_steps(&expected)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (17, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 17)?;
     }
     Ok(expected)
 }

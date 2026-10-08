@@ -110,7 +110,12 @@ export function safeItem(value: unknown): AcpItem | null {
     }
     case "compactionNotice":
       return value.toolState === null && Object.keys(payload).length === 0
-        ? { ...identity, kind: "compactionNotice", toolState: null, payload: {} }
+        ? {
+            ...identity,
+            kind: "compactionNotice",
+            toolState: null,
+            payload: {},
+          }
         : null;
     case "plan": {
       if (

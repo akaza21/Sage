@@ -297,6 +297,24 @@ fn pi_compaction_start_and_end_correlate_one_notice_lifecycle() {
 }
 
 #[test]
+fn pi_turn_end_without_compaction_end_interrupts_the_notice_first() {
+    let mut translator = admitted_translator(8);
+    accept_prompt(&mut translator, "turn-compaction");
+    translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
+    translator
+        .ingest(br#"{"type":"auto_compaction_start"}"#)
+        .unwrap();
+    let events = translator.ingest(br#"{"type":"agent_end"}"#).unwrap();
+    assert!(matches!(
+        events.as_slice(),
+        [
+            AdapterOutput::CompactionInterrupted,
+            AdapterOutput::TurnTerminal { .. }
+        ]
+    ));
+}
+
+#[test]
 fn abort_capacity_failure_does_not_mark_an_unsent_interrupt() {
     let mut translator = admitted_translator(9);
     accept_prompt(&mut translator, "turn-abort");

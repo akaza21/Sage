@@ -345,7 +345,19 @@ export function TurnActivityItem({
     case "plan":
       return <PlanActivity item={item} workingItems={workingItems} />;
     case "compactionNotice":
-      return <p className="acp-compaction-notice" data-activity-kind="compactionNotice">Context automatically compacted</p>;
+      return (
+        <p
+          className="acp-compaction-notice"
+          data-activity-kind="compactionNotice"
+          role="status"
+        >
+          {item.lifecycle === "completed"
+            ? "Context automatically compacted"
+            : item.lifecycle === "started" || item.lifecycle === "streaming"
+              ? "Compacting context…"
+              : "Context compaction interrupted"}
+        </p>
+      );
     case "error":
       return <ErrorActivity item={item} />;
   }

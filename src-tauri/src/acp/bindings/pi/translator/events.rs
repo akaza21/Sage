@@ -182,10 +182,16 @@ impl PiTranslator {
             Some(_) => Err(AdapterError::TerminalConflict),
             None => {
                 turn.terminal = Some(incoming);
-                Ok(vec![AdapterOutput::TurnTerminal {
+                let mut events = Vec::new();
+                if turn.compaction_active {
+                    turn.compaction_active = false;
+                    events.push(AdapterOutput::CompactionInterrupted);
+                }
+                events.push(AdapterOutput::TurnTerminal {
                     turn_key: turn.turn_key.clone(),
                     outcome: incoming,
-                }])
+                });
+                Ok(events)
             }
         }
     }

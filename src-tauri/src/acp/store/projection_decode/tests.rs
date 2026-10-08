@@ -142,7 +142,7 @@ fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
     ));
     assert_eq!(
         NormalizedPayload::CompactionNotice.kind(),
-        crate::acp::lifecycle::ItemKind::Unsupported
+        crate::acp::lifecycle::ItemKind::CompactionNotice
     );
 }
 
