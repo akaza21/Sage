@@ -30,6 +30,7 @@ interface Props {
   onNavigate: () => void;
   onControl: (action: "back" | "forward" | "reload" | "stop") => void;
   onFind: () => void;
+  onPrint: () => void;
   onZoom: (delta: number) => void;
   onZoomReset: () => void;
   onDownloads: () => void;
@@ -50,6 +51,7 @@ export function BrowserNavigationControls({
   onNavigate,
   onControl,
   onFind,
+  onPrint,
   onZoom,
   onZoomReset,
   onDownloads,
@@ -204,6 +206,15 @@ export function BrowserNavigationControls({
                   onClick={() => run(onFind)}
                 >
                   Find in page
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  disabled={Boolean(navigation?.printUnavailableReason)}
+                  title={navigation?.printUnavailableReason ?? undefined}
+                  onClick={() => run(onPrint)}
+                >
+                  Print
                 </button>
                 <div className="browser-surface__menu-zoom">
                   <span>Zoom</span>

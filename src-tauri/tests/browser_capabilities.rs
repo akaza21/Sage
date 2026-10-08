@@ -81,6 +81,7 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::page_controls::browser_zoom",
         "browser::page_controls::browser_open_external",
         "browser::page_controls::browser_find",
+        "browser::page_controls::browser_print",
         "acp::browser::attachment::attach_browser_tab",
         "acp::browser::attachment::detach_browser_tab",
         "acp::browser::attachment::stop_browser_tab",

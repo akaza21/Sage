@@ -8,11 +8,10 @@ import {
   browserHistory,
   browserNavigate,
   browserOpenExternal,
+  browserPrint,
   browserStatus,
   browserSuggestedSites,
   browserZoom,
-  hideBrowser,
-  positionBrowser,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
@@ -33,6 +32,7 @@ import {
 import { BrowserNewTab } from "./BrowserNewTab";
 import { useBrowserShortcuts } from "./useBrowserShortcuts";
 import { performBrowserShortcut } from "./browserShortcuts";
+import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
@@ -160,76 +160,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  useEffect(() => {
-    const element = frame.current;
-    if (!element) return;
-    const center = element.closest(".center-region");
-    const agentCanvas = element.closest(".agent-artifact-pane__canvas");
-    let active = true;
-    let frameId = 0;
-    const reportError = (cause: unknown) => {
-      if (active) setError(String(cause).slice(0, 512));
-    };
-    const place = () => {
-      cancelAnimationFrame(frameId);
-      if (center?.getAttribute("aria-hidden") === "true") {
-        void hideBrowser(tab.id).catch(reportError);
-        return;
-      }
-      frameId = requestAnimationFrame(() => {
-        const rect = element.getBoundingClientRect();
-        const canvasRect = agentCanvas?.getBoundingClientRect();
-        const toolbarBottom = agentCanvas
-          ? (surface.current
-              ?.querySelector(".browser-surface__toolbar")
-              ?.getBoundingClientRect().bottom ??
-            canvasRect?.top ??
-            rect.top)
-          : rect.top;
-        const left = canvasRect
-          ? Math.max(rect.left, canvasRect.left)
-          : rect.left;
-        const top = canvasRect
-          ? Math.max(rect.top, canvasRect.top, toolbarBottom)
-          : rect.top;
-        const right = canvasRect
-          ? Math.min(rect.right, canvasRect.right)
-          : rect.right;
-        const bottom = canvasRect
-          ? Math.min(rect.bottom, canvasRect.bottom)
-          : rect.bottom;
-        if (right - left < 1 || bottom - top < 1) {
-          if (agentCanvas) void hideBrowser(tab.id).catch(reportError);
-          return;
-        }
-        void positionBrowser(tab.id, {
-          x: left,
-          y: top,
-          width: right - left,
-          height: bottom - top,
-        }).catch(reportError);
-      });
-    };
-    const observer = new ResizeObserver(place);
-    observer.observe(element);
-    const visibilityObserver = new MutationObserver(place);
-    if (center) {
-      visibilityObserver.observe(center, {
-        attributes: true,
-        attributeFilter: ["aria-hidden"],
-      });
-    }
-    window.addEventListener("resize", place);
-    place();
-    return () => {
-      active = false;
-      cancelAnimationFrame(frameId);
-      observer.disconnect();
-      visibilityObserver.disconnect();
-      window.removeEventListener("resize", place);
-      void hideBrowser(tab.id).catch(() => undefined);
-    };
-  }, [tab.id]);
+  useBrowserPlacement(tab.id, frame, surface, setError);
   async function navigate() {
     try {
       setError(null);
@@ -324,6 +255,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onNavigate={() => void navigate()}
           onControl={(action) => void control(action)}
           onFind={() => setFindOpen(true)}
+          onPrint={() => void pageAction(() => browserPrint(tab.id))}
           onZoom={changeZoom}
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}

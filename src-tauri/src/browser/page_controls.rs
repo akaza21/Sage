@@ -1,9 +1,89 @@
 use tauri::{State, Webview};
 
 #[cfg(windows)]
+use tauri::Manager;
+
+#[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
-use super::{BrowserState, admit_url};
+use super::{BrowserState, BrowserTabs, admit_url};
+
+fn dispatch_user_print<T, R>(
+    tabs: &BrowserTabs<T>,
+    tab_id: &str,
+    show_dialog: impl FnOnce(&T) -> Result<R, String>,
+) -> Result<R, String> {
+    tabs.openable_url(tab_id)?;
+    let handle = tabs.handle(tab_id).ok_or("browser tab unavailable")?;
+    show_dialog(handle)
+}
+
+#[tauri::command]
+pub(crate) async fn browser_print(
+    state: State<'_, BrowserState>,
+    tab_id: String,
+) -> Result<(), String> {
+    let (webview, revision) = {
+        let tabs = state.tabs.lock().map_err(|_| "browser unavailable")?;
+        dispatch_user_print(&tabs, &tab_id, |webview| {
+            let revision = tabs
+                .snapshot(&tab_id)
+                .ok_or("browser tab unavailable")?
+                .revision;
+            Ok((webview.clone(), revision))
+        })?
+    };
+    native_print(webview, revision).await
+}
+
+#[cfg(windows)]
+async fn native_print(webview: Webview, expected_revision: u64) -> Result<(), String> {
+    use webview2_com_sys::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM, ICoreWebView2_16,
+    };
+    use windows_core::Interface;
+
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let app = webview.app_handle().clone();
+    let tab_id = webview.label().to_owned();
+    webview
+        .with_webview(move |platform| {
+            let result: Result<(), String> = (|| {
+                {
+                    let state = app.state::<BrowserState>();
+                    let tabs = state.tabs.lock().map_err(|_| "browser unavailable")?;
+                    if tabs
+                        .snapshot(&tab_id)
+                        .is_none_or(|snapshot| snapshot.revision != expected_revision)
+                        || tabs.openable_url(&tab_id).is_err()
+                    {
+                        return Err("browser page changed; retry print".into());
+                    }
+                }
+                let core = unsafe { platform.controller().CoreWebView2() }
+                    .map_err(|error| error.to_string())?;
+                let printer = core
+                    .cast::<ICoreWebView2_16>()
+                    .map_err(|_| "system print dialog is unavailable in this WebView".to_owned())?;
+                unsafe { printer.ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM) }
+                    .map_err(|error| error.to_string())
+            })();
+            let _ = sender.send(result);
+        })
+        .map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|_| "system print dialog did not open".to_owned())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[cfg(not(windows))]
+async fn native_print(_webview: Webview, _expected_revision: u64) -> Result<(), String> {
+    Err("system print dialog is unavailable on this platform".into())
+}
 
 fn active_webview(state: &State<'_, BrowserState>, tab_id: &str) -> Result<Webview, String> {
     state
@@ -220,6 +300,38 @@ fn open_external(_url: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{admitted_zoom, validate_find};
+    use crate::browser::BrowserTabs;
+
+    #[test]
+    fn print_only_dispatches_for_a_committed_loaded_page() {
+        let mut tabs = BrowserTabs::<usize>::new();
+        tabs.insert("browser-1".into(), 1, false);
+        let mut shown = 0;
+        assert!(
+            super::dispatch_user_print(&tabs, "browser-1", |_| {
+                shown += 1;
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(shown, 0);
+        assert!(tabs.start_navigation("browser-1", 1, "https://example.com/"));
+        assert!(
+            super::dispatch_user_print(&tabs, "browser-1", |_| {
+                shown += 1;
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(shown, 0);
+        assert!(tabs.finish_navigation("browser-1", 1, Some("https://example.com/")));
+        super::dispatch_user_print(&tabs, "browser-1", |_| {
+            shown += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(shown, 1);
+    }
 
     #[test]
     fn zoom_is_bounded_to_supported_steps() {

@@ -24,6 +24,7 @@ const browserFind = vi.fn(
   async (_tabId: string, _action: string, _query?: string) => undefined,
 );
 const browserOpenExternal = vi.fn(async (_tabId: string) => undefined);
+const browserPrint = vi.fn(async (_tabId: string) => undefined);
 const browserNavigate = vi.fn(
   async (_tabId: string, _url: string) => undefined,
 );
@@ -50,6 +51,7 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserFind: (tabId: string, action: string, query?: string) =>
     browserFind(tabId, action, query),
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
+  browserPrint: (tabId: string) => browserPrint(tabId),
   browserSuggestedSites: () => browserSuggestedSites(),
   browserHistory: (tabId: string) => browserHistory(tabId),
   attachBrowserTab: vi.fn(),
@@ -325,7 +327,7 @@ it("groups supported page controls in an overflow menu without dead features", a
   expect(
     screen.getByRole("menuitem", { name: "Browser settings" }),
   ).toBeInTheDocument();
-  expect(screen.queryByText("Print")).toBeNull();
+  expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
   expect(screen.queryByText("Show device toolbar")).toBeNull();
   expect(screen.queryByText("Take a screenshot")).toBeNull();
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
@@ -333,6 +335,40 @@ it("groups supported page controls in an overflow menu without dead features", a
   expect(
     screen.getByRole("textbox", { name: "Find text" }),
   ).toBeInTheDocument();
+});
+it("opens native print for the loaded tab from the menu", async () => {
+  browserPrint.mockClear();
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Print" }));
+  await waitFor(() => expect(browserPrint).toHaveBeenCalledWith(tab.id));
+  expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
+});
+it("explains when system printing is unavailable on this platform", async () => {
+  browserPrint.mockClear();
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "https://example.com/path",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    printUnavailableReason:
+      "system print dialog is unavailable on this platform",
+  });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  const print = screen.getByRole("menuitem", { name: "Print" });
+  expect(print).toBeDisabled();
+  expect(print).toHaveAttribute(
+    "title",
+    "system print dialog is unavailable on this platform",
+  );
+  fireEvent.click(print);
+  expect(browserPrint).not.toHaveBeenCalled();
 });
 it("dismisses the browser menu with Escape and restores trigger focus", async () => {
   render(<BrowserSurface tab={tab} />);

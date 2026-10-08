@@ -16,6 +16,7 @@ pub(crate) struct BrowserNavigation {
     pub(crate) can_go_forward: bool,
     pub(crate) zoom_percent: u16,
     pub(crate) error: Option<String>,
+    pub(crate) print_unavailable_reason: Option<&'static str>,
 }
 
 pub(crate) async fn browser_status(

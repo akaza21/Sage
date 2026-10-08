@@ -383,6 +383,7 @@ pub fn run() {
                 browser::navigation::browser_control,
                 browser::page_controls::browser_zoom,
                 browser::page_controls::browser_open_external,
+                browser::page_controls::browser_print,
                 browser::page_controls::browser_find
             ];
             handle(invoke)

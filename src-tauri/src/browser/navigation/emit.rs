@@ -19,6 +19,11 @@ pub(crate) fn navigation_state(
         can_go_forward: snapshot.can_go_forward,
         zoom_percent: snapshot.zoom_percent,
         error: snapshot.error.map(str::to_owned),
+        print_unavailable_reason: if cfg!(windows) {
+            None
+        } else {
+            Some("system print dialog is unavailable on this platform")
+        },
     })
 }
 

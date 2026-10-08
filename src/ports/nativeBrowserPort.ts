@@ -86,6 +86,7 @@ export interface BrowserNavigation {
   canGoForward: boolean;
   zoomPercent: number;
   error?: string | null;
+  printUnavailableReason?: string | null;
 }
 
 export function browserStatus(tabId: string): Promise<BrowserNavigation> {
@@ -128,6 +129,10 @@ export function browserFind(
 
 export function browserOpenExternal(tabId: string): Promise<void> {
   return invokeNative("browser_open_external", { tabId });
+}
+
+export function browserPrint(tabId: string): Promise<void> {
+  return invokeNative("browser_print", { tabId });
 }
 
 export interface BrowserDownload {
