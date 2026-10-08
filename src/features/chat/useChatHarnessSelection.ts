@@ -67,7 +67,7 @@ export function harnessPickerCandidates(
       label: name,
       triggerLabel: harness.name,
       secondaryLabel: showStatus ? statusLine : detail,
-      accessibleLabel: `${name}${harness.version ? ` — ${harness.version}` : ""}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
+      accessibleLabel: `${name}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
       disabledReason: availability.disabledReason,
     };
   });
@@ -91,11 +91,13 @@ export function useComposerPopovers(disabled = false) {
 
   useLayoutEffect(() => {
     if (!active) return;
-    (
-      panel.current?.querySelector<HTMLButtonElement>(
-        "button:not(:disabled)",
-      ) ?? panel.current
-    )?.focus();
+    const first =
+      active === "model"
+        ? panel.current?.querySelector<HTMLInputElement>("input")
+        : panel.current?.querySelector<HTMLButtonElement>(
+            "button:not(:disabled)",
+          );
+    (first ?? panel.current)?.focus();
   }, [active, panel]);
 
   useEffect(() => {

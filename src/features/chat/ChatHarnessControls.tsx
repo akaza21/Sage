@@ -1,11 +1,4 @@
-import {
-  BrainCircuit,
-  Folder,
-  Plus,
-  Settings,
-  ShieldCheck,
-  ChevronDown,
-} from "../../ui/leanIcons";
+import { Folder, Plus, Settings, ShieldCheck } from "../../ui/leanIcons";
 
 import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 
@@ -27,8 +20,13 @@ import type {
   AcpConfigValue,
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
-import { sessionConfigControls } from "../../domain/acpSessionConfigControls";
+import {
+  flattenChoices,
+  sessionConfigControls,
+} from "../../domain/acpSessionConfigControls";
 import { SearchablePicker } from "../../ui/SearchablePicker";
+import { formatContextWindow } from "./composerModelContext";
+import { ComposerModelControls } from "./ComposerModelControls";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { composerOptionLabel } from "./composerChrome";
 import {
@@ -65,7 +63,6 @@ interface Props {
 export function ChatHarnessControls({
   availableBinding,
   canPrompt,
-  discoveryPhase,
   sessionHarnessId,
   sessionModelId,
   selectedHarnessId,
@@ -130,18 +127,10 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
-  const modelCatalogPending =
-    selectedHarnessId === globalSelectedHarnessId &&
-    (harnessesPending || discoveryPhase === "checking");
-  const modelCandidates = models.map((model) => ({
-    id: model.id,
-    label: model.name,
-  }));
   const projectCandidates = useMemo(
     () => projects.map((project) => ({ id: project.id, label: project.name })),
     [projects],
   );
-  const modelUnavailable = !canPrompt || models.length === 0;
   const selectedSessionConfig =
     sessionHarnessId === selectedHarnessId && sessionModelId === selectedModelId
       ? sessionConfig
@@ -153,12 +142,35 @@ export function ChatHarnessControls({
   const effortOption = configOptions.find(
     (option) => (option.category ?? option.id).toLocaleLowerCase() === "effort",
   );
-  const hasSessionModel = Boolean(modelOption);
+  const hasSessionModel = modelOption?.type === "select";
   const modelLabel =
     composerOptionLabel(modelOption) ??
     models.find((model) => model.id === selectedModelId)?.name ??
     "Model";
   const effortLabel = composerOptionLabel(effortOption);
+  const modelChoices = hasSessionModel
+    ? flattenChoices(modelOption).map((choice) => ({
+        id: choice.value,
+        name: choice.name || choice.value,
+        contextWindow: models.find((model) => model.id === choice.value)
+          ?.contextWindow,
+      }))
+    : models;
+  const currentModelId = hasSessionModel
+    ? modelOption.currentValue
+    : selectedModelId;
+  const contextWindow = formatContextWindow(
+    models.find((model) => model.id === currentModelId)?.contextWindow,
+  );
+  const chooseModel = (modelId: string) => {
+    if (hasSessionModel) {
+      void onSetSessionConfigOption(modelOption.id, { value: modelId });
+    } else {
+      onSelectModel(modelId);
+    }
+    toggle("model");
+    modelTrigger.current?.focus();
+  };
   const harnessCandidates = harnessPickerCandidates(
     harnesses,
     selectedHarnessId,
@@ -234,22 +246,24 @@ export function ChatHarnessControls({
           selectedId={selectedHarnessId}
         />
       </label>
-      <button
-        ref={modelTrigger}
-        className="composer__control-trigger composer__picker-trigger composer__model-trigger"
-        type="button"
-        aria-label="Model and effort"
-        aria-controls={modelId}
-        aria-haspopup="dialog"
-        aria-expanded={active === "model"}
-        disabled={turnBusy || projectTransitioning}
-        onClick={() => toggle("model")}
-      >
-        <BrainCircuit size={14} data-model-icon aria-hidden="true" />
-        {modelLabel}
-        {effortLabel ? ` ${effortLabel}` : ""}
-        <ChevronDown size={12} aria-hidden="true" />
-      </button>
+      <ComposerModelControls
+        triggerRef={modelTrigger}
+        panelRef={modelPanel}
+        panelId={modelId}
+        open={active === "model"}
+        onToggle={() => toggle("model")}
+        choices={modelChoices}
+        selectedId={currentModelId}
+        modelLabel={modelLabel}
+        harnessId={selectedHarnessId ?? ""}
+        harnessName={selectedHarness?.name ?? "Harness"}
+        contextWindow={contextWindow}
+        effortOption={effortOption}
+        disabled={turnBusy || projectTransitioning || !canPrompt}
+        pending={modePending}
+        onSelectModel={chooseModel}
+        onSetOption={onSetSessionConfigOption}
+      />
       {active === "options" ? (
         <div
           ref={optionsPanel}
@@ -348,42 +362,6 @@ export function ChatHarnessControls({
                   {accessModeError}
                 </span>
               ) : null}
-            </label>
-          ) : null}
-        </div>
-      ) : null}
-      {active === "model" ? (
-        <div
-          ref={modelPanel}
-          id={modelId}
-          role="dialog"
-          tabIndex={-1}
-          className="composer__popover composer__model-menu"
-          aria-label="Model and effort menu"
-        >
-          <ChatSessionConfigControls
-            sessionConfig={selectedSessionConfig}
-            group="model"
-            pending={modePending}
-            disabled={turnBusy || projectTransitioning}
-            error={modeError}
-            onSetSessionConfigOption={onSetSessionConfigOption}
-          />
-          {(models.length > 0 || modelCatalogPending) && !hasSessionModel ? (
-            <label className="select-control select-control--chip">
-              <BrainCircuit
-                className="select-control__icon"
-                size={14}
-                aria-hidden="true"
-              />
-              <SearchablePicker
-                ariaLabel="Model"
-                candidates={modelCandidates}
-                disabled={turnBusy || projectTransitioning || modelUnavailable}
-                emptyLabel="Model"
-                onSelect={onSelectModel}
-                selectedId={selectedModelId}
-              />
             </label>
           ) : null}
         </div>

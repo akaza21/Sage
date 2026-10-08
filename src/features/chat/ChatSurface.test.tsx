@@ -67,7 +67,7 @@ function openComposerOptions() {
 }
 
 function openComposerModel() {
-  fireEvent.click(screen.getByRole("button", { name: "Model and effort" }));
+  fireEvent.click(screen.getByRole("button", { name: "Model" }));
 }
 
 function itemBase(id: string) {
@@ -1354,7 +1354,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("checkbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
-    expect(screen.getByRole("button", { name: "Session model" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("shows an unsupported config option as a read-only chip with no settable control", () => {
@@ -1396,7 +1396,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.queryByRole("checkbox", { name: "Session thinking budget" }),
     ).toBeNull();
     openComposerModel();
-    expect(screen.getByRole("button", { name: "Session model" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("lets a prompt-capable harness without a model catalog use its own default", () => {
@@ -1437,7 +1437,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.getByRole("textbox", { name: "Message agent" }),
     ).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Harness" })).toBeEnabled();
   });
 
@@ -3053,15 +3053,15 @@ describe("ChatSurface ACP resource integration", () => {
     const model = screen.getByRole("button", { name: "Model" });
     await waitFor(() => expect(model).toBeEnabled());
     fireEvent.click(model);
-    const listbox = screen.getByRole("listbox", { name: "Model" });
+    const listbox = screen.getByRole("listbox", { name: "Models" });
     expect(screen.queryByRole("option", { name: /old model/i })).toBeNull();
     expect(within(listbox).getAllByRole("option")).toHaveLength(128);
     expect(
       within(listbox).getByRole("option", {
-        name: "Fresh advertised model 1",
+        name: /Fresh advertised model 1 — Codex/,
       }),
     ).toHaveAttribute("aria-selected", "true");
-    const input = screen.getByRole("combobox", { name: "Model" });
+    const input = screen.getByRole("searchbox", { name: "Search models" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -3098,7 +3098,7 @@ describe("ChatSurface ACP resource integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     const option = screen.getByRole("option", {
-      name: "Claude Code — 2.1.270 — available — uncharacterised",
+      name: "Claude Code — available — uncharacterised",
     });
     expect(option).toBeEnabled();
     fireEvent.click(option);
