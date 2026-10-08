@@ -1,4 +1,5 @@
-import { ArrowUp, Mic, MoreHorizontal, Square, X } from "lucide-react";
+import { ArrowUp, Mic, MoreHorizontal, Square, X } from "../../ui/leanIcons";
+
 import type { FormEventHandler, RefObject } from "react";
 
 import type { ChatUsage } from "./acp/chatUsage";

@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { FilePlus2, FolderPlus } from "lucide-react";
+import { FilePlus2, FolderPlus } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { ResourceRef } from "../../domain/workbench";

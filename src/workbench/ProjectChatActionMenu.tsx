@@ -9,7 +9,7 @@ import {
   Pencil,
   Pin,
   PinOff,
-} from "lucide-react";
+} from "../ui/leanIcons";
 import { useId, useRef, useState } from "react";
 
 import { MenuPopover } from "../ui/MenuPopover";

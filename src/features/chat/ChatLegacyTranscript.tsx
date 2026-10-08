@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check } from "../../ui/leanIcons";
 
 import type { ChatMessage } from "../../domain/chat";
 import { EditSummary } from "./EditSummary";

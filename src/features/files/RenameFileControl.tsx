@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type RefObject } from "react";
-import { FilePenLine } from "lucide-react";
+import { FilePenLine } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { parentResource, sameResource } from "../../domain/resourceIdentity";

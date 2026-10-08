@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "../../../ui/leanIcons";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";

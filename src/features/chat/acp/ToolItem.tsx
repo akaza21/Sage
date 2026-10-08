@@ -12,7 +12,7 @@ import {
   Terminal,
   Trash2,
   Wrench,
-} from "lucide-react";
+} from "../../../ui/leanIcons";
 
 import { useAgentArtifactFollowStore } from "../../../app/agentArtifactFollowStore";
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";

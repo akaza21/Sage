@@ -1,4 +1,4 @@
-import { CircleX, Info, TriangleAlert } from "lucide-react";
+import { CircleX, Info, TriangleAlert } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceTitle } from "../../domain/resourceIdentity";

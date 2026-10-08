@@ -6,7 +6,7 @@ import {
   Settings,
   TerminalSquare,
   X,
-} from "lucide-react";
+} from "../ui/leanIcons";
 
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";

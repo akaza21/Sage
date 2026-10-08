@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X } from "../../ui/leanIcons";
 import type { RefObject } from "react";
 
 import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLine";

@@ -5,7 +5,7 @@ import {
   ListFilter,
   Search,
   Settings,
-} from "lucide-react";
+} from "../ui/leanIcons";
 import { useCallback, useId, useRef, useState } from "react";
 
 import { MenuPopover } from "../ui/MenuPopover";

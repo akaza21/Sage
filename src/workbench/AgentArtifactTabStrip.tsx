@@ -1,4 +1,12 @@
-import { Eye, GitCompareArrows, Globe2, Pin, Sparkles, X } from "lucide-react";
+import {
+  Eye,
+  GitCompareArrows,
+  Globe2,
+  Pin,
+  Sparkles,
+  X,
+} from "../ui/leanIcons";
+
 import { useRef } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 

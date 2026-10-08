@@ -5,7 +5,8 @@ import {
   Ellipsis,
   RotateCw,
   X,
-} from "lucide-react";
+} from "../../ui/leanIcons";
+
 import {
   useEffect,
   useLayoutEffect,

@@ -1,4 +1,4 @@
-import { Files, MessageSquare, Search } from "lucide-react";
+import { Files, MessageSquare, Search } from "../ui/leanIcons";
 
 import { useWorkbenchStore, type SidebarView } from "../app/store";
 

@@ -1,4 +1,5 @@
-import { Search, Settings, SquarePen, X, PanelLeftOpen } from "lucide-react";
+import { Search, Settings, SquarePen, PanelLeftOpen, X } from "../ui/leanIcons";
+
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";

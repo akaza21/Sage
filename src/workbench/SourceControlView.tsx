@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "../ui/leanIcons";
 
 import { useWorkbenchStore } from "../app/store";
 import { isRootRepository, repositoryKey } from "../domain/repositoryInventory";

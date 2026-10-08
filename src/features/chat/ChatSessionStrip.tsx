@@ -1,4 +1,5 @@
-import { Plus, X } from "lucide-react";
+import { Plus, X } from "../../ui/leanIcons";
+
 import { useRef, type KeyboardEvent } from "react";
 
 import { chatDisplayTitle } from "../../domain/chatTitle";

@@ -1,4 +1,4 @@
-import { FileSearch, Search, Settings } from "lucide-react";
+import { FileSearch, Search, Settings } from "../ui/leanIcons";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../app/store";

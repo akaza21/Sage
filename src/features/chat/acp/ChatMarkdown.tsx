@@ -1,4 +1,5 @@
-import { Check, Copy } from "lucide-react";
+import { Copy, Check } from "../../../ui/leanIcons";
+
 import { useEffect, useMemo, useState } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";

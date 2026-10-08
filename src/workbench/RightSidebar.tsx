@@ -4,7 +4,7 @@ import {
   Files,
   GitBranch,
   ListTree,
-} from "lucide-react";
+} from "../ui/leanIcons";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { SidebarView } from "../app/store";

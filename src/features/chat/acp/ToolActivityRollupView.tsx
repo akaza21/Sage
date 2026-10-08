@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   BrainCircuit,
-  ChevronDown,
   Circle,
   Clock3,
   FilePenLine,
@@ -11,8 +10,9 @@ import {
   Search,
   Terminal,
   Workflow,
+  ChevronDown,
   X,
-} from "lucide-react";
+} from "../../../ui/leanIcons";
 
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";

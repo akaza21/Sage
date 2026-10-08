@@ -1,4 +1,4 @@
-import { ChevronRight, Files } from "lucide-react";
+import { Files, ChevronRight } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey } from "../../domain/resourceIdentity";

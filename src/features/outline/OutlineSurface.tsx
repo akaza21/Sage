@@ -1,4 +1,4 @@
-import { Box, Braces, FileCode2, SquareFunction } from "lucide-react";
+import { Box, Braces, FileCode2, SquareFunction } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceTitle } from "../../domain/resourceIdentity";

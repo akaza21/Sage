@@ -1,13 +1,14 @@
 import {
-  Check,
-  ChevronDown,
-  ChevronRight,
   GitBranch,
   MessageSquare,
   Pin,
   RotateCcw,
+  Check,
+  ChevronDown,
+  ChevronRight,
   X,
-} from "lucide-react";
+} from "../ui/leanIcons";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 import { agentChatMoveDestinations } from "./agentChatRail";

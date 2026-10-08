@@ -1,4 +1,4 @@
-import { PanelRightOpen } from "lucide-react";
+import { PanelRightOpen } from "../ui/leanIcons";
 import type { RefObject } from "react";
 
 export function AgentArtifactCollapsedPane({

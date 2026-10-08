@@ -1,4 +1,4 @@
-import { FileDiff, FileText, RefreshCw } from "lucide-react";
+import { FileDiff, FileText, RefreshCw } from "../../ui/leanIcons";
 import { useEffect } from "react";
 
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";

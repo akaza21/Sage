@@ -1,4 +1,4 @@
-import { ExternalLink, Files, PanelRightClose, Plus } from "lucide-react";
+import { ExternalLink, Files, PanelRightClose, Plus } from "../ui/leanIcons";
 import {
   useEffect,
   useId,

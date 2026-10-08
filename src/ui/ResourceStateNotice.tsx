@@ -1,4 +1,4 @@
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "./leanIcons";
 
 export function ResourceStateNotice({
   detail,

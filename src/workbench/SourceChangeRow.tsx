@@ -1,5 +1,5 @@
 import { memo, useId, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
 
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import { isRootRepository } from "../domain/repositoryInventory";

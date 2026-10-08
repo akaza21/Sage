@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Trash2 } from "../../ui/leanIcons";
 import { type FormEvent, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";

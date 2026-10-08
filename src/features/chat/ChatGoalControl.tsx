@@ -1,4 +1,4 @@
-import { Maximize2, Pause, Target, Trash2 } from "lucide-react";
+import { Maximize2, Pause, Target, Trash2 } from "../../ui/leanIcons";
 import { useRef, useState } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import "../../styles/chat-goal.css";

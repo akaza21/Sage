@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight } from "../../ui/leanIcons";
 import { forwardRef, memo } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";

@@ -1,4 +1,4 @@
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,

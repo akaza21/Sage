@@ -1,11 +1,12 @@
 import {
   BrainCircuit,
-  ChevronDown,
   Folder,
   Plus,
   Settings,
   ShieldCheck,
-} from "lucide-react";
+  ChevronDown,
+} from "../../ui/leanIcons";
+
 import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";

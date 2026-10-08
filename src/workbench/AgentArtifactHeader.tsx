@@ -1,12 +1,13 @@
 import {
-  Check,
-  ChevronDown,
   ChevronLeft,
-  ChevronRight,
   Copy,
   FileDiff,
   SquareArrowOutUpRight,
-} from "lucide-react";
+  Check,
+  ChevronDown,
+  ChevronRight,
+} from "../ui/leanIcons";
+
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { AcpChatPage } from "../domain/acpProjection";

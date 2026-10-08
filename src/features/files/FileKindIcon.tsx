@@ -9,7 +9,7 @@ import {
   Folder,
   Link2,
   NotebookText,
-} from "lucide-react";
+} from "../../ui/leanIcons";
 
 import type { FileKind } from "./fileKind";
 import { fileKindForPath } from "./fileKind";

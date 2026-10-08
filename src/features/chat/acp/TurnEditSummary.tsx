@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Files } from "lucide-react";
+import { Files, ChevronRight } from "../../../ui/leanIcons";
 
 import type {
   AcpChatPage,

@@ -1,4 +1,4 @@
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "../../ui/leanIcons";
 import { useCallback, useState } from "react";
 
 import type {

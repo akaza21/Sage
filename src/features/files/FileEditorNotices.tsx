@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "../../ui/leanIcons";
 
 import type { EditorConflict } from "../../domain/workbench";
 

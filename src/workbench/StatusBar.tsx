@@ -1,4 +1,4 @@
-import { GitBranch, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { GitBranch, PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
 import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";

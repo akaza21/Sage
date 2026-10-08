@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Search } from "../../ui/leanIcons";
 import {
   useCallback,
   useEffect,

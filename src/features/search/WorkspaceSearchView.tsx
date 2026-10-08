@@ -1,10 +1,11 @@
 import {
-  ChevronDown,
-  ChevronRight,
   ChevronsUpDown,
   LoaderCircle,
   RefreshCw,
-} from "lucide-react";
+  ChevronDown,
+  ChevronRight,
+} from "../../ui/leanIcons";
+
 import { useMemo, useState, type KeyboardEvent } from "react";
 
 import {

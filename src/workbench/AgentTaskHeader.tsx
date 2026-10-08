@@ -1,4 +1,5 @@
-import { Check, FileText, Globe2, ListFilter, X } from "lucide-react";
+import { FileText, Globe2, ListFilter, Check, X } from "../ui/leanIcons";
+
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useStore } from "zustand";
 

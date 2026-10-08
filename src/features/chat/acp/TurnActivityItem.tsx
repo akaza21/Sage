@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Check, Circle, LoaderCircle, XCircle } from "lucide-react";
+import { Circle, LoaderCircle, XCircle, Check } from "../../../ui/leanIcons";
 
 import type { AcpItem } from "../../../domain/acp";
 import type {

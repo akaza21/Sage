@@ -1,4 +1,4 @@
-import { FileCode2 } from "lucide-react";
+import { FileCode2 } from "../ui/leanIcons";
 
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";

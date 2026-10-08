@@ -1,4 +1,4 @@
-import { FileText, Globe2, Image, MessageSquare, X } from "lucide-react";
+import { FileText, Globe2, Image, MessageSquare, X } from "../../ui/leanIcons";
 
 import {
   attachedContextKey,

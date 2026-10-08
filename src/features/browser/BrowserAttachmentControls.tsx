@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Link2, MessageCircleQuestion, Square, Unlink2 } from "lucide-react";
+import {
+  Link2,
+  MessageCircleQuestion,
+  Square,
+  Unlink2,
+} from "../../ui/leanIcons";
 import {
   pinnedAgentChatOwner,
   usePinnedAgentChatOwner,

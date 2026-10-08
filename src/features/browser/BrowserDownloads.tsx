@@ -1,4 +1,5 @@
-import { Download, X } from "lucide-react";
+import { Download, X } from "../../ui/leanIcons";
+
 import { useEffect, useState } from "react";
 import {
   browserDownloads,

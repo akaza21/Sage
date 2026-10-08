@@ -1,11 +1,12 @@
 import {
-  ChevronDown,
-  ChevronRight,
   FolderOpen,
   GitBranch,
   Plus,
   SquarePen,
-} from "lucide-react";
+  ChevronDown,
+  ChevronRight,
+} from "../ui/leanIcons";
+
 import type { ReactNode } from "react";
 
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";

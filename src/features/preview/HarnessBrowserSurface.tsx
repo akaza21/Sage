@@ -1,10 +1,11 @@
 import {
   ChevronLeft,
-  ChevronRight,
   MoreHorizontal,
   RotateCw,
+  ChevronRight,
   X,
-} from "lucide-react";
+} from "../../ui/leanIcons";
+
 import {
   useId,
   useRef,

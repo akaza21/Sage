@@ -1,4 +1,4 @@
-import { Eye, FilePenLine } from "lucide-react";
+import { Eye, FilePenLine } from "../../ui/leanIcons";
 
 import { FilePathChips } from "./FilePathChips";
 

@@ -1,4 +1,4 @@
-import { Ellipsis, FolderPlus } from "lucide-react";
+import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";

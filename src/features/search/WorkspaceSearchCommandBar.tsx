@@ -1,10 +1,11 @@
 import {
   CaseSensitive,
+  Square,
   ChevronDown,
   ChevronRight,
-  Square,
   X,
-} from "lucide-react";
+} from "../../ui/leanIcons";
+
 import { useState, type FormEvent } from "react";
 
 interface WorkspaceSearchCommandBarProps {

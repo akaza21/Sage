@@ -1,4 +1,5 @@
-import { CaseSensitive, ChevronDown, ChevronUp, X } from "lucide-react";
+import { CaseSensitive, ChevronUp, ChevronDown, X } from "../../ui/leanIcons";
+
 import type { RefObject } from "react";
 
 import { MAX_FIND_QUERY_LENGTH } from "./inFileFind";
