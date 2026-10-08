@@ -332,7 +332,7 @@ function stripHostileMarkup(source: string): string {
     .replace(/<style\b[^>]*>[\s\S]*$/giu, "");
 }
 
-export function visibleInlineText(value: string): string {
+function visibleInlineText(value: string): string {
   let text = stripHostileMarkup(value);
   text = text.replace(/!\[([^\]]*)\]\([^)]*\)/gu, "$1");
   text = text.replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1");
@@ -341,4 +341,15 @@ export function visibleInlineText(value: string): string {
   text = text.replace(/\*([^*]+)\*/gu, "$1");
   text = text.replace(/`([^`]+)`/gu, "$1");
   return text.replace(/\s+/gu, " ").trim();
+}
+
+export function latestMarkdownLine(source: string): string {
+  for (const rawLine of source.split("\n").reverse()) {
+    const line = rawLine.trim().replace(/^\d+[.)]\s+/u, "");
+    if (!line) continue;
+    const block = renderMarkdownPreview(line).blocks[0];
+    const text = block?.kind === "list" ? block.items[0] : block?.text;
+    if (text) return text;
+  }
+  return "";
 }

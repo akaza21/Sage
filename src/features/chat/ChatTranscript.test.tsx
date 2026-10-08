@@ -4,9 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpChatPage } from "../../domain/acp";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page, textItem } from "./acp/acpProjection.fixture";
+import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 async function renderTranscript(acpPage: AcpChatPage) {
   const onRetry = vi.fn();
@@ -52,10 +56,30 @@ function retryPage() {
 }
 
 describe("ChatTranscript Retry", () => {
-  it.each(["no session", "historical session", "no prompt"])(
-    "omits footer Retry with %s even when a callback is supplied",
-    async (scenario) => {
+  it.each(["completed", "failed"] as const)(
+    "derives Retry eligibility once for a %s turn",
+    async (state) => {
+      const latestRetryPrompt = vi.spyOn(acpTurnState, "latestRetryPrompt");
       const next = retryPage();
+      next.turns[0].state = state;
+      await renderTranscript(next);
+      expect(latestRetryPrompt).toHaveBeenCalledOnce();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+    },
+  );
+
+  it.each([
+    ["completed", "no session"],
+    ["completed", "historical session"],
+    ["completed", "no prompt"],
+    ["failed", "no session"],
+    ["failed", "historical session"],
+    ["failed", "no prompt"],
+  ] as const)(
+    "omits Retry on a %s turn with %s even when a callback is supplied",
+    async (state, scenario) => {
+      const next = retryPage();
+      next.turns[0].state = state;
       if (scenario === "no session") next.currentSessionId = null;
       if (scenario === "historical session")
         next.turns[0].sessionId = "prior-session" as never;

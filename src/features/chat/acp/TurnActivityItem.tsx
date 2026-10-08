@@ -7,7 +7,7 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
-import { visibleInlineText } from "../../files/markdownPreview";
+import { latestMarkdownLine } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
@@ -289,12 +289,7 @@ export function TurnActivityItem({
       if (terminalItemLifecycles.has(item.lifecycle)) return null;
       return (
         <p className="acp-thought" data-activity-kind="thought">
-          {visibleInlineText(
-            item.payload.summary
-              .split("\n")
-              .reverse()
-              .find((line) => line.trim()) ?? "",
-          ).slice(0, 256) || "Thinking"}
+          {latestMarkdownLine(item.payload.summary).slice(0, 256) || "Thinking"}
         </p>
       );
     case "plan":

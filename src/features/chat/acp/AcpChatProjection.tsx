@@ -5,7 +5,6 @@ import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import type { ProjectRootSummary } from "../../../domain/workbench";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
-import { latestRetryPrompt } from "./acpTurnState";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
 import "./acp-activity-cards.css";
 import "./acp-activity-details.css";
@@ -77,7 +76,7 @@ export function AcpChatProjection({
             onLoadEarlier={onLoadEarlier}
             projectRoots={projectRoots}
             retentionIncomplete={retentionIncomplete}
-            onRetry={onRetry && latestRetryPrompt(page) ? onRetry : undefined}
+            onRetry={onRetry}
           />
         )}
       />

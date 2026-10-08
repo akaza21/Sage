@@ -2109,54 +2109,24 @@ describe("AcpChatProjection", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("does not offer a failed-turn retry without that turn's current-session prompt", async () => {
+  it("updates failed-turn Retry when the callback changes without a Turn revision", async () => {
     const next = page("failed", {
       kind: "protocolError",
       message: "Connection lost",
     });
-    next.turns[0].items = [];
-    next.turns = [
-      {
-        ...page("completed").turns[0],
-        id: "prior" as never,
-        ordinal: 0,
-        items: [
-          {
-            ...textItem(),
-            id: "old-prompt",
-            payload: { role: "user", text: "Old request" },
-          } as AcpItem,
-        ],
-      },
-      ...next.turns,
-    ];
+    const firstRetry = vi.fn();
+    const nextRetry = vi.fn();
     const { rerender } = await renderProjection(
-      <AcpChatProjection page={next} active onRetry={vi.fn()} />,
+      <AcpChatProjection page={next} active onRetry={firstRetry} />,
     );
-    expect(
-      within(screen.getByRole("group", { name: "Turn failed" })).queryByRole(
-        "button",
-        { name: "Retry" },
-      ),
-    ).toBeNull();
-
-    const noSession = structuredClone(next);
-    noSession.currentSessionId = null;
-    noSession.turns[1].items = [
-      {
-        ...textItem(),
-        id: "latest-prompt",
-        payload: { role: "user", text: "Latest request" },
-      } as AcpItem,
-    ];
-    noSession.turns[1].revision = "4" as never;
-    rerender(<AcpChatProjection page={noSession} active onRetry={vi.fn()} />);
-    expect(
-      within(screen.getByRole("group", { name: "Turn failed" })).queryByRole(
-        "button",
-        { name: "Retry" },
-      ),
-    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(firstRetry).toHaveBeenCalledOnce();
+    rerender(<AcpChatProjection page={next} active />);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    rerender(<AcpChatProjection page={next} active onRetry={nextRetry} />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(nextRetry).toHaveBeenCalledOnce();
+    expect(firstRetry).toHaveBeenCalledOnce();
   });
 
   it("does not synthesize thinking for Pi tool-only turns", async () => {

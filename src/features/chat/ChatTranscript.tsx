@@ -63,6 +63,8 @@ export function ChatTranscript({
   showJumpToLatest: boolean;
   onJumpToLatest: () => void;
 }) {
+  const retryAction =
+    useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined;
   return (
     <>
       <div ref={transcriptRef} className="message-list" onScroll={onScroll}>
@@ -83,7 +85,7 @@ export function ChatTranscript({
               loadingEarlier={loadingEarlier}
               historyError={historyError}
               onLoadEarlier={onLoadEarlier}
-              onRetry={onRetry}
+              onRetry={retryAction}
             />
           ) : (
             <ChatLegacyTranscript
@@ -95,12 +97,7 @@ export function ChatTranscript({
             page={useNativeAcp ? page : null}
             messages={messages}
             onRetry={
-              useNativeAcp &&
-              page &&
-              page.turns.at(-1)?.state !== "failed" &&
-              latestRetryPrompt(page)
-                ? onRetry
-                : undefined
+              page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
             }
           />
         </div>

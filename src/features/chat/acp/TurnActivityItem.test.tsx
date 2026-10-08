@@ -103,6 +103,23 @@ describe("TurnActivityItem", () => {
     expect(screen.queryByText("x".repeat(256))).toBeNull();
   });
 
+  it.each([
+    ["### **Plan**", "Plan"],
+    ["- *item*", "item"],
+    ["1. `step`", "step"],
+    ["2) next step", "next step"],
+    ["> quote", "quote"],
+    ["### Plan\n```ts\n\n", "Plan"],
+    ["```ts\nconst value = 1;\n```", "const value = 1;"],
+    ["```ts\n```\n\n", "Thinking"],
+  ])("shows the latest visible thinking line from %j", (summary, expected) => {
+    const thought = item("thoughtSummary", { summary });
+    thought.lifecycle = "streaming";
+    thought.terminalAt = null;
+    render(<TurnActivityItem item={thought} />);
+    expect(screen.getByText(expected)).toHaveClass("acp-thought");
+  });
+
   it.each(["completed", "failed", "cancelled", "unsupported"] as const)(
     "removes thinking when the item is %s",
     (lifecycle) => {
