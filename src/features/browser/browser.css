@@ -20,7 +20,7 @@
   gap: 8px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--browser-chrome-divider);
-  background: var(--browser-chrome-fill);
+  background: var(--browser-start-fill);
   z-index: 5;
 }
 .browser-surface__toolbar button {
@@ -169,9 +169,14 @@
   padding: 0 8px;
   text-align: left;
 }
-.browser-surface__menu button:hover,
-.browser-surface__menu button:focus-visible {
+.browser-surface__menu button:hover:not(:disabled),
+.browser-surface__menu button:focus-visible:not(:disabled) {
   background: var(--browser-control-hover);
+}
+.browser-surface__menu button:disabled {
+  color: var(--browser-muted-text);
+  opacity: 0.65;
+  cursor: default;
 }
 .browser-surface__menu-zoom {
   display: flex;

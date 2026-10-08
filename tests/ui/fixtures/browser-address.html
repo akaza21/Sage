@@ -20,24 +20,27 @@
       import "/src/features/browser/browser.css";
 
       const url = "https://en.wikipedia.org/wiki/Web_browser";
+      const newTab = new URLSearchParams(location.search).has("new-tab");
       function Fixture() {
-        const [address, setAddress] = React.useState(url);
+        const [address, setAddress] = React.useState(newTab ? "" : url);
         const addressField = React.useRef(null);
         return React.createElement(BrowserNavigationControls, {
           navigation: {
             tabId: "browser-visual",
-            url,
+            url: newTab ? "" : url,
             revision: "1",
             loading: false,
-            canGoBack: true,
+            canGoBack: !newTab,
             canGoForward: false,
             zoomPercent: 100,
           },
-          page: {
-            origin: "https://en.wikipedia.org",
-            transport: "secure",
-            url,
-          },
+          page: newTab
+            ? null
+            : {
+                origin: "https://en.wikipedia.org",
+                transport: "secure",
+                url,
+              },
           address,
           addressField,
           onAddressChange: setAddress,
@@ -51,7 +54,11 @@
           onSettings: () => {},
           onCopy: () => {},
           onExternal: () => {},
-          clearDataControl: null,
+          clearDataControl: React.createElement(
+            "button",
+            { role: "menuitem", type: "button" },
+            "Clear browsing data",
+          ),
           pageControls: React.createElement(
             "button",
             { "aria-label": "Attach page" },

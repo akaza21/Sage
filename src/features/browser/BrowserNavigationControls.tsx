@@ -201,63 +201,68 @@ export function BrowserNavigationControls({
             aria-label="Browser menu"
             onClickCapture={onMenuClickCapture}
           >
-            {page ? (
-              <div className="browser-surface__menu-group">
+            <div className="browser-surface__menu-group">
+              <button
+                role="menuitem"
+                type="button"
+                disabled={!page}
+                onClick={() => run(onFind)}
+              >
+                Find in page
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                disabled={!page || Boolean(navigation?.printUnavailableReason)}
+                title={
+                  page
+                    ? (navigation?.printUnavailableReason ?? undefined)
+                    : "Open a page to print"
+                }
+                onClick={() => run(onPrint)}
+              >
+                Print
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                disabled={!page}
+                onClick={() => run(onScreenshot)}
+              >
+                Take a screenshot
+              </button>
+              <div className="browser-surface__menu-zoom">
+                <span>Zoom</span>
                 <button
-                  role="menuitem"
                   type="button"
-                  onClick={() => run(onFind)}
+                  role="menuitem"
+                  aria-label="Zoom out"
+                  disabled={!page || (navigation?.zoomPercent ?? 100) <= 50}
+                  onClick={() => onZoom(-25)}
                 >
-                  Find in page
+                  −
+                </button>
+                <span>{navigation?.zoomPercent ?? 100}%</span>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label="Zoom in"
+                  disabled={!page || (navigation?.zoomPercent ?? 100) >= 300}
+                  onClick={() => onZoom(25)}
+                >
+                  +
                 </button>
                 <button
-                  role="menuitem"
                   type="button"
-                  disabled={Boolean(navigation?.printUnavailableReason)}
-                  title={navigation?.printUnavailableReason ?? undefined}
-                  onClick={() => run(onPrint)}
-                >
-                  Print
-                </button>
-                <button
                   role="menuitem"
-                  type="button"
-                  onClick={() => run(onScreenshot)}
+                  aria-label="Reset zoom"
+                  disabled={!page}
+                  onClick={onZoomReset}
                 >
-                  Take a screenshot
+                  ↺
                 </button>
-                <div className="browser-surface__menu-zoom">
-                  <span>Zoom</span>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-label="Zoom out"
-                    disabled={(navigation?.zoomPercent ?? 100) <= 50}
-                    onClick={() => onZoom(-25)}
-                  >
-                    −
-                  </button>
-                  <span>{navigation?.zoomPercent ?? 100}%</span>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-label="Zoom in"
-                    disabled={(navigation?.zoomPercent ?? 100) >= 300}
-                    onClick={() => onZoom(25)}
-                  >
-                    +
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-label="Reset zoom"
-                    onClick={onZoomReset}
-                  >
-                    ↺
-                  </button>
-                </div>
               </div>
-            ) : null}
+            </div>
             <div className="browser-surface__menu-group">
               <button
                 role="menuitem"

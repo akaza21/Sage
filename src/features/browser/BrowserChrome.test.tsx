@@ -110,8 +110,15 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   expect(
-    screen.queryByRole("menuitem", { name: "Take a screenshot" }),
-  ).toBeNull();
+    screen.getByRole("menuitem", { name: "Take a screenshot" }),
+  ).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Find in page" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Print" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Zoom out" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Downloads" })).toBeEnabled();
+  await waitFor(() =>
+    expect(screen.getByRole("menuitem", { name: "Downloads" })).toHaveFocus(),
+  );
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(await screen.findByRole("button", { name: "example.com" }));
   await waitFor(() =>
@@ -701,8 +708,8 @@ it("does not share a provisional URL while the page is loading", async () => {
     screen.queryByRole("menuitem", { name: "Open externally" }),
   ).toBeNull();
   expect(
-    screen.queryByRole("menuitem", { name: "Take a screenshot" }),
-  ).toBeNull();
+    screen.getByRole("menuitem", { name: "Take a screenshot" }),
+  ).toBeDisabled();
 });
 it("shows a failed history retry without offering a mismatched origin", async () => {
   browserStatus.mockResolvedValueOnce({
