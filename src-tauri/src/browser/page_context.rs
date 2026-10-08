@@ -35,7 +35,7 @@ pub(crate) async fn browser_page_context(
     }
 }
 
-fn valid_page_context_tab_id(tab_id: &str) -> bool {
+pub(super) fn valid_page_context_tab_id(tab_id: &str) -> bool {
     tab_id.len() <= 64
         && tab_id
             .strip_prefix("browser-")

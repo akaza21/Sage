@@ -178,6 +178,22 @@ export function browserPrint(tabId: string): Promise<void> {
   return invokeNative("browser_print", { tabId });
 }
 
+export interface BrowserUserScreenshot {
+  width: number;
+  height: number;
+  pngBase64: string;
+}
+
+export function browserCaptureScreenshot(
+  tabId: string,
+  expectedRevision: string,
+): Promise<BrowserUserScreenshot> {
+  return invokeNative("browser_capture_screenshot", {
+    tabId,
+    expectedRevision,
+  });
+}
+
 export interface BrowserDownload {
   tabId: string;
   id: number;

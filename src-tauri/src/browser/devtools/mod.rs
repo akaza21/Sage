@@ -15,6 +15,8 @@ pub(crate) use native::NativeDevtools;
 #[cfg(windows)]
 pub(crate) use native::capture_page_context;
 #[cfg(windows)]
+pub(crate) use native::capture_user_png;
+#[cfg(windows)]
 pub(crate) use native::clear_agent_highlight;
 mod screenshot;
 mod snapshot;

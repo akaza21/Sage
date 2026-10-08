@@ -75,6 +75,44 @@ fn screenshot_rejects_oversized_or_non_jpeg_payloads() {
 }
 
 #[test]
+fn user_png_capture_steps_down_only_on_capacity_and_stops_after_three_attempts() {
+    let mut scales = Vec::new();
+    let result = super::screenshot::capture_png_with_fallback(|scale| {
+        scales.push(scale);
+        if scales.len() < 3 {
+            Err(BrowserFailure::Capacity)
+        } else {
+            Ok("png")
+        }
+    });
+    assert_eq!(result, Ok("png"));
+    assert_eq!(scales, [1.0, 0.75, 0.5]);
+    let mut attempts = 0;
+    assert_eq!(
+        super::screenshot::capture_png_with_fallback(|_| {
+            attempts += 1;
+            Err::<(), _>(BrowserFailure::Capacity)
+        }),
+        Err(BrowserFailure::Capacity)
+    );
+    assert_eq!(attempts, 3);
+}
+
+#[test]
+fn user_png_admission_checks_signature_dimensions_and_encoded_cap() {
+    let pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmX8AAAAASUVORK5CYII=";
+    assert_eq!(super::screenshot::admit_png(pixel), Ok((1, 1)));
+    assert_eq!(
+        super::screenshot::admit_png("/9j/AA=="),
+        Err(BrowserFailure::InvalidRequest)
+    );
+    assert_eq!(
+        super::screenshot::admit_png(&"A".repeat(BROWSER_LIMITS.screenshot_bytes + 1)),
+        Err(BrowserFailure::Capacity)
+    );
+}
+
+#[test]
 fn wait_budget_bounds_probes_and_observes_cancellation() {
     let budget = WaitBudget::new(250).unwrap();
     assert_eq!(budget.step(0, false), WaitStep::Probe);

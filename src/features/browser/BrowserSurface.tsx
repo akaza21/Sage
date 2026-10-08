@@ -4,6 +4,7 @@ import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../../domain/workbench";
 import {
   browserControl,
+  browserCaptureScreenshot,
   browserFind,
   browserHistory,
   browserNavigate,
@@ -63,6 +64,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const surface = useRef<HTMLElement>(null);
   const addressField = useRef<HTMLInputElement>(null);
   const findField = useRef<HTMLInputElement>(null);
+  const screenshotEpoch = useRef(0);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);
   const latestNavigationRevision = useRef<bigint>(-1n);
   const [suggestionResult, setSuggestionResult] = useState<{
@@ -71,6 +73,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   } | null>(null);
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -132,6 +135,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
             const revision = BigInt(event.payload.revision);
             if (revision <= latestNavigationRevision.current) return;
             latestNavigationRevision.current = revision;
+            screenshotEpoch.current += 1;
+            setScreenshotStatus(null);
             setNavigation(event.payload);
             setError(event.payload.error ?? null);
             if (document.activeElement !== addressField.current) {
@@ -157,6 +162,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       });
     return () => {
       mounted = false;
+      screenshotEpoch.current += 1;
       unlisten?.();
     };
   }, [tab.id]);
@@ -164,6 +170,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   async function navigate() {
     try {
       setError(null);
+      setScreenshotStatus(null);
+      screenshotEpoch.current += 1;
       const url = resolveBrowserAddress(address);
       await browserNavigate(tab.id, url);
       setNavigation((current) =>
@@ -195,6 +203,47 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       setError(String(cause).slice(0, 512));
     }
   }
+  async function copyScreenshot() {
+    const revision = navigation?.revision;
+    if (!revision) return;
+    const epoch = screenshotEpoch.current;
+    setError(null);
+    setScreenshotStatus("Capturing screenshot…");
+    try {
+      const screenshot = await browserCaptureScreenshot(tab.id, revision);
+      if (epoch !== screenshotEpoch.current) return;
+      if (
+        !screenshot.pngBase64.startsWith("iVBORw0KGgo") ||
+        screenshot.pngBase64.length > 2_000_000
+      ) {
+        throw new Error("invalid screenshot result");
+      }
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("image clipboard unavailable");
+      }
+      const bytes = Uint8Array.from(atob(screenshot.pngBase64), (char) =>
+        char.charCodeAt(0),
+      );
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([bytes], { type: "image/png" }),
+        }),
+      ]);
+      setScreenshotStatus("Screenshot copied to clipboard");
+    } catch (cause) {
+      if (epoch !== screenshotEpoch.current) return;
+      setScreenshotStatus(null);
+      setError(
+        `Screenshot could not be copied: ${String(cause).slice(0, 384)}`,
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (screenshotStatus !== "Screenshot copied to clipboard") return;
+    const timeout = setTimeout(() => setScreenshotStatus(null), 5_000);
+    return () => clearTimeout(timeout);
+  }, [screenshotStatus]);
   function changeZoom(delta: number) {
     const percent = Math.max(
       50,
@@ -256,6 +305,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onControl={(action) => void control(action)}
           onFind={() => setFindOpen(true)}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
+          onScreenshot={() => void copyScreenshot()}
           onZoom={changeZoom}
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}
@@ -302,6 +352,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         <div className="browser-surface__error" role="alert">
           {error}
         </div>
+      ) : null}
+      {screenshotStatus ? (
+        <p className="browser-surface__status" role="status">
+          {screenshotStatus}
+        </p>
       ) : null}
       <BrowserDrawers
         tabId={tab.id}

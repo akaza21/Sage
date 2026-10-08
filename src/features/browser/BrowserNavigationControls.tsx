@@ -32,6 +32,7 @@ interface Props {
   onControl: (action: "back" | "forward" | "reload" | "stop") => void;
   onFind: () => void;
   onPrint: () => void;
+  onScreenshot: () => void;
   onZoom: (delta: number) => void;
   onZoomReset: () => void;
   onDownloads: () => void;
@@ -53,6 +54,7 @@ export function BrowserNavigationControls({
   onControl,
   onFind,
   onPrint,
+  onScreenshot,
   onZoom,
   onZoomReset,
   onDownloads,
@@ -216,6 +218,13 @@ export function BrowserNavigationControls({
                   onClick={() => run(onPrint)}
                 >
                   Print
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => run(onScreenshot)}
+                >
+                  Take a screenshot
                 </button>
                 <div className="browser-surface__menu-zoom">
                   <span>Zoom</span>

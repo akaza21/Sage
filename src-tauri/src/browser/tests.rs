@@ -45,6 +45,24 @@ fn document_title_is_bounded_and_tied_to_the_committed_page() {
 }
 
 #[test]
+fn user_screenshot_admits_only_the_settled_selected_revision() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 7, false);
+    assert!(super::user_screenshot::capture_target(&tabs, "browser-1", "0").is_err());
+    assert!(tabs.start_navigation("browser-1", 1, "https://example.com/"));
+    assert!(super::user_screenshot::capture_target(&tabs, "browser-1", "1").is_err());
+    assert!(tabs.finish_navigation("browser-1", 1, Some("https://example.com/")));
+    let revision = tabs.snapshot("browser-1").unwrap().revision.to_string();
+    assert_eq!(
+        super::user_screenshot::capture_target(&tabs, "browser-1", &revision).unwrap(),
+        7
+    );
+    assert!(super::user_screenshot::capture_target(&tabs, "browser-1", "0").is_err());
+    assert!(super::user_screenshot::capture_target(&tabs, "browser-01", &revision).is_err());
+    assert!(super::user_screenshot::capture_target(&tabs, "browser-2", &revision).is_err());
+}
+
+#[test]
 fn startup_label_skips_a_browser_owned_by_another_project() {
     let base = std::env::temp_dir().join(format!(
         "sage-browser-label-projects-{}-{}",

@@ -148,6 +148,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::state_query::browser_history,
         browser::state_query::browser_suggested_sites,
         browser::page_context::browser_page_context,
+        browser::user_screenshot::browser_capture_screenshot,
         browser::page_controls::browser_navigate,
         browser::navigation::browser_control,
         browser::page_controls::browser_zoom,

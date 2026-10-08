@@ -20,7 +20,7 @@ use crate::acp::{
 use super::{
     capability::{DevtoolsCapability, DevtoolsPort},
     cdp, events,
-    screenshot::admit_jpeg,
+    screenshot::{admit_jpeg, admit_png, capture_png_with_fallback},
     snapshot::{DocumentStamp, NativeNode, parse_ax_tree},
 };
 use crate::browser::BrowserState;
@@ -34,6 +34,42 @@ use outcome::{
     dispatch_disconnected_failure, dispatch_timeout_failure, navigation_failure, navigation_matches,
 };
 pub(crate) use page_context::capture_page_context;
+
+pub(crate) fn capture_user_png(
+    state: &BrowserState,
+    tab_id: &str,
+    expected_revision: &str,
+) -> Result<(u32, u32, String), String> {
+    let webview = state
+        .tabs
+        .lock()
+        .map_err(|_| "browser unavailable")?
+        .handle(tab_id)
+        .cloned()
+        .ok_or("browser tab unavailable")?;
+    let mut port = NativePort {
+        webview,
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    };
+    let before = port.stamp().map_err(|_| "browser page unavailable")?;
+    if before.generation.to_string() != expected_revision {
+        return Err("browser page changed; retry screenshot".into());
+    }
+    let captured = capture_png_with_fallback(|scale| port.capture_image(None, "png", scale))
+        .map_err(|error| match error {
+            BrowserFailure::Capacity => "browser screenshot exceeds size limit",
+            _ => "browser screenshot unavailable",
+        })?;
+    if port
+        .stamp()
+        .map_err(|_| "browser page changed; retry screenshot")?
+        != before
+    {
+        return Err("browser page changed; retry screenshot".into());
+    }
+    Ok(captured)
+}
 
 pub(crate) type NativeDevtools = DevtoolsCapability<NativePort>;
 
@@ -86,6 +122,74 @@ pub(crate) struct NativePort {
 }
 
 impl NativePort {
+    fn capture_image(
+        &mut self,
+        region: Option<ViewportRegion>,
+        format: &'static str,
+        scale: f64,
+    ) -> Result<(u32, u32, String), BrowserFailure> {
+        let metrics = self.call(
+            "Page.getLayoutMetrics",
+            "{}",
+            65_536,
+            Duration::from_secs(5),
+        )?;
+        let metrics: Value =
+            serde_json::from_str(&metrics).map_err(|_| BrowserFailure::Unavailable)?;
+        let viewport = &metrics["cssVisualViewport"];
+        let viewport_width = dimension(&viewport["clientWidth"])?;
+        let viewport_height = dimension(&viewport["clientHeight"])?;
+        let (x, y, width, height) = if let Some(region) = region {
+            if region
+                .x
+                .checked_add(region.width)
+                .is_none_or(|end| end > viewport_width)
+                || region
+                    .y
+                    .checked_add(region.height)
+                    .is_none_or(|end| end > viewport_height)
+            {
+                return Err(BrowserFailure::InvalidRequest);
+            }
+            (region.x, region.y, region.width, region.height)
+        } else {
+            (0, 0, viewport_width, viewport_height)
+        };
+        if width == 0
+            || height == 0
+            || width > BROWSER_LIMITS.screenshot_width
+            || height > BROWSER_LIMITS.screenshot_height
+            || u64::from(width) * u64::from(height) > BROWSER_LIMITS.screenshot_pixels
+        {
+            return Err(BrowserFailure::Capacity);
+        }
+        let params = json!({
+            "format": format,
+            "quality": 70,
+            "fromSurface": true,
+            "captureBeyondViewport": false,
+            "clip": {"x": x, "y": y, "width": width, "height": height, "scale": scale},
+        });
+        let response = self.call(
+            "Page.captureScreenshot",
+            &params.to_string(),
+            BROWSER_LIMITS.screenshot_bytes + 4096,
+            Duration::from_secs(5),
+        )?;
+        let response: Value =
+            serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
+        let data = response["data"]
+            .as_str()
+            .ok_or(BrowserFailure::Unavailable)?;
+        if format == "png" {
+            let (actual_width, actual_height) = admit_png(data)?;
+            Ok((actual_width, actual_height, data.to_owned()))
+        } else {
+            admit_jpeg(width, height, data)?;
+            Ok((width, height, data.to_owned()))
+        }
+    }
+
     fn call(
         &self,
         method: &str,
@@ -254,64 +358,11 @@ impl DevtoolsPort for NativePort {
         act::perform(self, stamp, backend_id, action)
     }
     fn capture(&mut self, region: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure> {
-        let metrics = self.call(
-            "Page.getLayoutMetrics",
-            "{}",
-            65_536,
-            Duration::from_secs(5),
-        )?;
-        let metrics: Value =
-            serde_json::from_str(&metrics).map_err(|_| BrowserFailure::Unavailable)?;
-        let viewport = &metrics["cssVisualViewport"];
-        let viewport_width = dimension(&viewport["clientWidth"])?;
-        let viewport_height = dimension(&viewport["clientHeight"])?;
-        let (x, y, width, height) = if let Some(region) = region {
-            if region
-                .x
-                .checked_add(region.width)
-                .is_none_or(|end| end > viewport_width)
-                || region
-                    .y
-                    .checked_add(region.height)
-                    .is_none_or(|end| end > viewport_height)
-            {
-                return Err(BrowserFailure::InvalidRequest);
-            }
-            (region.x, region.y, region.width, region.height)
-        } else {
-            (0, 0, viewport_width, viewport_height)
-        };
-        if width == 0
-            || height == 0
-            || width > BROWSER_LIMITS.screenshot_width
-            || height > BROWSER_LIMITS.screenshot_height
-            || u64::from(width) * u64::from(height) > BROWSER_LIMITS.screenshot_pixels
-        {
-            return Err(BrowserFailure::Capacity);
-        }
-        let params = json!({
-            "format": "jpeg",
-            "quality": 70,
-            "fromSurface": true,
-            "captureBeyondViewport": false,
-            "clip": {"x": x, "y": y, "width": width, "height": height, "scale": 1},
-        });
-        let response = self.call(
-            "Page.captureScreenshot",
-            &params.to_string(),
-            BROWSER_LIMITS.screenshot_bytes + 4096,
-            Duration::from_secs(5),
-        )?;
-        let response: Value =
-            serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
-        let data = response["data"]
-            .as_str()
-            .ok_or(BrowserFailure::Unavailable)?;
-        admit_jpeg(width, height, data)?;
+        let (width, height, data) = self.capture_image(region, "jpeg", 1.0)?;
         Ok(BrowserResult::Screenshot {
             width,
             height,
-            jpeg_base64: data.to_owned(),
+            jpeg_base64: data,
         })
     }
 

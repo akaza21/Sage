@@ -37,6 +37,7 @@ pub(crate) mod site_permissions;
 mod state_init;
 pub(crate) mod state_query;
 mod teardown;
+pub(crate) mod user_screenshot;
 
 #[cfg(test)]
 use admission::MAX_BROWSER_URL_BYTES;

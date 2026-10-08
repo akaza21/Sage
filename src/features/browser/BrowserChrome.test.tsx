@@ -25,6 +25,13 @@ const browserFind = vi.fn(
 );
 const browserOpenExternal = vi.fn(async (_tabId: string) => undefined);
 const browserPrint = vi.fn(async (_tabId: string) => undefined);
+const browserCaptureScreenshot = vi.fn(
+  async (_tabId: string, _revision: string) => ({
+    width: 1,
+    height: 1,
+    pngBase64: "iVBORw0KGgo=",
+  }),
+);
 const browserNavigate = vi.fn(
   async (_tabId: string, _url: string) => undefined,
 );
@@ -53,6 +60,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     browserFind(tabId, action, query),
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
   browserPrint: (tabId: string) => browserPrint(tabId),
+  browserCaptureScreenshot: (tabId: string, revision: string) =>
+    browserCaptureScreenshot(tabId, revision),
   browserSuggestedSites: () => browserSuggestedSites(),
   browserHistory: (tabId: string) => browserHistory(tabId),
   attachBrowserTab: vi.fn(),
@@ -99,6 +108,11 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   expect(
     screen.getByPlaceholderText("Search or enter a URL"),
   ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  expect(
+    screen.queryByRole("menuitem", { name: "Take a screenshot" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(await screen.findByRole("button", { name: "example.com" }));
   await waitFor(() =>
     expect(browserNavigate).toHaveBeenCalledWith(
@@ -330,7 +344,9 @@ it("groups supported page controls in an overflow menu without dead features", a
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
   expect(screen.queryByText("Show device toolbar")).toBeNull();
-  expect(screen.queryByText("Take a screenshot")).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Take a screenshot" }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
   expect(
@@ -345,6 +361,72 @@ it("opens native print for the loaded tab from the menu", async () => {
   fireEvent.click(screen.getByRole("menuitem", { name: "Print" }));
   await waitFor(() => expect(browserPrint).toHaveBeenCalledWith(tab.id));
   expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
+});
+it("copies an explicit loaded-page screenshot and confirms the result", async () => {
+  const write = vi.fn(async (_items: ClipboardItem[]) => undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { write } });
+  vi.stubGlobal(
+    "ClipboardItem",
+    class {
+      constructor(public readonly items: Record<string, Blob>) {}
+      async getType(type: string) {
+        return this.items[type];
+      }
+    },
+  );
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
+
+  await waitFor(() =>
+    expect(browserCaptureScreenshot).toHaveBeenCalledWith(tab.id, "1"),
+  );
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+  expect(await write.mock.calls[0]?.[0][0].getType("image/png")).toHaveProperty(
+    "type",
+    "image/png",
+  );
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Screenshot copied to clipboard",
+  );
+});
+it("shows a browser error when the clipboard denies a screenshot write", async () => {
+  const write = vi.fn(async () => {
+    throw new Error("denied");
+  });
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { write } });
+  vi.stubGlobal(
+    "ClipboardItem",
+    class {
+      constructor(public readonly items: Record<string, Blob>) {}
+    },
+  );
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Screenshot could not be copied",
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+});
+it("does not alter the clipboard when the page changes before capture", async () => {
+  browserCaptureScreenshot.mockRejectedValueOnce(
+    new Error("browser page changed; retry screenshot"),
+  );
+  const write = vi.fn(async () => undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { write } });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "browser page changed; retry screenshot",
+  );
+  expect(write).not.toHaveBeenCalled();
+  expect(screen.queryByRole("status")).toBeNull();
 });
 it("explains when system printing is unavailable on this platform", async () => {
   browserPrint.mockClear();
@@ -589,6 +671,9 @@ it("does not share a provisional URL while the page is loading", async () => {
   expect(screen.queryByRole("menuitem", { name: "Copy URL" })).toBeNull();
   expect(
     screen.queryByRole("menuitem", { name: "Open externally" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("menuitem", { name: "Take a screenshot" }),
   ).toBeNull();
 });
 it("shows a failed history retry without offering a mismatched origin", async () => {

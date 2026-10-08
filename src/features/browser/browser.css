@@ -256,6 +256,13 @@
   padding: 4px 8px;
   background: var(--bg);
 }
+.browser-surface__status {
+  z-index: 1;
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--color-text-secondary);
+  background: var(--bg);
+}
 .browser-surface__frame {
   flex: 1;
   min-height: 0;

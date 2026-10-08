@@ -8,6 +8,7 @@ mod redact;
 #[cfg(windows)]
 pub(crate) mod session_capability;
 
+pub(crate) use bounds::admit_screenshot;
 pub use contract::*;
 pub use fake::FakeBrowserCapability;
 pub(crate) use redact::{redact_console, redact_url};
