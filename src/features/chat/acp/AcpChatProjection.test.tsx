@@ -2000,7 +2000,143 @@ describe("AcpChatProjection", () => {
     );
     expect(thought.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(thought);
-    expect(screen.getByText("Checking the workspace")).toBeVisible();
+    expect(screen.getAllByText("Checking the workspace")[1]).toBeVisible();
+  });
+
+  it("shows live thinking text as a preview, then a collapsed summary after completion", async () => {
+    const next = page("running");
+    next.turns[0].items = [
+      {
+        id: "thought",
+        kind: "thoughtSummary",
+        origin: "primary",
+        lifecycle: "streaming",
+        createdAt: 1_000,
+        terminalAt: null,
+        payload: { summary: "Checking the workspace before editing." },
+      } as AcpItem,
+    ];
+    const { rerender } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    const live = screen.getAllByText(
+      "Checking the workspace before editing.",
+    )[0];
+    expect(live).toBeVisible();
+    expect(live.closest(".acp-thought")).toHaveAttribute(
+      "data-activity-state",
+      "inProgress",
+    );
+
+    const finished = structuredClone(next);
+    finished.turns[0].state = "completed";
+    finished.turns[0].revision = "4" as never;
+    finished.turns[0].items[0].lifecycle = "completed";
+    finished.turns[0].items[0].terminalAt = 4_000;
+    finished.turns[0].items[0].revision = "2" as never;
+    rerender(<AcpChatProjection page={finished} active />);
+    const summary = screen.getAllByText(
+      "Checking the workspace before editing.",
+    )[0];
+    expect(summary.closest("summary")).not.toBeNull();
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    expect(summary.closest(".acp-thought")).toHaveAttribute(
+      "data-activity-state",
+      "completed",
+    );
+  });
+
+  it("marks a partial assistant answer on an interrupted turn without completing it", async () => {
+    const next = page("interrupted");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        lifecycle: "streaming",
+        payload: { role: "assistant", text: "Partial answer" },
+      } as AcpItem,
+    ];
+    await renderProjection(<AcpChatProjection page={next} active />);
+    const answer = screen.getByText("Partial answer");
+    expect(answer.closest(".acp-message")).toHaveAttribute(
+      "data-answer-state",
+      "partial",
+    );
+    expect(screen.getByText("Interrupted")).toBeVisible();
+    expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("shows a failed turn's message and the existing retry action together", async () => {
+    const next = page("failed", {
+      kind: "protocolError",
+      message: "The harness connection closed.",
+    });
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        id: "prompt",
+        payload: { role: "user", text: "Try again" },
+      } as AcpItem,
+    ];
+    const onRetry = vi.fn();
+    await renderProjection(
+      <AcpChatProjection page={next} active onRetry={onRetry} />,
+    );
+    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    expect(
+      within(failure).getByText("The harness connection closed."),
+    ).toBeVisible();
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("does not offer a failed-turn retry without that turn's current-session prompt", async () => {
+    const next = page("failed", {
+      kind: "protocolError",
+      message: "Connection lost",
+    });
+    next.turns[0].items = [];
+    next.turns = [
+      {
+        ...page("completed").turns[0],
+        id: "prior" as never,
+        ordinal: 0,
+        items: [
+          {
+            ...textItem(),
+            id: "old-prompt",
+            payload: { role: "user", text: "Old request" },
+          } as AcpItem,
+        ],
+      },
+      ...next.turns,
+    ];
+    const { rerender } = await renderProjection(
+      <AcpChatProjection page={next} active onRetry={vi.fn()} />,
+    );
+    expect(
+      within(screen.getByRole("alert", { name: "Turn failed" })).queryByRole(
+        "button",
+        { name: "Retry" },
+      ),
+    ).toBeNull();
+
+    const noSession = structuredClone(next);
+    noSession.currentSessionId = null;
+    noSession.turns[1].items = [
+      {
+        ...textItem(),
+        id: "latest-prompt",
+        payload: { role: "user", text: "Latest request" },
+      } as AcpItem,
+    ];
+    noSession.turns[1].revision = "4" as never;
+    rerender(<AcpChatProjection page={noSession} active onRetry={vi.fn()} />);
+    expect(
+      within(screen.getByRole("alert", { name: "Turn failed" })).queryByRole(
+        "button",
+        { name: "Retry" },
+      ),
+    ).toBeNull();
   });
 
   it("does not synthesize a Thought for tool-only turns and caps working rows", () => {

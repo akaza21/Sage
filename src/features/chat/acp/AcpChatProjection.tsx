@@ -5,6 +5,7 @@ import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import type { ProjectRootSummary } from "../../../domain/workbench";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
+import { latestRetryPrompt } from "./acpTurnState";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
 import "./acp-activity-cards.css";
 import "./acp-activity-details.css";
@@ -23,6 +24,7 @@ type AcpChatProjectionProps = {
   onLoadEarlier?: () => void;
   projectRoots?: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete?: boolean;
+  onRetry?: () => void;
 };
 
 const loadAcpChatPresentation = () =>
@@ -41,6 +43,7 @@ export function AcpChatProjection({
   onLoadEarlier,
   projectRoots = [],
   retentionIncomplete = false,
+  onRetry,
 }: AcpChatProjectionProps) {
   useEffect(() => {
     if (!active || !focused) return;
@@ -74,6 +77,7 @@ export function AcpChatProjection({
             onLoadEarlier={onLoadEarlier}
             projectRoots={projectRoots}
             retentionIncomplete={retentionIncomplete}
+            onRetry={onRetry && latestRetryPrompt(page) ? onRetry : undefined}
           />
         )}
       />

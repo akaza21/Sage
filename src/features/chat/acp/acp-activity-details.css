@@ -191,6 +191,18 @@
   list-style: none;
 }
 
+.acp-thought > summary .acp-thought__preview {
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .acp-thought__working li {
   display: grid;
   min-width: 0;

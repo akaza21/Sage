@@ -75,14 +75,16 @@ export function latestRetryPrompt(page: AcpChatPage): {
   modelId: AgentSessionProjection["modelId"];
 } | null {
   const session = currentSession(page);
-  const item = [...page.turns]
+  const turn = page.turns.at(-1);
+  const item = [...(turn?.items ?? [])]
     .reverse()
-    .flatMap((turn) => turn.items)
     .find(
       (candidate) =>
-        candidate.kind === "text" && candidate.payload.role === "user",
+        candidate.origin === "primary" &&
+        candidate.kind === "text" &&
+        candidate.payload.role === "user",
     );
-  return session && item?.kind === "text"
+  return session && turn?.sessionId === session.id && item?.kind === "text"
     ? {
         prompt: item.payload.text,
         bindingId: session.bindingId,

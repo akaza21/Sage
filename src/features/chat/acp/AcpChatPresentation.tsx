@@ -42,6 +42,7 @@ export type AcpChatPresentationProps = {
   onLoadEarlier?: () => void;
   projectRoots: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete: boolean;
+  onRetry?: () => void;
 };
 
 function turnDayTimestamp(turn: TurnProjection): number | null {
@@ -74,6 +75,7 @@ const Turn = memo(
     hasProjectRoot,
     countIncomplete,
     onOpenResource,
+    onRetry,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
@@ -81,6 +83,7 @@ const Turn = memo(
     hasProjectRoot: boolean;
     countIncomplete: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
+    onRetry?: () => void;
   }) {
     const primary = turn.items.filter(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
@@ -219,6 +222,7 @@ const Turn = memo(
               <ItemView
                 key={item.id}
                 item={item}
+                turnState={turn.state}
                 workingItems={turn.items}
                 interactive={interactive}
                 fileReferenceOwner={fileReferenceOwner}
@@ -237,6 +241,7 @@ const Turn = memo(
               renderItem={(item) => (
                 <ItemView
                   item={item}
+                  turnState={turn.state}
                   interactive={interactive}
                   fileReferenceOwner={fileReferenceOwner}
                   onOpenResource={
@@ -257,6 +262,28 @@ const Turn = memo(
             onOpenFile={interactive ? onOpenResource && openForTurn : undefined}
             onRecordDisposition={acpDesktop.recordAgentEditDisposition}
           />
+          {turn.state === "failed" ? (
+            <div
+              className="acp-turn__failure"
+              role="alert"
+              aria-label="Turn failed"
+            >
+              <strong>Turn failed</strong>
+              {turn.terminalReason?.message ? (
+                <p data-turn-reason-message="">{turn.terminalReason.message}</p>
+              ) : null}
+              {turn.terminalReason?.remediation ? (
+                <p data-turn-reason-remediation="">
+                  {turn.terminalReason.remediation}
+                </p>
+              ) : null}
+              {onRetry ? (
+                <button type="button" onClick={onRetry}>
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
     );
@@ -280,7 +307,8 @@ const Turn = memo(
     left.labels === right.labels &&
     left.hasProjectRoot === right.hasProjectRoot &&
     left.countIncomplete === right.countIncomplete &&
-    left.onOpenResource === right.onOpenResource,
+    left.onOpenResource === right.onOpenResource &&
+    left.onRetry === right.onRetry,
 );
 
 export function AcpChatPresentation({
@@ -292,6 +320,7 @@ export function AcpChatPresentation({
   onLoadEarlier,
   projectRoots,
   retentionIncomplete,
+  onRetry,
 }: AcpChatPresentationProps) {
   const [renderedAt, setRenderedAt] = useState(() => Date.now());
   useEffect(() => {
@@ -328,6 +357,7 @@ export function AcpChatPresentation({
           hasProjectRoot={projectRoots.length > 0}
           countIncomplete={countIncomplete}
           onOpenResource={onOpenResource}
+          onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         />
       </Fragment>
     );

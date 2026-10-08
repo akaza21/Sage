@@ -79,6 +79,7 @@ export function ChatTranscript({
               loadingEarlier={loadingEarlier}
               historyError={historyError}
               onLoadEarlier={onLoadEarlier}
+              onRetry={onRetry}
             />
           ) : (
             <ChatLegacyTranscript
@@ -89,7 +90,11 @@ export function ChatTranscript({
           <ChatTranscriptFooter
             page={useNativeAcp ? page : null}
             messages={messages}
-            onRetry={useNativeAcp ? onRetry : undefined}
+            onRetry={
+              useNativeAcp && page?.turns.at(-1)?.state !== "failed"
+                ? onRetry
+                : undefined
+            }
           />
         </div>
         <div ref={endRef} />

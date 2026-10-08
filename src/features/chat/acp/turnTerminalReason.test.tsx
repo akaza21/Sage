@@ -1,4 +1,4 @@
-import { cleanup, render, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TurnTerminalReason } from "../../../domain/acp";
@@ -77,18 +77,19 @@ describe("turn terminal reason", () => {
     expect(within(header()).getByRole("status")).toHaveTextContent("Failed");
   });
 
-  it("shows a harness message as visible text beside the label", async () => {
+  it("shows a harness message in the failed-turn row", async () => {
     await renderTurn("failed", {
       kind: "protocolError",
       message: "Unsupported sessionUpdate variant",
     });
 
     expect(within(header()).getByText("Protocol error")).toBeTruthy();
-    const detail = within(header()).getByText(
+    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const detail = within(failure).getByText(
       "Unsupported sessionUpdate variant",
     );
     expect(detail).toHaveAttribute("data-turn-reason-message", "");
-    expect(header().querySelector("[data-turn-reason-remediation]")).toBeNull();
+    expect(failure.querySelector("[data-turn-reason-remediation]")).toBeNull();
   });
 
   it("shows the Sage remediation for a sign-in failure", async () => {
@@ -98,11 +99,12 @@ describe("turn terminal reason", () => {
     });
 
     expect(within(header()).getByText("Not signed in")).toBeTruthy();
-    const remediation = within(header()).getByText(
+    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const remediation = within(failure).getByText(
       "Sign in by running claude auth login.",
     );
     expect(remediation).toHaveAttribute("data-turn-reason-remediation", "");
-    expect(header().querySelector("[data-turn-reason-message]")).toBeNull();
+    expect(failure.querySelector("[data-turn-reason-message]")).toBeNull();
   });
 
   it("keeps a message and a remediation as two separate blocks", async () => {
@@ -112,15 +114,16 @@ describe("turn terminal reason", () => {
       remediation: "Sign in with your Claude account",
     });
 
-    const message = within(header()).getByText("authentication required");
-    const remediation = within(header()).getByText(
+    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const message = within(failure).getByText("authentication required");
+    const remediation = within(failure).getByText(
       "Sign in with your Claude account",
     );
     expect(message).not.toBe(remediation);
     expect(message.compareDocumentPosition(remediation)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(header().textContent).not.toContain("—");
+    expect(failure.textContent).not.toContain("—");
   });
 
   it("offers no reason detail when the turn carries neither text", async () => {

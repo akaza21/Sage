@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { Circle, LoaderCircle, XCircle, Check } from "../../../ui/leanIcons";
 
-import type { AcpItem } from "../../../domain/acp";
+import type { AcpItem, TurnState } from "../../../domain/acp";
 import type {
   AgentArtifactOpenHandler,
   AgentArtifactOwner,
@@ -31,6 +31,7 @@ export const ItemView = memo(
     workingItems,
     interactive,
     neutralTextRole,
+    turnState,
     fileReferenceOwner,
     onOpenResource,
   }: {
@@ -38,6 +39,7 @@ export const ItemView = memo(
     workingItems?: readonly AcpItem[];
     interactive: boolean;
     neutralTextRole?: boolean;
+    turnState?: TurnState;
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
   }) {
@@ -49,6 +51,11 @@ export const ItemView = memo(
             className={`acp-message acp-message--${item.payload.role}`}
             data-item-id={item.id}
             data-message-role={item.payload.role}
+            data-answer-state={
+              item.payload.role === "assistant" && turnState === "interrupted"
+                ? "partial"
+                : undefined
+            }
           >
             <header className="acp-message__meta">
               {item.payload.role === "assistant" ? (
@@ -74,7 +81,8 @@ export const ItemView = memo(
             <ChatMarkdown
               text={item.payload.text}
               streaming={
-                item.lifecycle === "started" || item.lifecycle === "streaming"
+                turnState !== "interrupted" &&
+                (item.lifecycle === "started" || item.lifecycle === "streaming")
               }
               fileReferenceOwner={
                 item.payload.role === "assistant"
@@ -82,6 +90,12 @@ export const ItemView = memo(
                   : undefined
               }
             />
+            {item.payload.role === "assistant" &&
+            turnState === "interrupted" ? (
+              <p className="acp-message__partial">
+                Interrupted · partial answer
+              </p>
+            ) : null}
           </article>
         );
       }
@@ -132,6 +146,7 @@ export const ItemView = memo(
       : left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
     left.neutralTextRole === right.neutralTextRole &&
+    left.turnState === right.turnState &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
     left.onOpenResource === right.onOpenResource,
 );
@@ -196,6 +211,10 @@ function ThoughtActivity({
   const live = !terminal || active.length > 0;
   const endAt = live ? liveNowMs : (item.terminalAt ?? item.updatedAt);
   const label = thoughtDurationLabel(item.createdAt, endAt, live);
+  const preview = item.payload.summary
+    .trim()
+    .split(/\r?\n/, 1)[0]
+    ?.slice(0, 256);
   return (
     <details
       className="acp-activity-card acp-activity-card--thought acp-details acp-thought"
@@ -208,6 +227,9 @@ function ThoughtActivity({
         >
           {live ? "Thinking" : (label ?? "Thought")}
         </span>
+        {preview ? (
+          <span className="acp-thought__preview">{preview}</span>
+        ) : null}
         {live ? null : <span className="acp-state">Details</span>}
       </summary>
       <ChatMarkdown

@@ -23,7 +23,7 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
           {turnTerminalReasonLabels[reason.kind]}
         </span>
       ) : null}
-      {message || remediation ? (
+      {turn.state !== "failed" && (message || remediation) ? (
         <div className="acp-turn__reason-detail">
           {message ? (
             <p className="acp-turn__reason-text" data-turn-reason-message="">
