@@ -12,6 +12,7 @@ use crate::acp::{
 use super::{DenyIntent, DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome};
 
+mod compaction;
 mod delivery;
 mod identity;
 use identity::{external, model_event, model_key, text_payload, tool_payload, unsupported};
@@ -275,6 +276,8 @@ impl PiRuntime {
                     None,
                 )
             }
+            AdapterOutput::CompactionStarted => (Some(self.start_compaction()?), None),
+            AdapterOutput::CompactionCompleted => (Some(self.finish_compaction()?), None),
             AdapterOutput::ToolStarted { external_id, name } => {
                 let id = external("piItemId", external_id)?;
                 (

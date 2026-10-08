@@ -196,6 +196,22 @@ pub struct ToolExecution {
     pub output_truncated: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NormalizedPlanState {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPlanEntry {
+    pub label: SafeText<512>,
+    pub state: NormalizedPlanState,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -214,6 +230,10 @@ pub enum NormalizedPayload {
     Plan {
         summary: SafeText<262144>,
     },
+    PlanEntries {
+        entries: BoundedVec<NormalizedPlanEntry, 128>,
+    },
+    CompactionNotice,
     ToolCall {
         category: ToolCategory,
         label: SafeText<512>,
@@ -344,7 +364,8 @@ impl NormalizedPayload {
         match self {
             Self::Text { .. } => ItemKind::Text,
             Self::ThoughtSummary { .. } => ItemKind::ThoughtSummary,
-            Self::Plan { .. } => ItemKind::Plan,
+            Self::Plan { .. } | Self::PlanEntries { .. } => ItemKind::Plan,
+            Self::CompactionNotice => ItemKind::Unsupported,
             Self::ToolCall { .. } => ItemKind::ToolCall,
             Self::FileChangeDiff { .. } => ItemKind::FileChangeDiff,
             Self::Image { .. } => ItemKind::Image,

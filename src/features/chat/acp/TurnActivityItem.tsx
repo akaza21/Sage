@@ -22,7 +22,7 @@ import { isActiveTool, isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
-  { kind: "thoughtSummary" | "plan" | "error" }
+  { kind: "thoughtSummary" | "plan" | "compactionNotice" | "error" }
 >;
 
 export const ItemView = memo(
@@ -83,6 +83,7 @@ export const ItemView = memo(
       }
       case "thoughtSummary":
       case "plan":
+      case "compactionNotice":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
       case "error":
         return <TurnActivityItem item={item} />;
@@ -343,6 +344,8 @@ export function TurnActivityItem({
       );
     case "plan":
       return <PlanActivity item={item} workingItems={workingItems} />;
+    case "compactionNotice":
+      return <p className="acp-compaction-notice" data-activity-kind="compactionNotice">Context automatically compacted</p>;
     case "error":
       return <ErrorActivity item={item} />;
   }

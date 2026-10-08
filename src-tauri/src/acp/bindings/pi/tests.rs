@@ -266,6 +266,37 @@ fn duplicate_tool_start_cannot_reopen_a_terminal_tool() {
 }
 
 #[test]
+fn pi_compaction_start_and_end_correlate_one_notice_lifecycle() {
+    let mut translator = admitted_translator(8);
+    accept_prompt(&mut translator, "turn-compaction");
+    translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
+    assert_eq!(
+        translator
+            .ingest(br#"{"type":"auto_compaction_start"}"#)
+            .unwrap(),
+        vec![AdapterOutput::CompactionStarted]
+    );
+    assert_eq!(
+        translator
+            .ingest(br#"{"type":"auto_compaction_start"}"#)
+            .unwrap(),
+        vec![AdapterOutput::DuplicateIgnored]
+    );
+    assert_eq!(
+        translator
+            .ingest(br#"{"type":"auto_compaction_end"}"#)
+            .unwrap(),
+        vec![AdapterOutput::CompactionCompleted]
+    );
+    assert_eq!(
+        translator
+            .ingest(br#"{"type":"auto_compaction_end"}"#)
+            .unwrap(),
+        vec![AdapterOutput::LateIgnored]
+    );
+}
+
+#[test]
 fn abort_capacity_failure_does_not_mark_an_unsent_interrupt() {
     let mut translator = admitted_translator(9);
     accept_prompt(&mut translator, "turn-abort");

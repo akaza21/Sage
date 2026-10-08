@@ -151,6 +151,34 @@ fn content(
             )
             .map_err(contract)?,
         },
+        NormalizedPayload::PlanEntries { entries } => ItemContent::Plan {
+            entries: BoundedVec::new(
+                "planEntries",
+                entries
+                    .as_slice()
+                    .iter()
+                    .map(|entry| PlanEntry {
+                        label: entry.label.clone(),
+                        state: match entry.state {
+                            crate::acp::intent::NormalizedPlanState::Pending => {
+                                PlanEntryState::Pending
+                            }
+                            crate::acp::intent::NormalizedPlanState::InProgress => {
+                                PlanEntryState::InProgress
+                            }
+                            crate::acp::intent::NormalizedPlanState::Completed => {
+                                PlanEntryState::Completed
+                            }
+                            crate::acp::intent::NormalizedPlanState::Failed => {
+                                PlanEntryState::Failed
+                            }
+                        },
+                    })
+                    .collect(),
+            )
+            .map_err(contract)?,
+        },
+        NormalizedPayload::CompactionNotice => ItemContent::CompactionNotice {},
         NormalizedPayload::ToolCall {
             category,
             label,

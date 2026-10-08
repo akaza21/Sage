@@ -1409,6 +1409,36 @@ fn only_one_turn_start_can_be_pending_or_active_and_failed_egress_rolls_back() {
 }
 
 #[test]
+fn structured_turn_plan_preserves_step_states_without_a_tool_row() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-plan");
+    let started = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&started).unwrap(), &Mapper)
+        .unwrap();
+    let update = json!({"method":"turn/plan/updated","params":{
+        "threadId":"thread-1","turnId":"turn-1","plan":[
+            {"step":"Inspect","status":"completed"},
+            {"step":"Patch","status":"inProgress"}
+        ]
+    }});
+    let IngressDisposition::Events(events) = adapter
+        .ingest(&serde_json::to_vec(&update).unwrap(), &Mapper)
+        .unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(events.as_slice(), [IncomingEvent::Item {
+        payload: NormalizedPayload::PlanEntries { entries }, tool_state: None, ..
+    }] if entries.as_slice().len() == 2
+        && entries.as_slice()[0].state == crate::acp::intent::NormalizedPlanState::Completed
+        && entries.as_slice()[1].state == crate::acp::intent::NormalizedPlanState::InProgress));
+}
+
+#[test]
 fn pinned_error_notification_validates_identity_and_preserves_retryability() {
     let mut adapter = adapter();
     ready(&mut adapter);

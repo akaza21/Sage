@@ -142,6 +142,7 @@ type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
 export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
   | PlainItem<"thoughtSummary", { summary: string }>
+  | PlainItem<"compactionNotice", Record<string, never>>
   | PlainItem<
       "plan",
       {

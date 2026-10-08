@@ -96,6 +96,56 @@ fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
     ));
 }
 
+#[test]
+fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
+    use crate::acp::{
+        contract::BoundedVec,
+        intent::{NormalizedPlanEntry, NormalizedPlanState},
+    };
+    let plan = NormalizedPayload::PlanEntries {
+        entries: BoundedVec::new(
+            "planEntries",
+            vec![
+                NormalizedPlanEntry {
+                    label: SafeText::new("planEntry", "Inspect").unwrap(),
+                    state: NormalizedPlanState::Completed,
+                },
+                NormalizedPlanEntry {
+                    label: SafeText::new("planEntry", "Patch").unwrap(),
+                    state: NormalizedPlanState::InProgress,
+                },
+            ],
+        )
+        .unwrap(),
+    };
+    let projected = content(
+        plan,
+        crate::acp::lifecycle::ItemLifecycle::Streaming,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        matches!(projected, ItemContent::Plan { entries } if entries.as_slice().iter().map(|entry| entry.state).collect::<Vec<_>>() == vec![PlanEntryState::Completed, PlanEntryState::InProgress])
+    );
+    assert!(matches!(
+        content(
+            NormalizedPayload::CompactionNotice,
+            crate::acp::lifecycle::ItemLifecycle::Completed,
+            None,
+            None,
+            None
+        )
+        .unwrap(),
+        ItemContent::CompactionNotice {}
+    ));
+    assert_eq!(
+        NormalizedPayload::CompactionNotice.kind(),
+        crate::acp::lifecycle::ItemKind::Unsupported
+    );
+}
+
 fn file_change(operation: crate::acp::intent::FileChangeOperation) -> ItemContent {
     let payload = NormalizedPayload::file_summary_only(
         crate::acp::intent::FileChangeFacts {

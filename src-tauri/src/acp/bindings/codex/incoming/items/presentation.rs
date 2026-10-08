@@ -68,16 +68,11 @@ pub(super) fn context_compaction(
     _item: &Map<String, Value>,
     _lifecycle: ItemLifecycle,
 ) -> Result<ItemNormalization, IngressError> {
-    tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::Other,
-        label: "Context automatically compacted",
-        tool_state: ToolState::Completed,
-        input_summary: None,
-        output_summary: None,
-        locations: Default::default(),
-        command_activity: CommandActivity::Ordinary,
-        execution: ToolExecution::default(),
-    })
+    Ok((
+        NormalizedPayload::CompactionNotice,
+        None,
+        Some(ItemLifecycle::Completed),
+    ))
 }
 
 pub(super) fn bounded_summary(value: &str) -> Option<String> {

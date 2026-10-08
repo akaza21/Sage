@@ -33,7 +33,7 @@ fn mcp_tool_call_names_only_bounded_safe_server_and_tool_fields() {
 }
 
 #[test]
-fn schema_shaped_context_compaction_is_a_named_activity_without_detail() {
+fn schema_shaped_context_compaction_is_a_shared_notice() {
     let compacted = item(json!({
         "id": "compaction-1",
         "type": "contextCompaction"
@@ -42,12 +42,9 @@ fn schema_shaped_context_compaction_is_a_named_activity_without_detail() {
         normalize_item(&compacted, ItemLifecycle::Completed, &UnusedMapper)
             .expect("context compaction")
             .expect("item");
-    assert_eq!(state, Some(ToolState::Completed));
+    assert_eq!(state, None);
     assert_eq!(terminal, Some(ItemLifecycle::Completed));
-    assert!(matches!(payload, NormalizedPayload::ToolCall {
-        category: ToolCategory::Other, label, input_summary: None,
-        output_summary: None, ..
-    } if label.as_str() == "Context automatically compacted"));
+    assert!(matches!(payload, NormalizedPayload::CompactionNotice));
 }
 
 #[test]
@@ -60,7 +57,7 @@ fn context_compaction_ignores_undeclared_status_and_remains_completed() {
     let (_, state, terminal) = normalize_item(&compacted, ItemLifecycle::Completed, &UnusedMapper)
         .expect("context compaction")
         .expect("item");
-    assert_eq!(state, Some(ToolState::Completed));
+    assert_eq!(state, None);
     assert_eq!(terminal, Some(ItemLifecycle::Completed));
 }
 

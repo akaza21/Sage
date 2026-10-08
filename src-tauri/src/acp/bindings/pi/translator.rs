@@ -63,6 +63,7 @@ struct ActiveTurn {
     denial_latched: bool,
     terminal: Option<TerminalOutcome>,
     tools: BTreeMap<String, Option<ToolOutcome>>,
+    compaction_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +265,7 @@ impl PiTranslator {
             denial_latched: false,
             terminal: None,
             tools: BTreeMap::new(),
+            compaction_active: false,
         });
         Ok(vec![outbound])
     }

@@ -390,6 +390,27 @@ describe("safeAcpMutationResponse", () => {
     ).toBeNull();
   });
 
+  it("accepts a bounded compaction notice without tool state", () => {
+    const response = safeAcpMutationResponse(
+      mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "compactionNotice",
+                toolState: null,
+                payload: {},
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(response?.projection.turns[0].items[0].kind).toBe(
+      "compactionNotice",
+    );
+  });
+
   it("admits a file-change payload at the 32-change bound", () => {
     expect(
       safeAcpMutationResponse(

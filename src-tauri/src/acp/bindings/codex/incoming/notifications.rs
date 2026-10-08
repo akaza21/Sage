@@ -15,8 +15,10 @@ mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
+mod plan;
 mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
+use plan::structured_plan;
 
 pub(super) fn notification<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
@@ -208,6 +210,7 @@ pub(super) fn notification<M: ResourceMapper>(
         }
         "item/reasoning/summaryPartAdded" => summary_part_added(adapter, params),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan, None),
+        "turn/plan/updated" => structured_plan(adapter, params),
         "thread/goal/updated" => {
             adapter
                 .expect_thread(text(params, "threadId", 512)?)

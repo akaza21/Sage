@@ -2,7 +2,10 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{BoundedVec, RequiredText, SafeText},
-    intent::{ExternalId, NormalizedPayload, PermissionOptionKind, ToolCategory},
+    intent::{
+        ExternalId, NormalizedPayload, NormalizedPlanEntry, NormalizedPlanState,
+        PermissionOptionKind, ToolCategory,
+    },
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
 };
@@ -103,35 +106,55 @@ pub(super) fn plan_event(
     if entries.len() > MAX_PLAN_ENTRIES {
         return Err(TranslationError::PlanLimit);
     }
-    let mut summary = String::new();
-    for (index, entry) in entries.iter().enumerate() {
+    let mut normalized = Vec::with_capacity(entries.len());
+    for entry in entries {
         let content = entry
             .get("content")
             .and_then(Value::as_str)
             .ok_or(TranslationError::MalformedFrame)?;
-        let status = entry
+        let state = match entry
             .get("status")
             .and_then(Value::as_str)
-            .unwrap_or("pending");
-        if index != 0 {
-            summary.push('\n');
-        }
-        summary.push('[');
-        summary.push_str(normalized_text::<32>("planStatus", status)?.as_str());
-        summary.push_str("] ");
-        summary.push_str(normalized_text::<262144>("planEntry", content)?.as_str());
-        if summary.len() > 262_144 {
-            return Err(TranslationError::PlanLimit);
-        }
+            .unwrap_or("pending")
+        {
+            "pending" => NormalizedPlanState::Pending,
+            "in_progress" | "inProgress" => NormalizedPlanState::InProgress,
+            "completed" => NormalizedPlanState::Completed,
+            "failed" => NormalizedPlanState::Failed,
+            _ => return Err(TranslationError::MalformedFrame),
+        };
+        normalized.push(NormalizedPlanEntry {
+            label: normalized_text::<512>("planEntry", content)?,
+            state,
+        });
     }
     Ok(AdapterEvent::Item {
         external_key,
         lifecycle: ItemLifecycle::Streaming,
         tool_state: None,
-        payload: NormalizedPayload::Plan {
-            summary: SafeText::new("plan", summary)?,
+        payload: NormalizedPayload::PlanEntries {
+            entries: BoundedVec::new("planEntries", normalized)?,
         },
     })
+}
+
+#[cfg(test)]
+#[test]
+fn plan_event_preserves_entry_states() {
+    let update = serde_json::json!({"entries": [
+        {"content":"Inspect", "status":"completed"},
+        {"content":"Patch", "status":"in_progress"}
+    ]});
+    let event = plan_event(
+        update.as_object().unwrap(),
+        ExternalId::new("plan", "plan-1").unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(event, AdapterEvent::Item {
+        payload: NormalizedPayload::PlanEntries { entries }, ..
+    } if entries.as_slice().len() == 2
+        && entries.as_slice()[0].state == NormalizedPlanState::Completed
+        && entries.as_slice()[1].state == NormalizedPlanState::InProgress));
 }
 
 pub(super) fn usage_object(parent: &Map<String, Value>) -> &Map<String, Value> {

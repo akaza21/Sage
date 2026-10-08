@@ -319,3 +319,8 @@
     color: CanvasText;
   }
 }
+.acp-compaction-notice {
+  margin: 4px 0;
+  color: var(--composer-muted-text);
+  font-size: 12px;
+}

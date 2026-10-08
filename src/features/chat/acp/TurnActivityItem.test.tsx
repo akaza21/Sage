@@ -46,6 +46,13 @@ function item<T extends AcpItem["kind"]>(
   } as Extract<AcpItem, { kind: T }>;
 }
 
+it("renders context compaction as a compact shared notice", () => {
+  const { container } = render(<TurnActivityItem item={item("compactionNotice", {})} />);
+  expect(screen.getByText("Context automatically compacted")).toBeVisible();
+  expect(container.querySelector('[data-activity-kind="compactionNotice"]')).not.toBeNull();
+  expect(screen.queryByRole("button", { name: /tool/i })).toBeNull();
+});
+
 describe("TurnActivityItem", () => {
   it("shows a streaming reasoning item as a muted Thinking row", () => {
     const thought = item("thoughtSummary", { summary: "Checking the files." });

@@ -98,6 +98,8 @@ pub enum AdapterOutput {
     TextCompleted {
         external_id: Option<String>,
     },
+    CompactionStarted,
+    CompactionCompleted,
     ToolStarted {
         external_id: String,
         name: String,

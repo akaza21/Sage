@@ -42,6 +42,7 @@ pub(super) struct TurnIntent {
     client_message_id: RequiredText<512>,
     text_id: Option<ExternalId>,
     text_snapshot: Option<String>,
+    compaction_id: Option<ExternalId>,
     next_item: u64,
 }
 
@@ -284,6 +285,7 @@ impl HarnessAdapter for PiRuntime {
                     client_message_id,
                     text_id: None,
                     text_snapshot: None,
+                    compaction_id: None,
                     next_item: 0,
                 });
                 Ok(egress)

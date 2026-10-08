@@ -82,12 +82,23 @@ impl PiTranslator {
             "tool_execution_start" => self.tool_start(value),
             "tool_execution_update" => self.tool_update(value),
             "tool_execution_end" => self.tool_end(value),
-            "turn_start"
-            | "turn_end"
-            | "auto_compaction_start"
-            | "auto_compaction_end"
-            | "auto_retry_start"
-            | "auto_retry_end" => {
+            "auto_compaction_start" => {
+                let turn = self.live_turn()?;
+                if turn.compaction_active {
+                    return Ok(vec![AdapterOutput::DuplicateIgnored]);
+                }
+                turn.compaction_active = true;
+                Ok(vec![AdapterOutput::CompactionStarted])
+            }
+            "auto_compaction_end" => {
+                let turn = self.live_turn()?;
+                if !turn.compaction_active {
+                    return Ok(vec![AdapterOutput::LateIgnored]);
+                }
+                turn.compaction_active = false;
+                Ok(vec![AdapterOutput::CompactionCompleted])
+            }
+            "turn_start" | "turn_end" | "auto_retry_start" | "auto_retry_end" => {
                 self.live_turn()?;
                 Ok(vec![AdapterOutput::Unsupported {
                     kind: kind.to_owned(),

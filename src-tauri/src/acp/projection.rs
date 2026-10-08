@@ -186,6 +186,7 @@ pub enum ItemContent {
     Plan {
         entries: BoundedVec<PlanEntry, 128>,
     },
+    CompactionNotice {},
     ToolCall {
         presentation: ToolPresentation,
         input_summary: Option<SafeText<65536>>,
