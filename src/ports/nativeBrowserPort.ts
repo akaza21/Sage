@@ -36,6 +36,49 @@ export function openBrowser(url?: string): Promise<string> {
   return invokeNative("browser_open", { url });
 }
 
+export interface BrowserPopupIntent {
+  id: number;
+  openerTabId: string;
+  url: string;
+}
+
+export interface BrowserPopupOpen {
+  tabId: string;
+  openerTabId: string;
+  url: string;
+}
+
+export function browserPopupPending(): Promise<BrowserPopupIntent[]> {
+  return invokeNative("browser_popup_pending");
+}
+
+export function browserOpenPopup(
+  intentId: number,
+  openerTabId: string,
+): Promise<BrowserPopupOpen> {
+  return invokeNative("browser_open_popup", { intentId, openerTabId });
+}
+
+export function browserPopupAck(
+  intentId: number,
+  openerTabId: string,
+  tabId: string,
+): Promise<void> {
+  return invokeNative("browser_popup_ack", { intentId, openerTabId, tabId });
+}
+
+export function browserPopupAbandon(
+  intentId: number,
+  openerTabId: string,
+  tabId: string,
+): Promise<void> {
+  return invokeNative("browser_popup_abandon", {
+    intentId,
+    openerTabId,
+    tabId,
+  });
+}
+
 export function browserSuggestedSites(): Promise<string[]> {
   return invokeNative("browser_suggested_sites");
 }

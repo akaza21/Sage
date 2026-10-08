@@ -30,6 +30,7 @@ export interface WorkbenchTab {
   pinned: boolean;
   dirty: boolean;
   favicon?: string;
+  openerTabId?: string;
   status?: SessionStatus;
   updatedAt?: number;
   resource?: ResourceRef;

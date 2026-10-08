@@ -219,7 +219,7 @@ pub(crate) async fn browser_open(
     state: State<'_, BrowserState>,
     url: Option<String>,
 ) -> Result<String, String> {
-    open_browser_tab(app, state, url, false).await
+    open_browser_tab(app, &state, url, false).await
 }
 
 pub(crate) async fn open_agent_browser_tab(
@@ -227,12 +227,12 @@ pub(crate) async fn open_agent_browser_tab(
     state: State<'_, BrowserState>,
     url: String,
 ) -> Result<String, String> {
-    open_browser_tab(app, state, Some(url), true).await
+    open_browser_tab(app, &state, Some(url), true).await
 }
 
-async fn open_browser_tab(
+pub(super) async fn open_browser_tab(
     app: AppHandle,
-    state: State<'_, BrowserState>,
+    state: &BrowserState,
     url: Option<String>,
     agent: bool,
 ) -> Result<String, String> {
@@ -250,14 +250,16 @@ async fn open_browser_tab(
             .data_directory(state.profile_dir.clone())
             .on_navigation(allowed_browser_navigation)
             .on_new_window(move |requested, _| {
-                let target = popup_app
-                    .state::<BrowserState>()
-                    .tabs
-                    .lock()
-                    .ok()
-                    .and_then(|tabs| popup_target(&tabs, &popup_opener, &requested));
-                if let Some(target) = target {
-                    let _ = popup_app.emit_to("main", "browser:popup-request", target);
+                let browser = popup_app.state::<BrowserState>();
+                let intent = browser.tabs.lock().ok().and_then(|tabs| {
+                    browser
+                        .popups
+                        .lock()
+                        .ok()
+                        .and_then(|mut popups| popups.enqueue(&tabs, &popup_opener, &requested))
+                });
+                if let Some(intent) = intent {
+                    let _ = popup_app.emit_to("main", "browser:popup-request", intent);
                 }
                 NewWindowResponse::Deny
             });

@@ -1,17 +1,55 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 const events = vi.hoisted(() => ({ listen: vi.fn() }));
+const native = vi.hoisted(() => ({
+  browserPopupPending: vi.fn(),
+  browserOpenPopup: vi.fn(),
+  browserPopupAck: vi.fn(),
+  browserPopupAbandon: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/api/event", () => events);
 vi.mock("../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
+vi.mock("../ports/nativeBrowserPort", () => native);
 
 import { createBrowserSlice } from "./browserSlice";
 
-it("routes an admitted native popup request through the ordinary browser open action", async () => {
-  const openBrowser = vi.fn().mockResolvedValue(undefined);
+beforeEach(() => {
+  events.listen.mockReset();
+  for (const method of Object.values(native)) method.mockReset();
+});
+
+it("replays one native popup after listener registration and places it beside its opener once", async () => {
+  const popup = {
+    id: 7,
+    openerTabId: "browser-1",
+    url: "https://example.com/popup",
+  };
+  native.browserPopupPending.mockResolvedValue([popup]);
+  native.browserOpenPopup.mockResolvedValue({
+    tabId: "browser-2",
+    openerTabId: "browser-1",
+    url: popup.url,
+  });
+  native.browserPopupAck.mockResolvedValue(undefined);
+  const state = {
+    project: { id: "project", roots: [] },
+    projectGeneration: 1,
+    projectTransitioning: false,
+    tabs: [
+      { id: "browser-1", kind: "browser", title: "Opener", position: 0 },
+      { id: "settings", kind: "settings", title: "Settings", position: 1 },
+    ],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+  };
   createBrowserSlice(
-    vi.fn() as never,
-    (() => ({ openBrowser })) as never,
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
     { subscribe: vi.fn() } as never,
   );
   await vi.waitFor(() =>
@@ -21,8 +59,173 @@ it("routes an admitted native popup request through the ordinary browser open ac
     ),
   );
   const listener = events.listen.mock.calls[0][1] as (event: {
-    payload: string;
+    payload: typeof popup;
   }) => void;
-  listener({ payload: "https://example.com/popup" });
-  expect(openBrowser).toHaveBeenCalledWith("https://example.com/popup");
+  listener({ payload: popup });
+  await vi.waitFor(() => expect(native.browserPopupAck).toHaveBeenCalled());
+  expect(native.browserOpenPopup).toHaveBeenCalledTimes(1);
+  expect(native.browserOpenPopup).toHaveBeenCalledWith(7, "browser-1");
+  expect(native.browserPopupAck).toHaveBeenCalledWith(
+    7,
+    "browser-1",
+    "browser-2",
+  );
+  expect(state.tabs.map((tab) => tab.id)).toEqual([
+    "browser-1",
+    "browser-2",
+    "settings",
+  ]);
+  expect(state.tabs[1]).toMatchObject({ openerTabId: "browser-1" });
+});
+
+it("abandons the exact native popup when its Project changes before placement", async () => {
+  const popup = {
+    id: 8,
+    openerTabId: "browser-1",
+    url: "https://example.com/",
+  };
+  const state = {
+    project: { id: "project", roots: [] },
+    projectGeneration: 1,
+    projectTransitioning: false,
+    tabs: [{ id: "browser-1", kind: "browser", title: "Opener", position: 0 }],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+    error: null as string | null,
+  };
+  native.browserPopupPending.mockResolvedValue([popup]);
+  native.browserOpenPopup.mockImplementation(async () => {
+    state.projectGeneration = 2;
+    return { tabId: "browser-2", openerTabId: "browser-1", url: popup.url };
+  });
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  createBrowserSlice(
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
+    { subscribe: vi.fn() } as never,
+  );
+  await vi.waitFor(() =>
+    expect(native.browserPopupAbandon).toHaveBeenCalledWith(
+      8,
+      "browser-1",
+      "browser-2",
+    ),
+  );
+  expect(native.browserPopupAck).not.toHaveBeenCalled();
+  expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1"]);
+  expect(state.error).toContain("Project changed");
+});
+
+it("replays a popup received before Project bootstrap once the Project is ready", async () => {
+  const popup = {
+    id: 9,
+    openerTabId: "browser-1",
+    url: "https://example.com/",
+  };
+  native.browserPopupPending.mockResolvedValue([popup]);
+  native.browserOpenPopup.mockResolvedValue({
+    tabId: "browser-2",
+    openerTabId: "browser-1",
+    url: popup.url,
+  });
+  native.browserPopupAck.mockResolvedValue(undefined);
+  const state = {
+    project: null as { id: string; roots: [] } | null,
+    projectGeneration: 1,
+    projectTransitioning: true,
+    tabs: [{ id: "browser-1", kind: "browser", title: "Opener", position: 0 }],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+    error: null as string | null,
+  };
+  const subscribe = vi.fn();
+  createBrowserSlice(
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
+    { subscribe } as never,
+  );
+  await vi.waitFor(() => expect(native.browserPopupPending).toHaveBeenCalled());
+  expect(native.browserOpenPopup).not.toHaveBeenCalled();
+  const previous = { ...state };
+  state.project = { id: "project", roots: [] };
+  state.projectTransitioning = false;
+  const changed = subscribe.mock.calls[0][0] as (
+    current: unknown,
+    previous: unknown,
+  ) => void;
+  changed(state, previous);
+  await vi.waitFor(() =>
+    expect(native.browserPopupAck).toHaveBeenCalledWith(
+      9,
+      "browser-1",
+      "browser-2",
+    ),
+  );
+  expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1", "browser-2"]);
+});
+
+it("replays a completion event that races with an in-progress popup response", async () => {
+  const popup = {
+    id: 10,
+    openerTabId: "browser-1",
+    url: "https://example.com/",
+  };
+  const opened = {
+    tabId: "browser-2",
+    openerTabId: "browser-1",
+    url: popup.url,
+  };
+  let rejectFirst: ((reason?: unknown) => void) | undefined;
+  native.browserPopupPending.mockResolvedValue([popup]);
+  native.browserOpenPopup
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        }),
+    )
+    .mockResolvedValue(opened);
+  native.browserPopupAck.mockResolvedValue(undefined);
+  const state = {
+    project: { id: "project", roots: [] },
+    projectGeneration: 1,
+    projectTransitioning: false,
+    tabs: [{ id: "browser-1", kind: "browser", title: "Opener", position: 0 }],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+    error: null as string | null,
+  };
+  createBrowserSlice(
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
+    { subscribe: vi.fn() } as never,
+  );
+  await vi.waitFor(() =>
+    expect(native.browserOpenPopup).toHaveBeenCalledTimes(1),
+  );
+  const listener = events.listen.mock.calls[0][1] as (event: {
+    payload: typeof popup;
+  }) => void;
+  listener({ payload: popup });
+  rejectFirst?.(new Error("popup open is in progress"));
+  await vi.waitFor(() =>
+    expect(native.browserPopupAck).toHaveBeenCalledWith(
+      10,
+      "browser-1",
+      "browser-2",
+    ),
+  );
+  expect(native.browserOpenPopup).toHaveBeenCalledTimes(2);
 });

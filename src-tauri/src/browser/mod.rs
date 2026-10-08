@@ -30,7 +30,7 @@ pub(crate) mod lifecycle;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
-mod popups;
+pub(crate) mod popups;
 mod profile;
 mod shortcuts;
 pub(crate) mod site_permissions;
@@ -50,6 +50,8 @@ mod clear_conformance_tests;
 #[cfg(test)]
 #[path = "policy_conformance_tests.rs"]
 mod policy_conformance_tests;
+use popups::PopupRequests;
+#[cfg(test)]
 use popups::popup_target;
 #[cfg(test)]
 use profile::browser_profile_dir;
@@ -61,6 +63,7 @@ pub(crate) struct BrowserState {
     tabs: Mutex<BrowserTabs<Webview>>,
     downloads: Mutex<downloads::DownloadRegistry>,
     permissions: Mutex<site_permissions::SitePermissions>,
+    popups: Mutex<PopupRequests>,
     clearing_data: AtomicBool,
 }
 

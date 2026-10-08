@@ -4,6 +4,11 @@ import { errorMessage } from "../domain/errors";
 import {
   closeBrowser,
   openBrowser,
+  browserPopupPending,
+  browserOpenPopup,
+  browserPopupAck,
+  browserPopupAbandon,
+  type BrowserPopupIntent,
   type BrowserNavigation,
 } from "../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../ports/nativeInvoke";
@@ -79,7 +84,95 @@ export const createBrowserSlice: StateCreator<
 > = (set, get, store) => {
   const titleRevisions = new Map<string, bigint>();
   const faviconRevisions = new Map<string, bigint>();
-  if (isTauriRuntime()) {
+  const nativeRuntime = isTauriRuntime();
+  const processingPopups = new Set<number>();
+  const replayAfterProcessing = new Set<number>();
+  const finishedPopups = new Set<number>();
+  async function processPopup(intent: BrowserPopupIntent) {
+    if (
+      !Number.isSafeInteger(intent.id) ||
+      intent.id < 1 ||
+      typeof intent.openerTabId !== "string" ||
+      intent.openerTabId.length > 64 ||
+      finishedPopups.has(intent.id)
+    )
+      return;
+    if (processingPopups.has(intent.id)) {
+      replayAfterProcessing.add(intent.id);
+      return;
+    }
+    processingPopups.add(intent.id);
+    try {
+      const projectId = get().project?.id;
+      const generation = get().projectGeneration;
+      if (!projectId || get().projectTransitioning) return;
+      await get().flushActiveEditor();
+      if (!matchesProjectIntent(get(), generation, projectId))
+        throw new Error("Project changed");
+      const opened = await browserOpenPopup(intent.id, intent.openerTabId);
+      if (
+        opened.openerTabId !== intent.openerTabId ||
+        !opened.tabId ||
+        !opened.url
+      )
+        throw new Error("Popup response invalid");
+      if (!matchesProjectIntent(get(), generation, projectId)) {
+        await browserPopupAbandon(intent.id, opened.openerTabId, opened.tabId);
+        throw new Error("Project changed");
+      }
+      if (!get().tabs.some((tab) => tab.id === opened.tabId)) {
+        const openerIndex = get().tabs.findIndex(
+          (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
+        );
+        if (openerIndex < 0) {
+          await browserPopupAbandon(
+            intent.id,
+            opened.openerTabId,
+            opened.tabId,
+          );
+          throw new Error("Popup opener closed");
+        }
+        set((state) => {
+          const tabs = [...state.tabs];
+          tabs.splice(openerIndex + 1, 0, {
+            id: opened.tabId,
+            kind: "browser",
+            title: browserTabTitle(opened.url) ?? "New tab",
+            position: openerIndex + 1,
+            pinned: false,
+            dirty: false,
+            openerTabId: opened.openerTabId,
+          });
+          return {
+            tabs: tabs.map((tab, position) => ({ ...tab, position })),
+            activeTabId: opened.tabId,
+            activeEditor: null,
+          };
+        });
+      }
+      await browserPopupAck(intent.id, opened.openerTabId, opened.tabId);
+      finishedPopups.add(intent.id);
+      if (finishedPopups.size > 32) {
+        const first = finishedPopups.values().next().value;
+        if (first !== undefined) finishedPopups.delete(first);
+      }
+    } catch (error) {
+      set({ error: `Couldn't open popup: ${errorMessage(error)}` });
+    } finally {
+      processingPopups.delete(intent.id);
+      if (replayAfterProcessing.delete(intent.id)) replayPopups();
+    }
+  }
+  function replayPopups() {
+    void browserPopupPending()
+      .then((pending) => {
+        for (const intent of pending) void processPopup(intent);
+      })
+      .catch((error) =>
+        set({ error: `Couldn't restore popup: ${errorMessage(error)}` }),
+      );
+  }
+  if (nativeRuntime) {
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
         const removers: Array<() => void> = [];
@@ -96,10 +189,14 @@ export const createBrowserSlice: StateCreator<
         window.addEventListener("beforeunload", dispose, { once: true });
         try {
           keep(
-            await listen<string>("browser:popup-request", (event) => {
-              void get().openBrowser(event.payload);
-            }),
+            await listen<BrowserPopupIntent>(
+              "browser:popup-request",
+              (event) => {
+                void processPopup(event.payload);
+              },
+            ),
           );
+          replayPopups();
           keep(
             await listen<BrowserOperationProjection>(
               "browser:agent-operation",
@@ -184,6 +281,14 @@ export const createBrowserSlice: StateCreator<
       .catch(() => undefined);
   }
   store.subscribe((state, previous) => {
+    if (
+      nativeRuntime &&
+      state.project &&
+      !state.projectTransitioning &&
+      (previous.project?.id !== state.project.id ||
+        previous.projectTransitioning)
+    )
+      replayPopups();
     if (state.tabs === previous.tabs) return;
     const remaining = new Set(
       state.tabs.filter((tab) => tab.kind === "browser").map((tab) => tab.id),
