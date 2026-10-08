@@ -37,7 +37,6 @@ pub(crate) enum HostOutcome {
     CancelQueued,
     PermissionResolved,
     SessionConfigured,
-    GoalMutationApplied,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -125,25 +124,26 @@ impl HostCloseIntent {
     }
 }
 
-type ConfigCompletionCallback = Box<dyn FnOnce(Result<(), HostError>) + Send + 'static>;
+type OperationCompletionCallback<T> = Box<dyn FnOnce(Result<T, HostError>) + Send + 'static>;
 
-pub(crate) struct OperationCompletionSink(Option<ConfigCompletionCallback>);
-pub(crate) type ConfigCompletionSink = OperationCompletionSink;
-pub(crate) type SteerCompletionSink = OperationCompletionSink;
+pub(crate) struct OperationCompletionSink<T>(Option<OperationCompletionCallback<T>>);
+pub(crate) type ConfigCompletionSink = OperationCompletionSink<()>;
+pub(crate) type SteerCompletionSink = OperationCompletionSink<()>;
+pub(crate) type NativeRpcCompletionSink = OperationCompletionSink<crate::acp::goal::NativeRpcReply>;
 
-impl OperationCompletionSink {
-    pub(crate) fn new(complete: impl FnOnce(Result<(), HostError>) + Send + 'static) -> Self {
+impl<T> OperationCompletionSink<T> {
+    pub(crate) fn new(complete: impl FnOnce(Result<T, HostError>) + Send + 'static) -> Self {
         Self(Some(Box::new(complete)))
     }
 
-    pub(crate) fn complete(mut self, result: Result<(), HostError>) {
+    pub(crate) fn complete(mut self, result: Result<T, HostError>) {
         if let Some(complete) = self.0.take() {
             complete(result);
         }
     }
 }
 
-impl Drop for OperationCompletionSink {
+impl<T> Drop for OperationCompletionSink<T> {
     fn drop(&mut self) {
         if let Some(complete) = self.0.take() {
             complete(Err(HostError::Closed));
@@ -155,6 +155,12 @@ pub(super) struct ConfigCompletion {
     pub(super) operation_id: u64,
     pub(super) owner: RuntimeOwner,
     pub(super) result: Result<(), HostError>,
+}
+
+pub(super) struct NativeRpcCompletion {
+    pub(super) operation_id: u64,
+    pub(super) owner: RuntimeOwner,
+    pub(super) result: Result<crate::acp::goal::NativeRpcReply, HostError>,
 }
 
 pub(super) struct SteerCompletion {
@@ -175,7 +181,7 @@ pub(super) struct PendingHostConfig {
     pub(super) owner: RuntimeOwner,
     pub(super) reply: mpsc::SyncSender<Result<HostReply, HostError>>,
     pub(super) deadline: Instant,
-    pub(super) goal_mutation: bool,
+    pub(super) native_rpc: bool,
 }
 
 pub(super) struct PendingTerminal {
@@ -210,7 +216,7 @@ pub(crate) trait RuntimeEngine: Send + 'static {
         &mut self,
         _intent: &crate::acp::goal::NativeRpcIntent,
         _deadline: Instant,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         completion.complete(Err(HostError::State));
         Ok(())
@@ -327,6 +333,7 @@ pub(super) enum HostCommand {
 
 pub(super) enum HostReply {
     Outcome(HostOutcome),
+    NativeRpc(crate::acp::goal::NativeRpcReply),
     Prepared(SageTurnId),
     State(HostState),
 }
@@ -341,9 +348,12 @@ impl TerminalNotification {
         let remaining = self.deadline.saturating_duration_since(Instant::now());
         match self.response.recv_timeout(remaining) {
             Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
-            Ok(Ok(HostReply::Outcome(_) | HostReply::Prepared(_) | HostReply::State(_))) => {
-                Err(HostError::State)
-            }
+            Ok(Ok(
+                HostReply::Outcome(_)
+                | HostReply::NativeRpc(_)
+                | HostReply::Prepared(_)
+                | HostReply::State(_),
+            )) => Err(HostError::State),
             Ok(Err(error)) => Err(error),
             Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),

@@ -38,10 +38,15 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.goal_mutation_pending()
     }
 
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native_rpc_reply.take()
+    }
+
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.native_rpc_reply = None;
         match action {
             crate::acp::goal::GoalAction::PauseExisting => self.request(CodexAdapter::goal_pause),
             crate::acp::goal::GoalAction::ClearExisting => self.request(CodexAdapter::goal_clear),

@@ -31,7 +31,9 @@ impl RuntimeHost {
     pub(super) fn outcome(&self, command: HostCommand) -> Result<HostOutcome, HostError> {
         match self.submit(command)? {
             HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
+            HostReply::NativeRpc(_) | HostReply::Prepared(_) | HostReply::State(_) => {
+                Err(HostError::State)
+            }
         }
     }
 
@@ -42,7 +44,9 @@ impl RuntimeHost {
     ) -> Result<HostOutcome, HostError> {
         match self.submit_with_timeout(command, timeout)? {
             HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
+            HostReply::NativeRpc(_) | HostReply::Prepared(_) | HostReply::State(_) => {
+                Err(HostError::State)
+            }
         }
     }
 
@@ -53,7 +57,9 @@ impl RuntimeHost {
     ) -> Result<HostOutcome, HostError> {
         match self.submit_until(command, deadline)? {
             HostReply::Outcome(outcome) => Ok(outcome),
-            HostReply::Prepared(_) | HostReply::State(_) => Err(HostError::State),
+            HostReply::NativeRpc(_) | HostReply::Prepared(_) | HostReply::State(_) => {
+                Err(HostError::State)
+            }
         }
     }
 

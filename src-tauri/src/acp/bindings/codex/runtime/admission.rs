@@ -90,6 +90,7 @@ impl CodexRuntime {
             poisoned: false,
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,
+            native_rpc_reply: None,
         }
     }
 
@@ -130,6 +131,7 @@ impl CodexRuntime {
             poisoned: false,
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,
+            native_rpc_reply: None,
         };
         runtime.launch_authority = RuntimeLaunchAuthority::admitted(binding, project_root)?;
         Ok(runtime)

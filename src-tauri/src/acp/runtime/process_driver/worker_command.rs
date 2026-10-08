@@ -9,7 +9,7 @@ use crate::acp::{
     runtime::permissions::PermissionDecision,
     runtime::{
         ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
-        LiveWrite, SteerCompletionSink,
+        LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
     },
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
@@ -28,7 +28,7 @@ pub(crate) enum WorkerCommand {
     },
     NativeRpc {
         intent: crate::acp::goal::NativeRpcIntent,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     },
     AbandonConfiguration {
         owner: RuntimeOwner,

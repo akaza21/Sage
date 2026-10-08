@@ -364,6 +364,9 @@ pub(crate) trait HarnessAdapter {
     fn goal_pending(&self) -> bool {
         false
     }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        None
+    }
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

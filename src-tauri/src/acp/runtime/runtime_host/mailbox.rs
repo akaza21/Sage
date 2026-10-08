@@ -5,7 +5,9 @@ use std::{
 
 use crate::acp::{limits::LIMITS, transport::ReservedQueue};
 
-use super::types::{ConfigCompletion, HostCommand, HostError, HostReply, SteerCompletion};
+use super::types::{
+    ConfigCompletion, HostCommand, HostError, HostReply, NativeRpcCompletion, SteerCompletion,
+};
 
 pub(super) struct Envelope {
     pub(super) command: HostCommand,
@@ -16,6 +18,7 @@ pub(super) struct Envelope {
 struct State {
     queue: ReservedQueue<Envelope>,
     config_completion: Option<ConfigCompletion>,
+    native_rpc_completion: Option<NativeRpcCompletion>,
     steer_completion: Option<SteerCompletion>,
     closed: bool,
 }
@@ -23,6 +26,7 @@ struct State {
 pub(super) enum HostMessage {
     Command(Envelope),
     ConfigCompletion(ConfigCompletion),
+    NativeRpcCompletion(NativeRpcCompletion),
     SteerCompletion(SteerCompletion),
     OperationDeadline,
 }
@@ -45,6 +49,7 @@ impl HostMailbox {
             state: Mutex::new(State {
                 queue,
                 config_completion: None,
+                native_rpc_completion: None,
                 steer_completion: None,
                 closed: false,
             }),
@@ -96,6 +101,21 @@ impl HostMailbox {
         }
     }
 
+    pub(super) fn complete_native_rpc(&self, completion: NativeRpcCompletion) {
+        let mut state = self.lock();
+        if state.closed {
+            return;
+        }
+        let replace = state
+            .native_rpc_completion
+            .as_ref()
+            .is_none_or(|retained| completion.operation_id > retained.operation_id);
+        if replace {
+            state.native_rpc_completion = Some(completion);
+            self.ready.notify_one();
+        }
+    }
+
     pub(super) fn complete_steer(&self, completion: SteerCompletion) {
         let mut state = self.lock();
         if state.closed {
@@ -118,6 +138,9 @@ impl HostMailbox {
                 loop {
                     if let Some(completion) = state.config_completion.take() {
                         return Some(HostMessage::ConfigCompletion(completion));
+                    }
+                    if let Some(completion) = state.native_rpc_completion.take() {
+                        return Some(HostMessage::NativeRpcCompletion(completion));
                     }
                     if let Some(completion) = state.steer_completion.take() {
                         return Some(HostMessage::SteerCompletion(completion));
@@ -143,6 +166,7 @@ impl HostMailbox {
                                 if timeout.timed_out()
                                     && state.config_completion.is_none()
                                     && state.steer_completion.is_none()
+                                    && state.native_rpc_completion.is_none()
                                     && state.queue.data_usage().0 == 0
                                     && state.queue.control_usage().0 == 0
                                 {
@@ -170,6 +194,7 @@ impl HostMailbox {
             let mut state = self.lock();
             state.closed = true;
             state.config_completion = None;
+            state.native_rpc_completion = None;
             let mut drained = Vec::new();
             while let Some(envelope) = state.queue.pop() {
                 drained.push(envelope);

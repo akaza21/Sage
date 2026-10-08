@@ -94,8 +94,8 @@ pub(crate) use projection_publisher::{
 #[allow(unused_imports)]
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostState, HostSteerIntent, PromptWrite, RuntimeEngine, RuntimeHost,
-    RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
+    HostPromptIntent, HostState, HostSteerIntent, NativeRpcCompletionSink, PromptWrite,
+    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
 };
 #[allow(unused_imports)]
 pub(crate) use session_coordinator::{

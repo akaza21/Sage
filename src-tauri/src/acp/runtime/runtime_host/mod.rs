@@ -7,8 +7,8 @@ mod types;
 pub(crate) use host::{RuntimeHost, TerminalNotification};
 pub(crate) use types::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostState, HostSteerIntent, PromptWrite, RuntimeEngine,
-    RuntimeShutdownRecovery, SteerCompletionSink,
+    HostPromptIntent, HostState, HostSteerIntent, NativeRpcCompletionSink, PromptWrite,
+    RuntimeEngine, RuntimeShutdownRecovery, SteerCompletionSink,
 };
 
 #[cfg(test)]

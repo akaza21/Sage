@@ -70,6 +70,9 @@ impl<E: RuntimeEngine> Actor<E> {
                 HostMessage::ConfigCompletion(completion) => {
                     self.complete_config(completion);
                 }
+                HostMessage::NativeRpcCompletion(completion) => {
+                    self.complete_native_rpc(completion);
+                }
                 HostMessage::SteerCompletion(completion) => self.complete_steer(completion),
                 HostMessage::OperationDeadline => {
                     if self

@@ -1,8 +1,8 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{
-        ConfigCompletionSink, DriverClock, DriverError, HostError, NonfatalRefusal,
-        ProjectIntentAuthority,
+        ConfigCompletionSink, DriverClock, DriverError, HostError, NativeRpcCompletionSink,
+        NonfatalRefusal, ProjectIntentAuthority,
     },
     store::AdapterTurnCursor,
 };
@@ -14,14 +14,35 @@ use super::{
 };
 
 pub(super) struct PendingConfig {
-    completion: ConfigCompletionSink,
+    completion: PendingCompletion,
     deadline: std::time::Instant,
-    goal_mutation: bool,
+    native_rpc: bool,
+}
+
+enum PendingCompletion {
+    Config(ConfigCompletionSink),
+    NativeRpc(NativeRpcCompletionSink),
 }
 
 impl PendingConfig {
     pub(super) fn complete(self, result: Result<(), HostError>) {
-        self.completion.complete(result);
+        match self.completion {
+            PendingCompletion::Config(completion) => completion.complete(result),
+            PendingCompletion::NativeRpc(completion) => {
+                completion.complete(result.and(Err(HostError::RecoveryRequired)))
+            }
+        }
+    }
+
+    pub(super) fn complete_native(self, reply: crate::acp::goal::NativeRpcReply) {
+        match self.completion {
+            PendingCompletion::NativeRpc(completion) => completion.complete(Ok(reply)),
+            PendingCompletion::Config(completion) => completion.complete(Err(HostError::State)),
+        }
+    }
+
+    pub(super) fn is_native_rpc(&self) -> bool {
+        self.native_rpc
     }
 
     pub(super) fn deadline_millis(&self, clock: &dyn DriverClock) -> i64 {
@@ -54,16 +75,26 @@ pub(super) fn settle_pending_config(
     pending: &mut Option<PendingConfig>,
     config_pending: bool,
     goal_pending: bool,
+    native_reply: Option<crate::acp::goal::NativeRpcReply>,
 ) {
     let Some(config) = pending.take() else {
         return;
     };
-    if !(if config.goal_mutation {
+    if config.native_rpc
+        && let Some(reply) = native_reply
+    {
+        config.complete_native(reply);
+    } else if !(if config.native_rpc {
         goal_pending
     } else {
         config_pending
     }) {
-        config.complete(Ok(()));
+        let native_rpc = config.native_rpc;
+        config.complete(if native_rpc {
+            Err(HostError::RecoveryRequired)
+        } else {
+            Ok(())
+        });
     } else if config.expired() {
         config.complete(Err(HostError::Deadline));
     } else {
@@ -127,22 +158,31 @@ where
         if pending_config.is_some() {
             responder.respond(Err(HostError::State));
             let completion = match command {
-                WorkerCommand::ConfigureSession { completion, .. }
-                | WorkerCommand::NativeRpc { completion, .. } => completion,
+                WorkerCommand::ConfigureSession { completion, .. } => {
+                    PendingCompletion::Config(completion)
+                }
+                WorkerCommand::NativeRpc { completion, .. } => {
+                    PendingCompletion::NativeRpc(completion)
+                }
                 _ => unreachable!("mutation command matched"),
             };
-            completion.complete(Err(HostError::State));
+            match completion {
+                PendingCompletion::Config(completion) => completion.complete(Err(HostError::State)),
+                PendingCompletion::NativeRpc(completion) => {
+                    completion.complete(Err(HostError::State))
+                }
+            }
             return (RunnerAction::Continue(state), None);
         }
-        let (begin, completion, goal_mutation) = match command {
+        let (begin, completion, native_rpc) = match command {
             WorkerCommand::ConfigureSession { intent, completion } => (
                 state.begin_configure(context, &intent, deadline),
-                completion,
+                PendingCompletion::Config(completion),
                 false,
             ),
             WorkerCommand::NativeRpc { intent, completion } => (
                 state.begin_native_rpc(context, &intent, deadline),
-                completion,
+                PendingCompletion::NativeRpc(completion),
                 true,
             ),
             _ => unreachable!("mutation command matched"),
@@ -153,12 +193,15 @@ where
                 *pending_config = Some(PendingConfig {
                     completion,
                     deadline,
-                    goal_mutation,
+                    native_rpc,
                 });
             }
             Err(error) => {
                 responder.respond(Err(error.clone()));
-                completion.complete(Err(error));
+                match completion {
+                    PendingCompletion::Config(completion) => completion.complete(Err(error)),
+                    PendingCompletion::NativeRpc(completion) => completion.complete(Err(error)),
+                }
             }
         }
         return (RunnerAction::Continue(state), None);
@@ -247,5 +290,26 @@ where
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_rpc_without_a_typed_reply_requires_recovery() {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let completion = NativeRpcCompletionSink::new(move |result| {
+            sender.send(result).unwrap();
+        });
+        let mut pending = Some(PendingConfig {
+            completion: PendingCompletion::NativeRpc(completion),
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(1),
+            native_rpc: true,
+        });
+        settle_pending_config(&mut pending, false, false, None);
+        assert!(pending.is_none());
+        assert_eq!(receiver.recv().unwrap(), Err(HostError::RecoveryRequired));
     }
 }

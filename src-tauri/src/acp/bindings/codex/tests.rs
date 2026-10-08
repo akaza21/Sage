@@ -185,7 +185,7 @@ fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() 
     let accepted = adapter
         .ingest(br#"{"id":63,"result":{"cleared":true}}"#, &Mapper)
         .unwrap();
-    assert_eq!(accepted, IngressDisposition::IgnoredLate);
+    assert_eq!(accepted, IngressDisposition::GoalMutationApplied);
     assert_eq!(adapter.goal_state().availability(), "noGoal");
 }
 

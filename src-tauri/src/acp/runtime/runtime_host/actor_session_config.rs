@@ -2,7 +2,7 @@ use super::super::{
     mailbox::{Envelope, HostMailbox},
     types::{
         ConfigCompletion, ConfigCompletionSink, HostError, HostOutcome, HostReply, HostState,
-        PendingHostConfig, RuntimeEngine,
+        NativeRpcCompletion, NativeRpcCompletionSink, PendingHostConfig, RuntimeEngine,
     },
 };
 use super::Actor;
@@ -18,7 +18,7 @@ impl<E: RuntimeEngine> Actor<E> {
             reply,
             deadline,
         } = envelope;
-        let (owner, goal_mutation) = match &command {
+        let (owner, native_rpc) = match &command {
             super::super::types::HostCommand::ConfigureSession(intent) => {
                 (intent.owner.clone(), false)
             }
@@ -47,27 +47,37 @@ impl<E: RuntimeEngine> Actor<E> {
             return;
         };
         self.next_config_operation = operation_id;
-        let completion_owner = owner.clone();
-        let mailbox = std::sync::Arc::clone(mailbox);
-        let completion = ConfigCompletionSink::new(move |result| {
-            mailbox.complete_config(ConfigCompletion {
-                operation_id,
-                owner: completion_owner,
-                result,
-            });
-        });
         self.pending_config = Some(PendingHostConfig {
             operation_id,
             owner,
             reply,
             deadline,
-            goal_mutation,
+            native_rpc,
         });
         let begin = match command {
-            super::super::types::HostCommand::ConfigureSession(intent) => self
-                .engine
-                .begin_configure_session(&intent, deadline, completion),
+            super::super::types::HostCommand::ConfigureSession(intent) => {
+                let completion_owner = self.pending_config.as_ref().unwrap().owner.clone();
+                let mailbox = std::sync::Arc::clone(mailbox);
+                let completion = ConfigCompletionSink::new(move |result| {
+                    mailbox.complete_config(ConfigCompletion {
+                        operation_id,
+                        owner: completion_owner,
+                        result,
+                    });
+                });
+                self.engine
+                    .begin_configure_session(&intent, deadline, completion)
+            }
             super::super::types::HostCommand::NativeRpc(intent) => {
+                let completion_owner = self.pending_config.as_ref().unwrap().owner.clone();
+                let mailbox = std::sync::Arc::clone(mailbox);
+                let completion = NativeRpcCompletionSink::new(move |result| {
+                    mailbox.complete_native_rpc(NativeRpcCompletion {
+                        operation_id,
+                        owner: completion_owner,
+                        result,
+                    });
+                });
                 self.engine.begin_native_rpc(&intent, deadline, completion)
             }
             _ => unreachable!(),
@@ -79,7 +89,9 @@ impl<E: RuntimeEngine> Actor<E> {
 
     pub(super) fn complete_config(&mut self, completion: ConfigCompletion) {
         let matches = self.pending_config.as_ref().is_some_and(|pending| {
-            pending.operation_id == completion.operation_id && pending.owner == completion.owner
+            !pending.native_rpc
+                && pending.operation_id == completion.operation_id
+                && pending.owner == completion.owner
         });
         if !matches {
             return;
@@ -94,14 +106,34 @@ impl<E: RuntimeEngine> Actor<E> {
         if let Err(error) = &completion.result {
             self.apply_config_error(error);
         }
-        let reply = completion.result.map(|()| {
-            HostReply::Outcome(if pending.goal_mutation {
-                HostOutcome::GoalMutationApplied
-            } else {
-                HostOutcome::SessionConfigured
-            })
-        });
+        let reply = completion
+            .result
+            .map(|()| HostReply::Outcome(HostOutcome::SessionConfigured));
         let _ = pending.reply.send(reply);
+    }
+
+    pub(super) fn complete_native_rpc(&mut self, completion: NativeRpcCompletion) {
+        let matches = self.pending_config.as_ref().is_some_and(|pending| {
+            pending.native_rpc
+                && pending.operation_id == completion.operation_id
+                && pending.owner == completion.owner
+        });
+        if !matches {
+            return;
+        }
+        let pending = self.pending_config.take().expect("matched native RPC");
+        if std::time::Instant::now() >= pending.deadline {
+            self.engine.abandon_configuration(pending.deadline);
+            self.apply_config_error(&HostError::Deadline);
+            let _ = pending.reply.send(Err(HostError::Deadline));
+            return;
+        }
+        if let Err(error) = &completion.result {
+            self.apply_config_error(error);
+        }
+        let _ = pending
+            .reply
+            .send(completion.result.map(HostReply::NativeRpc));
     }
 
     pub(super) fn fail_pending_config(&mut self, error: HostError) {

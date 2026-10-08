@@ -25,6 +25,11 @@ pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NativeRpcReply {
+    GoalApplied,
+}
+
 impl NativeRpcIntent {
     pub(crate) fn actual_bytes(&self) -> usize {
         self.owner.project_id.as_str().len()

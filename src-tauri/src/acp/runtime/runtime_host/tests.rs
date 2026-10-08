@@ -21,6 +21,7 @@ use super::*;
 type PrepareGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
 type TerminalGate = Arc<(Mutex<(bool, bool)>, Condvar)>;
 type ConfigCompletion = Arc<Mutex<Option<ConfigCompletionSink>>>;
+type NativeCompletion = Arc<Mutex<Option<NativeRpcCompletionSink>>>;
 
 fn test_deadline() -> Instant {
     Instant::now() + Duration::from_secs(1)
@@ -41,6 +42,7 @@ struct FakeEngine {
     prepare_gate: Option<PrepareGate>,
     terminal_gate: Option<TerminalGate>,
     config_completion: Option<ConfigCompletion>,
+    native_completion: Option<NativeCompletion>,
     steer_completion: Option<ConfigCompletion>,
     steer_port: Option<Arc<Mutex<crate::acp::runtime::process_driver::ProcessLivePort>>>,
 }
@@ -63,6 +65,7 @@ impl FakeEngine {
             prepare_gate: None,
             terminal_gate: None,
             config_completion: None,
+            native_completion: None,
             steer_completion: None,
             steer_port: None,
         }
@@ -129,6 +132,11 @@ impl FakeEngine {
         self
     }
 
+    fn with_native_completion(mut self, completion: NativeCompletion) -> Self {
+        self.native_completion = Some(completion);
+        self
+    }
+
     fn with_steer_completion(mut self, completion: ConfigCompletion) -> Self {
         self.steer_completion = Some(completion);
         self
@@ -152,6 +160,17 @@ impl FakeEngine {
 }
 
 impl RuntimeEngine for FakeEngine {
+    fn begin_native_rpc(
+        &mut self,
+        _intent: &crate::acp::goal::NativeRpcIntent,
+        _deadline: Instant,
+        completion: NativeRpcCompletionSink,
+    ) -> Result<(), HostError> {
+        self.push("beginNativeRpc");
+        *self.native_completion.as_ref().unwrap().lock().unwrap() = Some(completion);
+        Ok(())
+    }
+
     fn begin_configure_session(
         &mut self,
         _intent: &crate::acp::session_config::ConfigIntent,
@@ -551,6 +570,130 @@ fn pending_configuration_does_not_block_permission_resolution() {
             .events()
             .ends_with(&["beginConfigureSession", "resolvePermission"])
     );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn native_rpc_returns_a_typed_reply_without_coercing_it_to_an_outcome() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let pending = {
+        let host = Arc::clone(&host);
+        std::thread::spawn(move || {
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner: runtime,
+                request: crate::acp::goal::NativeRpcRequest::Goal(
+                    crate::acp::goal::GoalAction::PauseExisting,
+                ),
+            })
+        })
+    };
+    let started = Instant::now();
+    while completion.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    completion
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::GoalApplied));
+    assert_eq!(
+        pending.join().unwrap(),
+        Ok(crate::acp::goal::NativeRpcReply::GoalApplied)
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn native_rpc_rejects_a_foreign_owner_without_dispatch() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let observed = engine.clone();
+    let host = RuntimeHost::start(engine).unwrap();
+    host.activate(owner("project-a")).unwrap();
+    assert_eq!(
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner: owner("project-b"),
+            request: crate::acp::goal::NativeRpcRequest::Goal(
+                crate::acp::goal::GoalAction::PauseExisting,
+            ),
+        }),
+        Err(HostError::Intent)
+    );
+    assert!(completion.lock().unwrap().is_none());
+    assert!(!observed.events().contains(&"beginNativeRpc"));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn late_native_rpc_completion_cannot_escape_its_deadline() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let host =
+        Arc::new(RuntimeHost::start_with_timeout(engine, Duration::from_millis(100)).unwrap());
+    let runtime = owner("project-a");
+    host.without_timeout_override(|| host.activate(runtime.clone()))
+        .unwrap();
+    let pending = {
+        let host = Arc::clone(&host);
+        std::thread::spawn(move || {
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner: runtime,
+                request: crate::acp::goal::NativeRpcRequest::Goal(
+                    crate::acp::goal::GoalAction::PauseExisting,
+                ),
+            })
+        })
+    };
+    let started = Instant::now();
+    let retained = loop {
+        if let Some(retained) = completion.lock().unwrap().take() {
+            break retained;
+        }
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    };
+    assert_eq!(pending.join().unwrap(), Err(HostError::Deadline));
+    retained.complete(Ok(crate::acp::goal::NativeRpcReply::GoalApplied));
+    host.without_timeout_override(|| assert_eq!(host.state(), Ok(HostState::Recovery)));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn close_settles_pending_native_rpc_and_ignores_its_late_reply() {
+    let completion = Arc::new(Mutex::new(None));
+    let engine = FakeEngine::new([]).with_native_completion(Arc::clone(&completion));
+    let host = Arc::new(RuntimeHost::start(engine).unwrap());
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let pending = {
+        let host = Arc::clone(&host);
+        let runtime = runtime.clone();
+        std::thread::spawn(move || {
+            host.native_rpc(crate::acp::goal::NativeRpcIntent {
+                owner: runtime,
+                request: crate::acp::goal::NativeRpcRequest::Goal(
+                    crate::acp::goal::GoalAction::PauseExisting,
+                ),
+            })
+        })
+    };
+    let started = Instant::now();
+    let retained = loop {
+        if let Some(retained) = completion.lock().unwrap().take() {
+            break retained;
+        }
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    };
+    assert_eq!(host.close(close(&runtime)).unwrap(), HostOutcome::Closed);
+    assert_eq!(pending.join().unwrap(), Err(HostError::Closed));
+    retained.complete(Ok(crate::acp::goal::NativeRpcReply::GoalApplied));
     host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 

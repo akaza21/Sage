@@ -129,6 +129,7 @@ pub(crate) enum IngressDisposition {
     Events(Vec<IncomingEvent>),
     IgnoredLate,
     GoalMutationRejected,
+    GoalMutationApplied,
     DuplicateTerminal,
     DuplicateServerRequest { denial: Option<Vec<u8>> },
 }

@@ -11,11 +11,11 @@ use std::{
 use crate::{
     acp::{
         contract::{RequiredText, SageTurnId, SchemaVersionV1},
-        goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent},
+        goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
         runtime::{
-            ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
-            PromptWrite, RuntimeEngine, RuntimeHost,
+            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
+            NativeRpcCompletionSink, PromptWrite, RuntimeEngine, RuntimeHost,
         },
         store::{
             ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand,
@@ -36,7 +36,7 @@ impl RuntimeEngine for GoalEngine {
         &mut self,
         intent: &NativeRpcIntent,
         _: Instant,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.result.is_ok() {
@@ -60,7 +60,7 @@ impl RuntimeEngine for GoalEngine {
             };
             self.channel.update(&intent.owner, next);
         }
-        completion.complete(self.result.clone());
+        completion.complete(self.result.clone().map(|()| NativeRpcReply::GoalApplied));
         Ok(())
     }
     fn activate(&mut self, _: &RuntimeOwner) -> Result<(), HostError> {

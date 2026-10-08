@@ -89,7 +89,7 @@ pub(super) fn response(
         let removed = adapter.take_pending(id);
         debug_assert_eq!(removed, Some(kind));
         return Ok(if accepted {
-            IngressDisposition::IgnoredLate
+            IngressDisposition::GoalMutationApplied
         } else {
             IngressDisposition::GoalMutationRejected
         });

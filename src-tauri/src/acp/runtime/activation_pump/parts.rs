@@ -84,6 +84,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn goal_pending(&self) -> bool {
         self.adapter.goal_pending()
     }
+    pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.adapter.take_native_rpc_reply()
+    }
     pub(crate) fn write_goal(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,

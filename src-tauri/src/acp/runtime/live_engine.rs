@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
-    HostSteerIntent, PromptWrite, RuntimeEngine, SteerCompletionSink,
+    HostSteerIntent, NativeRpcCompletionSink, PromptWrite, RuntimeEngine, SteerCompletionSink,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +29,7 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
         &mut self,
         _intent: &crate::acp::goal::NativeRpcIntent,
         _deadline: Instant,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         completion.complete(Err(HostError::State));
         Ok(())
@@ -146,7 +146,7 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,
         deadline: Instant,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         if self.port.owner() != &intent.owner || self.zero_proof.is_some() {
             return Err(HostError::Intent);

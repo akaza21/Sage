@@ -57,6 +57,15 @@ where
         }
     }
 
+    pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        match self {
+            Self::Idle(idle) => idle.parts.take_native_rpc_reply(),
+            Self::Reusable(parts) => parts.completed.take_native_rpc_reply(),
+            Self::Active(active) => active.turn.driver.take_native_rpc_reply(),
+            _ => None,
+        }
+    }
+
     pub(crate) fn begin_native_rpc<Auth>(
         &mut self,
         context: &FirstTurnWorkerContext<Auth>,

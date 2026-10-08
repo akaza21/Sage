@@ -189,7 +189,9 @@ impl RuntimeHost {
     ) -> Result<crate::acp::contract::SageTurnId, HostError> {
         match self.submit(HostCommand::PreparePrompt(intent))? {
             HostReply::Prepared(turn_id) => Ok(turn_id),
-            HostReply::Outcome(_) | HostReply::State(_) => Err(HostError::State),
+            HostReply::Outcome(_) | HostReply::NativeRpc(_) | HostReply::State(_) => {
+                Err(HostError::State)
+            }
         }
     }
 
@@ -247,7 +249,9 @@ impl RuntimeHost {
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),
-            HostReply::Outcome(_) | HostReply::Prepared(_) => Err(HostError::State),
+            HostReply::Outcome(_) | HostReply::NativeRpc(_) | HostReply::Prepared(_) => {
+                Err(HostError::State)
+            }
         }
     }
 

@@ -33,6 +33,9 @@ where
     pub(crate) fn goal_pending(&self) -> bool {
         self.pump.goal_pending()
     }
+    pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.pump.take_native_rpc_reply()
+    }
     pub(crate) fn begin_native_rpc(
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,

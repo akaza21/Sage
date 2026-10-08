@@ -1183,6 +1183,11 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
             &Mapper,
         )
         .unwrap();
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(crate::acp::goal::NativeRpcReply::GoalApplied)
+    );
+    assert_eq!(runtime.take_native_rpc_reply(), None);
     let clear = runtime
         .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
         .unwrap();

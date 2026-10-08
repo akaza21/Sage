@@ -5,7 +5,7 @@ use crate::acp::{
     runtime::permissions::PermissionDecision,
     runtime::{
         ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
-        LiveRuntimePort, LiveWrite, SteerCompletionSink,
+        LiveRuntimePort, LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
     },
     scheduler::RuntimeOwner,
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
@@ -19,7 +19,7 @@ impl LiveRuntimePort for ProcessLivePort {
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,
         deadline: Instant,
-        completion: ConfigCompletionSink,
+        completion: NativeRpcCompletionSink,
     ) -> Result<(), HostError> {
         let response = self
             .mailbox

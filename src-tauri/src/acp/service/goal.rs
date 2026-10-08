@@ -1,6 +1,8 @@
 use super::*;
 use crate::acp::{
-    goal::{GoalAction, GoalNoticeSink, GoalState, NativeRpcIntent, NativeRpcRequest},
+    goal::{
+        GoalAction, GoalNoticeSink, GoalState, NativeRpcIntent, NativeRpcReply, NativeRpcRequest,
+    },
     scheduler::RuntimeOwner,
 };
 
@@ -50,7 +52,7 @@ impl AcpService {
         ) {
             self.retain_config_effect_recovery(owner, host);
         }
-        result.map(|_| ())
+        goal_reply(result)
     }
     pub(crate) fn set_goal_notice_sink(&self, sink: GoalNoticeSink) {
         self.runtime.goal.set_sink(sink);
@@ -99,6 +101,15 @@ impl AcpService {
     }
 }
 
+fn goal_reply(
+    result: Result<NativeRpcReply, crate::acp::runtime::HostError>,
+) -> Result<(), crate::acp::runtime::HostError> {
+    match result {
+        Ok(NativeRpcReply::GoalApplied) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 fn fit_goal_to_page_budget(page: &mut AcpChatPage, limit: usize) -> Result<(), StoreError> {
     let bytes = |page: &AcpChatPage| {
         serde_json::to_vec(page)
@@ -128,6 +139,15 @@ mod tests {
         contract::{BoundedVec, ProjectionRevision, SafeText},
         goal::{GoalSnapshot, GoalStatus},
     };
+
+    #[test]
+    fn goal_reply_accepts_only_the_goal_applied_variant() {
+        assert_eq!(goal_reply(Ok(NativeRpcReply::GoalApplied)), Ok(()));
+        assert_eq!(
+            goal_reply(Err(crate::acp::runtime::HostError::GoalMutationRejected)),
+            Err(crate::acp::runtime::HostError::GoalMutationRejected)
+        );
+    }
 
     #[test]
     fn max_goal_degrades_when_history_page_has_no_spare_bytes() {

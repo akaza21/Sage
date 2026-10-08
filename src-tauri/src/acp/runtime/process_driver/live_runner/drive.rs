@@ -41,10 +41,19 @@ where
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
         }
+        let native_reply = if pending_config
+            .as_ref()
+            .is_some_and(PendingConfig::is_native_rpc)
+        {
+            state.take_native_rpc_reply()
+        } else {
+            None
+        };
         settle_pending_config(
             &mut pending_config,
             state.config_pending(),
             state.goal_pending(),
+            native_reply,
         );
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);

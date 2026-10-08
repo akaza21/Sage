@@ -40,6 +40,7 @@ pub(crate) struct CodexRuntime {
     poisoned: bool,
     pending_browser_failure_details: Vec<(String, String, usize)>,
     browser_failure_warning_logged: bool,
+    native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
 }
 
 impl CodexRuntime {
@@ -105,6 +106,10 @@ impl CodexRuntime {
             IngressDisposition::IgnoredLate => one(AdapterEvent::IgnoredLate),
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)
+            }
+            IngressDisposition::GoalMutationApplied => {
+                self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::GoalApplied);
+                one(AdapterEvent::IgnoredLate)
             }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {
