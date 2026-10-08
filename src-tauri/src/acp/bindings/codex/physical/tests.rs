@@ -379,22 +379,22 @@ fn configured_package_root_and_packet_relative_spelling_must_match_exactly() {
         PhysicalInspectionError::PacketRootMismatch
     );
     let wrong_component_case =
-        ConfiguredManagedPackageRoot::new(PathBuf::from(r"C:\sageHarnesses\Codex\0.145.0\package"))
+        ConfiguredManagedPackageRoot::new(PathBuf::from(r"C:\sageHarnesses\Codex\0.146.0\package"))
             .unwrap();
     assert_eq!(
         super::windows::claims_from_packet(&packet, &wrong_component_case).unwrap_err(),
         PhysicalInspectionError::PacketRootMismatch
     );
 
-    let exact_path = PathBuf::from(r"C:\SageHarnesses\Codex\0.145.0\package");
+    let exact_path = PathBuf::from(r"C:\SageHarnesses\Codex\0.146.0\package");
     let exact = ConfiguredManagedPackageRoot::new(exact_path.clone()).unwrap();
     let claims = super::windows::claims_from_packet(&packet, &exact).unwrap();
     assert_eq!(claims.package_root, exact_path);
     assert_eq!(claims.files.len(), EXPECTED_FILE_COUNT);
-    assert_eq!(claims.aggregate_bytes, 427_151_500);
+    assert_eq!(claims.aggregate_bytes, 429_289_628);
 
     let represented = ConfiguredManagedPackageRoot::new(PathBuf::from(
-        r"\\?\c:\SageHarnesses\Codex\0.145.0\package",
+        r"\\?\c:\SageHarnesses\Codex\0.146.0\package",
     ))
     .unwrap();
     assert!(super::windows::claims_from_packet(&packet, &represented).is_ok());

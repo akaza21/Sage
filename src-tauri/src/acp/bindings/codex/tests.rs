@@ -22,8 +22,26 @@ const SECURITY_POLICY_FIXTURE: &[u8] =
 const CONFIG_FIXTURE: &[u8] = include_bytes!("../../../../testdata/acp/codex/config-v1.toml");
 const REPRODUCTION_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json");
-const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.145.0\package";
-const ISOLATED_CODEX_HOME: &str = r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167";
+const PACKAGE_ROOT: &str = r"C:\SageHarnesses\Codex\0.146.0\package";
+const ISOLATED_CODEX_HOME: &str = r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec";
+
+#[test]
+fn native_0146_service_gates_admit_only_exact_managed_or_observed_identity() {
+    assert!(super::supports_native_0146_protocol(
+        "codex-app-server-0.146.0-d3992fec"
+    ));
+    assert!(super::supports_native_0146_protocol(
+        "codex-app-server-observed-0.146.0"
+    ));
+    for unknown in [
+        "codex-app-server-0.145.0-7b0ab167",
+        "codex-app-server-observed-0.145.0",
+        "codex-app-server-observed-0.147.0",
+        "codex-app-server-0.146.0-unknown",
+    ] {
+        assert!(!super::supports_native_0146_protocol(unknown), "{unknown}");
+    }
+}
 
 impl ResourceMapper for Mapper {
     fn map_existing(
@@ -79,8 +97,8 @@ fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "userAgent": "sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
             "platformFamily": "windows",
             "platformOs": "windows"
         }
@@ -131,11 +149,14 @@ fn observed_goal_ready(adapter: &mut CodexAdapter) {
 }
 
 #[test]
-fn managed_codex_does_not_send_goal_get() {
+fn managed_0146_sends_goal_get_after_session_start() {
     let mut adapter = adapter();
     ready(&mut adapter);
-    assert!(adapter.goal_get(44).is_err());
-    assert_eq!(adapter.goal_state().availability(), "unsupported");
+    let request = adapter.goal_get(44).unwrap();
+    let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+    assert_eq!(wire["method"], "thread/goal/get");
+    assert_eq!(wire["params"]["threadId"], "thread-1");
+    assert_eq!(adapter.goal_state().availability(), "loading");
 }
 
 #[test]
@@ -381,14 +402,14 @@ fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_close
     let bytes = PACKET_FIXTURE;
     let packet = parse_packet_metadata(bytes).unwrap();
     assert_eq!(packet.metadata().binding_id, "codex-app-server");
-    assert_eq!(packet.metadata().codex_runtime_version, "0.145.0");
+    assert_eq!(packet.metadata().codex_runtime_version, "0.146.0");
     assert_eq!(
         packet.metadata().codex_source_commit,
-        "25af12f7e61572b0bc18ddb1008be543b91519b0"
+        "e363b08c9175ac1cbe5893615dd2cb9ddf95043b"
     );
     assert_eq!(
         packet.metadata().app_server_schema_sha256,
-        "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c"
+        "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc"
     );
     assert_eq!(packet.metadata().supporting_artifacts.len(), 7);
     let manifest_source = include_str!("manifest.rs");
@@ -435,7 +456,7 @@ fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_close
 
     let mut oversized_home: Value = serde_json::from_slice(bytes).unwrap();
     oversized_home["codexHome"] = json!(format!(
-        "C:\\{}\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+        "C:\\{}\\CodexState\\codex-app-server-0.146.0-d3992fec",
         "a".repeat(32 * 1024)
     ));
     assert!(parse_packet_metadata(&serde_json::to_vec(&oversized_home).unwrap()).is_err());
@@ -465,7 +486,7 @@ fn packet_metadata_rejects_equal_nested_and_parent_codex_home_overlaps() {
 
     let mut home_inside_package = packet_value();
     home_inside_package["codexHome"] = json!(format!(
-        r"{PACKAGE_ROOT}\CodexState\codex-app-server-0.145.0-7b0ab167"
+        r"{PACKAGE_ROOT}\CodexState\codex-app-server-0.146.0-d3992fec"
     ));
     assert!(parse_packet_metadata(&serde_json::to_vec(&home_inside_package).unwrap()).is_err());
 
@@ -686,14 +707,14 @@ fn launch_environment_derives_required_windows_values_and_node_from_the_live_mac
         entries[5],
         (
             "TEMP".into(),
-            r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+            r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec\tmp".into(),
         )
     );
     assert_eq!(
         entries[6],
         (
             "TMP".into(),
-            r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167\tmp".into(),
+            r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec\tmp".into(),
         )
     );
     for (index, key) in [(7, "USERPROFILE"), (8, "APPDATA"), (9, "WINDIR")] {
@@ -801,7 +822,7 @@ impl TestCodexStateRoot {
             std::env::temp_dir().join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
         let home = parent
             .join("CodexState")
-            .join("codex-app-server-0.145.0-7b0ab167");
+            .join("codex-app-server-0.146.0-d3992fec");
         std::fs::create_dir_all(home.join("sessions")).unwrap();
         std::fs::write(home.join("config.toml"), CONFIG_FIXTURE).unwrap();
         Self {
@@ -1033,7 +1054,7 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
     let inspected_packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let inspection = PhysicallyInspectedPackage::matching_fixture(&inspected_packet);
     let mut changed = packet_value();
-    changed["codexHome"] = json!(r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167");
+    changed["codexHome"] = json!(r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec");
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
     let requirements =
         parse_reproduction_requirements(REPRODUCTION_FIXTURE, &changed_packet).unwrap();
@@ -1051,10 +1072,10 @@ fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() 
     let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
 
     let mut changed = packet_value();
-    relocate_package_root(&mut changed, r"C:\SageHarnesses\Codex\0.145.0\package");
+    relocate_package_root(&mut changed, r"C:\SageHarnesses\Codex\0.146.0\package");
     relocate_codex_home(
         &mut changed,
-        r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167",
+        r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
     );
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
     let changed_reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
@@ -1067,14 +1088,14 @@ fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() 
 
 #[cfg(windows)]
 #[test]
-#[ignore = "requires exact SAGE_CODEX_0145_PACKAGE_ROOT and SAGE_CODEX_0145_STATE_ROOT managed roots"]
+#[ignore = "requires exact SAGE_CODEX_0146_PACKAGE_ROOT and SAGE_CODEX_0146_STATE_ROOT managed roots"]
 fn exact_registry_package_and_state_satisfy_managed_prerequisite_without_launch_authority() {
-    let package_root = std::env::var("SAGE_CODEX_0145_PACKAGE_ROOT")
-        .expect("set SAGE_CODEX_0145_PACKAGE_ROOT to the extracted 0.145.0-win32-x64 package");
+    let package_root = std::env::var("SAGE_CODEX_0146_PACKAGE_ROOT")
+        .expect("set SAGE_CODEX_0146_PACKAGE_ROOT to the extracted 0.146.0-win32-x64 package");
     let mut packet = packet_value();
     relocate_package_root(&mut packet, &package_root);
-    let state_root = std::env::var("SAGE_CODEX_0145_STATE_ROOT")
-        .expect("set SAGE_CODEX_0145_STATE_ROOT to the exact existing isolated state root");
+    let state_root = std::env::var("SAGE_CODEX_0146_STATE_ROOT")
+        .expect("set SAGE_CODEX_0146_STATE_ROOT to the exact existing isolated state root");
     relocate_codex_home(&mut packet, &state_root);
     let packet = parse_packet_metadata(&serde_json::to_vec(&packet).unwrap()).unwrap();
     let requirements = parse_reproduction_requirements(REPRODUCTION_FIXTURE, &packet).unwrap();
@@ -1155,13 +1176,13 @@ fn codex_0146_uses_captured_read_only_spellings_per_request_shape() {
     let caps = candidate.effective_capabilities().unwrap();
     assert!(caps.new_session && caps.resume_session && caps.prompt && caps.cancel);
     assert!(caps.multi_root_extension_schema_id.is_none());
-    assert!(!caps.native_session_fork && !caps.active_turn_steer);
+    assert!(!caps.native_session_fork && caps.active_turn_steer);
     assert!(candidate.project_root(r"repo".into()).is_err());
     assert!(candidate.project_root(r"C:\repo\bad:name".into()).is_err());
 }
 
 #[test]
-fn pinned_codex_0145_rejects_write_modes_before_turn_start() {
+fn pinned_codex_0146_admits_ask_and_workspace_write_before_turn_start() {
     for mode in [
         crate::settings_store::SessionAccessMode::Ask,
         crate::settings_store::SessionAccessMode::WorkspaceWrite,
@@ -1182,17 +1203,23 @@ fn pinned_codex_0145_rejects_write_modes_before_turn_start() {
             &RequiredText::new("client", "client-access-mode").unwrap(),
             mode,
         );
-        assert!(matches!(
-            result,
-            Err(AdapterError::Request(
-                request::RequestError::UnsupportedAccessMode
-            ))
-        ));
+        let request = result.unwrap();
+        let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+        assert_eq!(wire["method"], "turn/start");
+        assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
+        assert_eq!(
+            wire["params"]["approvalPolicy"],
+            if mode == crate::settings_store::SessionAccessMode::Ask {
+                "on-request"
+            } else {
+                "never"
+            }
+        );
     }
 }
 
 #[test]
-fn pinned_codex_0145_dispatches_saved_ask_as_read_only() {
+fn pinned_codex_0146_dispatches_saved_ask_as_read_only() {
     use crate::settings_store::SessionAccessMode;
 
     let mut candidate = adapter();
@@ -1232,7 +1259,7 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
         Err(AdapterError::CapabilityUnavailable)
     ));
     incomplete.initialize(1).unwrap();
-    let missing = br#"{"id":1,"result":{"userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"}}"#;
+    let missing = br#"{"id":1,"result":{"userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"}}"#;
     assert!(matches!(
         incomplete.ingest(missing, &Mapper),
         Err(AdapterError::Ingress(IngressError::CapabilityUnavailable))
@@ -1243,20 +1270,20 @@ fn initialize_requires_the_exact_runtime_home_and_windows_identity() {
     let capabilities = negotiated.effective_capabilities().unwrap();
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(capabilities.collaboration_event_projection);
-    assert!(!capabilities.native_session_fork && !capabilities.active_turn_steer);
+    assert!(!capabilities.native_session_fork && capabilities.active_turn_steer);
     assert_eq!(
         capabilities.protocol_version.as_str(),
-        "codex-app-server-0.145.0-7b0ab167"
+        "codex-app-server-0.146.0-d3992fec"
     );
 
     for (pointer, replacement) in [
         (
             "/result/userAgent",
-            json!("sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+            json!("sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
         ),
         (
             "/result/userAgent",
-            json!("Codex Desktop/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
+            json!("Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"),
         ),
         ("/result/codexHome", json!(r"C:\Users\Username\.codex")),
         ("/result/platformFamily", json!("unix")),
@@ -1302,7 +1329,7 @@ fn observed_codex_0146_initialize_accepts_its_cli_identity_and_home() {
     ));
     result.insert(
         "userAgent".into(),
-        json!("sage/0.145.0 (Windows 10.0; x86_64)"),
+        json!("sage/0.146.0 (Windows 10.0; x86_64)"),
     );
     assert!(!super::state::capabilities::valid_initialize_result(
         &result,

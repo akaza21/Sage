@@ -24,7 +24,7 @@ pub(crate) use boundary::{
 
 const REQUEST_BYTES_MAX: usize = 128 * 1024;
 const HELPER_EXECUTABLE_BYTES_MAX: u64 = 32 * 1024 * 1024;
-const HELPER_PRODUCT: &str = "sage-codex-0145-elevated-helper";
+const HELPER_PRODUCT: &str = "sage-codex-0146-elevated-helper";
 const HELPER_PROTOCOL_VERSION: u8 = 1;
 const REQUEST_SCHEMA_VERSION: u8 = 1;
 const PACKAGE_OWNER: &str = "builtinAdministrators";
@@ -332,13 +332,13 @@ fn validate_handoff(
         .managed_package_root()
         .parent()
         .ok_or(ElevatedHelperError::HandoffIdentity)?
-        .join(".sage-codex-0.145.0-stage");
+        .join(".sage-codex-0.146.0-stage");
     let expected_files = packet.physical_artifact_claims().collect::<Vec<_>>();
     if request.schema_version != REQUEST_SCHEMA_VERSION
         || request.stage_root != expected_stage
         || payload.schema_version != 1
         || payload.binding_id != "codex-app-server"
-        || payload.runtime_version != "0.145.0"
+        || payload.runtime_version != "0.146.0"
         || !lower_hex(&payload.creation_nonce, 32)
         || !lower_hex(&payload.source_proof_sha256, 64)
         || !lower_even_hex(&payload.current_user_sid_hex, 16, 136)

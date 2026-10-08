@@ -279,9 +279,9 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
         assert_eq!(identity.0, "codex-app-server");
         assert_eq!(
             identity.1,
-            "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
+            "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4"
         );
-        assert_eq!(identity.2.as_deref(), Some("0.145.0"));
+        assert_eq!(identity.2.as_deref(), Some("0.146.0"));
         service.shutdown_blocking().unwrap();
     });
 }
@@ -611,6 +611,111 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
             _ => panic!("durable ready/cold session must resume"),
         }
         drop(prepared);
+        service.shutdown_blocking().unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
+    tauri::async_runtime::block_on(async {
+        let (_database, service, project, project_id, chat_id, root) = codex_session_setup();
+        let revision = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap()
+            .projection_revision;
+        let mut old = codex_start_command(&project_id, &chat_id, revision);
+        old.binding_digest =
+            "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e".into();
+        old.harness_version = Some(SafeText::new("harnessVersion", "0.145.0").unwrap());
+        let started = service.sessions.start_session(old).await.unwrap();
+        let owner = RuntimeOwner {
+            project_id: project_id.clone(),
+            chat_id: chat_id.clone(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        };
+        let mut lease = service
+            .sessions
+            .activate_session(ActivateSessionCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                expected_projection_revision: started.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                artifact_digest: "44".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        let binding = service.codex_registration().refresh().unwrap();
+        let mut old_capabilities = binding.capability_ceiling().unwrap();
+        old_capabilities.protocol_version =
+            RequiredText::new("protocolVersion", "codex-app-server-0.145.0-7b0ab167").unwrap();
+        old_capabilities.active_turn_steer = false;
+        old_capabilities.child_transcript_read = false;
+        lease
+            .complete_activation(CompleteActivationCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: started.session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                binding_digest: "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
+                    .into(),
+                artifact_digest: "44".repeat(32),
+                external_session_id: ExternalId::new("externalSessionId", "old-thread").unwrap(),
+                capabilities_json: serde_json::to_string(&old_capabilities).unwrap(),
+                now_millis: crate::persistence::now_millis(),
+            })
+            .await
+            .unwrap();
+        lease
+            .park_after_zero_process(
+                ParkSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    session_id: started.session_id.clone(),
+                    runtime_epoch: owner.runtime_epoch,
+                    exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
+                    now_millis: crate::persistence::now_millis(),
+                },
+                ZeroProcessProof::confirmed(owner),
+            )
+            .await
+            .unwrap();
+        let page = service
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        assert!(
+            page.sessions
+                .as_slice()
+                .iter()
+                .any(|session| session.id == started.session_id)
+        );
+        let authority = codex_root(&project_id, &project.roots[0].id, &root);
+        let admitted = service
+            .binding_registry()
+            .resolve(crate::acp::bindings::codex::CODEX_BINDING_ID)
+            .unwrap();
+        let result = service.prepare_session_activation(
+            admitted,
+            ActivateSessionCommand {
+                project_id,
+                chat_id,
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: started.session_id,
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                artifact_digest: "55".repeat(32),
+                now_millis: crate::persistence::now_millis(),
+            },
+            crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
+        );
+        assert!(matches!(
+            result,
+            Err(super::CodexSessionError::EarlierCodexVersion)
+        ));
         service.shutdown_blocking().unwrap();
     });
 }

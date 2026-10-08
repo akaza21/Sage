@@ -26,6 +26,12 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
             resource: AcpConflictResource::Session,
             message: safe_message("The native session identity is stale or foreign."),
         },
+        crate::acp::service::CodexSessionError::EarlierCodexVersion => AcpIpcError::Conflict {
+            resource: AcpConflictResource::Session,
+            message: safe_message(
+                "This native thread started on an earlier Codex version. Its Chat history is still available here; start a new Codex session to continue.",
+            ),
+        },
         crate::acp::service::CodexSessionError::SteerOutcomeUnknown => AcpIpcError::Conflict {
             resource: AcpConflictResource::SteerOutcomeUnknown,
             message: safe_message(
@@ -317,6 +323,17 @@ mod tests {
                 "message": "The harness requires sign-in before it can continue."
             })
         );
+    }
+
+    #[test]
+    fn earlier_codex_thread_has_a_readable_session_conflict() {
+        let error = session_error(crate::acp::service::CodexSessionError::EarlierCodexVersion);
+        assert!(matches!(
+            error,
+            AcpIpcError::Conflict { resource: AcpConflictResource::Session, message }
+                if message.as_str().contains("started on an earlier Codex version")
+                    && message.as_str().contains("Chat history is still available")
+        ));
     }
 
     #[test]

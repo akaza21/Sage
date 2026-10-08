@@ -233,7 +233,7 @@ impl OutgoingRequest {
             prompt,
             client_message_id,
             crate::settings_store::SessionAccessMode::ReadOnly,
-            TurnPolicySurface::Pinned0145,
+            TurnPolicySurface::Unsupported,
         )
     }
 

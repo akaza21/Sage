@@ -12,7 +12,7 @@ pub(super) use update::execute_boundary_update;
 const JOURNAL_SCHEMA_VERSION: u8 = 2;
 const JOURNAL_BYTES_MAX: usize = 64 * 1024;
 const RECOVERY_STEPS_MAX: usize = 4;
-const JOURNAL_NAME: &str = ".sage-codex-0.145.0-provisioning-journal.json";
+const JOURNAL_NAME: &str = ".sage-codex-0.146.0-provisioning-journal.json";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

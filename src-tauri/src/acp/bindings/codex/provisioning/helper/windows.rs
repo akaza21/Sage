@@ -38,8 +38,8 @@ use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
 
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
-const HELD_PACKAGE_NAME: &str = ".sage-codex-0.145.0-previous-package";
-const HELD_STATE_NAME: &str = ".sage-codex-0.145.0-previous-state";
+const HELD_PACKAGE_NAME: &str = ".sage-codex-0.146.0-previous-package";
+const HELD_STATE_NAME: &str = ".sage-codex-0.146.0-previous-state";
 
 /// Capability reserved for the separately built and verified elevated helper
 /// process. Production construction requires the boundary's unforgeable

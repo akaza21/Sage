@@ -297,7 +297,7 @@ mod tests {
 
     fn package_node(index: usize) -> NodeSecurityClaims {
         NodeSecurityClaims {
-            path: PathBuf::from(format!(r"C:\SageHarnesses\Codex\0.145.0\package\{index}")),
+            path: PathBuf::from(format!(r"C:\SageHarnesses\Codex\0.146.0\package\{index}")),
             directory: index == 0,
             owner: OwnerClass::BuiltinAdministrators,
             dacl_present: true,
@@ -311,7 +311,7 @@ mod tests {
 
     fn state_root() -> NodeSecurityClaims {
         NodeSecurityClaims {
-            path: PathBuf::from(r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167"),
+            path: PathBuf::from(r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec"),
             directory: true,
             owner: OwnerClass::CurrentUser,
             dacl_present: true,

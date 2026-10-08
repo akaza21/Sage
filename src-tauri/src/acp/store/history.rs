@@ -247,8 +247,9 @@ fn permission_requests_supported(
 ) -> bool {
     match binding_id.as_str() {
         "codex-app-server" => {
-            capabilities.protocol_version.as_str() == "codex-app-server-observed-0.146.0"
-                && capabilities.active_turn_steer
+            crate::acp::bindings::codex::supports_native_0146_protocol(
+                capabilities.protocol_version.as_str(),
+            ) && capabilities.active_turn_steer
                 && CODEX_ASK_NATIVE_APPROVAL_PROVEN
         }
         "claude-agent-acp" | "cursor-agent-acp" | "opencode-acp" | "gemini-cli-acp" => true,
@@ -366,6 +367,9 @@ mod permission_request_tests {
             &codex,
             &capabilities("codex-app-server-0.145.0-7b0ab167")
         ));
+        let mut managed = capabilities("codex-app-server-0.146.0-d3992fec");
+        managed.active_turn_steer = true;
+        assert!(!permission_requests_supported(&codex, &managed));
         let mut observed = capabilities("codex-app-server-observed-0.146.0");
         assert!(!permission_requests_supported(&codex, &observed));
         observed.active_turn_steer = true;

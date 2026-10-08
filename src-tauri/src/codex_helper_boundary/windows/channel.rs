@@ -27,7 +27,7 @@ use windows_sys::Win32::System::Pipes::{
 
 use crate::codex_helper_boundary::protocol::BoundaryError;
 
-const PIPE_PREFIX: &str = r"\\.\pipe\sage-codex-0145-";
+const PIPE_PREFIX: &str = r"\\.\pipe\sage-codex-0146-";
 const PIPE_BUFFER_BYTES: u32 = 132 * 1024;
 const GENERIC_READ_WRITE: u32 = 0xc000_0000;
 const SECURITY_DESCRIPTOR_REVISION: u32 = 1;

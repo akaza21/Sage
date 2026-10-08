@@ -2,63 +2,63 @@
   "schemaVersion": 1,
   "bindingId": "codex-app-server",
   "platform": "windowsX86_64",
-  "codexSourceCommit": "25af12f7e61572b0bc18ddb1008be543b91519b0",
-  "codexRuntimeVersion": "0.145.0",
+  "codexSourceCommit": "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
+  "codexRuntimeVersion": "0.146.0",
   "packageName": "@openai/codex",
-  "packageVersion": "0.145.0-win32-x64",
-  "packageTarballSha1": "b24ffe0d63bcac64fe802c4c7d79176fb42e8337",
-  "packageIntegritySha512": "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==",
-  "packagePackedByteLen": 150852388,
-  "packageUnpackedByteLen": 427151500,
-  "appServerSchemaSha256": "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c",
+  "packageVersion": "0.146.0-win32-x64",
+  "packageTarballSha1": "0a0f939280e71ea262c87751ccdb6a17d5bff81b",
+  "packageIntegritySha512": "sha512-b3lxMYeR0+IhstNo4JjX1P9cPc1xwVcCVkPd1lD1wpWPJ0SBhpIkPczwbu3ZRkJcdyl342+rgyf4DUrbZLdrGA==",
+  "packagePackedByteLen": 151682891,
+  "packageUnpackedByteLen": 429289628,
+  "appServerSchemaSha256": "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc",
   "entrypoint": {
-    "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
-    "sha256": "83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c",
-    "byteLen": 359245096
+    "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
+    "sha256": "bc343ba420dc2e2e9f59e6fc5e5bf0aae1cd8c771fc319665241fc9c0271fddb",
+    "byteLen": 358650672
   },
   "supportingArtifacts": [
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\bin\\codex-code-mode-host.exe",
-      "sha256": "de58d3bd9fb88c44555de1104d06fba78e207bce7115d92691b42f6b0f87f3b7",
-      "byteLen": 53605168
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\bin\\codex-code-mode-host.exe",
+      "sha256": "6ef1de0e04d859f8f4f6d4d64f0f3ceeec28658423d91de160f5e804280d1c36",
+      "byteLen": 56309040
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-command-runner.exe",
-      "sha256": "09531442d178aefb4c849745e95a000f52d5910a13944638269d9991cb08319b",
-      "byteLen": 1271088
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-command-runner.exe",
+      "sha256": "0102fa1820ecd03bb03a991fd2303a1a484118f7da8a71864f88ec94bca61d6d",
+      "byteLen": 1302832
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-windows-sandbox-setup.exe",
-      "sha256": "c981b438d0959e33f90f6b8b1a9656c4f803a1b82ebdd97e2150d2b8543a0c31",
-      "byteLen": 8807728
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-resources\\codex-windows-sandbox-setup.exe",
+      "sha256": "c12d225b34e7f82cdab6bbc714797abed661f40e158104694953889750121cef",
+      "byteLen": 8804144
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-path\\rg.exe",
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-path\\rg.exe",
       "sha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680",
       "byteLen": 4218880
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-package.json",
-      "sha256": "d15dd152401ec63697fb4888d3dec75a849ac85c11aa69256bccc0355e0b7ddd",
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\vendor\\x86_64-pc-windows-msvc\\codex-package.json",
+      "sha256": "aaa0646d6b615da94187b51efd50c69621a00867761161ae55cc16cfd545bec7",
       "byteLen": 215
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\package.json",
-      "sha256": "74c94696f460ad5dd07371a813a49ac2604121569e075a7e938d2f60b6de76a2",
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\package.json",
+      "sha256": "223e8306038c65e658e6d008ae50b45d238e0a6778acd88b70c4f9d1534f3a2f",
       "byteLen": 511
     },
     {
-      "path": "C:\\SageHarnesses\\Codex\\0.145.0\\package\\README.md",
-      "sha256": "8ef3dd9dd00c7dd39d1f0b77de69d25cff4dd3fe7768ec3a3cd1fc9c0aa5b76c",
-      "byteLen": 2814
+      "path": "C:\\SageHarnesses\\Codex\\0.146.0\\package\\README.md",
+      "sha256": "ba4e1f69ff48386e72a9c5e1edaf76aad64a475c2d51af79ccba6d1128261ba7",
+      "byteLen": 3334
     }
   ],
-  "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+  "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
   "statePolicy": "isolatedBindingDirectory",
   "transport": "stdioJsonl",
   "workspacePolicy": "singleRootOnly",
   "capabilityCeiling": {
-    "protocolIdentity": "codex-app-server-0.145.0-7b0ab167",
+    "protocolIdentity": "codex-app-server-0.146.0-d3992fec",
     "newSession": true,
     "resumeSession": true,
     "loadSession": true,

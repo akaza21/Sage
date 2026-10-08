@@ -15,7 +15,10 @@ impl CodexAdapter {
 
     pub(crate) fn goal_supported(&self) -> bool {
         self.negotiated.is_some()
-            && self.observed_build_characterisation == Some(Characterisation::Characterised)
+            && (self.observed_build_characterisation == Some(Characterisation::Characterised)
+                || (self.observed_build_characterisation.is_none()
+                    && self.capability_ceiling.protocol_identity
+                        == super::super::manifest::PINNED_PROTOCOL_IDENTITY))
             && self.runtime_version.split_ascii_whitespace().next_back() == Some("0.146.0")
     }
 

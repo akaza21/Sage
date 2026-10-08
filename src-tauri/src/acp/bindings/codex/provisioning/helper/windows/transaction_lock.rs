@@ -9,7 +9,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 use super::super::ElevatedHelperError;
 use crate::acp::bindings::codex::physical::open_exact_state_root;
 
-const LOCK_NAME: &str = ".sage-codex-0.145.0-elevated-helper.lock";
+const LOCK_NAME: &str = ".sage-codex-0.146.0-elevated-helper.lock";
 
 #[derive(Debug)]
 pub(super) struct TransactionLock {

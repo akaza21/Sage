@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn exact_image_is_hashed_and_held_against_write_or_replace() {
         let root = TempRoot::new();
-        let path = root.0.join("sage-codex-0145-elevated-helper.exe");
+        let path = root.0.join("sage-codex-0146-elevated-helper.exe");
         fs::write(&path, b"exact-helper-image").unwrap();
 
         let verified = VerifiedHelperExecutable::open(&path).unwrap();

@@ -68,7 +68,9 @@ pub(crate) use manifest::{
     PINNED_PROTOCOL_IDENTITY as CODEX_PROTOCOL_IDENTITY,
     PINNED_SCHEMA_SHA256 as CODEX_SCHEMA_SHA256,
 };
-pub(crate) use manifest::{PhysicalAdmissionUnavailable, Platform, parse_packet_metadata};
+pub(crate) use manifest::{
+    PhysicalAdmissionUnavailable, Platform, parse_packet_metadata, supports_native_0146_protocol,
+};
 pub(crate) use physical::{
     ConfiguredManagedPackageRoot, PhysicalInspectionError, PhysicallyInspectedPackage,
     inspect_managed_package,

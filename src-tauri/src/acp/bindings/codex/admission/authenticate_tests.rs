@@ -207,7 +207,7 @@ fn signed_role_admission_fixture_at(parent: PathBuf) -> SignedRoleAdmissionFixtu
     let parent = canonical_fixture_root(&parent);
     let home = parent
         .join("CodexState")
-        .join("codex-app-server-0.145.0-7b0ab167");
+        .join("codex-app-server-0.146.0-d3992fec");
     std::fs::create_dir_all(home.join("sessions")).unwrap();
     std::fs::write(home.join("config.toml"), CONFIG).unwrap();
 
@@ -275,7 +275,7 @@ fn shared_admission_fixture_canonicalizes_root_before_deriving_authority() {
         signed_role_admission_fixture_at(aliased_parent);
     let expected_home = expected_parent
         .join("CodexState")
-        .join("codex-app-server-0.145.0-7b0ab167");
+        .join("codex-app-server-0.146.0-d3992fec");
     assert_eq!(cleanup.0, vec![expected_parent]);
     assert_eq!(packet.codex_home(), expected_home);
     assert_eq!(

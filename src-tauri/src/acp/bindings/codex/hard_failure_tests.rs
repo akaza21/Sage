@@ -93,8 +93,8 @@ fn initialize_result(id: u64) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id": id,
         "result": {
-            "userAgent": "sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+            "userAgent": "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome": "C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
             "platformFamily": "windows",
             "platformOs": "windows"
         }
@@ -195,7 +195,7 @@ fn a_known_approval_on_an_unknown_turn_still_fails_hard_instead_of_replying_not_
 }
 
 #[test]
-fn thread_goal_updated_is_recorded_and_ignored_rather_than_failing_the_session() {
+fn malformed_thread_goal_updated_is_ignored_without_failing_the_managed_session() {
     let mut adapter = adapter();
     ready(&mut adapter);
     let frame = json!({"method":"thread/goal/updated","params":{
@@ -207,7 +207,7 @@ fn thread_goal_updated_is_recorded_and_ignored_rather_than_failing_the_session()
         matches!(disposition, Ok(IngressDisposition::IgnoredLate)),
         "thread/goal/updated must not kill the session: {disposition:?}"
     );
-    assert_eq!(captured.matches(UNPROJECTED_DIAGNOSTIC).count(), 1);
+    assert_eq!(captured.matches(UNPROJECTED_DIAGNOSTIC).count(), 0);
 }
 
 #[test]

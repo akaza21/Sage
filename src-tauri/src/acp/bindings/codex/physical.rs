@@ -102,10 +102,10 @@ impl PhysicallyInspectedPackage {
         Self {
             package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
             codex_home: PathBuf::from(
-                r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167",
+                r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
             ),
             artifact_count: EXPECTED_FILE_COUNT,
-            byte_len: 427_151_500,
+            byte_len: 429_289_628,
             held_nodes: Vec::new(),
         }
     }
@@ -291,7 +291,7 @@ mod portable_tests {
         ))
         .unwrap();
         let root = ConfiguredManagedPackageRoot::new(PathBuf::from(
-            r"C:\SageHarnesses\Codex\0.145.0\package",
+            r"C:\SageHarnesses\Codex\0.146.0\package",
         ))
         .unwrap();
         assert_eq!(

@@ -67,7 +67,7 @@ impl TestProvisioning {
         self.package_target
             .parent()
             .unwrap()
-            .join(".sage-codex-0.145.0-stage")
+            .join(".sage-codex-0.146.0-stage")
     }
 }
 
@@ -111,7 +111,7 @@ fn sealed_handoff_binds_exact_files_targets_acl_plan_and_source_proof() {
 
     assert_eq!(receipt.payload.schema_version, 1);
     assert_eq!(receipt.payload.binding_id, "codex-app-server");
-    assert_eq!(receipt.payload.runtime_version, "0.145.0");
+    assert_eq!(receipt.payload.runtime_version, "0.146.0");
     assert_eq!(receipt.payload.source_proof_sha256, expected_proof);
     assert_eq!(receipt.payload.files.len(), 8);
     assert_eq!(receipt.payload.aggregate_byte_len, 8);
@@ -232,7 +232,7 @@ fn source_path_bound_rejects_exact_plus_one_before_inspection() {
 }
 
 #[test]
-#[ignore = "requires exact SAGE_CODEX_0145_OFFLINE_SOURCE_ROOT, explicit stage-only authorization, and absent canonical targets"]
+#[ignore = "requires exact SAGE_CODEX_0146_OFFLINE_SOURCE_ROOT, explicit stage-only authorization, and absent canonical targets"]
 fn exact_production_source_prepares_and_revalidates_helper_handoff() {
     let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(
         "../../../../../testdata/acp/codex/candidate-windows.json"
@@ -244,7 +244,7 @@ fn exact_production_source_prepares_and_revalidates_helper_handoff() {
     )
     .unwrap();
     let source_root = PathBuf::from(
-        std::env::var("SAGE_CODEX_0145_OFFLINE_SOURCE_ROOT")
+        std::env::var("SAGE_CODEX_0146_OFFLINE_SOURCE_ROOT")
             .expect("set the exact eight-file offline source root"),
     );
     let authorization = authorize_offline_staging_from_environment().unwrap();

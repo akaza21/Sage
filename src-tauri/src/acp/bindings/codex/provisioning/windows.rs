@@ -25,7 +25,7 @@ use targets::{require_absent, require_present, target_exists, validate_root_clos
 #[cfg(test)]
 mod test_failpoint;
 
-const STAGE_NAME: &str = ".sage-codex-0.145.0-stage";
+const STAGE_NAME: &str = ".sage-codex-0.146.0-stage";
 const HANDOFF_NAME: &str = "handoff.json";
 const PACKAGE_NAME: &str = "package";
 const STATE_NAME: &str = "state";
@@ -330,7 +330,7 @@ fn build_receipt(source: &VerifiedCodexSource) -> Result<SealedHandoff, Provisio
     let payload = HandoffPayload {
         schema_version: 1,
         binding_id: "codex-app-server".into(),
-        runtime_version: "0.145.0".into(),
+        runtime_version: "0.146.0".into(),
         creation_nonce: uuid::Uuid::new_v4().simple().to_string(),
         source_proof_sha256: source.source_proof_sha256.clone(),
         aggregate_byte_len: source.inspection.byte_len(),

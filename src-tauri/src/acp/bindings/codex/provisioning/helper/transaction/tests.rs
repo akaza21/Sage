@@ -258,18 +258,18 @@ impl HelperTransactionPlatform for FakePlatform {
 }
 
 fn request(nonce: &str) -> AuthenticatedHelperRequest {
-    let package_target = PathBuf::from(r"C:\SageHarnesses\Codex\0.145.0\package");
+    let package_target = PathBuf::from(r"C:\SageHarnesses\Codex\0.146.0\package");
     let payload = HandoffPayload {
         schema_version: 1,
         binding_id: "codex-app-server".into(),
-        runtime_version: "0.145.0".into(),
+        runtime_version: "0.146.0".into(),
         creation_nonce: nonce.into(),
         source_proof_sha256: "11".repeat(32),
-        aggregate_byte_len: 427_151_500,
+        aggregate_byte_len: 429_289_628,
         files: vec![],
         package_target: package_target.clone(),
         state_target: PathBuf::from(
-            r"C:\SageHarnesses\CodexState\codex-app-server-0.145.0-7b0ab167",
+            r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
         ),
         current_user_sid_hex: "010100000000000512000000".into(),
         package_acl: acl("builtinAdministrators", 0x0012_00a9),
@@ -284,9 +284,9 @@ fn request(nonce: &str) -> AuthenticatedHelperRequest {
             stage_root: package_target
                 .parent()
                 .unwrap()
-                .join(".sage-codex-0.145.0-stage"),
+                .join(".sage-codex-0.146.0-stage"),
             helper: super::super::HelperExecutableIdentity {
-                product: "sage-codex-0145-elevated-helper".into(),
+                product: "sage-codex-0146-elevated-helper".into(),
                 protocol_version: 1,
                 sage_version: "0.1.0".into(),
                 executable_sha256: "22".repeat(32),

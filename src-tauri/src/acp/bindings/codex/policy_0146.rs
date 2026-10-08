@@ -4,16 +4,18 @@ use super::request::RequestError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnPolicySurface {
-    Pinned0145,
-    Observed0146,
+    Unsupported,
+    Supported0146,
 }
 
 impl TurnPolicySurface {
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
-        if observed == Some(Characterisation::Characterised) && runtime_version == "0.146.0" {
-            Self::Observed0146
+        if (observed == Some(Characterisation::Characterised) || observed.is_none())
+            && runtime_version == "0.146.0"
+        {
+            Self::Supported0146
         } else {
-            Self::Pinned0145
+            Self::Unsupported
         }
     }
 }
@@ -47,8 +49,8 @@ pub(super) fn turn_policy(
 ) -> Result<TurnRequestPolicy, RequestError> {
     let policy = match (surface, mode) {
         (_, SessionAccessMode::ReadOnly) => READ_ONLY,
-        (TurnPolicySurface::Observed0146, SessionAccessMode::Ask) => ASK,
-        (TurnPolicySurface::Observed0146, SessionAccessMode::WorkspaceWrite) => WORKSPACE_WRITE,
+        (TurnPolicySurface::Supported0146, SessionAccessMode::Ask) => ASK,
+        (TurnPolicySurface::Supported0146, SessionAccessMode::WorkspaceWrite) => WORKSPACE_WRITE,
         _ => return Err(RequestError::UnsupportedAccessMode),
     };
     Ok(policy)
@@ -80,7 +82,7 @@ mod tests {
             &Prompt::new("prompt", "inspect").unwrap(),
             &RequiredText::new("client", "client-ask").unwrap(),
             SessionAccessMode::Ask,
-            TurnPolicySurface::Observed0146,
+            TurnPolicySurface::Supported0146,
         )
         .unwrap();
         let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
@@ -94,7 +96,7 @@ mod tests {
     fn observed_0146_rejects_mixed_approval_and_write_sandbox() {
         assert_eq!(
             validate_turn_policy(
-                TurnPolicySurface::Observed0146,
+                TurnPolicySurface::Supported0146,
                 SessionAccessMode::Ask,
                 TurnRequestPolicy {
                     approval: "on-request",

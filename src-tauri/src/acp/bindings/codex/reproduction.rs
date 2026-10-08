@@ -5,15 +5,15 @@ use super::physical::PhysicallyInspectedPackage;
 
 pub(super) const REPRODUCTION_BYTES: usize = 32 * 1024;
 
-const TARBALL_URL: &str = "https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-win32-x64.tgz";
-const TARBALL_SHA512_HEX: &str = "bb487d964d3de02697452a84df84815b67516904cf6ba7c0497a9e85ccd61fd41db14eb6981b2202001da7ab421b88be6333e69a18c3f05757367606366c2e32";
-const NPM_SIGNATURE: &str = "MEUCIFGOrmeSEuQQ4eixhUMkFJOXq3dHL6snqDoqMiDefnhuAiEAyOa/+cc1fXAKaoEMcVD8O1+srdGPlClPW25tsFw9GBk=";
+const TARBALL_URL: &str = "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0-win32-x64.tgz";
+const TARBALL_SHA512_HEX: &str = "6f7971318791d3e221b2d368e098d7d4ff5c3dcd71c157025643ddd650f5c2958f2744818692243dccf06eedd946425c772977e36fab8327f80d4adb64b76b18";
+const NPM_SIGNATURE: &str = "MEYCIQCcun1yAozQQ1ANf7Mr3l5wav8BLAUWc457SCXLuLLnHgIhAN+MhQ4tkbofJx+JiYgblBEXWgdHa3oApaJnEttynEuo";
 const NPM_KEY_ID: &str = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U";
 const ATTESTATION_URL: &str =
-    "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.145.0-win32-x64";
+    "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.146.0-win32-x64";
 const SLSA_PREDICATE: &str = "https://slsa.dev/provenance/v1";
 const OPENAI_PUBLISHER: &str = "OpenAI OpCo, LLC";
-const OPENAI_THUMBPRINT: &str = "FDE3B5E925F89FC3DDB81F651855DFCBBDA471C3";
+const OPENAI_THUMBPRINT: &str = "0B7C30C11BF7250EC1ECD3254AC781D9E13D62F8";
 const SIGNED_FILES: [&str; 4] = [
     r"vendor\x86_64-pc-windows-msvc\bin\codex.exe",
     r"vendor\x86_64-pc-windows-msvc\bin\codex-code-mode-host.exe",

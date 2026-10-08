@@ -2,25 +2,25 @@
   "schemaVersion": 1,
   "bindingId": "codex-app-server",
   "platform": "windowsX86_64",
-  "codexSourceCommit": "25af12f7e61572b0bc18ddb1008be543b91519b0",
-  "codexRuntimeVersion": "0.145.0",
+  "codexSourceCommit": "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
+  "codexRuntimeVersion": "0.146.0",
   "packageName": "@openai/codex",
-  "packageVersion": "0.145.0-win32-x64",
+  "packageVersion": "0.146.0-win32-x64",
   "registry": {
-    "tarballUrl": "https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-win32-x64.tgz",
-    "tarballSha1": "b24ffe0d63bcac64fe802c4c7d79176fb42e8337",
-    "tarballIntegritySha512": "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==",
-    "tarballSha512Hex": "bb487d964d3de02697452a84df84815b67516904cf6ba7c0497a9e85ccd61fd41db14eb6981b2202001da7ab421b88be6333e69a18c3f05757367606366c2e32",
-    "packedByteLen": 150852388,
-    "unpackedByteLen": 427151500,
+    "tarballUrl": "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0-win32-x64.tgz",
+    "tarballSha1": "0a0f939280e71ea262c87751ccdb6a17d5bff81b",
+    "tarballIntegritySha512": "sha512-b3lxMYeR0+IhstNo4JjX1P9cPc1xwVcCVkPd1lD1wpWPJ0SBhpIkPczwbu3ZRkJcdyl342+rgyf4DUrbZLdrGA==",
+    "tarballSha512Hex": "6f7971318791d3e221b2d368e098d7d4ff5c3dcd71c157025643ddd650f5c2958f2744818692243dccf06eedd946425c772977e36fab8327f80d4adb64b76b18",
+    "packedByteLen": 151682891,
+    "unpackedByteLen": 429289628,
     "fileCount": 8,
     "npmSignature": {
-      "signatureBase64": "MEUCIFGOrmeSEuQQ4eixhUMkFJOXq3dHL6snqDoqMiDefnhuAiEAyOa/+cc1fXAKaoEMcVD8O1+srdGPlClPW25tsFw9GBk=",
+      "signatureBase64": "MEYCIQCcun1yAozQQ1ANf7Mr3l5wav8BLAUWc457SCXLuLLnHgIhAN+MhQ4tkbofJx+JiYgblBEXWgdHa3oApaJnEttynEuo",
       "keyId": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
       "verificationStatus": "presenceRecordedUnverified"
     },
     "slsaProvenance": {
-      "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.145.0-win32-x64",
+      "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.146.0-win32-x64",
       "predicateType": "https://slsa.dev/provenance/v1",
       "verificationStatus": "presenceRecordedUnverified"
     }
@@ -35,7 +35,7 @@
   "authenticodeObservation": {
     "verificationStatus": "workstationObservationOnly",
     "publisherCommonName": "OpenAI OpCo, LLC",
-    "certificateThumbprintSha1": "FDE3B5E925F89FC3DDB81F651855DFCBBDA471C3",
+    "certificateThumbprintSha1": "0B7C30C11BF7250EC1ECD3254AC781D9E13D62F8",
     "signedFiles": [
       "vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
       "vendor\\x86_64-pc-windows-msvc\\bin\\codex-code-mode-host.exe",

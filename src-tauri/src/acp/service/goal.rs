@@ -68,9 +68,9 @@ impl AcpService {
         else {
             return;
         };
-        // Exact characterised protocol identity; no assertion about the
-        // independently pinned managed Codex artifact is implied.
-        if session.capabilities.protocol_version.as_str() != "codex-app-server-observed-0.146.0" {
+        if !crate::acp::bindings::codex::supports_native_0146_protocol(
+            session.capabilities.protocol_version.as_str(),
+        ) {
             return;
         }
         let Some(runtime_epoch) = session.runtime_epoch else {

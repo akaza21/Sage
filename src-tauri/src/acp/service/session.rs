@@ -123,12 +123,12 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let session = load_durable_session(&self.database, &owner)?;
-        if session.binding_id != registered_binding_id
-            || session.binding_digest != identity.binding_digest_hex
-            || session.harness_version.as_deref() != Some(identity.harness_version)
-        {
-            return Err(CodexSessionError::Intent);
-        }
+        validate_session_identity(
+            &session,
+            registered_binding_id,
+            identity.binding_digest_hex,
+            identity.harness_version,
+        )?;
         let model = session
             .model_id
             .map(|value| ModelId::new("modelId", value))
@@ -225,4 +225,60 @@ fn load_durable_session(
         .optional()
         .map_err(|_| CodexSessionError::Intent)?
         .ok_or(CodexSessionError::Intent)
+}
+
+fn validate_session_identity(
+    session: &DurableSession,
+    binding_id: &str,
+    binding_digest: &str,
+    harness_version: &str,
+) -> Result<(), CodexSessionError> {
+    if session.binding_id == "codex-app-server"
+        && binding_id == "codex-app-server"
+        && session.harness_version.as_deref() == Some("0.145.0")
+        && harness_version == "0.146.0"
+        && session.state == "ready"
+        && session.external_session_id.is_some()
+    {
+        return Err(CodexSessionError::EarlierCodexVersion);
+    }
+    if session.binding_id != binding_id
+        || session.binding_digest != binding_digest
+        || session.harness_version.as_deref() != Some(harness_version)
+    {
+        return Err(CodexSessionError::Intent);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn earlier_codex_thread_has_a_distinct_resume_refusal() {
+        let session = DurableSession {
+            binding_id: "codex-app-server".into(),
+            binding_digest: "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
+                .into(),
+            harness_version: Some("0.145.0".into()),
+            model_id: None,
+            external_session_id: Some("thread-before-upgrade".into()),
+            state: "ready".into(),
+            residency: "cold".into(),
+        };
+        assert!(matches!(
+            validate_session_identity(
+                &session,
+                "codex-app-server",
+                "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4",
+                "0.146.0",
+            ),
+            Err(CodexSessionError::EarlierCodexVersion)
+        ));
+        assert!(matches!(
+            validate_session_identity(&session, "codex-app-server", "foreign-digest", "0.147.0",),
+            Err(CodexSessionError::Intent)
+        ));
+    }
 }

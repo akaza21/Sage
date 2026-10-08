@@ -15,12 +15,12 @@ use super::{
 use crate::acp::bindings::characterisation::Characterisation;
 
 pub(crate) const BINDING_ID: &str = "codex-app-server";
-const BINDING_DIGEST_INPUT: &[u8] = b"sage:codex-app-server:0.145.0:windows-x86_64:7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
+const BINDING_DIGEST_INPUT: &[u8] = b"sage:codex-app-server:0.146.0:windows-x86_64:d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc";
 const BINDING_DIGEST: [u8; 32] = [
-    0xf8, 0xc2, 0xb9, 0x95, 0xbe, 0x26, 0x3f, 0xe4, 0xbf, 0x00, 0x97, 0x40, 0x43, 0x31, 0x26, 0x73,
-    0x37, 0x80, 0x81, 0x73, 0x4c, 0xa8, 0xc9, 0x81, 0x55, 0xd2, 0xa3, 0x38, 0x87, 0x44, 0x4b, 0x9e,
+    0x3b, 0xba, 0x7d, 0x86, 0xd2, 0x35, 0x7d, 0x8f, 0xcc, 0xd8, 0x1b, 0xdb, 0xa3, 0xd7, 0xf3, 0xf4,
+    0x27, 0x8c, 0x80, 0x01, 0x4d, 0x7e, 0x65, 0xe0, 0x85, 0xb9, 0xa8, 0x74, 0x33, 0x0d, 0x7d, 0xf4,
 ];
-const BINDING_DIGEST_HEX: &str = "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e";
+const BINDING_DIGEST_HEX: &str = "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4";
 
 #[derive(Debug)]
 pub(crate) struct EntrypointIdentity {
@@ -329,13 +329,13 @@ env_key = "UNSELECTED_PROVIDER_KEY"
         assert_eq!(binding.binding_id(), "codex-app-server");
         assert_eq!(
             binding.binding_digest_hex(),
-            "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
+            "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4"
         );
         assert_eq!(
             binding.artifact_digest(),
-            "83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c"
+            "bc343ba420dc2e2e9f59e6fc5e5bf0aae1cd8c771fc319665241fc9c0271fddb"
         );
-        assert_eq!(binding.entrypoint().byte_len, 359_245_096);
+        assert_eq!(binding.entrypoint().byte_len, 358_650_672);
     }
 
     #[cfg(windows)]

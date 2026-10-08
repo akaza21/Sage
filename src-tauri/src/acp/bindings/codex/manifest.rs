@@ -11,18 +11,24 @@ const MANIFEST_BYTES: usize = 64 * 1024;
 const ARTIFACTS_MAX: usize = 64;
 const ARTIFACT_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const PATH_BYTES_MAX: usize = 32 * 1024;
-const PINNED_CODEX_COMMIT: &str = "25af12f7e61572b0bc18ddb1008be543b91519b0";
-const PINNED_CODEX_VERSION: &str = "0.145.0";
+const PINNED_CODEX_COMMIT: &str = "e363b08c9175ac1cbe5893615dd2cb9ddf95043b";
+const PINNED_CODEX_VERSION: &str = "0.146.0";
 const PINNED_PACKAGE_NAME: &str = "@openai/codex";
-const PINNED_PACKAGE_VERSION: &str = "0.145.0-win32-x64";
-const PINNED_PACKAGE_SHA1: &str = "b24ffe0d63bcac64fe802c4c7d79176fb42e8337";
-const PINNED_PACKAGE_INTEGRITY: &str = "sha512-u0h9lk094CaXRSqE34SBW2dRaQTPa6fASXqehczWH9QdsU62mBsiAgAdp6tCG4i+YzPmmhjD8FdXNnYGNmwuMg==";
-const PINNED_PACKAGE_PACKED_BYTES: u64 = 150_852_388;
-const PINNED_PACKAGE_UNPACKED_BYTES: u64 = 427_151_500;
-pub(crate) const PINNED_PROTOCOL_IDENTITY: &str = "codex-app-server-0.145.0-7b0ab167";
+const PINNED_PACKAGE_VERSION: &str = "0.146.0-win32-x64";
+const PINNED_PACKAGE_SHA1: &str = "0a0f939280e71ea262c87751ccdb6a17d5bff81b";
+const PINNED_PACKAGE_INTEGRITY: &str = "sha512-b3lxMYeR0+IhstNo4JjX1P9cPc1xwVcCVkPd1lD1wpWPJ0SBhpIkPczwbu3ZRkJcdyl342+rgyf4DUrbZLdrGA==";
+const PINNED_PACKAGE_PACKED_BYTES: u64 = 151_682_891;
+const PINNED_PACKAGE_UNPACKED_BYTES: u64 = 429_289_628;
+pub(crate) const PINNED_PROTOCOL_IDENTITY: &str = "codex-app-server-0.146.0-d3992fec";
+pub(crate) fn supports_native_0146_protocol(identity: &str) -> bool {
+    matches!(
+        identity,
+        PINNED_PROTOCOL_IDENTITY | "codex-app-server-observed-0.146.0"
+    )
+}
 pub(crate) const PINNED_SCHEMA_SHA256: &str =
-    "7b0ab1679be705644a1b6c3f486f15e2f90e5f900486d90073b1dc5f0cf4c62c";
-const PINNED_CODEX_HOME_SUFFIX: &str = r"CodexState\codex-app-server-0.145.0-7b0ab167";
+    "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc";
+const PINNED_CODEX_HOME_SUFFIX: &str = r"CodexState\codex-app-server-0.146.0-d3992fec";
 
 #[derive(Clone, Copy)]
 struct ExpectedArtifact {
@@ -34,23 +40,23 @@ struct ExpectedArtifact {
 const PINNED_ARTIFACTS: [ExpectedArtifact; 8] = [
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\bin\codex.exe",
-        sha256: "83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c",
-        byte_len: 359_245_096,
+        sha256: "bc343ba420dc2e2e9f59e6fc5e5bf0aae1cd8c771fc319665241fc9c0271fddb",
+        byte_len: 358_650_672,
     },
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\bin\codex-code-mode-host.exe",
-        sha256: "de58d3bd9fb88c44555de1104d06fba78e207bce7115d92691b42f6b0f87f3b7",
-        byte_len: 53_605_168,
+        sha256: "6ef1de0e04d859f8f4f6d4d64f0f3ceeec28658423d91de160f5e804280d1c36",
+        byte_len: 56_309_040,
     },
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-command-runner.exe",
-        sha256: "09531442d178aefb4c849745e95a000f52d5910a13944638269d9991cb08319b",
-        byte_len: 1_271_088,
+        sha256: "0102fa1820ecd03bb03a991fd2303a1a484118f7da8a71864f88ec94bca61d6d",
+        byte_len: 1_302_832,
     },
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-windows-sandbox-setup.exe",
-        sha256: "c981b438d0959e33f90f6b8b1a9656c4f803a1b82ebdd97e2150d2b8543a0c31",
-        byte_len: 8_807_728,
+        sha256: "c12d225b34e7f82cdab6bbc714797abed661f40e158104694953889750121cef",
+        byte_len: 8_804_144,
     },
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe",
@@ -59,18 +65,18 @@ const PINNED_ARTIFACTS: [ExpectedArtifact; 8] = [
     },
     ExpectedArtifact {
         relative_path: r"vendor\x86_64-pc-windows-msvc\codex-package.json",
-        sha256: "d15dd152401ec63697fb4888d3dec75a849ac85c11aa69256bccc0355e0b7ddd",
+        sha256: "aaa0646d6b615da94187b51efd50c69621a00867761161ae55cc16cfd545bec7",
         byte_len: 215,
     },
     ExpectedArtifact {
         relative_path: "package.json",
-        sha256: "74c94696f460ad5dd07371a813a49ac2604121569e075a7e938d2f60b6de76a2",
+        sha256: "223e8306038c65e658e6d008ae50b45d238e0a6778acd88b70c4f9d1534f3a2f",
         byte_len: 511,
     },
     ExpectedArtifact {
         relative_path: "README.md",
-        sha256: "8ef3dd9dd00c7dd39d1f0b77de69d25cff4dd3fe7768ec3a3cd1fc9c0aa5b76c",
-        byte_len: 2_814,
+        sha256: "ba4e1f69ff48386e72a9c5e1edaf76aad64a475c2d51af79ccba6d1128261ba7",
+        byte_len: 3_334,
     },
 ];
 

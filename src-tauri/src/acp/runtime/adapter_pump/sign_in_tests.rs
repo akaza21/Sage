@@ -20,8 +20,8 @@ fn goal_active_response_mismatch_reaches_sqlite_only_after_client_verification()
         let init = codex.command(AdapterCommand::Initialize).unwrap();
         codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();
         let initialized = codex.ingest(&codex_frame(serde_json::json!({"id":1,"result":{
-            "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
             "platformFamily":"windows","platformOs":"windows"
         }})), &Mapper).unwrap();
         codex.resolve_egress(initialized.egress()[0].token().clone(), EgressResolution::Queued).unwrap();

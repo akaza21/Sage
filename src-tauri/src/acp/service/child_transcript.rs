@@ -119,5 +119,5 @@ fn observed_protocol(
     Ok(value
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str)
-        == Some("codex-app-server-observed-0.146.0"))
+        .is_some_and(crate::acp::bindings::codex::supports_native_0146_protocol))
 }

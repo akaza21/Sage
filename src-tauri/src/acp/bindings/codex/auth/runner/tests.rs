@@ -329,8 +329,8 @@ fn transport_vec(frames: Vec<Frame>) -> ScriptTransport {
 
 fn initialize(id: u64) -> Frame {
     json_frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
+        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
         "platformFamily":"windows","platformOs":"windows"
     }}))
 }

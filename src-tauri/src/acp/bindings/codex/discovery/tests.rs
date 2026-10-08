@@ -30,8 +30,8 @@ fn frame(value: Value) -> Frame {
 
 fn initialize_result(id: u64) -> Frame {
     frame(json!({"id":id,"result":{
-        "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+        "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) terminal (sage; 0.1.0)",
+        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
         "platformFamily":"windows",
         "platformOs":"windows"
     }}))
@@ -87,7 +87,7 @@ fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
     let account = protocol.account_request().unwrap();
     let account_value: Value = serde_json::from_slice(account.payload()).unwrap();
     assert_eq!(account_value["method"], "account/read");
-    // rust-v0.145.0 authority:
+    // rust-v0.146.0 authority:
     // app-server-protocol/src/protocol/v2/account.rs:484-491 defines the
     // default-false flag, and protocol/common.rs:2942-2955 proves that false
     // serializes as an empty params object rather than `refreshToken:false`.

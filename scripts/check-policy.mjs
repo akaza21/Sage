@@ -340,7 +340,7 @@ const cargoBinBlocks =
     /\[\[bin\]\][\s\S]*?(?=\r?\n\[(?:\[bin\]|features|profile\.)|$)/g,
   ) ?? [];
 const helperBinBlocks = cargoBinBlocks.filter((block) =>
-  /^name = "sage-codex-0145-elevated-helper"$/m.test(block),
+  /^name = "sage-codex-0146-elevated-helper"$/m.test(block),
 );
 const cargoFeaturesBlock =
   packageCargoToml.match(/\[features\][\s\S]*?(?=\r?\n\[|$)/)?.[0] ?? "";

@@ -166,8 +166,8 @@ fn initialize(runtime: &mut CodexRuntime) {
     let batch = runtime
         .ingest(
             &frame(json!({"id":id,"result":{
-                "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
                 "platformFamily":"windows",
                 "platformOs":"windows"
             }})),
@@ -225,7 +225,7 @@ fn thread_started_notification_completes_the_pending_new_session() {
     ));
     assert!(
         batch.egress().is_empty(),
-        "managed 0.145 must not send goal RPC"
+        "thread notification does not send a Goal RPC before the session response"
     );
 }
 
@@ -931,7 +931,7 @@ fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() 
     );
     assert_ne!(
         admitted.protocol_version.as_str(),
-        "codex-app-server-0.145.0-7b0ab167"
+        "codex-app-server-0.146.0-d3992fec"
     );
 
     let mut runtime = CodexRuntime::from_admitted_binding(

@@ -83,10 +83,10 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         load_session: ceiling.load_session,
         close_session: ceiling.close_session,
         cancel: ceiling.cancel,
-        active_turn_steer: false,
+        active_turn_steer: true,
         model_list: ceiling.model_list,
         child_conversation_projection: ceiling.child_conversation_projection,
-        child_transcript_read: false,
+        child_transcript_read: true,
         collaboration_event_projection: ceiling.collaboration_event_projection,
     }
 }
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn the_signed_managed_package_keeps_its_independently_admitted_ceiling() {
+    fn managed_0146_admits_steer_and_child_transcript_after_exact_pin_admission() {
         let (snapshot, models) = projected_capabilities(&pinned(), None).unwrap();
         assert_eq!(
             snapshot.protocol_version.as_str(),
@@ -205,8 +205,8 @@ mod tests {
         );
         assert!(models);
         assert!(snapshot.resume_session && snapshot.collaboration_event_projection);
-        assert!(!snapshot.active_turn_steer);
-        assert!(!snapshot.child_transcript_read);
+        assert!(snapshot.active_turn_steer);
+        assert!(snapshot.child_transcript_read);
     }
 
     #[test]

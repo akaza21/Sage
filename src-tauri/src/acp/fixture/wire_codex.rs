@@ -8,7 +8,7 @@ use super::super::FixtureError;
 use super::{WireState, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
-const USER_AGENT: &str = "sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
+const USER_AGENT: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
 const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
 
 pub(super) fn await_request(
