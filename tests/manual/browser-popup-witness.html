@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sage popup witness</title>
+    <style>
+      body {
+        font:
+          16px system-ui,
+          sans-serif;
+        max-width: 48rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      button,
+      a {
+        display: inline-block;
+        margin: 0.4rem 0.6rem 0.4rem 0;
+        padding: 0.5rem;
+      }
+      pre {
+        white-space: pre-wrap;
+        border: 1px solid #888;
+        padding: 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sage popup witness</h1>
+    <p id="identity"></p>
+    <div id="controls">
+      <button id="window-open" type="button">window.open child</button>
+      <a
+        id="blank-link"
+        target="_blank"
+        rel="noopener"
+        href="?child=target-blank"
+        >target=_blank child</a
+      >
+      <button id="close-race" type="button">
+        Open child, then close this Sage tab immediately
+      </button>
+      <button id="reload-race" type="button">
+        Open child, then reload opener immediately
+      </button>
+    </div>
+    <pre id="log" aria-live="polite"></pre>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const child = params.get("child");
+      const log = document.querySelector("#log");
+      const record = (message) => {
+        log.textContent += `${new Date().toISOString()} ${message}\n`;
+      };
+      document.querySelector("#identity").textContent = child
+        ? `Child page: ${child}`
+        : "Opener page";
+      if (child) {
+        document.querySelector("#controls").hidden = true;
+        record(`window.opener present: ${Boolean(window.opener)}`);
+      } else {
+        const open = (label) => {
+          const url = new URL(location.href);
+          url.search = new URLSearchParams({ child: label }).toString();
+          const handle = window.open(url.href, "_blank");
+          record(
+            `${label}: window.open returned ${handle === null ? "null" : "a handle"}`,
+          );
+        };
+        document.querySelector("#window-open").onclick = () =>
+          open("window-open");
+        document.querySelector("#close-race").onclick = () => {
+          open("close-race");
+          record(
+            "Close this opener tab in Sage immediately; do not use window.close().",
+          );
+        };
+        document.querySelector("#reload-race").onclick = () => {
+          open("reload-race");
+          location.reload();
+        };
+      }
+    </script>
+  </body>
+</html>
