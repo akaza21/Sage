@@ -275,12 +275,19 @@ export function AgentTaskHeader({
                   {doneAgents} done
                 </span>
               </div>
-              {recentAgents.slice(-8).map((agent, index) => (
-                <p className="agent-task-header__agent" key={index}>
+              {recentAgents.slice(-8).map((agent) => (
+                <p className="agent-task-header__agent" key={agent.id}>
                   <span>{agent.label}</span>
-                  <span>{agent.status}</span>
+                  <span>
+                    {agent.status === "starting"
+                      ? "Starting when observed"
+                      : agent.status === "working"
+                        ? "Working when observed"
+                        : agent.status}
+                  </span>
                 </p>
               ))}
+              <small>Latest retained observations; not live.</small>
             </section>
             <section aria-label="Sources">
               <strong>Sources</strong>

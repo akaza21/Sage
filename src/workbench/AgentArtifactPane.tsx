@@ -364,6 +364,7 @@ export function AgentArtifactPane({
             <SubagentSurface
               page={focusedPage}
               itemId={subagentTarget.itemId}
+              agentKey={subagentTarget.agentKey}
             />
           ) : null}
           {!previewSelected && activeArtifact

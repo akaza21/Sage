@@ -7,6 +7,102 @@ import { SubagentSurface } from "./SubagentSurface";
 afterEach(cleanup);
 
 describe("SubagentSurface", () => {
+  it("reopens a completed child with its bounded recorded activity", () => {
+    const page = {
+      chatId: "chat",
+      projectId: "project",
+      turns: [
+        {
+          id: "turn",
+          sessionId: "session",
+          browserOperations: [],
+          items: [
+            {
+              id: "spawn",
+              kind: "collaboration",
+              payload: {
+                operation: "spawnAgent",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["secret"],
+                agentStates: [["secret", "running"]],
+              },
+            },
+            {
+              id: "child",
+              kind: "toolCall",
+              activityId: "activity-child",
+              lifecycle: "completed",
+              payload: { presentation: { label: "Review files" } },
+            },
+            {
+              id: "finish",
+              kind: "collaboration",
+              payload: {
+                operation: "wait",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["secret"],
+                agentStates: [["secret", "completed"]],
+              },
+            },
+          ],
+          activities: [{ id: "activity-child", parentItemId: "spawn" }],
+        },
+      ],
+    } as unknown as AcpChatPage;
+    render(<SubagentSurface page={page} itemId="spawn" agentKey="secret" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Done");
+    expect(screen.getByText("Review files")).toBeVisible();
+    expect(screen.getByText(/Bounded activity recorded/)).toBeVisible();
+  });
+  it("reconciles an attributed started row with its later completion", () => {
+    const page = {
+      projectId: "project",
+      chatId: "chat",
+      turns: [
+        {
+          id: "turn",
+          sessionId: "session",
+          browserOperations: [],
+          items: [
+            {
+              id: "spawn",
+              kind: "collaboration",
+              payload: {
+                operation: "spawnAgent",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["secret"],
+                agentStates: [["secret", "pendingInit"]],
+              },
+            },
+            {
+              id: "started",
+              kind: "collaboration",
+              payload: {
+                operation: "started",
+                agentKey: "secret",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["secret"],
+                agentStates: [["secret", "running"]],
+              },
+            },
+            {
+              id: "finish",
+              kind: "collaboration",
+              payload: {
+                operation: "wait",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["secret"],
+                agentStates: [["secret", "completed"]],
+              },
+            },
+          ],
+          activities: [],
+        },
+      ],
+    } as unknown as AcpChatPage;
+    render(<SubagentSurface page={page} itemId="started" agentKey="secret" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Done");
+  });
   it("does not call a mixed running/completed group done", () => {
     const page = {
       turns: [

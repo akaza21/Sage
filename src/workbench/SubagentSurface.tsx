@@ -1,4 +1,5 @@
 import type { AcpChatPage, AcpItem } from "../domain/acp";
+import { projectTaskResources } from "./agentArtifactTabPresentation";
 
 const MAX_CHILD_ACTIVITIES = 32;
 
@@ -14,9 +15,11 @@ function childActivityLabel(item: AcpItem): string {
 export function SubagentSurface({
   page,
   itemId,
+  agentKey,
 }: {
   page: AcpChatPage;
   itemId: string;
+  agentKey?: string;
 }) {
   const turn = page.turns.find((candidate) =>
     candidate.items.some((item) => item.id === itemId),
@@ -32,15 +35,34 @@ export function SubagentSurface({
         ? item.payload.label
         : "Subagent";
   const states = item.payload.agentStates ?? [];
-  const status = states.some(
-    ([, state]) => state === "running" || state === "pendingInit",
-  )
-    ? "Working when observed"
-    : states.length > 0 && states.every(([, state]) => state === "completed")
-      ? "Done"
-      : item.payload.operation === "interrupted"
-        ? "Stopped"
-        : "Observed";
+  const recent = agentKey
+    ? projectTaskResources(page, page.chatId).recentAgents
+    : [];
+  const latest = agentKey
+    ? (
+        recent.find((agent) => agent.id === `${itemId}:${agentKey}`) ??
+        (item.payload.operation === "started"
+          ? recent.filter((agent) => agent.agentKey === agentKey).at(-1)
+          : null)
+      )?.status
+    : null;
+  const status = latest
+    ? latest === "starting"
+      ? "Starting when observed"
+      : latest === "working"
+        ? "Working when observed"
+        : latest === "done"
+          ? "Done"
+          : latest === "stopped"
+            ? "Stopped"
+            : "Failed"
+    : states.some(([, state]) => state === "running" || state === "pendingInit")
+      ? "Working when observed"
+      : states.length > 0 && states.every(([, state]) => state === "completed")
+        ? "Done"
+        : item.payload.operation === "interrupted"
+          ? "Stopped"
+          : "Observed";
 
   const childIds = new Set<string>();
   for (const activity of turn.activities) {

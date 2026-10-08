@@ -21,6 +21,22 @@ export type TaskOutput = {
 };
 
 export type TaskSource = { label: string; tabId: string | null };
+type AgentStatus = "starting" | "working" | "done" | "stopped" | "failed";
+type RecentAgent = {
+  id: string;
+  label: string;
+  status: AgentStatus;
+  agentKey?: string;
+};
+
+function agentStatus(state: string | undefined): AgentStatus | null {
+  if (state === "pendingInit") return "starting";
+  if (state === "running") return "working";
+  if (state === "completed") return "done";
+  if (state === "shutdown" || state === "interrupted") return "stopped";
+  if (state === "errored" || state === "notFound") return "failed";
+  return null;
+}
 
 function httpHost(value: string): string | null {
   if (value.length > 2048) return null;
@@ -38,10 +54,7 @@ export function projectTaskResources(
   page: AcpChatPage | null,
   chatId: string | null,
 ) {
-  const agents = new Map<
-    string,
-    { label: string; status: "working" | "done" }
-  >();
+  const agents = new Map<string, RecentAgent>();
   const latestInvocation = new Map<string, string>();
   const outputs = new Map<string, TaskOutput>();
   const sources = new Map<string, TaskSource>();
@@ -82,7 +95,7 @@ export function projectTaskResources(
         diffRef: change.diffRef,
       });
     }
-    for (const operation of turn.browserOperations.slice(
+    for (const operation of (turn.browserOperations ?? []).slice(
       -MAX_RECENT_RESOURCE_ITEMS,
     )) {
       if (
@@ -113,29 +126,42 @@ export function projectTaskResources(
             const state = states.find(([agent]) => agent === key)?.[1];
             const label =
               item.payload.receiverLabels[index]?.trim() || "Subagent";
-            if (state === "running" || state === "pendingInit")
-              agents.set(invocation, { label, status: "working" });
-            if (state === "completed")
-              agents.set(invocation, { label, status: "done" });
+            const status = agentStatus(state);
+            if (status)
+              agents.set(invocation, {
+                id: invocation,
+                label,
+                status,
+                agentKey: key,
+              });
           }
         } else if (
           item.payload.operation === "started" &&
           item.payload.agentKey
         ) {
-          const invocation = latestInvocation.get(item.payload.agentKey);
+          const key = item.payload.agentKey;
+          const invocation = latestInvocation.get(key);
           const agent = invocation ? agents.get(invocation) : null;
-          if (invocation && agent?.status !== "done")
+          if (
+            invocation &&
+            agent &&
+            (agent.status === "starting" || agent.status === "working")
+          )
             agents.set(invocation, {
-              label: agent?.label ?? "Subagent",
+              id: invocation,
+              label: agent.label,
               status: "working",
+              agentKey: key,
             });
         } else if (
           item.payload.operation === "interrupted" &&
           item.payload.agentKey
         ) {
           const invocation = latestInvocation.get(item.payload.agentKey);
-          if (invocation) agents.delete(invocation);
-          latestInvocation.delete(item.payload.agentKey);
+          if (invocation) {
+            const agent = agents.get(invocation);
+            if (agent) agents.set(invocation, { ...agent, status: "stopped" });
+          }
         }
         if (item.payload.operation !== "spawnAgent") {
           for (const [key, state] of states) {
@@ -147,17 +173,21 @@ export function projectTaskResources(
               ]?.trim() ||
               agents.get(invocation)?.label ||
               "Subagent";
+            const status = agentStatus(state);
+            const previous = agents.get(invocation)?.status;
             if (
-              (state === "running" || state === "pendingInit") &&
-              agents.get(invocation)?.status !== "done"
+              status &&
+              (!previous ||
+                previous === "starting" ||
+                previous === "working" ||
+                (status !== "starting" && status !== "working"))
             )
-              agents.set(invocation, { label, status: "working" });
-            else if (state === "completed")
-              agents.set(invocation, { label, status: "done" });
-            else if (state !== "running" && state !== "pendingInit") {
-              agents.delete(invocation);
-              latestInvocation.delete(key);
-            }
+              agents.set(invocation, {
+                id: invocation,
+                label,
+                status,
+                agentKey: key,
+              });
           }
         }
       } else if (
@@ -170,9 +200,9 @@ export function projectTaskResources(
             item.toolState,
           )
         )
-          agents.set(item.id, { label, status: "working" });
+          agents.set(item.id, { id: item.id, label, status: "working" });
         else if (item.toolState === "completed")
-          agents.set(item.id, { label, status: "done" });
+          agents.set(item.id, { id: item.id, label, status: "done" });
       }
       if (
         item.kind === "toolCall" &&
@@ -188,8 +218,9 @@ export function projectTaskResources(
   }
   const recentAgents = [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
   return {
-    workingAgents: recentAgents.filter((agent) => agent.status === "working")
-      .length,
+    workingAgents: recentAgents.filter(
+      (agent) => agent.status === "working" || agent.status === "starting",
+    ).length,
     doneAgents: recentAgents.filter((agent) => agent.status === "done").length,
     recentAgents,
     outputs: [...outputs.values()],

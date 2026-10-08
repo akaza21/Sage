@@ -151,4 +151,5 @@ it("separates recent working and done figures without an inert child-open contro
   ).toHaveLength(1);
   expect(section).not.toHaveTextContent("private-thread");
   expect(within(section).queryByRole("button")).toBeNull();
+  expect(section).toHaveTextContent("Latest retained observations; not live.");
 });
