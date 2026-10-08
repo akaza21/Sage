@@ -45,7 +45,10 @@ test("CP-16 refs 08/13: primary activity rows keep a 32 px scale cadence and adm
               label,
               summary: label,
               resources: [],
-              activity: index % 2 === 0 ? "ordinary" as const : "declaredTest" as const,
+              activity:
+                index % 2 === 0
+                  ? ("ordinary" as const)
+                  : ("declaredTest" as const),
             },
             inputSummary: null,
           },
@@ -64,7 +67,9 @@ test("CP-16 refs 08/13: primary activity rows keep a 32 px scale cadence and adm
   const pane = page.locator(".agent-chat-pane");
   const work = pane.locator(".chat-transcript-work");
   await expect(
-    work.locator(".acp-message--assistant .acp-markdown, .acp-tool-rollup__label"),
+    work.locator(
+      ".acp-message--assistant .acp-markdown, .acp-tool-rollup__label",
+    ),
   ).toHaveText([
     "First note",
     "Ran commands",
@@ -170,11 +175,15 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
   await expect(pane.getByText("Reviewer started working")).toBeVisible();
   await expect(pane.getByText("Builder and Tester finished")).toBeVisible();
   await expect(pane.locator(".acp-subagent-row__glyph")).toHaveCount(5);
-  await expect(pane.locator(".chat-transcript-work__groups")).toHaveScreenshot("cp16-subagent-rows.png");
+  await expect(pane.locator(".chat-transcript-work__groups")).toHaveScreenshot(
+    "cp16-subagent-rows.png",
+  );
   await page.getByRole("button", { name: "Show chat resources" }).click();
   const popover = page.getByRole("dialog", { name: "Chat resources" });
   await expect(popover.getByLabel("Recent subagents working: 1")).toBeVisible();
   await expect(popover.getByLabel("Recent subagents done: 2")).toBeVisible();
-  await expect(popover.locator(".agent-task-header__agent-glyph")).toHaveCount(1);
+  await expect(popover.locator(".agent-task-header__agent-glyph")).toHaveCount(
+    1,
+  );
   await expect(popover).toHaveScreenshot("cp16-subagent-counts.png");
 });
