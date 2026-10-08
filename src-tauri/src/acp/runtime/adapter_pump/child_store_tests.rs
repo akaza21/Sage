@@ -155,6 +155,7 @@ fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_it
         child_thread_id: ExternalId::new("child", "child-one").unwrap(),
         child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
         item_id: ExternalId::new("item", "overflow").unwrap(),
+        role: None,
         lifecycle: ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::ThoughtSummary {
@@ -324,6 +325,7 @@ fn terminal_parent_turn_does_not_stop_bound_child_retention() {
         child_thread_id: ExternalId::new("child", "child-one").unwrap(),
         child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
         item_id: ExternalId::new("item", "late-command").unwrap(),
+        role: None,
         lifecycle: ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::ThoughtSummary {
@@ -396,6 +398,7 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
             child_thread_id: ExternalId::new("child", "child-one").unwrap(),
             child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
             item_id: ExternalId::new("item", id).unwrap(),
+            role: Some(crate::acp::bindings::codex::ChildTextRole::Assistant),
             lifecycle: ItemLifecycle::Completed,
             tool_state: None,
             payload: NormalizedPayload::Text {

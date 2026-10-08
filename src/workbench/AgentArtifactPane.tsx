@@ -1,5 +1,7 @@
 import { ExternalLink, Files, PanelRightClose, Plus } from "../ui/leanIcons";
 import {
+  lazy,
+  Suspense,
   useEffect,
   useId,
   useLayoutEffect,
@@ -36,7 +38,6 @@ import { artifactChipStatsForTab } from "./artifactChipStats";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
 import { AgentArtifactHeader } from "./AgentArtifactHeader";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
-import { SubagentSurface } from "./SubagentSurface";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
@@ -52,6 +53,12 @@ import {
   agentArtifactOwnerKey,
   type AgentArtifactOwner,
 } from "../domain/agentArtifact";
+
+const SubagentSurface = lazy(() =>
+  import("./SubagentSurface").then((module) => ({
+    default: module.SubagentSurface,
+  })),
+);
 
 export function AgentArtifactPane({
   expanded = true,
@@ -361,11 +368,14 @@ export function AgentArtifactPane({
         ) : null}
         <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
           {subagentSelected && focusedPage && subagentTarget ? (
-            <SubagentSurface
-              page={focusedPage}
-              itemId={subagentTarget.itemId}
-              agentKey={subagentTarget.agentKey}
-            />
+            <Suspense fallback={<p role="status">Loading subagent view…</p>}>
+              <SubagentSurface
+                page={focusedPage}
+                projectGeneration={String(projectGeneration)}
+                itemId={subagentTarget.itemId}
+                agentKey={subagentTarget.agentKey}
+              />
+            </Suspense>
           ) : null}
           {!previewSelected && activeArtifact
             ? activeArtifact.kind === "browser"

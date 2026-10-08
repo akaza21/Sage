@@ -109,6 +109,7 @@ pub(crate) enum IncomingEvent {
         child_thread_id: crate::acp::intent::ExternalId,
         child_turn_id: crate::acp::intent::ExternalId,
         item_id: crate::acp::intent::ExternalId,
+        role: Option<crate::acp::bindings::codex::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,

@@ -45,7 +45,7 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
     let item_id = text(item, "id", 512)?;
     if !matches!(
         item.get("type").and_then(Value::as_str),
-        Some("commandExecution" | "fileChange" | "reasoning")
+        Some("commandExecution" | "fileChange" | "reasoning" | "agentMessage" | "userMessage")
     ) {
         return Ok(IngressDisposition::IgnoredLate);
     }
@@ -54,7 +54,18 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
     } else {
         ItemLifecycle::Started
     };
-    let Some((payload, tool_state, terminal)) = normalize_item(item, requested, mapper)? else {
+    let kind = item.get("type").and_then(Value::as_str);
+    let normalized = if kind == Some("userMessage") {
+        Some((
+            super::super::super::normalize_child_user_message(item)
+                .map_err(|_| IngressError::Malformed)?,
+            None,
+            None,
+        ))
+    } else {
+        normalize_item(item, requested, mapper)?
+    };
+    let Some((payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::IgnoredLate);
     };
     Ok(IncomingEvent::ChildLiveItem {
@@ -64,6 +75,11 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
             .map_err(|_| IngressError::Identity)?,
         item_id: ExternalId::new("childItemId", item_id.to_owned())
             .map_err(|_| IngressError::Identity)?,
+        role: match kind {
+            Some("userMessage") => Some(super::super::super::ChildTextRole::User),
+            Some("agentMessage") => Some(super::super::super::ChildTextRole::Assistant),
+            _ => None,
+        },
         lifecycle: terminal.unwrap_or(requested),
         tool_state,
         payload,

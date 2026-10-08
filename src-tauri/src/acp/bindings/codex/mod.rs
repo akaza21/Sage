@@ -46,8 +46,8 @@ pub(crate) use authority::{
     inspect_codex_authority, verify_codex_config,
 };
 pub(crate) use child_transcript::{
-    ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES, MAX_TURNS,
-    normalize_read_response,
+    ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
+    MAX_TURNS, normalize_child_user_message, normalize_read_response,
 };
 pub(crate) use discovery::{
     AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,

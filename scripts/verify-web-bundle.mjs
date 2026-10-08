@@ -66,6 +66,7 @@ export function verifyWebBundle(root) {
     budgets.bundle?.webInitialStaticClosureGzipBytes;
   const totalLimit = budgets.bundle?.webTotalJsGzipBytes;
   const terminalLimit = budgets.bundle?.webTerminalLazyJsGzipBytes;
+  const subagentLimit = budgets.bundle?.webSubagentLazyJsGzipBytes;
   if (
     !Number.isInteger(entryLimit) ||
     !Number.isInteger(initialStaticClosureLimit) ||
@@ -74,7 +75,9 @@ export function verifyWebBundle(root) {
     initialStaticClosureLimit < 1 ||
     totalLimit < 1 ||
     (terminalLimit !== undefined &&
-      (!Number.isInteger(terminalLimit) || terminalLimit < 1))
+      (!Number.isInteger(terminalLimit) || terminalLimit < 1)) ||
+    (subagentLimit !== undefined &&
+      (!Number.isInteger(subagentLimit) || subagentLimit < 1))
   )
     fail("web bundle limits are missing or invalid");
   const receipt = json(
@@ -134,24 +137,24 @@ export function verifyWebBundle(root) {
     0,
   );
   let terminalLazyGzipBytes = 0;
+  let subagentLazyGzipBytes = 0;
   let coreTotalGzipBytes = totalGzipBytes;
+  const reachable = new Set();
+  const visitReachable = (key) => {
+    if (reachable.has(key)) return;
+    const record = manifest[key];
+    if (!record) fail("manifest reachable import is missing");
+    reachable.add(key);
+    for (const imported of [
+      ...(record.imports ?? []),
+      ...(record.dynamicImports ?? []),
+    ])
+      visitReachable(imported);
+  };
+  visitReachable(entries[0][0]);
   if (terminalLimit !== undefined) {
     const terminalKey = "src/workbench/TerminalDock.tsx";
     const terminal = manifest[terminalKey];
-    const reachable = new Set();
-    const visitReachable = (key) => {
-      if (reachable.has(key)) return;
-      const record = manifest[key];
-      if (!record) fail("manifest reachable import is missing");
-      reachable.add(key);
-      for (const imported of [
-        ...(record.imports ?? []),
-        ...(record.dynamicImports ?? []),
-      ]) {
-        visitReachable(imported);
-      }
-    };
-    visitReachable(entries[0][0]);
     if (
       !terminal?.isDynamicEntry ||
       !terminal.file?.endsWith(".js") ||
@@ -288,6 +291,24 @@ export function verifyWebBundle(root) {
     );
     coreTotalGzipBytes -= terminalLazyGzipBytes;
   }
+  if (subagentLimit !== undefined) {
+    const subagentKey = "src/workbench/SubagentSurface.tsx";
+    const subagent = manifest[subagentKey];
+    if (
+      !subagent?.isDynamicEntry ||
+      !subagent.file?.endsWith(".js") ||
+      !reachable.has(subagentKey) ||
+      initial.has(subagent.file) ||
+      Object.entries(manifest).some(
+        ([key, record]) =>
+          key !== subagentKey && record?.file === subagent.file,
+      )
+    ) {
+      fail("SubagentSurface must own a reachable, noninitial lazy chunk");
+    }
+    subagentLazyGzipBytes = gzipBytes(assetPath(root, subagent.file));
+    coreTotalGzipBytes -= subagentLazyGzipBytes;
+  }
   for (const file of jsFiles) {
     if (
       readFileSync(path.join(assets, file), "utf8").includes(
@@ -313,12 +334,17 @@ export function verifyWebBundle(root) {
     exceeded.push(
       `terminal lazy gzip ${terminalLazyGzipBytes} exceeds ${terminalLimit}`,
     );
+  if (subagentLimit !== undefined && subagentLazyGzipBytes > subagentLimit)
+    exceeded.push(
+      `subagent lazy gzip ${subagentLazyGzipBytes} exceeds ${subagentLimit}`,
+    );
   if (exceeded.length) fail(exceeded.join("; "));
   return {
     entryGzipBytes,
     initialStaticClosureGzipBytes,
     totalGzipBytes,
     terminalLazyGzipBytes,
+    subagentLazyGzipBytes,
     coreTotalGzipBytes,
     initialFiles: [...initial].sort(),
     jsFiles: jsFiles.sort(),

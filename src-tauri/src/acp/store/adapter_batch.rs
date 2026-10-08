@@ -63,6 +63,7 @@ pub(crate) struct ChildLiveItemCommand {
     pub child_thread_id: ExternalId,
     pub child_turn_id: ExternalId,
     pub item_id: ExternalId,
+    pub role: Option<crate::acp::bindings::codex::ChildTextRole>,
     pub lifecycle: crate::acp::lifecycle::ItemLifecycle,
     pub tool_state: Option<crate::acp::lifecycle::ToolState>,
     pub payload: crate::acp::intent::NormalizedPayload,

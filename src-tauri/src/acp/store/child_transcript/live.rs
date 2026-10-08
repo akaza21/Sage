@@ -123,7 +123,7 @@ fn apply_live_item(
     };
     let next = ChildItem {
         id: command.item_id.as_str().to_owned(),
-        role: None,
+        role: command.role,
         observed_sequence: turn
             .items
             .iter()
@@ -138,6 +138,10 @@ fn apply_live_item(
         if (item.lifecycle.is_terminal() && !next.lifecycle.is_terminal()) || *item == next {
             false
         } else {
+            let mut next = next;
+            if next.role.is_none() {
+                next.role = item.role;
+            }
             *item = next;
             true
         }
@@ -280,8 +284,12 @@ pub(super) fn merge_snapshots(
                         || (item.lifecycle.is_terminal() && candidate.observed_sequence.is_none())
                     {
                         let sequence = candidate.observed_sequence;
+                        let role = candidate.role;
                         *candidate = item.clone();
                         candidate.observed_sequence = sequence;
+                        if candidate.role.is_none() {
+                            candidate.role = role;
+                        }
                     }
                 } else {
                     let before = read_turn.items[read_index + 1..].iter().find_map(|next| {

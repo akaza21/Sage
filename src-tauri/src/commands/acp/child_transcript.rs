@@ -1,3 +1,4 @@
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -30,8 +31,7 @@ pub(crate) struct ChildTranscriptRequest {
     session_id: SageAgentSessionId,
     runtime_epoch: RuntimeEpoch,
     item_id: SageItemId,
-    child_thread_id: ExternalId,
-    parent_thread_id: ExternalId,
+    agent_key: ExternalId,
 }
 
 #[derive(Serialize)]
@@ -75,6 +75,34 @@ pub(crate) async fn get_acp_child_transcript_inner(
     if snapshot.runtime_epoch.is_some() && snapshot.runtime_epoch != Some(request.runtime_epoch) {
         return Err(intent_error(IntentError::StaleRuntimeEpoch));
     }
+    let parent_thread_id: Option<String> = state
+        .database
+        .connection()
+        .query_row(
+            "SELECT o.parent_thread_id FROM acp_child_thread_bindings b
+         JOIN acp_child_thread_owners o ON o.native_child_thread_id=b.native_child_thread_id
+         WHERE b.item_id=?1 AND b.project_id=?2 AND b.chat_id=?3
+           AND b.session_id=?4 AND b.runtime_epoch=?5
+           AND b.native_child_thread_id=?6
+           AND o.project_id=b.project_id AND o.chat_id=b.chat_id
+           AND o.session_id=b.session_id AND o.runtime_epoch=b.runtime_epoch
+           AND o.source='codexSubAgentActivity'",
+            params![
+                request.item_id.as_str(),
+                request.project_id.as_str(),
+                request.chat_id.as_str(),
+                request.session_id.as_str(),
+                request.runtime_epoch.get() as i64,
+                request.agent_key.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|_| read_error(ChildTranscriptReadError::RecoveryRequired))?;
+    let parent_thread_id =
+        parent_thread_id.ok_or_else(|| read_error(ChildTranscriptReadError::Unavailable))?;
+    let parent_thread_id = ExternalId::new("parentThreadId", parent_thread_id)
+        .map_err(|_| read_error(ChildTranscriptReadError::RecoveryRequired))?;
     let scope = ChildTranscriptScope {
         owner: RuntimeOwner {
             project_id: request.project_id,
@@ -83,8 +111,8 @@ pub(crate) async fn get_acp_child_transcript_inner(
             runtime_epoch: request.runtime_epoch,
         },
         item_id: request.item_id.as_str().to_owned(),
-        child_thread_id: request.child_thread_id.as_str().to_owned(),
-        parent_thread_id: request.parent_thread_id.as_str().to_owned(),
+        child_thread_id: request.agent_key.as_str().to_owned(),
+        parent_thread_id: parent_thread_id.as_str().to_owned(),
     };
     match state.acp.read_child_transcript(scope).map_err(read_error)? {
         ChildTranscriptRead::Current(snapshot) => Ok(ChildTranscriptResponse::Current { snapshot }),

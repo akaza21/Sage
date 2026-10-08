@@ -5,6 +5,7 @@
     "webInitialStaticClosureGzipBytes": 130000,
     "webTotalJsGzipBytes": 461000,
     "webTerminalLazyJsGzipBytes": 89500,
+    "webSubagentLazyJsGzipBytes": 4000,
     "windowsInstallerMb": 45,
     "macosSingleArchitectureMb": 45,
     "macosUniversalMb": 80,

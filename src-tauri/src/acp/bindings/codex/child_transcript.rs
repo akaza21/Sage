@@ -143,10 +143,9 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
                 .ok_or(ChildTranscriptError::Malformed)?;
             let normalized = match kind {
                 "userMessage" => Some((
-                    NormalizedPayload::Text {
-                        text: SafeText::new("text", user_text(item)?)
-                            .map_err(|_| ChildTranscriptError::Malformed)?,
-                    },
+                    normalize_child_user_message(
+                        item.as_object().ok_or(ChildTranscriptError::Malformed)?,
+                    )?,
                     None,
                     None,
                 )),
@@ -237,7 +236,16 @@ fn bounded_text(value: Option<&Value>) -> Result<String, ChildTranscriptError> {
     Ok(text.into())
 }
 
-fn user_text(item: &Value) -> Result<String, ChildTranscriptError> {
+pub(crate) fn normalize_child_user_message(
+    item: &serde_json::Map<String, Value>,
+) -> Result<NormalizedPayload, ChildTranscriptError> {
+    let text = user_text(item)?;
+    Ok(NormalizedPayload::Text {
+        text: SafeText::new("text", text).map_err(|_| ChildTranscriptError::Malformed)?,
+    })
+}
+
+fn user_text(item: &serde_json::Map<String, Value>) -> Result<String, ChildTranscriptError> {
     let content = item
         .get("content")
         .and_then(Value::as_array)

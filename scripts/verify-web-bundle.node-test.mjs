@@ -180,6 +180,49 @@ const desktopTarget = "desktop-native";
 const browserFixtureSentinel =
   "Simulated browser fixture — not live repository state.";
 
+test("named SubagentSurface budget keeps child decoding out of the core", async () => {
+  const root = await candidate();
+  try {
+    const manifestPath = path.join(root, "dist/.vite/manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const key = "src/workbench/SubagentSurface.tsx";
+    manifest["index.html"].dynamicImports.push(key);
+    manifest[key] = { file: "assets/subagent.js", isDynamicEntry: true };
+    await writeFile(
+      path.join(root, "dist/assets/subagent.js"),
+      "child view decoder",
+    );
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    const budgetPath = path.join(root, "docs/performance/budgets.json");
+    const budgets = JSON.parse(await readFile(budgetPath, "utf8"));
+    budgets.bundle.webSubagentLazyJsGzipBytes = 1000;
+    await writeFile(budgetPath, JSON.stringify(budgets));
+    await writeFile(
+      path.join(root, "dist/.sage-web-build-receipt.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        target: desktopTarget,
+        gzip: "node:zlib.gzipSync defaults",
+        source: webBuildSourceFingerprint(root),
+      }),
+    );
+    const result = verifyWebBundle(root);
+    assert.ok(result.subagentLazyGzipBytes > 0);
+    assert.equal(
+      result.coreTotalGzipBytes,
+      result.totalGzipBytes - result.subagentLazyGzipBytes,
+    );
+    manifest["index.html"].dynamicImports = ["_dynamic.js"];
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    assert.throws(
+      () => verifyWebBundle(root),
+      /reachable, noninitial lazy chunk/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function candidate({
   entry = "a",
   imported = "b",

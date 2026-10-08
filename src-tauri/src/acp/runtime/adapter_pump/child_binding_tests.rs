@@ -68,8 +68,12 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         let mut idle = pump.try_into_completed_parts().ok().expect("terminal handoff");
         let late_child = concat!(r#"{"method":"item/completed","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"late-command","type":"commandExecution","status":"completed","command":"rg late","aggregatedOutput":"late","exitCode":0}}}"#, "\n");
         idle.accept_idle_stdout_chunk(late_child.as_bytes(), 15).await.unwrap();
+        let child_agent = concat!(r#"{"method":"item/started","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"item-1","type":"agentMessage","text":"Live answer"}}}"#, "\n");
+        idle.accept_idle_stdout_chunk(child_agent.as_bytes(), 16).await.unwrap();
+        let child_user = concat!(r#"{"method":"item/completed","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"Inspect this"}]}}}"#, "\n");
+        idle.accept_idle_stdout_chunk(child_user.as_bytes(), 17).await.unwrap();
         let child_done = concat!(r#"{"method":"turn/completed","params":{"threadId":"child-native","turn":{"id":"native-turn-1","status":"completed"}}}"#, "\n");
-        idle.accept_idle_stdout_chunk(child_done.as_bytes(), 16).await.unwrap();
+        idle.accept_idle_stdout_chunk(child_done.as_bytes(), 18).await.unwrap();
         drop(idle);
         handle.close_when_drained();
         task.await.unwrap();
@@ -116,10 +120,12 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
             .unwrap().expect("persisted synthetic child command");
         assert_eq!(snapshot.turns.len(), 1);
         assert_eq!(snapshot.turns[0].id, "native-turn-1");
-        assert_eq!(snapshot.turns[0].items.len(), 4);
+        assert_eq!(snapshot.turns[0].items.len(), 6);
         assert_eq!(snapshot.turns[0].status, "completed");
         assert_eq!(snapshot.turns[0].items[3].id, "late-command");
-        assert!(snapshot.turns[0].items.iter().all(|item| item.role.is_none()));
+        assert!(snapshot.turns[0].items[..4].iter().all(|item| item.role.is_none()));
+        assert_eq!(snapshot.turns[0].items[4].role, Some(crate::acp::bindings::codex::ChildTextRole::Assistant));
+        assert_eq!(snapshot.turns[0].items[5].role, Some(crate::acp::bindings::codex::ChildTextRole::User));
         assert!(matches!(snapshot.turns[0].items[0].payload,
             crate::acp::intent::NormalizedPayload::ToolCall { .. }));
         let mut read_wire: serde_json::Value = serde_json::from_str(include_str!(
@@ -128,17 +134,19 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         read_wire["id"] = 41.into();
         read_wire["result"]["thread"]["id"] = "child-native".into();
         read_wire["result"]["thread"]["parentThreadId"] = "external-session".into();
-        let read = crate::acp::bindings::codex::normalize_read_response(
+        let mut read = crate::acp::bindings::codex::normalize_read_response(
             &serde_json::to_vec(&read_wire).unwrap(), 41, "child-native", "external-session", &Mapper
         ).unwrap();
         assert_eq!(read.turns[0].items.len(), 1);
+        read.turns[0].items[0].role = None;
         crate::acp::store::child_transcript::persist_snapshot(&mut reopened, &scope, &read, 11).unwrap();
         let merged = crate::acp::store::child_transcript::load_snapshot(&reopened, &scope)
             .unwrap().unwrap();
         assert_eq!(merged.turns.len(), 1);
         assert_eq!(merged.turns[0].items.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
-            ["command-one", "file-one", "reason-one", "late-command", "item-1"]);
-        assert_eq!(merged.turns.iter().map(|turn| turn.items.len()).sum::<usize>(), 5);
+            ["command-one", "file-one", "reason-one", "late-command", "item-1", "user-1"]);
+        assert_eq!(merged.turns.iter().map(|turn| turn.items.len()).sum::<usize>(), 6);
+        assert_eq!(merged.turns[0].items[4].role, Some(crate::acp::bindings::codex::ChildTextRole::Assistant));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
             matches!(item.payload, crate::acp::intent::NormalizedPayload::ToolCall { .. })));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
@@ -157,7 +165,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         crate::acp::store::child_transcript::persist_snapshot(&mut reopened, &scope, &overlapping_read, 12).unwrap();
         let deduped = crate::acp::store::child_transcript::load_snapshot(&reopened, &scope)
             .unwrap().unwrap();
-        assert_eq!(deduped.turns[0].items.len(), 5);
+        assert_eq!(deduped.turns[0].items.len(), 6);
         assert!(matches!(deduped.turns[0].items[1].lifecycle, ItemLifecycle::Completed));
         let parent_items: i64 = reopened.query_row(
             "SELECT COUNT(*) FROM items WHERE external_item_id IN ('activity-native','command-one')", [], |row| row.get(0)

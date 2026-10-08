@@ -76,6 +76,7 @@ pub(super) fn live_event_bytes(
         child_thread_id,
         child_turn_id,
         item_id,
+        role,
         payload,
         payload_digest,
         ..
@@ -85,12 +86,13 @@ pub(super) fn live_event_bytes(
     };
     verify_scope(intent, scope)?;
     if child_thread_id == &intent.external_session_id
-        || !matches!(
-            payload,
+        || !match payload {
+            NormalizedPayload::Text { .. } => role.is_some(),
             NormalizedPayload::ToolCall { .. }
-                | NormalizedPayload::FileChangeDiff { .. }
-                | NormalizedPayload::ThoughtSummary { .. }
-        )
+            | NormalizedPayload::FileChangeDiff { .. }
+            | NormalizedPayload::ThoughtSummary { .. } => role.is_none(),
+            _ => false,
+        }
     {
         return Err(PumpJournalError::Rejected);
     }
@@ -108,6 +110,7 @@ pub(super) fn convert_live(event: DurableAdapterEvent) -> AdapterInboundEvent {
         child_thread_id,
         child_turn_id,
         item_id,
+        role,
         lifecycle,
         tool_state,
         payload,
@@ -121,6 +124,7 @@ pub(super) fn convert_live(event: DurableAdapterEvent) -> AdapterInboundEvent {
         child_thread_id,
         child_turn_id,
         item_id,
+        role,
         lifecycle,
         tool_state,
         payload,

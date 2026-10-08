@@ -30,12 +30,14 @@ export const ItemView = memo(
     item,
     workingItems,
     interactive,
+    neutralTextRole,
     fileReferenceOwner,
     onOpenResource,
   }: {
     item: AcpItem;
     workingItems?: readonly AcpItem[];
     interactive: boolean;
+    neutralTextRole?: boolean;
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
   }) {
@@ -55,11 +57,13 @@ export const ItemView = memo(
                 </span>
               ) : null}
               <span className="acp-message__role">
-                {item.payload.role === "assistant"
-                  ? "Agent"
-                  : item.payload.role === "user"
-                    ? "You"
-                    : "System"}
+                {neutralTextRole
+                  ? "Unattributed"
+                  : item.payload.role === "assistant"
+                    ? "Agent"
+                    : item.payload.role === "user"
+                      ? "You"
+                      : "System"}
               </span>
               {timestamp ? (
                 <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
@@ -96,10 +100,19 @@ export const ItemView = memo(
           />
         );
       case "fileChangeDiff":
-        return (
+        return interactive ? (
           <p className="acp-activity__edit-reference">
             Edit included in the Turn changed-file summary
           </p>
+        ) : (
+          <article
+            className="acp-activity__edit-reference"
+            data-item-id={item.id}
+          >
+            {item.payload.changes.map((change, index) => (
+              <p key={index}>{change.summary}</p>
+            ))}
+          </article>
         );
       case "image":
         return <ImageItem item={item} />;
@@ -118,6 +131,7 @@ export const ItemView = memo(
       ? true
       : left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
+    left.neutralTextRole === right.neutralTextRole &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
     left.onOpenResource === right.onOpenResource,
 );

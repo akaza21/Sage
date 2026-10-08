@@ -43,6 +43,7 @@ use coalescer::PendingIngress;
 #[allow(unused_imports)]
 pub(crate) use completion::CompletedPumpParts;
 pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
+use payload::hex;
 pub(crate) use payload::normalized_payload_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +148,7 @@ pub(crate) enum DurableAdapterEvent {
         child_thread_id: ExternalId,
         child_turn_id: ExternalId,
         item_id: ExternalId,
+        role: Option<crate::acp::bindings::codex::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
@@ -436,10 +438,6 @@ fn pending_permission_slots() -> Result<Vec<PendingPermission>, AdapterPumpError
         .try_reserve_exact(LIMITS.queues.server_requests_per_session as usize)
         .map_err(|_| AdapterPumpError::BatchCapacity)?;
     Ok(values)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]

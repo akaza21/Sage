@@ -1,6 +1,10 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
+pub(super) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 pub(super) struct PayloadMeasurement {
     pub digest: String,
     pub bytes: usize,

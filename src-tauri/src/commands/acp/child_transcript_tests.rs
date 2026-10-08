@@ -271,8 +271,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         session_id: session.session_id,
         runtime_epoch: epoch,
         item_id: SageItemId::parse("item-one").unwrap(),
-        child_thread_id: ExternalId::new("child", "child-one").unwrap(),
-        parent_thread_id: ExternalId::new("parent", "adapter-session").unwrap(),
+        agent_key: ExternalId::new("child", "child-one").unwrap(),
     };
     let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
         owner: RuntimeOwner {
@@ -282,8 +281,8 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
             runtime_epoch: request.runtime_epoch,
         },
         item_id: request.item_id.as_str().to_owned(),
-        child_thread_id: request.child_thread_id.as_str().to_owned(),
-        parent_thread_id: request.parent_thread_id.as_str().to_owned(),
+        child_thread_id: request.agent_key.as_str().to_owned(),
+        parent_thread_id: "adapter-session".into(),
     };
     assert!(
         crate::acp::store::child_transcript::verify_current_binding(
@@ -293,7 +292,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         .is_ok()
     );
     let mut foreign = request.clone();
-    foreign.parent_thread_id = ExternalId::new("parent", "other-parent").unwrap();
+    foreign.agent_key = ExternalId::new("child", "other-child").unwrap();
     assert!(
         get_acp_child_transcript_inner(&state, foreign)
             .await

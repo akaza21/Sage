@@ -117,6 +117,7 @@ pub(crate) enum AdapterEvent {
         child_thread_id: ExternalId,
         child_turn_id: ExternalId,
         item_id: ExternalId,
+        role: Option<crate::acp::bindings::codex::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
