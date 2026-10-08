@@ -11,6 +11,12 @@ import { useStore } from "zustand";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
+  subagentPaneForPage,
+  ownerFromFocusedPage,
+  validFocusedSubagentPage,
+  useSubagentPaneStore,
+} from "../app/subagentPaneStore";
+import {
   agentArtifactFollowRecordFor,
   sameAgentArtifactTarget,
   type AgentArtifactTarget,
@@ -29,6 +35,7 @@ import { artifactChipStatsForTab } from "./artifactChipStats";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
 import { AgentArtifactHeader } from "./AgentArtifactHeader";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
+import { SubagentSurface } from "./SubagentSurface";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
@@ -71,6 +78,8 @@ export function AgentArtifactPane({
     (state) => state.admissions,
   );
   const followRecords = useAgentArtifactFollowStore((state) => state.records);
+  const subagentOpen = useSubagentPaneStore((state) => state.open);
+  const subagentSelectedState = useSubagentPaneStore((state) => state.selected);
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -85,34 +94,24 @@ export function AgentArtifactPane({
   const focusedProjectionStore = acpProjectionStoreFor(focusedChatId);
   const focusedPage = useStore(focusedProjectionStore, (state) => state.page);
   const focusedScope = useStore(focusedProjectionStore, (state) => state.scope);
-  const focusedOwner = useMemo<AgentArtifactOwner | null>(() => {
-    if (
-      projectTransitioning ||
-      !project ||
-      !focusedChatId ||
-      !focusedPage?.currentSessionId ||
-      !focusedScope ||
-      focusedPage.projectId !== project.id ||
-      focusedPage.chatId !== focusedChatId ||
-      focusedScope.projectId !== focusedPage.projectId ||
-      focusedScope.chatId !== focusedPage.chatId ||
-      focusedScope.projectGeneration !== String(projectGeneration)
-    ) {
-      return null;
-    }
-    return {
-      projectId: focusedPage.projectId,
-      chatId: focusedPage.chatId,
-      sessionId: focusedPage.currentSessionId,
-    };
-  }, [
-    focusedChatId,
+  const focusedPageValid = validFocusedSubagentPage(
     focusedPage,
     focusedScope,
-    project,
+    project?.id ?? null,
+    focusedChatId,
     projectGeneration,
     projectTransitioning,
-  ]);
+  );
+  const focusedOwner = useMemo<AgentArtifactOwner | null>(
+    () => ownerFromFocusedPage(focusedPage, focusedPageValid),
+    [focusedPage, focusedPageValid],
+  );
+  const subagentTarget = subagentPaneForPage(
+    subagentOpen,
+    focusedPageValid ? focusedPage : null,
+  );
+  const subagentAvailable = subagentTarget !== null;
+  const subagentSelected = subagentAvailable && subagentSelectedState;
   const artifacts = useMemo(
     () =>
       orderedTabs(tabs).filter((tab) =>
@@ -158,7 +157,8 @@ export function AgentArtifactPane({
         sameAgentArtifactTarget(target, record.selected),
       ) ?? null)
     : defaultTarget;
-  const previewSelected = selectedTarget?.kind === "preview";
+  const previewSelected =
+    !subagentSelected && selectedTarget?.kind === "preview";
   const previewControllerOwner = agentPreviewControllerOwner({
     browseOwner,
     focusedOwner,
@@ -176,7 +176,9 @@ export function AgentArtifactPane({
       container={canvasNode}
     />
   );
-  const activeArtifact = activeArtifactForTarget(artifacts, selectedTarget);
+  const activeArtifact = subagentSelected
+    ? null
+    : activeArtifactForTarget(artifacts, selectedTarget);
   const activeArtifactAdmitted = Boolean(
     activeArtifact &&
     agentArtifactAdmitted(admissions, focusedOwner, activeArtifact.id),
@@ -202,7 +204,7 @@ export function AgentArtifactPane({
     focusedOwner,
   });
 
-  const hasResources = artifacts.length > 0 || previewOpen;
+  const hasResources = artifacts.length > 0 || previewOpen || subagentAvailable;
   const resourceKeys = useMemo(
     () =>
       new Set([
@@ -210,8 +212,16 @@ export function AgentArtifactPane({
         ...(previewOpen
           ? [`preview:${agentArtifactOwnerKey(focusedOwner)}:${browseRevision}`]
           : []),
+        ...(subagentAvailable ? [`subagent:${subagentTarget?.itemId}`] : []),
       ]),
-    [artifacts, browseRevision, focusedOwner, previewOpen],
+    [
+      artifacts,
+      browseRevision,
+      focusedOwner,
+      previewOpen,
+      subagentAvailable,
+      subagentTarget,
+    ],
   );
 
   useEffect(() => {
@@ -221,6 +231,10 @@ export function AgentArtifactPane({
     availableResourceKeys.current = resourceKeys;
     if (!expanded && added) onExpandedChange?.(true);
   }, [expanded, onExpandedChange, resourceKeys]);
+
+  useEffect(() => {
+    if (subagentSelected && !expanded) onExpandedChange?.(true);
+  }, [expanded, onExpandedChange, subagentSelected]);
 
   useLayoutEffect(() => {
     if (expanded && !previousExpanded.current && focusOnExpand) {
@@ -236,7 +250,11 @@ export function AgentArtifactPane({
     return (
       <>
         <AgentArtifactCollapsedPane
-          count={artifacts.length + (previewOpen ? 1 : 0)}
+          count={
+            artifacts.length +
+            (previewOpen ? 1 : 0) +
+            (subagentAvailable ? 1 : 0)
+          }
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
           paneRef={paneRef}
@@ -269,11 +287,13 @@ export function AgentArtifactPane({
           {hasResources ? (
             <AgentArtifactTabStrip
               artifacts={artifacts}
-              selectedTarget={selectedTarget}
+              selectedTarget={subagentSelected ? null : selectedTarget}
               focusedOwner={focusedOwner}
               focusedPage={focusedPage}
               previewSelected={previewSelected}
               previewOpen={previewOpen}
+              subagentOpen={subagentAvailable}
+              subagentSelected={subagentSelected}
               record={record}
               availableTargets={availableTargets}
               activateTab={activateTab}
@@ -332,12 +352,18 @@ export function AgentArtifactPane({
           />
         ) : null}
         <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
+          {subagentSelected && focusedPage && subagentTarget ? (
+            <SubagentSurface
+              page={focusedPage}
+              itemId={subagentTarget.itemId}
+            />
+          ) : null}
           {!previewSelected && activeArtifact
             ? activeArtifact.kind === "browser"
               ? renderRegisteredCanvas("browser", activeArtifact)
               : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
             : null}
-          {!previewSelected && !activeArtifact ? (
+          {!subagentSelected && !previewSelected && !activeArtifact ? (
             <section
               className="placeholder-surface agent-artifact-pane__empty-state"
               aria-labelledby={emptyTitleId}

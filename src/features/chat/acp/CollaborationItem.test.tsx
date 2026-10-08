@@ -1,13 +1,63 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { safeItem } from "../../../services/acpDesktopResponseItems";
+import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
 import { CollaborationItem } from "./CollaborationItem";
 
 afterEach(cleanup);
 
 describe("CollaborationItem", () => {
+  it("opens an owner-scoped Subagent tab from a verified row", () => {
+    useSubagentPaneStore.getState().clear();
+    const item = safeItem({
+      id: "spawn-1",
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      turnId: "turn-1",
+      runtimeEpoch: "1",
+      ordinal: 1,
+      origin: "primary",
+      activityId: null,
+      lifecycle: "completed",
+      revision: "1",
+      createdAt: 1,
+      updatedAt: 2,
+      terminalAt: 2,
+      kind: "collaboration",
+      toolState: null,
+      payload: {
+        activityId: "activity-1",
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["thread-secret"],
+        agentStates: [["thread-secret", "running"]],
+      },
+    });
+    if (item?.kind !== "collaboration") throw new Error("Rejected fixture");
+    render(<CollaborationItem item={item} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Reviewer started working/ }),
+    );
+    expect(useSubagentPaneStore.getState().open).toEqual({
+      owner: {
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+      },
+      itemId: "spawn-1",
+    });
+  });
   it("shows a verified spawn as a compact working row without exposing thread IDs", () => {
     const item = {
       kind: "collaboration",
@@ -108,7 +158,7 @@ describe("CollaborationItem", () => {
     render(<CollaborationItem item={item} />);
     expect(screen.getByText("A, B and C finished")).toBeInTheDocument();
     expect(
-      screen.getByRole("status", { name: "A, B and C finished" }),
+      screen.getByRole("button", { name: /A, B and C finished/ }),
     ).toHaveClass("acp-subagent-row");
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       3,

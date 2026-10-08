@@ -133,6 +133,20 @@
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acp-subagent-row:hover {
+  color: var(--color-text-primary);
+}
+.acp-subagent-row:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .acp-subagent-row__glyphs {

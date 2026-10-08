@@ -1,5 +1,6 @@
-import { Eye, GitCompareArrows, Globe2, Pin, X } from "lucide-react";
+import { Eye, GitCompareArrows, Globe2, Pin, Sparkles, X } from "lucide-react";
 import { useRef } from "react";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 import {
   agentArtifactPendingTargets,
@@ -23,6 +24,8 @@ type AgentArtifactTabStripProps = {
   focusedPage: AcpChatPage | null;
   previewSelected: boolean;
   previewOpen: boolean;
+  subagentOpen: boolean;
+  subagentSelected: boolean;
   record: AgentArtifactFollowRecord | null;
   availableTargets: readonly AgentArtifactTarget[];
   activateTab: (tabId: string) => Promise<void> | void;
@@ -36,6 +39,8 @@ export function AgentArtifactTabStrip({
   focusedPage,
   previewSelected,
   previewOpen,
+  subagentOpen,
+  subagentSelected,
   record,
   availableTargets,
   activateTab,
@@ -107,6 +112,7 @@ export function AgentArtifactTabStrip({
                   data-resource-relative-path={tab.resource?.relativePath}
                   title={accessibleName}
                   onClick={() => {
+                    useSubagentPaneStore.getState().select(false);
                     if (focusedOwner) {
                       useAgentArtifactFollowStore.getState().pin(focusedOwner, {
                         kind: "tab",
@@ -197,11 +203,12 @@ export function AgentArtifactTabStrip({
                 aria-describedby={
                   previewPending ? "preview-new-resource" : undefined
                 }
-                onClick={() =>
+                onClick={() => {
+                  useSubagentPaneStore.getState().select(false);
                   useAgentArtifactFollowStore
                     .getState()
-                    .pin(focusedOwner, { kind: "preview" })
-                }
+                    .pin(focusedOwner, { kind: "preview" });
+                }}
               >
                 <Eye size={16} strokeWidth={1.8} aria-hidden="true" />
                 <span className="tab__path" aria-hidden="true">
@@ -216,6 +223,35 @@ export function AgentArtifactTabStrip({
                     <span className="sr-only">New resource</span>
                   </span>
                 ) : null}
+              </button>
+            </div>
+          ) : null}
+          {subagentOpen ? (
+            <div
+              className={`tab ${subagentSelected ? "tab--active" : ""}`}
+              role="presentation"
+              data-resource-kind="subagent"
+            >
+              <button
+                className="tab__activate"
+                type="button"
+                role="tab"
+                aria-selected={subagentSelected}
+                aria-label="Subagent"
+                onClick={() => useSubagentPaneStore.getState().select(true)}
+              >
+                <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />
+                <span className="tab__path" aria-hidden="true">
+                  <span className="tab__basename">Subagent</span>
+                </span>
+              </button>
+              <button
+                className="tab__close"
+                type="button"
+                aria-label="Close Subagent"
+                onClick={() => useSubagentPaneStore.getState().clear()}
+              >
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           ) : null}

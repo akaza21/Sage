@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
 import type { AcpItem } from "../../../domain/acp";
 
 type CollaborationProjectionItem = Extract<AcpItem, { kind: "collaboration" }>;
@@ -12,6 +13,13 @@ const collaborationStateLabels = {
   cancelled: "Cancelled",
   unsupported: "Unsupported",
 } as const;
+
+function avatarColor(key: string): number {
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1)
+    hash = (hash * 31 + key.charCodeAt(index)) | 0;
+  return Math.abs(hash % 3);
+}
 
 export function CollaborationItem({
   item,
@@ -54,7 +62,11 @@ export function CollaborationItem({
             ? 1
             : working.length;
     const agentLabel =
-      operation === "started" ? item.payload.label : "Subagent";
+      count === 1 && item.payload.receiverLabels.length === 1
+        ? item.payload.receiverLabels[0]
+        : operation === "started"
+          ? item.payload.label
+          : "Subagent";
     const names =
       isFinished && item.payload.receiverLabels.length === agentKeys.length
         ? finished.map(
@@ -83,20 +95,38 @@ export function CollaborationItem({
           : count === 1
             ? `${agentLabel} started working`
             : `${count} subagents started working`;
+    const owner = {
+      projectId: item.projectId,
+      chatId: item.chatId,
+      sessionId: item.sessionId,
+    };
     return (
-      <p className="acp-subagent-row" role="status" aria-label={text}>
+      <button
+        className="acp-subagent-row"
+        type="button"
+        aria-label={`${text}. Open Subagent`}
+        onClick={() =>
+          useSubagentPaneStore.getState().show({ owner, itemId: item.id })
+        }
+      >
         <span className="acp-subagent-row__glyphs" aria-hidden="true">
           {Array.from({ length: Math.min(count, 3) }, (_, index) => (
             <span
               key={index}
-              className={`acp-subagent-row__glyph acp-subagent-row__glyph--${index}`}
+              className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agentKeys[index] ?? item.payload.agentKey ?? item.id ?? "subagent")}`}
             >
               {isFinished ? "●" : "✦"}
             </span>
           ))}
         </span>
-        {text}
-      </p>
+        <span
+          role="status"
+          aria-label={text}
+          className={isStarted ? "acp-live-shimmer" : undefined}
+        >
+          {text}
+        </span>
+      </button>
     );
   }
   return (

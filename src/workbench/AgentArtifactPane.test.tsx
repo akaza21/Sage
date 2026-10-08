@@ -51,6 +51,7 @@ import {
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import {
   agentArtifactFollowRecordFor,
   useAgentArtifactFollowStore,
@@ -179,6 +180,7 @@ beforeEach(() => {
   previewBridge.subscribe.mockResolvedValue(vi.fn());
   previewBridge.available.mockReturnValue(true);
   useAgentArtifactFollowStore.getState().clear();
+  useSubagentPaneStore.getState().clear();
   seedFocusedPage();
   pinAgentChatOwner(focusedOwner.chatId);
   setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
@@ -225,11 +227,77 @@ afterEach(() => {
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
+  useSubagentPaneStore.getState().clear();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("Agent artifact file chips", () => {
+  it("opens a historical-session Subagent row in the focused Chat", async () => {
+    const base = pageWithEdit();
+    const older = {
+      ...base.turns[0].items[0],
+      id: "older-spawn",
+      sessionId: "session-older",
+      turnId: "turn-older",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Historian"],
+        operation: "spawnAgent",
+        agentKeys: ["hidden-child"],
+        agentStates: [["hidden-child", "completed"]],
+      },
+    } as unknown as AcpItem;
+    const page = {
+      ...base,
+      currentSessionId: null,
+      turns: [
+        {
+          ...base.turns[0],
+          id: "turn-older",
+          sessionId: "session-older",
+          items: [older],
+        },
+        ...base.turns,
+      ],
+    } as unknown as AcpChatPage;
+    clearAcpProjectionRegistry();
+    pinAcpProjectionIds(["chat-focused"]);
+    const store = acpProjectionStoreFor("chat-focused");
+    store.getState().activateScope({
+      projectId: focusedOwner.projectId,
+      projectGeneration: "0" as ProjectGeneration,
+      chatId: focusedOwner.chatId,
+    });
+    expect(
+      store.getState().applyAuthoritativePage(
+        {
+          projectId: focusedOwner.projectId,
+          projectGeneration: "0" as ProjectGeneration,
+          chatId: focusedOwner.chatId,
+        },
+        page,
+      ),
+    ).toBe("accepted");
+    useSubagentPaneStore.getState().show({
+      owner: {
+        ...focusedOwner,
+        sessionId: "session-older" as AgentArtifactOwner["sessionId"],
+      },
+      itemId: "older-spawn",
+    });
+    render(<AgentArtifactPane />);
+    expect(screen.getByRole("tab", { name: "Subagent" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Historian" }),
+    ).toBeVisible();
+  });
   it("starts empty as a collapsed right-edge resource affordance", () => {
     const onExpandedChange = vi.fn();
     pinAgentChatOwner(null);
