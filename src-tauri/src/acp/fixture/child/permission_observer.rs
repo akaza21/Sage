@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 
 use crate::acp::{
-    contract::SageServerRequestId,
     fixture::{generated_cases::FrozenCase, wire},
     process::{LaunchError, TreeExit},
     runtime::{
@@ -243,8 +242,7 @@ async fn drive_stdout(
             }
         }
         if resolve_first_permission && !permission_resolved {
-            fixture.record_deny_decision(11);
-            let request_id = SageServerRequestId::parse("permission-a").unwrap();
+            let request_id = fixture.record_deny_decision(11);
             if let Err(error) = driver
                 .resolve_permission(&request_id, PermissionDecision::Deny)
                 .await

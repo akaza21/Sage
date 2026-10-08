@@ -104,7 +104,12 @@ impl PermissionStoreFixture {
         )
     }
 
-    pub(super) fn record_deny_decision(&self, now_millis: i64) {
+    pub(super) fn record_deny_decision(&self, now_millis: i64) -> SageServerRequestId {
+        let request_id = SageServerRequestId::parse(self.text(
+            "SELECT id FROM server_requests
+             WHERE session_id='session-permission' AND external_request_id='permission-a'",
+        ))
+        .unwrap();
         let mut store = self.database_store();
         store
             .commit(&[StoreMutation::RequestState(RequestStateCommand {
@@ -113,11 +118,12 @@ impl PermissionStoreFixture {
                 session_id: self.session_id(),
                 turn_id: self.turn_id(),
                 runtime_epoch: self.runtime_epoch(),
-                request_id: SageServerRequestId::parse("permission-a").unwrap(),
+                request_id: request_id.clone(),
                 state: ServerRequestState::DeclinePending,
                 now_millis,
             })])
             .unwrap();
+        request_id
     }
 
     #[cfg(windows)]
