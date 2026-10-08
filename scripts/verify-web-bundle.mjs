@@ -65,7 +65,7 @@ export function verifyWebBundle(root) {
   const initialStaticClosureLimit =
     budgets.bundle?.webInitialStaticClosureGzipBytes;
   const totalLimit = budgets.bundle?.webTotalJsGzipBytes;
-  const terminalLimit = budgets.bundle?.webTerminalDockLazyJsGzipBytes;
+  const terminalLimit = budgets.bundle?.webTerminalLazyJsGzipBytes;
   if (
     !Number.isInteger(entryLimit) ||
     !Number.isInteger(initialStaticClosureLimit) ||
@@ -133,7 +133,7 @@ export function verifyWebBundle(root) {
     (sum, file) => sum + gzipBytes(path.join(assets, file)),
     0,
   );
-  let terminalDockGzipBytes = 0;
+  let terminalLazyGzipBytes = 0;
   let coreTotalGzipBytes = totalGzipBytes;
   if (terminalLimit !== undefined) {
     const terminalKey = "src/workbench/TerminalDock.tsx";
@@ -238,8 +238,55 @@ export function verifyWebBundle(root) {
     ) {
       fail("xterm appears outside the TerminalDock lazy chunk");
     }
-    terminalDockGzipBytes = gzipBytes(terminalFile);
-    coreTotalGzipBytes -= terminalDockGzipBytes;
+    const shellKey = "src/workbench/TerminalDockShell.tsx";
+    const shell = manifest[shellKey];
+    if (
+      !shell?.isDynamicEntry ||
+      !shell.file?.endsWith(".js") ||
+      !reachable.has(shellKey) ||
+      !(shell.dynamicImports ?? []).includes(terminalKey) ||
+      shell.file === terminal.file ||
+      Object.entries(manifest).some(
+        ([key, record]) => key !== shellKey && record?.file === shell.file,
+      )
+    ) {
+      fail(
+        "TerminalDockShell must be a separate reachable lazy terminal chrome chunk",
+      );
+    }
+    const sharedKeys = (shell.imports ?? []).filter(
+      (key) =>
+        (terminal.imports ?? []).includes(key) &&
+        manifest[key]?.name === "userTerminalDesktop",
+    );
+    if (sharedKeys.length !== 1)
+      fail("Terminal lazy port chunk is missing or ambiguous");
+    const portKey = sharedKeys[0];
+    const port = manifest[portKey];
+    if (!port?.file?.endsWith(".js") || !reachable.has(portKey))
+      fail("Terminal lazy port chunk is missing or ambiguous");
+    const terminalFiles = [terminal.file, shell.file, port.file];
+    if (terminalFiles.some((file) => initial.has(file)))
+      fail("Terminal lazy chunk entered initial static closure");
+    if (
+      Object.entries(manifest).some(
+        ([key, record]) =>
+          key !== shellKey &&
+          key !== terminalKey &&
+          key !== portKey &&
+          [
+            ...(record.imports ?? []),
+            ...(record.dynamicImports ?? []),
+          ].includes(portKey),
+      )
+    ) {
+      fail("Terminal lazy port must be imported only by terminal chunks");
+    }
+    terminalLazyGzipBytes = terminalFiles.reduce(
+      (sum, file) => sum + gzipBytes(assetPath(root, file)),
+      0,
+    );
+    coreTotalGzipBytes -= terminalLazyGzipBytes;
   }
   for (const file of jsFiles) {
     if (
@@ -260,18 +307,18 @@ export function verifyWebBundle(root) {
   }
   if (coreTotalGzipBytes > totalLimit)
     exceeded.push(
-      `total gzip excluding TerminalDock ${coreTotalGzipBytes} exceeds ${totalLimit}`,
+      `core total gzip excluding lazy terminal chunks ${coreTotalGzipBytes} exceeds ${totalLimit}`,
     );
-  if (terminalLimit !== undefined && terminalDockGzipBytes > terminalLimit)
+  if (terminalLimit !== undefined && terminalLazyGzipBytes > terminalLimit)
     exceeded.push(
-      `TerminalDock lazy gzip ${terminalDockGzipBytes} exceeds ${terminalLimit}`,
+      `terminal lazy gzip ${terminalLazyGzipBytes} exceeds ${terminalLimit}`,
     );
   if (exceeded.length) fail(exceeded.join("; "));
   return {
     entryGzipBytes,
     initialStaticClosureGzipBytes,
     totalGzipBytes,
-    terminalDockGzipBytes,
+    terminalLazyGzipBytes,
     coreTotalGzipBytes,
     initialFiles: [...initial].sort(),
     jsFiles: jsFiles.sort(),

@@ -56,7 +56,7 @@ const loadAgentWorkbenchBody = () =>
   }));
 
 const loadTerminalDock = () =>
-  import("./TerminalDock").then(({ TerminalDockForWorkbench }) => ({
+  import("./TerminalDockShell").then(({ TerminalDockForWorkbench }) => ({
     default: TerminalDockForWorkbench,
   }));
 

@@ -23,6 +23,10 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
       'import "@xterm/xterm";\n',
     );
     await writeFile(
+      path.join(root, "src/workbench/TerminalDockShell.tsx"),
+      'import("./TerminalDock");\n',
+    );
+    await writeFile(
       path.join(root, "package.json"),
       JSON.stringify({ dependencies: { "@xterm/xterm": "6.0.0" } }),
     );
@@ -30,19 +34,39 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
       path.join(root, "dist/assets/terminal.js"),
       "xterm terminal chunk",
     );
+    await writeFile(
+      path.join(root, "dist/assets/terminal-shell.js"),
+      "terminal tab chrome",
+    );
+    await writeFile(
+      path.join(root, "dist/assets/terminal-port.js"),
+      "terminal IPC port",
+    );
     await writeFile(path.join(root, "dist/assets/terminal.css"), ".xterm {}");
     const manifest = JSON.parse(
       await readFile(path.join(root, "dist/.vite/manifest.json"), "utf8"),
     );
     manifest["index.html"].dynamicImports.push(
-      "src/workbench/TerminalDock.tsx",
+      "src/workbench/TerminalDockShell.tsx",
     );
+    manifest["src/workbench/TerminalDockShell.tsx"] = {
+      file: "assets/terminal-shell.js",
+      src: "src/workbench/TerminalDockShell.tsx",
+      isDynamicEntry: true,
+      imports: ["_terminal-port.js"],
+      dynamicImports: ["src/workbench/TerminalDock.tsx"],
+    };
     manifest["src/workbench/TerminalDock.tsx"] = {
       file: "assets/terminal.js",
       src: "src/workbench/TerminalDock.tsx",
       isDynamicEntry: true,
-      imports: ["index.html"],
+      imports: ["index.html", "_terminal-port.js"],
       css: ["assets/terminal.css"],
+    };
+    manifest["_terminal-port.js"] = {
+      file: "assets/terminal-port.js",
+      name: "userTerminalDesktop",
+      imports: ["index.html"],
     };
     await writeFile(
       path.join(root, "dist/.vite/manifest.json"),
@@ -55,7 +79,7 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
           webEntryJsGzipBytes: 1000,
           webInitialStaticClosureGzipBytes: 1000,
           webTotalJsGzipBytes: 1000,
-          webTerminalDockLazyJsGzipBytes: 1000,
+          webTerminalLazyJsGzipBytes: 1000,
         },
       }),
     );
@@ -69,7 +93,11 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
       }),
     );
     const result = verifyWebBundle(root);
-    assert.ok(result.terminalDockGzipBytes > 0);
+    assert.ok(result.terminalLazyGzipBytes > 0);
+    assert.equal(
+      result.coreTotalGzipBytes,
+      result.totalGzipBytes - result.terminalLazyGzipBytes,
+    );
     assert.ok(result.coreTotalGzipBytes < result.totalGzipBytes);
     const terminalKey = "src/workbench/TerminalDock.tsx";
     manifest["index.html"].dynamicImports = ["_dynamic.js"];
@@ -83,7 +111,9 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
     );
     assert.throws(() => verifyWebBundle(root), /reachable lazy/i);
     delete manifest._orphan;
-    manifest["index.html"].dynamicImports.push(terminalKey);
+    manifest["index.html"].dynamicImports.push(
+      "src/workbench/TerminalDockShell.tsx",
+    );
     manifest._other = { file: "assets/terminal.js" };
     await writeFile(
       path.join(root, "dist/.vite/manifest.json"),
@@ -98,6 +128,27 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
     );
     assert.throws(() => verifyWebBundle(root), /initial static closure/i);
     manifest["index.html"].imports.pop();
+    manifest["index.html"].imports.push("src/workbench/TerminalDockShell.tsx");
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /initial static closure/i);
+    manifest["index.html"].imports.pop();
+    manifest["index.html"].imports.push("_terminal-port.js");
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /initial static closure/i);
+    manifest["index.html"].imports.pop();
+    manifest["_dynamic.js"].imports = ["_terminal-port.js"];
+    await writeFile(
+      path.join(root, "dist/.vite/manifest.json"),
+      JSON.stringify(manifest),
+    );
+    assert.throws(() => verifyWebBundle(root), /only by terminal chunks/i);
+    delete manifest["_dynamic.js"].imports;
     manifest["index.html"].css = ["assets/terminal.css"];
     await writeFile(
       path.join(root, "dist/.vite/manifest.json"),

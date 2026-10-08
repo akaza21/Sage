@@ -28,8 +28,9 @@ it("keeps all Q04 named surfaces behind dynamic imports", () => {
   expect(activeEditorCanvasSource).not.toContain('from "./SettingsSurface"');
   expect(workbenchSource).not.toContain('from "./SettingsSurface"');
   expect(workbenchSource).toContain('import("./AgentWorkbenchBody")');
-  expect(workbenchSource).toContain('import("./TerminalDock")');
-  expect(workbenchSource).not.toContain('from "./TerminalDock"');
+  expect(workbenchSource).toContain('import("./TerminalDockShell")');
+  expect(workbenchSource).not.toContain('from "./TerminalDockShell"');
+  expect(source("TerminalDockShell.tsx")).toContain('import("./TerminalDock")');
   expect(workbenchSource).toContain("pinnedChatId={pinnedAgentChatOwner()}");
   expect(source("TerminalDock.tsx")).not.toContain(
     'from "../app/agentChatOwner"',
