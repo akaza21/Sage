@@ -62,6 +62,19 @@ describe("composer image input", () => {
   it("explains unavailable capability and refuses a dropped image", () => {
     const { onAddImages } = renderComposer();
     expect(screen.getByRole("button", { name: "Add images" })).toBeDisabled();
+    const toolbar = document.querySelector(".composer__toolbar");
+    const options = screen.getByRole("button", { name: "Composer options" });
+    const image = screen.getByRole("button", { name: "Add images" });
+    const harness = screen.getByRole("button", { name: "Harness" });
+    expect(toolbar?.querySelector(".composer__controls")?.contains(image)).toBe(
+      true,
+    );
+    expect(
+      options.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      image.compareDocumentPosition(harness) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.drop(screen.getByRole("form"), {
       dataTransfer: { files: [png()], types: ["Files"] },
     });

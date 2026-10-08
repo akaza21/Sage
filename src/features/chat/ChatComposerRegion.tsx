@@ -281,6 +281,15 @@ export function ChatComposerRegion({
       ) : null}
       <div className="composer__toolbar">
         <ChatHarnessControls
+          imageControl={
+            <ComposerImageButton
+              available={imageInputAvailable}
+              disabled={composerDisabled}
+              uploading={imageUploading}
+              count={imageInput.count}
+              onChoose={imageInput.accept}
+            />
+          }
           availableBinding={availableBinding}
           canPrompt={canPrompt}
           discoveryPhase={discoveryPhase}
@@ -300,13 +309,6 @@ export function ChatComposerRegion({
           onSelectHarness={onSelectHarness}
           onSelectModel={onSelectModel}
           onModeRemoved={() => composerRef.current?.focus()}
-        />
-        <ComposerImageButton
-          available={imageInputAvailable}
-          disabled={composerDisabled}
-          uploading={imageUploading}
-          count={imageInput.count}
-          onChoose={imageInput.accept}
         />
         {!composerDisabled ? (
           <span className="composer__shortcut" aria-hidden="true">

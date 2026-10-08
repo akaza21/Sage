@@ -1,6 +1,12 @@
 import { Folder, Plus, Settings, ShieldCheck } from "../../ui/leanIcons";
 
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -35,6 +41,7 @@ import {
 } from "./useChatHarnessSelection";
 import "../../styles/harness-picker.css";
 interface Props {
+  imageControl?: ReactNode;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -61,6 +68,7 @@ interface Props {
 }
 
 export function ChatHarnessControls({
+  imageControl,
   availableBinding,
   canPrompt,
   sessionHarnessId,
@@ -221,6 +229,7 @@ export function ChatHarnessControls({
       >
         <Plus size={16} aria-hidden="true" />
       </button>
+      {imageControl}
       {availableBinding ? (
         <span
           className={`composer__access-label${effectiveAccessMode === "workspaceWrite" ? " composer__access-label--write" : ""}`}

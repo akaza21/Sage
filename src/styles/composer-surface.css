@@ -172,8 +172,8 @@
 .composer__toolbar {
   display: grid;
   min-height: 40px;
-  grid-template-areas: "controls image mic meter send";
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-areas: "controls mic meter send";
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 8px;
   padding: 2px 8px 8px 12px;

@@ -72,7 +72,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__options,\s*\.composer__model-menu\s*\{[^}]*position:\s*absolute;/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+image\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto\s+auto;/s,
+      /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto;/s,
     );
   });
 

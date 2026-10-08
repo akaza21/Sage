@@ -8,7 +8,6 @@
 
 .composer__image-button {
   display: grid;
-  grid-area: image;
   width: 28px;
   height: 28px;
   padding: 0;
