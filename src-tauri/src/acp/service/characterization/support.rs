@@ -169,9 +169,10 @@ pub(super) fn map_host_error(
 
 fn classify_host_error(error: HostError) -> CharacterizationError {
     match error {
-        HostError::Intent | HostError::ConfigMutationRejected | HostError::SignInRequired => {
-            CharacterizationError::Intent
-        }
+        HostError::Intent
+        | HostError::ConfigMutationRejected
+        | HostError::GoalMutationRejected
+        | HostError::SignInRequired => CharacterizationError::Intent,
         HostError::Capacity => CharacterizationError::Capacity,
         HostError::Unavailable
         | HostError::State
@@ -252,6 +253,10 @@ mod tests {
         );
         assert_eq!(
             classify_host_error(HostError::ConfigMutationRejected),
+            CharacterizationError::Intent
+        );
+        assert_eq!(
+            classify_host_error(HostError::GoalMutationRejected),
             CharacterizationError::Intent
         );
         assert_eq!(

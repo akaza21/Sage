@@ -141,7 +141,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
                 chat_id: chat_id.clone(),
                 expected_projection_revision: revision,
                 client_intent_id: ClientIntentId::parse("child-start").unwrap(),
-                binding_id: BindingId::new("binding", "child-test").unwrap(),
+                binding_id: BindingId::new("binding", "sage-simulator").unwrap(),
                 binding_digest: "a".repeat(64),
                 harness_version: None,
                 model_id: None,
@@ -229,6 +229,12 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
             rusqlite::params![project_id.as_str(), chat_id.as_str(), session.session_id.as_str()]).unwrap();
         connection.execute("INSERT INTO acp_child_thread_bindings(item_id,project_id,chat_id,session_id,turn_id,runtime_epoch,native_child_thread_id,created_at) VALUES('item-one',?1,?2,?3,'turn-one',1,'child-one',1)",
             rusqlite::params![project_id.as_str(), chat_id.as_str(), session.session_id.as_str()]).unwrap();
+        connection.execute("UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+1,item_bytes=item_bytes+?2,payload_bytes=payload_bytes+?2 WHERE session_id=?1",
+            rusqlite::params![session.session_id.as_str(), encoded.len() as i64]).unwrap();
+        connection.execute("UPDATE acp_project_usage SET turn_count=turn_count+1,item_count=item_count+1,payload_bytes=payload_bytes+?2 WHERE project_id=?1",
+            rusqlite::params![project_id.as_str(), encoded.len() as i64]).unwrap();
+        connection.execute("UPDATE acp_store_usage SET turn_count=turn_count+1,item_count=item_count+1,item_bytes=item_bytes+?1,shared_payload_bytes=shared_payload_bytes+?1 WHERE singleton=1",
+            [encoded.len() as i64]).unwrap();
     }
     let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read_0146.json");
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
