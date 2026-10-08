@@ -9,6 +9,7 @@ import type {
   AcpProjectionChangedEvent,
   AcpSessionConfigChangedV1,
 } from "../../../domain/acp";
+import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatProjection } from "./useAcpChatProjection";
 
@@ -93,12 +94,15 @@ describe("useAcpChatProjection", () => {
     const { result } = renderHook(() => useAcpChatProjection());
 
     await waitFor(() => expect(result.current).toEqual(projection));
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-1",
-      cursor: null,
-    });
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
     expect(useAcpProjectionStore.getState().scope).toEqual({
       projectId: "project-1",
       projectGeneration: "7",
@@ -187,12 +191,15 @@ describe("useAcpChatProjection", () => {
     );
     const { result } = renderHook(() => useAcpChatProjection(true, "chat-1"));
     await waitFor(() => expect(result.current).toEqual(projection));
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-1",
-      cursor: null,
-    });
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
   });
 
   it("keeps two bound Chat pages from stealing each other's stream", async () => {
@@ -223,18 +230,24 @@ describe("useAcpChatProjection", () => {
     await waitFor(() => expect(second.result.current?.chatId).toBe("chat-2"));
     expect(first.result.current?.projectionRevision).toBe("4");
     expect(second.result.current?.projectionRevision).toBe("2");
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-1",
-      cursor: null,
-    });
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-2",
-      cursor: null,
-    });
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-2",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
   });
 
   it("does not load or retain a listener for a non-ACP harness", () => {

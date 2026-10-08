@@ -6,6 +6,7 @@ import type {
   AcpChatPage,
   AcpProjectionChangedEvent,
 } from "../../../domain/acp";
+import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatLiveSnapshot } from "./useAcpChatLiveSnapshot";
 
@@ -100,12 +101,15 @@ describe("useAcpChatLiveSnapshot", () => {
     );
     expect(result.current.latestText).toBe("Waiting in B");
     expect(result.current.waiting).toBe(true);
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-2",
-      cursor: null,
-    });
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-2",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
   });
 
   it("ignores other-chat notices and coalesces matching ones", async () => {

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAcpProjectionStore } from "../../../app/acpProjectionStore";
 import { useWorkbenchStore } from "../../../app/store";
 import type { AcpChatPage } from "../../../domain/acp";
+import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatHistory } from "./useAcpChatHistory";
 
@@ -53,12 +54,15 @@ describe("useAcpChatHistory", () => {
 
     act(() => result.current.loadEarlier());
     await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
-    expect(load).toHaveBeenCalledWith({
-      projectId: "project-1",
-      projectGeneration: "3",
-      chatId: "chat-1",
-      cursor: "cursor-1",
-    });
+    expect(load).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: "cursor-1",
+      },
+      decodeAcpGoal,
+    );
     await waitFor(() => expect(result.current.hasEarlier).toBe(false));
   });
 });
