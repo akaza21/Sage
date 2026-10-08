@@ -11,9 +11,10 @@ use super::{
     },
 };
 
+mod child_thread;
 mod deltas;
 mod provisional;
-use deltas::{DeltaKind, command_output_delta, delta_event};
+use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
 
 pub(super) fn notification<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
@@ -285,21 +286,6 @@ fn server_request_resolved(
     }
 }
 
-fn summary_part_added(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-) -> Result<IngressDisposition, IngressError> {
-    let index = params
-        .get("summaryIndex")
-        .and_then(Value::as_u64)
-        .ok_or(IngressError::Malformed)?;
-    if index == 0 {
-        expect_thread_and_turn(adapter, params)?;
-        return Ok(IngressDisposition::IgnoredLate);
-    }
-    delta_event(adapter, params, DeltaKind::Thought, Some("\n\n"))
-}
-
 fn turn_started_rejection(adapter: &CodexAdapter, error: AdapterError) -> IngressError {
     let reason = TurnStartedRejection::from_adapter_error(&error);
     tracing::warn!(
@@ -402,17 +388,27 @@ fn item_event<M: ResourceMapper>(
             adapter.commit_command_item(turn, external, command)?;
         }
     }
+    let child_thread_id = child_thread::native_id(item, params)?;
     adapter.enrich_subagent_payload(&mut payload);
     adapter.learn_child_threads(&payload);
     let id = adapter
         .scoped_in_turn(ExternalKind::Item, turn, external)
         .map_err(identity)?;
-    Ok(IncomingEvent::Item {
-        id,
-        lifecycle,
-        tool_state,
-        payload,
-        update_mode: ItemUpdateMode::Replace,
-    }
-    .into())
+    Ok(match child_thread_id {
+        Some(child_thread_id) => IncomingEvent::ChildThreadItem {
+            id,
+            lifecycle,
+            payload,
+            child_thread_id,
+        }
+        .into(),
+        None => IncomingEvent::Item {
+            id,
+            lifecycle,
+            tool_state,
+            payload,
+            update_mode: ItemUpdateMode::Replace,
+        }
+        .into(),
+    })
 }

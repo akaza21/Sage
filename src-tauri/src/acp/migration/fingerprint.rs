@@ -10,6 +10,9 @@ use crate::{
 
 use super::legacy;
 
+mod version;
+use version::class_for_version;
+
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
 const INITIAL: &str = include_str!("../../../migrations/001_initial.sql");
@@ -24,6 +27,7 @@ const V11: &str = include_str!("../../../migrations/011_turn_usage_snapshots.sql
 const V12: &str = include_str!("../../../migrations/012_browser_tabs.sql");
 const V13: &str = include_str!("../../../migrations/013_chat_queued_prompts.sql");
 const V14: &str = include_str!("../../../migrations/014_chat_image_artifacts.sql");
+const V15: &str = include_str!("../../../migrations/015_acp_child_thread_bindings.sql");
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
@@ -49,6 +53,7 @@ pub(super) enum SchemaClass {
     CurrentV12,
     CurrentV13,
     CurrentV14,
+    CurrentV15,
 }
 
 impl SchemaClass {
@@ -76,6 +81,7 @@ impl SchemaClass {
                 | Self::CurrentV11
                 | Self::CurrentV12
                 | Self::CurrentV13
+                | Self::CurrentV14
         )
     }
 }
@@ -121,11 +127,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 15")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 16")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 14
+        || versions.len() > 15
         || versions
             .iter()
             .enumerate()
@@ -355,27 +361,15 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         )?;
         expected.pragma_update(None, "user_version", 14)?;
     }
+    if version >= 15 {
+        expected.execute_batch(V15)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (15, 0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 15)?;
+    }
     Ok(expected)
-}
-
-fn class_for_version(version: u32) -> AppResult<SchemaClass> {
-    Ok(match version {
-        1 => SchemaClass::LegacyV1,
-        2 => SchemaClass::LegacyV2,
-        3 => SchemaClass::LegacyV3,
-        4 => SchemaClass::LegacyV4,
-        5 => SchemaClass::CurrentV5,
-        6 => SchemaClass::CurrentV6,
-        7 => SchemaClass::CurrentV7,
-        8 => SchemaClass::CurrentV8,
-        9 => SchemaClass::CurrentV9,
-        10 => SchemaClass::CurrentV10,
-        11 => SchemaClass::CurrentV11,
-        12 => SchemaClass::CurrentV12,
-        13 => SchemaClass::CurrentV13,
-        14 => SchemaClass::CurrentV14,
-        _ => return invalid("Sage schema version is above the supported maximum"),
-    })
 }
 
 fn quote_identifier(value: &str) -> String {

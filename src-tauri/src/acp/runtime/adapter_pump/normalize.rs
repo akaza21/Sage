@@ -46,6 +46,31 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
+            AdapterEvent::ChildThreadItem {
+                id,
+                lifecycle,
+                payload,
+                child_thread_id,
+            } if self.exact_turn(&id) && terminal.is_none() => {
+                if !matches!(payload, NormalizedPayload::Collaboration { .. })
+                    || child_thread_id == self.intent.external_session_id
+                {
+                    return Err(AdapterPumpError::Intent);
+                }
+                let measured = payload_measure(&payload)?;
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::ChildThreadItem {
+                        scope: self.scope(),
+                        external_item_id: id.external_id,
+                        lifecycle,
+                        payload,
+                        payload_digest: measured.digest,
+                        child_thread_id,
+                        now_millis,
+                    },
+                    measured.bytes,
+                )))
+            }
             AdapterEvent::FilePair {
                 id,
                 external_item_id,
@@ -199,6 +224,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::SessionReady { id, .. } if !self.exact_session(&id) => Ok(None),
             AdapterEvent::Turn { .. }
             | AdapterEvent::Item { .. }
+            | AdapterEvent::ChildThreadItem { .. }
             | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
@@ -272,6 +298,7 @@ pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
         DurableAdapterEvent::UsageSnapshot { .. } => false,
         DurableAdapterEvent::TerminalReason { .. } => true,
         DurableAdapterEvent::Item { .. } => false,
+        DurableAdapterEvent::ChildThreadItem { .. } => false,
         DurableAdapterEvent::FilePair { .. } => false,
         DurableAdapterEvent::ActivityItem(_) => false,
     }

@@ -1,5 +1,8 @@
 use super::*;
 
+mod child_thread;
+pub(super) use child_thread::{apply_through_v15, apply_v15, build_fresh_v15};
+
 pub(super) fn upgrade_current_through_v9(
     paths: &MigrationPaths,
     source_schema: SchemaClass,
@@ -38,6 +41,7 @@ pub(super) fn upgrade_current_through_v9(
         SchemaClass::CurrentV9 => apply_v10(&mut connection)?,
         SchemaClass::CurrentV12 => apply_v13(&mut connection)?,
         SchemaClass::CurrentV13 => apply_v14(&mut connection)?,
+        SchemaClass::CurrentV14 => {}
         SchemaClass::CurrentV11 => {
             apply_v12(&mut connection)?;
             apply_v13(&mut connection)?;
@@ -54,19 +58,27 @@ pub(super) fn upgrade_current_through_v9(
             | SchemaClass::CurrentV11
             | SchemaClass::CurrentV12
             | SchemaClass::CurrentV13
+            | SchemaClass::CurrentV14
     ) {
         apply_v11(&mut connection)?;
     }
     if !matches!(
         source_schema,
-        SchemaClass::CurrentV11 | SchemaClass::CurrentV12 | SchemaClass::CurrentV13
+        SchemaClass::CurrentV11
+            | SchemaClass::CurrentV12
+            | SchemaClass::CurrentV13
+            | SchemaClass::CurrentV14
     ) {
         apply_v12(&mut connection)?;
         apply_v13(&mut connection)?;
     }
-    if source_schema != SchemaClass::CurrentV13 {
+    if !matches!(
+        source_schema,
+        SchemaClass::CurrentV13 | SchemaClass::CurrentV14
+    ) {
         apply_v14(&mut connection)?;
     }
+    apply_v15(&mut connection)?;
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
 }
@@ -135,11 +147,6 @@ pub(super) fn apply_through_v12(connection: &mut Connection) -> AppResult<()> {
 pub(super) fn apply_through_v13(connection: &mut Connection) -> AppResult<()> {
     apply_through_v12(connection)?;
     apply_v13(connection)
-}
-
-pub(super) fn apply_through_v14(connection: &mut Connection) -> AppResult<()> {
-    apply_through_v13(connection)?;
-    apply_v14(connection)
 }
 
 pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {

@@ -86,6 +86,12 @@ pub(crate) enum IncomingEvent {
         payload: NormalizedPayload,
         update_mode: ItemUpdateMode,
     },
+    ChildThreadItem {
+        id: ScopedExternalId,
+        lifecycle: ItemLifecycle,
+        payload: NormalizedPayload,
+        child_thread_id: crate::acp::intent::ExternalId,
+    },
     Permission {
         turn_id: ScopedExternalId,
         item_id: ScopedExternalId,

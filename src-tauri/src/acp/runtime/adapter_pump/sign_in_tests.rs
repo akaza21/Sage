@@ -148,7 +148,7 @@ fn a_sign_in_refusal_fails_the_durable_turn_through_the_migrated_store() {
     });
 }
 
-fn migrated_database() -> Database {
+pub(super) fn migrated_database() -> Database {
     migrated_database_with_turn_state("running")
 }
 

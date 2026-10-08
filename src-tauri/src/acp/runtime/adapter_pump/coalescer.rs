@@ -175,6 +175,9 @@ impl PendingIngress {
                         && candidate.turn_id == scope.turn_id
                 ).then_some(index));
             }
+            // Child identity is an immutable fact. A later ordinary Item
+            // update with the same external key must not replace it.
+            DurableAdapterEvent::ChildThreadItem { .. } => return None,
             _ => return None,
         };
         self.facts

@@ -7,6 +7,7 @@ use crate::acp::{
     },
 };
 
+mod child_threads;
 mod hashing;
 
 pub(super) use hashing::digest;
@@ -110,6 +111,9 @@ fn event_bytes(
                 + external_item_id.as_str().len()
                 + payload_digest.len()
                 + payload_bytes)
+        }
+        event @ DurableAdapterEvent::ChildThreadItem { .. } => {
+            child_threads::event_bytes(intent, event)
         }
         DurableAdapterEvent::UsageSnapshot {
             scope,
@@ -254,6 +258,7 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             tool_state,
             now_millis,
         }),
+        event @ DurableAdapterEvent::ChildThreadItem { .. } => child_threads::convert(event),
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
         DurableAdapterEvent::UsageSnapshot {
             scope: _,

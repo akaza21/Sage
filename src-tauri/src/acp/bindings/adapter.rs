@@ -127,6 +127,12 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
+    ChildThreadItem {
+        id: AdapterIdentity,
+        lifecycle: ItemLifecycle,
+        payload: NormalizedPayload,
+        child_thread_id: ExternalId,
+    },
     FilePair {
         id: AdapterIdentity,
         external_item_id: ExternalId,
@@ -441,9 +447,5 @@ pub(crate) enum AdapterRuntimeError {
     EgressIntent,
 }
 
-fn event_bytes(event: &AdapterEvent) -> Option<usize> {
-    json_bytes(event)
-}
-
 mod byte_count;
-use byte_count::json_bytes;
+use byte_count::event_bytes;

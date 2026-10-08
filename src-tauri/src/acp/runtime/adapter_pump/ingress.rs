@@ -338,7 +338,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 #[cfg(feature = "acp-fixture")]
                 if matches!(
                     &fact.event,
-                    DurableAdapterEvent::Item { .. } | DurableAdapterEvent::ActivityItem(_)
+                    DurableAdapterEvent::Item { .. }
+                        | DurableAdapterEvent::ChildThreadItem { .. }
+                        | DurableAdapterEvent::ActivityItem(_)
                 ) {
                     self.journal.first_normalized_item_accepted();
                 }

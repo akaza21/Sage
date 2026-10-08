@@ -199,6 +199,20 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::ChildThreadItem {
+                id,
+                lifecycle,
+                payload,
+                child_thread_id,
+            } => (
+                AdapterEvent::ChildThreadItem {
+                    id: identity(id),
+                    lifecycle,
+                    payload,
+                    child_thread_id,
+                },
+                None,
+            ),
             IncomingEvent::Permission {
                 turn_id,
                 item_id,

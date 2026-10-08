@@ -27,6 +27,7 @@ mod coalescer;
 mod commit;
 mod completion;
 mod egress;
+use egress::queue;
 mod error;
 mod ingress;
 mod normalize;
@@ -128,6 +129,17 @@ pub(crate) enum DurableAdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
         payload_digest: String,
+        now_millis: i64,
+    },
+    /// Native child identity stays attached to its collaboration Item through
+    /// the journal transaction, never to the renderer-facing payload.
+    ChildThreadItem {
+        scope: TurnScope,
+        external_item_id: ExternalId,
+        lifecycle: ItemLifecycle,
+        payload: NormalizedPayload,
+        payload_digest: String,
+        child_thread_id: ExternalId,
         now_millis: i64,
     },
     /// Bounded old/new bytes for the preceding `FileChangeDiff` item with the
@@ -413,16 +425,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             Ok(())
         }
     }
-}
-
-fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> {
-    ReservedQueue::new(
-        LIMITS.queues.egress_frames as usize,
-        LIMITS.queues.egress_bytes as usize,
-        LIMITS.queues.egress_control_frames_inside_total as usize,
-        LIMITS.queues.egress_control_bytes_inside_total as usize,
-    )
-    .map_err(|_| AdapterPumpError::Backpressure)
 }
 
 fn pending_permission_slots() -> Result<Vec<PendingPermission>, AdapterPumpError> {

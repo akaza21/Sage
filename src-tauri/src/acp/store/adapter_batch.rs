@@ -15,6 +15,7 @@ use super::snapshots::FilePairCommand;
 use super::{ItemIngressCommand, MutationDisposition, RequestStateCommand, StoreError};
 
 mod activity_item;
+mod child_threads;
 mod file_pairs;
 mod scope;
 mod terminal_reason;
@@ -64,6 +65,10 @@ pub(crate) enum AdapterInboundEvent {
         now_millis: i64,
     },
     Item(ItemIngressCommand),
+    ChildThreadItem {
+        item: ItemIngressCommand,
+        child_thread_id: ExternalId,
+    },
     UsageSnapshot(TurnUsageSnapshotCommand),
     TerminalReason(TurnTerminalReasonCommand),
     /// Bounded old/new bytes for the `FileChangeDiff` item with the same
@@ -264,6 +269,10 @@ fn apply_event(
                     == MutationDisposition::Applied,
             )
         }
+        AdapterInboundEvent::ChildThreadItem {
+            item,
+            child_thread_id,
+        } => child_threads::apply(transaction, owner, item, child_thread_id),
         AdapterInboundEvent::UsageSnapshot(command) => usage::apply(transaction, owner, command),
         AdapterInboundEvent::TerminalReason(command) => {
             terminal_reason::apply(transaction, owner, command)

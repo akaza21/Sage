@@ -226,6 +226,11 @@ impl JournalRejectionContext {
                     payload,
                     ..
                 }
+                | DurableAdapterEvent::ChildThreadItem {
+                    external_item_id,
+                    payload,
+                    ..
+                }
                 | DurableAdapterEvent::RuntimePayload {
                     external_item_id,
                     payload,

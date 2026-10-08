@@ -1554,6 +1554,55 @@ fn admitted_file_diff_items_stay_adjacent_to_their_pair() {
 }
 
 #[test]
+fn native_child_identity_survives_a_later_generic_item_update_in_one_window() {
+    let mut pending = PendingIngress::new();
+    pending
+        .push(vec![child_thread_fact("activity", "child-one")], 1, 0)
+        .unwrap();
+    pending
+        .push(
+            vec![normalized_fact("activity", collaboration_payload())],
+            1,
+            1,
+        )
+        .unwrap();
+    assert!(matches!(pending.take().unwrap().0.as_slice(),
+        [DurableAdapterEvent::ChildThreadItem { child_thread_id, .. },
+         DurableAdapterEvent::Item { external_item_id, .. }]
+            if child_thread_id.as_str() == "child-one" && external_item_id.as_str() == "activity"
+    ));
+}
+
+#[test]
+fn native_child_identity_facts_fail_closed_at_batch_capacity() {
+    let mut pending = PendingIngress::new();
+    for index in 0..LIMITS.queues.journal_facts_per_transaction {
+        pending
+            .push(
+                vec![child_thread_fact(
+                    &format!("activity-{index}"),
+                    &format!("child-{index}"),
+                )],
+                1,
+                index as i64,
+            )
+            .unwrap();
+    }
+    assert!(matches!(
+        pending.push(
+            vec![child_thread_fact("activity-over", "child-over")],
+            1,
+            129
+        ),
+        Err(AdapterPumpError::BatchCapacity)
+    ));
+    assert_eq!(
+        pending.take().unwrap().0.len(),
+        LIMITS.queues.journal_facts_per_transaction as usize
+    );
+}
+
+#[test]
 fn deferred_usage_snapshots_coalesce_on_one_turn_scoped_identity() {
     runtime().block_on(async {
         let usage = |input_tokens, context_window| AdapterEvent::Usage {
@@ -1939,6 +1988,33 @@ fn normalized_fact(external: &str, payload: NormalizedPayload) -> NormalizedFact
     )
 }
 
+fn collaboration_payload() -> NormalizedPayload {
+    NormalizedPayload::Collaboration {
+        label: SafeText::new("label", "Worker").unwrap(),
+        message: None,
+        receiver_labels: Default::default(),
+        operation: Some(SafeText::new("operation", "started").unwrap()),
+        agent_key: None,
+        agent_keys: Default::default(),
+        agent_states: Default::default(),
+    }
+}
+
+fn child_thread_fact(external: &str, child: &str) -> NormalizedFact {
+    NormalizedFact::new(
+        DurableAdapterEvent::ChildThreadItem {
+            scope: fact_scope(),
+            external_item_id: ExternalId::new("item", external).unwrap(),
+            lifecycle: ItemLifecycle::Started,
+            payload: collaboration_payload(),
+            payload_digest: "digest".into(),
+            child_thread_id: ExternalId::new("child", child).unwrap(),
+            now_millis: 0,
+        },
+        1,
+    )
+}
+
 fn fact_scope() -> TurnScope {
     TurnScope {
         project_id: SageProjectId::parse("project-one").unwrap(),
@@ -2070,6 +2146,9 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[path = "cancel_tests.rs"]
 mod cancel_tests;
+
+#[path = "child_binding_tests.rs"]
+mod child_binding_tests;
 
 #[path = "completion_tests.rs"]
 mod completion_tests;

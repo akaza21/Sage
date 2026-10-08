@@ -1,3 +1,9 @@
+use super::AdapterEvent;
+
+pub(super) fn event_bytes(event: &AdapterEvent) -> Option<usize> {
+    json_bytes(event)
+}
+
 pub(super) fn json_bytes(value: &impl serde::Serialize) -> Option<usize> {
     struct Counter(usize);
 

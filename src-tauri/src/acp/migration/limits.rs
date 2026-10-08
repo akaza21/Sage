@@ -97,6 +97,7 @@ pub(super) fn preflight_original_schema(
             | SchemaClass::CurrentV11
             | SchemaClass::CurrentV12
             | SchemaClass::CurrentV13
+            | SchemaClass::CurrentV14
     ) {
         verify_file_envelope(live)?;
     } else if schema == SchemaClass::CurrentV10LegacySessionEvents {

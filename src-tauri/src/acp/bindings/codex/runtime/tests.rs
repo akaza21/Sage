@@ -625,6 +625,64 @@ fn learned_child_thread_turn_start_does_not_reject_parent_session() {
 }
 
 #[test]
+fn native_child_identity_parent_activity_stays_separate_from_display() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"activity-native","type":"subAgentActivity",
+                    "agentThreadId":"child-native","agentPath":"Worker","kind":"started"
+                }
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(),
+        [AdapterEvent::ChildThreadItem { id, child_thread_id, payload: NormalizedPayload::Collaboration { agent_key: Some(display), .. }, .. }]
+            if id.external_id.as_str() == "activity-native"
+                && child_thread_id.as_str() == "child-native"
+                && display.as_str() == "child-native"
+    ));
+}
+
+#[test]
+fn native_child_identity_terminal_only_activity_is_admitted_from_exact_parent() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"activity-terminal","type":"subAgentActivity",
+                    "agentThreadId":"child-terminal","agentPath":"Worker","kind":"completed"
+                }
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(),
+        [AdapterEvent::ChildThreadItem { lifecycle: ItemLifecycle::Completed, child_thread_id, .. }]
+            if child_thread_id.as_str() == "child-terminal"
+    ));
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"foreign-thread","turnId":"turn-1","item":{
+                    "id":"activity-foreign","type":"subAgentActivity",
+                    "agentThreadId":"child-foreign","agentPath":"Worker","kind":"completed"
+                }
+            }})),
+            &Mapper,
+        ),
+        Err(AdapterRuntimeError::Operation)
+    ));
+}
+
+#[test]
 fn oldest_child_notification_after_more_than_32_children_keeps_parent_alive() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

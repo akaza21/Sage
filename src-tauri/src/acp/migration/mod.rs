@@ -47,7 +47,7 @@ use self::{
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v14, build_fresh_v14, upgrade_current_through_v9},
+    schema_upgrade::{apply_through_v15, build_fresh_v15, upgrade_current_through_v9},
 };
 
 #[cfg(test)]
@@ -70,6 +70,7 @@ const V11: &str = include_str!("../../../migrations/011_turn_usage_snapshots.sql
 const V12: &str = include_str!("../../../migrations/012_browser_tabs.sql");
 const V13: &str = include_str!("../../../migrations/013_chat_queued_prompts.sql");
 const V14: &str = include_str!("../../../migrations/014_chat_image_artifacts.sql");
+const V15: &str = include_str!("../../../migrations/015_acp_child_thread_bindings.sql");
 
 pub(crate) struct OpenedDatabase {
     connection: Connection,
@@ -78,7 +79,7 @@ pub(crate) struct OpenedDatabase {
 
 #[cfg(all(test, not(windows)))]
 pub(crate) fn complete_v4_upgrade_for_test(connection: &mut Connection) -> AppResult<()> {
-    apply_through_v14(connection)
+    apply_through_v15(connection)
 }
 
 #[derive(Debug)]
@@ -109,7 +110,7 @@ impl std::ops::DerefMut for OpenedDatabase {
 pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     if path == Path::new(":memory:") {
         let mut connection = Connection::open_in_memory()?;
-        build_fresh_v14(&mut connection)?;
+        build_fresh_v15(&mut connection)?;
         return Ok(OpenedDatabase {
             connection,
             live_path_anchor: LivePathAnchor { _anchor: None },
@@ -145,15 +146,15 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
                 platform::create_sqlite_stage(path)?
             };
             let mut connection = Connection::open(path)?;
-            build_fresh_v14(&mut connection)?;
+            build_fresh_v15(&mut connection)?;
             verify_current(&connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV14 => {
+        SchemaClass::CurrentV15 => {
             reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV14 {
+            if probe::classify_live(&paths)? != SchemaClass::CurrentV15 {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
@@ -161,6 +162,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
+        SchemaClass::CurrentV14 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV14),
         SchemaClass::CurrentV13 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV13),
         SchemaClass::CurrentV12 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV12),
         SchemaClass::CurrentV11 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV11),
@@ -239,7 +241,7 @@ fn build_replacement(
     )?;
     Backup::new(&source, &mut destination)?.run_to_completion(256, Duration::ZERO, None)?;
     drop(source);
-    apply_through_v14(&mut destination)?;
+    apply_through_v15(&mut destination)?;
     verify_current(&destination)?;
     destination.close().map_err(|(_, error)| error)?;
     anchor.verify_path(&paths.replacement_stage)?;
@@ -302,8 +304,8 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV14 {
-        return invalid("database did not reach exact schema v14");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV15 {
+        return invalid("database did not reach exact schema v15");
     }
     verify_sqlite(connection)?;
     let store_rows: i64 = connection.query_row(

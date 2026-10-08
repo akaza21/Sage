@@ -1,5 +1,15 @@
 use super::*;
 
+pub(super) fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> {
+    ReservedQueue::new(
+        LIMITS.queues.egress_frames as usize,
+        LIMITS.queues.egress_bytes as usize,
+        LIMITS.queues.egress_control_frames_inside_total as usize,
+        LIMITS.queues.egress_control_bytes_inside_total as usize,
+    )
+    .map_err(|_| AdapterPumpError::Backpressure)
+}
+
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     pub(crate) fn queue_command(
         &mut self,

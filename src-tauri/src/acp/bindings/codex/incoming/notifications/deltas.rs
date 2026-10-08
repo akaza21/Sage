@@ -17,6 +17,21 @@ pub(super) enum DeltaKind {
     Plan,
 }
 
+pub(super) fn summary_part_added(
+    adapter: &mut CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    let index = params
+        .get("summaryIndex")
+        .and_then(Value::as_u64)
+        .ok_or(IngressError::Malformed)?;
+    if index == 0 {
+        expect_thread_and_turn(adapter, params)?;
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    delta_event(adapter, params, DeltaKind::Thought, Some("\n\n"))
+}
+
 pub(super) fn command_output_delta(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,

@@ -13,6 +13,7 @@ use crate::acp::{
     runtime::permissions::PermissionIntent,
 };
 
+mod child_thread_tests;
 mod lifecycle_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;
@@ -113,6 +114,14 @@ fn migrated_fixture() -> Fixture {
          INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,activity_id,kind,lifecycle,tool_state,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES('item-one','project-one','chat-one','session-one','turn-one',1,0,'primary',NULL,'text','completed',NULL,'item-one','{{\"kind\":\"text\",\"payload\":{{\"text\":\"prompt\"}}}}',43,'b2bf66ef982a206f5552f31203f5825ec8155829efc5a4d0f63ba817a6dbe9fe',0,1,1,1);",
         capabilities(),
     )).unwrap();
+    connection.execute_batch(
+        "INSERT INTO acp_project_usage(project_id,chat_count,session_count,turn_count,item_count,fact_count,payload_bytes,revision)
+         VALUES('project-one',1,1,1,1,0,43,0);
+         INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,item_bytes,fact_count,fact_bytes,payload_bytes,revision)
+         VALUES('project-one','chat-one','session-one',1,1,43,0,0,43,0);
+         UPDATE acp_store_usage SET chat_count=1,session_count=1,turn_count=1,item_count=1,
+           item_bytes=43,shared_payload_bytes=43 WHERE singleton=1;",
+    ).unwrap();
     Fixture {
         connection,
         owner: AdapterStoreOwner {

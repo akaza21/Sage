@@ -14,7 +14,7 @@ use super::{
     manifest::{BackupManifest, BackupSource, ReplacementManifest, SourceSet, write_stage},
     platform::{remove_synced, rename_synced},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v13, apply_through_v14, apply_v5, apply_v6},
+    schema_upgrade::{apply_through_v13, apply_through_v15, apply_v5, apply_v6},
     test_failpoint,
 };
 
@@ -270,7 +270,7 @@ fn portable_publish_recovers_valid_prefixes_and_rejects_stale_stage_identity() {
     assert!(recover_or_publish(&paths).unwrap());
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV14
+        SchemaClass::CurrentV15
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(
@@ -425,7 +425,7 @@ fn portable_retained_backup_survives_build_failure_then_retry_publishes() {
     assert!(!recover_or_publish(&paths).unwrap());
 
     let mut replacement = Connection::open(&paths.replacement_stage).unwrap();
-    apply_through_v14(&mut replacement).unwrap();
+    apply_through_v15(&mut replacement).unwrap();
     let replacement_database = database_fingerprint(&replacement).unwrap();
     replacement.close().unwrap();
     let manifest = ReplacementManifest::new(
@@ -519,7 +519,7 @@ fn prepare_populated_replacement(paths: &MigrationPaths) -> ReplacementManifest 
     };
     fs::copy(&paths.live, &paths.replacement_stage).unwrap();
     let mut replacement = Connection::open(&paths.replacement_stage).unwrap();
-    apply_through_v14(&mut replacement).unwrap();
+    apply_through_v15(&mut replacement).unwrap();
     replacement.close().unwrap();
     let replacement_file = file_fingerprint(&paths.replacement_stage).unwrap();
     let replacement_connection = Connection::open(&paths.replacement_stage).unwrap();
@@ -621,7 +621,7 @@ fn prepare_populated_wal_replacement(
         .run_to_completion(256, Duration::ZERO, None)
         .unwrap();
     source_connection.close().unwrap();
-    apply_through_v14(&mut replacement).unwrap();
+    apply_through_v15(&mut replacement).unwrap();
     replacement.close().unwrap();
     let replacement_file = file_fingerprint(&paths.replacement_stage).unwrap();
     let replacement_connection = Connection::open(&paths.replacement_stage).unwrap();
@@ -723,7 +723,7 @@ fn cleanup_prefix(paths: &MigrationPaths, prefix: &str) {
 fn assert_published_project(paths: &MigrationPaths) {
     assert_eq!(
         super::fingerprint::classify_path(&paths.live).unwrap(),
-        SchemaClass::CurrentV14
+        SchemaClass::CurrentV15
     );
     let published = Connection::open(&paths.live).unwrap();
     assert_eq!(

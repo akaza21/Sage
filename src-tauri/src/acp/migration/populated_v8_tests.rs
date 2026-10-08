@@ -160,17 +160,17 @@ fn assert_populated_rows(connection: &Connection) {
     );
 }
 
-fn assert_v14_structure(connection: &Connection) {
+fn assert_v15_structure(connection: &Connection) {
     assert_eq!(
         fingerprint::classify_connection(connection).expect("classification"),
-        SchemaClass::CurrentV14
+        SchemaClass::CurrentV15
     );
     assert_eq!(
         connection
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .expect("migration count"),
-        14
+        15
     );
     assert_eq!(
         connection
@@ -252,7 +252,7 @@ fn populated_v8_upgrades_exactly_and_reopens_idempotently_with_retained_source()
         .schema_sha256;
 
     let migrated = open_or_migrate(&directory.database()).expect("v13 migration");
-    assert_v14_structure(&migrated);
+    assert_v15_structure(&migrated);
     assert_populated_rows(&migrated);
     let migrated_fingerprint = database_fingerprint(&migrated).expect("migrated fingerprint");
     assert_eq!(migrated_fingerprint.schema_sha256, expected_schema);
@@ -268,7 +268,7 @@ fn populated_v8_upgrades_exactly_and_reopens_idempotently_with_retained_source()
     drop(backup);
 
     let reopened = open_or_migrate(&directory.database()).expect("idempotent reopen");
-    assert_v14_structure(&reopened);
+    assert_v15_structure(&reopened);
     assert_populated_rows(&reopened);
     assert_eq!(
         database_fingerprint(&reopened).expect("reopen fingerprint"),
@@ -301,7 +301,7 @@ fn populated_v8_injected_v9_failure_rolls_back_and_retry_reuses_retained_backup(
     drop(backup);
 
     let retried = open_or_migrate(&directory.database()).expect("retry");
-    assert_v14_structure(&retried);
+    assert_v15_structure(&retried);
     assert_populated_rows(&retried);
     drop(retried);
     backup::verify_retained_pair(&paths).expect("retained backup after retry");
