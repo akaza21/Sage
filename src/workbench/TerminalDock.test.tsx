@@ -146,6 +146,21 @@ it("reports an ended shell and ignores later input", async () => {
   expect(native.write).toHaveBeenCalledTimes(1);
 });
 
+it("retries a transient native reader conflict after remount", async () => {
+  native.read.mockRejectedValueOnce({ code: "busy" });
+  const onStatus = vi.fn();
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={onStatus}
+    />,
+  );
+  await waitFor(() => expect(native.read).toHaveBeenCalledTimes(2));
+  expect(onStatus).not.toHaveBeenCalled();
+});
+
 it("resizes the active terminal after a pane or DPI change", async () => {
   render(
     <TerminalDock

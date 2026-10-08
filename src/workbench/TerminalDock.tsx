@@ -98,7 +98,21 @@ export function TerminalDock({
       let cursor = "0";
       try {
         while (!stopped) {
-          const page = await readUserTerminal(ownerScope, session, cursor);
+          let page;
+          try {
+            page = await readUserTerminal(ownerScope, session, cursor);
+          } catch (error) {
+            if (
+              error &&
+              typeof error === "object" &&
+              "code" in error &&
+              (error as { code?: unknown }).code === "busy"
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              continue;
+            }
+            throw error;
+          }
           if (stopped) return;
           if (page.truncated)
             terminal.write("\r\n[Earlier terminal output was truncated]\r\n");
