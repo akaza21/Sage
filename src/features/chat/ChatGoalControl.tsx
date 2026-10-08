@@ -1,6 +1,10 @@
-import { Target } from "lucide-react";
+import { Maximize2, Pause, Target, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import "../../styles/chat-goal.css";
+
+export type GoalMutationOutcome =
+  { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
 
 function elapsed(seconds: number): string {
   const days = Math.floor(seconds / 86_400);
@@ -32,7 +36,20 @@ function availability(state: Exclude<AcpGoalState, { kind: "goal" }>): string {
   }
 }
 
-export function ChatGoalControl({ state }: { state: AcpGoalState }) {
+export function ChatGoalControl({
+  state,
+  canMutate = false,
+  onMutation,
+}: {
+  state: AcpGoalState;
+  canMutate?: boolean;
+  onMutation?: (action: "pause" | "clear") => Promise<GoalMutationOutcome>;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [mutation, setMutation] = useState<
+    | { kind: "idle" | "pending" }
+    | { kind: "refused" | "outcomeUnknown"; message: string }
+  >({ kind: "idle" });
   if (state.kind !== "goal") {
     return (
       <details className="chat-goal-entry">
@@ -44,51 +61,113 @@ export function ChatGoalControl({ state }: { state: AcpGoalState }) {
     );
   }
   const { snapshot } = state;
+  const controls = canMutate && onMutation;
+  const locked =
+    mutation.kind === "pending" || mutation.kind === "outcomeUnknown";
+  const run = async (action: "pause" | "clear") => {
+    if (!controls || locked) return;
+    setMutation({ kind: "pending" });
+    try {
+      const outcome = await onMutation(action);
+      setMutation(outcome.kind === "applied" ? { kind: "idle" } : outcome);
+    } catch {
+      setMutation({
+        kind: "outcomeUnknown",
+        message: "Goal outcome unknown. Reload this Chat to verify.",
+      });
+    }
+  };
   return (
-    <details className="chat-goal-strip">
-      <summary aria-label="Goal details">
-        <Target size={13} aria-hidden="true" />
-        <strong>
-          {snapshot.status === "active" ? "Pursuing goal" : "Goal"}
-        </strong>
-        <span className="chat-goal-strip__objective" title={snapshot.objective}>
-          {snapshot.objective}
-        </span>
-        <time>{elapsed(snapshot.timeUsedSeconds)}</time>
-      </summary>
-      <div className="chat-goal-strip__details">
-        <p>{snapshot.objective}</p>
-        <dl>
-          <div>
-            <dt>Status</dt>
-            <dd>{snapshot.status}</dd>
-          </div>
-          <div>
-            <dt>Usage</dt>
-            <dd>
-              {snapshot.tokensUsed.toLocaleString()} /{" "}
-              {snapshot.tokenBudget?.toLocaleString() ?? "unlimited"} tokens
-            </dd>
-          </div>
-        </dl>
-        <p className="chat-goal-strip__read-only">Goal controls unavailable.</p>
-        <div className="chat-goal-strip__actions">
-          <button
-            type="button"
-            disabled
-            title="Goal controls are not yet available"
+    <div className="chat-goal-container">
+      <details className="chat-goal-strip" ref={detailsRef}>
+        <summary className="chat-goal-strip__row" aria-label="Goal details">
+          <Target size={13} aria-hidden="true" />
+          <strong>
+            {snapshot.status === "active" ? "Pursuing goal" : "Goal"}
+          </strong>
+          <span
+            className="chat-goal-strip__objective"
+            title={snapshot.objective}
           >
-            Pause goal
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Goal controls are not yet available"
-          >
-            Clear goal
-          </button>
+            {snapshot.objective}
+          </span>
+          <time>{elapsed(snapshot.timeUsedSeconds)}</time>
+          <span className="chat-goal-strip__icons">
+            {controls && snapshot.status === "active" && (
+              <button
+                type="button"
+                className="chat-goal-strip__icon"
+                aria-label="Pause goal"
+                title="Pause goal"
+                disabled={locked}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void run("pause");
+                }}
+              >
+                <Pause size={13} aria-hidden="true" />
+              </button>
+            )}
+            {controls && (
+              <button
+                type="button"
+                className="chat-goal-strip__icon"
+                aria-label="Delete goal"
+                title="Delete goal"
+                disabled={locked}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void run("clear");
+                }}
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="chat-goal-strip__icon"
+              aria-label="Toggle goal details"
+              title="Expand goal details"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (detailsRef.current)
+                  detailsRef.current.open = !detailsRef.current.open;
+              }}
+            >
+              <Maximize2 size={13} aria-hidden="true" />
+            </button>
+          </span>
+        </summary>
+        <div className="chat-goal-strip__details">
+          <p>{snapshot.objective}</p>
+          <dl>
+            <div>
+              <dt>Status</dt>
+              <dd>{snapshot.status}</dd>
+            </div>
+            <div>
+              <dt>Usage</dt>
+              <dd>
+                {snapshot.tokensUsed.toLocaleString()} /{" "}
+                {snapshot.tokenBudget?.toLocaleString() ?? "unlimited"} tokens
+              </dd>
+            </div>
+          </dl>
         </div>
-      </div>
-    </details>
+      </details>
+      {mutation.kind === "pending" && (
+        <p className="chat-goal-strip__notice" role="status">
+          Updating native Goal…
+        </p>
+      )}
+      {(mutation.kind === "refused" || mutation.kind === "outcomeUnknown") && (
+        <p className="chat-goal-strip__notice" role="alert">
+          {mutation.message}
+        </p>
+      )}
+    </div>
   );
 }

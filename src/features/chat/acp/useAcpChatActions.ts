@@ -20,7 +20,9 @@ import {
   createAcpActionController,
 } from "./acpActionController";
 
-function currentContext(boundChatId?: string | null): AcpActionContext | null {
+export function currentContext(
+  boundChatId?: string | null,
+): AcpActionContext | null {
   const projection = acpProjectionStoreFor(boundChatId).getState();
   const workbench = useWorkbenchStore.getState();
   if (

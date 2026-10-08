@@ -16,24 +16,51 @@
   line-height: 1.4;
 }
 
+.chat-goal-container {
+  background: var(--color-plane-raised);
+  border-radius: var(--radius-xl);
+}
+
 .chat-goal-strip {
   color: var(--color-text-secondary);
   font-size: 11px;
 }
 
-.chat-goal-strip summary {
+.chat-goal-strip__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--composer-border);
+  cursor: pointer;
+  list-style: none;
+}
+
+.chat-goal-strip__row::-webkit-details-marker {
+  display: none;
+}
+
+.chat-goal-strip__icons {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.chat-goal-strip__summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
-  padding: 0 12px;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
-  list-style: none;
-  border-bottom: 1px solid var(--composer-border);
-}
-
-.chat-goal-strip summary::-webkit-details-marker {
-  display: none;
 }
 
 .chat-goal-strip strong {
@@ -52,6 +79,42 @@
 
 .chat-goal-strip time {
   flex: none;
+}
+
+.chat-goal-strip__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.chat-goal-strip__icon:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--composer-fill);
+}
+
+.chat-goal-strip__icon:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chat-goal-strip__icon:focus-visible,
+.chat-goal-strip__summary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.chat-goal-strip__notice {
+  margin: 0;
+  padding: 4px 12px;
+  line-height: 1.35;
 }
 
 .chat-goal-strip__details {
@@ -75,11 +138,4 @@
 }
 .chat-goal-strip__details dd {
   margin: 0;
-}
-.chat-goal-strip__read-only {
-  color: var(--color-text-muted);
-}
-.chat-goal-strip__actions {
-  display: flex;
-  gap: 8px;
 }

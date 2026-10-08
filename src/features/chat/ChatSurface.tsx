@@ -387,7 +387,7 @@ export function ChatSurface({
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={project}
         usage={usage}
-        goal={acpPage?.goal ?? { kind: "unsupported" }}
+        goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
         onTextChange={setComposerText}
         onRemoveContext={(context) =>

@@ -110,6 +110,49 @@ afterEach(() => {
 });
 
 describe("ACP desktop bridge", () => {
+  it("sends bounded native Goal pause and clear requests and keeps the authoritative Goal projection", async () => {
+    setDesktopRuntime(true);
+    const projection = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      title: "A",
+      projectionRevision: "10",
+      currentSessionId: null,
+      sessions: [],
+      turns: [],
+      nextCursor: null,
+      goal: {
+        kind: "goal",
+        snapshot: {
+          objective: "Ship safely",
+          status: "paused",
+          tokenBudget: null,
+          tokensUsed: 4,
+          timeUsedSeconds: 5,
+          createdAt: null,
+          updatedAt: null,
+        },
+      },
+    };
+    invokeMock.mockResolvedValueOnce({ projection });
+
+    const paused = await acpDesktop.pauseExistingGoal(sessionRequest);
+
+    expect(invokeMock).toHaveBeenCalledWith("pause_existing_goal", {
+      request: sessionRequest,
+    });
+    expect(paused.projection.goal).toEqual(projection.goal);
+
+    invokeMock.mockResolvedValueOnce({
+      projection: { ...projection, goal: { kind: "noGoal" } },
+    });
+    const cleared = await acpDesktop.clearExistingGoal(sessionRequest);
+    expect(invokeMock).toHaveBeenLastCalledWith("clear_existing_goal", {
+      request: sessionRequest,
+    });
+    expect(cleared.projection.goal).toEqual({ kind: "noGoal" });
+  });
+
   it("sends exact owner and independent config revision for typed config mutations", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({

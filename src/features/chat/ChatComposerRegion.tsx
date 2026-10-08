@@ -12,7 +12,7 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { ChatHarnessControls } from "./ChatHarnessControls";
-import { ChatGoalControl } from "./ChatGoalControl";
+import { BoundChatGoalControl } from "./BoundChatGoalControl";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
 import {
@@ -150,7 +150,7 @@ export function ChatComposerRegion({
         onSubmit(event);
       }}
     >
-      <ChatGoalControl state={goal} />
+      <BoundChatGoalControl state={goal} chatId={dictationScope} />
       {queuedPrompts && queuedPrompts.length > 0 ? (
         <div className="composer__queued" aria-label="Queued messages">
           {queuedPrompts.map((prompt) => (

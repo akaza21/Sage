@@ -3,6 +3,7 @@ import type {
   AcpCommandFailure,
   AgentEditDisposition,
   AcpMutationResult,
+  AcpSessionMutationIntent,
   AcpProjectionChangedEvent,
   ActivateAcpSessionRequest,
   CancelAcpTurnRequest,
@@ -25,7 +26,7 @@ import type {
 } from "../domain/agentDiff";
 import { invokeNative } from "../ports/nativeInvoke";
 import type { ResourceRef } from "../domain/workbench";
-import type { AcpGoalState } from "../domain/acpGoal";
+import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { safeProjectionChanged } from "./acpDesktopProjection";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
@@ -192,9 +193,10 @@ async function invokeAcp<T, Request extends object>(
 async function invokeAcpMutation<Request extends object>(
   command: string,
   request: Request,
+  decodeGoal?: (value: unknown) => AcpGoalState | null,
 ): Promise<AcpMutationResult> {
   const response = await invokeAcp<unknown, Request>(command, request);
-  const safe = safeAcpMutationResponse(response);
+  const safe = safeAcpMutationResponse(response, decodeGoal);
   if (!safe) {
     throw new AcpDesktopError({
       kind: "internal",
@@ -207,6 +209,16 @@ async function invokeAcpMutation<Request extends object>(
 import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
 export const acpDesktop = {
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
+  pauseExistingGoal(
+    request: AcpSessionMutationIntent,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("pause_existing_goal", request, decodeAcpGoal);
+  },
+  clearExistingGoal(
+    request: AcpSessionMutationIntent,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("clear_existing_goal", request, decodeAcpGoal);
+  },
   async resolveChatFileReference(
     projectId: string,
     destination: string,
