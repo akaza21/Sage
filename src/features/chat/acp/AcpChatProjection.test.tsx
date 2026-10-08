@@ -675,7 +675,11 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).toHaveAttribute("open");
+    expect(work).not.toBeInstanceOf(HTMLDetailsElement);
+    expect(work?.querySelector(":scope > summary")).toBeNull();
+    expect(
+      work?.querySelector(".chat-transcript-work__heading"),
+    ).toHaveTextContent(/^Working for /);
     expect(
       [
         ...work!.querySelectorAll(
@@ -956,7 +960,7 @@ describe("AcpChatProjection", () => {
       </ChatTranscriptTurnSummary>,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).toHaveAttribute("open");
+    expect(work).not.toBeInstanceOf(HTMLDetailsElement);
     expect(screen.getByText("Running npm test")).toBeVisible();
     const settled = {
       ...running,

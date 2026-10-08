@@ -47,17 +47,24 @@ export function ChatTranscriptTurnSummary({
 
   if (!hasActivities && !duration) return null;
 
+  if (!terminal) {
+    return (
+      <div className="chat-transcript-work chat-transcript-work--running">
+        <div className="chat-transcript-work__heading">{duration}</div>
+        {children ? (
+          <div className="chat-transcript-work__groups">{children}</div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <>
-      {duration || hasActivities ? (
-        <details className="chat-transcript-work" open={!terminal}>
-          <summary>{duration ?? "Working"}</summary>
-          {children ? (
-            <div className="chat-transcript-work__groups">{children}</div>
-          ) : null}
-        </details>
+    <details className="chat-transcript-work">
+      <summary>{duration ?? "Worked"}</summary>
+      {children ? (
+        <div className="chat-transcript-work__groups">{children}</div>
       ) : null}
-    </>
+    </details>
   );
 }
 
