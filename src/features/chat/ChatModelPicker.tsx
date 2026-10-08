@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Check } from "../../ui/leanIcons";
 
 export interface ComposerModelChoice {
@@ -49,6 +49,9 @@ export function ChatModelPicker({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favorites, setFavorites] = useState(readFavorites);
+  const gridId = useId();
+  const modelCellId = (modelId: string) =>
+    `${gridId}-model-${encodeURIComponent(modelId)}`;
   const visible = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return models
@@ -88,7 +91,17 @@ export function ChatModelPicker({
         </button>
         <input
           type="search"
+          role="combobox"
           aria-label="Search models"
+          aria-autocomplete="list"
+          aria-haspopup="grid"
+          aria-expanded="true"
+          aria-controls={gridId}
+          aria-activedescendant={
+            visible[activeIndex]
+              ? modelCellId(visible[activeIndex].id)
+              : undefined
+          }
           placeholder="Search models…"
           value={query}
           onChange={(event) => {
@@ -119,17 +132,23 @@ export function ChatModelPicker({
         />
       </div>
       <div
+        id={gridId}
         className="composer-model-picker__list"
-        role="listbox"
+        role="grid"
         aria-label="Models"
       >
         {visible.map((model, index) => {
           const favorite = favorites.includes(favoriteKey(harnessId, model.id));
           return (
-            <div className="composer-model-picker__row" key={model.id}>
+            <div
+              className="composer-model-picker__row"
+              role="row"
+              key={model.id}
+            >
               <button
+                id={modelCellId(model.id)}
                 type="button"
-                role="option"
+                role="gridcell"
                 className="composer-model-picker__option"
                 aria-label={`${model.name} — ${harnessName}`}
                 aria-selected={model.id === selectedId}
@@ -143,27 +162,33 @@ export function ChatModelPicker({
                   <Check size={14} aria-hidden="true" />
                 ) : null}
               </button>
-              <button
-                type="button"
-                className="composer-model-picker__favorite"
-                aria-label={`${favorite ? "Remove favorite" : "Favorite"} ${model.name}`}
-                aria-pressed={favorite}
-                onClick={() => toggleFavorite(model.id)}
+              <div
+                role="gridcell"
+                aria-label="Favorite action"
+                className="composer-model-picker__favorite-cell"
               >
-                <span aria-hidden="true">{favorite ? "★" : "☆"}</span>
-              </button>
+                <button
+                  type="button"
+                  className="composer-model-picker__favorite"
+                  aria-label={`${favorite ? "Remove favorite" : "Favorite"} ${model.name}`}
+                  aria-pressed={favorite}
+                  onClick={() => toggleFavorite(model.id)}
+                >
+                  <span aria-hidden="true">{favorite ? "★" : "☆"}</span>
+                </button>
+              </div>
             </div>
           );
         })}
-        {visible.length === 0 ? (
-          <p className="composer-model-picker__empty">No matching models</p>
-        ) : null}
-        {models.length > MAX_VISIBLE_MODELS && !query ? (
-          <p className="composer-model-picker__empty">
-            Search to refine more models
-          </p>
-        ) : null}
       </div>
+      {visible.length === 0 ? (
+        <p className="composer-model-picker__empty">No matching models</p>
+      ) : null}
+      {models.length > MAX_VISIBLE_MODELS && !query ? (
+        <p className="composer-model-picker__empty">
+          Search to refine more models
+        </p>
+      ) : null}
     </>
   );
 }

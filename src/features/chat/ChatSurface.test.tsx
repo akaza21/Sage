@@ -1354,7 +1354,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("checkbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(screen.getByRole("gridcell", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("shows an unsupported config option as a read-only chip with no settable control", () => {
@@ -1396,7 +1396,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.queryByRole("checkbox", { name: "Session thinking budget" }),
     ).toBeNull();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(screen.getByRole("gridcell", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("lets a prompt-capable harness without a model catalog use its own default", () => {
@@ -3053,15 +3053,16 @@ describe("ChatSurface ACP resource integration", () => {
     const model = screen.getByRole("button", { name: "Model" });
     await waitFor(() => expect(model).toBeEnabled());
     fireEvent.click(model);
-    const listbox = screen.getByRole("listbox", { name: "Models" });
-    expect(screen.queryByRole("option", { name: /old model/i })).toBeNull();
-    expect(within(listbox).getAllByRole("option")).toHaveLength(128);
+    const grid = screen.getByRole("grid", { name: "Models" });
+    expect(screen.queryByRole("gridcell", { name: /old model/i })).toBeNull();
+    expect(within(grid).getAllByRole("row")).toHaveLength(128);
     expect(
-      within(listbox).getByRole("option", {
+      within(grid).getByRole("gridcell", {
         name: /Fresh advertised model 1 — Codex/,
       }),
     ).toHaveAttribute("aria-selected", "true");
-    const input = screen.getByRole("searchbox", { name: "Search models" });
+    const input = screen.getByRole("combobox", { name: "Search models" });
+    expect(input).toHaveAttribute("aria-controls", grid.id);
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });

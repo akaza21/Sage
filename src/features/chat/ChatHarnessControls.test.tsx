@@ -243,7 +243,7 @@ describe("composer permission mode picker", () => {
       onSelectModel,
     });
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    fireEvent.click(screen.getByRole("option", { name: /Sonnet/ }));
+    fireEvent.click(screen.getByRole("gridcell", { name: /Sonnet/ }));
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("model", {
       value: "sonnet",
     });
@@ -533,18 +533,28 @@ describe("composer permission mode picker", () => {
     );
     expect(screen.getByText("1M context")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    const search = screen.getByRole("searchbox", { name: "Search models" });
+    const search = screen.getByRole("combobox", { name: "Search models" });
+    const grid = screen.getByRole("grid", { name: "Models" });
+    expect(search).toHaveAttribute("aria-controls", grid.id);
     fireEvent.change(search, { target: { value: "luna" } });
-    expect(screen.queryByRole("option", { name: /Astra High/ })).toBeNull();
-    expect(screen.getByRole("option", { name: /Luna Fast/ })).toHaveTextContent(
-      "Codex",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Favorite Luna Fast" }));
+    expect(screen.queryByRole("gridcell", { name: /Astra High/ })).toBeNull();
+    const luna = screen.getByRole("gridcell", { name: /Luna Fast/ });
+    expect(luna).toHaveTextContent("Codex");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(search).toHaveAttribute("aria-activedescendant", luna.id);
+    expect(grid).toContainElement(luna);
+    const favorite = screen.getByRole("button", {
+      name: "Favorite Luna Fast",
+    });
+    expect(favorite.closest('[role="gridcell"]')).not.toBe(luna);
+    favorite.focus();
+    expect(document.activeElement).toBe(favorite);
+    fireEvent.click(favorite);
     fireEvent.change(search, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
-    expect(screen.getByRole("option", { name: /Luna Fast/ })).toBeVisible();
-    expect(screen.queryByRole("option", { name: /Astra High/ })).toBeNull();
-    fireEvent.click(screen.getByRole("option", { name: /Luna Fast/ }));
+    expect(screen.getByRole("gridcell", { name: /Luna Fast/ })).toBeVisible();
+    expect(screen.queryByRole("gridcell", { name: /Astra High/ })).toBeNull();
+    fireEvent.click(screen.getByRole("gridcell", { name: /Luna Fast/ }));
     expect(onSelectModel).toHaveBeenCalledWith("luna");
   });
 
@@ -620,8 +630,8 @@ describe("composer permission mode picker", () => {
       "Codex 6",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("option", { name: /Codex 6/ })).toBeVisible();
-    expect(screen.queryByRole("option", { name: /Claude Opus/ })).toBeNull();
+    expect(screen.getByRole("gridcell", { name: /Codex 6/ })).toBeVisible();
+    expect(screen.queryByRole("gridcell", { name: /Claude Opus/ })).toBeNull();
   });
 
   it("does not show session model or effort after selecting another model in the same harness", () => {
@@ -681,7 +691,7 @@ describe("composer permission mode picker", () => {
       "High",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("option", { name: /New Model/ })).toBeVisible();
+    expect(screen.getByRole("gridcell", { name: /New Model/ })).toBeVisible();
     expect(screen.queryByText("Old Model")).toBeNull();
     expect(screen.queryByText("High")).toBeNull();
     expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
