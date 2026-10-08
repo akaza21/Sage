@@ -619,7 +619,9 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
 #[test]
 fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
     tauri::async_runtime::block_on(async {
-        let (_database, service, project, project_id, chat_id, root) = codex_session_setup();
+        use sha2::Digest;
+
+        let (database, service, project, project_id, chat_id, root) = codex_session_setup();
         let revision = service
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
             .unwrap()
@@ -684,6 +686,27 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
             )
             .await
             .unwrap();
+        let old_text = "Readable history from the earlier Codex version";
+        let body = serde_json::json!({
+            "kind": "text",
+            "payload": { "role": "user", "text": old_text }
+        })
+        .to_string();
+        let digest = format!("{:x}", sha2::Sha256::digest(body.as_bytes()));
+        database
+            .connection()
+            .execute(
+                "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at) VALUES('old-codex-turn',?1,?2,?3,1,0,'old-codex-intent','completed','correlated',0,1,1,1)",
+                rusqlite::params![project_id.as_str(), chat_id.as_str(), started.session_id.as_str()],
+            )
+            .unwrap();
+        database
+            .connection()
+            .execute(
+                "INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,activity_id,kind,lifecycle,tool_state,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES('old-codex-item',?1,?2,?3,'old-codex-turn',1,0,'primary',NULL,'text','completed',NULL,NULL,?4,?5,?6,0,1,1,1)",
+                rusqlite::params![project_id.as_str(), chat_id.as_str(), started.session_id.as_str(), body, body.len() as i64, digest],
+            )
+            .unwrap();
         let page = service
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
             .unwrap();
@@ -693,6 +716,17 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
                 .iter()
                 .any(|session| session.id == started.session_id)
         );
+        let old_turn = page
+            .turns
+            .as_slice()
+            .iter()
+            .find(|turn| turn.id.as_str() == "old-codex-turn")
+            .expect("old Codex Turn stays readable from SQLite");
+        assert_eq!(old_turn.items.as_slice().len(), 1);
+        assert!(matches!(
+            &old_turn.items.as_slice()[0].content,
+            crate::acp::projection::ItemContent::Text { text, .. } if text.as_str() == old_text
+        ));
         let authority = codex_root(&project_id, &project.roots[0].id, &root);
         let admitted = service
             .binding_registry()
