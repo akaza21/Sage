@@ -189,7 +189,7 @@ export function ChatSurface({
   ]);
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
-  const { followingEnd, updateFollowEnd, jumpToLatest } = useFollowEnd({
+  const { showJumpToLatest, updateFollowEnd, jumpToLatest } = useFollowEnd({
     ownerKey: chatId ?? "primary",
     revision: `${messages.length}:${acpPage?.projectionRevision ?? ""}`,
     transcriptRef: messageListRef,
@@ -325,7 +325,7 @@ export function ChatSurface({
             ? retryLastTurn
             : undefined
         }
-        followingEnd={followingEnd}
+        showJumpToLatest={showJumpToLatest}
         onJumpToLatest={jumpToLatest}
       />
 

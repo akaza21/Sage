@@ -27,7 +27,7 @@ export function ChatTranscript({
   messages,
   developmentSimulator,
   onRetry,
-  followingEnd,
+  showJumpToLatest,
   onJumpToLatest,
 }: {
   transcriptRef: RefObject<HTMLDivElement | null>;
@@ -56,7 +56,7 @@ export function ChatTranscript({
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
-  followingEnd: boolean;
+  showJumpToLatest: boolean;
   onJumpToLatest: () => void;
 }) {
   return (
@@ -94,14 +94,16 @@ export function ChatTranscript({
         </div>
         <div ref={endRef} />
       </div>
-      {!followingEnd ? (
-        <button
-          className="chat-follow-end"
-          type="button"
-          onClick={onJumpToLatest}
-        >
-          Jump to latest
-        </button>
+      {showJumpToLatest ? (
+        <div className="chat-follow-end-zone">
+          <button
+            className="chat-follow-end"
+            type="button"
+            onClick={onJumpToLatest}
+          >
+            Jump to latest
+          </button>
+        </div>
       ) : null}
     </>
   );

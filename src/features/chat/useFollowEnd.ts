@@ -17,9 +17,15 @@ function followEndScrollBehavior(): ScrollBehavior {
 function transcriptIsAtEnd(
   transcript: Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">,
 ): boolean {
-  const distance =
-    transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
-  return distance <= FOLLOW_END_THRESHOLD_PX;
+  return distanceFromEnd(transcript) <= FOLLOW_END_THRESHOLD_PX;
+}
+
+function distanceFromEnd(
+  transcript: Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">,
+): number {
+  return (
+    transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight
+  );
 }
 
 export function useFollowEnd({
@@ -35,8 +41,13 @@ export function useFollowEnd({
   contentRef: RefObject<HTMLElement | null>;
   endRef: RefObject<HTMLElement | null>;
 }) {
-  const [followingEnd, setFollowingEnd] = useState(true);
+  const [followState, setFollowState] = useState({ ownerKey, following: true });
+  const followingEnd =
+    followState.ownerKey === ownerKey ? followState.following : true;
+  const [jumpState, setJumpState] = useState({ ownerKey, visible: false });
+  const showJumpToLatest = jumpState.ownerKey === ownerKey && jumpState.visible;
   const frameRef = useRef<number | null>(null);
+  const jumpingRef = useRef(false);
   const followingEndRef = useRef(followingEnd);
 
   useEffect(() => {
@@ -48,7 +59,10 @@ export function useFollowEnd({
     frameRef.current = null;
   }, []);
 
-  useEffect(() => cancelFrame, [cancelFrame, ownerKey]);
+  useEffect(() => {
+    jumpingRef.current = false;
+    return cancelFrame;
+  }, [cancelFrame, ownerKey]);
 
   const anchorToEnd = useCallback(
     (behavior: ScrollBehavior) => {
@@ -67,6 +81,34 @@ export function useFollowEnd({
     [endRef, transcriptRef],
   );
 
+  const interruptJump = useCallback(() => {
+    if (!jumpingRef.current) return;
+    jumpingRef.current = false;
+    followingEndRef.current = false;
+    setFollowState({ ownerKey, following: false });
+    const transcript = transcriptRef.current;
+    if (transcript) {
+      transcript.scrollTo({ behavior: "auto", top: transcript.scrollTop });
+      setJumpState({
+        ownerKey,
+        visible: distanceFromEnd(transcript) > transcript.clientHeight,
+      });
+    }
+  }, [ownerKey, transcriptRef]);
+
+  useEffect(() => {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+    transcript.addEventListener("wheel", interruptJump);
+    transcript.addEventListener("pointerdown", interruptJump);
+    transcript.addEventListener("touchstart", interruptJump);
+    return () => {
+      transcript.removeEventListener("wheel", interruptJump);
+      transcript.removeEventListener("pointerdown", interruptJump);
+      transcript.removeEventListener("touchstart", interruptJump);
+    };
+  }, [interruptJump, ownerKey, transcriptRef]);
+
   useEffect(() => {
     if (!followingEnd) return;
     anchorToEnd(followEndScrollBehavior());
@@ -79,7 +121,15 @@ export function useFollowEnd({
 
     const observer = new ResizeObserver(() => {
       const current = transcriptRef.current;
-      if (!current || !followingEndRef.current) return;
+      if (!current) return;
+      if (jumpingRef.current) return;
+      if (!followingEndRef.current) {
+        setJumpState({
+          ownerKey,
+          visible: distanceFromEnd(current) > current.clientHeight,
+        });
+        return;
+      }
       if (transcriptIsAtEnd(current)) return;
       anchorToEnd("auto");
     });
@@ -95,15 +145,30 @@ export function useFollowEnd({
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
       const transcript = transcriptRef.current;
-      if (transcript) setFollowingEnd(transcriptIsAtEnd(transcript));
+      if (transcript) {
+        if (jumpingRef.current) {
+          if (transcriptIsAtEnd(transcript)) jumpingRef.current = false;
+          return;
+        }
+        setFollowState({
+          ownerKey,
+          following: transcriptIsAtEnd(transcript),
+        });
+        setJumpState({
+          ownerKey,
+          visible: distanceFromEnd(transcript) > transcript.clientHeight,
+        });
+      }
     });
-  }, [transcriptRef]);
+  }, [ownerKey, transcriptRef]);
 
   const jumpToLatest = useCallback(() => {
     cancelFrame();
-    setFollowingEnd(true);
+    jumpingRef.current = true;
+    setFollowState({ ownerKey, following: true });
+    setJumpState({ ownerKey, visible: false });
     anchorToEnd(followEndScrollBehavior());
-  }, [anchorToEnd, cancelFrame]);
+  }, [anchorToEnd, cancelFrame, ownerKey]);
 
-  return { followingEnd, updateFollowEnd, jumpToLatest };
+  return { followingEnd, showJumpToLatest, updateFollowEnd, jumpToLatest };
 }
