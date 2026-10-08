@@ -28,6 +28,7 @@ import {
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { bindingNoticeAllowed } from "./composerBindingNotice";
 export function ChatSurface({
   chatId,
   paneHeader,
@@ -49,6 +50,9 @@ export function ChatSurface({
   const {
     composerText,
     attachedContext,
+    imagePreviews,
+    imageUploading,
+    addImages,
     queuedPrompts,
     queuedTurnBarrier,
     knownTurnOrder,
@@ -338,6 +342,9 @@ export function ChatSurface({
         disabledReasonId={composerDisabledReasonId}
         text={composerText}
         attachedContext={attachedContext}
+        imagePreviews={imagePreviews}
+        imageUploading={imageUploading}
+        onAddImages={addImages}
         enabled={composerEnabled}
         actionBusy={actionBusy}
         activeTurn={Boolean(activeAcpTurn)}
@@ -375,13 +382,7 @@ export function ChatSurface({
         missingBindingNotice={
           useNativeAcp &&
           !availableBinding &&
-          ![
-            "checking",
-            "signInRequired",
-            "consent",
-            "waiting",
-            "error",
-          ].includes(discoveryPhase)
+          bindingNoticeAllowed(discoveryPhase)
         }
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}

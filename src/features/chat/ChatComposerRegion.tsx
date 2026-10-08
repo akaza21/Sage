@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, MoreHorizontal, Square, X } from "../../ui/leanIcons";
+import { ArrowUp, Mic, Square } from "../../ui/leanIcons";
 
 import type { FormEventHandler, RefObject } from "react";
 
@@ -15,7 +15,7 @@ import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
 import type { AcpGoalState } from "../../domain/acpGoal";
-import { QueuedAttachmentPreview } from "./ComposerAttachments";
+import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -25,6 +25,8 @@ import {
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
 import { ClaudeAuthActions } from "./ClaudeAuthActions";
+import { ComposerImageButton } from "./ComposerImageButton";
+import { useComposerImageInput } from "./useComposerImageInput";
 import "../../styles/queued-messages.css";
 
 export function ChatComposerRegion({
@@ -35,6 +37,8 @@ export function ChatComposerRegion({
   disabledReasonId,
   text,
   attachedContext,
+  imagePreviews,
+  imageUploading = false,
   enabled,
   actionBusy,
   activeTurn,
@@ -72,6 +76,8 @@ export function ChatComposerRegion({
   onSubmit,
   onTextChange,
   onRemoveContext,
+  imageInputAvailable = false,
+  onAddImages,
   onCancelTurn,
   onDeleteQueuedPrompt,
   onRetryQueuedPrompt,
@@ -84,6 +90,8 @@ export function ChatComposerRegion({
   disabledReasonId: string;
   text: string;
   attachedContext: readonly AttachedContext[];
+  imagePreviews?: Readonly<Record<string, string>>;
+  imageUploading?: boolean;
   enabled: boolean;
   actionBusy: boolean;
   activeTurn: boolean;
@@ -124,6 +132,8 @@ export function ChatComposerRegion({
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
+  imageInputAvailable?: boolean;
+  onAddImages?: (files: File[]) => void;
   onCancelTurn: (() => void) | null;
   onDeleteQueuedPrompt?: (id: string) => void;
   onRetryQueuedPrompt?: (id: string) => void;
@@ -131,6 +141,12 @@ export function ChatComposerRegion({
 }) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || actionBusy || projectTransitioning;
+  const imageInput = useComposerImageInput({
+    contexts: attachedContext,
+    available: imageInputAvailable,
+    disabled: composerDisabled,
+    onAddImages,
+  });
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const projectName = composerWorkspaceName(project);
@@ -141,88 +157,28 @@ export function ChatComposerRegion({
     composerDisabled || activeTurn,
     composerRef,
   );
-
   return (
     <form
       className="composer"
-      aria-busy={projectTransitioning}
+      role="form"
+      aria-busy={projectTransitioning || imageUploading}
+      onDragOver={imageInput.onDragOver}
+      onDrop={imageInput.onDrop}
+      onPaste={imageInput.onPaste}
       onSubmit={(event) => {
         dictation.cancel();
         onSubmit(event);
       }}
     >
       <BoundChatGoalControl state={goal} chatId={dictationScope} />
-      {queuedPrompts && queuedPrompts.length > 0 ? (
-        <div className="composer__queued" aria-label="Queued messages">
-          {queuedPrompts.map((prompt) => (
-            <div className="composer__queued-row" key={prompt.id}>
-              <QueuedAttachmentPreview contexts={prompt.attachedContext} />
-              <span className="composer__queued-text" title={prompt.text}>
-                {prompt.text}
-              </span>
-              <span className="composer__queued-state">
-                {prompt.status === "saving"
-                  ? "Saving…"
-                  : prompt.status === "deleting"
-                    ? "Removing…"
-                    : prompt.status === "blocked"
-                      ? "Needs retry"
-                      : prompt.status === "outcomeUnknown"
-                        ? "May have been delivered"
-                        : prompt.status === "sending"
-                          ? "Sending…"
-                          : "Queued"}
-              </span>
-              {steerAvailable &&
-              prompt.status !== "sending" &&
-              prompt.status !== "saving" &&
-              prompt.status !== "deleting" ? (
-                <button
-                  type="button"
-                  className="composer__queued-steer"
-                  aria-label={`Steer queued message: ${prompt.text}`}
-                  title={
-                    prompt.status === "outcomeUnknown"
-                      ? "Retry Steer with the same message ID"
-                      : "Submit without interrupting the model"
-                  }
-                  disabled={actionBusy || projectTransitioning}
-                  onClick={() => onSteerQueuedPrompt?.(prompt.id)}
-                >
-                  Steer
-                </button>
-              ) : null}
-              <button
-                type="button"
-                aria-label={`Delete queued message: ${prompt.text}`}
-                disabled={
-                  prompt.status === "saving" || prompt.status === "deleting"
-                }
-                onClick={() => onDeleteQueuedPrompt?.(prompt.id)}
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-              <details className="composer__queued-options">
-                <summary
-                  aria-label={`More options for queued message: ${prompt.text}`}
-                >
-                  <MoreHorizontal size={16} aria-hidden="true" />
-                </summary>
-                <button
-                  type="button"
-                  onClick={() =>
-                    prompt.status === "blocked"
-                      ? onRetryQueuedPrompt?.(prompt.id)
-                      : onDeleteQueuedPrompt?.(prompt.id)
-                  }
-                >
-                  {prompt.status === "blocked" ? "Retry when ready" : "Delete"}
-                </button>
-              </details>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <ComposerQueuedPrompts
+        prompts={queuedPrompts}
+        steerAvailable={steerAvailable}
+        disabled={actionBusy || projectTransitioning}
+        onDelete={onDeleteQueuedPrompt}
+        onRetry={onRetryQueuedPrompt}
+        onSteer={onSteerQueuedPrompt}
+      />
       {workbenchError ? (
         <div className="composer__error" role="alert">
           {workbenchError}
@@ -234,6 +190,11 @@ export function ChatComposerRegion({
           {claudeSignInRequired ? (
             <ClaudeAuthActions key={claudeAuthScope} />
           ) : null}
+        </div>
+      ) : null}
+      {imageInput.status ? (
+        <div className="composer__error" role="alert">
+          {imageInput.status}
         </div>
       ) : null}
       {missingBindingNotice ? (
@@ -308,6 +269,7 @@ export function ChatComposerRegion({
         <div className="composer__attachment-row">
           <ComposerAttachments
             contexts={attachedContext}
+            imagePreviews={imagePreviews}
             disabled={actionBusy || projectTransitioning}
             onRemove={onRemoveContext}
           />
@@ -334,6 +296,13 @@ export function ChatComposerRegion({
           onSelectHarness={onSelectHarness}
           onSelectModel={onSelectModel}
           onModeRemoved={() => composerRef.current?.focus()}
+        />
+        <ComposerImageButton
+          available={imageInputAvailable}
+          disabled={composerDisabled}
+          uploading={imageUploading}
+          count={imageInput.count}
+          onChoose={imageInput.accept}
         />
         {!composerDisabled ? (
           <span className="composer__shortcut" aria-hidden="true">
@@ -390,7 +359,12 @@ export function ChatComposerRegion({
               activeTurn && queueAvailable ? "Queue message" : "Send message"
             }
             disabled={
-              projectTransitioning || !text.trim() || !enabled || actionBusy
+              projectTransitioning ||
+              !text.trim() ||
+              !enabled ||
+              actionBusy ||
+              imageUploading ||
+              imageInput.sendBlocked
             }
           >
             <ArrowUp size={20} aria-hidden="true" />

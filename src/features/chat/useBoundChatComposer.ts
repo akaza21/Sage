@@ -18,6 +18,7 @@ import type {
   ChatTurnOrder,
   QueuedChatPrompt,
 } from "../../domain/chatOwnership";
+import { useChatImageAttachments } from "./useChatImageAttachments";
 
 const EMPTY_ATTACHED_CONTEXT = [] as const;
 const EMPTY_QUEUED_PROMPTS: readonly QueuedChatPrompt[] = [];
@@ -87,12 +88,12 @@ export function useBoundChatComposer(chatId?: string) {
     (state) => state.captureChatOwnership,
   );
   const setChatComposer = useWorkbenchStore((state) => state.setChatComposer);
-  const detachChatContext = useWorkbenchStore(
-    (state) => state.detachChatContext,
-  );
   const sendPrompt = useWorkbenchStore((state) => state.sendPrompt);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+
+  const { imagePreviews, imageUploading, addImages, removeAttachedContext } =
+    useChatImageAttachments(chatId, attachedContext);
 
   function setBoundComposerText(text: string) {
     if (chatId) {
@@ -103,12 +104,6 @@ export function useBoundChatComposer(chatId?: string) {
       }
     }
     setComposerText(text);
-  }
-
-  function removeAttachedContext(contextKey: string) {
-    const owner = chatId ?? activeTabId ?? undefined;
-    const intent = owner ? captureChatOwnership(owner) : null;
-    if (intent) detachChatContext(intent, contextKey);
   }
 
   async function sendBoundPrompt() {
@@ -211,6 +206,9 @@ export function useBoundChatComposer(chatId?: string) {
   return {
     composerText,
     attachedContext,
+    imagePreviews,
+    imageUploading,
+    addImages,
     queuedPrompts,
     queuedTurnBarrier,
     knownTurnOrder,

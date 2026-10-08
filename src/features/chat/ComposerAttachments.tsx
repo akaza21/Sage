@@ -57,10 +57,12 @@ export function ComposerAttachments({
   contexts,
   disabled,
   onRemove,
+  imagePreviews = {},
 }: {
   contexts: readonly AttachedContext[];
   disabled: boolean;
   onRemove: (context: AttachedContext) => void;
+  imagePreviews?: Readonly<Record<string, string>>;
 }) {
   if (contexts.length === 0) return null;
   return (
@@ -72,6 +74,13 @@ export function ComposerAttachments({
             className="composer__attachment"
             key={attachedContextKey(context)}
           >
+            {context.kind === "image" && imagePreviews[context.artifactId] ? (
+              <img
+                className="composer__image-preview"
+                src={imagePreviews[context.artifactId]}
+                alt=""
+              />
+            ) : null}
             <span
               title={
                 context.kind === "browserPage"
