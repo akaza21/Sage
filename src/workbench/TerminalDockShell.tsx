@@ -10,6 +10,7 @@ import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
   createUserTerminal,
+  terminalErrorLabel,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
@@ -27,20 +28,6 @@ const loadTerminalView = () =>
   import("./TerminalDock").then(({ TerminalDock }) => ({
     default: TerminalDock,
   }));
-
-function errorLabel(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "unavailable")
-      return "Terminal is unavailable on this platform.";
-    if (code === "capacity")
-      return "Terminal limit reached for this chat or project.";
-    if (code === "invalid_scope" || code === "unknown_session")
-      return "This terminal is no longer attached to the current chat.";
-    if (code === "ended") return "Session ended";
-  }
-  return "Terminal operation failed. The native session may need cleanup.";
-}
 
 function selectedScope(
   pinnedChatId: string | null,
@@ -155,7 +142,7 @@ export function TerminalDockShell({
       setCollapsed(false);
     } catch (error) {
       if (!owner.disposed && owner.lifecycle === lifecycle)
-        setMessage(errorLabel(error));
+        setMessage(terminalErrorLabel(error));
     } finally {
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;
@@ -223,18 +210,18 @@ export function TerminalDockShell({
         else onClose();
       }
     } catch (error) {
-      setMessage(errorLabel(error));
+      setMessage(terminalErrorLabel(error));
     } finally {
       owner.closingId = null;
       setClosingId(null);
     }
   };
 
-  const updateStatus = (sessionId: string, status: string) => {
+  const updateStatus = (sessionId: string, status: string, ended?: boolean) => {
     const owner = ownerRef.current;
     const next = owner.entries.map((entry) =>
       entry.session.sessionId === sessionId
-        ? { ...entry, ended: status === "Session ended", message: status }
+        ? { ...entry, ended: entry.ended || ended === true, message: status }
         : entry,
     );
     owner.entries = next;
@@ -308,7 +295,9 @@ export function TerminalDockShell({
           scope={scope}
           session={active.session}
           ended={active.ended}
-          onStatus={(status) => updateStatus(active.session.sessionId, status)}
+          onStatus={(status, ended) =>
+            updateStatus(active.session.sessionId, status, ended)
+          }
         />
       ) : null}
     </section>

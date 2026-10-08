@@ -29,6 +29,8 @@ vi.mock("../services/userTerminalDesktop", () => ({
   closeUserTerminal: native.close,
   resizeUserTerminal: native.resize,
   writeUserTerminal: native.write,
+  terminalErrorLabel: (error: { code?: string }) =>
+    error.code === "ended" ? "Session ended" : "Terminal operation failed.",
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -141,7 +143,9 @@ it("reports an ended shell and ignores later input", async () => {
   );
   await waitFor(() => expect(xterm.data).not.toBeNull());
   act(() => xterm.data?.("x"));
-  await waitFor(() => expect(onStatus).toHaveBeenCalledWith("Session ended"));
+  await waitFor(() =>
+    expect(onStatus).toHaveBeenCalledWith("Session ended", true),
+  );
   act(() => xterm.data?.("y"));
   expect(native.write).toHaveBeenCalledTimes(1);
 });

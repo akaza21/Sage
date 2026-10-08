@@ -16,11 +16,26 @@ const native = vi.hoisted(() => ({
 vi.mock("../services/userTerminalDesktop", () => ({
   createUserTerminal: native.create,
   closeUserTerminal: native.close,
+  terminalErrorLabel: () => "Terminal operation failed.",
 }));
 
 vi.mock("./TerminalDock", () => ({
-  TerminalDock: ({ session }: { session: { sessionId: string } }) => (
-    <div>Active session {session.sessionId}</div>
+  TerminalDock: ({
+    session,
+    ended,
+    onStatus,
+  }: {
+    session: { sessionId: string };
+    ended: boolean;
+    onStatus: (status: string, ended?: boolean) => void;
+  }) => (
+    <div>
+      Active session {session.sessionId}
+      <span data-testid="terminal-ended-state">{ended ? "ended" : "live"}</span>
+      <button type="button" onClick={() => onStatus("Session ended", false)}>
+        Report status text only
+      </button>
+    </div>
   ),
 }));
 
@@ -95,6 +110,16 @@ it("collapses without closing sessions and blocks a fifth tab locally", async ()
   expect(
     await screen.findByText(`Active session ${session(4).sessionId}`),
   ).toBeInTheDocument();
+});
+
+it("does not infer native ended state from status display text", async () => {
+  render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
+  await screen.findByRole("tab");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Report status text only" }),
+  );
+  expect(screen.getByTestId("terminal-ended-state")).toHaveTextContent("live");
+  expect(screen.getByRole("status")).toHaveTextContent("Session ended");
 });
 
 it("selects a remaining tab when the closing tab was selected during native close", async () => {

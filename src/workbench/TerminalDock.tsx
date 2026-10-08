@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   readUserTerminal,
   resizeUserTerminal,
+  terminalErrorLabel,
   writeUserTerminal,
   type UserTerminalScope,
   type UserTerminalSession,
@@ -23,25 +24,11 @@ function dimensionsFor(element: HTMLElement): Dimensions {
   };
 }
 
-function errorLabel(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "unavailable")
-      return "Terminal is unavailable on this platform.";
-    if (code === "capacity")
-      return "Terminal limit reached for this chat or project.";
-    if (code === "invalid_scope" || code === "unknown_session")
-      return "This terminal is no longer attached to the current chat.";
-    if (code === "ended") return "Session ended";
-  }
-  return "Terminal operation failed. The native session may need cleanup.";
-}
-
 export type TerminalDockProps = {
   scope: UserTerminalScope;
   session: UserTerminalSession;
   ended: boolean;
-  onStatus: (status: string) => void;
+  onStatus: (status: string, ended?: boolean) => void;
 };
 
 export function TerminalDock({
@@ -124,7 +111,7 @@ export function TerminalDock({
           cursor = page.nextCursor;
         }
       } catch (error) {
-        if (!stopped) onStatusRef.current(errorLabel(error));
+        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
       }
     }
 
@@ -143,7 +130,7 @@ export function TerminalDock({
           );
         }
       } catch (error) {
-        if (!stopped) onStatusRef.current(errorLabel(error));
+        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
       } finally {
         resizeActive = false;
       }
@@ -164,7 +151,8 @@ export function TerminalDock({
             pendingInputBytes = 0;
             if (error && typeof error === "object" && "code" in error)
               sessionEnded = (error as { code?: unknown }).code === "ended";
-            if (!stopped) onStatusRef.current(errorLabel(error));
+            if (!stopped)
+              onStatusRef.current(terminalErrorLabel(error), sessionEnded);
             break;
           }
         }
@@ -208,7 +196,7 @@ export function TerminalDock({
       initial.columns,
       initial.rows,
     ).catch((error: unknown) => {
-      if (!stopped) onStatusRef.current(errorLabel(error));
+      if (!stopped) onStatusRef.current(terminalErrorLabel(error));
     });
     void pollOutput();
     terminal.focus();

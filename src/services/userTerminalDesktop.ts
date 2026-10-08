@@ -23,6 +23,20 @@ export interface UserTerminalPage {
   truncated: boolean;
 }
 
+export function terminalErrorLabel(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "unavailable")
+      return "Terminal is unavailable on this platform.";
+    if (code === "capacity")
+      return "Terminal limit reached for this chat or project.";
+    if (code === "invalid_scope" || code === "unknown_session")
+      return "This terminal is no longer attached to the current chat.";
+    if (code === "ended") return "Session ended";
+  }
+  return "Terminal operation failed. The native session may need cleanup.";
+}
+
 const handlePattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const decimalPattern = /^(0|[1-9][0-9]{0,19})$/u;
