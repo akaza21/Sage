@@ -886,12 +886,15 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_joined_discovery_flight_refuses_a_completed_catalog_after_its_own_deadline_expires() {
-        let (manager, owner, joined) = admitted_joined_flight(
-            "joined-expired",
-            CodexDiscoveryDeadline::for_test(Duration::from_millis(80), Duration::from_millis(20)),
-        );
+        let (manager, owner, mut joined) =
+            admitted_joined_flight("joined-expired", CodexDiscoveryDeadline::new().unwrap());
         assert!(manager.discover(owner).is_ok());
-        thread::sleep(Duration::from_millis(150));
+        // The owner has completed; only the joined caller's own deadline is expired.
+        joined.deadline = CodexDiscoveryDeadline::for_test(Duration::ZERO, Duration::ZERO);
+        assert_eq!(
+            joined.deadline.ensure_total(),
+            Err(CodexDiscoveryRunError::Timeout)
+        );
 
         assert_eq!(
             manager.discover(joined).unwrap_err(),
