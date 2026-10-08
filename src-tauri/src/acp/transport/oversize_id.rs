@@ -1,6 +1,3 @@
-//! Constant-space JSON shape and top-level numeric ID proof for discarded frames.
-//! This parser never retains native response text. Its stack is capped at 32.
-
 mod punctuation;
 mod utf8;
 use utf8::Utf8Validator;

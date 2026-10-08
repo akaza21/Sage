@@ -143,8 +143,6 @@ pub(crate) fn load_snapshot(
         .transpose()
 }
 
-/// A stopped epoch can serve its latest snapshot, but this query confers no
-/// write authority. It requires the same current session and exact binding.
 pub(crate) fn load_earlier_snapshot(
     connection: &Connection,
     scope: &ChildTranscriptScope,

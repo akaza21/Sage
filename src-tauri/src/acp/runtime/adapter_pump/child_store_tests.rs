@@ -7,9 +7,6 @@ use crate::acp::{
     },
 };
 
-/// The source fixture is the redacted second 0.146 probe, whose parent read
-/// proved the subAgentActivity linkage. Only its synthetic request/parent IDs
-/// are rebound to this pump's test owner.
 fn observed_child_wire(request_id: u64) -> Vec<u8> {
     let mut value: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/cp18d_child_read_0146.json")).unwrap();

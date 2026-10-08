@@ -22,3 +22,33 @@ impl AdapterModel {
         self.id.as_str().len().checked_add(self.name.as_str().len())
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum AdapterRuntimeError {
+    #[error("adapter operation is unavailable or invalid in the current state")]
+    Operation,
+    #[error("the harness rejected the correlated session configuration mutation")]
+    ConfigMutationRejected,
+    #[error("the harness rejected the correlated native Goal mutation")]
+    GoalMutationRejected,
+    #[error("the adapter does not advertise this command")]
+    UnsupportedCommand,
+    #[error("there is no exact pending permission intent for this decision")]
+    PermissionIntent,
+    #[error("there is no exact pending request for this later permission decision")]
+    LaterPermissionMiss,
+    #[error("adapter launch artifact is not admitted")]
+    LaunchUnavailable,
+    #[error("the harness reports that it is not signed in")]
+    SignInRequired,
+    #[error("adapter frame is invalid")]
+    Frame,
+    #[error("adapter event batch exceeds its count limit")]
+    BatchCount,
+    #[error("adapter event batch exceeds its actual-byte limit")]
+    BatchBytes,
+    #[error("mandatory deny egress failed closed and requires teardown")]
+    MandatoryDenyTeardown,
+    #[error("egress resolution does not match the reserved adapter intent")]
+    EgressIntent,
+}

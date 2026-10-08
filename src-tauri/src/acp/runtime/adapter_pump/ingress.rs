@@ -6,22 +6,9 @@ use super::{
 use crate::acp::redaction::sanitize_diagnostic_text;
 use crate::acp::runtime::terminal_detail;
 
+mod shape;
 mod teardown;
-
-#[derive(Clone, Copy)]
-enum IngestMode {
-    Immediate,
-    Deferred,
-}
-
-fn opens_json_container(frame: &Frame) -> bool {
-    frame
-        .as_bytes()
-        .iter()
-        .copied()
-        .find(|byte| !byte.is_ascii_whitespace())
-        .is_some_and(|byte| matches!(byte, b'{' | b'['))
-}
+use shape::{IngestMode, opens_json_container};
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     pub(crate) async fn push_stdout_chunk(

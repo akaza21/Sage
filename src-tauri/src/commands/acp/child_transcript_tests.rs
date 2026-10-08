@@ -110,7 +110,12 @@ impl RuntimeEngine for ChildEngine {
 
 #[tokio::test]
 async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() {
-    let root = std::env::temp_dir().join(format!("sage-cp18d-ipc-{}", uuid::Uuid::new_v4()));
+    let export_path = std::env::var_os("SAGE_CP18D_EXPORT_DB").map(std::path::PathBuf::from);
+    let root = std::env::var_os("SAGE_CP18D_PROJECT_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("sage-cp18d-ipc-{}", uuid::Uuid::new_v4()))
+        });
     std::fs::create_dir_all(&root).unwrap();
     let database = Database::open(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
@@ -289,7 +294,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
             .is_err()
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    let result = get_acp_child_transcript_inner(&state, request)
+    let result = get_acp_child_transcript_inner(&state, request.clone())
         .await
         .unwrap();
     assert!(
@@ -298,6 +303,61 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     let count: i64 = state.database.connection().query_row("SELECT COUNT(*) FROM acp_child_thread_transcripts WHERE native_child_thread_id='child-one'", [], |row| row.get(0)).unwrap();
     assert_eq!(count, 1);
+    let mut foreign_owner = scope.clone();
+    foreign_owner.owner.session_id = SageAgentSessionId::parse("foreign-session").unwrap();
+    assert!(
+        crate::acp::store::child_transcript::load_earlier_snapshot(
+            &state.database.connection(),
+            &foreign_owner,
+        )
+        .unwrap()
+        .is_none()
+    );
+    {
+        let connection = state.database.connection();
+        connection.execute("UPDATE session_runtime_epochs SET state='terminating' WHERE session_id=?1 AND runtime_epoch=1", [request.session_id.as_str()]).unwrap();
+        assert!(
+            crate::acp::store::child_transcript::verify_current_binding(&connection, &scope)
+                .is_err()
+        );
+        assert!(
+            crate::acp::store::child_transcript::load_earlier_snapshot(&connection, &scope)
+                .unwrap()
+                .is_none()
+        );
+        connection.execute("UPDATE session_runtime_epochs SET state='exited',terminal_at=12,exit_kind='processExit' WHERE session_id=?1 AND runtime_epoch=1", [request.session_id.as_str()]).unwrap();
+        assert_eq!(
+            crate::acp::store::child_transcript::load_earlier_snapshot(&connection, &scope)
+                .unwrap(),
+            Some(snapshot)
+        );
+        if let Some(path) = export_path.as_ref() {
+            let mut export = rusqlite::Connection::open(path).unwrap();
+            rusqlite::backup::Backup::new(&connection, &mut export)
+                .unwrap()
+                .run_to_completion(256, std::time::Duration::ZERO, None)
+                .unwrap();
+        }
+        connection
+            .execute(
+                "DELETE FROM chat_session_heads WHERE session_id=?1",
+                [request.session_id.as_str()],
+            )
+            .unwrap();
+        assert!(
+            crate::acp::store::child_transcript::load_earlier_snapshot(&connection, &scope)
+                .unwrap()
+                .is_none()
+        );
+        connection.execute("UPDATE agent_sessions SET state='failed',residency='cold',terminal_at=13 WHERE id=?1", [request.session_id.as_str()]).unwrap();
+        assert!(
+            crate::acp::store::child_transcript::load_earlier_snapshot(&connection, &scope)
+                .unwrap()
+                .is_none()
+        );
+    }
     state.acp.shutdown_blocking().unwrap();
-    std::fs::remove_dir_all(root).unwrap();
+    if export_path.is_none() {
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

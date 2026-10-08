@@ -55,7 +55,7 @@ pub(crate) async fn get_acp_child_transcript_inner(
     request: ChildTranscriptRequest,
 ) -> Result<ChildTranscriptResponse, AcpIpcError> {
     let (_transition, snapshot) = snapshot_for(
-        &state,
+        state,
         request.project_id.clone(),
         request.project_generation,
         request.chat_id.clone(),

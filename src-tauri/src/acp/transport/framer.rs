@@ -69,7 +69,6 @@ impl IncrementalFrameDecoder {
         }
     }
 
-    /// Only the Codex child-read owner enables this while its request is pending.
     pub(crate) fn enable_recoverable_oversize(&mut self) {
         self.recoverable_oversize = true;
     }
