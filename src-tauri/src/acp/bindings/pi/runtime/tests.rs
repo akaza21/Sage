@@ -11,8 +11,10 @@ use crate::acp::{
             PI_PACKAGE, PI_RPC_ARGS, PI_SOURCE_COMMIT, PI_VERSION, PiPlatform,
         },
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-    intent::{ExternalId, NormalizedPayload, Prompt},
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
+    intent::{
+        ExternalId, NormalizedPayload, Prompt, SafeResourceLocation, SafeResourceRef, ToolCategory,
+    },
     transport::IncrementalFrameDecoder,
 };
 
@@ -21,9 +23,13 @@ struct Mapper;
 impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
-        _: &str,
+        path: &str,
     ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
     {
+        if path == r"C:\repo\src\lib.rs" {
+            return SafeResourceRef::new(SageRootId::parse("root-pi").unwrap(), "src/lib.rs")
+                .map_err(|_| crate::acp::intent::UnavailableResourceReason::Unsupported);
+        }
         Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
     }
 }
@@ -84,7 +90,7 @@ fn initialize(runtime: &mut PiRuntime) {
         .ingest(
             &response(
                 &state,
-                json!({"model":{"provider":"openai","id":"gpt","name":"GPT"}}),
+                json!({"model":{"provider":"openai","id":"gpt","name":"GPT"},"thinkingLevel":"high"}),
             ),
             &Mapper,
         )
@@ -122,6 +128,18 @@ fn initialize(runtime: &mut PiRuntime) {
 }
 
 fn ready(runtime: &mut PiRuntime) {
+    let levels = ready_until_levels(runtime);
+    let batch = runtime
+        .ingest(
+            &response(&levels, json!({"levels":["off","high"]})),
+            &Mapper,
+        )
+        .expect("levels response");
+    assert!(matches!(batch.events(), [AdapterEvent::Acknowledged]));
+    assert!(batch.egress().is_empty());
+}
+
+fn ready_until_levels(runtime: &mut PiRuntime) -> Value {
     initialize(runtime);
     let new_session = runtime
         .command(AdapterCommand::NewSession {
@@ -137,6 +155,13 @@ fn ready(runtime: &mut PiRuntime) {
         batch.events(),
         [AdapterEvent::SessionReady { .. }]
     ));
+    assert!(batch.egress().is_empty());
+    let levels = runtime
+        .begin_thinking_discovery()
+        .expect("post-activation thinking discovery");
+    let levels = deliver(runtime, levels);
+    assert_eq!(levels["type"], "get_available_thinking_levels");
+    levels
 }
 
 fn running(runtime: &mut PiRuntime) {
@@ -155,6 +180,445 @@ fn running(runtime: &mut PiRuntime) {
         .ingest(&frame(json!({"type":"agent_start"})), &Mapper)
         .expect("agent start");
     assert!(matches!(batch.events(), [AdapterEvent::Turn { .. }]));
+}
+
+#[test]
+fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
+    let mut runtime = fixture_runtime(31);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(&frame(json!({"type":"message_start"})), &Mapper)
+        .expect("message start");
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"message_update",
+                "assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Check the fixture"}
+            })),
+            &Mapper,
+        )
+        .expect("thinking delta");
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ThoughtSummary { summary },
+            ..
+        }] if summary.as_str() == "Check the fixture"
+    ));
+}
+
+#[test]
+fn pi_read_tool_projects_category_and_project_location() {
+    let mut runtime = fixture_runtime(32);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_start",
+                "toolCallId":"read-file",
+                "toolName":"read",
+                "args":{"path":r"C:\repo\src\lib.rs"}
+            })),
+            &Mapper,
+        )
+        .expect("read tool");
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { category: ToolCategory::Read, locations, .. },
+            ..
+        }] if matches!(locations.as_slice(), [SafeResourceLocation::Resource { resource }]
+            if resource.relative_path.as_str() == "src/lib.rs")
+    ));
+}
+
+#[test]
+fn pi_read_tool_projects_bounded_result_without_losing_identity() {
+    let mut runtime = fixture_runtime(33);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_start",
+                "toolCallId":"read-result",
+                "toolName":"read",
+                "args":{"path":r"C:\repo\src\lib.rs"}
+            })),
+            &Mapper,
+        )
+        .expect("read start");
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_update",
+                "toolCallId":"read-result",
+                "partialResult":{"content":[{"type":"text","text":"first line"}]}
+            })),
+            &Mapper,
+        )
+        .expect("read update");
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { category: ToolCategory::Read, output_summary: Some(summary), .. },
+            ..
+        }] if summary.as_str() == "first line"
+    ));
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_end",
+                "toolCallId":"read-result",
+                "result":{"content":[{"type":"text","text":"final line"}]},
+                "isError":false
+            })),
+            &Mapper,
+        )
+        .expect("read end");
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { category: ToolCategory::Read, output_summary: Some(summary), .. },
+            ..
+        }] if summary.as_str() == "final line"
+    ));
+}
+
+#[test]
+fn pi_read_image_result_projects_agent_image() {
+    let mut runtime = fixture_runtime(34);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_start",
+                "toolCallId":"read-image",
+                "toolName":"read",
+                "args":{"path":r"C:\repo\src\lib.rs"}
+            })),
+            &Mapper,
+        )
+        .expect("read start");
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_end",
+                "toolCallId":"read-image",
+                "result":{"content":[{"type":"image","mimeType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII="}]},
+                "isError":false
+            })),
+            &Mapper,
+        )
+        .expect("read image end");
+    assert!(batch.events().iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item {
+            payload: NormalizedPayload::Image { .. },
+            ..
+        }
+    )));
+}
+
+#[test]
+fn pi_invalid_read_image_is_visible_without_storing_bytes() {
+    let mut runtime = fixture_runtime(35);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_start",
+                "toolCallId":"bad-image",
+                "toolName":"read"
+            })),
+            &Mapper,
+        )
+        .expect("read start");
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"tool_execution_end",
+                "toolCallId":"bad-image",
+                "result":{"content":[{"type":"image","mimeType":"image/png","data":"not-base64"}]},
+                "isError":false
+            })),
+            &Mapper,
+        )
+        .expect("invalid image remains nonfatal");
+    assert!(batch.events().iter().any(|event| matches!(
+        event,
+        AdapterEvent::Unsupported(NormalizedPayload::Unsupported { summary, .. })
+            if summary.as_str() == "Image payload is not valid base64"
+    )));
+}
+
+#[test]
+fn pi_available_models_project_session_config() {
+    let mut runtime = fixture_runtime(36);
+    initialize(&mut runtime);
+    let config = runtime.session_config().expect("Pi config");
+    let wire = serde_json::to_value(config).expect("config json");
+    assert_eq!(wire["configOptions"][0]["id"], "pi.model");
+    assert_eq!(wire["configOptions"][0]["currentValue"], "openai:gpt");
+    assert_eq!(
+        wire["configOptions"][0]["options"][0]["value"],
+        "openai:gpt"
+    );
+}
+
+#[test]
+fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
+    use crate::acp::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
+    };
+
+    let mut runtime = fixture_runtime(37);
+    ready(&mut runtime);
+    let models = runtime
+        .command(AdapterCommand::ModelPage { cursor: None })
+        .expect("models page");
+    let models = deliver(&mut runtime, models);
+    runtime
+        .ingest(
+            &response(
+                &models,
+                json!({"models":[
+                    {"provider":"openai","id":"gpt","name":"GPT"},
+                    {"provider":"anthropic","id":"claude","name":"Claude"}
+                ]}),
+            ),
+            &Mapper,
+        )
+        .expect("models reply");
+    let intent = ConfigIntent {
+        owner: RuntimeOwner {
+            project_id: SageProjectId::parse("project-pi").unwrap(),
+            chat_id: SageChatId::parse("chat-pi").unwrap(),
+            session_id: SageAgentSessionId::parse("session-pi-37").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(37).unwrap(),
+        },
+        expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+        mutation: ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "pi.model").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", "anthropic:claude").unwrap(),
+            },
+        },
+    };
+    let egress = runtime.configure(&intent).expect("model selection");
+    let model_request = deliver(&mut runtime, egress);
+    assert_eq!(model_request["type"], "set_model");
+    assert_eq!(model_request["provider"], "anthropic");
+    assert_eq!(model_request["modelId"], "claude");
+    let batch = runtime
+        .ingest(
+            &response(
+                &model_request,
+                json!({"provider":"anthropic","id":"claude","name":"Claude"}),
+            ),
+            &Mapper,
+        )
+        .expect("model selected");
+    let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(wire["configOptions"][0]["currentValue"], "anthropic:claude");
+    assert!(wire["configOptions"][1].is_null());
+    assert_eq!(batch.egress().len(), 1);
+    let state = request(&batch.egress()[0]);
+    let token = batch.egress()[0].token().clone();
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    assert_eq!(state["type"], "get_state");
+    let batch = runtime
+        .ingest(
+            &response(
+                &state,
+                json!({"model":{"provider":"anthropic","id":"claude"},"thinkingLevel":"off"}),
+            ),
+            &Mapper,
+        )
+        .expect("refreshed state");
+    assert_eq!(batch.egress().len(), 1);
+    let levels = request(&batch.egress()[0]);
+    let token = batch.egress()[0].token().clone();
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    runtime
+        .ingest(&response(&levels, json!({"levels":["off"]})), &Mapper)
+        .expect("new model levels");
+    let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(wire["configOptions"][1]["currentValue"], "off");
+}
+
+#[test]
+fn pi_thinking_config_uses_reported_levels_only() {
+    let mut runtime = fixture_runtime(38);
+    ready(&mut runtime);
+    let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(wire["configOptions"][1]["id"], "pi.thinking");
+    assert_eq!(wire["configOptions"][1]["currentValue"], "high");
+    assert_eq!(wire["configOptions"][1]["options"][0]["value"], "off");
+    assert_eq!(wire["configOptions"][1]["options"][1]["value"], "high");
+    assert!(wire["configOptions"][1]["options"][2].is_null());
+}
+
+#[test]
+fn pi_thinking_selection_is_correlated_and_model_bounded() {
+    use crate::acp::{
+        contract::{SageChatId, SageProjectId},
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
+    };
+
+    let mut runtime = fixture_runtime(39);
+    ready(&mut runtime);
+    let owner = RuntimeOwner {
+        project_id: SageProjectId::parse("project-pi").unwrap(),
+        chat_id: SageChatId::parse("chat-pi").unwrap(),
+        session_id: SageAgentSessionId::parse("session-pi-39").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(39).unwrap(),
+    };
+    let intent = |level: &str| ConfigIntent {
+        owner: owner.clone(),
+        expected_config_revision: serde_json::from_value(json!("1")).unwrap(),
+        mutation: ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "pi.thinking").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", level).unwrap(),
+            },
+        },
+    };
+    assert!(matches!(
+        runtime.configure(&intent("max")),
+        Err(AdapterRuntimeError::Operation)
+    ));
+    let egress = runtime
+        .configure(&intent("off"))
+        .expect("thinking selection");
+    let request = deliver(&mut runtime, egress);
+    assert_eq!(request["type"], "set_thinking_level");
+    assert_eq!(request["level"], "off");
+    assert!(runtime.config_pending());
+    let before = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(before["configOptions"][1]["currentValue"], "high");
+    runtime
+        .ingest(&response(&request, Value::Null), &Mapper)
+        .expect("thinking selected");
+    assert!(!runtime.config_pending());
+    let after = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(after["configOptions"][1]["currentValue"], "off");
+}
+
+#[test]
+fn pi_late_levels_add_thinking_option_after_session_ready() {
+    let mut runtime = fixture_runtime(40);
+    let levels = ready_until_levels(&mut runtime);
+    let before = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(before["configOptions"][0]["id"], "pi.model");
+    assert!(before["configOptions"][1].is_null());
+    assert_eq!(runtime.capabilities().unwrap().config_count, 1);
+    runtime
+        .ingest(
+            &response(&levels, json!({"levels":["off","high"]})),
+            &Mapper,
+        )
+        .expect("levels reply");
+    let after = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(after["configOptions"][1]["id"], "pi.thinking");
+    assert_eq!(runtime.capabilities().unwrap().config_count, 2);
+}
+
+#[test]
+fn pi_empty_thinking_levels_keep_model_only_config() {
+    let mut runtime = fixture_runtime(41);
+    let levels = ready_until_levels(&mut runtime);
+    runtime
+        .ingest(&response(&levels, json!({"levels":[]})), &Mapper)
+        .expect("empty levels");
+    let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert!(wire["configOptions"][1].is_null());
+    assert_eq!(runtime.capabilities().unwrap().config_count, 1);
+}
+
+#[test]
+fn pi_malformed_or_failed_levels_keep_model_only_with_diagnostic() {
+    let mut malformed = fixture_runtime(42);
+    let levels = ready_until_levels(&mut malformed);
+    let batch = malformed
+        .ingest(&response(&levels, json!({"levels":"bad"})), &Mapper)
+        .expect("malformed levels diagnostic");
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Unsupported(_)))
+    );
+    assert!(
+        serde_json::to_value(malformed.session_config().unwrap()).unwrap()["configOptions"][1]
+            .is_null()
+    );
+
+    let mut failed = fixture_runtime(43);
+    let levels = ready_until_levels(&mut failed);
+    let batch = failed
+        .ingest(&frame(json!({"type":"response","id":levels["id"],"command":"get_available_thinking_levels","success":false})), &Mapper)
+        .expect("failed levels diagnostic");
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Error(_)))
+    );
+    assert!(
+        serde_json::to_value(failed.session_config().unwrap()).unwrap()["configOptions"][1]
+            .is_null()
+    );
+}
+
+#[test]
+fn pi_levels_for_ended_session_or_other_owner_are_dropped() {
+    let mut runtime = fixture_runtime(44);
+    let levels = ready_until_levels(&mut runtime);
+    runtime.external_session = Some(ExternalId::new("session", "replacement").unwrap());
+    let batch = runtime
+        .ingest(
+            &response(&levels, json!({"levels":["off","high"]})),
+            &Mapper,
+        )
+        .expect("late levels");
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(
+        serde_json::to_value(runtime.session_config().unwrap()).unwrap()["configOptions"][1]
+            .is_null()
+    );
+
+    let mut other = fixture_runtime(45);
+    let levels = ready_until_levels(&mut other);
+    other.session_id = SageAgentSessionId::parse("other-owner").unwrap();
+    let batch = other
+        .ingest(
+            &response(&levels, json!({"levels":["off","high"]})),
+            &Mapper,
+        )
+        .expect("foreign owner levels");
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(
+        serde_json::to_value(other.session_config().unwrap()).unwrap()["configOptions"][1]
+            .is_null()
+    );
 }
 
 fn identity(path: &str, byte: char) -> ArtifactIdentity {

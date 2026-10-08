@@ -1,5 +1,8 @@
 use serde_json::Value;
 
+mod tool_result;
+use tool_result::{tool_images, tool_text};
+
 use super::{ActiveTurn, EventPhase, PiTranslator, TOOLS_PER_TURN};
 use crate::acp::bindings::pi::{
     decode::{ITEM_BYTES, bounded_string, external_id, redact_structured_text},
@@ -61,9 +64,10 @@ impl PiTranslator {
             }
             "message_update" => {
                 self.live_turn()?;
-                let delta = value
+                let event = value
                     .get("assistantMessageEvent")
-                    .or_else(|| value.get("assistant_message_event"))
+                    .or_else(|| value.get("assistant_message_event"));
+                let delta = event
                     .and_then(|event| event.get("delta"))
                     .or_else(|| value.get("delta"));
                 let Some(text) = bounded_string(delta, ITEM_BYTES)? else {
@@ -71,7 +75,16 @@ impl PiTranslator {
                         kind: "message_update_without_text_delta".into(),
                     }]);
                 };
-                Ok(vec![AdapterOutput::TextDelta { text }])
+                match event
+                    .and_then(|event| event.get("type"))
+                    .and_then(Value::as_str)
+                {
+                    Some("thinking_delta") => Ok(vec![AdapterOutput::ThoughtDelta { text }]),
+                    Some("text_delta") | None => Ok(vec![AdapterOutput::TextDelta { text }]),
+                    _ => Ok(vec![AdapterOutput::Unsupported {
+                        kind: "message_update_non_text_delta".into(),
+                    }]),
+                }
             }
             "message_end" => {
                 self.live_turn()?;
@@ -215,6 +228,22 @@ impl PiTranslator {
                 tool: name,
             }]);
         }
+        let path = value
+            .get("args")
+            .and_then(|args| args.get("path"))
+            .map(|path| {
+                let path = path.as_str().ok_or(AdapterError::Malformed)?;
+                if path.len()
+                    > crate::acp::limits::LIMITS
+                        .wire
+                        .absolute_path_bytes_native_only as usize
+                    || path.contains('\0')
+                {
+                    return Err(AdapterError::Limit("tool path bytes"));
+                }
+                Ok(path.to_owned())
+            })
+            .transpose()?;
         let turn = self.live_turn()?;
         if turn.tools.contains_key(&id) {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
@@ -226,6 +255,7 @@ impl PiTranslator {
         Ok(vec![AdapterOutput::ToolStarted {
             external_id: id,
             name,
+            path,
         }])
     }
 
@@ -239,7 +269,15 @@ impl PiTranslator {
         if state.is_some() {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
-        Ok(vec![AdapterOutput::ToolUpdated { external_id: id }])
+        let output = tool_text(
+            value
+                .get("partialResult")
+                .or_else(|| value.get("partial_result")),
+        )?;
+        Ok(vec![AdapterOutput::ToolUpdated {
+            external_id: id,
+            output,
+        }])
     }
 
     fn tool_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
@@ -254,6 +292,8 @@ impl PiTranslator {
         } else {
             ToolOutcome::Completed
         };
+        let output = tool_text(value.get("result"))?;
+        let images = tool_images(value.get("result"))?;
         let state = self
             .live_turn()?
             .tools
@@ -264,10 +304,13 @@ impl PiTranslator {
             Some(_) => Err(AdapterError::TerminalConflict),
             slot @ None => {
                 *slot = Some(outcome);
-                Ok(vec![AdapterOutput::ToolTerminal {
+                let mut outputs = vec![AdapterOutput::ToolTerminal {
                     external_id: id,
                     outcome,
-                }])
+                    output,
+                }];
+                outputs.extend(images);
+                Ok(outputs)
             }
         }
     }

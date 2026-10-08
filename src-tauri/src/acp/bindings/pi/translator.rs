@@ -1,3 +1,4 @@
+mod commands;
 mod events;
 mod fingerprint;
 mod initialization;
@@ -11,9 +12,7 @@ use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
 use self::payload::{parse_entries, parse_messages, parse_models, parse_state};
 use super::{
-    decode::{
-        EXTERNAL_ID_BYTES, PROMPT_BYTES, Record, Response, decode_record, validate_opaque_text,
-    },
+    decode::{EXTERNAL_ID_BYTES, Record, Response, decode_record, validate_opaque_text},
     manifest::LaunchAdmission,
     protocol::{AdapterError, AdapterOutput, Operation, Outbound, TerminalOutcome, ToolOutcome},
 };
@@ -33,6 +32,9 @@ enum EventPhase {
 enum PendingKind {
     State,
     Models,
+    SetModel,
+    ThinkingLevels,
+    SetThinkingLevel,
     NewSession,
     Prompt,
     Abort,
@@ -45,6 +47,9 @@ impl PendingKind {
         match self {
             Self::State => "get_state",
             Self::Models => "get_available_models",
+            Self::SetModel => "set_model",
+            Self::ThinkingLevels => "get_available_thinking_levels",
+            Self::SetThinkingLevel => "set_thinking_level",
             Self::NewSession => "new_session",
             Self::Prompt => "prompt",
             Self::Abort => "abort",
@@ -84,6 +89,7 @@ pub struct PiTranslator {
     active: Option<ActiveTurn>,
     initialization: Option<InitializationIntent>,
     pending_ui: Option<PendingUiRequest>,
+    pending_thinking: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +135,7 @@ impl PiTranslator {
             active: None,
             initialization: None,
             pending_ui: None,
+            pending_thinking: None,
         }
     }
 
@@ -136,6 +143,25 @@ impl PiTranslator {
         match operation {
             Operation::Initialize => self.begin_initialize(),
             Operation::GetModels => self.one(PendingKind::Models, Map::new()),
+            Operation::SetModel { provider, id } => {
+                validate_id("provider", &provider)?;
+                validate_id("model ID", &id)?;
+                let mut fields = Map::new();
+                fields.insert("provider".into(), Value::String(provider));
+                fields.insert("modelId".into(), Value::String(id));
+                self.one(PendingKind::SetModel, fields)
+            }
+            Operation::GetThinkingLevels => self.one(PendingKind::ThinkingLevels, Map::new()),
+            Operation::SetThinkingLevel { level } => {
+                if self.pending_thinking.is_some() || !valid_thinking_level(&level) {
+                    return Err(AdapterError::Malformed);
+                }
+                let mut fields = Map::new();
+                fields.insert("level".into(), Value::String(level.clone()));
+                let outbound = self.issue(PendingKind::SetThinkingLevel, fields)?;
+                self.pending_thinking = Some((outbound.command_id.clone(), level));
+                Ok(vec![outbound])
+            }
             Operation::NewSession => {
                 if !self.pending.is_empty()
                     || self
@@ -196,117 +222,22 @@ impl PiTranslator {
         self.pending.len()
     }
 
-    pub(crate) fn reject_before_write(&mut self, command_id: &str) -> Result<(), AdapterError> {
-        let kind = *self
-            .pending
-            .get(command_id)
-            .ok_or(AdapterError::Correlation)?;
-        if self
-            .initialization
-            .as_ref()
-            .is_some_and(|intent| intent.state_id == command_id || intent.models_id == command_id)
-        {
-            self.reset_initialization();
-            return Ok(());
-        }
-        self.pending.remove(command_id);
-        match kind {
-            PendingKind::Prompt => {
-                let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
-                if active.prompt_command_id != command_id
-                    || active.event_phase != EventPhase::PromptIssued
-                {
-                    return Err(AdapterError::Correlation);
-                }
-                self.active = None;
-            }
-            PendingKind::Abort => {
-                self.active
-                    .as_mut()
-                    .ok_or(AdapterError::Correlation)?
-                    .abort_requested = false;
-            }
-            PendingKind::State
-            | PendingKind::Models
-            | PendingKind::NewSession
-            | PendingKind::Messages
-            | PendingKind::Entries => {}
-        }
-        Ok(())
-    }
-
-    fn begin_prompt(
-        &mut self,
-        turn_key: String,
-        message: String,
-    ) -> Result<Vec<Outbound>, AdapterError> {
-        if self.launch_admission.is_none() {
-            return Err(AdapterError::LaunchNotAdmitted);
-        }
-        validate_id("Turn key", &turn_key)?;
-        if message.is_empty() || message.len() > PROMPT_BYTES || message.contains('\0') {
-            return Err(AdapterError::Limit("prompt bytes"));
-        }
-        if self
-            .active
-            .as_ref()
-            .is_some_and(|turn| turn.terminal.is_none())
-        {
-            return Err(AdapterError::PromptAlreadyActive);
-        }
-        let mut fields = Map::new();
-        fields.insert("message".into(), Value::String(message));
-        let outbound = self.issue(PendingKind::Prompt, fields)?;
-        self.active = Some(ActiveTurn {
-            turn_key,
-            prompt_command_id: outbound.command_id.clone(),
-            event_phase: EventPhase::PromptIssued,
-            abort_requested: false,
-            denial_latched: false,
-            terminal: None,
-            tools: BTreeMap::new(),
-            compaction_active: false,
-        });
-        Ok(vec![outbound])
-    }
-
-    fn one(
-        &mut self,
-        kind: PendingKind,
-        fields: Map<String, Value>,
-    ) -> Result<Vec<Outbound>, AdapterError> {
-        Ok(vec![self.issue(kind, fields)?])
-    }
-
-    fn issue(
-        &mut self,
-        kind: PendingKind,
-        mut fields: Map<String, Value>,
-    ) -> Result<Outbound, AdapterError> {
-        if self.pending.len() >= PENDING_COMMANDS {
-            return Err(AdapterError::CommandCapacity);
-        }
-        self.next_command = self
-            .next_command
-            .checked_add(1)
-            .ok_or(AdapterError::CommandCapacity)?;
-        let id = format!("pi-{}-{}", self.epoch, self.next_command);
-        fields.insert("type".into(), Value::String(kind.command().into()));
-        fields.insert("id".into(), Value::String(id.clone()));
-        let line =
-            serde_json::to_string(&Value::Object(fields)).map_err(|_| AdapterError::Malformed)?;
-        if line
-            .len()
-            .checked_add(1)
-            .is_none_or(|wire_bytes| wire_bytes > super::decode::FRAME_BYTES)
-        {
-            return Err(AdapterError::Limit("outbound frame bytes"));
-        }
-        self.pending.insert(id.clone(), kind);
-        Ok(Outbound {
-            command_id: id,
-            line,
+    pub(crate) fn model_config_pending(&self) -> bool {
+        self.pending.values().any(|kind| {
+            matches!(
+                kind,
+                PendingKind::SetModel
+                    | PendingKind::SetThinkingLevel
+                    | PendingKind::State
+                    | PendingKind::ThinkingLevels
+            )
         })
+    }
+
+    pub(crate) fn thinking_levels_request_id(&self) -> Option<&str> {
+        self.pending
+            .iter()
+            .find_map(|(id, kind)| (*kind == PendingKind::ThinkingLevels).then_some(id.as_str()))
     }
 
     fn ingest_response(&mut self, response: Response) -> Result<Vec<AdapterOutput>, AdapterError> {
@@ -315,6 +246,9 @@ impl PiTranslator {
             return self.classify_repeated_response(&response, fingerprint);
         };
         if response.command != kind.command() {
+            if kind == PendingKind::SetThinkingLevel {
+                self.pending_thinking = None;
+            }
             if matches!(kind, PendingKind::State | PendingKind::Models) {
                 self.reset_initialization();
             }
@@ -322,6 +256,9 @@ impl PiTranslator {
         }
         self.remember_response(&response, fingerprint);
         if !response.success {
+            if kind == PendingKind::SetThinkingLevel {
+                self.pending_thinking = None;
+            }
             let mut output = vec![AdapterOutput::Error {
                 code: "command_failed",
             }];
@@ -359,6 +296,22 @@ impl PiTranslator {
                 let mut output = vec![AdapterOutput::Models(models)];
                 self.note_initialization(&response.id, PendingKind::Models, &mut output);
                 Ok(output)
+            }
+            PendingKind::SetModel => Ok(vec![AdapterOutput::ModelSelected(
+                self::payload::parse_model(&response.data)?,
+            )]),
+            PendingKind::ThinkingLevels => Ok(vec![AdapterOutput::ThinkingLevels(
+                self::payload::parse_thinking_levels(&response.data)?,
+            )]),
+            PendingKind::SetThinkingLevel => {
+                let (id, level) = self
+                    .pending_thinking
+                    .take()
+                    .ok_or(AdapterError::Correlation)?;
+                if id != response.id {
+                    return Err(AdapterError::Correlation);
+                }
+                Ok(vec![AdapterOutput::ThinkingSelected(level)])
             }
             PendingKind::NewSession => {
                 self.active = None;
@@ -426,4 +379,11 @@ impl PiTranslator {
 
 fn validate_id(field: &'static str, value: &str) -> Result<(), AdapterError> {
     validate_opaque_text(value, EXTERNAL_ID_BYTES).map_err(|_| AdapterError::Limit(field))
+}
+
+fn valid_thinking_level(level: &str) -> bool {
+    matches!(
+        level,
+        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+    )
 }

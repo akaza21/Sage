@@ -18,17 +18,34 @@ pub(super) fn parse_models(value: &Value) -> Result<Vec<ModelSummary>, AdapterEr
         return Err(AdapterError::Limit("model count"));
     }
     preflight_models(models)?;
-    models
-        .iter()
-        .map(|model| {
-            let provider = opaque_id(model.get("provider"), 512)?.unwrap_or_default();
-            let id = opaque_id(model.get("id").or_else(|| model.get("modelId")), 512)?
-                .ok_or(AdapterError::Malformed)?;
-            let name =
-                bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
-            Ok(ModelSummary { provider, id, name })
-        })
-        .collect()
+    models.iter().map(parse_model).collect()
+}
+
+pub(super) fn parse_model(model: &Value) -> Result<ModelSummary, AdapterError> {
+    let provider = opaque_id(model.get("provider"), 512)?.unwrap_or_default();
+    let id = opaque_id(model.get("id").or_else(|| model.get("modelId")), 512)?
+        .ok_or(AdapterError::Malformed)?;
+    let name = bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
+    Ok(ModelSummary { provider, id, name })
+}
+
+pub(super) fn parse_thinking_levels(value: &Value) -> Result<Vec<String>, AdapterError> {
+    let levels = value
+        .get("levels")
+        .and_then(Value::as_array)
+        .ok_or(AdapterError::Malformed)?;
+    if levels.len() > 7 {
+        return Err(AdapterError::Limit("thinking levels"));
+    }
+    let mut output = Vec::new();
+    for level in levels {
+        let level = level.as_str().ok_or(AdapterError::Malformed)?;
+        if !super::valid_thinking_level(level) || output.iter().any(|other| other == level) {
+            return Err(AdapterError::Malformed);
+        }
+        output.push(level.to_owned());
+    }
+    Ok(output)
 }
 
 pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> {

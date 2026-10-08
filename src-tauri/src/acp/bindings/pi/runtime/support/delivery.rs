@@ -3,10 +3,52 @@ use crate::acp::{
     transport::OutboundFrame,
 };
 
-use super::super::{DenyStage, PiRuntime};
+use super::super::{DenyStage, PiRuntime, RequestKind};
 use crate::acp::bindings::pi::Operation;
 
 impl PiRuntime {
+    pub(in crate::acp::bindings::pi::runtime) fn rollback(
+        &mut self,
+        id: u64,
+    ) -> Result<(), AdapterRuntimeError> {
+        let reservation = self
+            .reservations
+            .remove(&id)
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        self.translator
+            .reject_before_write(&reservation.command_id)
+            .map_err(super::map_pi)?;
+        match reservation.kind {
+            RequestKind::InitializeFirst | RequestKind::InitializeSecond => {
+                self.staged_initialize = None;
+                self.initialized = false;
+            }
+            RequestKind::Prompt => self.active_turn = None,
+            RequestKind::RefreshState => self.refresh_thinking_after_model = false,
+            RequestKind::ThinkingLevels => {
+                self.thinking_request_session = None;
+                self.thinking_request_owner = None;
+                self.thinking_request_command = None;
+            }
+            RequestKind::Models
+            | RequestKind::SetModel
+            | RequestKind::SetThinkingLevel
+            | RequestKind::NewSession
+            | RequestKind::Cancel => {}
+        }
+        Ok(())
+    }
+
+    pub(in crate::acp::bindings::pi::runtime) fn snapshot(
+        &self,
+    ) -> crate::acp::intent::CapabilitySnapshotV1 {
+        super::capabilities(
+            self.model_count,
+            self.model_session_config()
+                .map_or(0, |config| config.config_options.as_slice().len() as u16),
+        )
+    }
+
     pub(super) fn mandatory_abort(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let deny = self
             .deny

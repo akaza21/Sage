@@ -1,10 +1,9 @@
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressToken,
     },
-    contract::{RequiredText, SafeText, SchemaVersionV1},
-    intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
+    contract::SafeText,
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
     limits::LIMITS,
 };
@@ -12,106 +11,19 @@ use crate::acp::{
 use super::{DenyIntent, DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome};
 
+mod capabilities;
 mod compaction;
+mod config;
 mod delivery;
+mod errors;
 mod identity;
-use identity::{external, model_event, model_key, text_payload, tool_payload, unsupported};
-
-impl PiRuntime {
-    pub(super) fn resolve_later_permission(
-        &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let pending = self
-            .deny
-            .as_ref()
-            .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
-        if !pending {
-            return Err(AdapterRuntimeError::LaterPermissionMiss);
-        }
-        let reply = match decision {
-            crate::acp::runtime::permissions::PermissionDecision::Ask => {
-                let _ = crate::acp::runtime::later_permission::resolve_later_permission(
-                    request_id, decision, None,
-                )
-                .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
-                return Err(AdapterRuntimeError::Operation);
-            }
-            crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
-                let pending = self
-                    .translator
-                    .take_pending_ui()
-                    .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
-                let body = match pending.method.as_str() {
-                    "select" => {
-                        let Some(value) = pending.options.iter().find(|option| {
-                            matches!(option.to_ascii_lowercase().as_str(), "allow" | "allow once")
-                        }) else {
-                            self.translator.remember_pending_ui(pending);
-                            return Err(AdapterRuntimeError::LaterPermissionMiss);
-                        };
-                        serde_json::json!({
-                            "type": "extension_ui_response",
-                            "id": pending.id,
-                            "value": value,
-                        })
-                    }
-                    "confirm" => serde_json::json!({
-                        "type": "extension_ui_response",
-                        "id": pending.id,
-                        "confirmed": true,
-                    }),
-                    _ => {
-                        self.translator.remember_pending_ui(pending);
-                        return Err(AdapterRuntimeError::LaterPermissionMiss);
-                    }
-                };
-                self.translator.release_permission_wait();
-                let bytes = serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
-                let frame = crate::acp::transport::OutboundFrame::new(bytes)
-                    .map_err(|_| AdapterRuntimeError::Frame)?;
-                AdapterEgress::new(frame, EgressToken::protocol_notification())
-            }
-            crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
-                return Err(AdapterRuntimeError::UnsupportedCommand);
-            }
-            crate::acp::runtime::permissions::PermissionDecision::Deny => {
-                self.mandatory_abort()?
-                    .ok_or(AdapterRuntimeError::Operation)?
-            }
-        };
-        crate::acp::runtime::later_permission::resolve_later_permission(
-            request_id,
-            decision,
-            Some(reply),
-        )
-        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
-        .ok_or(AdapterRuntimeError::LaterPermissionMiss)
-    }
-}
-
-pub(super) fn capabilities(model_count: u16) -> CapabilitySnapshotV1 {
-    CapabilitySnapshotV1 {
-        schema_version: SchemaVersionV1,
-        protocol_version: RequiredText::new("protocolVersion", "pi-rpc-0.83.0")
-            .expect("fixed protocol version"),
-        new_session: true,
-        resume_session: false,
-        load_session: false,
-        close_session: false,
-        prompt: true,
-        cancel: true,
-        native_session_fork: false,
-        active_turn_steer: false,
-        child_conversation_projection: false,
-        child_transcript_read: false,
-        collaboration_event_projection: false,
-        multi_root_extension_schema_id: None,
-        model_count,
-        config_count: 0,
-    }
-}
+mod image;
+mod permission;
+mod requests;
+use capabilities::capabilities;
+pub(super) use errors::map_pi;
+pub(super) use identity::unsupported;
+use identity::{external, model_event, model_key, text_payload};
 
 impl PiRuntime {
     pub(super) fn translate_outputs(
@@ -119,6 +31,7 @@ impl PiRuntime {
         outputs: Vec<AdapterOutput>,
         staged: Option<AdapterEgress>,
         request_digest: [u8; 32],
+        resources: &dyn crate::acp::bindings::adapter::ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if outputs.len() > LIMITS.queues.journal_facts_per_transaction as usize {
             return Err(AdapterRuntimeError::BatchCount);
@@ -134,7 +47,7 @@ impl PiRuntime {
         let staged_id = staged.as_ref().and_then(|value| value.token().request_id());
         let mut builder = AdapterBatchBuilder::new();
         for output in outputs {
-            let (event, egress) = self.translate_output(output, request_digest)?;
+            let (event, egress) = self.translate_output(output, request_digest, resources)?;
             let mandatory = egress
                 .as_ref()
                 .is_some_and(|value| value.token().is_mandatory());
@@ -161,6 +74,7 @@ impl PiRuntime {
         &mut self,
         output: AdapterOutput,
         request_digest: [u8; 32],
+        resources: &dyn crate::acp::bindings::adapter::ResourceMapper,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
         let pair = match output {
             AdapterOutput::InitializationProgress => (None, None),
@@ -190,6 +104,7 @@ impl PiRuntime {
                 )
                 .map_err(|_| AdapterRuntimeError::Operation)?;
                 self.external_session = Some(external.clone());
+                self.available_thinking.clear();
                 (
                     Some(AdapterEvent::SessionReady {
                         id: self.identity(external, None, None),
@@ -200,18 +115,70 @@ impl PiRuntime {
             }
             AdapterOutput::State(state) => {
                 self.current_model = state.model.as_ref().map(model_key).transpose()?;
-                let _ = (state.thinking_level, state.has_session, state.is_streaming);
-                (None, None)
+                self.current_thinking = state.thinking_level;
+                let _ = (state.has_session, state.is_streaming);
+                if self.refresh_thinking_after_model {
+                    self.refresh_thinking_after_model = false;
+                    let levels = self.begin_thinking_discovery()?;
+                    (None, Some(levels))
+                } else {
+                    (None, None)
+                }
             }
             AdapterOutput::Models(models) => {
-                let event = model_event(models, self.current_model.as_deref())?;
+                let event = model_event(models.clone(), self.current_model.as_deref())?;
                 if let AdapterEvent::Models { models, .. } = &event {
                     self.model_count = models
                         .len()
                         .try_into()
                         .map_err(|_| AdapterRuntimeError::BatchCount)?;
                 }
+                self.available_models = models;
                 (Some(event), None)
+            }
+            AdapterOutput::ModelSelected(model) => {
+                let selected = model_key(&model)?;
+                if !self.available_models.iter().any(|candidate| {
+                    model_key(candidate).ok().as_deref() == Some(selected.as_str())
+                }) {
+                    return Err(AdapterRuntimeError::Frame);
+                }
+                self.current_model = Some(selected);
+                self.current_thinking = None;
+                self.available_thinking.clear();
+                self.refresh_thinking_after_model = true;
+                let state = self.begin_one(
+                    crate::acp::bindings::pi::Operation::GetState,
+                    super::RequestKind::RefreshState,
+                )?;
+                (Some(AdapterEvent::Acknowledged), Some(state))
+            }
+            AdapterOutput::ThinkingLevels(levels) => {
+                if self.thinking_request_session.as_ref() != self.external_session.as_ref()
+                    || self.thinking_request_owner.as_ref()
+                        != Some(&(self.session_id.clone(), self.runtime_epoch))
+                {
+                    self.thinking_request_session = None;
+                    self.thinking_request_owner = None;
+                    self.thinking_request_command = None;
+                    return Ok((Some(AdapterEvent::IgnoredLate), None));
+                }
+                self.thinking_request_session = None;
+                self.thinking_request_owner = None;
+                self.thinking_request_command = None;
+                self.available_thinking = levels;
+                (Some(AdapterEvent::Acknowledged), None)
+            }
+            AdapterOutput::ThinkingSelected(level) => {
+                if !self
+                    .available_thinking
+                    .iter()
+                    .any(|available| available == &level)
+                {
+                    return Err(AdapterRuntimeError::Frame);
+                }
+                self.current_thinking = Some(level);
+                (Some(AdapterEvent::Acknowledged), None)
             }
             AdapterOutput::Messages(messages) => {
                 let _ = messages;
@@ -269,6 +236,23 @@ impl PiRuntime {
                     None,
                 )
             }
+            AdapterOutput::ThoughtDelta { text } => {
+                let (id, snapshot) = self.append_thought(text)?;
+                (
+                    Some(
+                        self.item(
+                            id,
+                            ItemLifecycle::Streaming,
+                            None,
+                            NormalizedPayload::ThoughtSummary {
+                                summary: SafeText::new("thoughtSummary", snapshot)
+                                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                            },
+                        )?,
+                    ),
+                    None,
+                )
+            }
             AdapterOutput::TextCompleted { external_id } => {
                 let (id, snapshot) = self.complete_text(external_id)?;
                 (
@@ -279,26 +263,40 @@ impl PiRuntime {
             AdapterOutput::CompactionStarted => (Some(self.start_compaction()?), None),
             AdapterOutput::CompactionCompleted => (Some(self.finish_compaction()?), None),
             AdapterOutput::CompactionInterrupted => (Some(self.interrupt_compaction()?), None),
-            AdapterOutput::ToolStarted { external_id, name } => {
-                let id = external("piItemId", external_id)?;
+            AdapterOutput::ToolStarted {
+                external_id,
+                name,
+                path,
+            } => {
+                let id = external("piItemId", external_id.clone())?;
+                let payload = identity::tool_start_payload(name, path.as_deref(), resources)?;
+                self.active_turn
+                    .as_mut()
+                    .ok_or(AdapterRuntimeError::Operation)?
+                    .tools
+                    .insert(external_id, payload.clone());
                 (
                     Some(self.item(
                         id,
                         ItemLifecycle::Started,
                         Some(ToolState::InProgress),
-                        tool_payload(name)?,
+                        payload,
                     )?),
                     None,
                 )
             }
-            AdapterOutput::ToolUpdated { external_id } => {
-                let id = external("piItemId", external_id)?;
+            AdapterOutput::ToolUpdated {
+                external_id,
+                output,
+            } => {
+                let id = external("piItemId", external_id.clone())?;
+                let payload = self.update_tool(&external_id, output)?;
                 (
                     Some(self.item(
                         id,
                         ItemLifecycle::Streaming,
                         Some(ToolState::InProgress),
-                        tool_payload("Pi tool update")?,
+                        payload,
                     )?),
                     None,
                 )
@@ -306,18 +304,17 @@ impl PiRuntime {
             AdapterOutput::ToolTerminal {
                 external_id,
                 outcome,
+                output,
             } => {
-                let id = external("piItemId", external_id)?;
+                let id = external("piItemId", external_id.clone())?;
+                let payload = self.update_tool(&external_id, output)?;
                 let (lifecycle, state) = match outcome {
                     ToolOutcome::Completed => (ItemLifecycle::Completed, ToolState::Completed),
                     ToolOutcome::Failed => (ItemLifecycle::Failed, ToolState::Failed),
                     ToolOutcome::Declined => (ItemLifecycle::Cancelled, ToolState::Declined),
                     ToolOutcome::Cancelled => (ItemLifecycle::Cancelled, ToolState::Cancelled),
                 };
-                (
-                    Some(self.item(id, lifecycle, Some(state), tool_payload("Pi tool result")?)?),
-                    None,
-                )
+                (Some(self.item(id, lifecycle, Some(state), payload)?), None)
             }
             AdapterOutput::Usage {
                 input_tokens,
@@ -370,6 +367,9 @@ impl PiRuntime {
                     None,
                 )
             }
+            AdapterOutput::Image { media_type, data } => {
+                (Some(self.image_event(media_type, data)?), None)
+            }
             AdapterOutput::AbortRequired => (None, self.mandatory_abort()?),
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {
@@ -388,15 +388,5 @@ impl PiRuntime {
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
         };
         Ok(pair)
-    }
-}
-
-pub(super) fn map_pi(error: AdapterError) -> AdapterRuntimeError {
-    match error {
-        AdapterError::UnsupportedOperation(_) => AdapterRuntimeError::UnsupportedCommand,
-        AdapterError::LaunchNotAdmitted => AdapterRuntimeError::LaunchUnavailable,
-        AdapterError::Malformed | AdapterError::Limit(_) => AdapterRuntimeError::Frame,
-        AdapterError::PermissionViolation => AdapterRuntimeError::MandatoryDenyTeardown,
-        _ => AdapterRuntimeError::Operation,
     }
 }

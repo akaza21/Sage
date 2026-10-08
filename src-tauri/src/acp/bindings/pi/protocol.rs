@@ -2,6 +2,9 @@
 pub enum Operation {
     Initialize,
     GetModels,
+    SetModel { provider: String, id: String },
+    GetThinkingLevels,
+    SetThinkingLevel { level: String },
     NewSession,
     Prompt { turn_key: String, message: String },
     Abort,
@@ -80,6 +83,9 @@ pub enum AdapterOutput {
     SessionReset,
     State(StateSnapshot),
     Models(Vec<ModelSummary>),
+    ModelSelected(ModelSummary),
+    ThinkingLevels(Vec<String>),
+    ThinkingSelected(String),
     Messages(Vec<HistoryMessage>),
     Entries(Vec<EntrySummary>),
     TurnRunning {
@@ -95,6 +101,9 @@ pub enum AdapterOutput {
     TextDelta {
         text: String,
     },
+    ThoughtDelta {
+        text: String,
+    },
     TextCompleted {
         external_id: Option<String>,
     },
@@ -104,13 +113,20 @@ pub enum AdapterOutput {
     ToolStarted {
         external_id: String,
         name: String,
+        path: Option<String>,
     },
     ToolUpdated {
         external_id: String,
+        output: Option<String>,
     },
     ToolTerminal {
         external_id: String,
         outcome: ToolOutcome,
+        output: Option<String>,
+    },
+    Image {
+        media_type: String,
+        data: String,
     },
     Usage {
         input_tokens: u64,

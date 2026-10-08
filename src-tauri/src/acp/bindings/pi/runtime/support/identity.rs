@@ -1,7 +1,10 @@
 use crate::acp::{
+    bindings::adapter::ResourceMapper,
     bindings::adapter::{AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError},
-    contract::{RequiredText, SafeText},
-    intent::{ExternalId, NormalizedPayload, ToolCategory},
+    contract::{BoundedVec, RequiredText, SafeText},
+    intent::{
+        COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
+    },
     lifecycle::{ItemLifecycle, ToolState},
     limits::LIMITS,
 };
@@ -175,6 +178,74 @@ impl PiRuntime {
         turn.text_id = None;
         Ok((active, snapshot))
     }
+
+    pub(super) fn append_thought(
+        &mut self,
+        delta: String,
+    ) -> Result<(ExternalId, String), AdapterRuntimeError> {
+        if self
+            .active_turn
+            .as_ref()
+            .ok_or(AdapterRuntimeError::Operation)?
+            .thought_id
+            .is_none()
+        {
+            let id = self.next_local_item("thought")?;
+            let turn = self
+                .active_turn
+                .as_mut()
+                .ok_or(AdapterRuntimeError::Operation)?;
+            turn.thought_id = Some(id);
+            turn.thought_snapshot = Some(String::new());
+        }
+        let turn = self
+            .active_turn
+            .as_mut()
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let id = turn
+            .thought_id
+            .clone()
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let current = turn
+            .thought_snapshot
+            .as_ref()
+            .ok_or(AdapterRuntimeError::Operation)?;
+        let length = current
+            .len()
+            .checked_add(delta.len())
+            .filter(|size| *size <= LIMITS.wire.normalized_item_bytes as usize)
+            .ok_or(AdapterRuntimeError::BatchBytes)?;
+        let mut next = String::new();
+        next.try_reserve_exact(length)
+            .map_err(|_| AdapterRuntimeError::BatchBytes)?;
+        next.push_str(current);
+        next.push_str(&delta);
+        let next = redact_structured_text(&next);
+        turn.thought_snapshot = Some(next.clone());
+        Ok((id, next))
+    }
+
+    pub(super) fn update_tool(
+        &mut self,
+        external_id: &str,
+        output: Option<String>,
+    ) -> Result<NormalizedPayload, AdapterRuntimeError> {
+        let payload = self
+            .active_turn
+            .as_mut()
+            .ok_or(AdapterRuntimeError::Operation)?
+            .tools
+            .get_mut(external_id)
+            .ok_or(AdapterRuntimeError::Operation)?;
+        if let Some(output) = output {
+            if let NormalizedPayload::ToolCall { output_summary, .. } = payload {
+                *output_summary = Some(
+                    SafeText::new("toolOutput", output).map_err(|_| AdapterRuntimeError::Frame)?,
+                );
+            }
+        }
+        Ok(payload.clone())
+    }
 }
 
 fn remove_attached_continuation(start: usize, joined: &mut String) {
@@ -253,22 +324,47 @@ pub(super) fn text_payload(value: impl Into<String>) -> NormalizedPayload {
     }
 }
 
-pub(super) fn tool_payload(
-    label: impl Into<String>,
+pub(super) fn tool_start_payload(
+    name: String,
+    path: Option<&str>,
+    resources: &dyn ResourceMapper,
 ) -> Result<NormalizedPayload, AdapterRuntimeError> {
-    let label = SafeText::new("toolLabel", label).map_err(|_| AdapterRuntimeError::Frame)?;
+    let category = match name.as_str() {
+        "read" => ToolCategory::Read,
+        "edit" | "write" => ToolCategory::Edit,
+        "bash" => ToolCategory::Execute,
+        "grep" | "find" | "ls" => ToolCategory::Search,
+        _ => ToolCategory::Other,
+    };
+    let locations = match path {
+        Some(path) => {
+            let location = match resources.map_existing(path) {
+                Ok(resource) => SafeResourceLocation::Resource { resource },
+                Err(reason) => SafeResourceLocation::unavailable(reason),
+            };
+            BoundedVec::<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>::new(
+                "locations",
+                vec![location],
+            )
+            .map_err(|_| AdapterRuntimeError::Frame)?
+        }
+        None => Default::default(),
+    };
     Ok(NormalizedPayload::ToolCall {
         execution: Default::default(),
-        category: ToolCategory::Other,
-        label,
+        category,
+        label: SafeText::new("toolLabel", name).map_err(|_| AdapterRuntimeError::Frame)?,
         input_summary: None,
         output_summary: None,
-        locations: Default::default(),
+        locations,
         command_activity: Default::default(),
     })
 }
 
-pub(super) fn unsupported(kind: impl Into<String>, summary: impl Into<String>) -> AdapterEvent {
+pub(in crate::acp::bindings::pi::runtime) fn unsupported(
+    kind: impl Into<String>,
+    summary: impl Into<String>,
+) -> AdapterEvent {
     AdapterEvent::Unsupported(NormalizedPayload::Unsupported {
         external_kind: SafeText::new("externalKind", kind).expect("Pi kind is bounded"),
         summary: SafeText::new("unsupportedSummary", summary).expect("fixed bounded summary"),

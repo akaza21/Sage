@@ -7,11 +7,13 @@ use crate::acp::{
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
-    limits::LIMITS,
-    transport::{Frame, OutboundFrame, request_payload_digest},
+    transport::{Frame, request_payload_digest},
 };
 
-use super::{AdapterError, Operation, Outbound, PiTranslator, ResearchPiBinding, TerminalOutcome};
+use super::{
+    AdapterError, ModelSummary, Operation, Outbound, PiTranslator, ResearchPiBinding,
+    TerminalOutcome,
+};
 
 mod support;
 
@@ -20,6 +22,10 @@ pub(super) enum RequestKind {
     InitializeFirst,
     InitializeSecond,
     Models,
+    SetModel,
+    RefreshState,
+    ThinkingLevels,
+    SetThinkingLevel,
     NewSession,
     Prompt,
     Cancel,
@@ -43,6 +49,9 @@ pub(super) struct TurnIntent {
     text_id: Option<ExternalId>,
     text_snapshot: Option<String>,
     compaction_id: Option<ExternalId>,
+    thought_id: Option<ExternalId>,
+    thought_snapshot: Option<String>,
+    tools: BTreeMap<String, crate::acp::intent::NormalizedPayload>,
     next_item: u64,
 }
 
@@ -74,6 +83,13 @@ pub(crate) struct PiRuntime {
     next_session: u64,
     pub(super) model_count: u16,
     pub(super) current_model: Option<String>,
+    pub(super) available_models: Vec<ModelSummary>,
+    pub(super) current_thinking: Option<String>,
+    pub(super) available_thinking: Vec<String>,
+    pub(super) thinking_request_session: Option<ExternalId>,
+    pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
+    pub(super) thinking_request_command: Option<String>,
+    pub(super) refresh_thinking_after_model: bool,
     pub(super) initialized: bool,
     poisoned: bool,
 }
@@ -122,116 +138,35 @@ impl PiRuntime {
             next_session: 0,
             model_count: 0,
             current_model: None,
+            available_models: Vec::new(),
+            current_thinking: None,
+            available_thinking: Vec::new(),
+            thinking_request_session: None,
+            thinking_request_owner: None,
+            thinking_request_command: None,
+            refresh_thinking_after_model: false,
             initialized: false,
             poisoned: false,
         }
     }
-
-    fn begin_one(
-        &mut self,
-        operation: Operation,
-        kind: RequestKind,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        let mut values = self.translator.begin(operation).map_err(support::map_pi)?;
-        if values.len() != 1 {
-            return Err(AdapterRuntimeError::Operation);
-        }
-        self.reserve(values.remove(0), kind)
-    }
-
-    fn begin_initialize(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if self.initialized || self.staged_initialize.is_some() {
-            return Err(AdapterRuntimeError::Operation);
-        }
-        let mut values = self
-            .translator
-            .begin(Operation::Initialize)
-            .map_err(support::map_pi)?;
-        if values.len() != 2 {
-            return Err(AdapterRuntimeError::Operation);
-        }
-        let second = values.pop().ok_or(AdapterRuntimeError::Operation)?;
-        let first = values.pop().ok_or(AdapterRuntimeError::Operation)?;
-        let egress = self.reserve(first, RequestKind::InitializeFirst)?;
-        self.staged_initialize = Some(second);
-        Ok(egress)
-    }
-
-    fn reserve(
-        &mut self,
-        outbound: Outbound,
-        kind: RequestKind,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        if self.reservations.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
-            self.translator
-                .reject_before_write(&outbound.command_id)
-                .map_err(support::map_pi)?;
-            return Err(AdapterRuntimeError::BatchCount);
-        }
-        let frame = match OutboundFrame::new(outbound.line.into_bytes()) {
-            Ok(frame) => frame,
-            Err(_) => {
-                self.translator
-                    .reject_before_write(&outbound.command_id)
-                    .map_err(support::map_pi)?;
-                return Err(AdapterRuntimeError::Frame);
-            }
-        };
-        let next_egress = match self
-            .next_egress
-            .checked_add(1)
-            .filter(|value| *value <= i64::MAX as u64)
-        {
-            Some(value) => value,
-            None => {
-                self.translator
-                    .reject_before_write(&outbound.command_id)
-                    .map_err(support::map_pi)?;
-                return Err(AdapterRuntimeError::Operation);
-            }
-        };
-        self.next_egress = next_egress;
-        self.reservations.insert(
-            self.next_egress,
-            RequestReservation {
-                command_id: outbound.command_id,
-                kind,
-                phase: DeliveryPhase::Reserved,
-            },
-        );
-        let token = if kind == RequestKind::Cancel {
-            EgressToken::cancel_request(self.next_egress)
-        } else {
-            EgressToken::request(self.next_egress)
-        };
-        Ok(AdapterEgress::new(frame, token))
-    }
-
-    fn rollback(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        let reservation = self
-            .reservations
-            .remove(&id)
-            .ok_or(AdapterRuntimeError::EgressIntent)?;
-        self.translator
-            .reject_before_write(&reservation.command_id)
-            .map_err(support::map_pi)?;
-        match reservation.kind {
-            RequestKind::InitializeFirst | RequestKind::InitializeSecond => {
-                self.staged_initialize = None;
-                self.initialized = false;
-            }
-            RequestKind::Prompt => self.active_turn = None,
-            RequestKind::Models | RequestKind::NewSession | RequestKind::Cancel => {}
-        }
-        Ok(())
-    }
-
-    fn snapshot(&self) -> CapabilitySnapshotV1 {
-        support::capabilities(self.model_count)
-    }
 }
 
 impl HarnessAdapter for PiRuntime {
+    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+        self.model_session_config()
+    }
+
+    fn config_pending(&self) -> bool {
+        self.translator.model_config_pending()
+    }
+
+    fn configure(
+        &mut self,
+        intent: &crate::acp::session_config::ConfigIntent,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.configure_session(intent)
+    }
+
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.initialized.then(|| self.snapshot())
     }
@@ -286,6 +221,9 @@ impl HarnessAdapter for PiRuntime {
                     text_id: None,
                     text_snapshot: None,
                     compaction_id: None,
+                    thought_id: None,
+                    thought_snapshot: None,
+                    tools: BTreeMap::new(),
                     next_item: 0,
                 });
                 Ok(egress)
@@ -304,14 +242,49 @@ impl HarnessAdapter for PiRuntime {
     fn ingest(
         &mut self,
         frame: &Frame,
-        _resources: &dyn ResourceMapper,
+        resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
         }
+        let thinking_reply = self.thinking_request_command.as_ref().is_some_and(|id| {
+            serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
+                .ok()
+                .is_some_and(|value| {
+                    value.get("type").and_then(serde_json::Value::as_str) == Some("response")
+                        && value.get("id").and_then(serde_json::Value::as_str) == Some(id)
+                        && value.get("command").and_then(serde_json::Value::as_str)
+                            == Some("get_available_thinking_levels")
+                })
+        });
         let outputs = match self.translator.ingest(frame.as_bytes()) {
             Ok(outputs) => outputs,
             Err(error) => {
+                if self.refresh_thinking_after_model {
+                    self.refresh_thinking_after_model = false;
+                    self.current_thinking = None;
+                    self.available_thinking.clear();
+                }
+                if thinking_reply {
+                    let stale = self.thinking_request_session.as_ref()
+                        != self.external_session.as_ref()
+                        || self.thinking_request_owner.as_ref()
+                            != Some(&(self.session_id.clone(), self.runtime_epoch));
+                    self.thinking_request_session = None;
+                    self.thinking_request_owner = None;
+                    self.thinking_request_command = None;
+                    return AdapterBatch::new(
+                        vec![if stale {
+                            crate::acp::bindings::adapter::AdapterEvent::IgnoredLate
+                        } else {
+                            support::unsupported(
+                                "pi_thinking_levels",
+                                "Pi thinking levels reply was not usable",
+                            )
+                        }],
+                        Vec::new(),
+                    );
+                }
                 if self.staged_initialize.take().is_some() {
                     self.poisoned = true;
                 }
@@ -334,6 +307,16 @@ impl HarnessAdapter for PiRuntime {
         let failed = outputs
             .iter()
             .any(|value| matches!(value, super::AdapterOutput::Error { .. }));
+        if failed && self.refresh_thinking_after_model {
+            self.refresh_thinking_after_model = false;
+            self.current_thinking = None;
+            self.available_thinking.clear();
+        }
+        if thinking_reply && failed {
+            self.thinking_request_session = None;
+            self.thinking_request_owner = None;
+            self.thinking_request_command = None;
+        }
         if failed && self.staged_initialize.is_some() {
             self.staged_initialize = None;
         }
@@ -348,7 +331,7 @@ impl HarnessAdapter for PiRuntime {
         };
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
-        self.translate_outputs(outputs, staged, request_digest)
+        self.translate_outputs(outputs, staged, request_digest, resources)
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
