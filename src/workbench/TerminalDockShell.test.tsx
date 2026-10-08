@@ -114,9 +114,8 @@ it("collapses without closing sessions and blocks a fifth tab locally", async ()
 
 it("does not infer native ended state from status display text", async () => {
   render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
-  await screen.findByRole("tab");
   fireEvent.click(
-    screen.getByRole("button", { name: "Report status text only" }),
+    await screen.findByRole("button", { name: "Report status text only" }),
   );
   expect(screen.getByTestId("terminal-ended-state")).toHaveTextContent("live");
   expect(screen.getByRole("status")).toHaveTextContent("Session ended");
