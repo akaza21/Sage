@@ -176,7 +176,10 @@ pub(super) fn response(
                 closes_session: true,
             }
         }
-        RequestKind::GoalGet | RequestKind::GoalPause | RequestKind::GoalClear => {
+        RequestKind::GoalGet
+        | RequestKind::GoalPause
+        | RequestKind::GoalClear
+        | RequestKind::ChildRead => {
             unreachable!("handled above")
         }
     };

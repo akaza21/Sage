@@ -57,6 +57,8 @@ impl CodexAdapter {
             goal_notification_generation: 0,
             goal_get_fence: None,
             goal_mutation_fence: None,
+            pending_child_read: None,
+            child_read_tombstone: None,
         }
     }
 

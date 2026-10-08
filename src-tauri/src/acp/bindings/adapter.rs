@@ -364,6 +364,22 @@ pub(crate) trait HarnessAdapter {
     fn goal_pending(&self) -> bool {
         false
     }
+    fn native_rpc_pending(&self) -> bool {
+        self.goal_pending()
+    }
+    fn child_read_pending(&self) -> bool {
+        false
+    }
+    fn read_child(
+        &mut self,
+        _child_thread_id: &str,
+        _parent_thread_id: &str,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
+        Err(AdapterRuntimeError::Frame)
+    }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }

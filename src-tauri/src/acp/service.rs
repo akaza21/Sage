@@ -61,7 +61,9 @@ pub(crate) use read_text_file::{DiskAllowedState, ReadTextClassification, ReadTe
 pub(crate) use read_text_file::{
     ReadTextBegin, ReadTextFileService, ReadTextFlushAck, ReadTextNextAction, ReadTextOwner,
 };
+mod child_transcript;
 mod goal;
+pub(crate) use child_transcript::{ChildTranscriptRead, ChildTranscriptReadError};
 #[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;

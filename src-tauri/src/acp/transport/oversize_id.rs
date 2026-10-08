@@ -1,0 +1,300 @@
+//! Constant-space JSON shape and top-level numeric ID proof for discarded frames.
+//! This parser never retains native response text. Its stack is capped at 32.
+
+mod punctuation;
+mod utf8;
+use utf8::Utf8Validator;
+
+const ID_WINDOW: usize = 4 * 1024;
+const MAX_DEPTH: usize = 32;
+
+#[derive(Clone, Copy)]
+enum Container {
+    Object,
+    Array,
+}
+
+#[derive(Clone, Copy)]
+enum Expect {
+    Value,
+    ArrayValueOrEnd,
+    KeyOrEnd,
+    Key,
+    Colon,
+    CommaOrEnd,
+    Done,
+}
+
+#[derive(Clone, Copy)]
+enum NumberState {
+    Sign,
+    Zero,
+    Integer,
+    Dot,
+    Fraction,
+    Exponent,
+    ExponentSign,
+    ExponentDigits,
+}
+
+#[derive(Clone, Copy)]
+enum Token {
+    None,
+    String {
+        key: bool,
+        match_index: u8,
+        escaped: bool,
+        unicode_digits: u8,
+        unicode_value: u16,
+    },
+    Number {
+        state: NumberState,
+        id: bool,
+        value: u64,
+    },
+    Literal {
+        bytes: &'static [u8],
+        index: usize,
+    },
+}
+
+pub(super) struct OversizeIdScanner {
+    stack: Vec<Container>,
+    expect: Expect,
+    token: Token,
+    key_is_id: bool,
+    id: Option<u64>,
+    bytes_seen: usize,
+    utf8: Utf8Validator,
+}
+
+impl OversizeIdScanner {
+    pub(super) fn new() -> Self {
+        Self {
+            stack: Vec::new(),
+            expect: Expect::Value,
+            token: Token::None,
+            key_is_id: false,
+            id: None,
+            bytes_seen: 0,
+            utf8: Utf8Validator::new(),
+        }
+    }
+
+    pub(super) fn feed(&mut self, byte: u8) -> Result<(), ()> {
+        self.bytes_seen += 1;
+        let mut retry = true;
+        while retry {
+            retry = false;
+            match self.token {
+                Token::String {
+                    key,
+                    match_index,
+                    escaped,
+                    unicode_digits,
+                    unicode_value,
+                } => {
+                    if !self.utf8.is_complete() {
+                        self.utf8.feed(byte)?;
+                        self.token = Token::String {
+                            key,
+                            match_index: 3,
+                            escaped,
+                            unicode_digits,
+                            unicode_value,
+                        };
+                    } else if unicode_digits != 0 {
+                        let digit = (byte as char).to_digit(16).ok_or(())? as u16;
+                        let value = (unicode_value << 4) | digit;
+                        if unicode_digits == 1 {
+                            if (0xd800..=0xdfff).contains(&value) {
+                                return Err(());
+                            }
+                            let next = if key {
+                                match_key(match_index, value)
+                            } else {
+                                match_index
+                            };
+                            self.token = Token::String {
+                                key,
+                                match_index: next,
+                                escaped: false,
+                                unicode_digits: 0,
+                                unicode_value: 0,
+                            };
+                        } else {
+                            self.token = Token::String {
+                                key,
+                                match_index,
+                                escaped,
+                                unicode_digits: unicode_digits - 1,
+                                unicode_value: value,
+                            };
+                        }
+                    } else if escaped {
+                        let next = match byte {
+                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {
+                                if key {
+                                    match_key(match_index, u16::from(byte))
+                                } else {
+                                    match_index
+                                }
+                            }
+                            b'u' => {
+                                self.token = Token::String {
+                                    key,
+                                    match_index,
+                                    escaped: false,
+                                    unicode_digits: 4,
+                                    unicode_value: 0,
+                                };
+                                return Ok(());
+                            }
+                            _ => return Err(()),
+                        };
+                        self.token = Token::String {
+                            key,
+                            match_index: next,
+                            escaped: false,
+                            unicode_digits: 0,
+                            unicode_value: 0,
+                        };
+                    } else {
+                        match byte {
+                            b'"' => {
+                                self.token = Token::None;
+                                if key {
+                                    self.key_is_id = self.stack.len() == 1 && match_index == 2;
+                                    self.expect = Expect::Colon;
+                                } else {
+                                    self.finish_value();
+                                }
+                            }
+                            b'\\' => {
+                                self.token = Token::String {
+                                    key,
+                                    match_index,
+                                    escaped: true,
+                                    unicode_digits: 0,
+                                    unicode_value: 0,
+                                }
+                            }
+                            0..=0x1f => return Err(()),
+                            _ => {
+                                self.utf8.feed(byte)?;
+                                let next = if key {
+                                    match_key(match_index, u16::from(byte))
+                                } else {
+                                    match_index
+                                };
+                                self.token = Token::String {
+                                    key,
+                                    match_index: next,
+                                    escaped: false,
+                                    unicode_digits: 0,
+                                    unicode_value: 0,
+                                };
+                            }
+                        }
+                    }
+                }
+                Token::Number { state, id, value } => {
+                    let next = match (state, byte) {
+                        (NumberState::Sign, b'0') => Some(NumberState::Zero),
+                        (NumberState::Sign, b'1'..=b'9') => Some(NumberState::Integer),
+                        (NumberState::Zero | NumberState::Integer, b'.') => Some(NumberState::Dot),
+                        (NumberState::Integer, b'0'..=b'9') => Some(NumberState::Integer),
+                        (NumberState::Dot | NumberState::Fraction, b'0'..=b'9') => {
+                            Some(NumberState::Fraction)
+                        }
+                        (
+                            NumberState::Zero | NumberState::Integer | NumberState::Fraction,
+                            b'e' | b'E',
+                        ) => Some(NumberState::Exponent),
+                        (NumberState::Exponent, b'+' | b'-') => Some(NumberState::ExponentSign),
+                        (
+                            NumberState::Exponent
+                            | NumberState::ExponentSign
+                            | NumberState::ExponentDigits,
+                            b'0'..=b'9',
+                        ) => Some(NumberState::ExponentDigits),
+                        _ => None,
+                    };
+                    if let Some(next) = next {
+                        let value = if id {
+                            if !matches!(next, NumberState::Zero | NumberState::Integer) {
+                                return Err(());
+                            }
+                            value
+                                .checked_mul(10)
+                                .and_then(|n| n.checked_add(u64::from(byte - b'0')))
+                                .ok_or(())?
+                        } else {
+                            value
+                        };
+                        self.token = Token::Number {
+                            state: next,
+                            id,
+                            value,
+                        };
+                    } else {
+                        if !matches!(
+                            state,
+                            NumberState::Zero
+                                | NumberState::Integer
+                                | NumberState::Fraction
+                                | NumberState::ExponentDigits
+                        ) {
+                            return Err(());
+                        }
+                        if id
+                            && (self.bytes_seen - 1 > ID_WINDOW
+                                || value > i64::MAX as u64
+                                || self.id.replace(value).is_some())
+                        {
+                            return Err(());
+                        }
+                        self.token = Token::None;
+                        self.finish_value();
+                        retry = true;
+                    }
+                }
+                Token::Literal { bytes, index } => {
+                    if bytes.get(index) != Some(&byte) {
+                        return Err(());
+                    }
+                    if index + 1 == bytes.len() {
+                        self.token = Token::None;
+                        self.finish_value();
+                    } else {
+                        self.token = Token::Literal {
+                            bytes,
+                            index: index + 1,
+                        };
+                    }
+                }
+                Token::None => self.feed_punctuation(byte)?,
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(&self) -> Result<u64, ()> {
+        if !matches!(self.token, Token::None)
+            || !matches!(self.expect, Expect::Done)
+            || !self.stack.is_empty()
+            || !self.utf8.is_complete()
+        {
+            return Err(());
+        }
+        self.id.ok_or(())
+    }
+}
+
+fn match_key(index: u8, value: u16) -> u8 {
+    match (index, value) {
+        (0, 105) => 1,
+        (1, 100) => 2,
+        _ => 3,
+    }
+}

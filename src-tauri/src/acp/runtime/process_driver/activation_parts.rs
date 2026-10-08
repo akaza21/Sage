@@ -47,12 +47,25 @@ where
         &mut self,
         chunk: &[u8],
     ) -> Result<(), AdapterPumpError> {
+        if self.parts.child_read_pending() {
+            self.idle_decoder.enable_recoverable_oversize();
+        } else {
+            self.idle_decoder.disable_recoverable_oversize();
+        }
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
         loop {
+            if let Some(id) = self.idle_decoder.take_oversize_id() {
+                self.parts
+                    .accept_oversized_response(id)
+                    .map_err(|_| AdapterPumpError::Frame)?;
+                if !self.parts.child_read_pending() {
+                    self.idle_decoder.disable_recoverable_oversize();
+                }
+            }
             if let Some(frame) = frame {
                 if validate_structure(&frame).is_err() {
                     log_idle_frame_rejection(&frame, "invalid-structure");
@@ -90,15 +103,15 @@ where
                     }
                 }
             }
-            frame = self
-                .idle_decoder
-                .drain_pending()
-                .map_err(|_| AdapterPumpError::Frame)?;
-            if frame.is_none() {
+            if !self.idle_decoder.has_pending_input() {
                 return nonfatal_refusal.map_or(Ok(()), |nonfatal_refusal| {
                     Err(AdapterPumpError::Refused(nonfatal_refusal))
                 });
             }
+            frame = self
+                .idle_decoder
+                .drain_pending()
+                .map_err(|_| AdapterPumpError::Frame)?;
         }
     }
 }

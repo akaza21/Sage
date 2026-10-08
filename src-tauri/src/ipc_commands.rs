@@ -93,6 +93,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::set_ui_appearance,
         commands::acp::get_acp_chat_page,
         commands::acp::get_acp_file_snapshot,
+        commands::acp::child_transcript::get_acp_child_transcript,
         commands::acp::file_reference::resolve_chat_file_reference,
         commands::acp::get_codex_discovery,
         #[cfg(any(debug_assertions, feature = "diagnostics"))]

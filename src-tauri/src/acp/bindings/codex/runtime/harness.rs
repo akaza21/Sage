@@ -38,6 +38,34 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.goal_mutation_pending()
     }
 
+    fn native_rpc_pending(&self) -> bool {
+        self.inner.goal_mutation_pending() || self.inner.child_read_pending()
+    }
+
+    fn child_read_pending(&self) -> bool {
+        self.inner.child_read_pending()
+    }
+
+    fn read_child(
+        &mut self,
+        child_thread_id: &str,
+        parent_thread_id: &str,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.native_rpc_reply = None;
+        self.request(|adapter, id| adapter.child_read(id, child_thread_id, parent_thread_id))
+    }
+
+    fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        if self
+            .inner
+            .oversized_child_response(id)
+            .map_err(map_adapter)?
+        {
+            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
+        }
+        Ok(())
+    }
+
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.native_rpc_reply.take()
     }
@@ -195,6 +223,34 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
+        }
+        if self.inner.child_read_pending() || self.inner.is_child_read_tombstone_id_active() {
+            let value: serde_json::Value =
+                serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+            if let Some(id) = value.get("id").and_then(serde_json::Value::as_u64) {
+                if self.inner.is_child_read_tombstone(id)
+                    && value.get("method").is_none()
+                    && (value.get("result").is_some() || value.get("error").is_some())
+                {
+                    return one(AdapterEvent::IgnoredLate);
+                }
+                if let Some((pending, child, parent)) = self.inner.child_read_scope()
+                    && id == pending
+                {
+                    let snapshot = super::super::child_transcript::normalize_read_response(
+                        frame.as_bytes(),
+                        id,
+                        child,
+                        parent,
+                        resources,
+                    )
+                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                    self.inner.complete_child_read(id).map_err(map_adapter)?;
+                    self.native_rpc_reply =
+                        Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot));
+                    return one(AdapterEvent::IgnoredLate);
+                }
+            }
         }
         let mapper = MapperBridge(resources);
         let disposition = self

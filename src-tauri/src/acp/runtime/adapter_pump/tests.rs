@@ -103,6 +103,86 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
     (pump, shared, prompt_id)
 }
 
+struct CaptureTransport(Vec<u8>);
+
+impl EgressTransport for CaptureTransport {
+    fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
+        self.0 = frame.payload().to_vec();
+        FrameWriteOutcome::Complete
+    }
+}
+
+#[test]
+fn foreign_oversize_keeps_child_read_pending_until_actual_reply() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.adapter.learn_child_for_test("child-1");
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, "child-1", "thread-1").unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let child_id = request["id"].as_u64().unwrap();
+        assert_eq!(request["method"], "thread/read");
+        assert_eq!(request["params"]["includeTurns"], true);
+        let foreign = format!("{{\"id\":999,\"result\":\"{}\"}}\n", "x".repeat(1_048_576));
+        for chunk in foreign.as_bytes().chunks(8 * 1024) {
+            pump.push_stdout_chunk(chunk, 10).await.unwrap();
+            while pump.has_pending_stdout_input() { pump.drain_stdout(10).await.unwrap(); }
+        }
+        assert!(pump.adapter.child_read_pending());
+        let actual = codex_line(serde_json::json!({"id":child_id,"result":{"thread":{
+            "id":"child-1","parentThreadId":"thread-1","turns":[]
+        }}}));
+        assert!(pump.push_stdout_chunk(&actual, 11).await.unwrap());
+        assert!(matches!(pump.take_native_rpc_reply(), Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot))
+            if snapshot.child_thread_id == "child-1" && snapshot.parent_thread_id == "thread-1"));
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+        })), 12).await.unwrap());
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
+fn correlated_oversize_settles_too_large_and_tombstones_late_reply() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.adapter.learn_child_for_test("child-1");
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        let oversize = format!("{{\"id\":{id},\"result\":\"{}\"}}\n", "x".repeat(1_048_576));
+        for chunk in oversize.as_bytes().chunks(8 * 1024) {
+            pump.push_stdout_chunk(chunk, 10).await.unwrap();
+            while pump.has_pending_stdout_input() {
+                pump.drain_stdout(10).await.unwrap();
+            }
+        }
+        assert!(!pump.adapter.child_read_pending());
+        assert_eq!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::TooLarge)
+        );
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "id":id,"result":{"thread":{"id":"child-1","parentThreadId":"thread-1","turns":[]}}
+        })), 11).await.unwrap());
+        assert!(pump.take_native_rpc_reply().is_none());
+        assert!(
+            pump.push_stdout_chunk(
+                &codex_line(serde_json::json!({
+                    "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+                })),
+                12
+            )
+            .await
+            .unwrap()
+        );
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
 #[test]
 fn goal_active_mismatch_rejects_unverified_first_item_without_durable_identity() {
     runtime().block_on(async {
@@ -2149,6 +2229,9 @@ mod cancel_tests;
 
 #[path = "child_binding_tests.rs"]
 mod child_binding_tests;
+
+#[path = "child_store_tests.rs"]
+mod child_store_tests;
 
 #[path = "completion_tests.rs"]
 mod completion_tests;

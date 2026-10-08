@@ -8,7 +8,7 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
     session_intent: SessionPumpIntent,
     terminal_cursor: AdapterTurnCursor,
     next_synthetic_item: u64,
-    idle_decoder: IncrementalFrameDecoder,
+    pub(super) idle_decoder: IncrementalFrameDecoder,
 }
 
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
@@ -18,33 +18,51 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         &mut self,
         chunk: &[u8],
     ) -> Result<(), AdapterPumpError> {
+        if self.adapter.child_read_pending() {
+            self.idle_decoder.enable_recoverable_oversize();
+        } else {
+            self.idle_decoder.disable_recoverable_oversize();
+        }
         let mut frame = self
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
-        while let Some(current) = frame {
-            validate_structure(&current).map_err(|_| AdapterPumpError::Frame)?;
-            match self.adapter.ingest(&current, &self.resources) {
-                Ok(batch) => {
-                    let (events, egress) = batch.into_parts();
-                    if !egress.is_empty()
-                        || !events.iter().all(|e| {
-                            matches!(
-                                e,
-                                AdapterEvent::IgnoredLate
-                                    | AdapterEvent::IgnoredDuplicate
-                                    | AdapterEvent::Absorbed
-                            )
-                        })
-                    {
-                        return Err(AdapterPumpError::Frame);
+        loop {
+            if let Some(id) = self.idle_decoder.take_oversize_id() {
+                self.adapter
+                    .accept_oversized_response(id)
+                    .map_err(|_| AdapterPumpError::Frame)?;
+                if !self.adapter.child_read_pending() {
+                    self.idle_decoder.disable_recoverable_oversize();
+                }
+            }
+            if let Some(current) = frame {
+                validate_structure(&current).map_err(|_| AdapterPumpError::Frame)?;
+                match self.adapter.ingest(&current, &self.resources) {
+                    Ok(batch) => {
+                        let (events, egress) = batch.into_parts();
+                        if !egress.is_empty()
+                            || !events.iter().all(|e| {
+                                matches!(
+                                    e,
+                                    AdapterEvent::IgnoredLate
+                                        | AdapterEvent::IgnoredDuplicate
+                                        | AdapterEvent::Absorbed
+                                )
+                            })
+                        {
+                            return Err(AdapterPumpError::Frame);
+                        }
                     }
+                    Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
+                        nonfatal_refusal = Some(refusal.into());
+                    }
+                    Err(error) => return Err(AdapterPumpError::Adapter(error)),
                 }
-                Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
-                    nonfatal_refusal = Some(refusal.into());
-                }
-                Err(error) => return Err(AdapterPumpError::Adapter(error)),
+            }
+            if !self.idle_decoder.has_pending_input() {
+                break;
             }
             frame = self
                 .idle_decoder

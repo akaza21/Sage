@@ -106,6 +106,9 @@ fn goal_reply(
 ) -> Result<(), crate::acp::runtime::HostError> {
     match result {
         Ok(NativeRpcReply::GoalApplied) => Ok(()),
+        Ok(NativeRpcReply::ChildTranscript(_) | NativeRpcReply::TooLarge) => {
+            Err(crate::acp::runtime::HostError::RecoveryRequired)
+        }
         Err(error) => Err(error),
     }
 }

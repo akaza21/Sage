@@ -20,14 +20,20 @@ pub(crate) struct NativeRpcIntent {
     pub(crate) request: NativeRpcRequest,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
+    ChildThreadRead {
+        child_thread_id: String,
+        parent_thread_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcReply {
     GoalApplied,
+    ChildTranscript(crate::acp::bindings::codex::ChildTranscriptSnapshot),
+    TooLarge,
 }
 
 impl NativeRpcIntent {
@@ -36,7 +42,13 @@ impl NativeRpcIntent {
             + self.owner.chat_id.as_str().len()
             + self.owner.session_id.as_str().len()
             + std::mem::size_of::<RuntimeEpoch>()
-            + 1
+            + match &self.request {
+                NativeRpcRequest::Goal(_) => 1,
+                NativeRpcRequest::ChildThreadRead {
+                    child_thread_id,
+                    parent_thread_id,
+                } => child_thread_id.len() + parent_thread_id.len() + 1,
+            }
     }
 }
 

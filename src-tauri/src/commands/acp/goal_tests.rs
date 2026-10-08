@@ -40,7 +40,7 @@ impl RuntimeEngine for GoalEngine {
     ) -> Result<(), HostError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.result.is_ok() {
-            let next = match intent.request {
+            let next = match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::PauseExisting) => {
                     GoalState::Goal {
                         snapshot: GoalSnapshot {
@@ -56,6 +56,9 @@ impl RuntimeEngine for GoalEngine {
                 }
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::ClearExisting) => {
                     GoalState::NoGoal
+                }
+                crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. } => {
+                    return Err(HostError::Intent);
                 }
             };
             self.channel.update(&intent.owner, next);

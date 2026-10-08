@@ -7,9 +7,11 @@ use crate::acp::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-struct TranscriptMapper<'a, M>(&'a M);
+struct TranscriptMapper<'a, M: ?Sized>(&'a M);
 
-impl<M: ResourceMapper> crate::acp::bindings::codex::ResourceMapper for TranscriptMapper<'_, M> {
+impl<M: ResourceMapper + ?Sized> crate::acp::bindings::codex::ResourceMapper
+    for TranscriptMapper<'_, M>
+{
     fn map_existing(
         &self,
         absolute_path: &str,
@@ -63,7 +65,7 @@ pub(crate) enum ChildTranscriptError {
     Malformed,
 }
 
-pub(crate) fn normalize_read_response<M: ResourceMapper>(
+pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
     wire: &[u8],
     request_id: u64,
     child: &str,

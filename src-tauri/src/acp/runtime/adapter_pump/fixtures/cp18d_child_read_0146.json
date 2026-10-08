@@ -1,0 +1,25 @@
+{
+  "id": 17,
+  "result": {
+    "thread": {
+      "id": "child-one",
+      "parentThreadId": "adapter-session",
+      "turns": [
+        {
+          "id": "native-turn-1",
+          "status": "completed",
+          "itemsView": "full",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "item-1",
+              "text": "[redacted]",
+              "phase": null,
+              "memoryCitation": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

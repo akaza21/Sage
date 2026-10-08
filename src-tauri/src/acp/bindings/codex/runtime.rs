@@ -53,6 +53,11 @@ impl CodexRuntime {
         }));
     }
 
+    #[cfg(test)]
+    pub(crate) fn learn_child_for_test(&mut self, child: &str) {
+        self.inner.learn_child_for_test(child);
+    }
+
     fn translate(
         &mut self,
         disposition: IngressDisposition,

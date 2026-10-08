@@ -55,6 +55,7 @@ pub(crate) enum RequestKind {
     Start,
     Resume,
     Read,
+    ChildRead,
     Models,
     TurnStart,
     Steer,
@@ -89,6 +90,7 @@ impl OutgoingRequest {
             RequestKind::Start => "thread/start",
             RequestKind::Resume => "thread/resume",
             RequestKind::Read => "thread/read",
+            RequestKind::ChildRead => "thread/read",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
             RequestKind::Steer => "turn/steer",
@@ -169,6 +171,14 @@ impl OutgoingRequest {
             id,
             RequestKind::Read,
             json!({"threadId": thread_id.as_str(), "includeTurns": false}),
+        )
+    }
+
+    pub(crate) fn child_read(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
+        Self::build(
+            id,
+            RequestKind::ChildRead,
+            json!({"threadId": thread_id.as_str(), "includeTurns": true}),
         )
     }
 

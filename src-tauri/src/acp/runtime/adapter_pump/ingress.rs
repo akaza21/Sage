@@ -97,7 +97,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             Err(AdapterPumpError::Frame) => return self.fail_deferred_frame().await,
             Err(error) => return Err(error),
         };
-        let Some(frame) = frame else { return Ok(false) };
+        let Some(frame) = frame else {
+            return Ok(std::mem::take(&mut self.oversize_event));
+        };
         self.enforce_provisional_deadline(now_millis)?;
         if validate_structure(&frame).is_err() {
             return self.fail_deferred_frame().await;
@@ -175,13 +177,16 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn decode_chunk(&mut self, chunk: &[u8]) -> Result<Option<Frame>, AdapterPumpError> {
         self.ensure_live()?;
+        self.configure_oversize_mode();
         let was_aligned = self.decoder_frame_aligned;
         let frame = self.decoder.push_chunk(chunk).map_err(|_| {
             self.decoder_frame_aligned = false;
             AdapterPumpError::Frame
         })?;
+        self.accept_oversize_event()?;
         self.decoder_frame_aligned = match &frame {
             Some(_) => !self.decoder.has_pending_input(),
+            None if self.oversize_event => !self.decoder.has_pending_input(),
             None => was_aligned && chunk.is_empty(),
         };
         Ok(frame)
@@ -189,11 +194,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn decode_pending(&mut self) -> Result<Option<Frame>, AdapterPumpError> {
         self.ensure_live()?;
+        self.configure_oversize_mode();
         let frame = self.decoder.drain_pending().map_err(|_| {
             self.decoder_frame_aligned = false;
             AdapterPumpError::Frame
         })?;
-        if frame.is_some() && !self.decoder.has_pending_input() {
+        self.accept_oversize_event()?;
+        if (frame.is_some() || self.oversize_event) && !self.decoder.has_pending_input() {
             self.decoder_frame_aligned = true;
         }
         Ok(frame)
@@ -205,8 +212,28 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.decoder_frame_aligned = false;
             AdapterPumpError::Frame
         })?;
+        self.accept_oversize_event()?;
         self.decoder_frame_aligned = !self.decoder.has_pending_input();
         Ok(frame)
+    }
+
+    fn configure_oversize_mode(&mut self) {
+        if self.adapter.child_read_pending() {
+            self.decoder.enable_recoverable_oversize();
+        } else {
+            self.decoder.disable_recoverable_oversize();
+        }
+    }
+
+    fn accept_oversize_event(&mut self) -> Result<(), AdapterPumpError> {
+        if let Some(id) = self.decoder.take_oversize_id() {
+            self.adapter
+                .accept_oversized_response(id)
+                .map_err(|_| AdapterPumpError::Frame)?;
+            self.oversize_event = true;
+            self.configure_oversize_mode();
+        }
+        Ok(())
     }
 
     async fn accept_optional(
@@ -215,7 +242,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         now_millis: i64,
         mode: IngestMode,
     ) -> Result<bool, AdapterPumpError> {
-        let Some(frame) = frame else { return Ok(false) };
+        let Some(frame) = frame else {
+            return Ok(std::mem::take(&mut self.oversize_event));
+        };
         self.ensure_live()?;
         self.enforce_provisional_deadline(now_millis)?;
         if validate_structure(&frame).is_err() {

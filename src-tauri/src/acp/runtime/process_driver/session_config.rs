@@ -33,6 +33,9 @@ where
     pub(crate) fn goal_pending(&self) -> bool {
         self.pump.goal_pending()
     }
+    pub(crate) fn native_rpc_pending(&self) -> bool {
+        self.pump.native_rpc_pending()
+    }
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.pump.take_native_rpc_reply()
     }
@@ -40,10 +43,19 @@ where
         &mut self,
         intent: &crate::acp::goal::NativeRpcIntent,
     ) -> Result<(), HostError> {
-        if intent.owner != self.owner || self.pump.goal_pending() {
+        if intent.owner != self.owner || self.pump.native_rpc_pending() {
             return Err(HostError::Intent);
         }
-        let crate::acp::goal::NativeRpcRequest::Goal(action) = intent.request;
-        self.pump.write_goal(&mut self.transport, action)
+        match &intent.request {
+            crate::acp::goal::NativeRpcRequest::Goal(action) => {
+                self.pump.write_goal(&mut self.transport, *action)
+            }
+            crate::acp::goal::NativeRpcRequest::ChildThreadRead {
+                child_thread_id,
+                parent_thread_id,
+            } => self
+                .pump
+                .write_child(&mut self.transport, child_thread_id, parent_thread_id),
+        }
     }
 }

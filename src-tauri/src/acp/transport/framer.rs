@@ -1,8 +1,15 @@
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use super::oversize_id::OversizeIdScanner;
 use crate::acp::limits::LIMITS;
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
+const DISCARD_BYTES_MAX: usize = 8 * 1024 * 1024;
+
+struct Discarding {
+    scanner: OversizeIdScanner,
+    bytes: usize,
+}
 
 /// A validated UTF-8 JSON frame. Raw bytes are deliberately private and this
 /// type intentionally has no `Debug`, `Clone`, or serialization implementation.
@@ -43,6 +50,9 @@ pub(crate) struct IncrementalFrameDecoder {
     pending_cursor: usize,
     pending_cr: bool,
     eof_seen: bool,
+    recoverable_oversize: bool,
+    discarding: Option<Box<Discarding>>,
+    oversize_id: Option<u64>,
 }
 
 impl IncrementalFrameDecoder {
@@ -53,7 +63,23 @@ impl IncrementalFrameDecoder {
             pending_cursor: 0,
             pending_cr: false,
             eof_seen: false,
+            recoverable_oversize: false,
+            discarding: None,
+            oversize_id: None,
         }
+    }
+
+    /// Only the Codex child-read owner enables this while its request is pending.
+    pub(crate) fn enable_recoverable_oversize(&mut self) {
+        self.recoverable_oversize = true;
+    }
+
+    pub(crate) fn disable_recoverable_oversize(&mut self) {
+        self.recoverable_oversize = false;
+    }
+
+    pub(crate) fn take_oversize_id(&mut self) -> Option<u64> {
+        self.oversize_id.take()
     }
 
     pub(crate) fn push_chunk(&mut self, chunk: &[u8]) -> Result<Option<Frame>, FrameError> {
@@ -88,6 +114,7 @@ impl IncrementalFrameDecoder {
             self.pending_cursor += 1;
             match self.accept_byte(byte) {
                 Ok(Some(frame)) => return Ok(Some(frame)),
+                Ok(None) if self.oversize_id.is_some() => return Ok(None),
                 Ok(None) => {}
                 Err(error) => return Err(error),
             }
@@ -102,7 +129,7 @@ impl IncrementalFrameDecoder {
         if let Some(frame) = self.drain_pending()? {
             return Ok(Some(frame));
         }
-        if self.assembly.is_empty() && !self.pending_cr {
+        if self.assembly.is_empty() && !self.pending_cr && self.discarding.is_none() {
             Ok(None)
         } else {
             self.reset_frame();
@@ -111,7 +138,10 @@ impl IncrementalFrameDecoder {
     }
 
     pub(crate) fn is_frame_aligned(&self) -> bool {
-        !self.has_pending_input() && self.assembly.is_empty() && !self.pending_cr
+        !self.has_pending_input()
+            && self.assembly.is_empty()
+            && !self.pending_cr
+            && self.discarding.is_none()
     }
 
     pub(crate) fn has_pending_input(&self) -> bool {
@@ -127,6 +157,9 @@ impl IncrementalFrameDecoder {
         self.pending_cursor = 0;
         self.pending_cr = false;
         self.eof_seen = false;
+        self.discarding = None;
+        self.oversize_id = None;
+        self.recoverable_oversize = false;
     }
 
     fn accept_byte(&mut self, byte: u8) -> Result<Option<Frame>, FrameError> {
@@ -136,6 +169,14 @@ impl IncrementalFrameDecoder {
         }
         if byte == b'\n' {
             self.pending_cr = false;
+            if let Some(discarding) = self.discarding.take() {
+                let id = discarding
+                    .scanner
+                    .finish()
+                    .map_err(|()| FrameError::Oversize)?;
+                self.oversize_id = Some(id);
+                return Ok(None);
+            }
             if std::str::from_utf8(&self.assembly).is_err() {
                 self.reset_frame();
                 return Err(FrameError::InvalidUtf8);
@@ -150,10 +191,34 @@ impl IncrementalFrameDecoder {
             self.pending_cr = true;
             return Ok(None);
         }
+        if let Some(discarding) = &mut self.discarding {
+            discarding.bytes += 1;
+            if discarding.bytes > DISCARD_BYTES_MAX || discarding.scanner.feed(byte).is_err() {
+                self.reset_frame();
+                return Err(FrameError::Oversize);
+            }
+            return Ok(None);
+        }
         let maximum = frame_limit();
         if self.assembly.len() >= maximum {
-            self.reset_frame();
-            return Err(FrameError::Oversize);
+            if !self.recoverable_oversize {
+                self.reset_frame();
+                return Err(FrameError::Oversize);
+            }
+            let mut scanner = OversizeIdScanner::new();
+            for existing in &self.assembly {
+                if scanner.feed(*existing).is_err() {
+                    self.reset_frame();
+                    return Err(FrameError::Oversize);
+                }
+            }
+            if scanner.feed(byte).is_err() {
+                self.reset_frame();
+                return Err(FrameError::Oversize);
+            }
+            self.assembly.clear();
+            self.discarding = Some(Box::new(Discarding { scanner, bytes: 1 }));
+            return Ok(None);
         }
         self.reserve_for_next(maximum)?;
         self.assembly.push(byte);
@@ -181,6 +246,7 @@ impl IncrementalFrameDecoder {
     fn reset_frame(&mut self) {
         self.assembly.clear();
         self.pending_cr = false;
+        self.discarding = None;
     }
 
     #[cfg(test)]
@@ -351,5 +417,147 @@ mod tests {
         let (assembly, pending) = decoder.capacities();
         assert!(assembly <= frame_limit());
         assert!(pending <= READ_CHUNK_BYTES);
+    }
+
+    #[test]
+    fn recoverable_oversize_reports_exact_id_and_preserves_chunk_tail() {
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.enable_recoverable_oversize();
+        let prefix = b"{\"id\":7,\"result\":{\"text\":\"";
+        let suffix = b"\"}}\nnext\n";
+        let frame = [
+            prefix.as_slice(),
+            &vec![b'x'; frame_limit()],
+            suffix.as_slice(),
+        ]
+        .concat();
+        let mut outputs = Vec::new();
+        for chunk in frame.chunks(READ_CHUNK_BYTES) {
+            if let Some(value) = decoder.push_chunk(chunk).unwrap() {
+                outputs.push(value.as_bytes().to_vec());
+            }
+            if let Some(id) = decoder.take_oversize_id() {
+                assert_eq!(id, 7);
+                while decoder.has_pending_input() {
+                    if let Some(value) = decoder.drain_pending().unwrap() {
+                        outputs.push(value.as_bytes().to_vec());
+                    }
+                }
+            }
+        }
+        assert_eq!(outputs, vec![b"next".to_vec()]);
+    }
+
+    fn decode_oversize(raw: &[u8]) -> Result<Option<u64>, FrameError> {
+        let mut decoder = IncrementalFrameDecoder::new();
+        decoder.enable_recoverable_oversize();
+        let mut observed = None;
+        for chunk in raw.chunks(READ_CHUNK_BYTES) {
+            let _ = decoder.push_chunk(chunk)?;
+            if let Some(id) = decoder.take_oversize_id() {
+                observed = Some(id);
+            }
+            while decoder.has_pending_input() {
+                let _ = decoder.drain_pending()?;
+                if let Some(id) = decoder.take_oversize_id() {
+                    observed = Some(id);
+                }
+            }
+        }
+        decoder.finish()?;
+        Ok(observed)
+    }
+
+    #[test]
+    fn recoverable_oversize_rejects_missing_duplicate_and_non_numeric_ids() {
+        for prefix in [
+            r#"{"result":""#,
+            r#"{"id":7,"id":8,"result":""#,
+            r#"{"id":"7","result":""#,
+            r#"{"id":null,"result":""#,
+        ] {
+            let raw = format!("{prefix}{}\"}}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), Err(FrameError::Oversize));
+        }
+    }
+
+    #[test]
+    fn recoverable_oversize_proves_id_within_first_four_kib_only() {
+        for (offset, expected) in [(4096, Ok(Some(7))), (4097, Err(FrameError::Oversize))] {
+            let marker = r#"{"pad":"","id":7,"result":""#;
+            let before_id = format!(
+                "{{\"pad\":\"{}\",\"id\":7,\"result\":\"",
+                "x".repeat(offset - marker.find('7').unwrap() - 1)
+            );
+            assert_eq!(before_id.find('7').unwrap() + 1, offset);
+            let raw = format!("{before_id}{}\"}}\n", "x".repeat(frame_limit()));
+            assert_eq!(decode_oversize(raw.as_bytes()), expected);
+        }
+    }
+
+    #[test]
+    fn recoverable_oversize_rejects_over_depth_and_partial_eof() {
+        let nested_32 = format!(
+            "{{\"id\":7,\"result\":{}\"{}\"{} }}\n",
+            "[".repeat(31),
+            "x".repeat(frame_limit()),
+            "]".repeat(31)
+        );
+        assert_eq!(decode_oversize(nested_32.as_bytes()), Ok(Some(7)));
+        let nested_33 = format!(
+            "{{\"id\":7,\"result\":{}\"{}\"{} }}\n",
+            "[".repeat(32),
+            "x".repeat(frame_limit()),
+            "]".repeat(32)
+        );
+        assert_eq!(
+            decode_oversize(nested_33.as_bytes()),
+            Err(FrameError::Oversize)
+        );
+        assert_eq!(
+            decode_oversize(nested_32.trim_end().as_bytes()),
+            Err(FrameError::PartialEof)
+        );
+    }
+
+    #[test]
+    fn recoverable_oversize_accepts_escaped_id_key_and_crlf() {
+        let raw = format!(
+            "{{\"\\u0069d\":7,\"result\":\"{}\"}}\r\n",
+            "x".repeat(frame_limit())
+        );
+        assert_eq!(decode_oversize(raw.as_bytes()), Ok(Some(7)));
+    }
+
+    #[test]
+    fn discard_cap_is_exact_and_ordinary_notification_is_unchanged() {
+        let prefix = b"{\"id\":7,\"result\":\"";
+        let suffix = b"\"}\n";
+        let allowed_text = frame_limit() + DISCARD_BYTES_MAX - prefix.len() - suffix.len() + 1;
+        let allowed = [
+            prefix.as_slice(),
+            &vec![b'x'; allowed_text],
+            suffix.as_slice(),
+        ]
+        .concat();
+        assert_eq!(decode_oversize(&allowed), Ok(Some(7)));
+        let excessive = [
+            prefix.as_slice(),
+            &vec![b'x'; allowed_text + 1],
+            suffix.as_slice(),
+        ]
+        .concat();
+        assert_eq!(decode_oversize(&excessive), Err(FrameError::Oversize));
+
+        let ordinary = b"{\"method\":\"status\",\"params\":{}}\n";
+        assert_eq!(decode_oversize(ordinary), Ok(None));
+        let oversized_notification = format!(
+            "{{\"method\":\"status\",\"value\":\"{}\"}}\n",
+            "x".repeat(frame_limit())
+        );
+        assert_eq!(
+            decode_oversize(oversized_notification.as_bytes()),
+            Err(FrameError::Oversize)
+        );
     }
 }

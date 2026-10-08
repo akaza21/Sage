@@ -17,6 +17,7 @@ struct OptionalCapabilities {
     active_turn_steer: bool,
     model_list: bool,
     child_conversation_projection: bool,
+    child_transcript_read: bool,
     collaboration_event_projection: bool,
 }
 
@@ -37,6 +38,7 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             active_turn_steer: true,
             model_list: true,
             child_conversation_projection: false,
+            child_transcript_read: true,
             collaboration_event_projection: false,
         },
     }];
@@ -84,6 +86,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         active_turn_steer: false,
         model_list: ceiling.model_list,
         child_conversation_projection: ceiling.child_conversation_projection,
+        child_transcript_read: false,
         collaboration_event_projection: ceiling.collaboration_event_projection,
     }
 }
@@ -119,7 +122,7 @@ pub(crate) fn projected_capabilities(
         collaboration_event_projection: optional.collaboration_event_projection,
         native_session_fork: false,
         active_turn_steer: optional.active_turn_steer,
-        child_transcript_read: false,
+        child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
         model_count: 0,
         config_count: 0,
@@ -203,6 +206,7 @@ mod tests {
         assert!(models);
         assert!(snapshot.resume_session && snapshot.collaboration_event_projection);
         assert!(!snapshot.active_turn_steer);
+        assert!(!snapshot.child_transcript_read);
     }
 
     #[test]
@@ -222,6 +226,7 @@ mod tests {
         assert!(!snapshot.load_session);
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
+        assert!(!snapshot.child_transcript_read);
         assert!(!models);
         assert_eq!(
             snapshot.protocol_version.as_str(),
@@ -257,6 +262,7 @@ mod tests {
         assert!(!snapshot.load_session);
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
+        assert!(snapshot.child_transcript_read);
         assert!(models);
     }
 
@@ -278,6 +284,7 @@ mod tests {
         assert!(!snapshot.load_session);
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
+        assert!(!snapshot.child_transcript_read);
         assert!(!models);
     }
 

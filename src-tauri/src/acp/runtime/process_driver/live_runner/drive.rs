@@ -52,7 +52,7 @@ where
         settle_pending_config(
             &mut pending_config,
             state.config_pending(),
-            state.goal_pending(),
+            state.native_rpc_pending(),
             native_reply,
         );
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {

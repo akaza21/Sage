@@ -57,6 +57,15 @@ where
         }
     }
 
+    pub(crate) fn native_rpc_pending(&self) -> bool {
+        match self {
+            Self::Idle(idle) => idle.parts.native_rpc_pending(),
+            Self::Reusable(parts) => parts.completed.native_rpc_pending(),
+            Self::Active(active) => active.turn.driver.native_rpc_pending(),
+            _ => false,
+        }
+    }
+
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         match self {
             Self::Idle(idle) => idle.parts.take_native_rpc_reply(),
@@ -75,13 +84,43 @@ where
         if context.mailbox.reader_terminal_queued() || std::time::Instant::now() >= deadline {
             return Err(HostError::RecoveryRequired);
         }
-        if intent.owner != context.owner || self.goal_pending() {
+        if intent.owner != context.owner || self.native_rpc_pending() {
             return Err(HostError::Intent);
         }
-        let crate::acp::goal::NativeRpcRequest::Goal(action) = intent.request;
         match self {
-            Self::Idle(idle) => idle.parts.write_goal(&mut idle.transport, action),
-            Self::Reusable(parts) => parts.completed.write_goal(&mut parts.transport, action),
+            Self::Idle(idle) => match &intent.request {
+                crate::acp::goal::NativeRpcRequest::Goal(action) => {
+                    idle.parts.write_goal(&mut idle.transport, *action)
+                }
+                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
+                    child_thread_id,
+                    parent_thread_id,
+                } => {
+                    if !idle.idle_decoder.is_frame_aligned() {
+                        return Err(HostError::State);
+                    }
+                    idle.parts.write_child(
+                        &mut idle.transport,
+                        child_thread_id,
+                        parent_thread_id,
+                    )?;
+                    idle.idle_decoder.enable_recoverable_oversize();
+                    Ok(())
+                }
+            },
+            Self::Reusable(parts) => match &intent.request {
+                crate::acp::goal::NativeRpcRequest::Goal(action) => {
+                    parts.completed.write_goal(&mut parts.transport, *action)
+                }
+                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
+                    child_thread_id,
+                    parent_thread_id,
+                } => parts.completed.write_child(
+                    &mut parts.transport,
+                    child_thread_id,
+                    parent_thread_id,
+                ),
+            },
             Self::Active(active) if active.stdout_allowed() => {
                 active.turn.driver.begin_native_rpc(intent)
             }

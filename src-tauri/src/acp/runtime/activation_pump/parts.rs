@@ -84,6 +84,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn goal_pending(&self) -> bool {
         self.adapter.goal_pending()
     }
+    pub(crate) fn native_rpc_pending(&self) -> bool {
+        self.adapter.native_rpc_pending()
+    }
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
@@ -97,6 +100,25 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             transport,
             action,
         )
+    }
+    pub(crate) fn write_child(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        child_thread_id: &str,
+        parent_thread_id: &str,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_child(
+            &mut self.adapter,
+            transport,
+            child_thread_id,
+            parent_thread_id,
+        )
+    }
+    pub(crate) fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        self.adapter.accept_oversized_response(id)
+    }
+    pub(crate) fn child_read_pending(&self) -> bool {
+        self.adapter.child_read_pending()
     }
     pub(crate) fn write_session_config(
         &mut self,

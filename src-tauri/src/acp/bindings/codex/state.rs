@@ -1,4 +1,5 @@
 pub(crate) mod capabilities;
+mod child_read;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
 mod construction;
@@ -158,6 +159,8 @@ pub(crate) struct CodexAdapter {
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
     goal_mutation_fence: Option<(u64, u64)>,
+    pending_child_read: Option<(u64, String, String)>,
+    child_read_tombstone: Option<u64>,
 }
 
 impl CodexAdapter {
@@ -285,6 +288,9 @@ impl CodexAdapter {
         }
         if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
             self.goal_mutation_fence = None;
+        }
+        if kind == RequestKind::ChildRead {
+            self.pending_child_read = None;
         }
         let removed = self.remove_pending(id);
         debug_assert_eq!(removed, Some(kind));
