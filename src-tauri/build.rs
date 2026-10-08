@@ -26,8 +26,8 @@ fn main() {
 }
 
 fn sage_commands() -> &'static [&'static str] {
-    println!("cargo:rerun-if-changed=src/lib.rs");
-    let source = include_str!("src/lib.rs");
+    println!("cargo:rerun-if-changed=src/ipc_commands.rs");
+    let source = include_str!("src/ipc_commands.rs");
     let body = source
         .split_once("tauri::generate_handler![")
         .expect("Sage command handler must exist")

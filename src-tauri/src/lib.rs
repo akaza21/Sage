@@ -32,6 +32,7 @@ mod harnesses;
 mod helper_entrypoints;
 mod image_artifacts;
 mod image_attachment;
+mod ipc_commands;
 mod launch_profile;
 mod persistence;
 mod preview_lifecycle;
@@ -259,150 +260,7 @@ pub fn run() {
             info!("Sage application state initialized");
             Ok(())
         })
-        .invoke_handler(|invoke: tauri::ipc::Invoke| {
-            let webview = invoke.message.webview_ref();
-            let admitted = webview
-                .url()
-                .is_ok_and(|url| browser::ipc_guard::admits_main_invoke(webview.label(), &url));
-            if !admitted {
-                invoke
-                    .resolver
-                    .reject("Sage commands are available only to the main app webview");
-                return true;
-            }
-            let handle: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
-                user_terminal::ipc::terminal_create,
-                user_terminal::ipc::terminal_write,
-                user_terminal::ipc::terminal_resize,
-                user_terminal::ipc::terminal_read,
-                user_terminal::ipc::terminal_close,
-                resource_commands::get_bootstrap_snapshot,
-                voice_input::start_voice_input,
-                voice_input::stop_voice_input,
-                resource_commands::get_repository_status,
-                resource_commands::get_file_diff,
-                repository_ref_commands::discover_project_repositories,
-                repository_ref_commands::get_repository_ref_status,
-                repository_ref_commands::get_repository_ref_file_diff,
-                editor_watch::watch_editor_document,
-                editor_watch::unwatch_editor_document,
-                workspace::notify::watch_workspace_notify,
-                workspace::notify::unwatch_workspace_notify,
-                editor::language::start_language_session,
-                editor::language::cancel_language_session,
-                repository_mutation_commands::mutate_git_file,
-                repository_commit_commands::commit_git_repository,
-                repository_checkout_commands::checkout_git_local_branch,
-                repository_branch_create_commands::create_git_local_branch,
-                repository_branch_delete_commands::delete_git_local_branch,
-                repository_branch_rename_commands::rename_git_local_branch,
-                repository_sequence_abort_commands::abort_git_in_progress,
-                repository_cherry_pick_commands::continue_git_cherry_pick,
-                repository_rebase_commands::continue_git_rebase,
-                repository_revert_commands::continue_git_revert,
-                repository_remote_transport_commands::fetch_git_remote,
-                repository_remote_transport_commands::push_git_remote,
-                repository_pull_commands::pull_git_repository,
-                resource_commands::list_directory,
-                resource_commands::read_text_file,
-                resource_commands::open_editor_document,
-                resource_commands::snapshot_editor_buffer,
-                resource_commands::save_editor_document,
-                resource_commands::discard_editor_buffer,
-                file_create_commands::create_project_file,
-                file_create_commands::create_project_folder,
-                file_rename_commands::rename_project_file,
-                file_rename_commands::rename_project_folder,
-                resource_trash_commands::trash_project_resource,
-                project_commands::create_project_from_picker,
-                project_commands::add_project_root_from_picker,
-                project_commands::ensure_local_project,
-                chat_commands::create_chat,
-                chat_commands::move_chat,
-                chat_commands::pin_chat,
-                chat_commands::activate_chat,
-                chat_archive_commands::archive_chat,
-                chat_commands::rename_chat,
-                chat_archive_commands::restore_chat,
-                chat_search_commands::search_project_chats,
-                chat_queue_commands::get_project_chat_queued_prompts,
-                chat_queue_commands::replace_chat_queued_prompts,
-                project_commands::persist_project_layout,
-                project_commands::persist_project_layout_and_close,
-                project_commands::trace_close_stage,
-                project_commands::switch_project,
-                commands::list_harness_models,
-                commands::list_harnesses,
-                commands::send_simulated_prompt,
-                settings_commands::get_editor_appearance,
-                settings_commands::set_editor_appearance,
-                settings_commands::get_session_access_mode,
-                settings_commands::set_session_access_mode,
-                settings_commands::get_ui_appearance,
-                settings_commands::set_ui_appearance,
-                commands::acp::get_acp_chat_page,
-                commands::acp::get_acp_file_snapshot,
-                commands::acp::file_reference::resolve_chat_file_reference,
-                commands::acp::get_codex_discovery,
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                commands::acp::runtime_identity::get_codex_runtime_identity,
-                commands::acp::codex_auth::get_codex_auth,
-                commands::acp::codex_auth::start_codex_auth,
-                commands::acp::codex_auth::cancel_codex_auth,
-                commands::acp::codex_auth::logout_codex_auth,
-                commands::acp::claude_auth::get_claude_auth_status,
-                commands::acp::claude_auth::start_claude_auth_login,
-                commands::acp::start_acp_session,
-                commands::acp::activate_acp_session,
-                commands::acp::send_acp_turn,
-                commands::acp::cancel_acp_turn,
-                commands::acp::steer_acp_turn,
-                commands::acp::close_acp_session,
-                commands::acp::end_acp_session,
-                commands::acp::session_config::set_acp_session_mode,
-                commands::acp::session_config::set_acp_session_config_option,
-                commands::acp::permission::resolve_permission_decision,
-                commands::acp::read_text_file::acknowledge_acp_read_text_file,
-                commands::acp::edit_disposition::record_agent_edit_disposition,
-                workspace::search::command::search_workspace,
-                workspace::search::command::cancel_workspace_search,
-                app_preview_commands::discover_preview_targets,
-                app_preview_commands::get_preview_health,
-                app_preview_commands::start_preview_target,
-                app_preview_commands::stop_preview_target,
-                browser::lifecycle::browser_open,
-                browser::popups::browser_popup_pending,
-                browser::popups::browser_open_popup,
-                browser::popups::browser_popup_ack,
-                browser::popups::browser_popup_abandon,
-                acp::browser::attachment::attach_browser_tab,
-                acp::browser::attachment::detach_browser_tab,
-                acp::browser::attachment::stop_browser_tab,
-                acp::browser::attachment::browser_attachment_status,
-                browser::lifecycle::browser_close,
-                browser::clear_data::browser_clear_data,
-                browser::bounds::browser_set_bounds,
-                browser::page_controls::browser_hide,
-                browser::downloads::browser_downloads,
-                browser::downloads::browser_cancel_download,
-                browser::downloads::show::browser_show_download_in_folder,
-                browser::site_permissions::browser_permission_status,
-                browser::site_permissions::browser_permission_revoke,
-                browser::site_permissions::browser_permission_resolve,
-                browser::navigation::browser_status,
-                browser::state_query::browser_live_tabs,
-                browser::state_query::browser_history,
-                browser::state_query::browser_suggested_sites,
-                browser::page_context::browser_page_context,
-                browser::page_controls::browser_navigate,
-                browser::navigation::browser_control,
-                browser::page_controls::browser_zoom,
-                browser::page_controls::browser_open_external,
-                browser::page_controls::browser_print,
-                browser::page_controls::browser_find
-            ];
-            handle(invoke)
-        })
+        .invoke_handler(ipc_commands::handle_main_invoke)
         .build(tauri::generate_context!())
         .expect("failed to build Sage")
         .run(app_run_events::handle_run_event);

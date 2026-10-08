@@ -51,7 +51,8 @@ fn browser_webviews_receive_no_tauri_capability() {
 
 #[test]
 fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
-    let source = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs")).unwrap();
+    let source =
+        fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/ipc_commands.rs")).unwrap();
     let body = source
         .split_once("tauri::generate_handler![")
         .expect("Sage command list")

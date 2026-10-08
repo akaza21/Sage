@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn production_generate_handler_has_no_reload_command() {
-        let source = include_str!("../../../lib.rs");
+        let source = include_str!("../../../ipc_commands.rs");
         let handler = source
             .split("generate_handler![")
             .nth(1)
