@@ -199,6 +199,7 @@ describe("AcpChatProjection", () => {
     await renderProjection(<AcpChatProjection page={projection} active />);
 
     const card = screen.getByRole("region", { name: "Files edited in turn 1" });
+    fireEvent.click(within(card).getByRole("button", { name: /file changed/ }));
     expect(
       within(card).getByText(createdFileEvent.expected.summary),
     ).toBeVisible();
@@ -233,6 +234,8 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /file changed/ }));
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open file Project / src/new.ts" }),
@@ -1341,6 +1344,9 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /files changed/ }),
+    );
     expect(
       within(summary).getAllByRole("button", { name: /open diff/i }),
     ).toHaveLength(2);
@@ -1385,6 +1391,9 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /files changed/ }),
+    );
     expect(within(summary).getAllByText("main.ts")).toHaveLength(2);
     expect(summary.querySelector(".file-kind-icon--typescript")).not.toBeNull();
     expect(within(summary).getAllByText("+2")).toHaveLength(2);
@@ -1421,6 +1430,8 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /file changed/ }));
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff One / src/main.ts" }),
@@ -1491,6 +1502,9 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /files changed/ }),
+    );
     expect(within(summary).getByText("Workspace (root 1)")).toBeVisible();
     expect(within(summary).getByText("Workspace (root 2)")).toBeVisible();
     const left = within(summary).getByRole("button", {
@@ -1531,7 +1545,10 @@ describe("AcpChatProjection", () => {
     let summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
-    expect(within(summary).getByText("Showing 1 edited file")).toBeVisible();
+    expect(within(summary).getByText("Showing 1 changed file")).toBeVisible();
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /Showing 1 changed file/ }),
+    );
     expect(
       screen.getByText(/earlier history has not been loaded/i),
     ).toBeVisible();
@@ -1555,7 +1572,7 @@ describe("AcpChatProjection", () => {
     summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
-    expect(within(summary).getByText("Edited 2 files")).toBeVisible();
+    expect(within(summary).getByText("2 files changed")).toBeVisible();
     expect(
       screen.queryByText(/earlier history has not been loaded/i),
     ).toBeNull();
@@ -1575,7 +1592,10 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
-    expect(within(summary).getByText("Showing 1 edited file")).toBeVisible();
+    expect(within(summary).getByText("Showing 1 changed file")).toBeVisible();
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /Showing 1 changed file/ }),
+    );
     expect(
       screen.getByText(/discarded to stay within memory limits/i),
     ).toBeVisible();
@@ -1625,6 +1645,9 @@ describe("AcpChatProjection", () => {
     const summary = screen.getByRole("region", {
       name: "Files edited in turn 1",
     });
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /Showing 32 changed files/ }),
+    );
     expect(within(summary).getAllByRole("listitem")).toHaveLength(
       MAX_AGENT_EDIT_SUMMARY_FILES,
     );

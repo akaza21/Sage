@@ -58,6 +58,36 @@ function OpenSurface() {
   return tab ? <DiffSurface tab={tab} /> : null;
 }
 describe("actual saved-edit card to shared Diff surface", () => {
+  it("collapses the edit list when a live Turn completes without remounting", () => {
+    const complete = snapshotPage();
+    const runningTurn = { ...complete.turns[0], state: "running" as const };
+    const { rerender } = render(
+      <TurnEditSummary
+        page={complete}
+        turn={runningTurn}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /1 file changed/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    rerender(
+      <TurnEditSummary
+        page={complete}
+        turn={complete.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /1 file changed/ }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    expect(
+      screen.getByRole("button", { name: /1 file changed/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+  });
   it("never substitutes Git when a restored snapshot placement has lost its reference", async () => {
     const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
     const tab = {
@@ -100,6 +130,12 @@ describe("actual saved-edit card to shared Diff surface", () => {
         <OpenSurface />
       </>,
     );
+    const editPill = screen.getByRole("button", { name: /1 file changed/ });
+    expect(editPill).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "Open diff Root / src/a.ts" }),
+    ).toBeNull();
+    fireEvent.click(editPill);
     fireEvent.click(
       screen.getByRole("button", { name: "Open diff Root / src/a.ts" }),
     );
@@ -286,6 +322,7 @@ describe("actual saved-edit card to shared Diff surface", () => {
         onOpenDiff={vi.fn()}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
     expect(screen.getByText("Saved edit")).toBeVisible();
     expect(screen.queryByRole("button", { name: /Open diff/ })).toBeNull();
   });

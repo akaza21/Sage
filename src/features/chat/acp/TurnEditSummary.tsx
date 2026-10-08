@@ -51,7 +51,16 @@ export function TurnEditSummary({
   onRecordDisposition,
 }: TurnEditSummaryProps) {
   const summary = projectAgentEditSummary(page, turn);
-  const [expanded, setExpanded] = useState(true);
+  const completed = turn.state === "completed";
+  const [expansion, setExpansion] = useState({
+    turnId: turn.id,
+    completed,
+    expanded: !completed,
+  });
+  const expanded =
+    expansion.turnId === turn.id && expansion.completed === completed
+      ? expansion.expanded
+      : !completed;
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
     null,
   );
@@ -102,14 +111,15 @@ export function TurnEditSummary({
     }
   }
 
+  const noun = summary.changes.length === 1 ? "file" : "files";
   const fileLabel = summaryIncomplete
-    ? `Showing ${summary.changes.length} edited ${summary.changes.length === 1 ? "file" : "files"}`
-    : `Edited ${summary.changes.length} ${summary.changes.length === 1 ? "file" : "files"}`;
+    ? `Showing ${summary.changes.length} changed ${noun}`
+    : `${summary.changes.length} ${noun} changed`;
   const canCollapse = hasInteractiveChanges;
 
   return (
     <section
-      className="acp-file-changes"
+      className={`acp-file-changes${!expanded && canCollapse ? " acp-file-changes--collapsed" : ""}`}
       aria-label={`Files edited in turn ${turn.ordinal}`}
       data-session-attempt={turn.sessionId}
     >
@@ -118,7 +128,9 @@ export function TurnEditSummary({
           className="acp-file-changes__header"
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() =>
+            setExpansion({ turnId: turn.id, completed, expanded: !expanded })
+          }
         >
           <Files size={16} aria-hidden="true" />
           <strong>{fileLabel}</strong>

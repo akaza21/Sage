@@ -3346,7 +3346,10 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
 
-    expect(await screen.findByText("Showing 1 edited file")).toBeVisible();
+    const editPill = await screen.findByRole("button", {
+      name: /Showing 1 changed file/,
+    });
+    fireEvent.click(editPill);
     expect(
       screen.getByText(/discarded to stay within memory limits/i),
     ).toBeVisible();

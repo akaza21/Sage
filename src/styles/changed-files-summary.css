@@ -25,6 +25,13 @@
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
+.acp-file-changes--collapsed {
+  width: max-content;
+  max-width: min(100%, var(--reading-measure));
+  border-radius: var(--radius-pill);
+  background: var(--color-plane-raised);
+}
+
 .edit-summary__header,
 .acp-file-changes__header {
   display: grid;
