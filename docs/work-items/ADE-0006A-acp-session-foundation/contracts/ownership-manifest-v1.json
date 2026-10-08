@@ -235,6 +235,7 @@
         "src-tauri/src/acp/session_config/overlay.rs",
         "src-tauri/src/acp/session_config/tests.rs",
         "src-tauri/src/acp/characterization_observation.rs",
+        "src-tauri/src/acp/goal.rs",
         "src-tauri/src/acp/page_admission.rs",
         "src-tauri/src/acp/service.rs"
       ]

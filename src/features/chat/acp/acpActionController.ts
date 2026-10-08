@@ -2,7 +2,6 @@ import { validateAttachedContexts } from "../../../domain/attachedContext";
 import type { AttachedContext } from "../../../domain/attachedContext";
 import type {
   AcpChatPage,
-  AcpMutationResult,
   AgentSessionProjection,
   ClientIntentId,
   CuratedBindingId,
@@ -17,6 +16,7 @@ import type {
 } from "../../../app/acpProjectionStore";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { createAcpSessionActions, currentSession } from "./acpSessionActions";
+import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
@@ -111,19 +111,6 @@ function localFailure(message: string): AcpDesktopError {
   return new AcpDesktopError({ kind: "invalidRequest", message });
 }
 
-function sameScope(
-  context: AcpActionContext | null,
-  expected: AcpActionContext,
-): boolean {
-  return (
-    context?.scope.projectId === expected.scope.projectId &&
-    context.scope.projectGeneration === expected.scope.projectGeneration &&
-    context.scope.chatId === expected.scope.chatId &&
-    context.ownershipEpoch === expected.ownershipEpoch &&
-    context.commandProjectGeneration === expected.commandProjectGeneration
-  );
-}
-
 function scopeKey(context: AcpActionContext): string {
   return JSON.stringify([
     context.scope.projectId,
@@ -183,34 +170,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     dependencies.onStateChange?.(emitted);
   };
 
-  const apply = (
-    captured: AcpActionContext,
-    result: AcpMutationResult,
-  ): AcpChatPage | null => {
-    const current = dependencies.getContext();
-    if (!sameScope(current, captured)) return null;
-    const previous = current!.page;
-    const incoming = result.projection;
-    const previousEpoch = previous.sessions.find(
-      (session) => session.id === previous.currentSessionId,
-    )?.runtimeEpoch;
-    const incomingEpoch = incoming.sessions.find(
-      (session) => session.id === incoming.currentSessionId,
-    )?.runtimeEpoch;
-    const page =
-      !incoming.goal &&
-      previous.goal &&
-      previous.currentSessionId === incoming.currentSessionId &&
-      previousEpoch &&
-      previousEpoch === incomingEpoch
-        ? { ...incoming, goal: previous.goal }
-        : incoming;
-    const disposition = dependencies.applyAuthoritativePage(
-      captured.scope,
-      page,
-    );
-    return disposition === "accepted" ? page : null;
-  };
+  const apply = createActionProjectionCommit(dependencies);
 
   const enqueue = (
     captured: AcpActionContext,
