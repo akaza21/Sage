@@ -56,6 +56,7 @@ describe("CollaborationItem", () => {
         sessionId: "session-1",
       },
       itemId: "spawn-1",
+      agentKey: "thread-secret",
     });
   });
   it("shows a verified spawn as a compact working row without exposing thread IDs", () => {
@@ -98,6 +99,8 @@ describe("CollaborationItem", () => {
       expect(screen.getByRole("status")).toHaveTextContent(
         /failed to start|stopped/,
       );
+      if (state === "errored" || state === "notFound")
+        expect(screen.queryByRole("button")).toBeNull();
       unmount();
     }
   });
@@ -158,12 +161,60 @@ describe("CollaborationItem", () => {
     render(<CollaborationItem item={item} />);
     expect(screen.getByText("A, B and C finished")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /A, B and C finished/ }),
-    ).toHaveClass("acp-subagent-row");
+      screen.queryByRole("button", { name: /A, B and C finished/ }),
+    ).toBeNull();
+    expect(screen.getByText("A, B and C finished")).toBeVisible();
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       3,
     );
     expect(screen.queryByText(/id-a/)).toBeNull();
+  });
+
+  it("does not route one completed child from a grouped event", () => {
+    const item = {
+      id: "group-1",
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: "activity-1",
+        label: "wait",
+        summary: "",
+        receiverLabels: ["A", "B"],
+        operation: "wait",
+        agentKey: "id-a",
+        agentKeys: ["id-a", "id-b"],
+        agentStates: [
+          ["id-b", "completed"],
+          ["id-a", "running"],
+        ],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("B finished")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /B finished/ })).toBeNull();
+  });
+
+  it("does not route conflicting singular child identities", () => {
+    const item = {
+      id: "conflict-1",
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: "activity-1",
+        label: "Reviewer",
+        summary: "",
+        receiverLabels: [],
+        operation: "started",
+        agentKey: "child-a",
+        agentKeys: ["child-b"],
+        agentStates: [["child-b", "running"]],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("Reviewer started working")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /Reviewer started working/ }),
+    ).toBeNull();
   });
 
   it("projects harness-owned collaboration without creating Sage controls", () => {

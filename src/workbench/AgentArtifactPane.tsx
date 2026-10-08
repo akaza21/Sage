@@ -12,6 +12,7 @@ import { useStore } from "zustand";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
   subagentPaneForPage,
+  latestSubagentForPage,
   ownerFromFocusedPage,
   validFocusedSubagentPage,
   useSubagentPaneStore,
@@ -106,12 +107,15 @@ export function AgentArtifactPane({
     () => ownerFromFocusedPage(focusedPage, focusedPageValid),
     [focusedPage, focusedPageValid],
   );
-  const subagentTarget = subagentPaneForPage(
+  const selectedSubagent = subagentPaneForPage(
     subagentOpen,
     focusedPageValid ? focusedPage : null,
   );
+  const subagentTarget =
+    selectedSubagent ??
+    latestSubagentForPage(focusedPageValid ? focusedPage : null);
   const subagentAvailable = subagentTarget !== null;
-  const subagentSelected = subagentAvailable && subagentSelectedState;
+  const subagentSelected = selectedSubagent !== null && subagentSelectedState;
   const artifacts = useMemo(
     () =>
       orderedTabs(tabs).filter((tab) =>
@@ -294,6 +298,10 @@ export function AgentArtifactPane({
               previewOpen={previewOpen}
               subagentOpen={subagentAvailable}
               subagentSelected={subagentSelected}
+              onSelectSubagent={() => {
+                if (subagentTarget)
+                  useSubagentPaneStore.getState().show(subagentTarget);
+              }}
               record={record}
               availableTargets={availableTargets}
               activateTab={activateTab}

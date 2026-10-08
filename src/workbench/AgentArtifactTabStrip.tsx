@@ -26,6 +26,7 @@ type AgentArtifactTabStripProps = {
   previewOpen: boolean;
   subagentOpen: boolean;
   subagentSelected: boolean;
+  onSelectSubagent: () => void;
   record: AgentArtifactFollowRecord | null;
   availableTargets: readonly AgentArtifactTarget[];
   activateTab: (tabId: string) => Promise<void> | void;
@@ -41,6 +42,7 @@ export function AgentArtifactTabStrip({
   previewOpen,
   subagentOpen,
   subagentSelected,
+  onSelectSubagent,
   record,
   availableTargets,
   activateTab,
@@ -237,19 +239,19 @@ export function AgentArtifactTabStrip({
                 type="button"
                 role="tab"
                 aria-selected={subagentSelected}
-                aria-label="Subagent"
-                onClick={() => useSubagentPaneStore.getState().select(true)}
+                aria-label="Subagents"
+                onClick={onSelectSubagent}
               >
                 <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />
                 <span className="tab__path" aria-hidden="true">
-                  <span className="tab__basename">Subagent</span>
+                  <span className="tab__basename">Subagents</span>
                 </span>
               </button>
               <button
                 className="tab__close"
                 type="button"
-                aria-label="Close Subagent"
-                onClick={() => useSubagentPaneStore.getState().clear()}
+                aria-label="Close Subagents"
+                onClick={() => useSubagentPaneStore.getState().select(false)}
               >
                 <X size={14} aria-hidden="true" />
               </button>

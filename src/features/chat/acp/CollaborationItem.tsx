@@ -1,6 +1,9 @@
 import { useId } from "react";
 
-import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
+import {
+  attributedSubagentKey,
+  useSubagentPaneStore,
+} from "../../../app/subagentPaneStore";
 import type { AcpItem } from "../../../domain/acp";
 
 type CollaborationProjectionItem = Extract<AcpItem, { kind: "collaboration" }>;
@@ -100,14 +103,34 @@ export function CollaborationItem({
       chatId: item.chatId,
       sessionId: item.sessionId,
     };
+    const visibleKeys = isFinished
+      ? finished.map(([key]) => key)
+      : failed.length > 0
+        ? failed.map(([key]) => key)
+        : stopped.length > 0
+          ? stopped.map(([key]) => key)
+          : isInterruptedActivity
+            ? [item.payload.agentKey]
+            : operation === "started"
+              ? [item.payload.agentKey]
+              : working.map(([key]) => key);
+    const agentKey = attributedSubagentKey(item, visibleKeys);
+    const Row = agentKey ? "button" : "div";
     return (
-      <button
+      <Row
         className="acp-subagent-row"
-        type="button"
-        aria-label={`${text}. Open Subagent`}
-        onClick={() =>
-          useSubagentPaneStore.getState().show({ owner, itemId: item.id })
-        }
+        {...(agentKey
+          ? {
+              type: "button" as const,
+              "aria-label": `${text}. Open Subagent`,
+              onClick: () =>
+                useSubagentPaneStore.getState().show({
+                  owner,
+                  itemId: item.id,
+                  agentKey,
+                }),
+            }
+          : {})}
       >
         <span className="acp-subagent-row__glyphs" aria-hidden="true">
           {Array.from({ length: Math.min(count, 3) }, (_, index) => (
@@ -126,7 +149,7 @@ export function CollaborationItem({
         >
           {text}
         </span>
-      </button>
+      </Row>
     );
   }
   return (

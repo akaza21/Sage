@@ -233,6 +233,73 @@ afterEach(() => {
 });
 
 describe("Agent artifact file chips", () => {
+  it("does not expose Subagents for conflicting child identities", () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "conflict-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "Reviewer",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "started",
+        agentKey: "child-a",
+        agentKeys: ["child-b"],
+        agentStates: [["child-b", "running"]],
+      },
+    } as unknown as AcpItem;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing focused scope");
+    expect(
+      store.getState().applyAuthoritativePage(scope, {
+        ...base,
+        turns: [{ ...base.turns[0], items: [child] }],
+      } as AcpChatPage),
+    ).toBe("accepted");
+    render(<AgentArtifactPane />);
+    expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
+  });
+  it("keeps Subagents available beside resources before a child row is opened", async () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "spawn-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as AcpItem;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing focused scope");
+    expect(
+      store.getState().applyAuthoritativePage(scope, {
+        ...base,
+        turns: [{ ...base.turns[0], items: [base.turns[0].items[0], child] }],
+      } as AcpChatPage),
+    ).toBe("accepted");
+    admit("file:app");
+    render(<AgentArtifactPane />);
+    const tab = screen.getByRole("tab", { name: "Subagents" });
+    expect(tab).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(tab);
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: /File src\/app.ts/ }));
+    expect(tab).toHaveAttribute("aria-selected", "false");
+    expect(tab).toBeVisible();
+  });
   it("opens a historical-session Subagent row in the focused Chat", async () => {
     const base = pageWithEdit();
     const older = {
@@ -288,15 +355,19 @@ describe("Agent artifact file chips", () => {
         sessionId: "session-older" as AgentArtifactOwner["sessionId"],
       },
       itemId: "older-spawn",
+      agentKey: "hidden-child",
     });
     render(<AgentArtifactPane />);
-    expect(screen.getByRole("tab", { name: "Subagent" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Subagents" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(
       await screen.findByRole("heading", { name: "Historian" }),
     ).toBeVisible();
+    act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
+    expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Historian" })).toBeNull();
   });
   it("starts empty as a collapsed right-edge resource affordance", () => {
     const onExpandedChange = vi.fn();
