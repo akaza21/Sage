@@ -69,23 +69,22 @@ export function VirtualTurnList({
   renderTurn: (turn: TurnProjection, index: number) => ReactNode;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const measured = useRef(new Map<string, number>());
+  const [measured, setMeasured] = useState(() => new Map<string, number>());
   const previousIds = useRef<readonly string[]>([]);
   const anchor = useRef<{ id: string; inset: number } | null>(null);
   const pinnedAnchor = useRef<{ id: string; inset: number } | null>(null);
   const releaseFrame = useRef<number | null>(null);
-  const [measureRevision, setMeasureRevision] = useState(0);
   const [viewport, setViewport] = useState({ top: Infinity, height: 700 });
   const offsets = useMemo(() => {
     const values = [0];
     for (const turn of turns)
       values.push(
         values.at(-1)! +
-          (measured.current.get(turn.id) ?? ESTIMATED_ROW_HEIGHT) +
+          (measured.get(turn.id) ?? ESTIMATED_ROW_HEIGHT) +
           ROW_GAP,
       );
     return values;
-  }, [measureRevision, turns]);
+  }, [measured, turns]);
   const totalHeight = offsets.at(-1) ?? 0;
   const top = Number.isFinite(viewport.top)
     ? Math.max(0, viewport.top)
@@ -186,7 +185,7 @@ export function VirtualTurnList({
         releaseFrame.current = null;
       });
     });
-  }, [end, measureRevision, readViewport, start, turns]);
+  }, [end, measured, readViewport, start, turns]);
 
   useLayoutEffect(
     () => () => {
@@ -209,14 +208,14 @@ export function VirtualTurnList({
         id: row.dataset.turnId,
         inset: row.getBoundingClientRect().top - top,
       };
-  }, [end, measureRevision, start, turns, viewport.top]);
+  }, [end, measured, start, turns, viewport.top]);
 
   const onMeasure = useCallback(
     (id: string, height: number) => {
       if (height <= 0 || !Number.isFinite(height)) return;
-      const prior = measured.current.get(id) ?? ESTIMATED_ROW_HEIGHT;
+      const prior = measured.get(id) ?? ESTIMATED_ROW_HEIGHT;
       if (Math.abs(prior - height) < 1) return;
-      measured.current.set(id, height);
+      setMeasured((current) => new Map(current).set(id, height));
       const index = turns.findIndex((turn) => turn.id === id);
       const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
       if (
@@ -225,9 +224,8 @@ export function VirtualTurnList({
         offsets[index]! + prior + ROW_GAP <= viewport.top
       )
         scrollport.scrollTop += height - prior;
-      setMeasureRevision((revision) => revision + 1);
     },
-    [offsets, turns, viewport.top],
+    [measured, offsets, turns, viewport.top],
   );
 
   return (
