@@ -220,6 +220,8 @@ export function VirtualTurnList({
   const onMeasure = useCallback(
     (id: string, height: number) => {
       if (height <= 0 || !Number.isFinite(height)) return;
+      const index = turns.findIndex((turn) => turn.id === id);
+      if (index < 0) return;
       const prior =
         latestHeights.current.get(id) ??
         measured.get(id) ??
@@ -232,13 +234,8 @@ export function VirtualTurnList({
         next.set(id, height);
         return next;
       });
-      const index = turns.findIndex((turn) => turn.id === id);
       const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
-      if (
-        scrollport &&
-        index >= 0 &&
-        offsets[index]! + prior + ROW_GAP <= viewport.top
-      )
+      if (scrollport && offsets[index]! + prior + ROW_GAP <= viewport.top)
         scrollport.scrollTop += height - prior;
     },
     [measured, offsets, turns, viewport.top],
