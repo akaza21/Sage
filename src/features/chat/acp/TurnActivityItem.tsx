@@ -7,18 +7,14 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
-import {
-  agentRailClockMs,
-  useAgentRailViewPrefs,
-} from "../../../workbench/agentRailViewPrefs";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
-import { terminalItemLifecycles } from "./statusSemantics";
-import { isActiveTool, isWorkingTool, workingToolStatus } from "./workingTool";
+import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
+import { isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
@@ -52,7 +48,9 @@ export const ItemView = memo(
             data-item-id={item.id}
             data-message-role={item.payload.role}
             data-answer-state={
-              item.payload.role === "assistant" && turnState === "interrupted"
+              item.payload.role === "assistant" &&
+              turnState === "interrupted" &&
+              item.lifecycle !== "completed"
                 ? "partial"
                 : undefined
             }
@@ -91,7 +89,8 @@ export const ItemView = memo(
               }
             />
             {item.payload.role === "assistant" &&
-            turnState === "interrupted" ? (
+            turnState === "interrupted" &&
+            item.lifecycle !== "completed" ? (
               <p className="acp-message__partial">
                 Interrupted · partial answer
               </p>
@@ -100,6 +99,8 @@ export const ItemView = memo(
         );
       }
       case "thoughtSummary":
+        if (turnState && terminalTurnStates.has(turnState)) return null;
+        return <TurnActivityItem item={item} />;
       case "plan":
       case "compactionNotice":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
@@ -141,7 +142,7 @@ export const ItemView = memo(
   (left, right) =>
     left.item.id === right.item.id &&
     left.item.revision === right.item.revision &&
-    (left.item.kind !== "thoughtSummary" && left.item.kind !== "plan"
+    (left.item.kind !== "plan"
       ? true
       : left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
@@ -151,7 +152,6 @@ export const ItemView = memo(
     left.onOpenResource === right.onOpenResource,
 );
 
-const MAX_THOUGHT_WORKING_ROWS = 64;
 const MAX_PLAN_WORKING_ROWS = 3;
 const planStateLabels = {
   pending: "Pending",
@@ -172,85 +172,6 @@ function PlanStateIcon({ state }: { state: keyof typeof planStateLabels }) {
     );
   if (state === "failed") return <XCircle size={14} aria-hidden="true" />;
   return <Circle size={14} aria-hidden="true" />;
-}
-
-function thoughtDurationLabel(
-  createdAt: number,
-  endAt: number,
-  live: boolean,
-): string | null {
-  if (
-    !Number.isFinite(createdAt) ||
-    !Number.isFinite(endAt) ||
-    endAt < createdAt
-  )
-    return null;
-  const seconds = Math.floor((endAt - createdAt) / 1_000);
-  const verb = live ? "Thinking" : "Thought";
-  return seconds > 0
-    ? `${verb}${live ? " for" : ""} ${seconds}s`
-    : `${verb} briefly`;
-}
-
-function ThoughtActivity({
-  item,
-  workingItems,
-  nowMs,
-}: {
-  item: Extract<AcpItem, { kind: "thoughtSummary" }>;
-  workingItems: readonly AcpItem[];
-  nowMs?: number;
-}) {
-  useAgentRailViewPrefs();
-  const liveNowMs = nowMs ?? agentRailClockMs();
-  const active = workingItems.filter(isActiveTool);
-  const working = workingItems
-    .filter(isWorkingTool)
-    .slice(0, MAX_THOUGHT_WORKING_ROWS);
-  const terminal = terminalItemLifecycles.has(item.lifecycle);
-  const live = !terminal || active.length > 0;
-  const endAt = live ? liveNowMs : (item.terminalAt ?? item.updatedAt);
-  const label = thoughtDurationLabel(item.createdAt, endAt, live);
-  const preview = item.payload.summary
-    .trim()
-    .split(/\r?\n/, 1)[0]
-    ?.slice(0, 256);
-  return (
-    <details
-      className="acp-activity-card acp-activity-card--thought acp-details acp-thought"
-      data-activity-kind="thought"
-      data-activity-state={live ? "inProgress" : "completed"}
-    >
-      <summary aria-label={live ? (label ?? undefined) : undefined}>
-        <span
-          className={`acp-thought__label${live ? " acp-live-shimmer" : ""}`}
-        >
-          {live ? "Thinking" : (label ?? "Thought")}
-        </span>
-        {preview ? (
-          <span className="acp-thought__preview">{preview}</span>
-        ) : null}
-        {live ? null : <span className="acp-state">Details</span>}
-      </summary>
-      <ChatMarkdown
-        text={item.payload.summary}
-        streaming={!terminalItemLifecycles.has(item.lifecycle)}
-      />
-      {working.length > 0 ? (
-        <ul className="acp-thought__working" aria-label="Working tools">
-          {working.map((workingItem) => (
-            <li key={workingItem.id}>
-              <span className="acp-thought__pulse" aria-hidden="true" />
-              <span className="acp-thought__working-copy">
-                <span>{workingItem.payload.presentation.label}</span>
-                <span>{workingToolStatus(workingItem)}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </details>
-  );
 }
 
 function PlanActivity({
@@ -363,20 +284,22 @@ function ErrorActivity({
 export function TurnActivityItem({
   item,
   workingItems = [],
-  nowMs,
 }: {
   item: TurnActivityProjectionItem;
   workingItems?: readonly AcpItem[];
-  nowMs?: number;
 }) {
   switch (item.kind) {
     case "thoughtSummary":
+      if (terminalItemLifecycles.has(item.lifecycle)) return null;
       return (
-        <ThoughtActivity
-          item={item}
-          workingItems={workingItems}
-          nowMs={nowMs}
-        />
+        <p
+          className="acp-thought"
+          data-activity-kind="thought"
+          data-activity-state="inProgress"
+        >
+          {item.payload.summary.trim().split(/\r?\n/, 1)[0]?.slice(0, 256) ||
+            "Thinking"}
+        </p>
       );
     case "plan":
       return <PlanActivity item={item} workingItems={workingItems} />;

@@ -1,5 +1,4 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -9,16 +8,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem } from "../../../domain/acp";
-import {
-  resetAgentRailViewPrefs,
-  syncAgentRailClock,
-} from "../../../workbench/agentRailViewPrefs";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 
 afterEach(() => {
   cleanup();
-  resetAgentRailViewPrefs();
 });
 
 function item<T extends AcpItem["kind"]>(
@@ -69,134 +63,48 @@ it("does not claim a Pi compaction finished until the end arrives", () => {
 });
 
 describe("TurnActivityItem", () => {
-  it("shows a streaming reasoning item as a muted Thinking row", () => {
-    const thought = item("thoughtSummary", { summary: "Checking the files." });
+  it("shows live thinking as one bounded line with a placeholder only before content", () => {
+    const thought = item("thoughtSummary", { summary: "" });
     thought.lifecycle = "streaming";
     thought.terminalAt = null;
-    const { container } = render(
-      <TurnActivityItem item={thought} nowMs={4_000} />,
-    );
-    const details = container.querySelector(".acp-thought");
-    expect(details?.querySelector("summary")).toHaveTextContent("Thinking");
-    expect(details?.querySelector(".acp-thought__label")).toHaveClass(
-      "acp-live-shimmer",
-    );
-    expect(details?.querySelector("summary .acp-state")).toBeNull();
-    expect(details).toHaveAttribute("data-activity-state", "inProgress");
-  });
-
-  it("names a sub-second live Thought as Thinking briefly", () => {
-    const thought = item("thoughtSummary", { summary: "Checking the files." });
-    thought.createdAt = 1_000;
-    thought.lifecycle = "streaming";
-    thought.terminalAt = null;
-    render(<TurnActivityItem item={thought} nowMs={1_500} />);
-
-    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking briefly",
-    );
-  });
-
-  it("freezes a completed Thought while a streaming Thought advances", () => {
-    const thought = item("thoughtSummary", { summary: "Checking the files." });
-    thought.createdAt = 1_000;
-    thought.updatedAt = 9_000;
-    thought.terminalAt = 3_000;
-    const { rerender } = render(
-      <TurnActivityItem item={thought} nowMs={20_000} />,
-    );
-    expect(screen.getByText("Thought 2s")).toBeVisible();
-
-    rerender(<TurnActivityItem item={thought} nowMs={99_000} />);
-    expect(screen.getByText("Thought 2s")).toBeVisible();
-
-    const streaming = {
-      ...thought,
-      lifecycle: "streaming",
-      terminalAt: null,
-    } as typeof thought;
-    rerender(<TurnActivityItem item={streaming} nowMs={4_000} />);
-    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking for 3s",
-    );
-    rerender(<TurnActivityItem item={streaming} nowMs={5_000} />);
-    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking for 4s",
-    );
+    const { container, rerender } = render(<TurnActivityItem item={thought} />);
+    expect(screen.getByText("Thinking")).toBeVisible();
+    expect(container.querySelector("details")).toBeNull();
 
     rerender(
       <TurnActivityItem
-        item={{ ...thought, terminalAt: 500 } as typeof thought}
-        nowMs={99_000}
+        item={{
+          ...thought,
+          payload: { summary: `${"x".repeat(300)}\nHidden second line` },
+        }}
       />,
     );
-    expect(screen.getByText("Thought")).toBeVisible();
-
-    rerender(
-      <TurnActivityItem
-        item={
-          {
-            ...thought,
-            terminalAt: null,
-            updatedAt: 500,
-          } as typeof thought
-        }
-        nowMs={99_000}
-      />,
-    );
-    expect(screen.getByText("Thought")).toBeVisible();
-  });
-
-  it("responds to the real clock store only while a Thought is streaming", () => {
-    const thought = item("thoughtSummary", { summary: "Checking the files." });
-    thought.createdAt = 1_000;
-    thought.updatedAt = 3_000;
-    thought.terminalAt = null;
-    thought.lifecycle = "streaming";
-    act(() => syncAgentRailClock(4_000));
-    const { rerender } = render(<TurnActivityItem item={thought} />);
-    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking for 3s",
-    );
-
-    act(() => syncAgentRailClock(5_000));
-    expect(screen.getByText("Thinking").closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking for 4s",
-    );
-
-    const terminal = {
-      ...thought,
-      lifecycle: "completed",
-      terminalAt: 3_000,
-    } as typeof thought;
-    rerender(<TurnActivityItem item={terminal} />);
-    expect(screen.getByText("Thought 2s")).toBeVisible();
-    act(() => syncAgentRailClock(9_000));
-    expect(screen.getByText("Thought 2s")).toBeVisible();
-  });
-
-  it("renders an unfinished streaming Mermaid Thought as receiving source", () => {
-    const thought = item("thoughtSummary", {
-      summary: "```mermaid\ngraph TD\nA -->",
-    });
-    thought.lifecycle = "streaming";
-    thought.terminalAt = null;
-    const { container } = render(
-      <TurnActivityItem item={thought} nowMs={thought.createdAt} />,
-    );
-    const details = container.querySelector("details");
-    expect(details).not.toBeNull();
-    details!.open = true;
+    const preview = screen.getByText("x".repeat(256));
+    expect(preview).toBeVisible();
+    expect(preview).toHaveClass("acp-thought");
+    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(screen.queryByText("Hidden second line")).toBeNull();
+    expect(container.querySelector(".acp-markdown")).toBeNull();
     expect(
-      screen.getByRole("status", { name: "Receiving diagram source" }),
-    ).toBeVisible();
-    expect(screen.queryByText(/could not be drawn/i)).toBeNull();
+      container.querySelectorAll('[data-activity-kind="thought"]'),
+    ).toHaveLength(1);
   });
+
+  it.each(["completed", "failed", "cancelled", "unsupported"] as const)(
+    "removes thinking when the item is %s",
+    (lifecycle) => {
+      const thought = item("thoughtSummary", {
+        summary: "Checking the files.",
+      });
+      thought.lifecycle = "streaming";
+      const { container, rerender } = render(
+        <TurnActivityItem item={thought} />,
+      );
+      expect(screen.getByText("Checking the files.")).toBeVisible();
+      rerender(<TurnActivityItem item={{ ...thought, lifecycle }} />);
+      expect(container).toBeEmptyDOMElement();
+    },
+  );
 
   it("presents Plan progress and human-readable entry states", () => {
     const plan = item("plan", {
@@ -226,7 +134,7 @@ describe("TurnActivityItem", () => {
     expect(within(region).queryByRole("list")).toBeNull();
   });
 
-  it("keeps Thought active while a tool waits for approval", () => {
+  it("does not revive completed thinking while a tool waits for approval", () => {
     const thought = item("thoughtSummary", { summary: "Waiting on approval." });
     const waiting = {
       ...item("error", {
@@ -252,11 +160,7 @@ describe("TurnActivityItem", () => {
     const { container } = render(
       <TurnActivityItem item={thought} workingItems={[waiting]} />,
     );
-    const details = container.querySelector("details");
-    expect(details).toHaveAttribute("data-activity-state", "inProgress");
-    expect(within(details!).getByText("Thinking")).toBeVisible();
-    expect(within(details!).queryByText("In progress")).toBeNull();
-    expect(within(details!).queryByLabelText("Working tools")).toBeNull();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("shows bounded current work only under the in-progress plan entry", () => {
@@ -433,8 +337,9 @@ describe("TurnActivityItem", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Needs attention");
   });
 
-  it("keeps Thought disclosure keyboard-native with visible working status", () => {
+  it("does not duplicate working tools under live thinking", () => {
     const thought = item("thoughtSummary", { summary: "Checking the files." });
+    thought.lifecycle = "streaming";
     const working = {
       ...item("error", {
         code: "unused",
@@ -460,12 +365,9 @@ describe("TurnActivityItem", () => {
       <TurnActivityItem item={thought} workingItems={[working]} />,
     );
 
-    expect(screen.getByText("Thinking")).toBeVisible();
+    expect(screen.getByText("Checking the files.")).toBeVisible();
     expect(screen.queryByText("In progress")).toBeNull();
-    expect(screen.getByText("Search workspace")).not.toBeVisible();
-    const details = container.querySelector("details");
-    expect(details).not.toBeNull();
-    details!.open = true;
-    expect(screen.getByText("Search workspace")).toBeVisible();
+    expect(screen.queryByText("Search workspace")).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
   });
 });

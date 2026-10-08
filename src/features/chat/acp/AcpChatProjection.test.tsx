@@ -807,42 +807,44 @@ describe("AcpChatProjection", () => {
     ).toHaveTextContent("Final answer");
   });
 
-  it("keeps a completed Thought inside collapsed Worked", async () => {
-    const next = page("completed");
-    next.turns[0].items = [
-      {
-        ...textItem(),
-        id: "final-answer" as AcpItem["id"],
-        ordinal: 3,
-        payload: { role: "assistant", text: "Final answer" },
-      },
-      {
-        ...textItem(),
-        id: "completed-thought" as AcpItem["id"],
-        ordinal: 2,
-        kind: "thoughtSummary",
-        lifecycle: "completed",
-        terminalAt: 4_000,
-        payload: { summary: "Checked the file changes" },
-      } as AcpItem,
-    ];
+  it.each([
+    "completed",
+    "interrupted",
+    "failed",
+    "cancelled",
+    "deliveryUnknown",
+  ] as const)(
+    "keeps no thinking rows after a %s turn, even with a stale live item",
+    async (state) => {
+      const next = page(state);
+      next.turns[0].items = [
+        {
+          ...textItem(),
+          id: "final-answer" as AcpItem["id"],
+          ordinal: 3,
+          payload: { role: "assistant", text: "Final answer" },
+        },
+        {
+          ...textItem(),
+          id: "completed-thought" as AcpItem["id"],
+          ordinal: 2,
+          kind: "thoughtSummary",
+          lifecycle: "streaming",
+          terminalAt: 4_000,
+          payload: { summary: "Checked the file changes" },
+        } as AcpItem,
+      ];
 
-    const { container } = await renderProjection(
-      <AcpChatProjection page={next} active />,
-    );
-    const work = container.querySelector<HTMLDetailsElement>(
-      ".chat-transcript-work",
-    );
-    expect(work).not.toBeNull();
-    expect(work).not.toHaveAttribute("open");
-    expect(work?.querySelector(".acp-thought__label")).toHaveTextContent(
-      /^Thought/,
-    );
-    expect(work).toHaveTextContent("Checked the file changes");
-    expect(
-      container.querySelector(".acp-turn__items > .acp-message--assistant"),
-    ).toHaveTextContent("Final answer");
-  });
+      const { container } = await renderProjection(
+        <AcpChatProjection page={next} active />,
+      );
+      expect(container.querySelector(".acp-thought")).toBeNull();
+      expect(screen.queryByText("Checked the file changes")).toBeNull();
+      expect(
+        container.querySelector(".acp-turn__items > .acp-message--assistant"),
+      ).toHaveTextContent("Final answer");
+    },
+  );
 
   it("collapses trailing progress but leaves only the last assistant answer visible", async () => {
     const next = page("completed");
@@ -1978,32 +1980,35 @@ describe("AcpChatProjection", () => {
     expect(openResource).not.toHaveBeenCalled();
   });
 
-  it("renders a collapsible Thought only from thoughtSummary using the session clock", async () => {
-    const { syncAgentRailClock } =
-      await import("../../../workbench/agentRailViewPrefs");
-    syncAgentRailClock(19_000);
+  it("shows only the latest live thinking line", async () => {
     const next = page("running");
     next.turns[0].items = [
       {
-        id: "thought",
+        ...textItem(),
+        id: "new-thought",
+        ordinal: 2,
         kind: "thoughtSummary",
-        origin: "primary",
-        createdAt: 1_000,
-        payload: { summary: "Checking the workspace" },
+        lifecycle: "streaming",
+        payload: { summary: "Current thinking" },
+      } as AcpItem,
+      {
+        ...textItem(),
+        id: "old-thought",
+        ordinal: 1,
+        kind: "thoughtSummary",
+        lifecycle: "streaming",
+        payload: { summary: "Earlier thinking" },
       } as AcpItem,
     ];
-    await renderProjection(<AcpChatProjection page={next} active />);
-    const thought = screen.getByText("Thinking");
-    expect(thought.closest("summary")).toHaveAttribute(
-      "aria-label",
-      "Thinking for 18s",
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
     );
-    expect(thought.closest("details")).not.toHaveAttribute("open");
-    fireEvent.click(thought);
-    expect(screen.getAllByText("Checking the workspace")[1]).toBeVisible();
+    expect(screen.getByText("Current thinking")).toBeVisible();
+    expect(screen.queryByText("Earlier thinking")).toBeNull();
+    expect(container.querySelectorAll(".acp-thought")).toHaveLength(1);
   });
 
-  it("shows live thinking text as a preview, then a collapsed summary after completion", async () => {
+  it("shows live thinking text only until the turn completes", async () => {
     const next = page("running");
     next.turns[0].items = [
       {
@@ -2035,15 +2040,10 @@ describe("AcpChatProjection", () => {
     finished.turns[0].items[0].terminalAt = 4_000;
     finished.turns[0].items[0].revision = "2" as never;
     rerender(<AcpChatProjection page={finished} active />);
-    const summary = screen.getAllByText(
-      "Checking the workspace before editing.",
-    )[0];
-    expect(summary.closest("summary")).not.toBeNull();
-    expect(summary.closest("details")).not.toHaveAttribute("open");
-    expect(summary.closest(".acp-thought")).toHaveAttribute(
-      "data-activity-state",
-      "completed",
-    );
+    expect(
+      screen.queryAllByText("Checking the workspace before editing."),
+    ).toHaveLength(0);
+    expect(document.querySelector(".acp-thought")).toBeNull();
   });
 
   it("marks a partial assistant answer on an interrupted turn without completing it", async () => {
@@ -2063,6 +2063,22 @@ describe("AcpChatProjection", () => {
     );
     expect(screen.getByText("Interrupted")).toBeVisible();
     expect(screen.queryByText("Completed")).toBeNull();
+  });
+
+  it("does not mark a completed assistant answer as partial on an interrupted turn", async () => {
+    const next = page("interrupted");
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        lifecycle: "completed",
+        payload: { role: "assistant", text: "Completed answer" },
+      } as AcpItem,
+    ];
+    await renderProjection(<AcpChatProjection page={next} active />);
+    expect(
+      screen.getByText("Completed answer").closest(".acp-message"),
+    ).not.toHaveAttribute("data-answer-state");
+    expect(screen.queryByText(/partial answer/)).toBeNull();
   });
 
   it("shows a failed turn's message and the existing retry action together", async () => {
@@ -2139,10 +2155,12 @@ describe("AcpChatProjection", () => {
     ).toBeNull();
   });
 
-  it("does not synthesize a Thought for tool-only turns and caps working rows", () => {
+  it("does not synthesize thinking for Pi tool-only turns", async () => {
     const next = page("running");
-    const tools = Array.from({ length: 65 }, (_, index) =>
-      activityItem(`tool-${index}`, "activity", {
+    next.turns[0].items = [
+      activityItem("tool", "activity", {
+        origin: "primary",
+        lifecycle: "streaming",
         kind: "toolCall",
         toolState: "inProgress",
         payload: {
@@ -2152,7 +2170,7 @@ describe("AcpChatProjection", () => {
             exitCode: null,
             outputTail: null,
             outputTruncated: false,
-            label: `Tool ${index}`,
+            label: "Run tool",
             summary: null,
             resources: [],
             activity: "ordinary",
@@ -2160,60 +2178,15 @@ describe("AcpChatProjection", () => {
           inputSummary: null,
         },
       }),
-    );
-    next.turns[0].items = tools;
-    const { container, rerender } = render(
+    ];
+    const { container } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
+    expect(
+      container.querySelector('[data-activity-kind="execute"]'),
+    ).not.toBeNull();
+    expect(container.querySelector(".acp-thought")).toBeNull();
+    expect(screen.queryByText("Thinking")).toBeNull();
     expect(screen.queryByText(/^Thought/)).toBeNull();
-
-    const refreshed = structuredClone(next);
-    refreshed.turns[0].items = [
-      {
-        id: "thought",
-        kind: "thoughtSummary",
-        origin: "primary",
-        createdAt: 0,
-        payload: { summary: "Working" },
-      } as AcpItem,
-      ...tools,
-    ];
-    refreshed.turns[0].revision = "2" as never;
-    rerender(<AcpChatProjection page={refreshed} active />);
-    expect(container.querySelectorAll(".acp-thought__working li")).toHaveLength(
-      64,
-    );
-  });
-
-  it("shows an existing search summary as a nested working status line", () => {
-    const next = page("running");
-    next.turns[0].items = [
-      {
-        id: "thought",
-        kind: "thoughtSummary",
-        origin: "primary",
-        createdAt: 0,
-        payload: { summary: "Looking" },
-      } as AcpItem,
-      activityItem("search", "activity", {
-        kind: "toolCall",
-        toolState: "inProgress",
-        payload: {
-          presentation: {
-            kind: "search",
-            matchCount: null,
-            truncated: false,
-            label: "Search workspace",
-            querySummary: "needle",
-            resources: [],
-          },
-          inputSummary: null,
-        },
-      }),
-    ];
-    render(<AcpChatProjection page={next} active />);
-    fireEvent.click(screen.getByText("Thinking"));
-    expect(screen.getByText("Search workspace")).toBeVisible();
-    expect(screen.getByText("Searching… needle")).toBeVisible();
   });
 });

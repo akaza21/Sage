@@ -28,8 +28,9 @@ import type { OpenResourceTarget } from "./ToolItem";
 import { PrimaryActivities } from "./PrimaryActivities";
 import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
+import { TurnFailure } from "./TurnFailure";
 import { BrowserOperations } from "./BrowserOperations";
-import { terminalTurnStates } from "./statusSemantics";
+import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
 import { VirtualTurnList } from "./VirtualTurnList";
 import "./browser-operations.css";
 
@@ -135,6 +136,10 @@ const Turn = memo(
       .filter(
         (item) =>
           !attachmentIds.has(item.id) &&
+          !(
+            item.kind === "thoughtSummary" &&
+            (terminal || terminalItemLifecycles.has(item.lifecycle))
+          ) &&
           !(item.kind === "text" && item.payload.role === "user"),
       )
       .sort(
@@ -149,8 +154,13 @@ const Turn = memo(
             (item) => item.kind === "text" && item.payload.role === "assistant",
           )
       : undefined;
+    const liveThought = [...chronologicalItems]
+      .reverse()
+      .find((item) => item.kind === "thoughtSummary");
     const workingItems = chronologicalItems.filter(
-      (item) => item.id !== finalAnswer?.id,
+      (item) =>
+        item.id !== finalAnswer?.id &&
+        (item.kind !== "thoughtSummary" || item.id === liveThought?.id),
     );
     const contentItems = finalAnswer ? [finalAnswer] : [];
     return (
@@ -262,28 +272,7 @@ const Turn = memo(
             onOpenFile={interactive ? onOpenResource && openForTurn : undefined}
             onRecordDisposition={acpDesktop.recordAgentEditDisposition}
           />
-          {turn.state === "failed" ? (
-            <div
-              className="acp-turn__failure"
-              role="alert"
-              aria-label="Turn failed"
-            >
-              <strong>Turn failed</strong>
-              {turn.terminalReason?.message ? (
-                <p data-turn-reason-message="">{turn.terminalReason.message}</p>
-              ) : null}
-              {turn.terminalReason?.remediation ? (
-                <p data-turn-reason-remediation="">
-                  {turn.terminalReason.remediation}
-                </p>
-              ) : null}
-              {onRetry ? (
-                <button type="button" onClick={onRetry}>
-                  Retry
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          <TurnFailure turn={turn} onRetry={onRetry} />
         </div>
       </section>
     );

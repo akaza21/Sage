@@ -183,85 +183,20 @@
   min-width: 0;
 }
 
-.acp-thought__working {
-  display: grid;
-  gap: var(--space-1);
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.acp-thought > summary .acp-thought__preview {
+.acp-thought {
   min-width: 0;
-  grid-column: 1 / -1;
-  grid-row: 2;
+  margin: 0;
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.acp-thought__working li {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 10px minmax(0, 1fr);
-  align-items: start;
-  gap: 4px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.acp-thought__working-copy {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.acp-thought__working-copy span {
-  overflow-wrap: anywhere;
-}
-
-.acp-thought__working-copy span:last-child {
-  color: var(--color-text-disabled);
-}
-
-.acp-thought__pulse {
-  width: 4px;
-  height: 4px;
-  margin-top: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
-  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
-    infinite;
-}
-
-.acp-thought[open] > :not(summary) {
-  animation: acp-thought-reveal var(--motion-duration-normal) ease-out both;
-}
-
-@keyframes acp-thought-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .acp-tool-rollup > summary,
   .acp-tool-rollup__chevron {
     transition: none;
-  }
-
-  .acp-thought[open] > :not(summary) {
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
   }
 }
 
