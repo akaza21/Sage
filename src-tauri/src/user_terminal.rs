@@ -42,6 +42,7 @@ pub enum TerminalError {
     InvalidDimensions,
     InvalidInput,
     UnknownSession,
+    Ended,
     Busy,
     Backend,
 }

@@ -95,6 +95,7 @@ impl From<TerminalError> for TerminalIpcError {
             TerminalError::InvalidDimensions => "invalid_dimensions",
             TerminalError::InvalidInput => "invalid_input",
             TerminalError::UnknownSession => "unknown_session",
+            TerminalError::Ended => "ended",
             TerminalError::Busy => "busy",
             TerminalError::Backend => "backend",
         })

@@ -142,6 +142,34 @@ fn contained_conpty_echo_and_zero_members_after_close() {
 }
 
 #[test]
+fn writing_after_shell_exit_reports_session_ended() {
+    let (shell, application) = shell();
+    let command = wide_text(&format!("\"{}\" /d /c exit 0", shell.display()));
+    let (job, info, created, pseudo, input, output) =
+        launch_suspended_conpty(&application, &command);
+    assert!(created);
+    job.assign(info.hProcess).unwrap();
+    assert!(member(&job, info.hProcess));
+    assert_ne!(unsafe { ResumeThread(info.hThread) }, u32::MAX);
+    assert_eq!(
+        unsafe { WaitForSingleObject(info.hProcess, 3_000) },
+        WAIT_OBJECT_0
+    );
+    drop(output);
+    let mut running = ConPtyProcess {
+        shell_path: shell.to_string_lossy().into_owned(),
+        job,
+        process: Handle(info.hProcess),
+        thread: Handle(info.hThread),
+        assigned: true,
+        pseudo: Some(pseudo),
+        input: Some(input.into_file()),
+        output_thread: None,
+    };
+    assert_eq!(running.write(b"late input"), Err(TerminalError::Ended));
+}
+
+#[test]
 fn assignment_failure_never_resumes_shell_and_settles_exact_process() {
     let (_, application) = shell();
     let (job, info, created, pseudo, input, output) =

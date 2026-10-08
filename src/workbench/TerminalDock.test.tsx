@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -21,7 +22,10 @@ const native = vi.hoisted(() => ({
   resize: vi.fn(),
   write: vi.fn(),
 }));
-const xterm = vi.hoisted(() => ({ refresh: vi.fn() }));
+const xterm = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  data: null as ((data: string) => void) | null,
+}));
 let resizeCallback: (() => void) | null = null;
 
 vi.mock("../services/userTerminalDesktop", () => ({
@@ -49,7 +53,8 @@ vi.mock("@xterm/xterm", () => ({
       xterm.refresh(start, end);
     }
     dispose() {}
-    onData() {
+    onData(callback: (data: string) => void) {
+      xterm.data = callback;
       return { dispose() {} };
     }
   },
@@ -77,6 +82,7 @@ beforeEach(() => {
   native.close.mockResolvedValue(undefined);
   native.resize.mockResolvedValue(undefined);
   xterm.refresh.mockReset();
+  xterm.data = null;
   resizeCallback = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -88,6 +94,40 @@ beforeEach(() => {
       disconnect() {}
     },
   );
+});
+
+it("delivers a zero-delay typing burst without losing characters", async () => {
+  let settleFirst: (() => void) | undefined;
+  native.write
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          settleFirst = resolve;
+        }),
+    )
+    .mockResolvedValue(undefined);
+  render(<TerminalDock scope={scope} onClose={() => undefined} />);
+  await screen.findByTitle(handle.shellPath);
+  const burst = "echo CP9_NATIVE_TERMINAL_OK\r";
+  act(() => {
+    for (const character of burst) xterm.data?.(character);
+  });
+  await waitFor(() => expect(native.write).toHaveBeenCalled());
+  settleFirst?.();
+  await waitFor(() =>
+    expect(native.write.mock.calls.map((call) => call[2]).join("")).toBe(burst),
+  );
+  expect(screen.queryByText(/input.*not sent/i)).not.toBeInTheDocument();
+});
+
+it("shows session ended and ignores later input when the shell has exited", async () => {
+  native.write.mockRejectedValue({ code: "ended" });
+  render(<TerminalDock scope={scope} onClose={() => undefined} />);
+  await screen.findByTitle(handle.shellPath);
+  act(() => xterm.data?.("x"));
+  expect(await screen.findByText("Session ended")).toBeInTheDocument();
+  act(() => xterm.data?.("y"));
+  expect(native.write).toHaveBeenCalledTimes(1);
 });
 
 afterEach(() => {

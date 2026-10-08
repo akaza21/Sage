@@ -38,6 +38,7 @@ function errorLabel(error: unknown): string {
     if (code === "invalid_scope" || code === "unknown_session") {
       return "This terminal is no longer attached to the current chat.";
     }
+    if (code === "ended") return "Session ended";
   }
   return "Terminal operation failed. The native session may need cleanup.";
 }
@@ -140,8 +141,10 @@ export function TerminalDock({
     let observer: ResizeObserver | null = null;
     let windowResize: (() => void) | null = null;
     let inputListener: { dispose(): void } | null = null;
-    let inputChain: Promise<void> = Promise.resolve();
-    let queuedInputs = 0;
+    let pendingInput = "";
+    let pendingInputBytes = 0;
+    let inputSending = false;
+    let ended = false;
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = window.devicePixelRatio;
@@ -197,6 +200,31 @@ export function TerminalDock({
       }
     }
 
+    async function drainInput(owner: UserTerminalSession): Promise<void> {
+      if (inputSending) return;
+      inputSending = true;
+      try {
+        while (pendingInput && !stopped && session === owner && !ended) {
+          const chunk = pendingInput;
+          pendingInput = "";
+          pendingInputBytes = 0;
+          try {
+            await writeUserTerminal(ownerScope, owner, chunk);
+          } catch (error) {
+            pendingInput = "";
+            pendingInputBytes = 0;
+            if (error && typeof error === "object" && "code" in error) {
+              ended = (error as { code?: unknown }).code === "ended";
+            }
+            if (!stopped) setMessage(errorLabel(error));
+            break;
+          }
+        }
+      } finally {
+        inputSending = false;
+      }
+    }
+
     async function start(): Promise<void> {
       try {
         const owner = await createUserTerminal(
@@ -212,23 +240,18 @@ export function TerminalDock({
         setShellPath(owner.shellPath);
         terminal.focus();
         inputListener = terminal.onData((data) => {
-          if (stopped || session !== owner) return;
+          if (stopped || session !== owner || ended) return;
           const byteLength = utf8ByteLength(data);
-          if (byteLength === 0 || byteLength > 4_096 || queuedInputs >= 16) {
+          if (byteLength === 0) return;
+          if (byteLength > 4_096 || pendingInputBytes + byteLength > 4_096) {
             setMessage(
-              "Input was not sent: terminal input queue limit reached.",
+              "Input was not sent: terminal input buffer limit reached.",
             );
             return;
           }
-          queuedInputs += 1;
-          inputChain = inputChain
-            .then(() => writeUserTerminal(ownerScope, owner, data))
-            .catch((error: unknown) => {
-              if (!stopped) setMessage(errorLabel(error));
-            })
-            .finally(() => {
-              queuedInputs -= 1;
-            });
+          pendingInput += data;
+          pendingInputBytes += byteLength;
+          void drainInput(owner);
         });
         const refreshDimensions = () => {
           if (stopped || session !== owner) return;

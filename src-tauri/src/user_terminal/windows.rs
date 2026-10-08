@@ -9,7 +9,7 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0},
+    Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT},
     System::{
         Console::{COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole},
         JobObjects::IsProcessInJob,
@@ -171,6 +171,14 @@ fn contain_and_resume(
 }
 
 impl ConPtyProcess {
+    fn exited(&self) -> Result<bool, TerminalError> {
+        match unsafe { WaitForSingleObject(self.process.0, 0) } {
+            WAIT_OBJECT_0 => Ok(true),
+            WAIT_TIMEOUT => Ok(false),
+            _ => Err(TerminalError::Backend),
+        }
+    }
+
     fn abort_launch(&mut self) -> Result<(), TerminalError> {
         let _ = unsafe { TerminateProcess(self.process.0, 1) };
         if unsafe { WaitForSingleObject(self.process.0, SETTLE_DEADLINE.as_millis() as u32) }
@@ -196,11 +204,22 @@ impl TerminalProcess for ConPtyProcess {
     }
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), TerminalError> {
-        self.input
+        if self.exited()? {
+            return Err(TerminalError::Ended);
+        }
+        let result = self
+            .input
             .as_mut()
             .ok_or(TerminalError::UnknownSession)?
-            .write_all(bytes)
-            .map_err(|_| TerminalError::Backend)
+            .write_all(bytes);
+        if result.is_err() {
+            return Err(if self.exited()? {
+                TerminalError::Ended
+            } else {
+                TerminalError::Backend
+            });
+        }
+        Ok(())
     }
 
     fn resize(&mut self, columns: u16, rows: u16) -> Result<(), TerminalError> {
