@@ -4,6 +4,8 @@ use crate::acp::{
     bindings::codex::{
         ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES, MAX_TURNS,
     },
+    intent::ExternalId,
+    lifecycle::TurnState,
     store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError},
 };
 
@@ -22,15 +24,14 @@ pub(crate) fn persist_live_item_in(
             "SELECT b.item_id FROM acp_child_thread_bindings b
              JOIN acp_child_thread_owners o ON o.native_child_thread_id=b.native_child_thread_id
              WHERE b.native_child_thread_id=?1 AND b.project_id=?2 AND b.chat_id=?3
-               AND b.session_id=?4 AND b.runtime_epoch=?5 AND b.turn_id=?6
-               AND o.parent_thread_id=?7 AND o.source='codexSubAgentActivity'",
+               AND b.session_id=?4 AND b.runtime_epoch=?5
+               AND o.parent_thread_id=?6 AND o.source='codexSubAgentActivity'",
             params![
                 command.child_thread_id.as_str(),
                 owner.project_id.as_str(),
                 owner.chat_id.as_str(),
                 owner.session_id.as_str(),
                 owner.runtime_epoch.get() as i64,
-                owner.turn_id.as_str(),
                 owner.external_session_id.as_str(),
             ],
             |row| row.get(0),
@@ -62,6 +63,15 @@ pub(crate) fn persist_live_item_in(
             retention_limited: false,
         });
     let mut candidate = snapshot.clone();
+    if snapshot.retention_limited
+        && !snapshot.turns.iter().any(|turn| {
+            turn.items
+                .iter()
+                .any(|item| item.id == command.item_id.as_str())
+        })
+    {
+        return Ok(false);
+    }
     match apply_live_item(&mut candidate, command) {
         Ok(true) => {
             write_snapshot_in(transaction, &scope, &candidate, command.now_millis)
@@ -90,6 +100,14 @@ fn apply_live_item(
         .iter()
         .map(|turn| turn.items.len())
         .sum::<usize>();
+    let next_sequence = snapshot
+        .turns
+        .iter()
+        .flat_map(|turn| &turn.items)
+        .filter_map(|item| item.observed_sequence)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(1);
     let turn = if let Some(turn) = snapshot.turns.iter_mut().find(|turn| turn.id == turn_id) {
         turn
     } else {
@@ -105,6 +123,13 @@ fn apply_live_item(
     };
     let next = ChildItem {
         id: command.item_id.as_str().to_owned(),
+        role: None,
+        observed_sequence: turn
+            .items
+            .iter()
+            .find(|item| item.id == command.item_id.as_str())
+            .and_then(|item| item.observed_sequence)
+            .or(Some(next_sequence)),
         lifecycle: command.lifecycle,
         tool_state: command.tool_state,
         payload: command.payload.clone(),
@@ -127,6 +152,103 @@ fn apply_live_item(
     Ok(changed)
 }
 
+pub(crate) fn persist_turn_status_in(
+    transaction: &Transaction<'_>,
+    owner: &AdapterStoreOwner,
+    child_thread_id: &ExternalId,
+    child_turn_id: &ExternalId,
+    status: TurnState,
+    now_millis: i64,
+) -> Result<bool, StoreError> {
+    let status = match status {
+        TurnState::Completed => "completed",
+        TurnState::Interrupted => "interrupted",
+        TurnState::Failed => "failed",
+        _ => {
+            return Err(StoreError::Conflict {
+                resource: "childTurnStatus",
+            });
+        }
+    };
+    let item_id: String = transaction
+        .query_row(
+            "SELECT b.item_id FROM acp_child_thread_bindings b
+         JOIN acp_child_thread_owners o ON o.native_child_thread_id=b.native_child_thread_id
+         WHERE b.native_child_thread_id=?1 AND b.project_id=?2 AND b.chat_id=?3
+           AND b.session_id=?4 AND b.runtime_epoch=?5
+           AND o.parent_thread_id=?6 AND o.source='codexSubAgentActivity'",
+            params![
+                child_thread_id.as_str(),
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                owner.runtime_epoch.get() as i64,
+                owner.external_session_id.as_str()
+            ],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(StoreError::Conflict {
+            resource: "childTranscriptOwner",
+        })?;
+    let scope = ChildTranscriptScope {
+        owner: crate::acp::scheduler::RuntimeOwner {
+            project_id: owner.project_id.clone(),
+            chat_id: owner.chat_id.clone(),
+            session_id: owner.session_id.clone(),
+            runtime_epoch: owner.runtime_epoch,
+        },
+        item_id,
+        child_thread_id: child_thread_id.as_str().to_owned(),
+        parent_thread_id: owner.external_session_id.as_str().to_owned(),
+    };
+    verify_current_binding(transaction, &scope).map_err(store_error)?;
+    let mut snapshot = load_snapshot(transaction, &scope)
+        .map_err(store_error)?
+        .unwrap_or_else(|| ChildTranscriptSnapshot {
+            child_thread_id: scope.child_thread_id.clone(),
+            parent_thread_id: scope.parent_thread_id.clone(),
+            turns: Vec::new(),
+            retention_limited: false,
+        });
+    let retained = snapshot.clone();
+    if let Some(turn) = snapshot
+        .turns
+        .iter_mut()
+        .find(|turn| turn.id == child_turn_id.as_str())
+    {
+        if turn.status == status {
+            return Ok(false);
+        }
+        if turn.status != "inProgress" {
+            return Err(StoreError::Conflict {
+                resource: "childTurnStatus",
+            });
+        }
+        turn.status = status.into();
+    } else {
+        if snapshot.retention_limited || snapshot.turns.len() == MAX_TURNS {
+            return Ok(false);
+        }
+        snapshot.turns.push(ChildTurn {
+            id: child_turn_id.as_str().to_owned(),
+            status: status.into(),
+            items: Vec::new(),
+        });
+    }
+    match write_snapshot_in(transaction, &scope, &snapshot, now_millis) {
+        Ok(()) => Ok(true),
+        Err(ChildTranscriptStoreError::Capacity) if !retained.retention_limited => {
+            let mut limited = retained;
+            limited.retention_limited = true;
+            write_snapshot_in(transaction, &scope, &limited, now_millis).map_err(store_error)?;
+            Ok(true)
+        }
+        Err(ChildTranscriptStoreError::Capacity) => Ok(false),
+        Err(error) => Err(store_error(error)),
+    }
+}
+
 pub(super) fn merge_snapshots(
     read: &ChildTranscriptSnapshot,
     retained: &ChildTranscriptSnapshot,
@@ -136,31 +258,38 @@ pub(super) fn merge_snapshots(
     {
         return Err(ChildTranscriptStoreError::Stale);
     }
-    let mut merged = read.clone();
-    merged.retention_limited |= retained.retention_limited;
-    for retained_turn in &retained.turns {
-        if let Some(turn) = merged
-            .turns
-            .iter_mut()
-            .find(|turn| turn.id == retained_turn.id)
-        {
-            for item in &retained_turn.items {
-                match turn
+    let mut merged = retained.clone();
+    merged.retention_limited |= read.retention_limited;
+    for read_turn in &read.turns {
+        if let Some(turn) = merged.turns.iter_mut().find(|turn| turn.id == read_turn.id) {
+            if turn.status == "inProgress" {
+                turn.status = read_turn.status.clone();
+            }
+            for (read_index, item) in read_turn.items.iter().enumerate() {
+                if let Some(candidate) = turn
                     .items
                     .iter_mut()
                     .find(|candidate| candidate.id == item.id)
                 {
-                    Some(candidate)
-                        if item.lifecycle.is_terminal() && !candidate.lifecycle.is_terminal() =>
+                    if !candidate.lifecycle.is_terminal()
+                        || (item.lifecycle.is_terminal() && candidate.observed_sequence.is_none())
                     {
+                        let sequence = candidate.observed_sequence;
                         *candidate = item.clone();
+                        candidate.observed_sequence = sequence;
                     }
-                    Some(_) => {}
-                    None => turn.items.push(item.clone()),
+                } else {
+                    let before = read_turn.items[read_index + 1..].iter().find_map(|next| {
+                        turn.items
+                            .iter()
+                            .position(|candidate| candidate.id == next.id)
+                    });
+                    let position = before.unwrap_or(turn.items.len());
+                    turn.items.insert(position, item.clone());
                 }
             }
         } else {
-            merged.turns.push(retained_turn.clone());
+            merged.turns.push(read_turn.clone());
         }
     }
     validate_bounds(&merged)?;

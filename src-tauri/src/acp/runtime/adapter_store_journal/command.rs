@@ -7,9 +7,12 @@ use crate::acp::{
     },
 };
 
+mod bytes;
 mod child_threads;
 mod hashing;
 
+use bytes::owner_bytes;
+pub(super) use bytes::scope_heap_bytes;
 pub(super) use hashing::digest;
 use hashing::{CountingDigest, hex};
 
@@ -117,6 +120,22 @@ fn event_bytes(
         }
         event @ DurableAdapterEvent::ChildLiveItem { .. } => {
             child_threads::live_event_bytes(intent, event)
+        }
+        DurableAdapterEvent::ChildTurnStatus {
+            scope,
+            child_thread_id,
+            child_turn_id,
+            status,
+            ..
+        } => {
+            verify_scope(intent, scope)?;
+            if child_thread_id == &intent.external_session_id || !status.is_terminal() {
+                return Err(PumpJournalError::Rejected);
+            }
+            Ok(scope_heap_bytes(scope)
+                + child_thread_id.as_str().len()
+                + child_turn_id.as_str().len()
+                + 32)
         }
         DurableAdapterEvent::UsageSnapshot {
             scope,
@@ -263,6 +282,18 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
         }),
         event @ DurableAdapterEvent::ChildThreadItem { .. } => child_threads::convert(event),
         event @ DurableAdapterEvent::ChildLiveItem { .. } => child_threads::convert_live(event),
+        DurableAdapterEvent::ChildTurnStatus {
+            child_thread_id,
+            child_turn_id,
+            status,
+            now_millis,
+            ..
+        } => AdapterInboundEvent::ChildTurnStatus {
+            child_thread_id,
+            child_turn_id,
+            status,
+            now_millis,
+        },
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
         DurableAdapterEvent::UsageSnapshot {
             scope: _,
@@ -366,23 +397,6 @@ pub(super) fn verify_payload(
     serde_json::to_writer(&mut sink, payload).map_err(|_| PumpJournalError::Rejected)?;
     sink.matched(expected_digest)
         .ok_or(PumpJournalError::Rejected)
-}
-
-fn owner_bytes(intent: &PumpIntent) -> usize {
-    intent.project_id.as_str().len()
-        + intent.chat_id.as_str().len()
-        + intent.session_id.as_str().len()
-        + intent.active_turn.turn_id.as_str().len()
-        + intent.external_session_id.as_str().len()
-        + intent.binding_digest.len() * 2
-}
-
-pub(super) fn scope_heap_bytes(scope: &TurnScope) -> usize {
-    scope.project_id.as_str().len()
-        + scope.chat_id.as_str().len()
-        + scope.session_id.as_str().len()
-        + scope.turn_id.as_str().len()
-        + scope.binding_digest.len()
 }
 
 fn runtime_lifecycle(payload: &NormalizedPayload) -> Option<crate::acp::lifecycle::ItemLifecycle> {

@@ -6,6 +6,7 @@ use crate::acp::bindings::codex::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
 
 mod live;
 pub(crate) use live::persist_live_item_in;
+pub(crate) use live::persist_turn_status_in;
 use live::{merge_snapshots, validate_bounds};
 
 #[derive(Clone)]

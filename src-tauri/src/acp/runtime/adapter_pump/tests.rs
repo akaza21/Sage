@@ -1406,12 +1406,12 @@ fn idle_config_rejection_drains_following_frame_and_stays_aligned() {
         shared.0.lock().unwrap().ingest_error = Some(AdapterRuntimeError::ConfigMutationRejected);
 
         assert!(matches!(
-            parts.accept_idle_stdout_chunk(b"{}\n{}\n"),
+            parts.accept_idle_stdout_chunk(b"{}\n{}\n", 2).await,
             Err(AdapterPumpError::Refused(NonfatalRefusal::ConfigMutation))
         ));
         assert!(parts.idle_frame_aligned());
 
-        assert!(parts.accept_idle_stdout_chunk(b"{}\n").is_ok());
+        assert!(parts.accept_idle_stdout_chunk(b"{}\n", 3).await.is_ok());
         assert!(parts.idle_frame_aligned());
     });
 }

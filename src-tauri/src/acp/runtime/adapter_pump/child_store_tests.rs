@@ -131,6 +131,8 @@ fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_it
             items: (0..1024)
                 .map(|index| ChildItem {
                     id: format!("item-{index}"),
+                    role: None,
+                    observed_sequence: None,
                     lifecycle: ItemLifecycle::Completed,
                     tool_state: None,
                     payload: NormalizedPayload::Text { text: text.clone() },
@@ -194,6 +196,228 @@ fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_it
         load_earlier_snapshot(&connection, &scope).unwrap(),
         Some(limited)
     );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn live_command_before_read_message_keeps_witnessed_order() {
+    use crate::acp::bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn};
+    use crate::acp::{
+        intent::{ToolCategory, ToolExecution},
+        lifecycle::{ItemLifecycle, ToolState},
+    };
+
+    let directory = std::env::temp_dir().join(format!("sage-cp18e-order-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut connection = sqlite_child_owner(&path);
+    let scope = scope();
+    let retained = ChildTranscriptSnapshot {
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "thread-1".into(),
+        turns: vec![ChildTurn {
+            id: "child-turn-1".into(),
+            status: "inProgress".into(),
+            items: vec![ChildItem {
+                id: "command".into(),
+                role: None,
+                observed_sequence: Some(1),
+                lifecycle: ItemLifecycle::Completed,
+                tool_state: Some(ToolState::Completed),
+                payload: NormalizedPayload::ToolCall {
+                    category: ToolCategory::Execute,
+                    label: SafeText::new("label", "Review files").unwrap(),
+                    input_summary: None,
+                    output_summary: Some(SafeText::new("output", "rich live output").unwrap()),
+                    locations: Default::default(),
+                    command_activity: Default::default(),
+                    execution: ToolExecution::default(),
+                },
+            }],
+        }],
+        retention_limited: false,
+    };
+    persist_snapshot(&mut connection, &scope, &retained, 1).unwrap();
+    let read = ChildTranscriptSnapshot {
+        turns: vec![ChildTurn {
+            id: "child-turn-1".into(),
+            status: "completed".into(),
+            items: vec![
+                ChildItem {
+                    id: "command".into(),
+                    role: None,
+                    observed_sequence: None,
+                    lifecycle: ItemLifecycle::Completed,
+                    tool_state: Some(ToolState::Completed),
+                    payload: NormalizedPayload::ToolCall {
+                        category: ToolCategory::Execute,
+                        label: SafeText::new("label", "Review files").unwrap(),
+                        input_summary: None,
+                        output_summary: None,
+                        locations: Default::default(),
+                        command_activity: Default::default(),
+                        execution: ToolExecution::default(),
+                    },
+                },
+                ChildItem {
+                    id: "message".into(),
+                    role: None,
+                    observed_sequence: None,
+                    lifecycle: ItemLifecycle::Completed,
+                    tool_state: None,
+                    payload: NormalizedPayload::Text {
+                        text: SafeText::new("text", "Result").unwrap(),
+                    },
+                },
+            ],
+        }],
+        ..retained
+    };
+    persist_snapshot(&mut connection, &scope, &read, 2).unwrap();
+    let stored = load_snapshot(&connection, &scope).unwrap().unwrap();
+    assert_eq!(
+        stored.turns[0]
+            .items
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["command", "message"]
+    );
+    assert!(matches!(&stored.turns[0].items[0].payload,
+        NormalizedPayload::ToolCall { output_summary: Some(summary), .. }
+            if summary.as_str() == "rich live output"));
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn terminal_parent_turn_does_not_stop_bound_child_retention() {
+    use crate::acp::{
+        lifecycle::ItemLifecycle,
+        store::{AdapterStoreOwner, ChildLiveItemCommand},
+    };
+    let directory = std::env::temp_dir().join(format!(
+        "sage-cp18e-terminal-parent-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut connection = sqlite_child_owner(&path);
+    connection
+        .execute(
+            "UPDATE turns SET state='completed',terminal_at=2 WHERE id='turn-one'",
+            [],
+        )
+        .unwrap();
+    let scope = scope();
+    let owner = AdapterStoreOwner {
+        project_id: scope.owner.project_id.clone(),
+        chat_id: scope.owner.chat_id.clone(),
+        session_id: scope.owner.session_id.clone(),
+        runtime_epoch: scope.owner.runtime_epoch,
+        turn_id: SageTurnId::parse("other-turn").unwrap(),
+        binding_digest: "a".repeat(64),
+        external_session_id: ExternalId::new("parent", "thread-1").unwrap(),
+    };
+    let command = ChildLiveItemCommand {
+        child_thread_id: ExternalId::new("child", "child-one").unwrap(),
+        child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
+        item_id: ExternalId::new("item", "late-command").unwrap(),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        payload: NormalizedPayload::ThoughtSummary {
+            summary: SafeText::new("summary", "Late result").unwrap(),
+        },
+        now_millis: 3,
+    };
+    let transaction = connection.transaction().unwrap();
+    assert!(
+        crate::acp::store::child_transcript::persist_live_item_in(&transaction, &owner, &command)
+            .unwrap()
+    );
+    transaction.commit().unwrap();
+    assert_eq!(
+        load_snapshot(&connection, &scope).unwrap().unwrap().turns[0].items[0].id,
+        "late-command"
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
+    use crate::acp::{
+        bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::ItemLifecycle,
+        store::{AdapterStoreOwner, ChildLiveItemCommand},
+    };
+    let directory =
+        std::env::temp_dir().join(format!("sage-cp18e-byte-prefix-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut connection = sqlite_child_owner(&path);
+    let scope = scope();
+    let text = SafeText::new("text", "x".repeat(250_000)).unwrap();
+    let snapshot = ChildTranscriptSnapshot {
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "thread-1".into(),
+        turns: vec![ChildTurn {
+            id: "child-turn-1".into(),
+            status: "inProgress".into(),
+            items: (0..16)
+                .map(|index| ChildItem {
+                    id: format!("prefix-{index}"),
+                    role: None,
+                    observed_sequence: Some(index + 1),
+                    lifecycle: ItemLifecycle::Completed,
+                    tool_state: None,
+                    payload: NormalizedPayload::Text { text: text.clone() },
+                })
+                .collect(),
+        }],
+        retention_limited: false,
+    };
+    persist_snapshot(&mut connection, &scope, &snapshot, 1).unwrap();
+    let owner = AdapterStoreOwner {
+        project_id: scope.owner.project_id.clone(),
+        chat_id: scope.owner.chat_id.clone(),
+        session_id: scope.owner.session_id.clone(),
+        runtime_epoch: scope.owner.runtime_epoch,
+        turn_id: SageTurnId::parse("turn-one").unwrap(),
+        binding_digest: "a".repeat(64),
+        external_session_id: ExternalId::new("parent", "thread-1").unwrap(),
+    };
+    for (id, content, expected) in [
+        ("over-cap", "y".repeat(200_000), true),
+        ("after-gap", "small".into(), false),
+    ] {
+        let command = ChildLiveItemCommand {
+            child_thread_id: ExternalId::new("child", "child-one").unwrap(),
+            child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
+            item_id: ExternalId::new("item", id).unwrap(),
+            lifecycle: ItemLifecycle::Completed,
+            tool_state: None,
+            payload: NormalizedPayload::Text {
+                text: SafeText::new("text", content).unwrap(),
+            },
+            now_millis: 2,
+        };
+        let transaction = connection.transaction().unwrap();
+        assert_eq!(
+            crate::acp::store::child_transcript::persist_live_item_in(
+                &transaction,
+                &owner,
+                &command
+            )
+            .unwrap(),
+            expected
+        );
+        transaction.commit().unwrap();
+    }
+    let stored = load_snapshot(&connection, &scope).unwrap().unwrap();
+    assert!(stored.retention_limited);
+    assert_eq!(stored.turns[0].items.len(), 16);
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
 }

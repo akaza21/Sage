@@ -153,6 +153,13 @@ pub(crate) enum DurableAdapterEvent {
         payload_digest: String,
         now_millis: i64,
     },
+    ChildTurnStatus {
+        scope: TurnScope,
+        child_thread_id: ExternalId,
+        child_turn_id: ExternalId,
+        status: TurnState,
+        now_millis: i64,
+    },
     /// Bounded old/new bytes for the preceding `FileChangeDiff` item with the
     /// same external key. Applied atomically with its item in the store batch.
     FilePair {

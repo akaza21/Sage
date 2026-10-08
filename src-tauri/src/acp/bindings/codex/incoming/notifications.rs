@@ -13,6 +13,7 @@ use super::{
 
 mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
+pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
 mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};

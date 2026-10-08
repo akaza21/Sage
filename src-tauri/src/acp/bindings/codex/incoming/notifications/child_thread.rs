@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 
 use crate::acp::intent::ExternalId;
 use crate::acp::lifecycle::ItemLifecycle;
+use crate::acp::lifecycle::TurnState;
 
 use super::super::support::text;
 use super::{
@@ -66,6 +67,34 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
         lifecycle: terminal.unwrap_or(requested),
         tool_state,
         payload,
+    }
+    .into())
+}
+
+pub(in crate::acp::bindings::codex::incoming) fn turn_completed(
+    adapter: &CodexAdapter,
+    params: &Map<String, Value>,
+) -> Result<IngressDisposition, IngressError> {
+    let child = text(params, "threadId", 512)?;
+    if !adapter.is_bound_child_thread(child) {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
+    let turn = params
+        .get("turn")
+        .and_then(Value::as_object)
+        .ok_or(IngressError::Malformed)?;
+    let status = match text(turn, "status", 32)? {
+        "completed" => TurnState::Completed,
+        "interrupted" => TurnState::Interrupted,
+        "failed" => TurnState::Failed,
+        _ => return Err(IngressError::Malformed),
+    };
+    Ok(IncomingEvent::ChildTurnStatus {
+        child_thread_id: ExternalId::new("childThreadId", child.to_owned())
+            .map_err(|_| IngressError::Identity)?,
+        child_turn_id: ExternalId::new("childTurnId", text(turn, "id", 512)?.to_owned())
+            .map_err(|_| IngressError::Identity)?,
+        status,
     }
     .into())
 }

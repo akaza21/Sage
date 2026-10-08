@@ -5,6 +5,9 @@ use super::{
 };
 use sha2::{Digest, Sha256};
 
+mod critical;
+pub(super) use critical::control_critical;
+
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {
         self.next_synthetic_item = self
@@ -95,7 +98,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 lifecycle,
                 tool_state,
                 payload,
-            } if terminal.is_none() => {
+            } => {
                 let measured = payload_measure(&payload)?;
                 Ok(Some(NormalizedFact::new(
                     DurableAdapterEvent::ChildLiveItem {
@@ -112,6 +115,20 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     measured.bytes,
                 )))
             }
+            AdapterEvent::ChildTurnStatus {
+                child_thread_id,
+                child_turn_id,
+                status,
+            } => Ok(Some(NormalizedFact::new(
+                DurableAdapterEvent::ChildTurnStatus {
+                    scope: self.scope(),
+                    child_thread_id,
+                    child_turn_id,
+                    status,
+                    now_millis,
+                },
+                64,
+            ))),
             AdapterEvent::FilePair {
                 id,
                 external_item_id,
@@ -266,7 +283,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::Turn { .. }
             | AdapterEvent::Item { .. }
             | AdapterEvent::ChildThreadItem { .. }
-            | AdapterEvent::ChildLiveItem { .. }
             | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
@@ -324,26 +340,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.pending.clear();
         self.teardown = true;
         Err(AdapterPumpError::Frame)
-    }
-}
-
-pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
-    match &fact.event {
-        DurableAdapterEvent::PermissionRequest { .. } => true,
-        DurableAdapterEvent::PermissionDeny { .. } => true,
-        DurableAdapterEvent::PermissionResolved { .. } => true,
-        DurableAdapterEvent::Turn { state, .. } => state.is_terminal(),
-        DurableAdapterEvent::RuntimePayload { payload, .. } => matches!(
-            payload,
-            NormalizedPayload::Error { .. } | NormalizedPayload::Unsupported { .. }
-        ),
-        DurableAdapterEvent::UsageSnapshot { .. } => false,
-        DurableAdapterEvent::TerminalReason { .. } => true,
-        DurableAdapterEvent::Item { .. } => false,
-        DurableAdapterEvent::ChildThreadItem { .. } => false,
-        DurableAdapterEvent::ChildLiveItem { .. } => false,
-        DurableAdapterEvent::FilePair { .. } => false,
-        DurableAdapterEvent::ActivityItem(_) => false,
     }
 }
 

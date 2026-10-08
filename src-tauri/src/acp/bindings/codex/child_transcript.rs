@@ -54,9 +54,20 @@ pub(crate) struct ChildTurn {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ChildItem {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<ChildTextRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) observed_sequence: Option<u64>,
     pub(crate) lifecycle: ItemLifecycle,
     pub(crate) tool_state: Option<ToolState>,
     pub(crate) payload: NormalizedPayload,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChildTextRole {
+    User,
+    Assistant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -172,6 +183,12 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
             if let Some((payload, tool_state, terminal)) = normalized {
                 normalized_items.push(ChildItem {
                     id,
+                    role: match kind {
+                        "userMessage" => Some(ChildTextRole::User),
+                        "agentMessage" => Some(ChildTextRole::Assistant),
+                        _ => None,
+                    },
+                    observed_sequence: None,
                     lifecycle: terminal.unwrap_or(lifecycle),
                     tool_state,
                     payload,
@@ -255,6 +272,11 @@ mod tests {
         let mapper = NativeResourceMapper::new([]).unwrap();
         let snapshot = normalize_read_response(wire, 9, "child-1", "parent-1", &mapper).unwrap();
         assert_eq!(snapshot.turns.len(), 1);
+        assert_eq!(snapshot.turns[0].items[0].role, Some(ChildTextRole::User));
+        assert_eq!(
+            snapshot.turns[0].items[1].role,
+            Some(ChildTextRole::Assistant)
+        );
         assert!(
             matches!(&snapshot.turns[0].items[0].payload, NormalizedPayload::Text { text } if text.as_str() == "Inspect this")
         );
@@ -273,6 +295,8 @@ mod tests {
         assert!(
             normalize_read_response(summary.as_bytes(), 9, "child-1", "parent-1", &mapper).is_err()
         );
+        let invalid_role = serde_json::from_str::<ChildTextRole>("\"operator\"");
+        assert!(invalid_role.is_err());
         assert!(normalize_read_response(wire, 9, "child-2", "parent-1", &mapper).is_err());
         assert!(normalize_read_response(wire, 9, "child-1", "parent-2", &mapper).is_err());
         assert_eq!(

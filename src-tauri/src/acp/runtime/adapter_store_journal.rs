@@ -276,6 +276,12 @@ impl JournalRejectionContext {
                     kind: "terminalReason",
                     external_item_id: "turn-scoped".to_owned(),
                 }),
+                DurableAdapterEvent::ChildTurnStatus { child_turn_id, .. } => {
+                    Some(JournalRejectionItem {
+                        kind: "childTurnStatus",
+                        external_item_id: child_turn_id.as_str().to_owned(),
+                    })
+                }
                 DurableAdapterEvent::Turn { .. } => None,
             })
             .collect();

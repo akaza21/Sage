@@ -14,9 +14,10 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
-    pub(crate) fn accept_idle_stdout_chunk(
+    pub(crate) async fn accept_idle_stdout_chunk(
         &mut self,
         chunk: &[u8],
+        now_millis: i64,
     ) -> Result<(), AdapterPumpError> {
         if self.adapter.child_read_pending() {
             self.idle_decoder.enable_recoverable_oversize();
@@ -42,17 +43,78 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 match self.adapter.ingest(&current, &self.resources) {
                     Ok(batch) => {
                         let (events, egress) = batch.into_parts();
-                        if !egress.is_empty()
-                            || !events.iter().all(|e| {
-                                matches!(
-                                    e,
-                                    AdapterEvent::IgnoredLate
-                                        | AdapterEvent::IgnoredDuplicate
-                                        | AdapterEvent::Absorbed
-                                )
-                            })
-                        {
+                        if !egress.is_empty() {
                             return Err(AdapterPumpError::Frame);
+                        }
+                        for event in events {
+                            match event {
+                                AdapterEvent::ChildLiveItem {
+                                    child_thread_id,
+                                    child_turn_id,
+                                    item_id,
+                                    lifecycle,
+                                    tool_state,
+                                    payload,
+                                } => {
+                                    let measured = super::payload::payload_measure(&payload)?;
+                                    let scope = TurnScope {
+                                        project_id: self.session_intent.project_id.clone(),
+                                        chat_id: self.session_intent.chat_id.clone(),
+                                        session_id: self.session_intent.session_id.clone(),
+                                        runtime_epoch: self.session_intent.runtime_epoch,
+                                        turn_id: self.terminal_cursor.turn_id().clone(),
+                                        binding_digest: hex(&self.session_intent.binding_digest),
+                                    };
+                                    self.journal
+                                        .commit(
+                                            vec![DurableAdapterEvent::ChildLiveItem {
+                                                scope,
+                                                child_thread_id,
+                                                child_turn_id,
+                                                item_id,
+                                                lifecycle,
+                                                tool_state,
+                                                payload,
+                                                payload_digest: measured.digest,
+                                                now_millis,
+                                            }],
+                                            current.len().max(1),
+                                        )
+                                        .await
+                                        .map_err(AdapterPumpError::Journal)?;
+                                }
+                                AdapterEvent::ChildTurnStatus {
+                                    child_thread_id,
+                                    child_turn_id,
+                                    status,
+                                } => {
+                                    let scope = TurnScope {
+                                        project_id: self.session_intent.project_id.clone(),
+                                        chat_id: self.session_intent.chat_id.clone(),
+                                        session_id: self.session_intent.session_id.clone(),
+                                        runtime_epoch: self.session_intent.runtime_epoch,
+                                        turn_id: self.terminal_cursor.turn_id().clone(),
+                                        binding_digest: hex(&self.session_intent.binding_digest),
+                                    };
+                                    self.journal
+                                        .commit(
+                                            vec![DurableAdapterEvent::ChildTurnStatus {
+                                                scope,
+                                                child_thread_id,
+                                                child_turn_id,
+                                                status,
+                                                now_millis,
+                                            }],
+                                            current.len().max(1),
+                                        )
+                                        .await
+                                        .map_err(AdapterPumpError::Journal)?;
+                                }
+                                AdapterEvent::IgnoredLate
+                                | AdapterEvent::IgnoredDuplicate
+                                | AdapterEvent::Absorbed => {}
+                                _ => return Err(AdapterPumpError::Frame),
+                            }
                         }
                     }
                     Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {

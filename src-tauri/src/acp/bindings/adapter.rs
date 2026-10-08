@@ -121,6 +121,11 @@ pub(crate) enum AdapterEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
+    ChildTurnStatus {
+        child_thread_id: ExternalId,
+        child_turn_id: ExternalId,
+        status: TurnState,
+    },
     FilePair {
         id: AdapterIdentity,
         external_item_id: ExternalId,

@@ -81,6 +81,12 @@ pub(crate) enum AdapterInboundEvent {
         child_thread_id: ExternalId,
     },
     ChildLiveItem(ChildLiveItemCommand),
+    ChildTurnStatus {
+        child_thread_id: ExternalId,
+        child_turn_id: ExternalId,
+        status: TurnState,
+        now_millis: i64,
+    },
     UsageSnapshot(TurnUsageSnapshotCommand),
     TerminalReason(TurnTerminalReasonCommand),
     /// Bounded old/new bytes for the `FileChangeDiff` item with the same
@@ -288,6 +294,19 @@ fn apply_event(
         AdapterInboundEvent::ChildLiveItem(command) => {
             super::child_transcript::persist_live_item_in(transaction, owner, command)
         }
+        AdapterInboundEvent::ChildTurnStatus {
+            child_thread_id,
+            child_turn_id,
+            status,
+            now_millis,
+        } => super::child_transcript::persist_turn_status_in(
+            transaction,
+            owner,
+            child_thread_id,
+            child_turn_id,
+            *status,
+            *now_millis,
+        ),
         AdapterInboundEvent::UsageSnapshot(command) => usage::apply(transaction, owner, command),
         AdapterInboundEvent::TerminalReason(command) => {
             terminal_reason::apply(transaction, owner, command)

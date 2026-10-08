@@ -244,6 +244,18 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::ChildTurnStatus {
+                child_thread_id,
+                child_turn_id,
+                status,
+            } => (
+                AdapterEvent::ChildTurnStatus {
+                    child_thread_id,
+                    child_turn_id,
+                    status,
+                },
+                None,
+            ),
             IncomingEvent::Permission {
                 turn_id,
                 item_id,

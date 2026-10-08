@@ -178,7 +178,11 @@ where
                 context.clock.as_ref(),
             ) {
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
-                    match parts.completed.accept_idle_stdout_chunk(&chunk) {
+                    match parts
+                        .completed
+                        .accept_idle_stdout_chunk(&chunk, context.clock.now_millis())
+                        .await
+                    {
                         Ok(()) => (
                             RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                             None,
