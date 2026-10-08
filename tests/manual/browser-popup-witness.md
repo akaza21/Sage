@@ -24,3 +24,26 @@ case, and a capture of the tab strip plus child content. The child logs whether
 `window.opener` exists; Step A does **not** promise a JavaScript `WindowProxy`,
 so `false` is expected and is not a Step A failure. Do not claim OAuth popup
 compatibility from this witness.
+
+## Native result — 2026-10-08
+
+Step A passed in a disposable native Sage build from `554482c6` (executable
+SHA-256 `631506990A55961FB4E8842BBA3B7D11758E4E97D7CFB560602953B1C4929D43`).
+Windows version was `10.0.26200`, WebView2 runtime `154.0.4258.62`, and the
+window reported 96 DPI. The profile was
+`C:\Sage\work\native-popup3\profile`; the earlier two-click run used
+`C:\Sage\work\native-main-witness\profile`. All fixture clicks and tab
+switches were CDP-dispatched into the actual native WebView2 targets, not
+physical-pointer input. The loopback fixture contained no credentials.
+
+| Case | Native result |
+| --- | --- |
+| `window.open` twice | Pass: each click created exactly one adjacent child tab; no replay duplicate. [Target/tab record](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-window-open.json). |
+| `target=_blank` | Pass: one adjacent child with `Child page: target-blank`. [Target/tab record](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-blank.json). |
+| Close opener immediately | Pass in two fresh-opener runs: closing the Sage opener tab immediately after the fixture click left zero browser tabs and zero native page targets. [Second-run record](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-close-race.json). |
+| Reload opener immediately | Pass: one adjacent `reload-race` child and no duplicate after switching away and back. [Initial](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-reload.json) · [after switching](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-switch-back.json) · [96-DPI native capture](../../docs/work-items/CODEX-PARITY/evidence/browser-popup-step-a-native-96dpi.png). |
+
+The child reported `window.opener present: false` and the `window.open` fixture
+reported a null handle, both within Step A's documented contract. This does not
+establish Step B or OAuth popup compatibility. A physical-pointer repeat remains
+owed.
