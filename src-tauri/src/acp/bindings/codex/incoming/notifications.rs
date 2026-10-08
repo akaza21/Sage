@@ -116,6 +116,7 @@ pub(super) fn notification<M: ResourceMapper>(
             adapter
                 .expect_thread(text(params, "threadId", 512)?)
                 .map_err(identity)?;
+            adapter.goal_cleared();
             Ok(IngressDisposition::IgnoredLate)
         }
         "mcpServer/startupStatus/updated" => {
@@ -204,7 +205,11 @@ pub(super) fn notification<M: ResourceMapper>(
             adapter
                 .expect_thread(text(params, "threadId", 512)?)
                 .map_err(identity)?;
-            record_unprojected(method);
+            if adapter.goal_supported() {
+                adapter.goal_updated(params.get("goal").unwrap_or(&Value::Null));
+            } else {
+                record_unprojected(method);
+            }
             Ok(IngressDisposition::IgnoredLate)
         }
         "serverRequest/resolved" => server_request_resolved(adapter, params),

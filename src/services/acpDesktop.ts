@@ -25,17 +25,19 @@ import type {
 } from "../domain/agentDiff";
 import { invokeNative } from "../ports/nativeInvoke";
 import type { ResourceRef } from "../domain/workbench";
+import type { AcpGoalState } from "../domain/acpGoal";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
+import { safeProjectionChanged } from "./acpDesktopProjection";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
 import {
   isOneOf,
   isRecord,
-  safeAcpMutationResponse,
   safeCodexDiscovery,
   safeCounter,
   safeIdentifier,
   safeMessage,
+  safeAcpMutationResponse,
 } from "./acpDesktopResponses";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
@@ -71,34 +73,6 @@ function safeCodexAuth(value: unknown): CodexAuthResponse | null {
     phase: value.phase,
     revision,
   } as CodexAuthResponse;
-}
-
-function safeProjectionChanged(
-  value: unknown,
-): AcpProjectionChangedEvent | null {
-  if (!isRecord(value)) return null;
-  const projectId = safeIdentifier(value.projectId);
-  const chatId = safeIdentifier(value.chatId);
-  const sessionId = safeIdentifier(value.sessionId);
-  const projectionRevision =
-    typeof value.projectionRevision === "string"
-      ? value.projectionRevision
-      : null;
-  if (
-    !projectId ||
-    !chatId ||
-    !sessionId ||
-    !projectionRevision ||
-    !/^[1-9][0-9]{0,19}$/.test(projectionRevision)
-  ) {
-    return null;
-  }
-  return {
-    projectId,
-    chatId,
-    sessionId,
-    projectionRevision,
-  } as AcpProjectionChangedEvent;
 }
 
 export function safeFailure(value: unknown): AcpCommandFailure {
@@ -230,7 +204,6 @@ async function invokeAcpMutation<Request extends object>(
 }
 
 import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
-
 export const acpDesktop = {
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
   async resolveChatFileReference(
@@ -305,9 +278,12 @@ export const acpDesktop = {
     return safe;
   },
 
-  async getChatPage(request: GetAcpChatPageRequest): Promise<AcpChatPage> {
+  async getChatPage(
+    request: GetAcpChatPageRequest,
+    decodeGoal?: (value: unknown) => AcpGoalState | null,
+  ): Promise<AcpChatPage> {
     const page = await invokeAcp("get_acp_chat_page", request);
-    const safe = safeAcpMutationResponse({ projection: page });
+    const safe = safeAcpMutationResponse({ projection: page }, decodeGoal);
     if (!safe)
       throw new AcpDesktopError({
         kind: "internal",
@@ -382,7 +358,6 @@ export const acpDesktop = {
     return subscribePreviewProjectionChanges(onChange);
   },
 };
-
 async function invokeCodexAuth(
   command: string,
   request: CodexAuthScope | (CodexAuthScope & { consent: true }),

@@ -3,12 +3,14 @@ pub(crate) mod command_output_stream;
 mod command_snapshots;
 mod construction;
 mod errors;
+mod goal;
 mod permission_resolution;
 mod permissions;
 mod turn_prompt;
 mod turn_starts;
 mod turns;
 
+use crate::acp::goal::GoalState;
 pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
@@ -139,6 +141,9 @@ pub(crate) struct CodexAdapter {
     child_threads: Vec<SafeText<512>>,
     unknown_child_notification_reported: bool,
     permission_requests: Vec<PermissionRequestEntry>,
+    goal_state: GoalState,
+    goal_notification_generation: u64,
+    goal_get_fence: Option<(u64, u64)>,
 }
 
 impl CodexAdapter {
@@ -256,6 +261,9 @@ impl CodexAdapter {
         let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
         if kind == RequestKind::TurnStart {
             self.turn_start_correlations.discard_pending(id)?;
+        }
+        if kind == RequestKind::GoalGet {
+            self.goal_get_failed(id);
         }
         let removed = self.remove_pending(id);
         debug_assert_eq!(removed, Some(kind));

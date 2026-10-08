@@ -4,7 +4,7 @@ import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
 import type { ProjectGeneration } from "../../../domain/acp";
-import { acpDesktop } from "../../../services/acpDesktop";
+import { getGoalChatPage } from "../../../services/acpGoalDesktop";
 
 export function useAcpChatHistory(boundChatId?: string | null) {
   const store = acpProjectionStoreFor(boundChatId);
@@ -32,15 +32,14 @@ export function useAcpChatHistory(boundChatId?: string | null) {
       return;
     }
     const intent = projection.beginPageLoad(cursor);
-    void acpDesktop
-      .getChatPage({
-        projectId: intent.projectId,
-        projectGeneration: String(
-          workbench.nativeTransitionEpoch,
-        ) as ProjectGeneration,
-        chatId: intent.chatId,
-        cursor,
-      })
+    void getGoalChatPage({
+      projectId: intent.projectId,
+      projectGeneration: String(
+        workbench.nativeTransitionEpoch,
+      ) as ProjectGeneration,
+      chatId: intent.chatId,
+      cursor,
+    })
       .then((historyPage) => {
         acpProjectionStoreFor(boundChatId)
           .getState()

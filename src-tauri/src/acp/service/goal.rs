@@ -1,0 +1,120 @@
+use super::*;
+use crate::acp::{
+    goal::{GoalNoticeSink, GoalState},
+    scheduler::RuntimeOwner,
+};
+
+impl AcpService {
+    pub(crate) fn set_goal_notice_sink(&self, sink: GoalNoticeSink) {
+        self.runtime.goal.set_sink(sink);
+    }
+
+    pub(super) fn compose_goal(&self, page: &mut AcpChatPage) {
+        page.goal = GoalState::Unsupported;
+        let Some(session) = page
+            .sessions
+            .as_slice()
+            .iter()
+            .find(|session| Some(&session.id) == page.current_session_id.as_ref())
+        else {
+            return;
+        };
+        // Exact characterised protocol identity; no assertion about the
+        // independently pinned managed Codex artifact is implied.
+        if session.capabilities.protocol_version.as_str() != "codex-app-server-observed-0.146.0" {
+            return;
+        }
+        let Some(runtime_epoch) = session.runtime_epoch else {
+            page.goal = GoalState::Offline;
+            return;
+        };
+        let owner = RuntimeOwner {
+            project_id: page.project_id.clone(),
+            chat_id: page.chat_id.clone(),
+            session_id: session.id.clone(),
+            runtime_epoch,
+        };
+        page.goal = if self.runtime.for_owner(&owner).is_ok() {
+            self.runtime
+                .goal
+                .snapshot(&owner)
+                .unwrap_or(GoalState::Loading)
+        } else {
+            GoalState::Offline
+        };
+    }
+
+    pub(super) fn fit_goal_to_page_budget(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
+        fit_goal_to_page_budget(
+            page,
+            crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
+        )
+    }
+}
+
+fn fit_goal_to_page_budget(page: &mut AcpChatPage, limit: usize) -> Result<(), StoreError> {
+    let bytes = |page: &AcpChatPage| {
+        serde_json::to_vec(page)
+            .map(|value| value.len())
+            .map_err(|_| StoreError::Corrupt("goal page serialization"))
+    };
+    if bytes(page)? <= limit {
+        return Ok(());
+    }
+    // Goal is ephemeral decoration; the bounded durable transcript must remain
+    // loadable even when its page leaves no room for a large native Goal.
+    page.goal = GoalState::Unavailable;
+    if bytes(page)? <= limit {
+        Ok(())
+    } else {
+        Err(StoreError::Capacity {
+            resource: "historyPage",
+            limit: crate::acp::limits::LIMITS.durable.history_page_bytes,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::{
+        contract::{BoundedVec, ProjectionRevision, SafeText},
+        goal::{GoalSnapshot, GoalStatus},
+    };
+
+    #[test]
+    fn max_goal_degrades_when_history_page_has_no_spare_bytes() {
+        let mut page = AcpChatPage {
+            session_config: None,
+            goal: GoalState::Goal {
+                snapshot: GoalSnapshot {
+                    objective: "x".repeat(4_000),
+                    status: GoalStatus::Active,
+                    token_budget: None,
+                    tokens_used: 1,
+                    time_used_seconds: 1,
+                    created_at: None,
+                    updated_at: None,
+                },
+            },
+            project_id: SageProjectId::parse("project-goal").unwrap(),
+            chat_id: SageChatId::parse("chat-goal").unwrap(),
+            title: SafeText::new("chatTitle", "History").unwrap(),
+            projection_revision: ProjectionRevision::ZERO,
+            current_session_id: None,
+            sessions: BoundedVec::default(),
+            turns: BoundedVec::default(),
+            next_cursor: None,
+        };
+        let existing_turns = page.turns.clone();
+        let full_goal = page.goal.clone();
+        page.goal = GoalState::Unavailable;
+        let near_bound = serde_json::to_vec(&page).unwrap().len() + 1;
+        page.goal = full_goal;
+        assert!(serde_json::to_vec(&page).unwrap().len() > near_bound);
+        fit_goal_to_page_budget(&mut page, near_bound).unwrap();
+        assert!(matches!(page.goal, GoalState::Unavailable));
+        assert_eq!(page.turns, existing_turns);
+        assert!(serde_json::to_vec(&page).unwrap().len() <= near_bound);
+    }
+}

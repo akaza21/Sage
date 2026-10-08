@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { decodeAcpGoal } from "../domain/acpGoal";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
 
 function session(index = 0, overrides: Record<string, unknown> = {}): object {
@@ -146,6 +147,36 @@ function mutationWithEntityRevisions(revision: unknown): object {
 }
 
 describe("safeAcpMutationResponse", () => {
+  it("accepts a bounded native Goal and isolates malformed Goal state", () => {
+    const goal = {
+      kind: "goal",
+      snapshot: {
+        objective: "Ship safely",
+        status: "active",
+        tokenBudget: 1000,
+        tokensUsed: 42,
+        timeUsedSeconds: 125,
+        createdAt: null,
+        updatedAt: null,
+      },
+    };
+    expect(
+      safeAcpMutationResponse(mutation({ goal }), decodeAcpGoal)?.projection
+        .goal,
+    ).toEqual(goal);
+    expect(
+      safeAcpMutationResponse(
+        mutation({
+          goal: { ...goal, snapshot: { ...goal.snapshot, objective: "" } },
+        }),
+        decodeAcpGoal,
+      )?.projection.goal,
+    ).toEqual({ kind: "unavailable" });
+    expect(
+      safeAcpMutationResponse(mutation({ goal }))?.projection.goal,
+    ).toBeUndefined();
+  });
+
   it("returns a well-bounded mutation projection", () => {
     expect(safeAcpMutationResponse(mutation())).toEqual(mutation());
   });

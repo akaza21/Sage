@@ -112,6 +112,132 @@ fn ready(adapter: &mut CodexAdapter) {
     ));
 }
 
+fn observed_goal_ready(adapter: &mut CodexAdapter) {
+    adapter.enable_observed_goal_for_test();
+    adapter.initialize(900).unwrap();
+    adapter.ingest(
+        br#"{"id":900,"result":{"userAgent":"Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)","codexHome":"C:\\Users\\test\\.codex","platformFamily":"windows","platformOs":"windows"}}"#,
+        &Mapper,
+    ).unwrap();
+    adapter
+        .start(1, &adapter.project_root(r"C:\repo".into()).unwrap(), None)
+        .unwrap();
+    adapter
+        .ingest(
+            br#"{"id":1,"result":{"thread":{"id":"thread-1"}}}"#,
+            &Mapper,
+        )
+        .unwrap();
+}
+
+#[test]
+fn managed_codex_does_not_send_goal_get() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    assert!(adapter.goal_get(44).is_err());
+    assert_eq!(adapter.goal_state().availability(), "unsupported");
+}
+
+#[test]
+fn newer_goal_notification_wins_over_late_get_response() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    let request = adapter.goal_get(44).expect("observed goal get");
+    let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+    assert_eq!(wire["method"], "thread/goal/get");
+    assert_eq!(wire["params"]["threadId"], "thread-1");
+    adapter
+        .ingest(
+            br#"{"method":"thread/goal/updated","params":{"threadId":"thread-1","goal":{"objective":"newer goal","status":"active","tokensUsed":3,"timeUsedSeconds":5}}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    adapter
+        .ingest(
+            br#"{"id":44,"result":{"goal":{"objective":"older goal","status":"paused","tokensUsed":1,"timeUsedSeconds":2}}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(adapter.goal_state().objective(), Some("newer goal"));
+}
+
+#[test]
+fn goal_clear_notification_wins_over_late_get_response() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(45).unwrap();
+    adapter
+        .ingest(
+            br#"{"method":"thread/goal/cleared","params":{"threadId":"thread-1"}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    adapter.ingest(
+        br#"{"id":45,"result":{"goal":{"objective":"stale","status":"active","tokensUsed":1,"timeUsedSeconds":2}}}"#,
+        &Mapper,
+    ).unwrap();
+    assert_eq!(adapter.goal_state().availability(), "noGoal");
+}
+
+#[test]
+fn goal_get_null_hydrates_no_goal_without_creating_a_turn() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(46).unwrap();
+    adapter
+        .ingest(br#"{"id":46,"result":{"goal":null}}"#, &Mapper)
+        .unwrap();
+    assert_eq!(adapter.goal_state().availability(), "noGoal");
+    assert!(!adapter.has_active_turn());
+}
+
+#[test]
+fn malformed_native_goal_is_unavailable_without_tearing_down_the_chat() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(47).unwrap();
+    assert!(
+        adapter
+            .ingest(br#"{"id":47,"result":{"goal":{"objective":""}}}"#, &Mapper)
+            .is_ok()
+    );
+    assert_eq!(adapter.goal_state().availability(), "unavailable");
+    assert!(
+        adapter
+            .ingest(
+                br#"{"method":"thread/goal/updated","params":{"threadId":"thread-1","goal":{}}}"#,
+                &Mapper
+            )
+            .is_ok()
+    );
+    assert_eq!(adapter.goal_state().availability(), "unavailable");
+}
+
+#[test]
+fn malformed_goal_get_envelope_is_unavailable_without_tearing_down_the_chat() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(48).unwrap();
+    assert!(
+        adapter
+            .ingest(br#"{"id":48,"result":null}"#, &Mapper)
+            .is_ok()
+    );
+    assert_eq!(adapter.goal_state().availability(), "unavailable");
+    assert!(!adapter.has_active_turn());
+}
+
+#[test]
+fn unsafe_goal_counters_do_not_poison_the_chat_projection() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_get(49).unwrap();
+    assert!(adapter
+        .ingest(br#"{"id":49,"result":{"goal":{"objective":"counting","status":"active","tokensUsed":9007199254740992,"timeUsedSeconds":0}}}"#, &Mapper)
+        .is_ok());
+    assert_eq!(adapter.goal_state().availability(), "unavailable");
+}
+
 fn arm_turn(adapter: &mut CodexAdapter, request_id: u64, client_id: &str) {
     let prompt = Prompt::new("prompt", "inspect").unwrap();
     let client = RequiredText::new("client", client_id).unwrap();

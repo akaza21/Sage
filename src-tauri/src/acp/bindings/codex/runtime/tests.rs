@@ -223,6 +223,10 @@ fn thread_started_notification_completes_the_pending_new_session() {
         batch.events(),
         [AdapterEvent::SessionReady { .. }]
     ));
+    assert!(
+        batch.egress().is_empty(),
+        "managed 0.145 must not send goal RPC"
+    );
 }
 
 #[test]
@@ -1029,6 +1033,81 @@ fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
         .expect("observed goal clear is informational during handoff");
 
     assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+}
+
+#[cfg(windows)]
+#[test]
+fn admitted_observed_codex_hydrates_goal_without_enabling_goal_set() {
+    use std::{fs, sync::Arc};
+
+    let path =
+        std::env::temp_dir().join(format!("sage-observed-goal-{}.cmd", uuid::Uuid::new_v4()));
+    fs::write(&path, "@echo off\r\n").unwrap();
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+        path.clone(),
+        "codex-cli 0.146.0".into(),
+    )
+    .unwrap();
+    let mut runtime = CodexRuntime::from_admitted_binding(
+        Arc::new(binding),
+        launch_root(
+            launch_project_id(),
+            ProjectGeneration::ZERO,
+            launch_root_id(),
+        ),
+        RuntimeEpoch::new(24).unwrap(),
+        SageAgentSessionId::parse("session-observed-goal").unwrap(),
+    )
+    .unwrap();
+    let initialize = runtime.command(AdapterCommand::Initialize).unwrap();
+    let initialize_id = request_id(&initialize);
+    runtime
+        .ingest(
+            &frame(json!({"id":initialize_id,"result":{
+                "userAgent":"Codex Desktop/0.146.0 (Windows 10.0.26200; x86_64) dumb (sage; 0.1.0)",
+                "codexHome":r"C:\Users\test\.codex",
+                "platformFamily":"windows","platformOs":"windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    let ready = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{
+                "thread":{"id":"thread-goal"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        ready.events(),
+        [AdapterEvent::SessionReady { .. }]
+    ));
+    assert!(ready.egress().is_empty());
+    let egress = runtime.goal_get().unwrap().expect("observed goal get");
+    let get: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(get["method"], "thread/goal/get");
+    assert_eq!(get["params"]["threadId"], "thread-goal");
+    runtime
+        .ingest(
+            &frame(json!({"id":get["id"],"result":{"goal":{
+                "objective":"Ship safely","status":"active", "tokenBudget":1000,
+                "tokensUsed":42,"timeUsedSeconds":125
+            }}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        runtime.goal_state().unwrap().objective(),
+        Some("Ship safely")
+    );
+    fs::remove_file(path).unwrap();
 }
 
 #[test]

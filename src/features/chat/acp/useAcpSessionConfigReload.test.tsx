@@ -6,7 +6,9 @@ import type {
   AcpChatPage,
   AcpSessionConfigChangedV1,
 } from "../../../domain/acp";
+import type { AcpGoalChangedV1 } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
+import * as goalDesktop from "../../../services/acpGoalDesktop";
 import { useAcpChatProjection } from "./useAcpChatProjection";
 
 afterEach(() => {
@@ -100,4 +102,125 @@ it("coalesces config wake hints into a 50ms authoritative reload without durable
   expect(load).toHaveBeenCalledTimes(2);
   expect(result.current?.projectionRevision).toBe("10");
   expect(result.current?.sessionConfig?.modes?.currentModeId).toBe("code");
+});
+
+it("reloads the exact Chat when its native Goal changes without a durable revision", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a" } as never,
+    projectGeneration: 7,
+    nativeTransitionEpoch: 3,
+    projectTransitioning: false,
+    activeTabId: "chat-a",
+    tabs: [{ id: "chat-a", kind: "chat" }] as never,
+  });
+  const base = {
+    projectId: "project-a",
+    chatId: "chat-a",
+    title: "A",
+    projectionRevision: "10",
+    currentSessionId: "session-a",
+    sessions: [{ id: "session-a", runtimeEpoch: "2" }],
+    turns: [],
+    nextCursor: null,
+    goal: { kind: "loading" },
+  } as unknown as AcpChatPage;
+  const latest = { ...base, goal: { kind: "noGoal" } } as AcpChatPage;
+  let onGoal!: (event: AcpGoalChangedV1) => void;
+  vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+    () => undefined,
+  );
+  vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockResolvedValue(
+    () => undefined,
+  );
+  vi.spyOn(goalDesktop, "subscribeGoalChanges").mockImplementation(
+    async (callback) => {
+      onGoal = callback;
+      return () => undefined;
+    },
+  );
+  const load = vi
+    .spyOn(acpDesktop, "getChatPage")
+    .mockResolvedValueOnce(base)
+    .mockResolvedValue(latest);
+  const { result } = renderHook(() => useAcpChatProjection());
+  await waitFor(() => expect(result.current?.goal?.kind).toBe("loading"));
+  act(() =>
+    onGoal({
+      schemaVersion: 1,
+      sageProjectId: "project-a",
+      sageChatId: "chat-a",
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "99",
+    }),
+  );
+  expect(load).toHaveBeenCalledTimes(1);
+  act(() =>
+    onGoal({
+      schemaVersion: 1,
+      sageProjectId: "project-a",
+      sageChatId: "chat-a",
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "2",
+    }),
+  );
+  await waitFor(() => expect(result.current?.goal?.kind).toBe("noGoal"));
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(result.current?.projectionRevision).toBe("10");
+});
+
+it("replays a Goal wake while the bootstrap Chat page is still pending", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a" } as never,
+    projectGeneration: 7,
+    nativeTransitionEpoch: 3,
+    projectTransitioning: false,
+    activeTabId: "chat-a",
+    tabs: [{ id: "chat-a", kind: "chat" }] as never,
+  });
+  const base = {
+    projectId: "project-a",
+    chatId: "chat-a",
+    projectionRevision: "10",
+    currentSessionId: "session-a",
+    sessions: [{ id: "session-a", runtimeEpoch: "2" }],
+    turns: [],
+    nextCursor: null,
+    goal: { kind: "loading" },
+  } as unknown as AcpChatPage;
+  const latest = { ...base, goal: { kind: "noGoal" } } as AcpChatPage;
+  let resolveBase!: (page: AcpChatPage) => void;
+  let onGoal!: (event: AcpGoalChangedV1) => void;
+  vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+    () => undefined,
+  );
+  vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockResolvedValue(
+    () => undefined,
+  );
+  vi.spyOn(goalDesktop, "subscribeGoalChanges").mockImplementation(
+    async (callback) => {
+      onGoal = callback;
+      return () => undefined;
+    },
+  );
+  const load = vi
+    .spyOn(acpDesktop, "getChatPage")
+    .mockImplementationOnce(
+      () => new Promise<AcpChatPage>((resolve) => (resolveBase = resolve)),
+    )
+    .mockResolvedValue(latest);
+  const { result } = renderHook(() => useAcpChatProjection());
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+  act(() =>
+    onGoal({
+      schemaVersion: 1,
+      sageProjectId: "project-a",
+      sageChatId: "chat-a",
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "2",
+    }),
+  );
+  await waitFor(() => expect(result.current?.goal?.kind).toBe("noGoal"));
+  await act(async () => resolveBase(base));
+  expect(result.current?.goal?.kind).toBe("noGoal");
+  expect(load).toHaveBeenCalledTimes(2);
 });

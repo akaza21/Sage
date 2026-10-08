@@ -426,6 +426,66 @@ describe("ACP action controller", () => {
     expect(test.cleared).toEqual([{ prompt: "Fix it", attachedContext }]);
   });
 
+  it("retains a native Goal across a Goal-neutral turn mutation for the same Session epoch", async () => {
+    const goal = {
+      kind: "goal" as const,
+      snapshot: {
+        objective: "Ship safely",
+        status: "active" as const,
+        tokenBudget: null,
+        tokensUsed: 2,
+        timeUsedSeconds: 3,
+        createdAt: null,
+        updatedAt: null,
+      },
+    };
+    const test = harness({ ...page("5", session("hot", "1", null)), goal });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("6", session("hot", "1", null)),
+    });
+    await expect(
+      test.controller.submit("hello", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.applied[0]?.goal).toEqual(goal);
+  });
+
+  it.each(["updated", "cleared"] as const)(
+    "keeps an intervening %s Goal when a delayed turn mutation settles",
+    async (change) => {
+      const initial = {
+        ...page("5", session("hot", "1", null)),
+        goal: { kind: "loading" as const },
+      };
+      const test = harness(initial);
+      const pending = deferred<{ projection: AcpChatPage }>();
+      vi.mocked(test.commands.sendTurn).mockReturnValue(pending.promise);
+      const submitted = test.controller.submit("hello", [], bindingId, modelId);
+      await nextMicrotask();
+      const latestGoal =
+        change === "cleared"
+          ? ({ kind: "noGoal" } as const)
+          : ({
+              kind: "goal",
+              snapshot: {
+                objective: "New Goal",
+                status: "active",
+                tokenBudget: null,
+                tokensUsed: 1,
+                timeUsedSeconds: 2,
+                createdAt: null,
+                updatedAt: null,
+              },
+            } as const);
+      test.setContext({
+        ...test.getContext()!,
+        page: { ...initial, goal: latestGoal },
+      });
+      pending.resolve({ projection: page("6", session("hot", "1", null)) });
+      await expect(submitted).resolves.toBe("applied");
+      expect(test.applied[0]?.goal).toEqual(latestGoal);
+    },
+  );
+
   it("sends a reviewed browser page context only with an explicit submit", async () => {
     const test = harness(page("5", session("hot", "1", null)));
     const sent = page("6", session("hot", "1", null));

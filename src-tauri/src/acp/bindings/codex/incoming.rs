@@ -213,6 +213,13 @@ fn response(
         .ok_or(IngressError::Malformed)?;
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
     if let Some(error) = object.get("error") {
+        if kind == RequestKind::GoalGet {
+            let _ = error;
+            adapter.goal_get_failed(id);
+            let removed = adapter.take_pending(id);
+            debug_assert_eq!(removed, Some(kind));
+            return Ok(IngressDisposition::IgnoredLate);
+        }
         let message = error
             .get("message")
             .and_then(Value::as_str)
@@ -260,6 +267,15 @@ fn response(
             ])),
             _ => Ok(IncomingEvent::Error(payload).into()),
         };
+    }
+    if kind == RequestKind::GoalGet {
+        let result = object.get("result").and_then(Value::as_object);
+        adapter
+            .goal_get_result(id, result.and_then(|result| result.get("goal")))
+            .map_err(|_| IngressError::Malformed)?;
+        let removed = adapter.take_pending(id);
+        debug_assert_eq!(removed, Some(kind));
+        return Ok(IngressDisposition::IgnoredLate);
     }
     let result = object
         .get("result")
@@ -340,6 +356,7 @@ fn response(
                 closes_session: true,
             }
         }
+        RequestKind::GoalGet => unreachable!("handled above"),
     };
     if matches!(
         kind,

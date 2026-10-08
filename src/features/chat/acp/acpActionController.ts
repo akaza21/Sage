@@ -187,12 +187,29 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     captured: AcpActionContext,
     result: AcpMutationResult,
   ): AcpChatPage | null => {
-    if (!sameScope(dependencies.getContext(), captured)) return null;
+    const current = dependencies.getContext();
+    if (!sameScope(current, captured)) return null;
+    const previous = current!.page;
+    const incoming = result.projection;
+    const previousEpoch = previous.sessions.find(
+      (session) => session.id === previous.currentSessionId,
+    )?.runtimeEpoch;
+    const incomingEpoch = incoming.sessions.find(
+      (session) => session.id === incoming.currentSessionId,
+    )?.runtimeEpoch;
+    const page =
+      !incoming.goal &&
+      previous.goal &&
+      previous.currentSessionId === incoming.currentSessionId &&
+      previousEpoch &&
+      previousEpoch === incomingEpoch
+        ? { ...incoming, goal: previous.goal }
+        : incoming;
     const disposition = dependencies.applyAuthoritativePage(
       captured.scope,
-      result.projection,
+      page,
     );
-    return disposition === "accepted" ? result.projection : null;
+    return disposition === "accepted" ? page : null;
   };
 
   const enqueue = (

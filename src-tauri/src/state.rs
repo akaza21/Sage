@@ -159,9 +159,14 @@ impl AppState {
         })?;
         #[cfg(windows)]
         acp.set_browser_app(app.clone());
+        let goal_app = app.clone();
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
             let _ = app.emit("acp-session-config-changed-v1", notice);
+        }));
+        acp.set_goal_notice_sink(std::sync::Arc::new(move |notice| {
+            use tauri::Emitter;
+            let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
         Ok(Self {
             database,

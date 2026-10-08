@@ -348,6 +348,7 @@ pub struct SessionProjection {
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
     pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
+    pub(crate) goal: super::goal::GoalState,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,

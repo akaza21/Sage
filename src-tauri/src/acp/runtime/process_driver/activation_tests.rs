@@ -37,6 +37,13 @@ struct Adapter {
 }
 
 impl HarnessAdapter for Adapter {
+    fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(Some(AdapterEgress::new(
+            OutboundFrame::new(br#"{"id":999,"method":"thread/goal/get"}"#.to_vec()).unwrap(),
+            EgressToken::request(999),
+        )))
+    }
+
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         Some(capabilities())
     }
@@ -187,7 +194,7 @@ impl DriverClock for MutableClock {
 }
 
 #[test]
-fn activation_driver_hands_off_only_after_ready_and_quiescent() {
+fn activation_driver_hands_off_goal_hydration_only_after_ready_and_quiescent() {
     runtime().block_on(async {
         let commits = Arc::new(Mutex::new(0));
         let pump = ActivationPump::new(
@@ -236,10 +243,13 @@ fn activation_driver_hands_off_only_after_ready_and_quiescent() {
         mailbox.try_push_chunk(b"{}\n".to_vec()).unwrap();
         driver.run_next(&mailbox).await.unwrap();
         assert!(driver.completion_ready(&mailbox));
-        let parts = match driver.try_into_idle_parts(&mailbox) {
+        let mut parts = match driver.try_into_idle_parts(&mailbox) {
             Ok(parts) => parts,
             Err(_) => panic!("ready handoff"),
         };
+        let activation_writes = parts.transport.writes;
+        parts.parts.hydrate_goal(&mut parts.transport);
+        assert_eq!(parts.transport.writes, activation_writes + 1);
         assert_eq!(parts.owner, owner());
         assert_eq!(*commits.lock().unwrap(), 1);
         assert_eq!(

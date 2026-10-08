@@ -366,6 +366,12 @@ mod refusal_detail;
 pub(crate) use refusal_detail::RefusalDetail;
 
 pub(crate) trait HarnessAdapter {
+    fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+        None
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         None
     }

@@ -9,6 +9,7 @@ pub(crate) mod declared_test;
 pub(crate) mod file_diff;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
+pub(crate) mod goal;
 pub(crate) mod image_admit;
 pub mod intent;
 mod ipc;

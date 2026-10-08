@@ -8,6 +8,7 @@ import type {
   SageProjectId,
 } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { getGoalChatPage } from "../../../services/acpGoalDesktop";
 import {
   type ChatLiveSnapshot,
   projectChatLiveSnapshot,
@@ -46,13 +47,12 @@ export function useAcpChatLiveSnapshot(
     const loadLatest = () => {
       if (disposed) return;
       pending = false;
-      void acpDesktop
-        .getChatPage({
-          projectId: projectId as SageProjectId,
-          projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
-          chatId: chatId as SageChatId,
-          cursor: null,
-        })
+      void getGoalChatPage({
+        projectId: projectId as SageProjectId,
+        projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
+        chatId: chatId as SageChatId,
+        cursor: null,
+      })
         .then((page) => {
           if (disposed || page.chatId !== chatId) return;
           setSnapshot(projectChatLiveSnapshot(chatId, page));

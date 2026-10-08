@@ -13,6 +13,24 @@ use crate::acp::{
 use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
+    fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.inner.goal_supported() {
+            match self.request(CodexAdapter::goal_get) {
+                Ok(egress) => Ok(Some(egress)),
+                Err(error) => {
+                    self.inner.goal_unavailable();
+                    Err(error)
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+        Some(self.inner.goal_state().clone())
+    }
+
     fn capabilities(&self) -> Option<crate::acp::intent::CapabilitySnapshotV1> {
         self.inner.effective_capabilities().ok()
     }
@@ -191,6 +209,11 @@ impl HarnessAdapter for CodexRuntime {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.request_id() {
+            if self.inner.pending_kind(request_id) == Some(RequestKind::GoalGet)
+                && resolution == EgressResolution::DeliveryUnknown
+            {
+                self.inner.goal_get_delivery_unknown(request_id);
+            }
             if matches!(
                 resolution,
                 EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes

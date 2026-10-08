@@ -271,6 +271,20 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it.each([
+    ["unsupported", /not available for this binding/i],
+    ["unavailable", /native goal unavailable/i],
+  ] as const)(
+    "keeps the %s Goal explanation reachable from the composer",
+    (kind, explanation) => {
+      hooks.page = { ...projection(), goal: { kind } };
+      matchConfiguredSession();
+      render(<ChatSurface />);
+      fireEvent.click(screen.getByText("Goal"));
+      expect(screen.getByText(explanation)).toBeVisible();
+    },
+  );
+
   it("opens an earlier-session assistant file link in its owning Chat", async () => {
     const resource = { rootId: "root-a", relativePath: "README.md" };
     vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({

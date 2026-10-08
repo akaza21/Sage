@@ -12,6 +12,10 @@ import type {
   SageProjectId,
 } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
+import {
+  getGoalChatPage,
+  subscribeGoalChanges,
+} from "../../../services/acpGoalDesktop";
 
 export function useAcpRetentionIncomplete(boundChatId?: string | null) {
   return useStore(
@@ -90,13 +94,12 @@ export function useAcpChatProjection(
     const loadLatest = () => {
       if (disposed) return;
       const intent = beginPageLoad(null);
-      void acpDesktop
-        .getChatPage({
-          projectId: scope.projectId,
-          projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
-          chatId: scope.chatId,
-          cursor: null,
-        })
+      void getGoalChatPage({
+        projectId: scope.projectId,
+        projectGeneration: String(nativeTransitionEpoch) as ProjectGeneration,
+        chatId: scope.chatId,
+        cursor: null,
+      })
         .then((projection) => {
           completePageLoad(intent, projection);
         })
@@ -127,6 +130,19 @@ export function useAcpChatProjection(
           store.getState().enqueueSessionConfigChange(scope, event),
         ),
       ),
+      subscribeGoalChanges((event) => {
+        const page = store.getState().page;
+        if (
+          event.sageProjectId === scope.projectId &&
+          event.sageChatId === scope.chatId &&
+          (!page ||
+            (page.currentSessionId === event.sageAgentSessionId &&
+              page.sessions.find(
+                (session) => session.id === event.sageAgentSessionId,
+              )?.runtimeEpoch === event.runtimeEpoch))
+        )
+          scheduleRefresh("goalChanged");
+      }),
     ])
       .then((listeners) => {
         const disposeListener = () =>

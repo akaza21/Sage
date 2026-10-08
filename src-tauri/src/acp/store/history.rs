@@ -75,6 +75,7 @@ pub(crate) fn load_chat_page(
         .map_err(|_| StoreError::Corrupt("session page bound"))?;
     let empty_page = AcpChatPage {
         session_config: None,
+        goal: crate::acp::goal::GoalState::Unsupported,
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
         title: title.clone(),
@@ -100,6 +101,7 @@ pub(crate) fn load_chat_page(
     })?;
     let page = AcpChatPage {
         session_config: None,
+        goal: crate::acp::goal::GoalState::Unsupported,
         project_id,
         chat_id,
         title,

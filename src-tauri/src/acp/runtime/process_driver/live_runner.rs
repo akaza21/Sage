@@ -145,7 +145,7 @@ where
             };
         }
     };
-    let initial =
+    let mut initial =
         match tauri::async_runtime::block_on(activation::complete(activation, mailbox.as_ref())) {
             Ok(initial) => initial,
             Err(failure) => {
@@ -167,6 +167,9 @@ where
                 };
             }
         };
+    if let FirstTurnWorkerState::Idle(parts) = &mut initial {
+        parts.parts.hydrate_goal(&mut parts.transport);
+    }
     if ready.send(Ok(())).is_err() {
         let (recovery, _) = finish(
             failed(initial),

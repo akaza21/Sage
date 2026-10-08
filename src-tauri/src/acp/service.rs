@@ -61,6 +61,7 @@ pub(crate) use read_text_file::{DiskAllowedState, ReadTextClassification, ReadTe
 pub(crate) use read_text_file::{
     ReadTextBegin, ReadTextFileService, ReadTextFlushAck, ReadTextNextAction, ReadTextOwner,
 };
+mod goal;
 #[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;
@@ -385,6 +386,8 @@ impl AcpService {
     ) -> Result<AcpChatPage, StoreError> {
         let mut page = load_chat_page(&self.database.connection(), project_id, chat_id, cursor)?;
         self.compose_session_config(&mut page)?;
+        self.compose_goal(&mut page);
+        self.fit_goal_to_page_budget(&mut page)?;
         Ok(page)
     }
 

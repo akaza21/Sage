@@ -37,11 +37,15 @@ pub(crate) struct NativeRuntime(
         crate::acp::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::session_config::ConfigChannel>,
     )>,
+    Option<(
+        crate::acp::scheduler::RuntimeOwner,
+        std::sync::Arc<crate::acp::goal::GoalChannel>,
+    )>,
 );
 
 impl NativeRuntime {
     pub(crate) fn new(runtime: impl LaunchableRuntime + 'static) -> Self {
-        Self(Box::new(runtime), None)
+        Self(Box::new(runtime), None, None)
     }
 
     pub(crate) fn attach_config(
@@ -52,12 +56,28 @@ impl NativeRuntime {
         self.1 = Some((owner, channel));
     }
 
+    pub(crate) fn attach_goal(
+        &mut self,
+        owner: crate::acp::scheduler::RuntimeOwner,
+        channel: std::sync::Arc<crate::acp::goal::GoalChannel>,
+    ) {
+        self.2 = Some((owner, channel));
+    }
+
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         self.0.launch_spec()
     }
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        let egress = self.0.goal_get();
+        self.publish_goal();
+        egress
+    }
+    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+        self.0.goal_state()
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.0.session_config()
     }
@@ -111,6 +131,11 @@ impl HarnessAdapter for NativeRuntime {
                     .map_err(|_| AdapterRuntimeError::Frame)?,
             }
         }
+        if let Some((owner, channel)) = &self.2
+            && let Some(goal) = self.0.goal_state()
+        {
+            channel.update(owner, goal);
+        }
         Ok(batch)
     }
 
@@ -123,6 +148,18 @@ impl HarnessAdapter for NativeRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
-        self.0.resolve_egress(token, resolution)
+        let result = self.0.resolve_egress(token, resolution);
+        self.publish_goal();
+        result
+    }
+}
+
+impl NativeRuntime {
+    fn publish_goal(&self) {
+        if let Some((owner, channel)) = &self.2
+            && let Some(goal) = self.0.goal_state()
+        {
+            channel.update(owner, goal);
+        }
     }
 }

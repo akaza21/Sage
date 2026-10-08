@@ -12,6 +12,8 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import { ChatGoalControl } from "./ChatGoalControl";
+import type { AcpGoalState } from "../../domain/acpGoal";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
 import {
   composerPromptPlaceholder,
@@ -62,6 +64,7 @@ export function ChatComposerRegion({
   onRetryLoad,
   project,
   usage,
+  goal,
   onSubmit,
   onTextChange,
   onRemoveContext,
@@ -111,6 +114,7 @@ export function ChatComposerRegion({
   onRetryLoad?: (() => void) | null;
   project: { name: string } | null | undefined;
   usage: ChatUsage | null;
+  goal: AcpGoalState;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
@@ -141,6 +145,7 @@ export function ChatComposerRegion({
         onSubmit(event);
       }}
     >
+      <ChatGoalControl state={goal} />
       {queuedPrompts && queuedPrompts.length > 0 ? (
         <div className="composer__queued" aria-label="Queued messages">
           {queuedPrompts.map((prompt) => (

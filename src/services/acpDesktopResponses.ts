@@ -11,6 +11,7 @@ import {
   isRecord,
 } from "../domain/guards";
 import { utf8ByteLength } from "../domain/text";
+import type { AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
 const ACP_PAGE_LIMITS = {
@@ -192,6 +193,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
 
 export function safeAcpMutationResponse(
   value: unknown,
+  decodeGoal?: (value: unknown) => AcpGoalState | null,
 ): AcpMutationResult | null {
   if (!isRecord(value) || !isRecord(value.projection)) return null;
   const projection = value.projection;
@@ -230,6 +232,10 @@ export function safeAcpMutationResponse(
       ? null
       : decodeSessionConfig(projection.sessionConfig);
   if (projection.sessionConfig != null && !sessionConfig) return null;
+  const goal =
+    projection.goal === undefined || !decodeGoal
+      ? undefined
+      : (decodeGoal(projection.goal) ?? { kind: "unavailable" as const });
   const configOwner = safeSessions.find(
     (session) => session.id === currentSessionId,
   );
@@ -292,6 +298,7 @@ export function safeAcpMutationResponse(
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
       sessions: safeSessions,
       sessionConfig,
+      ...(goal ? { goal } : {}),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
     },

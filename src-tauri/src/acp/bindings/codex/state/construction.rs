@@ -8,6 +8,14 @@ use crate::acp::bindings::codex::{
 use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
 
 impl CodexAdapter {
+    #[cfg(test)]
+    pub(crate) fn enable_observed_goal_for_test(&mut self) {
+        self.runtime_version = "codex-cli 0.146.0".into();
+        self.codex_home.clear();
+        self.observed_build_characterisation =
+            Some(crate::acp::bindings::characterisation::Characterisation::Characterised);
+    }
+
     pub(crate) fn from_metadata_packet(
         packet: &MetadataValidatedPacket,
         binding_digest: [u8; 32],
@@ -39,6 +47,9 @@ impl CodexAdapter {
             child_threads: Vec::new(),
             unknown_child_notification_reported: false,
             permission_requests: Vec::new(),
+            goal_state: super::GoalState::Unsupported,
+            goal_notification_generation: 0,
+            goal_get_fence: None,
         }
     }
 

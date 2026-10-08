@@ -60,6 +60,24 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    /// Best-effort read-only hydration after the activation handoff. A Goal
+    /// read failure never changes the durable Session or Turn outcome.
+    pub(crate) fn hydrate_goal(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) {
+        use crate::acp::{bindings::adapter::EgressResolution, transport::FrameWriteOutcome};
+        let Ok(Some(egress)) = self.adapter.goal_get() else {
+            return;
+        };
+        let resolution = match transport.write(egress.frame()) {
+            FrameWriteOutcome::Complete => EgressResolution::Written,
+            FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
+            FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
+        };
+        let _ = self.adapter.resolve_egress(egress.into_token(), resolution);
+    }
+
     pub(crate) fn config_pending(&self) -> bool {
         self.adapter.config_pending()
     }

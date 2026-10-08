@@ -60,6 +60,7 @@ pub(crate) enum RequestKind {
     Steer,
     Interrupt,
     Unsubscribe,
+    GoalGet,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +92,7 @@ impl OutgoingRequest {
             RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
             RequestKind::Unsubscribe => "thread/unsubscribe",
+            RequestKind::GoalGet => "thread/goal/get",
         };
         let bytes = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))
             .map_err(|_| RequestError::Encoding)?;
@@ -163,6 +165,14 @@ impl OutgoingRequest {
             id,
             RequestKind::Read,
             json!({"threadId": thread_id.as_str(), "includeTurns": false}),
+        )
+    }
+
+    pub(crate) fn goal_get(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
+        Self::build(
+            id,
+            RequestKind::GoalGet,
+            json!({"threadId": thread_id.as_str()}),
         )
     }
 
