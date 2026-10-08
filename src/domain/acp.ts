@@ -262,7 +262,8 @@ type AcpCommandFailureDetail =
         | "bindingUnavailable"
         | "capabilityUnavailable"
         | "platformUnsupported"
-        | "sessionUnavailable";
+        | "sessionUnavailable"
+        | "imageInputUnsupported";
       message: string;
     }
   | {

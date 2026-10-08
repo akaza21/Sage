@@ -37,6 +37,7 @@ pub(super) fn upgrade_current_through_v9(
         }
         SchemaClass::CurrentV9 => apply_v10(&mut connection)?,
         SchemaClass::CurrentV12 => apply_v13(&mut connection)?,
+        SchemaClass::CurrentV13 => apply_v14(&mut connection)?,
         SchemaClass::CurrentV11 => {
             apply_v12(&mut connection)?;
             apply_v13(&mut connection)?;
@@ -52,15 +53,19 @@ pub(super) fn upgrade_current_through_v9(
             | SchemaClass::CurrentV10LegacySessionEvents
             | SchemaClass::CurrentV11
             | SchemaClass::CurrentV12
+            | SchemaClass::CurrentV13
     ) {
         apply_v11(&mut connection)?;
     }
     if !matches!(
         source_schema,
-        SchemaClass::CurrentV11 | SchemaClass::CurrentV12
+        SchemaClass::CurrentV11 | SchemaClass::CurrentV12 | SchemaClass::CurrentV13
     ) {
         apply_v12(&mut connection)?;
         apply_v13(&mut connection)?;
+    }
+    if source_schema != SchemaClass::CurrentV13 {
+        apply_v14(&mut connection)?;
     }
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
@@ -130,6 +135,11 @@ pub(super) fn apply_through_v12(connection: &mut Connection) -> AppResult<()> {
 pub(super) fn apply_through_v13(connection: &mut Connection) -> AppResult<()> {
     apply_through_v12(connection)?;
     apply_v13(connection)
+}
+
+pub(super) fn apply_through_v14(connection: &mut Connection) -> AppResult<()> {
+    apply_through_v13(connection)?;
+    apply_v14(connection)
 }
 
 pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
@@ -273,7 +283,22 @@ pub(super) fn apply_v13(connection: &mut Connection) -> AppResult<()> {
     transaction.pragma_update(None, "user_version", 13)?;
     verify_v8_foreign_keys(&transaction)?;
     transaction.commit()?;
-    verify_current(connection)
+    verify_reached(connection, SchemaClass::CurrentV13)
+}
+
+pub(super) fn apply_v14(connection: &mut Connection) -> AppResult<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(V14)?;
+    #[cfg(test)]
+    super::test_failpoint::hit("v13-to-v14-after-schema")?;
+    transaction.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
+        [now_millis()],
+    )?;
+    transaction.pragma_update(None, "user_version", 14)?;
+    verify_v8_foreign_keys(&transaction)?;
+    transaction.commit()?;
+    verify_reached(connection, SchemaClass::CurrentV14)
 }
 
 fn with_foreign_keys_disabled(
@@ -364,6 +389,11 @@ pub(super) fn build_fresh_v12(connection: &mut Connection) -> AppResult<()> {
 pub(super) fn build_fresh_v13(connection: &mut Connection) -> AppResult<()> {
     build_fresh_v12(connection)?;
     apply_v13(connection)
+}
+
+pub(super) fn build_fresh_v14(connection: &mut Connection) -> AppResult<()> {
+    build_fresh_v13(connection)?;
+    apply_v14(connection)
 }
 
 #[cfg(test)]

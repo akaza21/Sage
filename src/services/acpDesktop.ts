@@ -98,6 +98,7 @@ export function safeFailure(value: unknown): AcpCommandFailure {
         "capabilityUnavailable",
         "platformUnsupported",
         "sessionUnavailable",
+        "imageInputUnsupported",
       ])
     ) {
       return { kind, reason: value.reason, message };

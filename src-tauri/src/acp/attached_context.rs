@@ -7,9 +7,11 @@ use super::{
     limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES},
 };
 
+use crate::image_attachment::ImageAttachedContext;
+
 pub type AttachedContexts = BoundedVec<AttachedContext, ATTACHED_CONTEXT_LIMIT>;
 
-fn has_unsafe_display_character(character: char) -> bool {
+pub(crate) fn has_unsafe_display_character(character: char) -> bool {
     character.is_control()
         || matches!(
             character,
@@ -28,6 +30,7 @@ fn has_unsafe_display_character(character: char) -> bool {
 pub enum AttachedContext {
     DiffLineComment(DiffLineCommentContext),
     BrowserPage(BrowserPageContext),
+    Image(ImageAttachedContext),
 }
 
 impl From<DiffLineCommentContext> for AttachedContext {
@@ -248,6 +251,15 @@ pub(crate) fn effective_prompt(
     prompt: &Prompt,
     contexts: &AttachedContexts,
 ) -> Result<Prompt, ContractError> {
+    if contexts
+        .as_slice()
+        .iter()
+        .any(|context| matches!(context, AttachedContext::Image(_)))
+    {
+        return Err(ContractError::ForbiddenContent {
+            field: "imageAttachment",
+        });
+    }
     if contexts.as_slice().is_empty() {
         return Ok(prompt.clone());
     }
@@ -263,6 +275,7 @@ pub(crate) fn effective_prompt(
                     AttachedContext::BrowserPage(page) => {
                         page.url.len() + page.title.len() + page.text.len() + 96
                     }
+                    AttachedContext::Image(_) => 0,
                 })
                 .sum::<usize>(),
     );
@@ -293,6 +306,7 @@ pub(crate) fn effective_prompt(
                 rendered
                     .push_str(&serde_json::to_string(&page.text).expect("string serialization"));
             }
+            AttachedContext::Image(_) => unreachable!(),
         }
     }
     Prompt::new("promptWithAttachedContext", rendered)
@@ -323,6 +337,28 @@ mod tests {
         let mut oversized = page;
         oversized["text"] = serde_json::json!("a".repeat(4097));
         assert!(serde_json::from_value::<AttachedContext>(oversized).is_err());
+    }
+
+    #[test]
+    fn image_reference_is_strict_and_never_flattened_into_prompt_text() {
+        let image = serde_json::json!({
+            "kind": "image",
+            "artifactId": "a77c3f00-487c-40b5-87ac-236de6843bd1",
+            "mediaType": "image/png",
+            "width": 1200,
+            "height": 800,
+            "byteLength": 1024000,
+            "sha256": "a".repeat(64),
+            "label": "Page screenshot"
+        });
+        let context: AttachedContext = serde_json::from_value(image.clone()).unwrap();
+        let contexts = AttachedContexts::new("attachedContext", vec![context]).unwrap();
+        assert!(
+            effective_prompt(&Prompt::new("prompt", "Inspect this").unwrap(), &contexts).is_err()
+        );
+        let mut forged = image;
+        forged["path"] = serde_json::json!("C:\\secret.png");
+        assert!(serde_json::from_value::<AttachedContext>(forged).is_err());
     }
 
     #[test]

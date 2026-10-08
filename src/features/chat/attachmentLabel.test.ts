@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { DiffLineCommentContext } from "../../domain/attachedContext";
+import type {
+  DiffLineCommentContext,
+  ImageAttachedContext,
+} from "../../domain/attachedContext";
 import { attachmentLabel } from "./ComposerAttachments";
 
 function context(relativePath: string): DiffLineCommentContext {
@@ -27,6 +30,19 @@ function context(relativePath: string): DiffLineCommentContext {
 }
 
 describe("attached context labels", () => {
+  it("identifies a pending image without exposing its artifact identifier", () => {
+    const image: ImageAttachedContext = {
+      kind: "image",
+      artifactId: "a77c3f00-487c-40b5-87ac-236de6843bd1",
+      mediaType: "image/png",
+      width: 1200,
+      height: 800,
+      byteLength: 1_024_000,
+      sha256: "a".repeat(64),
+      label: "Page screenshot",
+    };
+    expect(attachmentLabel(image)).toBe("Image · Page screenshot");
+  });
   it("uses an inert fallback instead of echoing unsafe paths", () => {
     expect(attachmentLabel(context("src/app.ts"))).toBe(
       "Comment · src/app.ts:3",

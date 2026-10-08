@@ -28,6 +28,7 @@ import {
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { useImageThumbnailOwner } from "./useImageThumbnailOwner";
 export function ChatSurface({
   chatId,
   paneHeader,
@@ -68,6 +69,7 @@ export function ChatSurface({
     (state) => state.projectTransitioning,
   );
   const project = useWorkbenchStore((state) => state.project);
+  const imageThumbnailOwner = useImageThumbnailOwner(chatId);
   const error = useWorkbenchStore((state) => state.error);
   const acpRetentionIncomplete = useAcpRetentionIncomplete(chatId);
   const acpLoadFailure = useAcpChatLoadFailure(chatId);
@@ -380,6 +382,7 @@ export function ChatSurface({
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={project}
+        imageThumbnailOwner={imageThumbnailOwner}
         usage={usage}
         goal={acpPage?.goal ?? { kind: "unsupported" }}
         onSubmit={submit}

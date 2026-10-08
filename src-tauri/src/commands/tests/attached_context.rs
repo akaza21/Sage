@@ -375,6 +375,53 @@ fn attached_context_corrupt_and_out_of_range_fail_without_dispatch_or_user_item(
 }
 
 #[test]
+fn image_attachment_is_typed_not_dispatched_for_every_send_target() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        for new_session in [false, true] {
+            let fixture = Fixture::new().await;
+            let (calls, _) = fixture.install_host();
+            let before = fixture.counts();
+            let image = serde_json::json!({
+                "kind": "image",
+                "artifactId": "a77c3f00-487c-40b5-87ac-236de6843bd1",
+                "mediaType": "image/png",
+                "width": 1200,
+                "height": 800,
+                "byteLength": 1024000,
+                "sha256": "a".repeat(64),
+                "label": "Page screenshot"
+            });
+            let image = serde_json::from_value(image).unwrap();
+            let mut request = fixture.request(new_session);
+            match &mut request {
+                SendAcpTurnRequest::Session {
+                    attached_context, ..
+                }
+                | SendAcpTurnRequest::NewSession {
+                    attached_context, ..
+                } => {
+                    *attached_context =
+                        AttachedContexts::new("attachedContext", vec![image]).unwrap();
+                }
+            }
+            let failure = send_acp_turn_inner(&fixture.state, request)
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                failure.failure,
+                AcpIpcError::Unavailable {
+                    reason: AcpUnavailableReason::ImageInputUnsupported,
+                    ..
+                }
+            ));
+            assert_eq!(failure.prompt_dispatch, PromptDispatch::NotStarted);
+            assert_eq!(fixture.counts(), before);
+            assert!(calls.lock().unwrap().is_empty());
+        }
+    });
+}
+
+#[test]
 fn attached_context_validates_the_selected_old_and_new_side_at_command_admission() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let mut fixture = Fixture::new().await;

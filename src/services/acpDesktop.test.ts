@@ -434,6 +434,25 @@ describe("ACP desktop bridge", () => {
     });
   });
 
+  it("preserves the typed image-input block without consuming a prompt", async () => {
+    setDesktopRuntime(true);
+    invokeMock.mockRejectedValue({
+      failure: {
+        kind: "unavailable",
+        reason: "imageInputUnsupported",
+        message: "This harness cannot accept image attachments yet.",
+      },
+      promptDispatch: "notStarted",
+    });
+    await expect(acpDesktop.sendTurn(sendRequest)).rejects.toMatchObject({
+      failure: {
+        kind: "unavailable",
+        reason: "imageInputUnsupported",
+        promptDispatch: "notStarted",
+      },
+    });
+  });
+
   it.each([
     {
       name: "start",

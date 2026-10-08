@@ -9,6 +9,7 @@ import {
   parseDiffLineCommentContext,
   validateAttachedContexts,
   parseBrowserPageContext,
+  parseImageAttachedContext,
 } from "./attachedContext";
 
 const ref = {
@@ -44,6 +45,37 @@ describe("attached browser page context", () => {
     ).toBeNull();
     expect(
       parseBrowserPageContext({ ...page, url: "file:///secret" }),
+    ).toBeNull();
+  });
+});
+
+describe("attached image reference", () => {
+  const image = {
+    kind: "image" as const,
+    artifactId: "a77c3f00-487c-40b5-87ac-236de6843bd1",
+    mediaType: "image/png" as const,
+    width: 1200,
+    height: 800,
+    byteLength: 1_024_000,
+    sha256: "a".repeat(64),
+    label: "Page screenshot",
+  };
+
+  it("admits only a bounded opaque image reference, never image bytes or a path", () => {
+    expect(parseImageAttachedContext(image)).toEqual(image);
+    expect(validateAttachedContexts([image])).toEqual([image]);
+    expect(
+      parseImageAttachedContext({ ...image, path: "C:\\secret.png" }),
+    ).toBeNull();
+    expect(
+      parseImageAttachedContext({
+        ...image,
+        dataUrl: "data:image/png;base64,AAAA",
+      }),
+    ).toBeNull();
+    expect(parseImageAttachedContext({ ...image, width: 2049 })).toBeNull();
+    expect(
+      parseImageAttachedContext({ ...image, byteLength: 4 * 1024 * 1024 + 1 }),
     ).toBeNull();
   });
 });

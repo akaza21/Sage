@@ -7,6 +7,7 @@ export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
 export const MAX_BROWSER_PAGE_TEXT_BYTES = 4 * 1024;
+export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
 
 export type DiffLineSide = "old" | "new";
 
@@ -42,7 +43,69 @@ export interface BrowserPageContext {
   text: string;
 }
 
-export type AttachedContext = DiffLineCommentContext | BrowserPageContext;
+export interface ImageAttachedContext {
+  kind: "image";
+  artifactId: string;
+  mediaType: "image/png" | "image/jpeg";
+  width: number;
+  height: number;
+  byteLength: number;
+  sha256: string;
+  label: string;
+}
+
+export type AttachedContext =
+  DiffLineCommentContext | BrowserPageContext | ImageAttachedContext;
+
+export function parseImageAttachedContext(
+  value: unknown,
+): ImageAttachedContext | null {
+  if (!isRecord(value) || value.kind !== "image") return null;
+  const keys = Object.keys(value).sort();
+  if (
+    keys.join(",") !==
+    "artifactId,byteLength,height,kind,label,mediaType,sha256,width"
+  )
+    return null;
+  const { artifactId, mediaType, width, height, byteLength, sha256, label } =
+    value;
+  if (
+    typeof artifactId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      artifactId,
+    ) ||
+    (mediaType !== "image/png" && mediaType !== "image/jpeg") ||
+    typeof width !== "number" ||
+    !Number.isInteger(width) ||
+    width < 1 ||
+    width > 2048 ||
+    typeof height !== "number" ||
+    !Number.isInteger(height) ||
+    height < 1 ||
+    height > 2048 ||
+    typeof byteLength !== "number" ||
+    !Number.isInteger(byteLength) ||
+    byteLength < 1 ||
+    byteLength > MAX_OUTGOING_IMAGE_BYTES ||
+    typeof sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(sha256) ||
+    typeof label !== "string" ||
+    !label ||
+    utf8ByteLength(label) > 80 ||
+    [...label].some(unsafeDisplayCharacter)
+  )
+    return null;
+  return {
+    kind: "image",
+    artifactId,
+    mediaType,
+    width,
+    height,
+    byteLength,
+    sha256,
+    label,
+  };
+}
 
 export function parseBrowserPageContext(
   value: unknown,
@@ -79,7 +142,11 @@ export function parseBrowserPageContext(
 }
 
 export function parseAttachedContext(value: unknown): AttachedContext | null {
-  return parseBrowserPageContext(value) ?? parseDiffLineCommentContext(value);
+  return (
+    parseBrowserPageContext(value) ??
+    parseDiffLineCommentContext(value) ??
+    parseImageAttachedContext(value)
+  );
 }
 
 function parseAttachedAgentDiffRef(value: unknown): AgentDiffRef | null {
@@ -170,7 +237,7 @@ export function parseDiffLineCommentContext(
 }
 
 export function queuedAttachmentCue(context: AttachedContext): {
-  kind: "file" | "page";
+  kind: "file" | "page" | "image";
   label: string;
 } {
   if (context.kind === "browserPage") {
@@ -179,6 +246,9 @@ export function queuedAttachmentCue(context: AttachedContext): {
       kind: "page",
       label: parsed ? new URL(parsed.url).host.slice(0, 64) : "Page",
     };
+  }
+  if (context.kind === "image") {
+    return { kind: "image", label: context.label };
   }
   const parsed = parseDiffLineCommentContext(context);
   return {
@@ -232,6 +302,9 @@ export function attachedContextKey(context: AttachedContext): string {
       context.title,
       context.text,
     ]);
+  }
+  if (context.kind === "image") {
+    return JSON.stringify([context.kind, context.artifactId, context.sha256]);
   }
   const ref = context.diffRef;
   return JSON.stringify([

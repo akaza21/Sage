@@ -266,6 +266,7 @@ pub enum AcpUnavailableReason {
     CapabilityUnavailable,
     PlatformUnsupported,
     SessionUnavailable,
+    ImageInputUnsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

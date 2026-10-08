@@ -1,5 +1,5 @@
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -53,6 +53,7 @@ pub struct Database {
     connection: Arc<Mutex<Connection>>,
     physical_storage: Arc<PhysicalStorage>,
     _live_path_anchor: Arc<migration::LivePathAnchor>,
+    image_artifact_root: Option<Arc<PathBuf>>,
 }
 
 impl Database {
@@ -69,11 +70,31 @@ impl Database {
         connection.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024)?;
         let physical_storage = Arc::new(PhysicalStorage::new(path, limits));
         physical_storage.configure(&connection)?;
+        let image_artifact_root = (path != Path::new(":memory:")).then(|| {
+            Arc::new(
+                path.parent()
+                    .expect("validated database path")
+                    .join("image-artifacts"),
+            )
+        });
+        if let Some(root) = &image_artifact_root {
+            crate::image_artifacts::reconcile_image_artifacts(&connection, root)?;
+        }
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             physical_storage,
             _live_path_anchor: Arc::new(live_path_anchor),
+            image_artifact_root,
         })
+    }
+
+    pub(crate) fn image_artifact_root(&self) -> AppResult<&Path> {
+        self.image_artifact_root
+            .as_deref()
+            .map(|path| path.as_path())
+            .ok_or_else(|| {
+                crate::error::AppError::Unsupported("image artifacts need a disk database".into())
+            })
     }
 
     pub(crate) fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -151,7 +172,7 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 13);
+        assert_eq!(migration_count, 14);
         assert_eq!(project_count, 0);
     }
 

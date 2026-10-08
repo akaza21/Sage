@@ -1,11 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    acp::attached_context::AttachedContexts,
+    acp::attached_context::{AttachedContext, AttachedContexts},
     error::{AppError, AppResult},
+    image_artifacts::verify_image_reference,
     persistence::{Database, now_millis},
 };
 
@@ -84,6 +85,21 @@ impl Database {
             ));
         }
         let json = admitted_prompts(prompts)?;
+        let mut images = HashMap::new();
+        for prompt in prompts {
+            for context in prompt.attached_context.as_slice() {
+                if let AttachedContext::Image(image) = context {
+                    if images
+                        .insert(image.artifact_id.clone(), (prompt.id.as_str(), image))
+                        .is_some()
+                    {
+                        return Err(AppError::InvalidRequest(
+                            "Image artifact occurs in multiple queued prompts".into(),
+                        ));
+                    }
+                }
+            }
+        }
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         let belongs: Option<i64> = transaction
@@ -97,6 +113,45 @@ impl Database {
             return Err(AppError::InvalidRequest(
                 "Queued Chat owner is absent".into(),
             ));
+        }
+        if !images.is_empty() {
+            let root = self.image_artifact_root()?;
+            for (id, (_, image)) in &images {
+                verify_image_reference(&transaction, root, project_id, chat_id, image)?;
+                let state: String = transaction.query_row(
+                    "SELECT lifecycle FROM chat_image_artifacts WHERE id=?1",
+                    [id],
+                    |row| row.get(0),
+                )?;
+                if !matches!(state.as_str(), "pending" | "queued") {
+                    return Err(AppError::InvalidRequest(
+                        "Image artifact cannot enter a queued prompt".into(),
+                    ));
+                }
+            }
+        }
+        let mut queued_statement = transaction.prepare(
+            "SELECT id FROM chat_image_artifacts WHERE project_id=?1 AND chat_id=?2 AND lifecycle='queued' ORDER BY id",
+        )?;
+        let queued_rows = queued_statement
+            .query_map(params![project_id, chat_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(queued_statement);
+        let mut retired = Vec::new();
+        for id in queued_rows {
+            if !images.contains_key(&id) {
+                transaction.execute(
+                    "UPDATE chat_image_artifacts SET lifecycle='retired',queue_id=NULL,updated_at=?2 WHERE id=?1",
+                    params![id, now_millis()],
+                )?;
+                retired.push(id);
+            }
+        }
+        for (id, (queue_id, _)) in &images {
+            transaction.execute(
+                "UPDATE chat_image_artifacts SET lifecycle='queued',queue_id=?2,updated_at=?3 WHERE id=?1",
+                params![id, queue_id, now_millis()],
+            )?;
         }
         if prompts.is_empty() {
             transaction.execute(
@@ -114,6 +169,12 @@ impl Database {
             )?;
         }
         transaction.commit()?;
+        if !retired.is_empty() {
+            let root = self.image_artifact_root()?;
+            for id in retired {
+                let _ = crate::acp::migration::remove_image_file(&root.join(format!("{id}.full")));
+            }
+        }
         Ok(())
     }
 
@@ -133,6 +194,7 @@ impl Database {
         )?;
         let mut rows = statement.query([project_id])?;
         let mut result = HashMap::new();
+        let mut expected_images = HashSet::new();
         while let Some(row) = rows.next()? {
             if result.len() >= 128 {
                 return Err(AppError::ResourceLimit("Too many Chat queues".into()));
@@ -147,6 +209,34 @@ impl Database {
             let mut prompts: Vec<DurableQueuedPrompt> = serde_json::from_str(&json)
                 .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
             admitted_prompts(&prompts)?;
+            for prompt in &prompts {
+                for context in prompt.attached_context.as_slice() {
+                    if let AttachedContext::Image(image) = context {
+                        if !expected_images.insert(image.artifact_id.clone()) {
+                            return Err(AppError::InvalidRequest(
+                                "Queued image artifact is duplicated".into(),
+                            ));
+                        }
+                        verify_image_reference(
+                            &connection,
+                            self.image_artifact_root()?,
+                            project_id,
+                            &chat_id,
+                            image,
+                        )?;
+                        let identity: (String, String) = connection.query_row(
+                            "SELECT lifecycle,queue_id FROM chat_image_artifacts WHERE id=?1",
+                            [&image.artifact_id],
+                            |row| Ok((row.get(0)?, row.get(1)?)),
+                        )?;
+                        if identity.0 != "queued" || identity.1 != prompt.id {
+                            return Err(AppError::InvalidRequest(
+                                "Queued image artifact has a mismatched queue identity".into(),
+                            ));
+                        }
+                    }
+                }
+            }
             for prompt in &mut prompts {
                 if !matches!(prompt.status, QueuedPromptStatus::OutcomeUnknown) {
                     prompt.status = QueuedPromptStatus::Blocked;
@@ -154,97 +244,25 @@ impl Database {
             }
             result.insert(chat_id, prompts);
         }
+        drop(rows);
+        drop(statement);
+        let mut queued_statement = connection.prepare(
+            "SELECT id FROM chat_image_artifacts WHERE project_id=?1 AND lifecycle='queued' ORDER BY id",
+        )?;
+        let queued_rows = queued_statement
+            .query_map([project_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        if queued_rows.len() != expected_images.len()
+            || queued_rows.iter().any(|id| !expected_images.contains(id))
+        {
+            return Err(AppError::InvalidRequest(
+                "Queued image artifacts disagree with durable Chat prompts".into(),
+            ));
+        }
         Ok(result)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn queue_survives_database_reopen_but_requires_explicit_retry() {
-        let directory =
-            std::env::temp_dir().join(format!("sage-chat-queue-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir(&directory).unwrap();
-        let path = directory.join("sage.db");
-        {
-            let database = Database::open(&path).unwrap();
-            let connection = database.connection();
-            connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES ('p','P',1,1,1)", []).unwrap();
-            connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES ('c','p',0,'C',1,1)", []).unwrap();
-            drop(connection);
-            database
-                .replace_chat_queued_prompts(
-                    "p",
-                    "c",
-                    &[DurableQueuedPrompt {
-                        id: "q1".into(),
-                        text: "later".into(),
-                        attached_context: Default::default(),
-                        binding_id: "binding".into(),
-                        model_id: None,
-                        status: QueuedPromptStatus::Queued,
-                    }],
-                )
-                .unwrap();
-        }
-        {
-            let database = Database::open(&path).unwrap();
-            let restored = database.project_chat_queued_prompts("p").unwrap();
-            let queue = &restored["c"];
-            assert_eq!(queue.len(), 1);
-            assert_eq!(queue[0].text, "later");
-            assert!(matches!(queue[0].status, QueuedPromptStatus::Blocked));
-            database.replace_chat_queued_prompts("p", "c", &[]).unwrap();
-            assert!(
-                database
-                    .project_chat_queued_prompts("p")
-                    .unwrap()
-                    .is_empty()
-            );
-        }
-        std::fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn outcome_unknown_queue_status_survives_database_reopen() {
-        let directory =
-            std::env::temp_dir().join(format!("sage-chat-queue-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir(&directory).unwrap();
-        let path = directory.join("sage.db");
-        {
-            let database = Database::open(&path).unwrap();
-            let connection = database.connection();
-            connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES ('p','P',1,1,1)", []).unwrap();
-            connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES ('c','p',0,'C',1,1)", []).unwrap();
-            drop(connection);
-            database
-                .replace_chat_queued_prompts(
-                    "p",
-                    "c",
-                    &[DurableQueuedPrompt {
-                        id: "same-client-id".into(),
-                        text: "maybe delivered".into(),
-                        attached_context: Default::default(),
-                        binding_id: "binding".into(),
-                        model_id: None,
-                        status: QueuedPromptStatus::Queued,
-                    }],
-                )
-                .unwrap();
-            database.connection().execute("UPDATE chat_queued_prompts SET prompts_json=json_set(prompts_json,'$[0].status','outcomeUnknown') WHERE chat_id='c'", []).unwrap();
-        }
-        let database = Database::open(&path).unwrap();
-        let restored = database.project_chat_queued_prompts("p");
-        assert!(restored.is_ok());
-        let queue = &restored.unwrap()["c"];
-        assert_eq!(queue[0].id, "same-client-id");
-        assert_eq!(
-            serde_json::to_value(queue[0].status).unwrap(),
-            serde_json::json!("outcomeUnknown")
-        );
-        drop(database);
-        std::fs::remove_dir_all(directory).unwrap();
-    }
-}
+#[path = "chat_queue_tests.rs"]
+mod tests;

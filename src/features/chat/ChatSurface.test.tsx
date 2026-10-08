@@ -28,6 +28,7 @@ import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { desktop } from "../../services/desktop";
+import * as imageDesktop from "../../services/imageArtifactDesktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import type * as AcpModule from "./acp";
 
@@ -57,6 +58,11 @@ vi.mock("./acp", async () => {
     useAcpChatActions: () => hooks.actions,
   };
 });
+
+vi.mock("../../services/imageArtifactDesktop", () => ({
+  getChatImageThumbnail: vi.fn(),
+  discardPendingChatImage: vi.fn(),
+}));
 
 import { ChatSurface } from "./ChatSurface";
 
@@ -4272,6 +4278,67 @@ describe("ChatSurface composer focus hotkey", () => {
 });
 
 describe("ChatSurface attached context", () => {
+  it("keeps an image chip until native pending discard acknowledges it", async () => {
+    const chatId = "chat-image-context";
+    const artifactId = "f4a4e31e-9d0b-4bc4-a709-a2f625788510";
+    vi.mocked(imageDesktop.getChatImageThumbnail).mockResolvedValue(null);
+    vi.mocked(imageDesktop.discardPendingChatImage).mockResolvedValue(true);
+    hooks.page = { ...projection(), chatId: chatId as never };
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: chatId,
+          kind: "chat",
+          title: "Image",
+          position: 0,
+          pinned: true,
+          dirty: false,
+        },
+      ],
+      activeTabId: chatId,
+      project: { id: "project-a", name: "A", roots: [] },
+      nativeTransitionEpoch: 1,
+      chatOwnershipEpoch: 1,
+      chatUiById: {
+        [chatId]: {
+          composerText: "Explain this",
+          attachedContext: [
+            {
+              kind: "image",
+              artifactId,
+              mediaType: "image/png",
+              width: 32,
+              height: 32,
+              byteLength: 100,
+              sha256: "a".repeat(64),
+              label: "Screenshot",
+            },
+          ],
+          sending: false,
+          error: null,
+          errorKind: null,
+          requestGeneration: 0,
+        },
+      },
+      composerText: "Explain this",
+    });
+    render(<ChatSurface chatId={chatId} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Image · Screenshot context" }),
+    );
+    await waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().chatUiById[chatId].attachedContext,
+      ).toEqual([]),
+    );
+    expect(imageDesktop.discardPendingChatImage).toHaveBeenCalledWith({
+      projectId: "project-a",
+      projectGeneration: "1",
+      chatId,
+      artifactId,
+    });
+  });
+
   it("renders a removable diff comment chip for the bound Chat", () => {
     const chatId = "chat-context";
     hooks.page = { ...projection(), chatId: chatId as never };

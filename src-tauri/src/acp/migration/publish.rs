@@ -66,7 +66,10 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
             cleanup_retired(paths, &manifest)?;
             Ok(true)
         }
-        SchemaClass::CurrentV11 | SchemaClass::CurrentV12 | SchemaClass::CurrentV13 => {
+        SchemaClass::CurrentV11
+        | SchemaClass::CurrentV12
+        | SchemaClass::CurrentV13
+        | SchemaClass::CurrentV14 => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
                 return invalid("published current schema coexists with a replacement stage");
@@ -357,6 +360,7 @@ fn verify_replacement(path: &Path, manifest: &ReplacementManifest) -> AppResult<
         SchemaClass::CurrentV11 => SchemaClass::CurrentV11,
         SchemaClass::CurrentV12 => SchemaClass::CurrentV12,
         SchemaClass::CurrentV13 => SchemaClass::CurrentV13,
+        SchemaClass::CurrentV14 => SchemaClass::CurrentV14,
         _ => return invalid("replacement manifest does not name a current schema"),
     };
     verify_replacement_for(path, manifest, expected_schema)

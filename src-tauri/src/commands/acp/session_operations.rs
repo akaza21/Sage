@@ -1,6 +1,21 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
+    if contexts.as_slice().iter().any(|context| {
+        matches!(
+            context,
+            crate::acp::attached_context::AttachedContext::Image(_)
+        )
+    }) {
+        return Err(AcpIpcError::Unavailable {
+            reason: crate::acp::intent::AcpUnavailableReason::ImageInputUnsupported,
+            message: safe_message("This harness cannot accept image attachments yet."),
+        });
+    }
+    Ok(())
+}
+
 pub(crate) async fn send_acp_turn_inner(
     state: &AppState,
     request: SendAcpTurnRequest,
@@ -11,6 +26,16 @@ pub(crate) async fn send_acp_turn_inner(
             .await
             .map_err(prompt_not_dispatched)?;
     validate_send(state, &request, &snapshot).map_err(prompt_not_dispatched)?;
+    match &request {
+        SendAcpTurnRequest::Session {
+            attached_context, ..
+        }
+        | SendAcpTurnRequest::NewSession {
+            attached_context, ..
+        } => {
+            image_input_block(attached_context).map_err(prompt_not_dispatched)?;
+        }
+    }
     #[cfg(all(windows, feature = "acp-fixture"))]
     if let SendAcpTurnRequest::Session { session_id, .. } = &request {
         let binding_id = session_routes::durable_binding_id(state, session_id)
@@ -217,6 +242,7 @@ pub(crate) async fn steer_acp_turn_inner(
     )
     .await?;
     validate_steer_intent(&request, &snapshot).map_err(intent_error)?;
+    image_input_block(&request.attached_context)?;
     let binding_id =
         session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
     let prompt = effective_prompt(&request.prompt, &request.attached_context).map_err(|_| {
