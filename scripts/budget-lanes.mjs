@@ -65,6 +65,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
 
 export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
   "acp05-owned-launcher.node-test.mjs",
+  "chat-performance-budget.node-test.mjs",
   "ade0006a-c0b-campaign-launch.node-test.mjs",
   "ade0006a-c0b-collector-provenance.node-test.mjs",
   "app-smoke-cli.node-test.mjs",
@@ -364,6 +365,11 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
 // split itself (not a migration successor): the discovered file count may
 // grow only through entries recorded here.
 export const LANE_JUSTIFICATIONS = Object.freeze([
+  {
+    file: "chat-performance-budget.node-test.mjs",
+    reason:
+      "Native-Windows Chromium fixture checks measured CP-24 Chat mount, streaming, DOM, and heap ceilings through the production presentation seam.",
+  },
   {
     file: "budget-lanes.node-test.mjs",
     reason:

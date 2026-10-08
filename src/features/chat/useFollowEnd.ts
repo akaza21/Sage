@@ -141,6 +141,9 @@ export function useFollowEnd({
   }, [anchorToEnd, contentRef, ownerKey, transcriptRef]);
 
   const updateFollowEnd = useCallback(() => {
+    const current = transcriptRef.current;
+    if (current && !jumpingRef.current && !transcriptIsAtEnd(current))
+      followingEndRef.current = false;
     if (frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;

@@ -7,6 +7,16 @@
   overflow-wrap: anywhere;
 }
 
+.acp-virtual-turns {
+  min-width: 0;
+  overflow-anchor: none;
+}
+
+.acp-virtual-turn-row {
+  min-width: 0;
+  margin-bottom: 24px;
+}
+
 .acp-empty,
 .acp-history-notice,
 .acp-history-error {

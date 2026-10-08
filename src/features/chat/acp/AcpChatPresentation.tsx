@@ -30,6 +30,7 @@ import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
 import { BrowserOperations } from "./BrowserOperations";
 import { terminalTurnStates } from "./statusSemantics";
+import { VirtualTurnList } from "./VirtualTurnList";
 import "./browser-operations.css";
 
 export type AcpChatPresentationProps = {
@@ -306,6 +307,31 @@ export function AcpChatPresentation({
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
+  const renderTurn = (turn: TurnProjection, index: number) => {
+    const timestamp = turnDayTimestamp(turn);
+    const prior = index > 0 ? turnDayTimestamp(page.turns[index - 1]) : null;
+    const showDay =
+      timestamp !== null && !sameCalendarDay(timestamp, prior ?? renderedAt);
+    return (
+      <Fragment key={turn.id}>
+        {showDay ? (
+          <div className="chat-transcript-day" role="separator">
+            <time dateTime={new Date(timestamp).toISOString()}>
+              {dayTimeLabel(timestamp)}
+            </time>
+          </div>
+        ) : null}
+        <Turn
+          page={page}
+          turn={turn}
+          labels={labels}
+          hasProjectRoot={projectRoots.length > 0}
+          countIncomplete={countIncomplete}
+          onOpenResource={onOpenResource}
+        />
+      </Fragment>
+    );
+  };
   return (
     <>
       {hasEarlier && onLoadEarlier ? (
@@ -337,34 +363,14 @@ export function AcpChatPresentation({
       ) : null}
       {page.turns.length === 0 ? (
         <p className="acp-empty">No turns in this chat yet.</p>
+      ) : page.turns.length > 40 ? (
+        <VirtualTurnList
+          key={`${page.projectId}:${page.chatId}`}
+          turns={page.turns}
+          renderTurn={renderTurn}
+        />
       ) : (
-        page.turns.map((turn, index) => {
-          const timestamp = turnDayTimestamp(turn);
-          const prior =
-            index > 0 ? turnDayTimestamp(page.turns[index - 1]) : null;
-          const showDay =
-            timestamp !== null &&
-            !sameCalendarDay(timestamp, prior ?? renderedAt);
-          return (
-            <Fragment key={turn.id}>
-              {showDay ? (
-                <div className="chat-transcript-day" role="separator">
-                  <time dateTime={new Date(timestamp).toISOString()}>
-                    {dayTimeLabel(timestamp)}
-                  </time>
-                </div>
-              ) : null}
-              <Turn
-                page={page}
-                turn={turn}
-                labels={labels}
-                hasProjectRoot={projectRoots.length > 0}
-                countIncomplete={countIncomplete}
-                onOpenResource={onOpenResource}
-              />
-            </Fragment>
-          );
-        })
+        page.turns.map(renderTurn)
       )}
     </>
   );

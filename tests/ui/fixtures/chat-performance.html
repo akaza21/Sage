@@ -14,6 +14,7 @@
       import { createRoot } from "react-dom/client";
       import { flushSync } from "react-dom";
       import { AcpChatPresentation } from "/src/features/chat/acp/AcpChatPresentation.tsx";
+      import { useFollowEnd } from "/src/features/chat/useFollowEnd.ts";
       import "/src/styles/global.css";
       import "/src/styles/chat-surface.css";
       import "/src/features/chat/chat-transcript-polish.css";
@@ -22,6 +23,11 @@
 
       const root = createRoot(document.getElementById("chat-performance"));
       const scroll = document.querySelector(".message-list");
+      const follow = new URLSearchParams(location.search).has("follow");
+      const transcriptRef = { current: scroll };
+      const contentRef = {
+        current: document.getElementById("chat-performance"),
+      };
       let current;
       let commits = [];
       const item = (turn, ordinal, kind, payload) => ({
@@ -138,12 +144,47 @@
       });
       const recordCommit = (_id, phase, duration) =>
         commits.push({ phase, duration });
+      function FollowHarness({ page }) {
+        const endRef = React.useRef(null);
+        const { showJumpToLatest, updateFollowEnd, jumpToLatest } =
+          useFollowEnd({
+            ownerKey: "fixture",
+            revision: page.projectionRevision,
+            transcriptRef,
+            contentRef,
+            endRef,
+          });
+        React.useEffect(() => {
+          scroll.addEventListener("scroll", updateFollowEnd);
+          return () => scroll.removeEventListener("scroll", updateFollowEnd);
+        }, [updateFollowEnd]);
+        return React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(AcpChatPresentation, props(page)),
+          React.createElement("div", { ref: endRef }),
+          showJumpToLatest
+            ? React.createElement(
+                "button",
+                {
+                  id: "chat-performance-jump",
+                  type: "button",
+                  onClick: jumpToLatest,
+                  style: { position: "fixed", top: 0 },
+                },
+                "Jump to latest",
+              )
+            : null,
+        );
+      }
       const render = () =>
         root.render(
           React.createElement(
             React.Profiler,
             { id: "chat", onRender: recordCommit },
-            React.createElement(AcpChatPresentation, props(current)),
+            follow
+              ? React.createElement(FollowHarness, { page: current })
+              : React.createElement(AcpChatPresentation, props(current)),
           ),
         );
       window.chatPerf = {
@@ -209,6 +250,35 @@
           scroll.scrollTop = 0;
           scroll.dispatchEvent(new Event("scroll"));
           return document.querySelectorAll(".acp-turn").length;
+        },
+        scrollToMiddle() {
+          scroll.scrollTop = scroll.scrollHeight / 2;
+          scroll.dispatchEvent(new Event("scroll"));
+        },
+        visibleAnchor() {
+          const top = scroll.getBoundingClientRect().top;
+          const turn = [...document.querySelectorAll(".acp-turn")].find(
+            (element) => element.getBoundingClientRect().bottom > top + 16,
+          );
+          return turn
+            ? {
+                id: turn.dataset.turnId,
+                top: turn.getBoundingClientRect().top - top,
+              }
+            : null;
+        },
+        prepend(count) {
+          const older = Array.from({ length: count }, (_, index) =>
+            makeTurn(index - count, "cap"),
+          );
+          current = {
+            ...current,
+            turns: [...older, ...current.turns],
+          };
+          flushSync(render);
+        },
+        distanceFromEnd() {
+          return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
         },
       };
     </script>
