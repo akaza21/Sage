@@ -29,6 +29,10 @@ impl PiRuntime {
         self.terminal_compaction(ItemLifecycle::Cancelled)
     }
 
+    pub(super) fn fail_compaction(&mut self) -> Result<AdapterEvent, AdapterRuntimeError> {
+        self.terminal_compaction(ItemLifecycle::Failed)
+    }
+
     fn terminal_compaction(
         &mut self,
         lifecycle: ItemLifecycle,

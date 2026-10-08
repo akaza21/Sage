@@ -85,6 +85,8 @@ impl PiTranslator {
             terminal: None,
             tools: BTreeMap::new(),
             compaction_active: false,
+            thought_active: false,
+            settlement_outcome: super::TerminalOutcome::Completed,
         });
         Ok(vec![outbound])
     }

@@ -100,9 +100,15 @@ pub enum AdapterOutput {
     },
     TextDelta {
         text: String,
+        redacted_tail: bool,
     },
     ThoughtDelta {
         text: String,
+        redacted_tail: bool,
+    },
+    ThoughtStarted,
+    ThoughtCompleted {
+        outcome: TerminalOutcome,
     },
     TextCompleted {
         external_id: Option<String>,
@@ -110,6 +116,7 @@ pub enum AdapterOutput {
     CompactionStarted,
     CompactionCompleted,
     CompactionInterrupted,
+    CompactionFailed,
     ToolStarted {
         external_id: String,
         name: String,
@@ -132,14 +139,16 @@ pub enum AdapterOutput {
         input_tokens: u64,
         output_tokens: u64,
     },
-    PermissionDeclined {
-        external_id: Option<String>,
+    PermissionRequested {
+        external_id: String,
+    },
+    AuthorityBlocked {
+        external_id: String,
         tool: String,
     },
     Error {
         code: &'static str,
     },
-    AbortRequired,
     Unsupported {
         kind: String,
     },

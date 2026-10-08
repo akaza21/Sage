@@ -26,6 +26,7 @@ enum EventPhase {
     PromptIssued,
     PromptAccepted,
     AgentRunning,
+    AgentEnded,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +70,8 @@ struct ActiveTurn {
     terminal: Option<TerminalOutcome>,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
+    thought_active: bool,
+    settlement_outcome: TerminalOutcome,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +103,12 @@ pub(crate) struct PendingUiRequest {
 }
 
 impl PiTranslator {
+    pub(crate) fn permission_waiting_for(&self, id: &str) -> bool {
+        self.pending_ui
+            .as_ref()
+            .is_some_and(|request| request.id == id)
+    }
+
     pub(crate) fn take_pending_ui(&mut self) -> Option<PendingUiRequest> {
         self.pending_ui.take()
     }

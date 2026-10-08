@@ -1,11 +1,13 @@
 use serde_json::Value;
 
+mod permission;
 mod tool_result;
+mod turn;
 use tool_result::{tool_images, tool_text};
 
 use super::{ActiveTurn, EventPhase, PiTranslator, TOOLS_PER_TURN};
 use crate::acp::bindings::pi::{
-    decode::{ITEM_BYTES, bounded_string, external_id, redact_structured_text},
+    decode::{ITEM_BYTES, bounded_delta, bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
 };
 
@@ -15,7 +17,7 @@ impl PiTranslator {
         kind: &str,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        if kind != "agent_end"
+        if kind != "agent_settled"
             && self
                 .active
                 .as_ref()
@@ -23,13 +25,18 @@ impl PiTranslator {
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
-        if kind != "agent_end" && self.active.as_ref().is_some_and(|turn| turn.denial_latched) {
+        if !matches!(kind, "agent_end" | "agent_settled")
+            && self.active.as_ref().is_some_and(|turn| turn.denial_latched)
+        {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         match kind {
             "agent_start" => {
                 let turn = self.live_turn_any_phase()?;
-                if turn.event_phase != EventPhase::PromptAccepted {
+                if !matches!(
+                    turn.event_phase,
+                    EventPhase::PromptAccepted | EventPhase::AgentEnded
+                ) {
                     return Err(AdapterError::EventSequence);
                 }
                 turn.event_phase = EventPhase::AgentRunning;
@@ -37,27 +44,13 @@ impl PiTranslator {
                     turn_key: turn.turn_key.clone(),
                 }])
             }
-            "agent_end" => {
-                let active = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
-                if active.terminal.is_none() && active.event_phase != EventPhase::AgentRunning {
-                    return Err(AdapterError::EventSequence);
-                }
-                let outcome = if active.abort_requested || active.denial_latched {
-                    TerminalOutcome::Interrupted
-                } else {
-                    TerminalOutcome::Completed
-                };
-                let is_duplicate = active.terminal == Some(outcome);
-                let mut output = if is_duplicate {
-                    Vec::new()
-                } else {
-                    parse_usage(value).into_iter().collect()
-                };
-                output.extend(self.finish_turn(outcome)?);
-                Ok(output)
-            }
+            "agent_end" => self.agent_end(value),
+            "agent_settled" => self.agent_settled(),
             "message_start" => {
                 self.live_turn()?;
+                if !assistant_message(value) {
+                    return Ok(Vec::new());
+                }
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,
                 }])
@@ -67,8 +60,21 @@ impl PiTranslator {
                 let event = value
                     .get("assistantMessageEvent")
                     .or_else(|| value.get("assistant_message_event"));
+                match event
+                    .and_then(|event| event.get("type"))
+                    .and_then(Value::as_str)
+                {
+                    Some("thinking_start") => {
+                        self.live_turn()?.thought_active = true;
+                        return Ok(vec![AdapterOutput::ThoughtStarted]);
+                    }
+                    Some("thinking_end") => {
+                        return Ok(self.complete_thought(TerminalOutcome::Completed));
+                    }
+                    _ => {}
+                }
                 let delta = event.and_then(|event| event.get("delta"));
-                let Some(text) = bounded_string(delta, ITEM_BYTES)? else {
+                let Some((text, redacted_tail)) = bounded_delta(delta, ITEM_BYTES)? else {
                     return Ok(vec![AdapterOutput::Unsupported {
                         kind: "message_update_without_text_delta".into(),
                     }]);
@@ -77,8 +83,17 @@ impl PiTranslator {
                     .and_then(|event| event.get("type"))
                     .and_then(Value::as_str)
                 {
-                    Some("thinking_delta") => Ok(vec![AdapterOutput::ThoughtDelta { text }]),
-                    Some("text_delta") => Ok(vec![AdapterOutput::TextDelta { text }]),
+                    Some("thinking_delta") => {
+                        self.live_turn()?.thought_active = true;
+                        Ok(vec![AdapterOutput::ThoughtDelta {
+                            text,
+                            redacted_tail,
+                        }])
+                    }
+                    Some("text_delta") => Ok(vec![AdapterOutput::TextDelta {
+                        text,
+                        redacted_tail,
+                    }]),
                     _ => Ok(vec![AdapterOutput::Unsupported {
                         kind: "message_update_non_text_delta".into(),
                     }]),
@@ -86,75 +101,60 @@ impl PiTranslator {
             }
             "message_end" => {
                 self.live_turn()?;
-                Ok(vec![AdapterOutput::TextCompleted {
+                if !assistant_message(value) {
+                    return Ok(Vec::new());
+                }
+                let outcome = match value
+                    .get("message")
+                    .and_then(|message| message.get("stopReason"))
+                    .and_then(Value::as_str)
+                {
+                    Some("aborted") => TerminalOutcome::Interrupted,
+                    Some("error") => TerminalOutcome::Failed,
+                    _ => TerminalOutcome::Completed,
+                };
+                let mut output = self.complete_thought(outcome);
+                output.push(AdapterOutput::TextCompleted {
                     external_id: message_id(value)?,
-                }])
+                });
+                Ok(output)
             }
             "tool_execution_start" => self.tool_start(value),
             "tool_execution_update" => self.tool_update(value),
             "tool_execution_end" => self.tool_end(value),
-            "auto_compaction_start" => {
-                let turn = self.live_turn()?;
+            "compaction_start" => {
+                let turn = self.session_turn()?;
                 if turn.compaction_active {
                     return Ok(vec![AdapterOutput::DuplicateIgnored]);
                 }
                 turn.compaction_active = true;
                 Ok(vec![AdapterOutput::CompactionStarted])
             }
-            "auto_compaction_end" => {
-                let turn = self.live_turn()?;
+            "compaction_end" => {
+                let turn = self.session_turn()?;
+                let aborted = value.get("aborted").and_then(Value::as_bool) == Some(true);
+                let failed = value.get("errorMessage").is_some()
+                    || !value.get("result").is_some_and(Value::is_object);
+                let mut output = Vec::new();
                 if !turn.compaction_active {
-                    return Ok(vec![AdapterOutput::LateIgnored]);
+                    if !aborted && !failed {
+                        return Ok(vec![AdapterOutput::LateIgnored]);
+                    }
+                    output.push(AdapterOutput::CompactionStarted);
                 }
                 turn.compaction_active = false;
-                Ok(vec![AdapterOutput::CompactionCompleted])
+                output.push(if aborted {
+                    AdapterOutput::CompactionInterrupted
+                } else if failed {
+                    AdapterOutput::CompactionFailed
+                } else {
+                    AdapterOutput::CompactionCompleted
+                });
+                Ok(output)
             }
-            "turn_start" | "turn_end" | "auto_retry_start" | "auto_retry_end" => {
-                self.live_turn()?;
-                Ok(vec![AdapterOutput::Unsupported {
-                    kind: kind.to_owned(),
-                }])
-            }
-            "extension_ui_request" | "permission_request" => {
-                self.latch_denial()?;
-                let id = external_id(
-                    value
-                        .get("id")
-                        .or_else(|| value.get("requestId"))
-                        .or_else(|| value.get("request_id")),
-                )?;
-                let method = value
-                    .get("method")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned();
-                let options = value
-                    .get("options")
-                    .and_then(Value::as_array)
-                    .map(|options| {
-                        options
-                            .iter()
-                            .filter_map(Value::as_str)
-                            .filter(|option| option.len() <= 64)
-                            .take(8)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if let Some(id) = id.clone() {
-                    self.remember_pending_ui(super::PendingUiRequest {
-                        id,
-                        method,
-                        options,
-                    });
-                }
-                Ok(vec![AdapterOutput::PermissionDeclined {
-                    external_id: id,
-                    tool: "extension request".into(),
-                }])
-            }
+            "extension_ui_request" => self.extension_request(value),
             _ => {
-                self.live_turn()?;
+                self.session_turn()?;
                 Ok(vec![AdapterOutput::Unsupported {
                     kind: redact_structured_text(kind),
                 }])
@@ -178,11 +178,6 @@ impl PiTranslator {
         Ok(turn)
     }
 
-    fn latch_denial(&mut self) -> Result<(), AdapterError> {
-        self.live_turn()?.denial_latched = true;
-        Ok(())
-    }
-
     pub(super) fn finish_turn(
         &mut self,
         incoming: TerminalOutcome,
@@ -194,6 +189,10 @@ impl PiTranslator {
             None => {
                 turn.terminal = Some(incoming);
                 let mut events = Vec::new();
+                if turn.thought_active {
+                    turn.thought_active = false;
+                    events.push(AdapterOutput::ThoughtCompleted { outcome: incoming });
+                }
                 if turn.compaction_active {
                     turn.compaction_active = false;
                     events.push(AdapterOutput::CompactionInterrupted);
@@ -207,6 +206,16 @@ impl PiTranslator {
         }
     }
 
+    fn complete_thought(&mut self, outcome: TerminalOutcome) -> Vec<AdapterOutput> {
+        if let Some(turn) = self.active.as_mut()
+            && std::mem::take(&mut turn.thought_active)
+        {
+            vec![AdapterOutput::ThoughtCompleted { outcome }]
+        } else {
+            Vec::new()
+        }
+    }
+
     fn tool_start(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
         let id = required_tool_id(value)?;
         let name = bounded_string(
@@ -216,13 +225,8 @@ impl PiTranslator {
         .ok_or(AdapterError::Malformed)?;
         if name != "read" {
             self.live_turn()?.denial_latched = true;
-            self.remember_pending_ui(super::PendingUiRequest {
-                id: id.clone(),
-                method: String::new(),
-                options: Vec::new(),
-            });
-            return Ok(vec![AdapterOutput::PermissionDeclined {
-                external_id: Some(id),
+            return Ok(vec![AdapterOutput::AuthorityBlocked {
+                external_id: id,
                 tool: name,
             }]);
         }
@@ -343,18 +347,10 @@ fn message_id(value: &Value) -> Result<Option<String>, AdapterError> {
     )
 }
 
-fn parse_usage(value: &Value) -> Option<AdapterOutput> {
-    let usage = value.get("usage")?;
-    Some(AdapterOutput::Usage {
-        input_tokens: usage
-            .get("inputTokens")
-            .or_else(|| usage.get("input_tokens"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-        output_tokens: usage
-            .get("outputTokens")
-            .or_else(|| usage.get("output_tokens"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
-    })
+fn assistant_message(value: &Value) -> bool {
+    value
+        .get("message")
+        .and_then(|message| message.get("role"))
+        .and_then(Value::as_str)
+        .is_none_or(|role| role == "assistant")
 }

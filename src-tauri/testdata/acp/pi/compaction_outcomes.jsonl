@@ -1,0 +1,6 @@
+{"type":"compaction_start","reason":"threshold"}
+{"type":"compaction_end","reason":"threshold","result":{"summary":"Earlier context","firstKeptEntryId":"entry-1","tokensBefore":120000},"aborted":false,"willRetry":false}
+{"type":"compaction_start","reason":"overflow"}
+{"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false}
+{"type":"compaction_start","reason":"overflow"}
+{"type":"compaction_end","reason":"overflow","aborted":false,"willRetry":false,"errorMessage":"Compaction failed: unavailable"}

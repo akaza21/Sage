@@ -75,12 +75,19 @@ pub(super) fn bounded_string(
     value: Option<&Value>,
     limit: usize,
 ) -> Result<Option<String>, AdapterError> {
+    Ok(bounded_delta(value, limit)?.map(|(text, _)| text))
+}
+
+pub(super) fn bounded_delta(
+    value: Option<&Value>,
+    limit: usize,
+) -> Result<Option<(String, bool)>, AdapterError> {
     let Some(value) = value else { return Ok(None) };
     let text = value.as_str().ok_or(AdapterError::Malformed)?;
     if text.len() > limit || text.contains('\0') {
         return Err(AdapterError::Limit("text bytes"));
     }
-    Ok(Some(redact_structured_text(text)))
+    Ok(Some(redact_with_tail(text)))
 }
 
 pub(super) fn external_id(value: Option<&Value>) -> Result<Option<String>, AdapterError> {
@@ -109,8 +116,14 @@ pub(super) fn validate_opaque_text(text: &str, limit: usize) -> Result<(), Adapt
 }
 
 pub(super) fn redact_structured_text(text: &str) -> String {
+    redact_with_tail(text).0
+}
+
+pub(super) fn redact_with_tail(text: &str) -> (String, bool) {
     let mut redact_next = false;
-    text.split_inclusive(char::is_whitespace)
+    let mut redacted_tail = false;
+    let text = text
+        .split_inclusive(char::is_whitespace)
         .map(|part| {
             let token = part.trim_end_matches(char::is_whitespace);
             let suffix = &part[token.len()..];
@@ -122,13 +135,15 @@ pub(super) fn redact_structured_text(text: &str) -> String {
             });
             let sensitive = redact_next || is_sensitive_token(bare);
             redact_next = bare.eq_ignore_ascii_case("bearer");
+            redacted_tail = sensitive && !redact_next && suffix.is_empty();
             if sensitive && !redact_next {
                 format!("_{suffix}")
             } else {
                 part.to_owned()
             }
         })
-        .collect()
+        .collect();
+    (text, redacted_tail)
 }
 
 fn is_sensitive_token(token: &str) -> bool {

@@ -1,5 +1,7 @@
 use serde_json::{Value, json};
 
+mod regressions;
+
 use super::*;
 use crate::acp::{
     bindings::{
@@ -1019,16 +1021,17 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(cancel.token().is_control() && cancel.token().is_cancel());
     assert_eq!(request(&cancel)["type"], "abort");
     deliver(&mut runtime, cancel);
-    let terminal = runtime
+    let ended = runtime
         .ingest(
-            &frame(json!({"type":"agent_end","usage":{"inputTokens":2,"outputTokens":1}})),
+            &frame(json!({"type":"agent_end","messages":[{"role":"assistant","content":[],"stopReason":"aborted","usage":{"input":2,"output":1}}],"willRetry":false})),
             &Mapper,
         )
-        .expect("terminal");
-    assert!(matches!(
-        terminal.events(),
-        [AdapterEvent::Usage { .. }, AdapterEvent::Turn { .. }]
-    ));
+        .expect("agent end");
+    assert!(matches!(ended.events(), [AdapterEvent::Usage { .. }]));
+    let terminal = runtime
+        .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+        .expect("settled");
+    assert!(matches!(terminal.events(), [AdapterEvent::Turn { .. }]));
 }
 
 #[test]
@@ -1115,7 +1118,8 @@ fn durable_permission_id_correlates_to_pi_request_id() {
     let batch = runtime
         .ingest(
             &frame(json!({
-                "type":"permission_request","requestId":"pi-correlation"
+                "type":"extension_ui_request","id":"pi-correlation","method":"confirm",
+                "title":"Allow tool?","message":"Allow write?"
             })),
             &Mapper,
         )

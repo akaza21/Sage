@@ -10,7 +10,8 @@ use crate::acp::{
 };
 
 use super::super::PiRuntime;
-use crate::acp::bindings::pi::{ModelSummary, decode::redact_structured_text};
+use super::stream::append_snapshot;
+use crate::acp::bindings::pi::ModelSummary;
 
 impl PiRuntime {
     pub(super) fn identity(
@@ -107,54 +108,30 @@ impl PiRuntime {
         }
         turn.text_id = Some(id.clone());
         turn.text_snapshot = Some(String::new());
+        turn.text_redacted_tail = false;
         Ok(id)
     }
 
     pub(super) fn append_text(
         &mut self,
         delta: String,
+        redacted_tail: bool,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         let turn = self
             .active_turn
             .as_mut()
             .ok_or(AdapterRuntimeError::Operation)?;
         let id = turn.text_id.clone().ok_or(AdapterRuntimeError::Operation)?;
-        let current = turn
-            .text_snapshot
-            .as_ref()
-            .ok_or(AdapterRuntimeError::Operation)?;
-        let length = current
-            .len()
-            .checked_add(delta.len())
-            .ok_or(AdapterRuntimeError::BatchBytes)?;
-        if length > LIMITS.wire.normalized_item_bytes as usize
-            || length > LIMITS.wire.item_bytes_per_turn as usize
-        {
-            turn.text_snapshot = None;
+        let snapshot = append_snapshot(
+            &mut turn.text_snapshot,
+            &mut turn.text_redacted_tail,
+            &delta,
+            redacted_tail,
+        )
+        .inspect_err(|_| {
             self.poisoned = true;
-            return Err(AdapterRuntimeError::BatchBytes);
-        }
-        let mut next = String::new();
-        if next.try_reserve_exact(length).is_err() {
-            turn.text_snapshot = None;
-            self.poisoned = true;
-            return Err(AdapterRuntimeError::BatchBytes);
-        }
-        next.push_str(current);
-        next.push_str(&delta);
-        if current.ends_with('_') {
-            remove_attached_continuation(current.len(), &mut next);
-        }
-        let next = redact_structured_text(&next);
-        if next.len() > LIMITS.wire.normalized_item_bytes as usize
-            || next.len() > LIMITS.wire.item_bytes_per_turn as usize
-        {
-            turn.text_snapshot = None;
-            self.poisoned = true;
-            return Err(AdapterRuntimeError::BatchBytes);
-        }
-        turn.text_snapshot = Some(next.clone());
-        Ok((id, next))
+        })?;
+        Ok((id, snapshot))
     }
 
     pub(super) fn complete_text(
@@ -182,6 +159,7 @@ impl PiRuntime {
     pub(super) fn append_thought(
         &mut self,
         delta: String,
+        redacted_tail: bool,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         if self
             .active_turn
@@ -197,6 +175,7 @@ impl PiRuntime {
                 .ok_or(AdapterRuntimeError::Operation)?;
             turn.thought_id = Some(id);
             turn.thought_snapshot = Some(String::new());
+            turn.thought_redacted_tail = false;
         }
         let turn = self
             .active_turn
@@ -206,23 +185,16 @@ impl PiRuntime {
             .thought_id
             .clone()
             .ok_or(AdapterRuntimeError::Operation)?;
-        let current = turn
-            .thought_snapshot
-            .as_ref()
-            .ok_or(AdapterRuntimeError::Operation)?;
-        let length = current
-            .len()
-            .checked_add(delta.len())
-            .filter(|size| *size <= LIMITS.wire.normalized_item_bytes as usize)
-            .ok_or(AdapterRuntimeError::BatchBytes)?;
-        let mut next = String::new();
-        next.try_reserve_exact(length)
-            .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-        next.push_str(current);
-        next.push_str(&delta);
-        let next = redact_structured_text(&next);
-        turn.thought_snapshot = Some(next.clone());
-        Ok((id, next))
+        let snapshot = append_snapshot(
+            &mut turn.thought_snapshot,
+            &mut turn.thought_redacted_tail,
+            &delta,
+            redacted_tail,
+        )
+        .inspect_err(|_| {
+            self.poisoned = true;
+        })?;
+        Ok((id, snapshot))
     }
 
     pub(super) fn update_tool(
@@ -248,18 +220,6 @@ impl PiRuntime {
         self.cache_tool(external_id.to_owned(), payload.clone(), terminal)?;
         Ok(payload)
     }
-}
-
-fn remove_attached_continuation(start: usize, joined: &mut String) {
-    let suffix = &joined[start..];
-    if suffix.starts_with(char::is_whitespace) {
-        return;
-    }
-    let end = suffix
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
-        .unwrap_or(suffix.len());
-    joined.replace_range(start..start + end, "");
 }
 
 pub(super) fn model_event(

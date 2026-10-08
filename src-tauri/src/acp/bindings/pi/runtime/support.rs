@@ -11,6 +11,7 @@ use crate::acp::{
 use super::{DenyIntent, DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome};
 
+mod authority;
 mod capabilities;
 mod compaction;
 mod config;
@@ -20,6 +21,8 @@ mod identity;
 mod image;
 mod permission;
 mod requests;
+mod stream;
+mod thought;
 mod tool_cache;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
@@ -230,15 +233,21 @@ impl PiRuntime {
                     None,
                 )
             }
-            AdapterOutput::TextDelta { text } => {
-                let (id, snapshot) = self.append_text(text)?;
+            AdapterOutput::TextDelta {
+                text,
+                redacted_tail,
+            } => {
+                let (id, snapshot) = self.append_text(text, redacted_tail)?;
                 (
                     Some(self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot))?),
                     None,
                 )
             }
-            AdapterOutput::ThoughtDelta { text } => {
-                let (id, snapshot) = self.append_thought(text)?;
+            AdapterOutput::ThoughtDelta {
+                text,
+                redacted_tail,
+            } => {
+                let (id, snapshot) = self.append_thought(text, redacted_tail)?;
                 (
                     Some(
                         self.item(
@@ -254,6 +263,8 @@ impl PiRuntime {
                     None,
                 )
             }
+            AdapterOutput::ThoughtStarted => (Some(self.start_thought()?), None),
+            AdapterOutput::ThoughtCompleted { outcome } => (self.complete_thought(outcome)?, None),
             AdapterOutput::TextCompleted { external_id } => {
                 let (id, snapshot) = self.complete_text(external_id)?;
                 (
@@ -264,6 +275,7 @@ impl PiRuntime {
             AdapterOutput::CompactionStarted => (Some(self.start_compaction()?), None),
             AdapterOutput::CompactionCompleted => (Some(self.finish_compaction()?), None),
             AdapterOutput::CompactionInterrupted => (Some(self.interrupt_compaction()?), None),
+            AdapterOutput::CompactionFailed => (Some(self.fail_compaction()?), None),
             AdapterOutput::ToolStarted {
                 external_id,
                 name,
@@ -327,11 +339,8 @@ impl PiRuntime {
                 }),
                 None,
             ),
-            AdapterOutput::PermissionDeclined { external_id, tool } => {
-                let id = match external_id {
-                    Some(id) => external("piPermissionId", id)?,
-                    None => self.next_local_item("permission")?,
-                };
+            AdapterOutput::PermissionRequested { external_id } => {
+                let id = external("piPermissionId", external_id)?;
                 let turn_id = self.turn_identity()?;
                 let item_id = self.identity(
                     id.clone(),
@@ -352,9 +361,7 @@ impl PiRuntime {
                             category: ToolCategory::Other,
                             summary: SafeText::new(
                                 "permissionSummary",
-                                format!(
-                                    "Pi requested authority for {tool}; awaiting your decision"
-                                ),
+                                "Pi extension gate is awaiting your decision",
                             )
                             .map_err(|_| AdapterRuntimeError::Frame)?,
                             offered_option_kinds: None,
@@ -364,10 +371,12 @@ impl PiRuntime {
                     None,
                 )
             }
+            AdapterOutput::AuthorityBlocked { external_id, tool } => {
+                self.block_authority(external_id, tool, resources)?
+            }
             AdapterOutput::Image { media_type, data } => {
                 (Some(self.image_event(media_type, data)?), None)
             }
-            AdapterOutput::AbortRequired => (None, self.mandatory_abort()?),
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {
                     code: SafeText::new("errorCode", code)

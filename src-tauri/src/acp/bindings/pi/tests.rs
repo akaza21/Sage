@@ -205,9 +205,7 @@ fn prompt_acceptance_does_not_complete_turn_and_fixture_orders_items() {
             ..
         }
     )));
-    let duplicate_terminal = translator
-        .ingest(br#"{"type":"agent_end","usage":{"inputTokens":12,"outputTokens":7}}"#)
-        .unwrap();
+    let duplicate_terminal = translator.ingest(br#"{"type":"agent_settled"}"#).unwrap();
     assert_eq!(duplicate_terminal, vec![AdapterOutput::DuplicateIgnored]);
     let late = translator
         .ingest(br#"{"type":"message_update","delta":"late"}"#)
@@ -216,7 +214,7 @@ fn prompt_acceptance_does_not_complete_turn_and_fixture_orders_items() {
 }
 
 #[test]
-fn write_or_shell_tool_waits_for_a_later_permission_decision_without_normalizing_arguments() {
+fn write_or_shell_observation_blocks_without_normalizing_arguments() {
     let mut translator = admitted_translator(2);
     accept_prompt(&mut translator, "turn-2");
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
@@ -227,8 +225,8 @@ fn write_or_shell_tool_waits_for_a_later_permission_decision_without_normalizing
         .unwrap();
     assert_eq!(
         output,
-        vec![AdapterOutput::PermissionDeclined {
-            external_id: Some("tool-write".into()),
+        vec![AdapterOutput::AuthorityBlocked {
+            external_id: "tool-write".into(),
             tool: "bash".into()
         }]
     );
@@ -272,25 +270,25 @@ fn pi_compaction_start_and_end_correlate_one_notice_lifecycle() {
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
     assert_eq!(
         translator
-            .ingest(br#"{"type":"auto_compaction_start"}"#)
+            .ingest(br#"{"type":"compaction_start","reason":"threshold"}"#)
             .unwrap(),
         vec![AdapterOutput::CompactionStarted]
     );
     assert_eq!(
         translator
-            .ingest(br#"{"type":"auto_compaction_start"}"#)
+            .ingest(br#"{"type":"compaction_start","reason":"threshold"}"#)
             .unwrap(),
         vec![AdapterOutput::DuplicateIgnored]
     );
     assert_eq!(
         translator
-            .ingest(br#"{"type":"auto_compaction_end"}"#)
+            .ingest(br#"{"type":"compaction_end","reason":"threshold","result":{"summary":"Earlier context","firstKeptEntryId":"entry-1","tokensBefore":1000},"aborted":false,"willRetry":false}"#)
             .unwrap(),
         vec![AdapterOutput::CompactionCompleted]
     );
     assert_eq!(
         translator
-            .ingest(br#"{"type":"auto_compaction_end"}"#)
+            .ingest(br#"{"type":"compaction_end","reason":"threshold","result":{"summary":"Earlier context","firstKeptEntryId":"entry-1","tokensBefore":1000},"aborted":false,"willRetry":false}"#)
             .unwrap(),
         vec![AdapterOutput::LateIgnored]
     );
@@ -302,9 +300,12 @@ fn pi_turn_end_without_compaction_end_interrupts_the_notice_first() {
     accept_prompt(&mut translator, "turn-compaction");
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
     translator
-        .ingest(br#"{"type":"auto_compaction_start"}"#)
+        .ingest(br#"{"type":"compaction_start","reason":"threshold"}"#)
         .unwrap();
-    let events = translator.ingest(br#"{"type":"agent_end"}"#).unwrap();
+    translator
+        .ingest(br#"{"type":"agent_end","messages":[],"willRetry":false}"#)
+        .unwrap();
+    let events = translator.ingest(br#"{"type":"agent_settled"}"#).unwrap();
     assert!(matches!(
         events.as_slice(),
         [
@@ -326,7 +327,10 @@ fn abort_capacity_failure_does_not_mark_an_unsent_interrupt() {
         translator.begin(Operation::Abort),
         Err(AdapterError::CommandCapacity)
     );
-    let terminal = translator.ingest(br#"{"type":"agent_end"}"#).unwrap();
+    translator
+        .ingest(br#"{"type":"agent_end","messages":[],"willRetry":false}"#)
+        .unwrap();
+    let terminal = translator.ingest(br#"{"type":"agent_settled"}"#).unwrap();
     assert!(matches!(
         terminal.as_slice(),
         [AdapterOutput::TurnTerminal {
@@ -349,7 +353,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         .unwrap();
     assert!(matches!(
         denied.as_slice(),
-        [AdapterOutput::PermissionDeclined { .. }]
+        [AdapterOutput::AuthorityBlocked { .. }]
     ));
     assert_eq!(
         translator.begin(Operation::Abort),
@@ -359,9 +363,12 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         translator.ingest(br#"{"type":"message_update","delta":"blocked"}"#),
         Ok(vec![AdapterOutput::LateIgnored])
     );
+    translator
+        .ingest(br#"{"type":"agent_end","messages":[],"willRetry":false}"#)
+        .unwrap();
     assert!(matches!(
         translator
-            .ingest(br#"{"type":"agent_end"}"#)
+            .ingest(br#"{"type":"agent_settled"}"#)
             .unwrap()
             .as_slice(),
         [AdapterOutput::TurnTerminal {
@@ -374,7 +381,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
     accept_prompt(&mut translator, "turn-denied-response");
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
     translator
-        .ingest(br#"{"type":"permission_request"}"#)
+        .ingest(br#"{"type":"extension_ui_request","id":"gate-1","method":"confirm","title":"Allow tool?","message":"Allow write?"}"#)
         .unwrap();
     let abort = translator.begin(Operation::Abort).unwrap().remove(0);
     assert_eq!(
@@ -426,6 +433,7 @@ fn id_less_events_require_the_exact_prompt_start_terminal_grammar() {
         Err(AdapterError::EventSequence)
     );
     translator.ingest(br#"{"type":"agent_end"}"#).unwrap();
+    translator.ingest(br#"{"type":"agent_settled"}"#).unwrap();
 
     accept_prompt(&mut translator, "turn-new");
     assert_eq!(
@@ -433,8 +441,11 @@ fn id_less_events_require_the_exact_prompt_start_terminal_grammar() {
         Err(AdapterError::EventSequence)
     );
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
+    translator
+        .ingest(br#"{"type":"agent_end","messages":[],"willRetry":false}"#)
+        .unwrap();
     assert!(matches!(
-        translator.ingest(br#"{"type":"agent_end"}"#).unwrap().as_slice(),
+        translator.ingest(br#"{"type":"agent_settled"}"#).unwrap().as_slice(),
         [AdapterOutput::TurnTerminal { turn_key, .. }] if turn_key == "turn-new"
     ));
 }

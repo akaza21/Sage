@@ -16,7 +16,7 @@ impl PiRuntime {
             .deny
             .as_ref()
             .is_some_and(|intent| intent.request_id.as_str() == request_id.as_str());
-        if !pending {
+        if !pending || !self.translator.permission_waiting_for(request_id.as_str()) {
             return Err(AdapterRuntimeError::LaterPermissionMiss);
         }
         let reply = match decision {
