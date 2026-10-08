@@ -84,7 +84,7 @@ describe("turn terminal reason", () => {
     });
 
     expect(within(header()).getByText("Protocol error")).toBeTruthy();
-    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const failure = screen.getByRole("group", { name: "Turn failed" });
     const detail = within(failure).getByText(
       "Unsupported sessionUpdate variant",
     );
@@ -99,7 +99,7 @@ describe("turn terminal reason", () => {
     });
 
     expect(within(header()).getByText("Not signed in")).toBeTruthy();
-    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const failure = screen.getByRole("group", { name: "Turn failed" });
     const remediation = within(failure).getByText(
       "Sign in by running claude auth login.",
     );
@@ -114,7 +114,7 @@ describe("turn terminal reason", () => {
       remediation: "Sign in with your Claude account",
     });
 
-    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const failure = screen.getByRole("group", { name: "Turn failed" });
     const message = within(failure).getByText("authentication required");
     const remediation = within(failure).getByText(
       "Sign in with your Claude account",

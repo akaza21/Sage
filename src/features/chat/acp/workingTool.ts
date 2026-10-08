@@ -3,7 +3,7 @@ import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 
 export type WorkingToolItem = Extract<AcpItem, { kind: "toolCall" }>;
 
-export function isActiveTool(item: AcpItem): item is WorkingToolItem {
+function isActiveTool(item: AcpItem): item is WorkingToolItem {
   return item.kind === "toolCall" && !terminalToolStates.has(item.toolState);
 }
 

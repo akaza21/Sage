@@ -19,6 +19,7 @@ const SCENARIO_META: Record<
   "agent-dual": { mode: "agent", resource: "empty" },
   "agent-long": { mode: "agent", resource: "empty" },
   "agent-activity-family": { mode: "agent", resource: "empty" },
+  "agent-thinking-live": { mode: "agent", resource: "empty" },
   "agent-declared-test": { mode: "agent", resource: "empty" },
   "agent-command-rollup": { mode: "agent", resource: "empty" },
   "agent-image": { mode: "agent", resource: "empty" },

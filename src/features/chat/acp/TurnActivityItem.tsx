@@ -7,13 +7,14 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
+import { visibleInlineText } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
 import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
-import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
+import { terminalItemLifecycles } from "./statusSemantics";
 import { isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
@@ -42,18 +43,16 @@ export const ItemView = memo(
     switch (item.kind) {
       case "text": {
         const timestamp = chatTimestamp(item.createdAt);
+        const partial =
+          item.payload.role === "assistant" &&
+          (turnState === "interrupted" || turnState === "cancelled") &&
+          item.lifecycle !== "completed";
         return (
           <article
             className={`acp-message acp-message--${item.payload.role}`}
             data-item-id={item.id}
             data-message-role={item.payload.role}
-            data-answer-state={
-              item.payload.role === "assistant" &&
-              turnState === "interrupted" &&
-              item.lifecycle !== "completed"
-                ? "partial"
-                : undefined
-            }
+            data-answer-state={partial ? "partial" : undefined}
           >
             <header className="acp-message__meta">
               {item.payload.role === "assistant" ? (
@@ -79,8 +78,7 @@ export const ItemView = memo(
             <ChatMarkdown
               text={item.payload.text}
               streaming={
-                turnState !== "interrupted" &&
-                (item.lifecycle === "started" || item.lifecycle === "streaming")
+                item.lifecycle === "started" || item.lifecycle === "streaming"
               }
               fileReferenceOwner={
                 item.payload.role === "assistant"
@@ -88,18 +86,16 @@ export const ItemView = memo(
                   : undefined
               }
             />
-            {item.payload.role === "assistant" &&
-            turnState === "interrupted" &&
-            item.lifecycle !== "completed" ? (
+            {partial ? (
               <p className="acp-message__partial">
-                Interrupted · partial answer
+                {turnState === "cancelled" ? "Cancelled" : "Interrupted"} ·
+                partial answer
               </p>
             ) : null}
           </article>
         );
       }
       case "thoughtSummary":
-        if (turnState && terminalTurnStates.has(turnState)) return null;
         return <TurnActivityItem item={item} />;
       case "plan":
       case "compactionNotice":
@@ -292,13 +288,13 @@ export function TurnActivityItem({
     case "thoughtSummary":
       if (terminalItemLifecycles.has(item.lifecycle)) return null;
       return (
-        <p
-          className="acp-thought"
-          data-activity-kind="thought"
-          data-activity-state="inProgress"
-        >
-          {item.payload.summary.trim().split(/\r?\n/, 1)[0]?.slice(0, 256) ||
-            "Thinking"}
+        <p className="acp-thought" data-activity-kind="thought">
+          {visibleInlineText(
+            item.payload.summary
+              .split("\n")
+              .reverse()
+              .find((line) => line.trim()) ?? "",
+          ).slice(0, 256) || "Thinking"}
         </p>
       );
     case "plan":

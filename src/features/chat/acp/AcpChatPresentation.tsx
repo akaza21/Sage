@@ -138,7 +138,7 @@ const Turn = memo(
           !attachmentIds.has(item.id) &&
           !(
             item.kind === "thoughtSummary" &&
-            (terminal || terminalItemLifecycles.has(item.lifecycle))
+            terminalItemLifecycles.has(item.lifecycle)
           ) &&
           !(item.kind === "text" && item.payload.role === "user"),
       )

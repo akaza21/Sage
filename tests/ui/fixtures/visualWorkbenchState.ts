@@ -103,8 +103,10 @@ export function applyVisualWorkbenchState(
   const editorDoc = editorDocument();
   const emptyOwnership = {
     composerText: "",
+    attachedContext: [],
     sending: false,
     error: null,
+    errorKind: null,
     requestGeneration: 0,
   };
   const chatUiById = Object.fromEntries(

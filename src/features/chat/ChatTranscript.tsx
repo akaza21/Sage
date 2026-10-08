@@ -3,7 +3,11 @@ import type { RefObject } from "react";
 import type { AcpChatPage } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
-import { AcpChatProjection, type OpenResourceTarget } from "./acp";
+import {
+  AcpChatProjection,
+  latestRetryPrompt,
+  type OpenResourceTarget,
+} from "./acp";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import "./chat-transcript-polish.css";
@@ -91,7 +95,10 @@ export function ChatTranscript({
             page={useNativeAcp ? page : null}
             messages={messages}
             onRetry={
-              useNativeAcp && page?.turns.at(-1)?.state !== "failed"
+              useNativeAcp &&
+              page &&
+              page.turns.at(-1)?.state !== "failed" &&
+              latestRetryPrompt(page)
                 ? onRetry
                 : undefined
             }

@@ -75,7 +75,7 @@ describe("TurnActivityItem", () => {
       <TurnActivityItem
         item={{
           ...thought,
-          payload: { summary: `${"x".repeat(300)}\nHidden second line` },
+          payload: { summary: `Earlier line\n**${"x".repeat(300)}**\n\n` },
         }}
       />,
     );
@@ -83,11 +83,24 @@ describe("TurnActivityItem", () => {
     expect(preview).toBeVisible();
     expect(preview).toHaveClass("acp-thought");
     expect(screen.queryByText("Thinking")).toBeNull();
-    expect(screen.queryByText("Hidden second line")).toBeNull();
+    expect(screen.queryByText("Earlier line")).toBeNull();
     expect(container.querySelector(".acp-markdown")).toBeNull();
     expect(
       container.querySelectorAll('[data-activity-kind="thought"]'),
     ).toHaveLength(1);
+
+    rerender(
+      <TurnActivityItem
+        item={{
+          ...thought,
+          payload: {
+            summary: "Earlier line\n**Review** `src/main.ts` and *tests*\n\n",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Review src/main.ts and tests")).toBeVisible();
+    expect(screen.queryByText("x".repeat(256))).toBeNull();
   });
 
   it.each(["completed", "failed", "cancelled", "unsupported"] as const)(

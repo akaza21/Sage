@@ -10,6 +10,7 @@ describe("visual scenario contract", () => {
       { name: "agent-dual", mode: "agent", resource: "empty" },
       { name: "agent-long", mode: "agent", resource: "empty" },
       { name: "agent-activity-family", mode: "agent", resource: "empty" },
+      { name: "agent-thinking-live", mode: "agent", resource: "empty" },
       { name: "agent-declared-test", mode: "agent", resource: "empty" },
       { name: "agent-command-rollup", mode: "agent", resource: "empty" },
       { name: "agent-image", mode: "agent", resource: "empty" },

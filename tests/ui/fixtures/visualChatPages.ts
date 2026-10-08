@@ -52,6 +52,8 @@ export function turn(
     terminalAt: terminal ? startedAt + 20_000 : null,
     items,
     activities: [],
+    browserOperations: [],
+    browserOperationsCollapsed: 0,
   };
 }
 

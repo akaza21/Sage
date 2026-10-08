@@ -15,6 +15,7 @@ import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
 import { acpDesktop } from "../../../src/services/acpDesktop";
 import { AgentArtifactPane } from "../../../src/workbench/AgentArtifactPane";
 import { AgentChatPanes } from "../../../src/workbench/AgentChatPanes";
+import { AcpChatProjection } from "../../../src/features/chat/acp/AcpChatProjection";
 import { Workbench } from "../../../src/workbench/Workbench";
 import {
   applyBrowseIntent,
@@ -134,6 +135,7 @@ describe("visual scenario surface ownership", () => {
       "agent-dual",
       "agent-long",
       "agent-activity-family",
+      "agent-thinking-live",
       "agent-declared-test",
       "agent-command-rollup",
       "agent-image",
@@ -163,6 +165,47 @@ describe("visual scenario surface ownership", () => {
       "error",
       "waiting",
     ]);
+  });
+
+  it("omits completed thinking from the eight activity-family cards", async () => {
+    const next = buildAgentPages("agent-activity-family")![0];
+    expect(next.turns[0].items[0]).toMatchObject({
+      kind: "thoughtSummary",
+      lifecycle: "completed",
+    });
+    const { container } = render(
+      createElement(AcpChatProjection, { page: next, active: true }),
+    );
+    expect(
+      container.querySelector('[data-activity-kind="thought"]'),
+    ).toBeNull();
+    await waitFor(() =>
+      expect(container.querySelectorAll(".acp-activity-card")).toHaveLength(8),
+    );
+  });
+
+  it("renders the live-thinking scenario as one bounded plain-text line", async () => {
+    const pages = buildAgentPages("agent-thinking-live");
+    expect(pages).not.toBeNull();
+    const next = pages![0];
+    expect(next.turns[0].items[0]).toMatchObject({
+      kind: "thoughtSummary",
+      lifecycle: "streaming",
+      terminalAt: null,
+    });
+    const { container } = render(
+      createElement(AcpChatProjection, { page: next, active: true }),
+    );
+    await waitFor(() =>
+      expect(container.querySelectorAll(".acp-thought")).toHaveLength(1),
+    );
+    const thoughts = container.querySelectorAll(".acp-thought");
+    expect(thoughts).toHaveLength(1);
+    expect(thoughts[0].textContent).toBe(
+      `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
+    );
+    expect(thoughts[0].querySelector("summary")).toBeNull();
+    expect(container.querySelectorAll(".acp-activity-card")).toHaveLength(0);
   });
 
   it("keeps the completed activity command as authored bounded output with stable history identity", () => {
@@ -324,6 +367,7 @@ describe("visual scenario surface ownership", () => {
       "agent-dual": "agent",
       "agent-long": "agent",
       "agent-activity-family": "agent",
+      "agent-thinking-live": "agent",
       "agent-declared-test": "agent",
       "agent-command-rollup": "agent",
       "agent-image": "agent",

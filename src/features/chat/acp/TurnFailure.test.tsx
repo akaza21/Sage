@@ -27,7 +27,9 @@ describe("TurnFailure", () => {
         onRetry={onRetry}
       />,
     );
-    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(failure).not.toHaveAttribute("aria-label");
     expect(within(failure).getByText("Authentication required")).toBeVisible();
     expect(within(failure).getByText("Sign in to continue")).toBeVisible();
     fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
@@ -39,7 +41,7 @@ describe("TurnFailure", () => {
       <TurnFailure turn={page("failed").turns[0]} />,
     );
     expect(
-      screen.getByRole("alert", { name: "Turn failed" }),
+      screen.getByRole("group", { name: "Turn failed" }),
     ).toHaveTextContent("Turn failed");
     expect(container.querySelector("p")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
@@ -48,6 +50,7 @@ describe("TurnFailure", () => {
   it("shows no failure box for a completed turn", () => {
     render(<TurnFailure turn={page("completed").turns[0]} onRetry={vi.fn()} />);
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Turn failed" })).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
   });
 });

@@ -308,6 +308,27 @@ function declaredTestPage() {
   ]);
 }
 
+function liveThinkingPage() {
+  const chatId = "visual-chat-thinking-live" as SageChatId;
+  const thought = thoughtItem(
+    {
+      chatId,
+      turnId: `visual-turn-${chatId}-1` as SageTurnId,
+      ordinal: 1,
+      createdAt: FIXED_NOW - 1_000,
+    },
+    `**Inspecting**\n**Reviewing** ${"updated workspace state ".repeat(20)}\n\n`,
+  );
+  thought.lifecycle = "streaming";
+  thought.terminalAt = null;
+  return page(
+    chatId,
+    "Live thinking",
+    [turn(chatId, 1, "running", [thought])],
+    "active",
+  );
+}
+
 function commandRollupPage() {
   const chatId = "visual-chat-command-rollup" as SageChatId;
   const turnId = `visual-turn-${chatId}-1` as SageTurnId;
@@ -461,6 +482,8 @@ export function buildAgentPages(
       return [longPage()];
     case "agent-activity-family":
       return [activityFamilyPage()];
+    case "agent-thinking-live":
+      return [liveThinkingPage()];
     case "agent-declared-test":
       return [declaredTestPage()];
     case "agent-command-rollup":

@@ -332,7 +332,7 @@ function stripHostileMarkup(source: string): string {
     .replace(/<style\b[^>]*>[\s\S]*$/giu, "");
 }
 
-function visibleInlineText(value: string): string {
+export function visibleInlineText(value: string): string {
   let text = stripHostileMarkup(value);
   text = text.replace(/!\[([^\]]*)\]\([^)]*\)/gu, "$1");
   text = text.replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1");

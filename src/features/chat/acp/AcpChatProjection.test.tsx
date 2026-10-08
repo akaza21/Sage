@@ -814,7 +814,7 @@ describe("AcpChatProjection", () => {
     "cancelled",
     "deliveryUnknown",
   ] as const)(
-    "keeps no thinking rows after a %s turn, even with a stale live item",
+    "keeps no terminal thinking rows after a %s turn",
     async (state) => {
       const next = page(state);
       next.turns[0].items = [
@@ -822,14 +822,15 @@ describe("AcpChatProjection", () => {
           ...textItem(),
           id: "final-answer" as AcpItem["id"],
           ordinal: 3,
+          lifecycle: "completed",
           payload: { role: "assistant", text: "Final answer" },
         },
         {
           ...textItem(),
-          id: "completed-thought" as AcpItem["id"],
+          id: "closed-thought" as AcpItem["id"],
           ordinal: 2,
           kind: "thoughtSummary",
-          lifecycle: "streaming",
+          lifecycle: "cancelled",
           terminalAt: 4_000,
           payload: { summary: "Checked the file changes" },
         } as AcpItem,
@@ -2028,10 +2029,7 @@ describe("AcpChatProjection", () => {
       "Checking the workspace before editing.",
     )[0];
     expect(live).toBeVisible();
-    expect(live.closest(".acp-thought")).toHaveAttribute(
-      "data-activity-state",
-      "inProgress",
-    );
+    expect(live).toHaveClass("acp-thought");
 
     const finished = structuredClone(next);
     finished.turns[0].state = "completed";
@@ -2046,24 +2044,30 @@ describe("AcpChatProjection", () => {
     expect(document.querySelector(".acp-thought")).toBeNull();
   });
 
-  it("marks a partial assistant answer on an interrupted turn without completing it", async () => {
-    const next = page("interrupted");
-    next.turns[0].items = [
-      {
-        ...textItem(),
-        lifecycle: "streaming",
-        payload: { role: "assistant", text: "Partial answer" },
-      } as AcpItem,
-    ];
-    await renderProjection(<AcpChatProjection page={next} active />);
-    const answer = screen.getByText("Partial answer");
-    expect(answer.closest(".acp-message")).toHaveAttribute(
-      "data-answer-state",
-      "partial",
-    );
-    expect(screen.getByText("Interrupted")).toBeVisible();
-    expect(screen.queryByText("Completed")).toBeNull();
-  });
+  it.each(["interrupted", "cancelled"] as const)(
+    "marks a partial assistant answer after a %s user stop",
+    async (state) => {
+      const next = page(state, { kind: "cancelledByUser" });
+      next.turns[0].items = [
+        {
+          ...textItem(),
+          lifecycle: "cancelled",
+          payload: { role: "assistant", text: "Partial answer" },
+        } as AcpItem,
+      ];
+      await renderProjection(<AcpChatProjection page={next} active />);
+      const answer = screen.getByText("Partial answer");
+      expect(answer.closest(".acp-message")).toHaveAttribute(
+        "data-answer-state",
+        "partial",
+      );
+      expect(
+        screen.getByText(state === "cancelled" ? "Cancelled" : "Interrupted"),
+      ).toBeVisible();
+      expect(screen.getByText(/· partial answer/)).toBeVisible();
+      expect(screen.queryByText("Completed")).toBeNull();
+    },
+  );
 
   it("does not mark a completed assistant answer as partial on an interrupted turn", async () => {
     const next = page("interrupted");
@@ -2097,7 +2101,7 @@ describe("AcpChatProjection", () => {
     await renderProjection(
       <AcpChatProjection page={next} active onRetry={onRetry} />,
     );
-    const failure = screen.getByRole("alert", { name: "Turn failed" });
+    const failure = screen.getByRole("group", { name: "Turn failed" });
     expect(
       within(failure).getByText("The harness connection closed."),
     ).toBeVisible();
@@ -2130,7 +2134,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active onRetry={vi.fn()} />,
     );
     expect(
-      within(screen.getByRole("alert", { name: "Turn failed" })).queryByRole(
+      within(screen.getByRole("group", { name: "Turn failed" })).queryByRole(
         "button",
         { name: "Retry" },
       ),
@@ -2148,7 +2152,7 @@ describe("AcpChatProjection", () => {
     noSession.turns[1].revision = "4" as never;
     rerender(<AcpChatProjection page={noSession} active onRetry={vi.fn()} />);
     expect(
-      within(screen.getByRole("alert", { name: "Turn failed" })).queryByRole(
+      within(screen.getByRole("group", { name: "Turn failed" })).queryByRole(
         "button",
         { name: "Retry" },
       ),
