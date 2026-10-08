@@ -1,11 +1,23 @@
-import { parentResource, sameResource } from "../../domain/resourceIdentity";
+import {
+  parentResource,
+  sameOrDescendantResource,
+  sameResource,
+} from "../../domain/resourceIdentity";
 import type {
   RenameProjectFileResult,
   ResourceRef,
 } from "../../domain/workbench";
 import { newFileResource, validateNewFilePath } from "./newFileContract";
 
-const MAX_FILE_RENAME_WARNING_UNITS = 2_048;
+const MAX_RENAME_WARNING_UNITS = 2_048;
+
+export type RenameExpectation = {
+  projectId: string;
+  projectGeneration: number;
+  transitionEpoch: number;
+  source: ResourceRef;
+  target: ResourceRef;
+};
 
 export function renameTargetResource(
   source: ResourceRef,
@@ -23,13 +35,15 @@ export function renameTargetResource(
 
 export function validateFileRenameResult(
   result: RenameProjectFileResult,
-  expected: {
-    projectId: string;
-    projectGeneration: number;
-    transitionEpoch: number;
-    source: ResourceRef;
-    target: ResourceRef;
-  },
+  expected: RenameExpectation,
+): boolean {
+  return validateResourceRenameResult(result, expected, "file");
+}
+
+export function validateResourceRenameResult(
+  result: RenameProjectFileResult,
+  expected: RenameExpectation,
+  kind: "file" | "directory",
 ): boolean {
   const listing = result.parentListing;
   const expectedParent = parentResource(expected.source);
@@ -48,8 +62,8 @@ export function validateFileRenameResult(
     listing.entries.length <= 500 &&
     !sourcePresent &&
     targetEntries.length === 1 &&
-    targetEntries[0].kind === "file" &&
-    targetEntries[0].byteLen !== null;
+    targetEntries[0].kind === kind &&
+    (targetEntries[0].byteLen === null) === (kind === "directory");
   const snapshot = result.snapshot;
   const snapshotIdentityValid =
     snapshot === null ||
@@ -61,8 +75,11 @@ export function validateFileRenameResult(
       !snapshot.tabs.some(
         (tab) =>
           (tab.kind === "file" || tab.kind === "diff") &&
-          (sameResource(tab.resource, expected.source) ||
-            sameResource(tab.resource, expected.target)),
+          (kind === "directory"
+            ? sameOrDescendantResource(tab.resource, expected.source) ||
+              sameOrDescendantResource(tab.resource, expected.target)
+            : sameResource(tab.resource, expected.source) ||
+              sameResource(tab.resource, expected.target)),
       ));
   if (
     (result.outcome !== "committed" && result.outcome !== "effectUnknown") ||
@@ -72,7 +89,7 @@ export function validateFileRenameResult(
     typeof result.resourceConfirmed !== "boolean" ||
     (result.warning !== null &&
       (typeof result.warning !== "string" ||
-        result.warning.length > MAX_FILE_RENAME_WARNING_UNITS)) ||
+        result.warning.length > MAX_RENAME_WARNING_UNITS)) ||
     result.projectId !== expected.projectId ||
     result.projectGeneration !== expected.projectGeneration ||
     result.transitionEpoch !== expected.transitionEpoch + 1 ||
@@ -85,7 +102,9 @@ export function validateFileRenameResult(
       snapshot !== null &&
       !sameResource(snapshot.selectedResource, expected.target))
   ) {
-    throw new Error("native file rename returned stale or invalid identity");
+    throw new Error(
+      `native ${kind === "file" ? "file" : "folder"} rename returned stale or invalid identity`,
+    );
   }
   return result.resourceConfirmed;
 }
