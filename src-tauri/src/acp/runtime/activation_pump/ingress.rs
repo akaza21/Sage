@@ -324,6 +324,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             artifact_digest: self.intent.artifact_digest.clone(),
             external_session_id: ready.external_session_id.clone(),
             capabilities_json,
+            prompt_content: self.adapter.prompt_content(),
             now_millis,
         };
         match self.journal.commit_ready(command).await {

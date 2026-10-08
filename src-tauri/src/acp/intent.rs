@@ -7,11 +7,14 @@ pub use super::limits::COMMAND_RESOURCE_LIMIT;
 
 mod capability;
 mod file_change;
+mod prompt_content;
 mod tool_category;
 
 pub use capability::CapabilitySnapshotV1;
 pub(crate) use file_change::FileChangeFacts;
 pub use file_change::FileChangeOperation;
+#[allow(unused_imports)] // Content-kind dispatch consumes this in the egress follow-up.
+pub(crate) use prompt_content::{PromptContentKind, SessionPromptContentV1};
 pub use tool_category::ToolCategory;
 
 pub type BindingId = RequiredText<512>;

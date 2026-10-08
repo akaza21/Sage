@@ -167,6 +167,7 @@ export function initialPage(chat: JourneyChat): AcpChatPage {
         ] as RuntimeEpoch,
         nextRuntimeEpoch: null,
         capabilities,
+        promptContent: { schemaVersion: 1, kinds: {} },
         revision: "1" as EntityRevision,
         projectionRevision: "1" as ProjectionRevision,
         legacy: false,

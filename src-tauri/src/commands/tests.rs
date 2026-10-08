@@ -527,6 +527,7 @@ fn install_command_host(
                 )
                 .unwrap(),
                 capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: crate::persistence::now_millis(),
             },
         )

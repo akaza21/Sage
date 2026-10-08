@@ -237,6 +237,7 @@ fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, Sage
             artifact_digest: "d".repeat(64),
             external_session_id: external_session_id.clone(),
             capabilities_json: capabilities(),
+            prompt_content: Default::default(),
             now_millis: 3,
         },
     )

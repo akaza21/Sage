@@ -865,6 +865,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
             artifact_digest: artifact,
             external_session_id: external_session.clone(),
             capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+            prompt_content: Default::default(),
             now_millis: now_millis + 2,
         })
         .await
@@ -1658,6 +1659,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                 artifact_digest: artifact,
                 external_session_id: external_session.clone(),
                 capabilities_json: serde_json::to_string(&capabilities()).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: now + 2,
             })
             .await
@@ -2199,6 +2201,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 artifact_digest: artifact,
                 external_session_id: external_session.clone(),
                 capabilities_json: serde_json::to_string(&capabilities()).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: now + 2,
             })
             .await

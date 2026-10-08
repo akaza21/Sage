@@ -560,6 +560,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                     .unwrap(),
                 capabilities_json: serde_json::to_string(&binding.capability_ceiling().unwrap())
                     .unwrap(),
+                prompt_content: Default::default(),
                 now_millis: crate::persistence::now_millis(),
             })
             .await
@@ -668,6 +669,7 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
                 artifact_digest: "44".repeat(32),
                 external_session_id: ExternalId::new("externalSessionId", "old-thread").unwrap(),
                 capabilities_json: serde_json::to_string(&old_capabilities).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: crate::persistence::now_millis(),
             })
             .await
@@ -955,6 +957,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                 artifact_digest: "44".repeat(32),
                 external_session_id: ExternalId::new("external", "durable-external").unwrap(),
                 capabilities_json: capabilities.clone(),
+                prompt_content: Default::default(),
                 now_millis: crate::persistence::now_millis(),
             })
             .await
@@ -1495,6 +1498,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
                 artifact_digest: artifact,
                 external_session_id: external_session.clone(),
                 capabilities_json: serde_json::to_string(&capabilities()).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: now + 3,
             })
             .await

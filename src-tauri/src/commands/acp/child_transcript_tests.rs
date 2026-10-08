@@ -202,6 +202,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
                 artifact_digest: "a".repeat(64),
                 external_session_id: ExternalId::new("session", "adapter-session").unwrap(),
                 capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: 3,
             },
         )

@@ -210,6 +210,7 @@ fn fixture(result: Result<(), HostError>) -> (AppState, ExistingGoalRequest, Arc
                     config_count: 0,
                 })
                 .unwrap(),
+                prompt_content: Default::default(),
                 now_millis: 3,
             },
         )

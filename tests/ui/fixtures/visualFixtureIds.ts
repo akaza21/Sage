@@ -50,6 +50,7 @@ export function session(state: AgentSessionProjection["state"] = "ready") {
     runtimeEpoch: RUNTIME_EPOCH,
     nextRuntimeEpoch: null,
     capabilities,
+    promptContent: { schemaVersion: 1, kinds: {} },
     revision: "1",
     projectionRevision: "1",
     legacy: false,

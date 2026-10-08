@@ -96,6 +96,111 @@ pub(super) fn start(expected: u64, intent: &str) -> StartSessionCommand {
 }
 
 #[test]
+fn prompt_content_is_scoped_to_the_exact_live_epoch_and_integrity_checked() {
+    let mut connection = setup();
+    let started = start_session(&mut connection, start(0, "start-content")).unwrap();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let none = prompt_content::load_prompt_content(
+        &connection,
+        &project,
+        &chat,
+        &started.session_id,
+        epoch,
+    )
+    .unwrap();
+    assert!(!none.permits(crate::acp::intent::PromptContentKind::Image));
+    activate_session(
+        &mut connection,
+        ActivateSessionCommand {
+            project_id: project.clone(),
+            chat_id: chat.clone(),
+            expected_projection_revision: ProjectionRevision::new(1).unwrap(),
+            client_intent_id: ClientIntentId::parse("activate-content").unwrap(),
+            session_id: started.session_id.clone(),
+            runtime_epoch: epoch,
+            artifact_digest: "d".repeat(64),
+            now_millis: 20,
+        },
+    )
+    .unwrap();
+    let completion = CompleteActivationCommand {
+        project_id: project.clone(),
+        chat_id: chat.clone(),
+        session_id: started.session_id.clone(),
+        runtime_epoch: epoch,
+        binding_digest: "a".repeat(64),
+        artifact_digest: "d".repeat(64),
+        external_session_id: ExternalId::new("external", "content-session").unwrap(),
+        capabilities_json: capabilities(),
+        prompt_content: crate::acp::intent::SessionPromptContentV1::with_image(),
+        now_millis: 25,
+    };
+    complete_activation(&mut connection, completion.clone()).unwrap();
+    let page = load_chat_page(&connection, project.clone(), chat.clone(), None).unwrap();
+    assert!(
+        page.sessions.as_slice()[0]
+            .prompt_content
+            .permits(crate::acp::intent::PromptContentKind::Image)
+    );
+    assert!(
+        prompt_content::load_prompt_content(
+            &connection,
+            &project,
+            &chat,
+            &started.session_id,
+            epoch
+        )
+        .unwrap()
+        .permits(crate::acp::intent::PromptContentKind::Image)
+    );
+    assert!(
+        !prompt_content::load_prompt_content(
+            &connection,
+            &project,
+            &chat,
+            &started.session_id,
+            RuntimeEpoch::new(2).unwrap()
+        )
+        .unwrap()
+        .permits(crate::acp::intent::PromptContentKind::Image)
+    );
+    assert_eq!(
+        complete_activation(&mut connection, completion.clone())
+            .unwrap()
+            .disposition,
+        MutationDisposition::Duplicate
+    );
+    let mut conflicting = completion.clone();
+    conflicting.prompt_content = Default::default();
+    assert!(matches!(
+        complete_activation(&mut connection, conflicting),
+        Err(StoreError::Conflict {
+            resource: "activationResult"
+        })
+    ));
+    connection.execute("UPDATE session_facts SET payload_digest='bad' WHERE session_id=?1 AND kind='sessionPromptContentV1'", [started.session_id.as_str()]).unwrap();
+    assert!(matches!(
+        complete_activation(&mut connection, completion),
+        Err(StoreError::Conflict {
+            resource: "activationResult"
+        })
+    ));
+    assert!(
+        !prompt_content::load_prompt_content(
+            &connection,
+            &project,
+            &chat,
+            &started.session_id,
+            epoch
+        )
+        .unwrap()
+        .permits(crate::acp::intent::PromptContentKind::Image)
+    );
+}
+
+#[test]
 fn session_start_activate_close_is_atomic_idempotent_and_monotonic() {
     let mut connection = setup();
     let started = start_session(&mut connection, start(0, "start-one")).unwrap();
@@ -140,6 +245,7 @@ fn session_start_activate_close_is_atomic_idempotent_and_monotonic() {
         artifact_digest: "d".repeat(64),
         external_session_id: ExternalId::new("external", "harness-session").unwrap(),
         capabilities_json: capabilities(),
+        prompt_content: Default::default(),
         now_millis: 25,
     };
     assert_eq!(
@@ -236,6 +342,7 @@ fn proven_zero_process_parks_without_closing_or_dropping_the_head() {
             artifact_digest: "d".repeat(64),
             external_session_id: ExternalId::new("external", "park-session").unwrap(),
             capabilities_json: capabilities(),
+            prompt_content: Default::default(),
             now_millis: 25,
         },
     )

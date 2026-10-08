@@ -79,6 +79,7 @@ impl Fixture {
                         &binding.capability_ceiling().unwrap(),
                     )
                     .unwrap(),
+                    prompt_content: Default::default(),
                     now_millis: 3,
                 },
             )

@@ -43,6 +43,7 @@ export function agentSessionFixture(
     runtimeEpoch: null,
     nextRuntimeEpoch: null,
     capabilities: capabilitySetFixture(),
+    promptContent: { schemaVersion: 1, kinds: {} },
     permissionRequests: false,
     revision: "1" as EntityRevision,
     projectionRevision: "1" as ProjectionRevision,

@@ -15,7 +15,7 @@ use crate::acp::{
         },
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
+    intent::{CapabilitySnapshotV1, ExternalId, SessionPromptContentV1},
     lifecycle::TurnState,
     limits::LIMITS,
     mcp::{McpAdmission, McpCapabilities},
@@ -50,6 +50,7 @@ pub(crate) struct ClaudeRuntime {
     session_id: SageAgentSessionId,
     next_request_id: u64,
     capabilities: Option<CapabilitySnapshotV1>,
+    prompt_content: SessionPromptContentV1,
     mcp: McpAdmission,
     mcp_capabilities: McpCapabilities,
     default_model: Option<crate::acp::intent::ModelId>,
@@ -174,6 +175,7 @@ impl ClaudeRuntime {
             session_id,
             next_request_id: 0,
             capabilities: None,
+            prompt_content: SessionPromptContentV1::default(),
             mcp: McpAdmission::default(),
             mcp_capabilities: McpCapabilities::default(),
             default_model: None,
@@ -319,6 +321,9 @@ impl LaunchableRuntime for ClaudeRuntime {
 }
 
 impl HarnessAdapter for ClaudeRuntime {
+    fn prompt_content(&self) -> SessionPromptContentV1 {
+        self.prompt_content.clone()
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.active.as_ref().map(|a| a.config.clone())
     }

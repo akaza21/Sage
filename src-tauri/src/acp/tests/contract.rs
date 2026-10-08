@@ -810,6 +810,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         runtime_epoch: None,
         next_runtime_epoch: None,
         permission_requests: false,
+        prompt_content: Default::default(),
         capabilities: CapabilitySnapshotV1 {
             schema_version: SchemaVersionV1,
             protocol_version: RequiredText::new("protocolVersion", "fixture-v1").unwrap(),

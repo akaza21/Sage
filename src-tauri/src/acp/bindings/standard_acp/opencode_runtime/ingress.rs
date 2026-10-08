@@ -53,6 +53,8 @@ impl OpenCodeRuntime {
     }
 
     fn initialize_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.prompt_content =
+            crate::acp::intent::SessionPromptContentV1::from_acp_initialize(&value);
         self.handshake
             .accept_initialize(&value)
             .map_err(handshake_error)?;

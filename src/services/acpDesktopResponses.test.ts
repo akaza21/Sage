@@ -14,6 +14,7 @@ function session(index = 0, overrides: Record<string, unknown> = {}): object {
     runtimeEpoch: "1",
     nextRuntimeEpoch: null,
     permissionRequests: false,
+    promptContent: { schemaVersion: 1, kinds: {} },
     capabilities: {
       schemaVersion: 1,
       protocolVersion: "1",
@@ -38,6 +39,34 @@ function session(index = 0, overrides: Record<string, unknown> = {}): object {
     ...overrides,
   };
 }
+
+it("fails closed for missing or malformed prompt content and retains valid image limits", () => {
+  const image = { maxItems: 4, maxBytesEach: 4194304, maxBytesTotal: 16777216 };
+  const projected = (promptContent?: unknown) =>
+    safeAcpMutationResponse(
+      mutation({
+        sessions: [
+          session(
+            0,
+            promptContent === undefined
+              ? { promptContent: undefined }
+              : { promptContent },
+          ),
+        ],
+      }),
+    )?.projection.sessions[0].promptContent;
+  expect(projected()).toEqual({ schemaVersion: 1, kinds: {} });
+  expect(
+    projected({
+      schemaVersion: 1,
+      kinds: { image: { ...image, maxItems: 5 } },
+    }),
+  ).toEqual({ schemaVersion: 1, kinds: {} });
+  expect(projected({ schemaVersion: 1, kinds: { image } })).toEqual({
+    schemaVersion: 1,
+    kinds: { image },
+  });
+});
 
 function fileChange(relativePath: string): object {
   return {

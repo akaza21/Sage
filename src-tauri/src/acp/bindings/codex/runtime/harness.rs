@@ -85,6 +85,18 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.effective_capabilities().ok()
     }
 
+    fn prompt_content(&self) -> crate::acp::intent::SessionPromptContentV1 {
+        if self.capabilities().is_some_and(|snapshot| {
+            crate::acp::bindings::codex::supports_native_0146_protocol(
+                snapshot.protocol_version.as_str(),
+            )
+        }) {
+            crate::acp::intent::SessionPromptContentV1::with_image()
+        } else {
+            crate::acp::intent::SessionPromptContentV1::default()
+        }
+    }
+
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);

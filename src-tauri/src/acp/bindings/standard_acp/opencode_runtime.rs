@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
+    intent::{CapabilitySnapshotV1, ExternalId, SessionPromptContentV1},
     mcp::McpAdmission,
     transport::OutboundFrame,
 };
@@ -36,6 +36,7 @@ pub(super) struct OpenCodeRuntime {
     next_request_id: u64,
     pending: BTreeMap<u64, PendingRequest>,
     capabilities: Option<CapabilitySnapshotV1>,
+    prompt_content: SessionPromptContentV1,
     active: Option<ActiveSession>,
     close_pending: bool,
     delivery_unknown: Option<u64>,
@@ -131,6 +132,7 @@ impl OpenCodeRuntime {
             next_request_id: 0,
             pending: BTreeMap::new(),
             capabilities: None,
+            prompt_content: SessionPromptContentV1::default(),
             active: None,
             close_pending: false,
             delivery_unknown: None,

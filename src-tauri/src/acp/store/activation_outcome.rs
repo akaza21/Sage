@@ -5,7 +5,7 @@ use crate::acp::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId,
     },
-    intent::{CapabilitySnapshotV1, ExternalId},
+    intent::{CapabilitySnapshotV1, ExternalId, SessionPromptContentV1},
     lifecycle::SessionState,
     limits::LIMITS,
 };
@@ -30,6 +30,7 @@ pub(crate) struct CompleteActivationCommand {
     pub artifact_digest: String,
     pub external_session_id: ExternalId,
     pub capabilities_json: String,
+    pub prompt_content: SessionPromptContentV1,
     pub now_millis: i64,
 }
 
@@ -76,6 +77,13 @@ pub(crate) fn complete_activation(
     if row.epoch_state == "running" && matches!(row.session_state.as_str(), "ready" | "active") {
         if row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
             && row.capabilities_json == command.capabilities_json
+            && super::prompt_content::recorded_prompt_content(
+                &transaction,
+                &command.project_id,
+                &command.chat_id,
+                &command.session_id,
+                command.runtime_epoch,
+            )? == Some(command.prompt_content.clone())
         {
             return duplicate(&command.session_id, command.runtime_epoch, &row);
         }
@@ -162,6 +170,22 @@ pub(crate) fn complete_activation(
         &command.session_id,
         command.runtime_epoch,
         "activationReady",
+        projection,
+        command.now_millis,
+    )?;
+    let content_payload = serde_json::to_string(&serde_json::json!({
+        "runtimeEpoch": command.runtime_epoch.get(),
+        "content": command.prompt_content,
+    }))
+    .map_err(|_| StoreError::Corrupt("prompt content serialization"))?;
+    append_fact_payload(
+        &transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+        command.session_id.as_str(),
+        None,
+        "sessionPromptContentV1",
+        &content_payload,
         projection,
         command.now_millis,
     )?;
@@ -302,6 +326,7 @@ fn validate_completion(command: &CompleteActivationCommand) -> Result<(), StoreE
         || command.capabilities_json.len() > LIMITS.wire.capability_metadata_bytes as usize
         || capabilities.protocol_version.as_str() == "pending"
         || canonical != command.capabilities_json
+        || !command.prompt_content.validate()
     {
         return Err(StoreError::Corrupt("activation result"));
     }

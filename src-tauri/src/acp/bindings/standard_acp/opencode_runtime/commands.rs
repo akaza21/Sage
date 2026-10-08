@@ -40,6 +40,9 @@ pub(crate) fn scoped_permission_id(
 }
 
 impl HarnessAdapter for OpenCodeRuntime {
+    fn prompt_content(&self) -> crate::acp::intent::SessionPromptContentV1 {
+        self.prompt_content.clone()
+    }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.capabilities.clone()
     }

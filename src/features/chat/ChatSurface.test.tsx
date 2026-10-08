@@ -53,7 +53,14 @@ vi.mock("./acp", async () => {
   const actual = await vi.importActual<typeof AcpModule>("./acp");
   return {
     ...actual,
-    useAcpChatProjection: () => hooks.page,
+    useAcpChatProjection: () =>
+      hooks.page && {
+        ...hooks.page,
+        sessions: hooks.page.sessions.map((session) => ({
+          promptContent: { schemaVersion: 1, kinds: {} },
+          ...session,
+        })),
+      },
     useAcpChatActions: () => hooks.actions,
   };
 });

@@ -8,7 +8,7 @@ use super::{
     declared_test::CommandActivity,
     intent::{
         BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ImageSource, ModelId, PageCursor,
-        PermissionOptionKind,
+        PermissionOptionKind, SessionPromptContentV1,
     },
 };
 
@@ -339,6 +339,7 @@ pub struct SessionProjection {
     /// Null while an epoch is open or the session cannot be activated.
     pub next_runtime_epoch: Option<RuntimeEpoch>,
     pub capabilities: CapabilitySnapshotV1,
+    pub(crate) prompt_content: SessionPromptContentV1,
     pub permission_requests: bool,
     pub revision: EntityRevision,
     pub projection_revision: ProjectionRevision,

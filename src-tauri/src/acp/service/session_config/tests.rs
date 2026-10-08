@@ -159,6 +159,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
                 runtime_epoch: Some(owner.runtime_epoch),
                 next_runtime_epoch: None,
                 permission_requests: false,
+                prompt_content: Default::default(),
                 capabilities,
                 revision: EntityRevision::ZERO,
                 projection_revision: ProjectionRevision::ZERO,

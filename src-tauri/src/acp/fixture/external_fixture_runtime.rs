@@ -124,6 +124,7 @@ pub(super) async fn prepare_external_case(
             artifact_digest: artifact_hex,
             external_session_id: external_session.clone(),
             capabilities_json: serde_json::to_string(&capabilities).unwrap(),
+            prompt_content: Default::default(),
             now_millis: now + 2,
         }),
     )

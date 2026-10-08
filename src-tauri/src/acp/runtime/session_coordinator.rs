@@ -981,6 +981,7 @@ mod tests {
             artifact_digest: "b".repeat(64),
             external_session_id: ExternalId::new("session", "external").unwrap(),
             capabilities_json: "{}".into(),
+            prompt_content: Default::default(),
             now_millis: 3,
         }
     }

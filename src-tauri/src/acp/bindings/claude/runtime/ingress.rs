@@ -63,6 +63,7 @@ impl ClaudeRuntime {
     }
 
     fn initialize_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.prompt_content = SessionPromptContentV1::from_acp_initialize(&value);
         self.mcp_capabilities = McpCapabilities::from_initialize(&value);
         let offer = ClaudeCapabilityOffer::from_initialize_value(&value).map_err(map_capability)?;
         let mut capabilities = negotiate_capabilities(&offer).map_err(map_capability)?;

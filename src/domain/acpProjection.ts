@@ -252,6 +252,19 @@ export interface AgentSessionProjection {
   runtimeEpoch: RuntimeEpoch | null;
   nextRuntimeEpoch: RuntimeEpoch | null;
   capabilities: AcpCapabilitySet;
+  promptContent: {
+    schemaVersion: 1;
+    kinds: Partial<
+      Record<
+        "image" | "file" | "document" | "audio" | "video",
+        {
+          maxItems: number;
+          maxBytesEach: number;
+          maxBytesTotal: number;
+        }
+      >
+    >;
+  };
   permissionRequests: boolean;
   revision: EntityRevision;
   projectionRevision: ProjectionRevision;

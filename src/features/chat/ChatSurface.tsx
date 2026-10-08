@@ -88,6 +88,18 @@ export function ChatSurface({
   const composerDescriptionId = `${composerFieldId}-description`;
   const composerDisabledReasonId = `${composerFieldId}-disabled-reason`;
   const focused = chatId == null || focusedChatId === chatId;
+  const imageInputAvailable = Boolean(
+    selectedHarnessDefinition?.transport === "acp" &&
+    selectedHarnessDefinition.installState === "available" &&
+    acpPage?.sessions.find(
+      (session) =>
+        session.id === acpPage.currentSessionId &&
+        session.bindingId === selectedHarnessDefinition.bindingId &&
+        session.modelId === selectedModelId &&
+        session.residency === "hot" &&
+        (session.state === "ready" || session.state === "active"),
+    )?.promptContent.kinds.image,
+  );
   const {
     selectedHarness,
     useNativeAcp,
@@ -124,6 +136,7 @@ export function ChatSurface({
     discoveryPhase,
     composerText,
     attachedContext,
+    imageInputAvailable,
     imageUploading,
     sending,
     chatError,
@@ -344,6 +357,7 @@ export function ChatSurface({
         attachedContext={attachedContext}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
+        imageInputAvailable={imageInputAvailable}
         onAddImages={addImages}
         enabled={composerEnabled}
         actionBusy={actionBusy}

@@ -418,6 +418,9 @@ pub(crate) trait HarnessAdapter {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1>;
+    fn prompt_content(&self) -> crate::acp::intent::SessionPromptContentV1 {
+        crate::acp::intent::SessionPromptContentV1::default()
+    }
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError>;
     fn cancel_permission(
         &mut self,

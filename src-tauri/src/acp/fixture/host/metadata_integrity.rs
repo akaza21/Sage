@@ -90,6 +90,7 @@ fn capability_through_store(id: &str, step: &Value) -> Value {
             artifact_digest: "d".repeat(64),
             external_session_id: ExternalId::new("external", "fixture-session").unwrap(),
             capabilities_json: encoded.clone(),
+            prompt_content: Default::default(),
             now_millis: 2,
         },
     );

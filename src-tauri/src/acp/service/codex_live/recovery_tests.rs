@@ -330,6 +330,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
             )
             .unwrap(),
             capabilities_json: serde_json::to_string(&test_capabilities()).unwrap(),
+            prompt_content: Default::default(),
             now_millis: crate::persistence::now_millis(),
         })
         .await

@@ -35,6 +35,7 @@ fn normalized_item_and_activity_ingress_are_exact_idempotent_and_terminal_safe()
             artifact_digest: "d".repeat(64),
             external_session_id: ExternalId::new("external", "ingress-session").unwrap(),
             capabilities_json: capabilities(),
+            prompt_content: Default::default(),
             now_millis: 3,
         },
     )

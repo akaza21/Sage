@@ -135,6 +135,55 @@ function safeCapabilities(
 
 import { decodeSessionConfig } from "../domain/acpSessionConfig";
 
+function safePromptContent(
+  value: unknown,
+): AgentSessionProjection["promptContent"] {
+  const unavailable: AgentSessionProjection["promptContent"] = {
+    schemaVersion: 1,
+    kinds: {},
+  };
+  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.kinds))
+    return unavailable;
+  if (
+    Object.keys(value).some((key) => key !== "schemaVersion" && key !== "kinds")
+  )
+    return unavailable;
+  if (Object.keys(value.kinds).some((key) => key !== "image"))
+    return unavailable;
+  const image = value.kinds.image;
+  if (image === undefined) return unavailable;
+  if (
+    !isRecord(image) ||
+    Object.keys(image).some(
+      (key) =>
+        key !== "maxItems" && key !== "maxBytesEach" && key !== "maxBytesTotal",
+    ) ||
+    typeof image.maxItems !== "number" ||
+    typeof image.maxBytesEach !== "number" ||
+    typeof image.maxBytesTotal !== "number" ||
+    !Number.isInteger(image.maxItems) ||
+    !Number.isInteger(image.maxBytesEach) ||
+    !Number.isInteger(image.maxBytesTotal) ||
+    image.maxItems < 1 ||
+    image.maxItems > 4 ||
+    image.maxBytesEach < 1 ||
+    image.maxBytesEach > 4 * 1024 * 1024 ||
+    image.maxBytesTotal < 1 ||
+    image.maxBytesTotal > 16 * 1024 * 1024
+  )
+    return unavailable;
+  return {
+    schemaVersion: 1,
+    kinds: {
+      image: {
+        maxItems: image.maxItems,
+        maxBytesEach: image.maxBytesEach,
+        maxBytesTotal: image.maxBytesTotal,
+      },
+    },
+  };
+}
+
 function safeSession(value: unknown): AgentSessionProjection | null {
   if (!isRecord(value)) return null;
   const id = safeIdentifier(value.id);
@@ -183,6 +232,7 @@ function safeSession(value: unknown): AgentSessionProjection | null {
     nextRuntimeEpoch:
       nextRuntimeEpoch as AgentSessionProjection["nextRuntimeEpoch"],
     capabilities,
+    promptContent: safePromptContent(value.promptContent),
     permissionRequests: value.permissionRequests,
     revision: revision as AgentSessionProjection["revision"],
     projectionRevision:

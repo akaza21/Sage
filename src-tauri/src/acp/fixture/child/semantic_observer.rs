@@ -81,6 +81,7 @@ fn observe_capability(frame: Frame) -> Value {
                 artifact_digest: "d".repeat(64),
                 external_session_id: ExternalId::new("external", "fixture-session").unwrap(),
                 capabilities_json: serde_json::to_string(capabilities).unwrap(),
+                prompt_content: Default::default(),
                 now_millis: 2,
             },
         )

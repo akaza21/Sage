@@ -5,7 +5,7 @@ use crate::acp::{
         BoundedVec, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText, SageAgentSessionId,
         SageChatId, SageProjectId, SageRootId,
     },
-    intent::{BindingId, CapabilitySnapshotV1, ModelId, PageCursor},
+    intent::{BindingId, CapabilitySnapshotV1, ModelId, PageCursor, SessionPromptContentV1},
     lifecycle::Residency,
     limits::LIMITS,
     projection::{AcpChatPage, SessionProjection},
@@ -210,8 +210,10 @@ fn load_sessions(
             BindingId::new("bindingId", row.2).map_err(|_| StoreError::Corrupt("binding id"))?;
         let capabilities = serde_json::from_str::<CapabilitySnapshotV1>(&row.8)
             .map_err(|_| StoreError::Corrupt("capabilities"))?;
+        let session_id =
+            SageAgentSessionId::parse(row.0).map_err(|_| StoreError::Corrupt("session id"))?;
         result.push(SessionProjection {
-            id: SageAgentSessionId::parse(row.0).map_err(|_| StoreError::Corrupt("session id"))?,
+            id: session_id.clone(),
             ordinal: u64::try_from(row.1).map_err(|_| StoreError::Corrupt("session ordinal"))?,
             binding_id: binding_id.clone(),
             model_id: row
@@ -225,6 +227,16 @@ fn load_sessions(
             next_runtime_epoch,
             permission_requests: permission_requests_supported(&binding_id, &capabilities),
             capabilities,
+            prompt_content: match runtime_epoch {
+                Some(epoch) => super::prompt_content::load_prompt_content(
+                    connection,
+                    project,
+                    chat,
+                    &session_id,
+                    epoch,
+                )?,
+                None => SessionPromptContentV1::default(),
+            },
             revision: EntityRevision::new(row.9 as u64)
                 .map_err(|_| StoreError::Corrupt("session revision"))?,
             projection_revision: ProjectionRevision::new(row.10 as u64)

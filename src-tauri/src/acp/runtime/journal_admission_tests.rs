@@ -123,6 +123,7 @@ fn admitted_mutations() -> Vec<StoreMutation> {
             artifact_digest: "b".repeat(64),
             external_session_id: ExternalId::new("external", "external-session").unwrap(),
             capabilities_json: "{}".into(),
+            prompt_content: Default::default(),
             now_millis: 1,
         }),
         StoreMutation::FailActivation(FailActivationCommand {
