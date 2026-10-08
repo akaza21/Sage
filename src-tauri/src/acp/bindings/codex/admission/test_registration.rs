@@ -8,6 +8,8 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Unavailable(
                     CodexAdmissionUnavailable::IndependentAdmission,
                 )),
+                #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+                fixture_only: false,
             }),
         }
     }
@@ -34,6 +36,8 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_binding_fixture(),
                 ))),
+                #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+                fixture_only: false,
             }),
         }
     }
@@ -45,6 +49,8 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_journey_binding_fixture(case_ids),
                 ))),
+                #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+                fixture_only: false,
             }),
         }
     }
@@ -58,6 +64,8 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_observed_steer_journey_fixture(case_ids),
                 ))),
+                #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+                fixture_only: false,
             }),
         }
     }

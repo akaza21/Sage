@@ -35,6 +35,8 @@ impl AdmittedCodexBinding {
             environment: Some(environment),
             entrypoint,
             observed: None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            desktop_fixture: None,
             binding_digest: BINDING_DIGEST,
             binding_digest_hex: BINDING_DIGEST_HEX.into(),
             artifact_digest,
@@ -77,6 +79,8 @@ impl AdmittedCodexBinding {
             environment: None,
             entrypoint,
             observed: Some(ObservedEntrypoint { environment }),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            desktop_fixture: None,
             binding_digest,
             binding_digest_hex,
             artifact_digest,
@@ -90,4 +94,83 @@ impl AdmittedCodexBinding {
             _cleanup: None,
         })
     }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn admit_desktop_fixture(
+        selection: crate::launch_profile::CodexFixtureSelection,
+    ) -> Result<Self, CodexAdmissionUnavailable> {
+        use sha2::{Digest, Sha256};
+
+        selection
+            .revalidate()
+            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+        let packet = crate::acp::bindings::codex::parse_packet_metadata(include_bytes!(
+            "../../../../../testdata/acp/codex/candidate-windows.json"
+        ))
+        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
+        let entrypoint = super::EntrypointIdentity {
+            path: selection.artifact_path.clone(),
+            sha256: selection.artifact_sha256,
+            byte_len: selection.artifact_bytes,
+        };
+        let mut digest = Sha256::new();
+        digest.update(b"sage:cp14:codex-desktop-fixture:v1");
+        digest.update(selection.profile_root.as_os_str().as_encoded_bytes());
+        digest.update(selection.artifact_path.as_os_str().as_encoded_bytes());
+        digest.update(selection.artifact_sha256);
+        digest.update(selection.artifact_bytes.to_le_bytes());
+        digest.update(b"codex-steer-lost-result");
+        let binding_digest: [u8; 32] = digest.finalize().into();
+        let artifact_digest = sha256_hex(entrypoint.sha256);
+        let environment = [
+            ("USERPROFILE", &selection.profile_root),
+            ("APPDATA", &selection.durable_dir),
+            ("LOCALAPPDATA", &selection.durable_dir),
+            ("TEMP", &selection.durable_dir),
+            ("TMP", &selection.durable_dir),
+        ]
+        .into_iter()
+        .map(|(name, path)| {
+            fixture_child_environment_path(path).map(|path| (name.to_owned(), path))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            packet,
+            reproduced: None,
+            authority: None,
+            environment: None,
+            entrypoint,
+            observed: None,
+            desktop_fixture: Some(super::DesktopCodexFixture {
+                selection,
+                environment,
+            }),
+            binding_digest,
+            binding_digest_hex: sha256_hex(binding_digest),
+            artifact_digest,
+            harness_version: "0.146.0".into(),
+            characterisation:
+                crate::acp::bindings::characterisation::Characterisation::Characterised,
+            #[cfg(all(test, windows))]
+            journey_test_entrypoint: None,
+            #[cfg(all(test, windows))]
+            journey_test_cases: None,
+            #[cfg(all(test, windows))]
+            _cleanup: None,
+        })
+    }
+}
+
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+fn fixture_child_environment_path(
+    path: &std::path::Path,
+) -> Result<String, CodexAdmissionUnavailable> {
+    let canonical = path
+        .to_str()
+        .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
+    let child_path = canonical.strip_prefix(r"\\?\").unwrap_or(canonical);
+    if !matches!(child_path.as_bytes(), [drive, b':', b'\\', ..] if drive.is_ascii_alphabetic()) {
+        return Err(CodexAdmissionUnavailable::IndependentAdmission);
+    }
+    Ok(child_path.to_owned())
 }

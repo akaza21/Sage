@@ -39,6 +39,30 @@ impl AdmittedCodexBinding {
         self.observed.is_some()
     }
 
+    pub(crate) fn is_desktop_fixture(&self) -> bool {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        return self.desktop_fixture.is_some();
+        #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
+        false
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_fixture_project_root(&self) -> Option<&std::path::Path> {
+        self.desktop_fixture
+            .as_ref()
+            .map(|fixture| fixture.selection.project_root.as_path())
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn consume_desktop_fixture(&self) -> Result<(), CodexAdmissionUnavailable> {
+        self.desktop_fixture
+            .as_ref()
+            .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?
+            .selection
+            .consume_one_shot()
+            .map_err(|_| CodexAdmissionUnavailable::Drift)
+    }
+
     pub(crate) fn characterisation(
         &self,
     ) -> crate::acp::bindings::characterisation::Characterisation {
@@ -83,6 +107,10 @@ impl AdmittedCodexBinding {
     }
 
     pub(crate) fn launch_environment(&self) -> &[(String, String)] {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(fixture) = &self.desktop_fixture {
+            return &fixture.environment;
+        }
         self.observed
             .as_ref()
             .map(|observed| observed.environment.as_slice())
@@ -92,6 +120,13 @@ impl AdmittedCodexBinding {
     pub(crate) fn capability_ceiling(
         &self,
     ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.is_desktop_fixture() {
+            return super::super::degrade::projected_desktop_fixture_capabilities(
+                self.packet.capability_ceiling(),
+            )
+            .map_err(CodexAdmissionUnavailable::from);
+        }
         super::super::degrade::projected_capabilities(
             self.packet.capability_ceiling(),
             self.observed_build(),
@@ -101,6 +136,9 @@ impl AdmittedCodexBinding {
     }
 
     pub(crate) fn model_discovery_available(&self) -> Result<bool, CodexAdmissionUnavailable> {
+        if self.is_desktop_fixture() {
+            return Ok(false);
+        }
         super::super::degrade::projected_capabilities(
             self.packet.capability_ceiling(),
             self.observed_build(),

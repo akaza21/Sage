@@ -299,6 +299,14 @@ impl HarnessCatalog {
             let Some(record) = self.registry.for_harness(&definition.id) else {
                 continue;
             };
+            if definition.id == "codex"
+                && matches!(
+                    record.auth_provider,
+                    crate::acp::bindings::registry::AuthProvider::None
+                )
+            {
+                definition.sign_in = None;
+            }
             match record.bound_build() {
                 Some(bound) => {
                     definition.bound_version = safe_display_version(&bound.reported_version);

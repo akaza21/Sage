@@ -213,5 +213,5 @@ pub(super) struct JourneyCase {
 
 #[rustfmt::skip]
 pub(super) const JOURNEY_CASES: &[JourneyCase] = &[
-    JourneyCase { id: "codex-steer-lost-result", steps_json: r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult0146"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexSteer"},{"op":"exit","code":17}]"# },
+    JourneyCase { id: "codex-steer-lost-result", steps_json: r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult0146"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexGoalGet"},{"op":"emitKnownFrame","shape":"codexGoalMethodNotFound"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexSteer"},{"op":"exit","code":17}]"# },
 ];

@@ -119,6 +119,9 @@ impl CodexProcessTransport {
         policy: ProcessLaunchPolicy,
         on_launch: impl FnOnce(TreeControl) -> Result<(), CodexDiscoveryRunError>,
     ) -> Result<Self, CodexDiscoveryRunError> {
+        if binding.is_desktop_fixture() {
+            return Err(CodexDiscoveryRunError::Drift);
+        }
         let session = SageAgentSessionId::parse(format!(
             "session-codex-{}-{}",
             policy.session_kind,

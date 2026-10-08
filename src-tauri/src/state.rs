@@ -142,11 +142,26 @@ impl AppState {
         settings: SettingsStore,
         app: tauri::AppHandle,
     ) -> AppResult<Self> {
+        Self::try_new_desktop_with_registry(
+            database,
+            settings,
+            app,
+            std::sync::Arc::new(BindingRegistry::default()),
+            false,
+        )
+    }
+
+    fn try_new_desktop_with_registry(
+        database: Database,
+        settings: SettingsStore,
+        app: tauri::AppHandle,
+        registry: std::sync::Arc<BindingRegistry>,
+        fixture_isolation: bool,
+    ) -> AppResult<Self> {
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
         let transition_epoch = trash_recovery
             .as_ref()
             .map_or(0, |recovery| recovery.transition_epoch);
-        let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_notification_sink_and_registry(
             database.clone(),
             std::sync::Arc::new(DesktopProjectionSink(app.clone())),
@@ -158,7 +173,9 @@ impl AppState {
             )
         })?;
         #[cfg(windows)]
-        acp.set_browser_app(app.clone());
+        if !fixture_isolation {
+            acp.set_browser_app(app.clone());
+        }
         let goal_app = app.clone();
         acp.set_session_config_notice_sink(std::sync::Arc::new(move |notice| {
             use tauri::Emitter;
@@ -168,17 +185,38 @@ impl AppState {
             use tauri::Emitter;
             let _ = goal_app.emit("acp-goal-changed-v1", notice);
         }));
+        let harnesses = HarnessCatalog::with_registry(registry);
+        if fixture_isolation {
+            harnesses.apply_presence(Vec::new());
+        }
         Ok(Self {
             database,
             settings,
             acp,
-            harnesses: HarnessCatalog::with_registry(registry),
+            harnesses,
             harness_version_cache: crate::harness_discovery::DisplayVersionCache::default(),
             editor_operations: EditorOperationCoordinator::default(),
             project_transitions: tokio::sync::Mutex::new(transition_epoch),
             startup_recovery_notice: trash_recovery.map(|recovery| recovery.notice),
             terminals: crate::user_terminal::TerminalSessionPort::desktop(),
         })
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub fn try_new_codex_fixture_desktop(
+        database: Database,
+        settings: SettingsStore,
+        app: tauri::AppHandle,
+        selection: crate::launch_profile::CodexFixtureSelection,
+    ) -> AppResult<Self> {
+        let registry = std::sync::Arc::new(
+            BindingRegistry::desktop_codex_fixture(selection).map_err(|_| {
+                crate::error::AppError::InvalidRequest(
+                    "Codex fixture admission failed; durable history was preserved".into(),
+                )
+            })?,
+        );
+        Self::try_new_desktop_with_registry(database, settings, app, registry, true)
     }
 
     #[cfg(all(windows, feature = "acp-fixture"))]

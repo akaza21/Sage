@@ -21,6 +21,8 @@ impl AdmittedCodexBinding {
             environment: Some(environment),
             entrypoint,
             observed: None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            desktop_fixture: None,
             binding_digest: BINDING_DIGEST,
             binding_digest_hex: BINDING_DIGEST_HEX.into(),
             artifact_digest,
@@ -315,6 +317,8 @@ fn authenticate_signed_installed_role_rejects_a_mismatched_artifact_role() {
             state: Mutex::new(CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission,
             )),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            fixture_only: false,
         }),
     };
     let (packet, mut unbound_role, reproduced, authority, environment, _cleanup) =

@@ -262,6 +262,11 @@ impl McpCapabilities {
 }
 
 impl McpAdmission {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.servers.is_empty()
+    }
+
     pub(crate) fn browser_failure_detail(&self, error: &str) -> String {
         let Some(token) = self.servers.iter().find_map(|server| match server {
             McpServerDescriptor::BrowserStdio(browser) => browser

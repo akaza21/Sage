@@ -6,6 +6,8 @@ pub(crate) fn startup_codex_binding_registration() -> CodexBindingRegistration {
             state: Mutex::new(CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission,
             )),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            fixture_only: false,
         }),
     }
 }

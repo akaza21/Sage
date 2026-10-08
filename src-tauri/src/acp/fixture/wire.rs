@@ -100,6 +100,7 @@ fn await_client_kind(
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
         "codexResume" => Some("thread/resume"),
+        "codexGoalGet" => Some("thread/goal/get"),
         "codexTurnStart" => Some("turn/start"),
         "codexSteer" => Some("turn/steer"),
         "codexInterrupt" => Some("turn/interrupt"),
@@ -153,6 +154,9 @@ fn emit_known(
             return codex::emit_response("initialize0146", state, output);
         }
         "codexThreadResult" => return codex::emit_response("thread", state, output),
+        "codexGoalMethodNotFound" => {
+            return codex::emit_response("goalMethodNotFound", state, output);
+        }
         "codexTurnResult" => return codex::emit_response("turn", state, output),
         "codexStarted" => return codex::emit_notification("started", state, output),
         "codexAck" => return codex::emit_response("ack", state, output),

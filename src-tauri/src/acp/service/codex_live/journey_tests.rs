@@ -517,115 +517,252 @@ fn child_exit_after_item_completion_fails_the_turn_and_ends_the_runtime_epoch() 
 fn lost_steer_result_keeps_an_outcome_unknown_queue_row_after_reopen() {
     let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
-        use crate::acp::runtime::HostSteerIntent;
-        use crate::chat_queue::{DurableQueuedPrompt, QueuedPromptStatus};
-
         let setup = FixtureSetup::file_backed(
             CodexBindingRegistration::admitted_for_observed_steer_journey_test(&[
                 "codex-steer-lost-result",
             ]),
         )
         .await;
-        let owner = setup
-            .start_and_activate(RuntimeEpoch::new(1).unwrap())
-            .await;
-        setup
-            .service
-            .send_codex_turn(setup.turn_command(&owner))
-            .unwrap();
-        let turn_id = setup.wait_for_running_turn(&owner);
-        let queued = DurableQueuedPrompt {
-            id: "same-message-id".into(),
-            text: "Change direction".into(),
-            attached_context: Default::default(),
-            binding_id: "codex-app-server".into(),
-            model_id: None,
-            status: QueuedPromptStatus::Sending,
-        };
-        setup
-            .service
-            .database
-            .replace_chat_queued_prompts(
-                owner.project_id.as_str(),
-                owner.chat_id.as_str(),
-                std::slice::from_ref(&queued),
-            )
-            .unwrap();
-        let outcome = setup.service.dispatch_session_steer(
-            &BindingId::new("bindingId", "codex-app-server").unwrap(),
-            HostSteerIntent {
-                owner: owner.clone(),
-                turn_id,
-                prompt: Prompt::new("prompt", &queued.text).unwrap(),
-                client_message_id: crate::acp::contract::RequiredText::new(
-                    "clientMessageId",
-                    &queued.id,
-                )
-                .unwrap(),
-            },
-        );
-        match outcome {
-            Err(crate::acp::service::SessionDispatchError::Operation(
-                CodexSessionError::SteerOutcomeUnknown,
-            )) => {}
-            Err(crate::acp::service::SessionDispatchError::Operation(error)) => {
-                panic!("lost Steer result was classified {error:?}")
-            }
-            Err(crate::acp::service::SessionDispatchError::Binding) => {
-                panic!("observed fixture did not advertise Steer")
-            }
-            Ok(_) => panic!("lost Steer result was acknowledged"),
-        }
-        setup
-            .service
-            .database
-            .replace_chat_queued_prompts(
-                owner.project_id.as_str(),
-                owner.chat_id.as_str(),
-                &[DurableQueuedPrompt {
-                    status: QueuedPromptStatus::OutcomeUnknown,
-                    ..queued
-                }],
-            )
-            .unwrap();
-        setup.wait_for_job_zero();
-        let turns_before_reopen: i64 = setup
-            .service
-            .database
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
-                [owner.chat_id.as_str()],
-                |row| row.get(0),
-            )
-            .unwrap();
-        let database_path = setup.database_path.clone().unwrap();
-        let project_id = owner.project_id.as_str().to_owned();
-        let chat_id = owner.chat_id.as_str().to_owned();
-        let _ = setup.service.shutdown_blocking();
-        drop(setup);
-
-        let reopened = crate::persistence::Database::open(&database_path).unwrap();
-        let restored = reopened.project_chat_queued_prompts(&project_id).unwrap();
-        let row = &restored[&chat_id][0];
-        assert_eq!(row.id, "same-message-id");
-        assert!(matches!(row.status, QueuedPromptStatus::OutcomeUnknown));
-        let turns: i64 = reopened
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
-                [&chat_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            turns, turns_before_reopen,
-            "restoring the queue must not dispatch a Turn"
-        );
-        assert_job_zero();
-        drop(reopened);
-        std::fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
+        assert_lost_steer_result_after_reopen(setup, None, None).await;
     });
+}
+
+#[test]
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
+    use sha2::{Digest, Sha256};
+
+    let _serial = crate::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        let proof_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("work/cp-native-proof");
+        std::fs::create_dir_all(&proof_root).unwrap();
+        let profile_root = proof_root.join(format!("cp14-journey-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&profile_root).unwrap();
+        std::fs::write(
+            profile_root.join(".sage-disposable-profile-v1"),
+            b"sage-disposable-profile-v1\n",
+        )
+        .unwrap();
+        let artifact_root =
+            std::env::temp_dir().join(format!("sage-cp14-artifact-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&artifact_root).unwrap();
+        let artifact = artifact_root.join("acp-adversarial-fixture.exe");
+        let source = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("acp-adversarial-fixture.exe");
+        std::fs::copy(source, &artifact).unwrap();
+        let bytes = std::fs::metadata(&artifact).unwrap().len().to_string();
+        let digest = format!("{:x}", Sha256::digest(std::fs::read(&artifact).unwrap()));
+        let project_root = std::env::current_dir().unwrap();
+        let profile = crate::launch_profile::resolve_launch_profile(
+            Some(profile_root.as_os_str()),
+            Some(project_root.as_os_str()),
+            std::env::temp_dir().join("sage-cp14-normal-durable"),
+            std::env::temp_dir().join("sage-cp14-normal-webview"),
+        )
+        .unwrap();
+        let selection = crate::launch_profile::resolve_codex_fixture_selection(
+            &profile,
+            Some(artifact.as_os_str()),
+            Some(std::ffi::OsStr::new(&digest)),
+            Some(std::ffi::OsStr::new(&bytes)),
+            Some(std::ffi::OsStr::new("codex-steer-lost-result")),
+            &proof_root,
+        )
+        .unwrap()
+        .unwrap();
+        let receipt = selection.durable_dir.join("codex-fixture-launch-once-v1");
+        let registry = std::sync::Arc::new(
+            crate::acp::bindings::registry::BindingRegistry::desktop_codex_fixture(
+                selection.clone(),
+            )
+            .unwrap(),
+        );
+        let database_path = selection.durable_dir.join("sage.db");
+        let selected_project_root = selection.project_root.clone();
+        let setup = FixtureSetup::open_with_registry_at_root(
+            &database_path,
+            Some(database_path.clone()),
+            registry,
+            &selected_project_root,
+        )
+        .await;
+        assert!(
+            !receipt.exists(),
+            "catalog and session start did not launch"
+        );
+        let reopen_registry = Box::new(move || {
+            std::sync::Arc::new(
+                crate::acp::bindings::registry::BindingRegistry::desktop_codex_fixture(selection)
+                    .unwrap(),
+            )
+        });
+        assert_lost_steer_result_after_reopen(setup, Some(reopen_registry), Some(receipt)).await;
+        std::fs::remove_dir_all(&profile_root).unwrap();
+        std::fs::remove_dir_all(&artifact_root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+async fn assert_lost_steer_result_after_reopen(
+    setup: FixtureSetup,
+    #[allow(unused_variables)] reopen_registry: Option<
+        Box<dyn FnOnce() -> std::sync::Arc<crate::acp::bindings::registry::BindingRegistry>>,
+    >,
+    fixture_receipt: Option<PathBuf>,
+) {
+    use crate::acp::runtime::HostSteerIntent;
+    use crate::chat_queue::{DurableQueuedPrompt, QueuedPromptStatus};
+
+    let owner = if let Some(receipt) = &fixture_receipt {
+        let owner = setup
+            .start_session_for_chat(setup.chat_id.clone(), RuntimeEpoch::new(1).unwrap())
+            .await;
+        assert!(
+            !receipt.exists(),
+            "Session start must not consume fixture case"
+        );
+        setup.activate(&owner).await.unwrap();
+        setup.wait_for_ready(&owner);
+        owner
+    } else {
+        setup
+            .start_and_activate(RuntimeEpoch::new(1).unwrap())
+            .await
+    };
+    if let Some(receipt) = &fixture_receipt {
+        assert!(
+            receipt.is_file(),
+            "Session activation consumed the fixture case"
+        );
+    }
+    setup
+        .service
+        .send_codex_turn(setup.turn_command(&owner))
+        .unwrap();
+    let turn_id = setup.wait_for_running_turn(&owner);
+    let queued = DurableQueuedPrompt {
+        id: "same-message-id".into(),
+        text: "Change direction".into(),
+        attached_context: Default::default(),
+        binding_id: "codex-app-server".into(),
+        model_id: None,
+        status: QueuedPromptStatus::Sending,
+    };
+    setup
+        .service
+        .database
+        .replace_chat_queued_prompts(
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+            std::slice::from_ref(&queued),
+        )
+        .unwrap();
+    let outcome = setup.service.dispatch_session_steer(
+        &BindingId::new("bindingId", "codex-app-server").unwrap(),
+        HostSteerIntent {
+            owner: owner.clone(),
+            turn_id,
+            prompt: Prompt::new("prompt", &queued.text).unwrap(),
+            client_message_id: crate::acp::contract::RequiredText::new(
+                "clientMessageId",
+                &queued.id,
+            )
+            .unwrap(),
+        },
+    );
+    match outcome {
+        Err(crate::acp::service::SessionDispatchError::Operation(
+            CodexSessionError::SteerOutcomeUnknown,
+        )) => {}
+        Err(crate::acp::service::SessionDispatchError::Operation(error)) => {
+            panic!("lost Steer result was classified {error:?}")
+        }
+        Err(crate::acp::service::SessionDispatchError::Binding) => {
+            panic!("observed fixture did not advertise Steer")
+        }
+        Ok(_) => panic!("lost Steer result was acknowledged"),
+    }
+    setup
+        .service
+        .database
+        .replace_chat_queued_prompts(
+            owner.project_id.as_str(),
+            owner.chat_id.as_str(),
+            &[DurableQueuedPrompt {
+                status: QueuedPromptStatus::OutcomeUnknown,
+                ..queued
+            }],
+        )
+        .unwrap();
+    setup.wait_for_job_zero();
+    let turns_before_reopen: i64 = setup
+        .service
+        .database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
+            [owner.chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let database_path = setup.database_path.clone().unwrap();
+    let project_id = owner.project_id.as_str().to_owned();
+    let chat_id = owner.chat_id.as_str().to_owned();
+    if fixture_receipt.is_some() {
+        setup.service.shutdown_blocking().unwrap();
+    } else {
+        let _ = setup.service.shutdown_blocking();
+    }
+    drop(setup);
+
+    let reopened = crate::persistence::Database::open(&database_path).unwrap();
+    let restored = reopened.project_chat_queued_prompts(&project_id).unwrap();
+    let row = &restored[&chat_id][0];
+    assert_eq!(row.id, "same-message-id");
+    assert!(matches!(row.status, QueuedPromptStatus::OutcomeUnknown));
+    let turns: i64 = reopened
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM turns WHERE chat_id=?1",
+            [&chat_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        turns, turns_before_reopen,
+        "restoring the queue must not dispatch a Turn"
+    );
+    assert_job_zero();
+    #[cfg(all(feature = "acp-fixture", debug_assertions))]
+    if let Some(build_registry) = reopen_registry {
+        let registry = build_registry();
+        let service = AcpService::new_with_registry_for_test(reopened.clone(), registry).unwrap();
+        let page = service
+            .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+            .unwrap();
+        assert_eq!(page.chat_id, owner.chat_id);
+        let queue = service
+            .database
+            .project_chat_queued_prompts(&project_id)
+            .unwrap();
+        assert_eq!(queue[&chat_id].len(), 1);
+        assert!(matches!(
+            queue[&chat_id][0].status,
+            QueuedPromptStatus::OutcomeUnknown
+        ));
+        assert_job_zero();
+        service.shutdown_blocking().unwrap();
+    }
+    drop(reopened);
+    std::fs::remove_dir_all(database_path.parent().unwrap()).unwrap();
 }
 
 #[test]
@@ -689,14 +826,39 @@ impl FixtureSetup {
         database_path: Option<PathBuf>,
         registration: CodexBindingRegistration,
     ) -> Self {
+        Self::open_with_registry(
+            path,
+            database_path,
+            std::sync::Arc::new(crate::acp::bindings::registry::BindingRegistry::with_codex(
+                registration,
+            )),
+        )
+        .await
+    }
+
+    async fn open_with_registry(
+        path: &Path,
+        database_path: Option<PathBuf>,
+        registry: std::sync::Arc<crate::acp::bindings::registry::BindingRegistry>,
+    ) -> Self {
+        let project_root = std::env::current_dir().unwrap();
+        Self::open_with_registry_at_root(path, database_path, registry, &project_root).await
+    }
+
+    async fn open_with_registry_at_root(
+        path: &Path,
+        database_path: Option<PathBuf>,
+        registry: std::sync::Arc<crate::acp::bindings::registry::BindingRegistry>,
+        selected_project_root: &Path,
+    ) -> Self {
         let database = crate::persistence::Database::open(path).unwrap();
-        let root_path = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let root_path = selected_project_root.canonicalize().unwrap();
         let project = database.create_project_from_root(&root_path).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         Self {
-            service: AcpService::new_with_codex_publisher_for_test(
+            service: AcpService::new_with_registry_publisher_for_test(
                 database,
-                registration,
+                registry,
                 std::sync::Arc::new(JourneyPublisher),
             )
             .unwrap(),

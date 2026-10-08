@@ -137,6 +137,14 @@ impl RuntimeLaunchAuthority {
             .ok_or(AdapterRuntimeError::LaunchUnavailable)
     }
 
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(super) fn project_root_path(&self) -> Result<&std::path::Path, AdapterRuntimeError> {
+        self.project_root
+            .as_ref()
+            .map(ProjectRootAuthority::as_path)
+            .ok_or(AdapterRuntimeError::LaunchUnavailable)
+    }
+
     pub(super) fn take_project_root(
         &mut self,
     ) -> Result<ProjectRootAuthority, AdapterRuntimeError> {

@@ -37,6 +37,8 @@ pub(crate) struct AdmittedCodexBinding {
     environment: Option<CodexLaunchEnvironment>,
     entrypoint: EntrypointIdentity,
     observed: Option<ObservedEntrypoint>,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    desktop_fixture: Option<DesktopCodexFixture>,
     binding_digest: [u8; 32],
     binding_digest_hex: String,
     artifact_digest: String,
@@ -48,6 +50,13 @@ pub(crate) struct AdmittedCodexBinding {
     journey_test_cases: Option<Mutex<VecDeque<&'static str>>>,
     #[cfg(all(test, windows))]
     _cleanup: Option<authenticate_tests::TestCleanup>,
+}
+
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[derive(Debug)]
+struct DesktopCodexFixture {
+    selection: crate::launch_profile::CodexFixtureSelection,
+    environment: Vec<(String, String)>,
 }
 
 #[derive(Debug)]

@@ -330,6 +330,11 @@ impl AdmittedBindingRecord<'_> {
             (AdmittedBinding::Codex(binding), super::ModelProvider::CodexAccount) => binding
                 .model_discovery_available()
                 .map_err(RegistryAdmissionUnavailable::Codex),
+            (AdmittedBinding::Codex(binding), super::ModelProvider::NoAccountModels)
+                if binding.is_desktop_fixture() =>
+            {
+                Ok(false)
+            }
             (AdmittedBinding::Claude(_), super::ModelProvider::ClaudeAdapter) => Ok(false),
             (AdmittedBinding::OpenCode { .. }, super::ModelProvider::NoAccountModels) => Ok(false),
             _ => Err(RegistryAdmissionUnavailable::Drift),

@@ -22,6 +22,8 @@ pub(crate) enum CodexRegistrationState {
 #[derive(Debug)]
 pub(crate) struct CodexRegistrationAuthority {
     pub(super) state: Mutex<CodexRegistrationState>,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(super) fixture_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -30,11 +32,27 @@ pub(crate) struct CodexBindingRegistration {
 }
 
 impl CodexBindingRegistration {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_fixture(
+        selection: crate::launch_profile::CodexFixtureSelection,
+    ) -> Result<Self, CodexAdmissionUnavailable> {
+        let binding = Arc::new(AdmittedCodexBinding::admit_desktop_fixture(selection)?);
+        Ok(Self {
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Admitted(binding)),
+                fixture_only: true,
+            }),
+        })
+    }
+
     pub(crate) fn authenticate_observed(
         &self,
         executable: PathBuf,
         version: String,
     ) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
+        if self.is_fixture_only() {
+            return Err(CodexAdmissionUnavailable::IndependentAdmission);
+        }
         let candidate = Arc::new(AdmittedCodexBinding::admit_observed(executable, version)?);
         let mut state = self.lock_state();
         match &*state {
@@ -58,6 +76,9 @@ impl CodexBindingRegistration {
         authority: CodexAuthorityPrerequisite,
         environment: CodexLaunchEnvironment,
     ) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
+        if self.is_fixture_only() {
+            return Err(CodexAdmissionUnavailable::IndependentAdmission);
+        }
         let candidate = Arc::new(
             AdmittedCodexBinding::admit_signed_installed_role(
                 packet.clone(),
@@ -83,6 +104,13 @@ impl CodexBindingRegistration {
 
     pub(crate) fn is_available(&self) -> bool {
         matches!(*self.lock_state(), CodexRegistrationState::Admitted(_))
+    }
+
+    fn is_fixture_only(&self) -> bool {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        return self.authority.fixture_only;
+        #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
+        false
     }
 
     pub(crate) fn admitted(&self) -> Option<Arc<AdmittedCodexBinding>> {

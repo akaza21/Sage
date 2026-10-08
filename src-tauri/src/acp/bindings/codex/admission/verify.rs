@@ -9,6 +9,13 @@ use super::{
 
 impl AdmittedCodexBinding {
     pub(crate) fn revalidate(&self) -> Result<(), CodexAdmissionUnavailable> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(fixture) = &self.desktop_fixture {
+            return fixture
+                .selection
+                .revalidate()
+                .map_err(|_| CodexAdmissionUnavailable::Drift);
+        }
         if let Some(observed) = &self.observed {
             let current = observed_entrypoint_identity(&self.entrypoint.path)?;
             return (current.sha256 == self.entrypoint.sha256

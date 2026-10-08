@@ -54,14 +54,14 @@ fn codex_lost_steer_result_case_waits_for_the_write_then_exits_without_reply() {
     .unwrap();
     let steps: Vec<Value> = serde_json::from_str(invocation.steps_json).unwrap();
     assert_eq!(
-        steps[7],
+        steps[9],
         serde_json::json!({"op":"awaitClient","kind":"codexSteer"})
     );
-    assert_eq!(steps[8], serde_json::json!({"op":"exit","code":17}));
+    assert_eq!(steps[10], serde_json::json!({"op":"exit","code":17}));
     assert!(
         !steps
             .iter()
-            .skip(8)
+            .skip(10)
             .any(|step| step["op"] == "emitKnownFrame")
     );
 }

@@ -127,6 +127,25 @@ pub(crate) fn projected_capabilities(
     Ok((snapshot, optional.model_list))
 }
 
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) fn projected_desktop_fixture_capabilities(
+    ceiling: &CuratedCapabilityCeiling,
+) -> Result<CapabilitySnapshotV1, ProjectionUnavailable> {
+    let (mut snapshot, _) = projected_capabilities(
+        ceiling,
+        Some(ObservedBuild {
+            reported_version: "0.146.0",
+            characterisation: Characterisation::Characterised,
+        }),
+    )?;
+    snapshot.protocol_version = RequiredText::new(
+        "protocolVersion",
+        "codex-app-server-desktop-fixture-0.146.0",
+    )
+    .map_err(|_| ProjectionUnavailable::Identity)?;
+    Ok(snapshot)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ProjectionUnavailable {
     #[error("the projected Codex protocol identity is not representable")]

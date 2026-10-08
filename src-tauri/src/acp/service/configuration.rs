@@ -92,12 +92,25 @@ impl AcpService {
         codex: CodexBindingRegistration,
         publisher: Arc<dyn crate::acp::runtime::ProjectionPublisher>,
     ) -> Result<Self, StoreError> {
+        Self::new_with_registry_publisher_for_test(
+            database,
+            Arc::new(BindingRegistry::with_codex(codex)),
+            publisher,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_registry_publisher_for_test(
+        database: Database,
+        registry: Arc<BindingRegistry>,
+        publisher: Arc<dyn crate::acp::runtime::ProjectionPublisher>,
+    ) -> Result<Self, StoreError> {
         Self::build(
             database,
             publisher,
             None,
             ServiceConfiguration {
-                registry: Arc::new(BindingRegistry::with_codex(codex)),
+                registry,
                 #[cfg(all(windows, feature = "acp-fixture"))]
                 characterization: None,
             },

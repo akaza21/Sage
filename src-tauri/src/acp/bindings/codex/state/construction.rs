@@ -34,6 +34,8 @@ impl CodexAdapter {
             runtime_version: packet.metadata().codex_runtime_version.clone(),
             capability_ceiling: packet.capability_ceiling().clone(),
             observed_build_characterisation: None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            desktop_fixture: false,
             pending: Vec::new(),
             negotiated: None,
             external_thread_id: None,
@@ -68,11 +70,15 @@ impl CodexAdapter {
             runtime_epoch,
             session_id,
         );
-        if binding.is_observed() {
+        if binding.is_observed() || binding.is_desktop_fixture() {
             adapter.runtime_version = binding.harness_version().to_owned();
             adapter.codex_home.clear();
             adapter.platform = observed_platform();
             adapter.observed_build_characterisation = Some(binding.characterisation());
+        }
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        {
+            adapter.desktop_fixture = binding.is_desktop_fixture();
         }
         adapter
     }

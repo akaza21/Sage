@@ -17,6 +17,16 @@ impl CodexRuntime {
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         self.launch_authority.revalidate()?;
         let binding = self.launch_authority.binding()?;
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(expected_root) = binding.desktop_fixture_project_root()
+            && self.launch_authority.project_root_path()? != expected_root
+        {
+            return Err(AdapterRuntimeError::LaunchUnavailable);
+        }
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if binding.is_desktop_fixture() && !self.mcp.is_empty() {
+            return Err(AdapterRuntimeError::LaunchUnavailable);
+        }
         let entrypoint = binding.entrypoint();
         #[cfg(all(test, windows))]
         let entrypoint = binding.journey_test_entrypoint().unwrap_or(entrypoint);
@@ -74,10 +84,27 @@ impl CodexRuntime {
         };
         #[cfg(not(all(test, windows)))]
         let fixed_args = vec![OsString::from("app-server")];
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        let fixed_args = if binding.is_desktop_fixture() {
+            vec![
+                OsString::from("--case"),
+                OsString::from("codex-steer-lost-result"),
+                OsString::from("--seed"),
+                OsString::from("0"),
+            ]
+        } else {
+            fixed_args
+        };
         let fixed_args =
             BoundedOsArgs::new(fixed_args).map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         let environment = BoundedEnvironment::new(environment)
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if binding.is_desktop_fixture() {
+            binding
+                .consume_desktop_fixture()
+                .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        }
         let project_root = self.launch_authority.take_project_root()?;
         Ok(LaunchSpec {
             binding_id,

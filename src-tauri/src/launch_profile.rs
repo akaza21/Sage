@@ -13,6 +13,21 @@ use crate::acp::service::{
 const PROFILE_MARKER_NAME: &str = ".sage-disposable-profile-v1";
 const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
 
+mod desktop_codex_fixture;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) use desktop_codex_fixture::CodexFixtureSelection;
+pub(crate) use desktop_codex_fixture::reject_unavailable_codex_fixture_environment_inputs;
+#[cfg(all(test, not(all(windows, feature = "acp-fixture", debug_assertions))))]
+use desktop_codex_fixture::reject_unavailable_codex_fixture_inputs;
+#[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) use desktop_codex_fixture::resolve_codex_fixture_selection;
+#[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
+use desktop_codex_fixture::resolve_desktop_fixture_mode;
+#[cfg(all(windows, feature = "acp-fixture"))]
+pub(crate) use desktop_codex_fixture::{
+    DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment,
+};
+
 #[cfg(all(test, not(target_os = "macos")))]
 #[path = "launch_profile/browser_tests.rs"]
 mod browser_tests;
@@ -362,6 +377,21 @@ mod tests {
         assert!(!normal_webview.exists());
     }
 
+    #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
+    #[test]
+    fn reserved_codex_fixture_inputs_are_rejected_in_this_build() {
+        assert!(reject_unavailable_codex_fixture_inputs([None; 4]).is_ok());
+        assert!(
+            reject_unavailable_codex_fixture_inputs([
+                Some(OsStr::new("fixture.exe")),
+                None,
+                None,
+                None,
+            ])
+            .is_err()
+        );
+    }
+
     #[test]
     fn marked_disjoint_root_resolves_only_fixed_profile_children() {
         let profile_root = root("disposable");
@@ -460,6 +490,344 @@ mod tests {
         fs::remove_dir_all(profile_root).unwrap();
         fs::remove_dir_all(project_root).unwrap();
         fs::remove_dir_all(artifact_root).unwrap();
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    #[test]
+    fn codex_fixture_selector_requires_a_marked_proof_profile_and_complete_identity() {
+        use sha2::{Digest, Sha256};
+
+        let proof_root = root("cp14-proof");
+        let profile_root = proof_root.join("profile");
+        let project_root = root("cp14-project");
+        let artifact_root = root("cp14-artifact");
+        marked(&profile_root);
+        fs::create_dir_all(&project_root).unwrap();
+        fs::create_dir_all(&artifact_root).unwrap();
+        let artifact = artifact_root.join("acp-adversarial-fixture.exe");
+        fs::write(&artifact, b"cp14 fixture").unwrap();
+        let digest = format!("{:x}", Sha256::digest(b"cp14 fixture"));
+        let bytes = fs::metadata(&artifact).unwrap().len().to_string();
+        let profile = resolve_launch_profile(
+            Some(profile_root.as_os_str()),
+            Some(project_root.as_os_str()),
+            root("cp14-normal-durable"),
+            root("cp14-normal-webview"),
+        )
+        .unwrap();
+
+        let selection = resolve_codex_fixture_selection(
+            &profile,
+            Some(artifact.as_os_str()),
+            Some(OsStr::new(&digest)),
+            Some(OsStr::new(&bytes)),
+            Some(OsStr::new("codex-steer-lost-result")),
+            &proof_root,
+        )
+        .unwrap()
+        .expect("complete selector");
+        selection.revalidate().unwrap();
+        assert!(matches!(
+            resolve_desktop_fixture_mode(&profile, [None; 4], [None; 4], &proof_root).unwrap(),
+            DesktopFixtureMode::Ordinary
+        ));
+        assert!(
+            resolve_desktop_fixture_mode(
+                &profile,
+                [
+                    Some(artifact.as_os_str()),
+                    Some(OsStr::new(&digest)),
+                    Some(OsStr::new(&bytes)),
+                    Some(OsStr::new("turn-success")),
+                ],
+                [
+                    Some(artifact.as_os_str()),
+                    Some(OsStr::new(&digest)),
+                    Some(OsStr::new(&bytes)),
+                    Some(OsStr::new("codex-steer-lost-result")),
+                ],
+                &proof_root,
+            )
+            .is_err()
+        );
+        let reconstructed = resolve_codex_fixture_selection(
+            &profile,
+            Some(artifact.as_os_str()),
+            Some(OsStr::new(&digest)),
+            Some(OsStr::new(&bytes)),
+            Some(OsStr::new("codex-steer-lost-result")),
+            &proof_root,
+        )
+        .unwrap()
+        .unwrap();
+        let first = crate::acp::bindings::codex::CodexBindingRegistration::desktop_fixture(
+            selection.clone(),
+        )
+        .unwrap();
+        let second = crate::acp::bindings::codex::CodexBindingRegistration::desktop_fixture(
+            reconstructed.clone(),
+        )
+        .unwrap();
+        let admitted = first.refresh().unwrap();
+        assert!(admitted.is_desktop_fixture());
+        assert!(admitted.capability_ceiling().unwrap().active_turn_steer);
+        assert!(!admitted.model_discovery_available().unwrap());
+        assert_eq!(
+            admitted.binding_digest(),
+            second.refresh().unwrap().binding_digest()
+        );
+        assert_ne!(
+            admitted.binding_digest(),
+            [
+                0xf8, 0xc2, 0xb9, 0x95, 0xbe, 0x26, 0x3f, 0xe4, 0xbf, 0x00, 0x97, 0x40, 0x43, 0x31,
+                0x26, 0x73, 0x37, 0x80, 0x81, 0x73, 0x4c, 0xa8, 0xc9, 0x81, 0x55, 0xd2, 0xa3, 0x38,
+                0x87, 0x44, 0x4b, 0x9e
+            ]
+        );
+        let environment = admitted.launch_environment();
+        assert_eq!(environment.len(), 5);
+        assert!(environment.iter().all(|(key, _)| matches!(
+            key.as_str(),
+            "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP"
+        )));
+        for (key, value) in environment {
+            assert!(
+                !value.starts_with(r"\\?\"),
+                "child environment must use a Win32 path"
+            );
+            let expected = if key == "USERPROFILE" {
+                &selection.profile_root
+            } else {
+                &selection.durable_dir
+            };
+            assert_eq!(Path::new(value).canonicalize().unwrap(), *expected);
+        }
+        let registry = crate::acp::bindings::registry::BindingRegistry::desktop_codex_fixture(
+            selection.clone(),
+        )
+        .unwrap();
+        assert!(matches!(
+            registry.codex().auth_provider,
+            crate::acp::bindings::registry::AuthProvider::None
+        ));
+        assert!(
+            !registry
+                .codex()
+                .admit()
+                .unwrap()
+                .has_model_discovery()
+                .unwrap()
+        );
+        let catalog =
+            crate::harnesses::HarnessCatalog::with_registry(std::sync::Arc::new(registry));
+        catalog.apply_presence(Vec::new());
+        let codex_row = catalog
+            .definitions()
+            .into_iter()
+            .find(|row| row.id == "codex")
+            .unwrap();
+        assert_eq!(codex_row.install_state, "available");
+        assert!(codex_row.sign_in.is_none());
+        let receipt = selection.durable_dir.join("codex-fixture-launch-once-v1");
+        assert!(
+            !receipt.exists(),
+            "catalog work must not consume the fixture"
+        );
+        let root_authority = || {
+            crate::acp::bindings::codex::CodexProjectRootAuthority::for_test(
+                crate::project_registry::ProjectRootAuthority::for_test(
+                    crate::acp::contract::SageProjectId::parse("project-cp14").unwrap(),
+                    crate::acp::contract::ProjectGeneration::ZERO,
+                    crate::acp::contract::SageRootId::parse("root-cp14").unwrap(),
+                    &project_root,
+                )
+                .unwrap(),
+            )
+        };
+        for session_kind in ["discovery", "auth"] {
+            let refused = crate::acp::bindings::codex::CodexProcessTransport::launch(
+                std::sync::Arc::clone(&admitted),
+                root_authority(),
+                crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+                crate::acp::bindings::codex::ProcessLaunchPolicy {
+                    session_kind,
+                    spawn_timeout: std::time::Duration::from_secs(1),
+                    cleanup_end: std::time::Instant::now() + std::time::Duration::from_secs(2),
+                    reader_slots: 1,
+                },
+                |_| Ok(()),
+            );
+            assert!(
+                refused.is_err(),
+                "fixture {session_kind} transport must refuse before spawn"
+            );
+            assert!(
+                !receipt.exists(),
+                "direct {session_kind} must not consume the fixture"
+            );
+        }
+        let browser_mcp = crate::acp::mcp::McpAdmission::browser_stdio(
+            selection.artifact_path.to_string_lossy().into_owned(),
+            [
+                ("SAGE_BROWSER_MCP_PIPE".into(), "pipe".into()),
+                ("SAGE_BROWSER_MCP_HOST_PID".into(), "123".into()),
+                ("SAGE_BROWSER_MCP_SESSION".into(), "session-cp14-mcp".into()),
+                ("SAGE_BROWSER_MCP_TOKEN".into(), "secret-token".into()),
+            ],
+        )
+        .unwrap();
+        let mut mcp_runtime =
+            crate::acp::bindings::codex::CodexRuntime::from_admitted_binding_with_mcp(
+                std::sync::Arc::clone(&admitted),
+                root_authority(),
+                crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+                crate::acp::contract::SageAgentSessionId::parse("session-cp14-mcp").unwrap(),
+                browser_mcp,
+            )
+            .unwrap();
+        assert!(mcp_runtime.launch_spec().is_err());
+        assert!(
+            !receipt.exists(),
+            "MCP admission must not consume fixture case"
+        );
+        let foreign_root = root("cp14-foreign-project");
+        fs::create_dir_all(&foreign_root).unwrap();
+        let foreign_authority = crate::acp::bindings::codex::CodexProjectRootAuthority::for_test(
+            crate::project_registry::ProjectRootAuthority::for_test(
+                crate::acp::contract::SageProjectId::parse("project-cp14-foreign").unwrap(),
+                crate::acp::contract::ProjectGeneration::ZERO,
+                crate::acp::contract::SageRootId::parse("root-cp14-foreign").unwrap(),
+                &foreign_root,
+            )
+            .unwrap(),
+        );
+        let mut foreign_runtime = crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
+            std::sync::Arc::clone(&admitted),
+            foreign_authority,
+            crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+            crate::acp::contract::SageAgentSessionId::parse("session-cp14-foreign").unwrap(),
+        )
+        .unwrap();
+        assert!(foreign_runtime.launch_spec().is_err());
+        assert!(
+            !receipt.exists(),
+            "foreign Project root must not consume the case"
+        );
+        let mut runtime = crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
+            std::sync::Arc::clone(&admitted),
+            root_authority(),
+            crate::acp::contract::RuntimeEpoch::new(2).unwrap(),
+            crate::acp::contract::SageAgentSessionId::parse("session-cp14").unwrap(),
+        )
+        .unwrap();
+        let spec = runtime.launch_spec().unwrap();
+        assert_eq!(
+            spec.artifact.canonical_absolute_path,
+            selection.artifact_path
+        );
+        assert_eq!(spec.artifact.sha256, selection.artifact_sha256);
+        assert_eq!(spec.artifact.byte_len, selection.artifact_bytes);
+        assert_eq!(
+            spec.fixed_args
+                .as_slice()
+                .iter()
+                .map(|arg| arg.to_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["--case", "codex-steer-lost-result", "--seed", "0"]
+        );
+        assert_eq!(spec.environment.as_slice().len(), 5);
+        assert!(spec.environment.as_slice().iter().all(|(key, _)| matches!(
+            key.to_str().unwrap(),
+            "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP"
+        )));
+        assert!(receipt.is_file());
+        assert!(reconstructed.consume_one_shot().is_err());
+        let mut reopened_runtime =
+            crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(
+                second.refresh().unwrap(),
+                root_authority(),
+                crate::acp::contract::RuntimeEpoch::new(3).unwrap(),
+                crate::acp::contract::SageAgentSessionId::parse("session-cp14-reopened").unwrap(),
+            )
+            .unwrap();
+        assert!(reopened_runtime.launch_spec().is_err());
+        assert!(
+            resolve_codex_fixture_selection(
+                &profile,
+                Some(artifact.as_os_str()),
+                Some(OsStr::new(&digest)),
+                None,
+                Some(OsStr::new("codex-steer-lost-result")),
+                &proof_root,
+            )
+            .is_err()
+        );
+        let linked_artifact = artifact_root.join("linked-fixture.exe");
+        if std::os::windows::fs::symlink_file(&artifact, &linked_artifact).is_ok() {
+            assert!(
+                resolve_codex_fixture_selection(
+                    &profile,
+                    Some(linked_artifact.as_os_str()),
+                    Some(OsStr::new(&digest)),
+                    Some(OsStr::new(&bytes)),
+                    Some(OsStr::new("codex-steer-lost-result")),
+                    &proof_root,
+                )
+                .is_err(),
+                "reparse artifact must be rejected"
+            );
+        }
+        assert!(
+            resolve_codex_fixture_selection(
+                &profile,
+                Some(artifact.as_os_str()),
+                Some(OsStr::new(&digest)),
+                Some(OsStr::new(&bytes)),
+                Some(OsStr::new("unlisted-case")),
+                &proof_root,
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_codex_fixture_selection(
+                &profile,
+                Some(artifact.as_os_str()),
+                Some(OsStr::new(&digest)),
+                Some(OsStr::new(&bytes)),
+                Some(OsStr::new("codex-steer-lost-result")),
+                &project_root,
+            )
+            .is_err()
+        );
+        fs::write(profile_root.join(PROFILE_MARKER_NAME), b"changed marker").unwrap();
+        assert!(selection.revalidate().is_err());
+        fs::write(profile_root.join(PROFILE_MARKER_NAME), PROFILE_MARKER_BYTES).unwrap();
+        fs::write(&artifact, b"drifted").unwrap();
+        assert!(selection.revalidate().is_err());
+        first.invalidate_drift();
+        assert!(
+            first
+                .authenticate_observed(artifact.clone(), "codex 0.146.0".into())
+                .is_err()
+        );
+        assert!(
+            resolve_codex_fixture_selection(
+                &LaunchProfile::Normal {
+                    durable_dir: root("cp14-ordinary")
+                },
+                Some(artifact.as_os_str()),
+                Some(OsStr::new(&digest)),
+                Some(OsStr::new(&bytes)),
+                Some(OsStr::new("codex-steer-lost-result")),
+                &proof_root,
+            )
+            .is_err()
+        );
+
+        fs::remove_dir_all(proof_root).unwrap();
+        fs::remove_dir_all(project_root).unwrap();
+        fs::remove_dir_all(artifact_root).unwrap();
+        fs::remove_dir_all(foreign_root).unwrap();
     }
 
     #[test]

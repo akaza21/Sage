@@ -2,7 +2,6 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     acp::{
-        bindings::registry::{AuthProvider, ModelProvider},
         contract::SageProjectId,
         runtime::{
             BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
@@ -73,31 +72,14 @@ impl AcpService {
             notifier.set_active_project(project_id);
         }
         let codex_gate = super::codex_operation::CodexOperationGate::new();
-        let record = configuration.registry.codex();
-        let codex_discovery = match record.model_provider {
-            ModelProvider::CodexAccount => CodexDiscoveryManager::with_gate(
-                configuration.registry.codex_admission().clone(),
-                Arc::clone(&codex_gate),
-            ),
-            ModelProvider::ClaudeAdapter => {
-                unreachable!("Codex bootstrap always uses the Codex record")
-            }
-            ModelProvider::NoAccountModels => {
-                unreachable!("Codex bootstrap always uses the Codex record")
-            }
-        };
-        let codex_auth = match record.auth_provider {
-            AuthProvider::Codex => CodexAuthManager::new(
-                configuration.registry.codex_admission().clone(),
-                Arc::clone(&codex_gate),
-            ),
-            AuthProvider::Claude => {
-                unreachable!("Codex bootstrap always uses the Codex record")
-            }
-            AuthProvider::None => {
-                unreachable!("Codex bootstrap always uses the Codex record")
-            }
-        };
+        let codex_discovery = CodexDiscoveryManager::with_gate(
+            configuration.registry.codex_admission().clone(),
+            Arc::clone(&codex_gate),
+        );
+        let codex_auth = CodexAuthManager::new(
+            configuration.registry.codex_admission().clone(),
+            Arc::clone(&codex_gate),
+        );
         Ok(Self {
             read_text_files: super::ReadTextFileService::new(database.clone()),
             browser_permissions: std::sync::Mutex::new(std::collections::HashMap::new()),

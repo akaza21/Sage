@@ -94,6 +94,17 @@ impl Default for BindingRegistry {
 }
 
 impl BindingRegistry {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_codex_fixture(
+        selection: crate::launch_profile::CodexFixtureSelection,
+    ) -> Result<Self, CodexAdmissionUnavailable> {
+        let codex = CodexBindingRegistration::desktop_fixture(selection)?;
+        let mut registry = Self::new(codex, ClaudeBindingRegistration::startup());
+        registry.codex.model_provider = ModelProvider::NoAccountModels;
+        registry.codex.auth_provider = AuthProvider::None;
+        Ok(registry)
+    }
+
     pub(crate) fn new(codex: CodexBindingRegistration, claude: ClaudeBindingRegistration) -> Self {
         Self::new_with_opencode(codex, claude, OpenCodeBindingRegistration::startup())
     }

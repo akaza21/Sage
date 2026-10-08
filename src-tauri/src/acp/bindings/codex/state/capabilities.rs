@@ -47,6 +47,18 @@ impl CodexAdapter {
                 reported_version: &self.runtime_version,
                 characterisation,
             });
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        let (snapshot, models) = if self.desktop_fixture {
+            (
+                degrade::projected_desktop_fixture_capabilities(&self.capability_ceiling)
+                    .map_err(|_| AdapterError::CapabilityUnavailable)?,
+                false,
+            )
+        } else {
+            degrade::projected_capabilities(&self.capability_ceiling, observed)
+                .map_err(|_| AdapterError::CapabilityUnavailable)?
+        };
+        #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
         let (snapshot, models) =
             degrade::projected_capabilities(&self.capability_ceiling, observed)
                 .map_err(|_| AdapterError::CapabilityUnavailable)?;

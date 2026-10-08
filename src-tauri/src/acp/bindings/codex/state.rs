@@ -135,6 +135,8 @@ pub(crate) struct CodexAdapter {
     capability_ceiling: CuratedCapabilityCeiling,
     observed_build_characterisation:
         Option<crate::acp::bindings::characterisation::Characterisation>,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    desktop_fixture: bool,
     pending: Vec<(u64, RequestKind)>,
     negotiated: Option<NegotiatedMethods>,
     external_thread_id: Option<ExternalId>,

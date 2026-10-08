@@ -127,6 +127,8 @@ const journeyCases = [
       { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
       { op: "awaitClient", kind: "codexStart" },
       { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexGoalGet" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
       { op: "awaitClient", kind: "codexTurnStart" },
       { op: "emitKnownFrame", shape: "codexTurnResult" },
       { op: "emitKnownFrame", shape: "codexStarted" },

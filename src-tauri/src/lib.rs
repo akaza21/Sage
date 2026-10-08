@@ -98,9 +98,11 @@ use tracing::{info, warn};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(all(windows, feature = "acp-fixture"))]
-use crate::launch_profile::resolve_characterization_binding;
+use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
-    launch_profile::resolve_launch_profile, persistence::Database, state::AppState,
+    launch_profile::{reject_unavailable_codex_fixture_environment_inputs, resolve_launch_profile},
+    persistence::Database,
+    state::AppState,
     workspace::development_workspace_root,
 };
 
@@ -139,14 +141,11 @@ pub fn run() {
                 app.path().app_data_dir()?,
                 app.path().app_local_data_dir()?,
             )?;
+            reject_unavailable_codex_fixture_environment_inputs()?;
             #[cfg(all(windows, feature = "acp-fixture"))]
-            let characterization = resolve_characterization_binding(
-                &profile,
-                std::env::var_os("SAGE_CHARACTERIZATION_FIXTURE_PATH").as_deref(),
-                std::env::var_os("SAGE_CHARACTERIZATION_FIXTURE_SHA256").as_deref(),
-                std::env::var_os("SAGE_CHARACTERIZATION_FIXTURE_BYTES").as_deref(),
-                std::env::var_os("SAGE_CHARACTERIZATION_CASE").as_deref(),
-            )?;
+            let fixture_mode = resolve_desktop_fixture_mode_from_environment(&profile)?;
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            let codex_fixture_mode = matches!(&fixture_mode, DesktopFixtureMode::CodexFixture(_));
             fs::create_dir_all(profile.durable_dir())?;
             let database = Database::open(&profile.durable_dir().join("sage.db"))?;
             let seed_project_root = if profile.is_disposable() {
@@ -176,30 +175,33 @@ pub fn run() {
             )
             .map_err(std::io::Error::other)?;
             app.manage(browser_state);
+            let settings =
+                settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
             #[cfg(all(windows, feature = "acp-fixture"))]
-            let state = match characterization {
-                Some(binding) => AppState::try_new_characterization_desktop(
-                    database,
-                    settings_store::SettingsStore::open(
-                        &profile.durable_dir().join("settings.db"),
-                    )?,
-                    app.handle().clone(),
-                    binding,
-                )?,
-                None => AppState::try_new_desktop(
-                    database,
-                    settings_store::SettingsStore::open(
-                        &profile.durable_dir().join("settings.db"),
-                    )?,
-                    app.handle().clone(),
-                )?,
+            let state = match fixture_mode {
+                DesktopFixtureMode::GenericCharacterization(binding) => {
+                    AppState::try_new_characterization_desktop(
+                        database,
+                        settings,
+                        app.handle().clone(),
+                        binding,
+                    )?
+                }
+                #[cfg(debug_assertions)]
+                DesktopFixtureMode::CodexFixture(selection) => {
+                    AppState::try_new_codex_fixture_desktop(
+                        database,
+                        settings,
+                        app.handle().clone(),
+                        selection,
+                    )?
+                }
+                DesktopFixtureMode::Ordinary => {
+                    AppState::try_new_desktop(database, settings, app.handle().clone())?
+                }
             };
             #[cfg(not(all(windows, feature = "acp-fixture")))]
-            let state = AppState::try_new_desktop(
-                database,
-                settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?,
-                app.handle().clone(),
-            )?;
+            let state = AppState::try_new_desktop(database, settings, app.handle().clone())?;
             app.manage(state);
             app.manage(voice_input::VoiceInputState::default());
             let main_window_config = app
@@ -248,6 +250,11 @@ pub fn run() {
                 None => main_window,
             };
             main_window.build()?;
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            if !codex_fixture_mode {
+                AppState::refresh_harnesses_after_window_shown(app.handle().clone());
+            }
+            #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
             AppState::refresh_harnesses_after_window_shown(app.handle().clone());
             info!("Sage application state initialized");
             Ok(())
