@@ -1,0 +1,178 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+use crate::{acp::intent::ImageMediaType, persistence::Database};
+
+use super::{
+    commands::{UploadChatImageRequest, upload_image_payload},
+    store::ingest_image,
+    verify_image_reference,
+};
+
+const PNG_1X1: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+const JPEG_1X1: &str = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9Uz/2Q==";
+
+#[test]
+fn admitted_png_is_retrievable_only_by_its_chat_owner() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-image-ingest-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let bytes = STANDARD.decode(PNG_1X1).unwrap();
+    let root = database.image_artifact_root().unwrap();
+
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "pixel.png",
+    )
+    .unwrap();
+
+    assert_eq!(image.width, 1);
+    assert_eq!(image.height, 1);
+    assert_eq!(
+        verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
+        bytes
+    );
+    assert!(verify_image_reference(&connection, root, "p", "other", &image).is_err());
+    assert!(
+        ingest_image(
+            &connection,
+            root,
+            "p",
+            "c",
+            ImageMediaType::Jpeg,
+            &bytes,
+            "wrong.jpg"
+        )
+        .is_err()
+    );
+    let count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM chat_image_artifacts", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(count, 1);
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn png_larger_than_thumbnail_cap_keeps_full_image_and_bounded_preview() {
+    let directory = std::env::temp_dir().join(format!("sage-image-large-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let mut pixels = vec![0; 512 * 512 * 3];
+    for (index, byte) in pixels.iter_mut().enumerate() {
+        *byte = (index.wrapping_mul(97).wrapping_add(index / 31) % 251) as u8;
+    }
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 512, 512);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&pixels)
+            .unwrap();
+    }
+    assert!(bytes.len() > 262_144);
+    let root = database.image_artifact_root().unwrap();
+
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "large.png",
+    )
+    .unwrap();
+
+    assert_eq!(
+        verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
+        bytes
+    );
+    let thumbnail = std::fs::read(root.join(format!("{}.thumb", image.artifact_id))).unwrap();
+    assert!(thumbnail.len() <= 262_144);
+    assert!(
+        png::Decoder::new(std::io::Cursor::new(thumbnail))
+            .read_info()
+            .is_ok()
+    );
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn admitted_jpeg_is_retrievable_with_its_declared_dimensions() {
+    let directory = std::env::temp_dir().join(format!("sage-image-jpeg-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let bytes = STANDARD.decode(JPEG_1X1).unwrap();
+    let root = database.image_artifact_root().unwrap();
+
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Jpeg,
+        &bytes,
+        "pixel.jpg",
+    )
+    .unwrap();
+
+    assert_eq!((image.width, image.height), (1, 1));
+    assert_eq!(
+        verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
+        bytes
+    );
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn upload_payload_rejects_plus_one_bytes_before_creating_an_artifact() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-image-upload-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let request = UploadChatImageRequest {
+        project_id: "p".into(),
+        project_generation: 1,
+        chat_id: "c".into(),
+        media_type: ImageMediaType::Png,
+        data_base64: STANDARD.encode(vec![0; 4 * 1024 * 1024 + 1]),
+        label: "too-large.png".into(),
+    };
+
+    assert!(upload_image_payload(&database, request).is_err());
+    let count: i64 = database
+        .connection()
+        .query_row("SELECT COUNT(*) FROM chat_image_artifacts", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(count, 0);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}

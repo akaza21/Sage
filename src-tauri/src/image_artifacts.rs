@@ -1,7 +1,10 @@
+pub(crate) mod commands;
 mod gc;
 mod store;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use gc::reconcile_image_artifacts;
 pub(crate) use store::verify_image_reference;

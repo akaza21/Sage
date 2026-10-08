@@ -1,7 +1,7 @@
 use crate::{
     acp, app_preview_commands, browser, chat_archive_commands, chat_commands, chat_queue_commands,
     chat_search_commands, commands, editor, editor_watch, file_create_commands,
-    file_rename_commands, project_commands, repository_branch_create_commands,
+    file_rename_commands, image_artifacts, project_commands, repository_branch_create_commands,
     repository_branch_delete_commands, repository_branch_rename_commands,
     repository_checkout_commands, repository_cherry_pick_commands, repository_commit_commands,
     repository_mutation_commands, repository_pull_commands, repository_rebase_commands,
@@ -107,6 +107,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::start_acp_session,
         commands::acp::activate_acp_session,
         commands::acp::send_acp_turn,
+        image_artifacts::commands::upload_chat_image,
         commands::acp::cancel_acp_turn,
         commands::acp::steer_acp_turn,
         commands::acp::close_acp_session,
