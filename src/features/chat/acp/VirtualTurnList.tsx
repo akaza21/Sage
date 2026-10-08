@@ -70,6 +70,7 @@ export function VirtualTurnList({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState(() => new Map<string, number>());
+  const latestHeights = useRef(new Map<string, number>());
   const previousIds = useRef<readonly string[]>([]);
   const anchor = useRef<{ id: string; inset: number } | null>(null);
   const pinnedAnchor = useRef<{ id: string; inset: number } | null>(null);
@@ -98,6 +99,12 @@ export function VirtualTurnList({
     turns.length,
     firstOffsetAtOrAfter(offsets, top + viewport.height + overscan) + 1,
   );
+
+  useLayoutEffect(() => {
+    const ids = new Set<string>(turns.map((turn) => turn.id));
+    for (const id of latestHeights.current.keys())
+      if (!ids.has(id)) latestHeights.current.delete(id);
+  }, [turns]);
 
   const readViewport = useCallback(() => {
     const list = listRef.current;
@@ -213,9 +220,18 @@ export function VirtualTurnList({
   const onMeasure = useCallback(
     (id: string, height: number) => {
       if (height <= 0 || !Number.isFinite(height)) return;
-      const prior = measured.get(id) ?? ESTIMATED_ROW_HEIGHT;
+      const prior =
+        latestHeights.current.get(id) ??
+        measured.get(id) ??
+        ESTIMATED_ROW_HEIGHT;
       if (Math.abs(prior - height) < 1) return;
-      setMeasured((current) => new Map(current).set(id, height));
+      latestHeights.current.set(id, height);
+      setMeasured((current) => {
+        const ids = new Set<string>(turns.map((turn) => turn.id));
+        const next = new Map([...current].filter(([rowId]) => ids.has(rowId)));
+        next.set(id, height);
+        return next;
+      });
       const index = turns.findIndex((turn) => turn.id === id);
       const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
       if (
