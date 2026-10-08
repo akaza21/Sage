@@ -421,3 +421,58 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn child_turn_status_beyond_turn_cap_marks_retention_limited() {
+    use crate::acp::{
+        bindings::codex::{ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::TurnState,
+        store::AdapterStoreOwner,
+    };
+    let directory =
+        std::env::temp_dir().join(format!("sage-cp18e-turn-cap-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut connection = sqlite_child_owner(&path);
+    let scope = scope();
+    let snapshot = ChildTranscriptSnapshot {
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "thread-1".into(),
+        turns: (0..128)
+            .map(|index| ChildTurn {
+                id: format!("turn-{index}"),
+                status: "completed".into(),
+                items: Vec::new(),
+            })
+            .collect(),
+        retention_limited: false,
+    };
+    persist_snapshot(&mut connection, &scope, &snapshot, 1).unwrap();
+    let owner = AdapterStoreOwner {
+        project_id: scope.owner.project_id.clone(),
+        chat_id: scope.owner.chat_id.clone(),
+        session_id: scope.owner.session_id.clone(),
+        runtime_epoch: scope.owner.runtime_epoch,
+        turn_id: SageTurnId::parse("turn-one").unwrap(),
+        binding_digest: "a".repeat(64),
+        external_session_id: ExternalId::new("parent", "thread-1").unwrap(),
+    };
+    let transaction = connection.transaction().unwrap();
+    assert!(
+        crate::acp::store::child_transcript::persist_turn_status_in(
+            &transaction,
+            &owner,
+            &ExternalId::new("child", "child-one").unwrap(),
+            &ExternalId::new("turn", "turn-129").unwrap(),
+            TurnState::Completed,
+            2,
+        )
+        .unwrap()
+    );
+    transaction.commit().unwrap();
+    let stored = load_snapshot(&connection, &scope).unwrap().unwrap();
+    assert_eq!(stored.turns.len(), 128);
+    assert!(stored.retention_limited);
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}

@@ -227,8 +227,13 @@ pub(crate) fn persist_turn_status_in(
         }
         turn.status = status.into();
     } else {
-        if snapshot.retention_limited || snapshot.turns.len() == MAX_TURNS {
+        if snapshot.retention_limited {
             return Ok(false);
+        }
+        if snapshot.turns.len() == MAX_TURNS {
+            snapshot.retention_limited = true;
+            write_snapshot_in(transaction, &scope, &snapshot, now_millis).map_err(store_error)?;
+            return Ok(true);
         }
         snapshot.turns.push(ChildTurn {
             id: child_turn_id.as_str().to_owned(),
