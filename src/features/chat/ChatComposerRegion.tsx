@@ -166,6 +166,10 @@ export function ChatComposerRegion({
       onDrop={imageInput.onDrop}
       onPaste={imageInput.onPaste}
       onSubmit={(event) => {
+        if (imageUploading || imageInput.sendBlocked) {
+          event.preventDefault();
+          return;
+        }
         dictation.cancel();
         onSubmit(event);
       }}

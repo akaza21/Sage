@@ -60,7 +60,6 @@ export function ChatSurface({
     chatError,
     setComposerText,
     removeAttachedContext,
-    attachedContextKey,
     sendPrompt,
     queuePrompt,
     updateQueuedPrompt,
@@ -125,6 +124,7 @@ export function ChatSurface({
     discoveryPhase,
     composerText,
     attachedContext,
+    imageUploading,
     sending,
     chatError,
     chatLoadFailed: Boolean(acpLoadFailure.error),
@@ -391,9 +391,7 @@ export function ChatSurface({
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
         onTextChange={setComposerText}
-        onRemoveContext={(context) =>
-          removeAttachedContext(attachedContextKey(context))
-        }
+        onRemoveContext={removeAttachedContext}
         onCancelTurn={cancelTurn}
         onDeleteQueuedPrompt={(id) => updateQueuedPrompt(id, "deleted")}
         onRetryQueuedPrompt={(id) => updateQueuedPrompt(id, "queued")}

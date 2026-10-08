@@ -54,8 +54,8 @@ function renderComposer(
     onAddImages,
     ...overrides,
   };
-  render(<ChatComposerRegion {...props} />);
-  return { onAddImages };
+  const view = render(<ChatComposerRegion {...props} />);
+  return { onAddImages, ...view };
 }
 
 describe("composer image input", () => {
@@ -131,5 +131,36 @@ describe("composer image input", () => {
       screen.getByRole("button", { name: "Remove Image · sample.png context" }),
     );
     expect(onRemoveContext).toHaveBeenCalledWith(image);
+  });
+
+  it("does not submit with an unsupported image or while upload is pending", () => {
+    const onSubmit = vi.fn((event) => event.preventDefault());
+    const image = {
+      kind: "image" as const,
+      artifactId: "00000000-0000-4000-8000-000000000000",
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      sha256: "a".repeat(64),
+      label: "sample.png",
+    };
+    const { unmount } = renderComposer({ attachedContext: [image], onSubmit });
+    const form = screen.getByRole("form") as HTMLFormElement;
+    form.requestSubmit = vi.fn(() => fireEvent.submit(form));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message agent" }), {
+      key: "Enter",
+    });
+    expect(form.requestSubmit).toHaveBeenCalled();
+    fireEvent.submit(screen.getByRole("form"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    unmount();
+    renderComposer({
+      imageInputAvailable: true,
+      imageUploading: true,
+      onSubmit,
+    });
+    fireEvent.submit(screen.getByRole("form"));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

@@ -38,6 +38,8 @@ export function useChatSurfaceModel({
   discoveryPhase,
   composerText = "",
   attachedContext = [],
+  imageInputAvailable = false,
+  imageUploading = false,
   sending = false,
   chatError = null,
   chatLoadFailed = false,
@@ -56,6 +58,8 @@ export function useChatSurfaceModel({
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
   attachedContext: readonly AttachedContext[];
+  imageInputAvailable?: boolean;
+  imageUploading?: boolean;
   sending: boolean;
   chatError: string | null;
   chatLoadFailed?: boolean;
@@ -220,6 +224,10 @@ export function useChatSurfaceModel({
   } = turnEligibility;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
+  const imageSendBlocked =
+    imageUploading ||
+    (attachedContext.some((context) => context.kind === "image") &&
+      !imageInputAvailable);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
     activeAcpTurn?.state === "running" &&
@@ -262,6 +270,7 @@ export function useChatSurfaceModel({
   const submit = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
+      if (imageSendBlocked) return;
       if (activeAcpTurn) {
         if (queueAvailable && model.bindingId)
           void queuePrompt?.(model.bindingId, model.selectedModelId);
@@ -294,6 +303,7 @@ export function useChatSurfaceModel({
       composerEnabled,
       composerText,
       legacyAttachments,
+      imageSendBlocked,
       model.bindingId,
       model.selectedModelId,
       model.useNativeAcp,

@@ -4,10 +4,7 @@ import {
   changeQueuedChatPrompt,
   persistQueuedChatPrompt,
 } from "../../app/chatAttachedContextState";
-import {
-  attachedContextKey,
-  type AttachedContext,
-} from "../../domain/attachedContext";
+import type { AttachedContext } from "../../domain/attachedContext";
 import type {
   AcpChatPage,
   ClientIntentId,
@@ -216,7 +213,6 @@ export function useBoundChatComposer(chatId?: string) {
     chatError,
     setComposerText: setBoundComposerText,
     removeAttachedContext,
-    attachedContextKey,
     sendPrompt: sendBoundPrompt,
     queuePrompt,
     updateQueuedPrompt,

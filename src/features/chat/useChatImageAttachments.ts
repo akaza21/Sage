@@ -15,6 +15,7 @@ export function useChatImageAttachments(
   );
   const [imageUploading, setImageUploading] = useState(false);
   const imageUploadBusy = useRef(false);
+  const pendingRemovalIds = useRef(new Set<string>());
   const imagePreviewMounted = useRef(true);
   const imagePreviewsRef = useRef(imagePreviews);
 
@@ -25,18 +26,22 @@ export function useChatImageAttachments(
         .map((context) => context.artifactId),
     );
     if (
-      !Object.keys(imagePreviewsRef.current).some((id) => !currentIds.has(id))
+      !Object.keys(imagePreviewsRef.current).some(
+        (id) => !currentIds.has(id) && !pendingRemovalIds.current.has(id),
+      )
     )
       return;
     queueMicrotask(() =>
       setImagePreviews((current) => {
         const stale = Object.entries(current).filter(
-          ([id]) => !currentIds.has(id),
+          ([id]) => !currentIds.has(id) && !pendingRemovalIds.current.has(id),
         );
         if (stale.length === 0) return current;
         for (const [, url] of stale) URL.revokeObjectURL(url);
         return Object.fromEntries(
-          Object.entries(current).filter(([id]) => currentIds.has(id)),
+          Object.entries(current).filter(
+            ([id]) => currentIds.has(id) || pendingRemovalIds.current.has(id),
+          ),
         );
       }),
     );
@@ -88,7 +93,8 @@ export function useChatImageAttachments(
     }
   }
 
-  function removeAttachedContext(contextKey: string) {
+  function removeAttachedContext(context: AttachedContext) {
+    const contextKey = attachedContextKey(context);
     const state = useWorkbenchStore.getState();
     const owner = chatId ?? state.activeTabId ?? undefined;
     const intent = owner ? state.captureChatOwnership(owner) : null;
@@ -97,15 +103,31 @@ export function useChatImageAttachments(
       (context) =>
         context.kind === "image" && attachedContextKey(context) === contextKey,
     );
-    if (
-      !state.detachChatContext(intent, contextKey) ||
-      !image ||
-      image.kind !== "image"
-    )
+    if (!image || image.kind !== "image") {
+      state.detachChatContext(intent, contextKey);
       return;
+    }
+    pendingRemovalIds.current.add(image.artifactId);
+    if (!state.detachChatContext(intent, contextKey)) {
+      pendingRemovalIds.current.delete(image.artifactId);
+      return;
+    }
     void import("./chatImageTransfer")
       .then(({ removeChatImage }) => removeChatImage(intent, image.artifactId))
+      .then(() => {
+        pendingRemovalIds.current.delete(image.artifactId);
+        if (!imagePreviewMounted.current) return;
+        setImagePreviews((current) => {
+          const url = current[image.artifactId];
+          if (!url) return current;
+          URL.revokeObjectURL(url);
+          const next = { ...current };
+          delete next[image.artifactId];
+          return next;
+        });
+      })
       .catch(() => {
+        pendingRemovalIds.current.delete(image.artifactId);
         useWorkbenchStore.getState().attachChatContext(intent, image);
         useWorkbenchStore.getState().setChatActionState(intent, {
           sending: false,

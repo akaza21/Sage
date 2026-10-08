@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
@@ -6,6 +6,73 @@ import { capabilitySetFixture } from "../../domain/acpProjection.fixture";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { FormEvent } from "react";
+
+it("refuses image send and queue before mutation without exact capability or during upload", () => {
+  const image = {
+    kind: "image" as const,
+    artifactId: "00000000-0000-4000-8000-000000000000",
+    mediaType: "image/png" as const,
+    width: 1,
+    height: 1,
+    byteLength: 1,
+    sha256: "a".repeat(64),
+    label: "sample.png",
+  };
+  const submit = vi.fn(async () => undefined);
+  const queuePrompt = vi.fn(async () => true);
+  const base = {
+    harnesses: [
+      {
+        id: "harness-a",
+        name: "Harness A",
+        transport: "acp" as const,
+        bindingId: "binding-a",
+        installState: "available" as const,
+        source: "builtIn" as const,
+      },
+    ],
+    selectedHarnessId: "harness-a",
+    selectedModelId: null,
+    page,
+    discoveryPhase: "ready" as const,
+    composerText: "Look at this",
+    attachedContext: [image],
+    imageInputAvailable: false,
+    imageUploading: false,
+    sending: false,
+    chatError: null,
+    projectTransitioning: false,
+    focused: true,
+    acpActions: {
+      busy: false,
+      error: null,
+      cancellableTurnId: null,
+      submit,
+      cancel: vi.fn(),
+      close: vi.fn(),
+      end: vi.fn(),
+    },
+    sendPrompt: vi.fn(),
+    queuePrompt,
+  };
+  const event = { preventDefault: vi.fn() } as unknown as FormEvent;
+  const view = renderHook((args) => useChatSurfaceModel(args), {
+    initialProps: base,
+  });
+  act(() => view.result.current.submit(event));
+  expect(submit).not.toHaveBeenCalled();
+  view.rerender({ ...base, imageInputAvailable: true, imageUploading: true });
+  act(() => view.result.current.submit(event));
+  expect(submit).not.toHaveBeenCalled();
+  view.unmount();
+
+  currentNonterminalTurn.mockReturnValueOnce({
+    state: "running",
+  } as TurnProjection);
+  const queueView = renderHook(() => useChatSurfaceModel(base));
+  act(() => queueView.result.current.submit(event));
+  expect(queuePrompt).not.toHaveBeenCalled();
+});
 
 const { currentNonterminalTurn } = vi.hoisted(() => ({
   currentNonterminalTurn: vi.fn<
