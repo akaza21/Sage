@@ -217,6 +217,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 | AdapterEvent::Turn { .. }
                 | AdapterEvent::Item { .. }
                 | AdapterEvent::ChildThreadItem { .. }
+                | AdapterEvent::ChildLiveItem { .. }
                 | AdapterEvent::FilePair { .. }
                 | AdapterEvent::ActivityItem(_)
                 | AdapterEvent::Usage { .. }

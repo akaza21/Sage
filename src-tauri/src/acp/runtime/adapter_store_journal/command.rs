@@ -115,6 +115,9 @@ fn event_bytes(
         event @ DurableAdapterEvent::ChildThreadItem { .. } => {
             child_threads::event_bytes(intent, event)
         }
+        event @ DurableAdapterEvent::ChildLiveItem { .. } => {
+            child_threads::live_event_bytes(intent, event)
+        }
         DurableAdapterEvent::UsageSnapshot {
             scope,
             input_tokens,
@@ -259,6 +262,7 @@ fn convert(event: DurableAdapterEvent) -> Result<AdapterInboundEvent, PumpJourna
             now_millis,
         }),
         event @ DurableAdapterEvent::ChildThreadItem { .. } => child_threads::convert(event),
+        event @ DurableAdapterEvent::ChildLiveItem { .. } => child_threads::convert_live(event),
         DurableAdapterEvent::ActivityItem(activity) => super::activity::convert(*activity)?,
         DurableAdapterEvent::UsageSnapshot {
             scope: _,

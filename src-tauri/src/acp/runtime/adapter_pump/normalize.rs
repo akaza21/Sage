@@ -6,6 +6,23 @@ use super::{
 use sha2::{Digest, Sha256};
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {
+        self.next_synthetic_item = self
+            .next_synthetic_item
+            .checked_add(1)
+            .filter(|value| *value <= i64::MAX as u64)
+            .ok_or(AdapterPumpError::BatchCapacity)?;
+        ExternalId::new(
+            "runtimeItemId",
+            format!(
+                "sage-runtime-{}-{}",
+                self.intent.runtime_epoch.get(),
+                self.next_synthetic_item
+            ),
+        )
+        .map_err(|_| AdapterPumpError::BatchCapacity)
+    }
+
     pub(super) fn normalize(
         &mut self,
         event: AdapterEvent,
@@ -66,6 +83,30 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                         payload,
                         payload_digest: measured.digest,
                         child_thread_id,
+                        now_millis,
+                    },
+                    measured.bytes,
+                )))
+            }
+            AdapterEvent::ChildLiveItem {
+                child_thread_id,
+                child_turn_id,
+                item_id,
+                lifecycle,
+                tool_state,
+                payload,
+            } if terminal.is_none() => {
+                let measured = payload_measure(&payload)?;
+                Ok(Some(NormalizedFact::new(
+                    DurableAdapterEvent::ChildLiveItem {
+                        scope: self.scope(),
+                        child_thread_id,
+                        child_turn_id,
+                        item_id,
+                        lifecycle,
+                        tool_state,
+                        payload,
+                        payload_digest: measured.digest,
                         now_millis,
                     },
                     measured.bytes,
@@ -225,6 +266,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             AdapterEvent::Turn { .. }
             | AdapterEvent::Item { .. }
             | AdapterEvent::ChildThreadItem { .. }
+            | AdapterEvent::ChildLiveItem { .. }
             | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
@@ -299,6 +341,7 @@ pub(super) fn control_critical(fact: &NormalizedFact) -> bool {
         DurableAdapterEvent::TerminalReason { .. } => true,
         DurableAdapterEvent::Item { .. } => false,
         DurableAdapterEvent::ChildThreadItem { .. } => false,
+        DurableAdapterEvent::ChildLiveItem { .. } => false,
         DurableAdapterEvent::FilePair { .. } => false,
         DurableAdapterEvent::ActivityItem(_) => false,
     }

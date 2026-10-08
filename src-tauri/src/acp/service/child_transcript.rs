@@ -4,8 +4,8 @@ use crate::acp::{
     bindings::codex::ChildTranscriptSnapshot,
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     store::child_transcript::{
-        ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, persist_snapshot,
-        verify_current_binding,
+        ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, load_snapshot,
+        persist_snapshot, verify_current_binding,
     },
 };
 
@@ -73,17 +73,24 @@ impl AcpService {
         }
         match result {
             Ok(NativeRpcReply::ChildTranscript(snapshot)) => {
-                persist_snapshot(
+                match persist_snapshot(
                     &mut self.database.connection(),
                     &scope,
                     &snapshot,
                     crate::persistence::now_millis(),
-                )
-                .map_err(|error| match error {
-                    ChildTranscriptStoreError::Stale => ChildTranscriptReadError::Stale,
-                    other => ChildTranscriptReadError::Store(other),
-                })?;
-                Ok(ChildTranscriptRead::Current(snapshot))
+                ) {
+                    Ok(()) => {}
+                    Err(ChildTranscriptStoreError::Capacity) => {
+                        return Ok(ChildTranscriptRead::TooLarge);
+                    }
+                    Err(ChildTranscriptStoreError::Stale) => {
+                        return Err(ChildTranscriptReadError::Stale);
+                    }
+                    Err(error) => return Err(ChildTranscriptReadError::Store(error)),
+                }
+                let merged = load_snapshot(&self.database.connection(), &scope)?
+                    .ok_or(ChildTranscriptReadError::RecoveryRequired)?;
+                Ok(ChildTranscriptRead::Current(merged))
             }
             Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
             Ok(NativeRpcReply::GoalApplied) => Err(ChildTranscriptReadError::RecoveryRequired),

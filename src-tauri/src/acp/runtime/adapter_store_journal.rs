@@ -239,6 +239,12 @@ impl JournalRejectionContext {
                     kind: payload.kind().as_str(),
                     external_item_id: external_item_id.as_str().to_owned(),
                 }),
+                DurableAdapterEvent::ChildLiveItem {
+                    item_id, payload, ..
+                } => Some(JournalRejectionItem {
+                    kind: payload.kind().as_str(),
+                    external_item_id: item_id.as_str().to_owned(),
+                }),
                 DurableAdapterEvent::ActivityItem(activity) => Some(JournalRejectionItem {
                     kind: activity.payload.kind().as_str(),
                     external_item_id: activity.external_item_id.as_str().to_owned(),

@@ -683,6 +683,42 @@ fn native_child_identity_terminal_only_activity_is_admitted_from_exact_parent() 
 }
 
 #[test]
+fn synthetic_child_command_notification_is_retained_without_a_parent_item() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    runtime.enable_observed_goal_for_test();
+    running_turn(&mut runtime);
+    runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"thread-1","turnId":"turn-1","item":{
+                    "id":"activity-native","type":"subAgentActivity",
+                    "agentThreadId":"child-native","agentPath":"Worker","kind":"started"
+                }
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let child = runtime
+        .ingest(
+            &frame(json!({"method":"item/completed","params":{
+                "threadId":"child-native","turnId":"child-turn-1","item":{
+                    "id":"command-1","type":"commandExecution","status":"completed",
+                    "command":"rg TODO src","aggregatedOutput":"done","exitCode":0
+                }
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(child.events(),
+        [AdapterEvent::ChildLiveItem { child_thread_id, child_turn_id, item_id, payload: NormalizedPayload::ToolCall { .. }, .. }]
+            if child_thread_id.as_str() == "child-native"
+                && child_turn_id.as_str() == "child-turn-1"
+                && item_id.as_str() == "command-1"
+    ));
+}
+
+#[test]
 fn oldest_child_notification_after_more_than_32_children_keeps_parent_alive() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

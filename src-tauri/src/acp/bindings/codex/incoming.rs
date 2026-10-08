@@ -105,6 +105,14 @@ pub(crate) enum IncomingEvent {
         payload: NormalizedPayload,
         child_thread_id: crate::acp::intent::ExternalId,
     },
+    ChildLiveItem {
+        child_thread_id: crate::acp::intent::ExternalId,
+        child_turn_id: crate::acp::intent::ExternalId,
+        item_id: crate::acp::intent::ExternalId,
+        lifecycle: ItemLifecycle,
+        tool_state: Option<ToolState>,
+        payload: NormalizedPayload,
+    },
     Permission {
         turn_id: ScopedExternalId,
         item_id: ScopedExternalId,
@@ -221,6 +229,11 @@ fn ingest_inner<M: ResourceMapper>(
             .then(|| params.get("thread")?.get("id")?.as_str())
             .flatten()
     });
+    if thread.is_some_and(|thread| adapter.is_bound_child_thread(thread))
+        && matches!(method, "item/started" | "item/completed")
+    {
+        return notifications::child_item_event(adapter, params, method, mapper);
+    }
     if thread.is_some_and(|thread| adapter.ignore_unbound_thread_notification(thread)) {
         return Ok(IngressDisposition::IgnoredLate);
     }

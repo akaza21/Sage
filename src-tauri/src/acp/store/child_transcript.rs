@@ -4,6 +4,10 @@ use crate::acp::scheduler::RuntimeOwner;
 
 use crate::acp::bindings::codex::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
 
+mod live;
+pub(crate) use live::persist_live_item_in;
+use live::{merge_snapshots, validate_bounds};
+
 #[derive(Clone)]
 pub(crate) struct ChildTranscriptScope {
     pub(crate) owner: RuntimeOwner,
@@ -20,6 +24,8 @@ pub(crate) enum ChildTranscriptStoreError {
     Storage(#[from] rusqlite::Error),
     #[error("child transcript snapshot is corrupt")]
     Corrupt,
+    #[error("child transcript capacity reached")]
+    Capacity,
 }
 
 pub(crate) fn verify_current_binding(
@@ -80,13 +86,50 @@ pub(crate) fn persist_snapshot(
     {
         return Err(ChildTranscriptStoreError::Stale);
     }
-    let encoded =
-        serde_json::to_string(snapshot).map_err(|_| ChildTranscriptStoreError::Corrupt)?;
-    if encoded.len() > MAX_SNAPSHOT_BYTES {
-        return Err(ChildTranscriptStoreError::Corrupt);
-    }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     verify_current_binding(&transaction, scope)?;
+    let merged = match load_snapshot(&transaction, scope)? {
+        Some(existing) => merge_snapshots(snapshot, &existing)?,
+        None => snapshot.clone(),
+    };
+    validate_bounds(&merged)?;
+    write_snapshot_in(&transaction, scope, &merged, now_millis)?;
+    transaction.commit()?;
+    Ok(())
+}
+
+fn write_snapshot_in(
+    transaction: &rusqlite::Transaction<'_>,
+    scope: &ChildTranscriptScope,
+    snapshot: &ChildTranscriptSnapshot,
+    now_millis: i64,
+) -> Result<(), ChildTranscriptStoreError> {
+    let encoded =
+        serde_json::to_string(snapshot).map_err(|_| ChildTranscriptStoreError::Corrupt)?;
+    if encoded.len() > MAX_SNAPSHOT_BYTES - 64 {
+        return Err(ChildTranscriptStoreError::Capacity);
+    }
+    let exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM acp_child_thread_transcripts WHERE native_child_thread_id=?1)",
+        [scope.child_thread_id.as_str()],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        let count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM acp_child_thread_transcripts
+             WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND runtime_epoch=?4",
+            params![
+                scope.owner.project_id.as_str(),
+                scope.owner.chat_id.as_str(),
+                scope.owner.session_id.as_str(),
+                scope.owner.runtime_epoch.get() as i64,
+            ],
+            |row| row.get(0),
+        )?;
+        if count >= 32 {
+            return Err(ChildTranscriptStoreError::Capacity);
+        }
+    }
     transaction.execute(
         "INSERT INTO acp_child_thread_transcripts
          (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,parent_thread_id,
@@ -107,7 +150,6 @@ pub(crate) fn persist_snapshot(
             now_millis,
         ],
     )?;
-    transaction.commit()?;
     Ok(())
 }
 

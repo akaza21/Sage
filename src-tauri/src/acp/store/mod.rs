@@ -74,8 +74,8 @@ pub(crate) use activity_ingress::{
 #[allow(unused_imports)]
 pub(crate) use adapter_batch::{
     AdapterActivityItemCommand, AdapterBatchMutation, AdapterInboundBatchCommand,
-    AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, TurnTerminalReasonCommand,
-    TurnUsageSnapshotCommand, apply_adapter_inbound_batch,
+    AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
+    TurnTerminalReasonCommand, TurnUsageSnapshotCommand, apply_adapter_inbound_batch,
 };
 #[allow(unused_imports)]
 pub(crate) use cancel::begin_cancel;

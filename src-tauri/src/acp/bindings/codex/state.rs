@@ -153,6 +153,7 @@ pub(crate) struct CodexAdapter {
     command_item_snapshots: CommandItemSnapshots,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
+    bound_child_threads: Vec<SafeText<512>>,
     unknown_child_notification_reported: bool,
     permission_requests: Vec<PermissionRequestEntry>,
     goal_state: GoalState,

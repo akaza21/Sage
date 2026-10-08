@@ -30,8 +30,8 @@ impl<M: ResourceMapper + ?Sized> crate::acp::bindings::codex::ResourceMapper
 
 const MAX_WIRE_BYTES: usize = 1_048_576;
 pub(crate) const MAX_SNAPSHOT_BYTES: usize = 4_194_304;
-const MAX_TURNS: usize = 128;
-const MAX_ITEMS: usize = 1024;
+pub(crate) const MAX_TURNS: usize = 128;
+pub(crate) const MAX_ITEMS: usize = 1024;
 const MAX_TEXT_BYTES: usize = 16_384;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +40,8 @@ pub(crate) struct ChildTranscriptSnapshot {
     pub(crate) child_thread_id: String,
     pub(crate) parent_thread_id: String,
     pub(crate) turns: Vec<ChildTurn>,
+    #[serde(default)]
+    pub(crate) retention_limited: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +188,7 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
         child_thread_id: child.into(),
         parent_thread_id: parent.into(),
         turns: normalized_turns,
+        retention_limited: false,
     };
     if serde_json::to_vec(&snapshot)
         .map_err(|_| ChildTranscriptError::Malformed)?

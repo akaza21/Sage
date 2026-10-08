@@ -107,3 +107,93 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
         std::fs::remove_dir_all(directory).unwrap();
     });
 }
+
+#[test]
+fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_items() {
+    use crate::acp::{
+        bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::ItemLifecycle,
+        store::{AdapterStoreOwner, ChildLiveItemCommand},
+    };
+
+    let directory = std::env::temp_dir().join(format!("sage-cp18e-cap-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    let mut connection = sqlite_child_owner(&path);
+    let scope = scope();
+    let text = SafeText::new("text", "retained").unwrap();
+    let snapshot = ChildTranscriptSnapshot {
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "thread-1".into(),
+        turns: vec![ChildTurn {
+            id: "child-turn-1".into(),
+            status: "inProgress".into(),
+            items: (0..1024)
+                .map(|index| ChildItem {
+                    id: format!("item-{index}"),
+                    lifecycle: ItemLifecycle::Completed,
+                    tool_state: None,
+                    payload: NormalizedPayload::Text { text: text.clone() },
+                })
+                .collect(),
+        }],
+        retention_limited: false,
+    };
+    persist_snapshot(&mut connection, &scope, &snapshot, 1).unwrap();
+    let owner = AdapterStoreOwner {
+        project_id: scope.owner.project_id.clone(),
+        chat_id: scope.owner.chat_id.clone(),
+        session_id: scope.owner.session_id.clone(),
+        runtime_epoch: scope.owner.runtime_epoch,
+        turn_id: SageTurnId::parse("turn-one").unwrap(),
+        binding_digest: "a".repeat(64),
+        external_session_id: ExternalId::new("parent", "thread-1").unwrap(),
+    };
+    let command = ChildLiveItemCommand {
+        child_thread_id: ExternalId::new("child", "child-one").unwrap(),
+        child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
+        item_id: ExternalId::new("item", "overflow").unwrap(),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        payload: NormalizedPayload::ThoughtSummary {
+            summary: SafeText::new("summary", "overflow omitted").unwrap(),
+        },
+        now_millis: 2,
+    };
+    let transaction = connection.transaction().unwrap();
+    assert!(
+        crate::acp::store::child_transcript::persist_live_item_in(&transaction, &owner, &command)
+            .unwrap()
+    );
+    transaction.commit().unwrap();
+    let limited = load_snapshot(&connection, &scope).unwrap().unwrap();
+    assert!(limited.retention_limited);
+    assert_eq!(limited.turns[0].items.len(), 1024);
+    assert!(
+        !limited.turns[0]
+            .items
+            .iter()
+            .any(|item| item.id == "overflow")
+    );
+    let mut foreign = owner.clone();
+    foreign.external_session_id = ExternalId::new("parent", "foreign-parent").unwrap();
+    let transaction = connection.transaction().unwrap();
+    assert!(
+        crate::acp::store::child_transcript::persist_live_item_in(&transaction, &foreign, &command)
+            .is_err()
+    );
+    transaction.rollback().unwrap();
+    connection.execute("UPDATE session_runtime_epochs SET state='exited',terminal_at=3,exit_kind='processExit' WHERE session_id='session-one' AND runtime_epoch=1", []).unwrap();
+    let transaction = connection.transaction().unwrap();
+    assert!(
+        crate::acp::store::child_transcript::persist_live_item_in(&transaction, &owner, &command)
+            .is_err()
+    );
+    transaction.rollback().unwrap();
+    assert_eq!(
+        load_earlier_snapshot(&connection, &scope).unwrap(),
+        Some(limited)
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}

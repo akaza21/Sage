@@ -66,3 +66,64 @@ pub(super) fn convert(event: DurableAdapterEvent) -> AdapterInboundEvent {
         child_thread_id,
     }
 }
+
+pub(super) fn live_event_bytes(
+    intent: &PumpIntent,
+    event: &DurableAdapterEvent,
+) -> Result<usize, PumpJournalError> {
+    let DurableAdapterEvent::ChildLiveItem {
+        scope,
+        child_thread_id,
+        child_turn_id,
+        item_id,
+        payload,
+        payload_digest,
+        ..
+    } = event
+    else {
+        return Err(PumpJournalError::Rejected);
+    };
+    verify_scope(intent, scope)?;
+    if child_thread_id == &intent.external_session_id
+        || !matches!(
+            payload,
+            NormalizedPayload::ToolCall { .. }
+                | NormalizedPayload::FileChangeDiff { .. }
+                | NormalizedPayload::ThoughtSummary { .. }
+        )
+    {
+        return Err(PumpJournalError::Rejected);
+    }
+    let payload_bytes = verify_payload(payload, payload_digest)?;
+    Ok(scope_heap_bytes(scope)
+        + child_thread_id.as_str().len()
+        + child_turn_id.as_str().len()
+        + item_id.as_str().len()
+        + payload_digest.len()
+        + payload_bytes)
+}
+
+pub(super) fn convert_live(event: DurableAdapterEvent) -> AdapterInboundEvent {
+    let DurableAdapterEvent::ChildLiveItem {
+        child_thread_id,
+        child_turn_id,
+        item_id,
+        lifecycle,
+        tool_state,
+        payload,
+        now_millis,
+        ..
+    } = event
+    else {
+        unreachable!("child-live event routed by caller")
+    };
+    AdapterInboundEvent::ChildLiveItem(crate::acp::store::ChildLiveItemCommand {
+        child_thread_id,
+        child_turn_id,
+        item_id,
+        lifecycle,
+        tool_state,
+        payload,
+        now_millis,
+    })
+}

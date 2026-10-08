@@ -51,6 +51,7 @@ impl CodexAdapter {
             command_item_snapshots: CommandItemSnapshots::default(),
             subagent_labels: SubagentLabels::default(),
             child_threads: Vec::new(),
+            bound_child_threads: Vec::new(),
             unknown_child_notification_reported: false,
             permission_requests: Vec::new(),
             goal_state: super::GoalState::Unsupported,

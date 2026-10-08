@@ -226,6 +226,24 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::ChildLiveItem {
+                child_thread_id,
+                child_turn_id,
+                item_id,
+                lifecycle,
+                tool_state,
+                payload,
+            } => (
+                AdapterEvent::ChildLiveItem {
+                    child_thread_id,
+                    child_turn_id,
+                    item_id,
+                    lifecycle,
+                    tool_state,
+                    payload,
+                },
+                None,
+            ),
             IncomingEvent::Permission {
                 turn_id,
                 item_id,

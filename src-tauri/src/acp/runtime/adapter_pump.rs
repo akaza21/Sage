@@ -142,6 +142,17 @@ pub(crate) enum DurableAdapterEvent {
         child_thread_id: ExternalId,
         now_millis: i64,
     },
+    ChildLiveItem {
+        scope: TurnScope,
+        child_thread_id: ExternalId,
+        child_turn_id: ExternalId,
+        item_id: ExternalId,
+        lifecycle: ItemLifecycle,
+        tool_state: Option<ToolState>,
+        payload: NormalizedPayload,
+        payload_digest: String,
+        now_millis: i64,
+    },
     /// Bounded old/new bytes for the preceding `FileChangeDiff` item with the
     /// same external key. Applied atomically with its item in the store batch.
     FilePair {
@@ -355,23 +366,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, None) | (None, a) => a,
         }
-    }
-
-    fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {
-        self.next_synthetic_item = self
-            .next_synthetic_item
-            .checked_add(1)
-            .filter(|value| *value <= i64::MAX as u64)
-            .ok_or(AdapterPumpError::BatchCapacity)?;
-        ExternalId::new(
-            "runtimeItemId",
-            format!(
-                "sage-runtime-{}-{}",
-                self.intent.runtime_epoch.get(),
-                self.next_synthetic_item
-            ),
-        )
-        .map_err(|_| AdapterPumpError::BatchCapacity)
     }
 
     fn exact_session(&self, id: &crate::acp::bindings::adapter::AdapterIdentity) -> bool {

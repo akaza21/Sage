@@ -12,6 +12,7 @@ use super::{
 };
 
 mod child_thread;
+pub(super) use child_thread::item_event as child_item_event;
 mod deltas;
 mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
@@ -389,6 +390,9 @@ fn item_event<M: ResourceMapper>(
         }
     }
     let child_thread_id = child_thread::native_id(item, params)?;
+    if let Some(child) = &child_thread_id {
+        adapter.learn_bound_child(child.as_str());
+    }
     adapter.enrich_subagent_payload(&mut payload);
     adapter.learn_child_threads(&payload);
     let id = adapter

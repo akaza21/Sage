@@ -113,6 +113,14 @@ pub(crate) enum AdapterEvent {
         payload: NormalizedPayload,
         child_thread_id: ExternalId,
     },
+    ChildLiveItem {
+        child_thread_id: ExternalId,
+        child_turn_id: ExternalId,
+        item_id: ExternalId,
+        lifecycle: ItemLifecycle,
+        tool_state: Option<ToolState>,
+        payload: NormalizedPayload,
+    },
     FilePair {
         id: AdapterIdentity,
         external_item_id: ExternalId,

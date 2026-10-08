@@ -356,6 +356,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     &fact.event,
                     DurableAdapterEvent::Item { .. }
                         | DurableAdapterEvent::ChildThreadItem { .. }
+                        | DurableAdapterEvent::ChildLiveItem { .. }
                         | DurableAdapterEvent::ActivityItem(_)
                 ) {
                     self.journal.first_normalized_item_accepted();

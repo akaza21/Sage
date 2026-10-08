@@ -4,6 +4,30 @@ use super::{AdapterError, CodexAdapter};
 use crate::acp::intent::NormalizedPayload;
 
 impl CodexAdapter {
+    pub(crate) fn learn_bound_child(&mut self, child: &str) {
+        if self
+            .bound_child_threads
+            .iter()
+            .any(|known| known.as_str() == child)
+        {
+            return;
+        }
+        if self.bound_child_threads.len() == 32 {
+            self.bound_child_threads.remove(0);
+        }
+        if let Ok(child) = crate::acp::contract::SafeText::new("childThreadId", child) {
+            self.bound_child_threads.push(child);
+        }
+    }
+
+    pub(crate) fn is_bound_child_thread(&self, thread: &str) -> bool {
+        self.goal_supported()
+            && self
+                .bound_child_threads
+                .iter()
+                .any(|known| known.as_str() == thread)
+    }
+
     pub(crate) fn learn_child_threads(&mut self, payload: &NormalizedPayload) {
         let NormalizedPayload::Collaboration {
             operation,

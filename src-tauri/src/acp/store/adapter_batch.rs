@@ -59,6 +59,17 @@ pub(crate) struct TurnUsageSnapshotCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChildLiveItemCommand {
+    pub child_thread_id: ExternalId,
+    pub child_turn_id: ExternalId,
+    pub item_id: ExternalId,
+    pub lifecycle: crate::acp::lifecycle::ItemLifecycle,
+    pub tool_state: Option<crate::acp::lifecycle::ToolState>,
+    pub payload: crate::acp::intent::NormalizedPayload,
+    pub now_millis: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AdapterInboundEvent {
     Turn {
         state: TurnState,
@@ -69,6 +80,7 @@ pub(crate) enum AdapterInboundEvent {
         item: ItemIngressCommand,
         child_thread_id: ExternalId,
     },
+    ChildLiveItem(ChildLiveItemCommand),
     UsageSnapshot(TurnUsageSnapshotCommand),
     TerminalReason(TurnTerminalReasonCommand),
     /// Bounded old/new bytes for the `FileChangeDiff` item with the same
@@ -273,6 +285,9 @@ fn apply_event(
             item,
             child_thread_id,
         } => child_threads::apply(transaction, owner, item, child_thread_id),
+        AdapterInboundEvent::ChildLiveItem(command) => {
+            super::child_transcript::persist_live_item_in(transaction, owner, command)
+        }
         AdapterInboundEvent::UsageSnapshot(command) => usage::apply(transaction, owner, command),
         AdapterInboundEvent::TerminalReason(command) => {
             terminal_reason::apply(transaction, owner, command)
