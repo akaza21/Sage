@@ -6,6 +6,7 @@
 mod admission;
 mod auth;
 mod authority;
+mod child_transcript;
 mod degrade;
 mod discovery;
 mod host_presence;
@@ -44,6 +45,9 @@ pub(crate) use authority::{
     StateAuthorityError, build_codex_launch_environment, classify_codex_state_path,
     inspect_codex_authority, verify_codex_config,
 };
+pub(crate) use child_transcript::{
+    ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES, normalize_read_response,
+};
 pub(crate) use discovery::{
     AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
     CodexDiscoveryRunError, CodexModelSnapshot, CodexProcessTransport, DiscoveryZeroProcess,
@@ -54,6 +58,7 @@ pub(crate) use discovery::{
     CodexDiscoveryProtocol, DiscoveryTransport, RevalidationCheckpoint, run_discovery_protocol,
 };
 pub(crate) use host_presence::{CodexHostPresence, observe_codex_host_presence};
+pub(crate) use incoming::normalize_transcript_item;
 pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,

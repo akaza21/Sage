@@ -293,3 +293,75 @@ fn native_child_identity_reopens_without_enabling_transcript_capability() {
     drop(reopened);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn child_transcript_write_rechecks_binding_and_current_epoch() {
+    use crate::acp::{
+        bindings::codex::normalize_read_response,
+        scheduler::RuntimeOwner,
+        store::child_transcript::{ChildTranscriptScope, load_snapshot, persist_snapshot},
+    };
+
+    let mut fixture = migrated_fixture();
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &fixture.owner,
+            vec![child_item(&fixture.owner, "activity-one", "child-one")],
+        ),
+    )
+    .unwrap();
+    let item_id = binding(&fixture.connection, "activity-one").2;
+    let scope = ChildTranscriptScope {
+        owner: RuntimeOwner {
+            project_id: fixture.owner.project_id.clone(),
+            chat_id: fixture.owner.chat_id.clone(),
+            session_id: fixture.owner.session_id.clone(),
+            runtime_epoch: fixture.owner.runtime_epoch,
+        },
+        item_id,
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "adapter-session".into(),
+    };
+    let wire = br#"{"id":17,"result":{"thread":{"id":"child-one","parentThreadId":"adapter-session","turns":[{"id":"native-turn","status":"completed","itemsView":"full","items":[{"id":"answer","type":"agentMessage","text":"Result","phase":null,"memoryCitation":null}]}]}}}"#;
+    let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
+    let snapshot =
+        normalize_read_response(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
+    assert!(persist_snapshot(&mut fixture.connection, &scope, &snapshot, 10).is_ok());
+    assert_eq!(
+        load_snapshot(&fixture.connection, &scope).unwrap(),
+        Some(snapshot.clone())
+    );
+
+    let mut foreign = scope.clone();
+    foreign.child_thread_id = "child-two".into();
+    assert!(persist_snapshot(&mut fixture.connection, &foreign, &snapshot, 11).is_err());
+    foreign = scope.clone();
+    foreign.parent_thread_id = "other-parent".into();
+    assert!(persist_snapshot(&mut fixture.connection, &foreign, &snapshot, 11).is_err());
+    foreign = scope.clone();
+    foreign.item_id = "item-one".into();
+    assert!(persist_snapshot(&mut fixture.connection, &foreign, &snapshot, 11).is_err());
+    foreign = scope.clone();
+    foreign.owner.session_id = SageAgentSessionId::parse("session-other").unwrap();
+    assert!(persist_snapshot(&mut fixture.connection, &foreign, &snapshot, 11).is_err());
+    foreign = scope.clone();
+    foreign.owner.runtime_epoch = RuntimeEpoch::new(2).unwrap();
+    assert!(persist_snapshot(&mut fixture.connection, &foreign, &snapshot, 11).is_err());
+    fixture
+        .connection
+        .execute(
+            "DELETE FROM chat_session_heads WHERE chat_id='chat-one'",
+            [],
+        )
+        .unwrap();
+    assert!(load_snapshot(&fixture.connection, &scope).is_err());
+    fixture.connection.execute(
+        "INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project-one','chat-one','session-one',0,1)", [],
+    ).unwrap();
+    fixture.connection.execute(
+        "UPDATE session_runtime_epochs SET state='terminating' WHERE session_id='session-one' AND runtime_epoch=1", [],
+    ).unwrap();
+    assert!(persist_snapshot(&mut fixture.connection, &scope, &snapshot, 12).is_err());
+    assert!(load_snapshot(&fixture.connection, &scope).is_err());
+}

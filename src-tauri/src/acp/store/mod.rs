@@ -7,6 +7,7 @@ pub(crate) mod browser_operations;
 #[cfg(test)]
 mod browser_permission_tests;
 mod cancel;
+pub(crate) mod child_transcript;
 mod commands;
 mod database_store;
 pub(crate) mod edit_disposition;

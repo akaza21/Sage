@@ -21,6 +21,16 @@ pub(in crate::acp::bindings::codex) use support::{command_output_token, sanitize
 mod items;
 use items::{normalize_item, normalize_materialized_command};
 
+type NormalizedItemParts = (NormalizedPayload, Option<ToolState>, Option<ItemLifecycle>);
+
+pub(crate) fn normalize_transcript_item<M: ResourceMapper>(
+    item: &Map<String, Value>,
+    lifecycle: ItemLifecycle,
+    mapper: &M,
+) -> Result<Option<NormalizedItemParts>, IngressError> {
+    normalize_item(item, lifecycle, mapper)
+}
+
 mod requests;
 use requests::server_request;
 
