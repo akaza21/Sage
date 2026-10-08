@@ -51,7 +51,10 @@ impl CodexAdapter {
         access_mode: SessionAccessMode,
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
-        if self.turn_start_correlations.has_pending() || self.active_turn_id.is_some() {
+        if self.turn_start_correlations.has_pending()
+            || self.active_turn_id.is_some()
+            || self.provisional_turn.is_some()
+        {
             return Err(AdapterError::TurnAlreadyActive);
         }
         let thread = self

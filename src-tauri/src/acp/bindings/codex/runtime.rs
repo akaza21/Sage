@@ -43,6 +43,15 @@ pub(crate) struct CodexRuntime {
 }
 
 impl CodexRuntime {
+    #[cfg(test)]
+    pub(crate) fn enable_observed_goal_for_test(&mut self) {
+        self.inner.enable_observed_goal_for_test();
+        self.inner.goal_updated(&serde_json::json!({
+            "objective":"Continue bounded work","status":"active",
+            "tokensUsed":0,"timeUsedSeconds":0
+        }));
+    }
+
     fn translate(
         &mut self,
         disposition: IngressDisposition,

@@ -366,6 +366,9 @@ mod refusal_detail;
 pub(crate) use refusal_detail::RefusalDetail;
 
 pub(crate) trait HarnessAdapter {
+    fn provisional_turn_pending(&self) -> bool {
+        false
+    }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }
@@ -407,6 +410,8 @@ pub(crate) trait HarnessAdapter {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError>;
 }
+
+pub(crate) const PROVISIONAL_TURN_HANDOFF_MILLIS: u64 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum AdapterRuntimeError {

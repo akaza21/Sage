@@ -98,11 +98,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             Err(error) => return Err(error),
         };
         let Some(frame) = frame else { return Ok(false) };
+        self.enforce_provisional_deadline(now_millis)?;
         if validate_structure(&frame).is_err() {
             return self.fail_deferred_frame().await;
         }
         match self.adapter.ingest(&frame, &self.resources) {
             Ok(batch) => {
+                self.refresh_provisional_deadline(now_millis);
                 self.accept_batch(batch, now_millis, IngestMode::Deferred)
                     .await?
             }
@@ -151,6 +153,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         &mut self,
         now_millis: i64,
     ) -> Result<bool, AdapterPumpError> {
+        self.enforce_provisional_deadline(now_millis)?;
         if matches!(
             self.pending.state(now_millis),
             DeferredIngressState::FlushNeeded { .. }
@@ -214,6 +217,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     ) -> Result<bool, AdapterPumpError> {
         let Some(frame) = frame else { return Ok(false) };
         self.ensure_live()?;
+        self.enforce_provisional_deadline(now_millis)?;
         if validate_structure(&frame).is_err() {
             if self.skip_stdout_preamble(&frame) {
                 return Ok(false);
@@ -225,7 +229,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         self.stdout_preamble = None;
         let batch = match self.adapter.ingest(&frame, &self.resources) {
-            Ok(batch) => batch,
+            Ok(batch) => {
+                self.refresh_provisional_deadline(now_millis);
+                batch
+            }
             Err(AdapterRuntimeError::MandatoryDenyTeardown) => {
                 return self.fail_deferred_mandatory_deny(mode).await;
             }

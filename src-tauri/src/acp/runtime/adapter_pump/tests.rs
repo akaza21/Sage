@@ -15,6 +15,271 @@ use crate::acp::{
 use super::coalescer::{NormalizedFact, PendingIngress};
 use super::*;
 use crate::acp::bindings::adapter::RefusalDetail;
+use crate::acp::bindings::codex::{CodexRuntime, Platform};
+
+#[test]
+fn goal_active_response_first_mismatch_never_commits_the_provisional_turn() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+        })), 1).await.unwrap());
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty(),
+            "response Turn A is provisional, not durable");
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-B"}}
+        })), 2).await.unwrap());
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty(),
+            "Running B waits for the matching userMessage.clientId");
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "method":"item/started","params":{"threadId":"thread-1","turnId":"turn-B",
+                "item":{"id":"echo-1","type":"userMessage","clientId":"client-1","text":"Inspect only"}}
+        })), 3).await.unwrap());
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "method":"item/started","params":{"threadId":"thread-1","turnId":"turn-B",
+                "item":{"id":"reply-1","type":"agentMessage","text":"Ready"}}
+        })), 4).await.unwrap());
+        assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+            "method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-B","status":"completed"}}
+        })), 5).await.unwrap());
+        let states = shared.0.lock().unwrap().durable_batches.iter().flatten().filter_map(|event| {
+            match event { DurableAdapterEvent::Turn { state, .. } => Some(*state), _ => None }
+        }).collect::<Vec<_>>();
+        assert_eq!(states, [TurnState::Running, TurnState::Completed]);
+        assert!(shared.0.lock().unwrap().durable_batches.iter().flatten().any(|event| matches!(
+            event,
+            DurableAdapterEvent::Item { external_item_id, .. } if external_item_id.as_str() == "reply-1"
+        )));
+        assert_eq!(pump.intent.active_turn.external_turn_id.as_ref().unwrap().as_str(), "turn-B");
+    });
+}
+
+fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared, u64) {
+    let mut codex = CodexRuntime::fixture(Platform::WindowsX86_64);
+    let init = codex.command(AdapterCommand::Initialize).unwrap();
+    codex
+        .resolve_egress(init.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let initialized = codex
+        .ingest(
+            &codex_frame(serde_json::json!({"id":1,"result":{
+                "userAgent":"sage/0.145.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.145.0-7b0ab167",
+                "platformFamily":"windows","platformOs":"windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    codex
+        .resolve_egress(
+            initialized.egress()[0].token().clone(),
+            EgressResolution::Queued,
+        )
+        .unwrap();
+    let start = codex
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    codex
+        .ingest(
+            &codex_frame(serde_json::json!({
+                "id": codex_request_id(&start),"result":{"thread":{"id":"thread-1"}}
+            })),
+            &Mapper,
+        )
+        .unwrap();
+    codex.enable_observed_goal_for_test();
+    let prompt = codex
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").unwrap(),
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let prompt_id = codex_request_id(&prompt);
+    let (pump, shared) = codex_pump(codex);
+    (pump, shared, prompt_id)
+}
+
+#[test]
+fn goal_active_mismatch_rejects_unverified_first_item_without_durable_identity() {
+    runtime().block_on(async {
+        for item in [
+            serde_json::json!({"id":"echo-1","type":"userMessage","clientId":"other-client"}),
+            serde_json::json!({"id":"echo-1","type":"userMessage"}),
+            serde_json::json!({"id":"item-1","type":"reasoning","summary":["unverified"]}),
+        ] {
+            let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+            pump.push_stdout_chunk(&codex_line(serde_json::json!({
+                "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+            })), 1).await.unwrap();
+            pump.push_stdout_chunk(&codex_line(serde_json::json!({
+                "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-B"}}
+            })), 2).await.unwrap();
+            assert!(pump.push_stdout_chunk(&codex_line(serde_json::json!({
+                "method":"item/started","params":{"threadId":"thread-1","turnId":"turn-B","item":item}
+            })), 3).await.is_err());
+            assert!(pump.teardown_required());
+            assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+        }
+    });
+}
+
+#[test]
+fn goal_active_mismatch_rejects_a_second_started_turn_before_verification() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+            })),
+            1,
+        )
+        .await
+        .unwrap();
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-B"}}
+            })),
+            2,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            pump.push_stdout_chunk(
+                &codex_line(serde_json::json!({
+                    "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-C"}}
+                })),
+                3
+            )
+            .await,
+            Err(AdapterPumpError::Adapter(AdapterRuntimeError::Operation))
+        ));
+        assert!(pump.teardown_required());
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
+fn goal_active_provisional_turn_expires_without_another_wire_frame() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+            })),
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pump.next_deferred_flush_deadline_millis(), Some(10_001));
+        assert!(!pump.flush_deferred_if_needed(10_000).await.unwrap());
+        assert!(matches!(
+            pump.flush_deferred_if_needed(10_001).await,
+            Err(AdapterPumpError::TeardownRequired)
+        ));
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
+fn goal_active_provisional_turn_refuses_steer_until_client_verification() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+            })),
+            1,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            pump.queue_steer(
+                Prompt::new("prompt", "Change direction").unwrap(),
+                RequiredText::new("client", "steer-1").unwrap(),
+            ),
+            Err(AdapterPumpError::Intent)
+        ));
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-B"}}
+            })),
+            2,
+        )
+        .await
+        .unwrap();
+        pump.push_stdout_chunk(
+            &codex_line(serde_json::json!({
+                "method":"item/started","params":{"threadId":"thread-1","turnId":"turn-B",
+                    "item":{"id":"echo-1","type":"userMessage","clientId":"client-1"}}
+            })),
+            3,
+        )
+        .await
+        .unwrap();
+        assert!(
+            pump.queue_steer(
+                Prompt::new("prompt", "Change direction").unwrap(),
+                RequiredText::new("client", "steer-2").unwrap(),
+            )
+            .is_ok()
+        );
+    });
+}
+
+fn codex_line(value: serde_json::Value) -> Vec<u8> {
+    let mut bytes = serde_json::to_vec(&value).unwrap();
+    bytes.push(b'\n');
+    bytes
+}
+
+fn codex_frame(value: serde_json::Value) -> Frame {
+    let mut decoder = IncrementalFrameDecoder::new();
+    decoder.push_chunk(&codex_line(value)).unwrap().unwrap()
+}
+
+fn codex_request_id(egress: &AdapterEgress) -> u64 {
+    serde_json::from_slice::<serde_json::Value>(egress.frame().payload()).unwrap()["id"]
+        .as_u64()
+        .unwrap()
+}
+
+fn codex_pump(codex: CodexRuntime) -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, Shared) {
+    let shared = Shared(Arc::new(Mutex::new(FakeState::default())));
+    let publisher: Arc<dyn ProjectionPublisher> = Arc::new(FakePublisher {
+        shared: shared.clone(),
+        outcomes: Mutex::new(VecDeque::new()),
+    });
+    let mut scope = session_intent();
+    scope.binding_digest = [9; 32];
+    scope.session_id = SageAgentSessionId::parse("session-codex-runtime").unwrap();
+    scope.external_session_id = ExternalId::new("session", "thread-1").unwrap();
+    let pump = AdapterPump::new(
+        codex,
+        FakeJournal {
+            shared: shared.clone(),
+            outcomes: VecDeque::new(),
+            allow_rebind: true,
+            next_projection: 0,
+            turn_id: turn("one"),
+            turn_state: TurnState::Sending,
+            turn_revision: 1,
+        },
+        Mapper,
+        publisher,
+        scope.bind_turn(ActiveTurnIntent {
+            turn_id: turn("one"),
+            external_turn_id: None,
+            client_message_id: RequiredText::new("client", "client-1").unwrap(),
+        }),
+    )
+    .unwrap();
+    (pump, shared)
+}
 
 #[derive(Default)]
 struct FakeState {

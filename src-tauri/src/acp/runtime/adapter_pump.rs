@@ -31,6 +31,7 @@ mod error;
 mod ingress;
 mod normalize;
 mod payload;
+mod provisional;
 mod receipt;
 pub(crate) mod session_config;
 
@@ -206,6 +207,7 @@ pub(crate) struct AdapterPump<A, J, R> {
     stdout_preamble: Option<StdoutPreambleWindow>,
     egress: ReservedQueue<AdapterEgress>,
     pending: PendingIngress,
+    provisional_turn_deadline_millis: Option<i64>,
     next_synthetic_item: u64,
     terminal: Option<TurnState>,
     durable_turn_cursor: Option<AdapterTurnCursor>,
@@ -280,6 +282,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             stdout_preamble: Some(StdoutPreambleWindow::default()),
             egress: admission.egress,
             pending: PendingIngress::new(),
+            provisional_turn_deadline_millis: None,
             next_synthetic_item: 0,
             terminal: None,
             durable_turn_cursor: None,
@@ -331,7 +334,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     pub(crate) fn next_deferred_flush_deadline_millis(&self) -> Option<i64> {
-        self.pending.deadline_millis()
+        match (
+            self.pending.deadline_millis(),
+            self.provisional_turn_deadline_millis,
+        ) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, None) | (None, a) => a,
+        }
     }
 
     fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {

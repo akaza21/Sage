@@ -14,6 +14,9 @@ impl CodexAdapter {
         self.codex_home.clear();
         self.observed_build_characterisation =
             Some(crate::acp::bindings::characterisation::Characterisation::Characterised);
+        if let Some(methods) = self.negotiated.as_mut() {
+            methods.snapshot.active_turn_steer = true;
+        }
     }
 
     pub(crate) fn from_metadata_packet(
@@ -38,6 +41,7 @@ impl CodexAdapter {
             pending_browser_mcp_failure_threads: Vec::new(),
             turn_start_correlations: TurnStartCorrelations::new(),
             active_turn_id: None,
+            provisional_turn: None,
             active_turn_client_message_id: None,
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,

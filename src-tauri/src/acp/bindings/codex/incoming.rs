@@ -180,6 +180,9 @@ fn ingest_inner<M: ResourceMapper>(
     }
     let value: Value = serde_json::from_slice(bytes).map_err(|_| IngressError::Malformed)?;
     validate_shape(&value)?;
+    if adapter.provisional_expired() {
+        return Err(IngressError::Identity);
+    }
     let object = value.as_object().ok_or(IngressError::Malformed)?;
     if object.contains_key("result") || object.contains_key("error") {
         return response(adapter, object);
@@ -328,6 +331,9 @@ fn response(
                     return Ok(IngressDisposition::DuplicateTerminal);
                 }
                 super::state::TurnBinding::Active => {
+                    return Ok(IngressDisposition::IgnoredLate);
+                }
+                super::state::TurnBinding::Provisional => {
                     return Ok(IngressDisposition::IgnoredLate);
                 }
                 super::state::TurnBinding::NewlyActive => {}

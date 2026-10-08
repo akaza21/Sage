@@ -244,6 +244,50 @@ fn arm_turn(adapter: &mut CodexAdapter, request_id: u64, client_id: &str) {
     adapter.prompt(request_id, &prompt, &client).unwrap();
 }
 
+fn goal_ready_after_previous_turn() -> CodexAdapter {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    arm_turn(&mut adapter, 50, "first-client");
+    adapter
+        .ingest(
+            br#"{"id":50,"result":{"turn":{"id":"turn-previous"}}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    adapter
+        .ingest(br#"{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-previous","status":"completed"}}}"#, &Mapper)
+        .unwrap();
+    adapter.goal_updated(&serde_json::json!({
+        "objective":"Continue bounded work","status":"active","tokensUsed":0,"timeUsedSeconds":0
+    }));
+    arm_turn(&mut adapter, 51, "second-client");
+    adapter
+}
+
+#[test]
+fn goal_provisional_turn_rejects_reuse_of_the_previous_native_turn_id() {
+    let mut response_collision = goal_ready_after_previous_turn();
+    assert!(matches!(
+        response_collision.ingest(
+            br#"{"id":51,"result":{"turn":{"id":"turn-previous"}}}"#,
+            &Mapper,
+        ),
+        Err(AdapterError::Ingress(IngressError::Identity))
+    ));
+
+    let mut started_collision = goal_ready_after_previous_turn();
+    started_collision
+        .ingest(br#"{"id":51,"result":{"turn":{"id":"turn-new"}}}"#, &Mapper)
+        .unwrap();
+    assert!(matches!(
+        started_collision.ingest(
+            br#"{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-previous"}}}"#,
+            &Mapper,
+        ),
+        Err(AdapterError::Ingress(IngressError::Identity))
+    ));
+}
+
 #[test]
 fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_closed() {
     let bytes = PACKET_FIXTURE;

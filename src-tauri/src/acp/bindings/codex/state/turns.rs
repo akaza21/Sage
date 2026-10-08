@@ -111,6 +111,32 @@ impl CodexAdapter {
         value: &str,
     ) -> Result<(ScopedExternalId, TurnBinding), AdapterError> {
         let id = ExternalId::new("externalTurnId", value.to_owned())?;
+        if let Some(provisional) = self.provisional_turn.as_mut() {
+            if self
+                .previous_turn
+                .as_ref()
+                .is_some_and(|previous| previous.id == id)
+            {
+                return Err(AdapterError::IdentityConflict);
+            }
+            if provisional.started_id.is_some() {
+                return Err(AdapterError::IdentityConflict);
+            }
+            if provisional.response_id != id {
+                provisional.started_id = Some(id.clone());
+                return Ok((
+                    self.scoped(ExternalKind::Turn, id),
+                    TurnBinding::Provisional,
+                ));
+            }
+            let provisional = self.provisional_turn.take().expect("provisional turn");
+            self.active_turn_client_message_id = Some(provisional.client_message_id);
+            self.active_turn_id = Some(id);
+            return Ok((
+                self.scoped_in_turn(ExternalKind::Turn, value, value)?,
+                TurnBinding::NewlyActive,
+            ));
+        }
         if let Some(current) = self.active_turn_id.as_ref() {
             if current != &id {
                 return Err(AdapterError::IdentityConflict);
@@ -161,6 +187,9 @@ impl CodexAdapter {
         let correlation = self
             .turn_start_correlations
             .response(request_id, &turn_id)?;
+        if let Some(result) = self.provision_response_turn(request_id, &turn_id, &correlation)? {
+            return Ok(result);
+        }
         let result = match correlation {
             CorrelationMatch::Pending(client_message_id) => {
                 if self.active_turn_id.as_ref() == Some(&turn_id)
@@ -213,10 +242,6 @@ impl CodexAdapter {
         } else {
             Err(AdapterError::ForeignIdentity)
         }
-    }
-
-    pub(crate) fn has_active_turn(&self) -> bool {
-        self.active_turn_id.is_some()
     }
 
     pub(crate) fn has_pending_turn_start(&self) -> bool {

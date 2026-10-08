@@ -6,6 +6,7 @@ mod errors;
 mod goal;
 mod permission_resolution;
 mod permissions;
+mod provisional;
 mod turn_prompt;
 mod turn_starts;
 mod turns;
@@ -100,6 +101,15 @@ pub(crate) enum TurnBinding {
     NewlyActive,
     Active,
     PreviousTerminal,
+    Provisional,
+}
+
+#[derive(Debug)]
+struct ProvisionalTurn {
+    response_id: ExternalId,
+    started_id: Option<ExternalId>,
+    client_message_id: RequiredText<512>,
+    deadline: std::time::Instant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +142,7 @@ pub(crate) struct CodexAdapter {
     pending_browser_mcp_failure_threads: Vec<String>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
+    provisional_turn: Option<ProvisionalTurn>,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
@@ -147,6 +158,10 @@ pub(crate) struct CodexAdapter {
 }
 
 impl CodexAdapter {
+    pub(crate) fn has_active_turn(&self) -> bool {
+        self.active_turn_id.is_some()
+    }
+
     pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {
         if self.browser_mcp_failure_reported {
             return false;

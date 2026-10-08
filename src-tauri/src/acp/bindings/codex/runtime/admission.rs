@@ -43,6 +43,19 @@ impl CodexRuntime {
 
     #[cfg(test)]
     pub(crate) fn fixture(platform: super::super::manifest::Platform) -> Self {
+        Self::fixture_with_identity(
+            platform,
+            [9; 32],
+            SageAgentSessionId::parse("session-codex-runtime").expect("fixture session"),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_with_identity(
+        platform: super::super::manifest::Platform,
+        binding_digest: [u8; 32],
+        session_id: SageAgentSessionId,
+    ) -> Self {
         assert_eq!(platform, super::super::manifest::Platform::WindowsX86_64);
         let packet = super::super::manifest::parse_packet_metadata(include_bytes!(
             "../../../../../testdata/acp/codex/candidate-windows.json"
@@ -50,9 +63,9 @@ impl CodexRuntime {
         .expect("pinned Codex fixture");
         Self::new(
             &packet,
-            [9; 32],
+            binding_digest,
             RuntimeEpoch::new(1).expect("fixture epoch"),
-            SageAgentSessionId::parse("session-codex-runtime").expect("fixture session"),
+            session_id,
         )
     }
 

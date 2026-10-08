@@ -12,6 +12,7 @@ use super::{
 };
 
 mod deltas;
+mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event};
 
 pub(super) fn notification<M: ResourceMapper>(
@@ -168,6 +169,9 @@ pub(super) fn notification<M: ResourceMapper>(
                 Err(error) => return Err(turn_started_rejection(adapter, error)),
             };
             if binding == super::super::state::TurnBinding::PreviousTerminal {
+                return Ok(IngressDisposition::IgnoredLate);
+            }
+            if binding == super::super::state::TurnBinding::Provisional {
                 return Ok(IngressDisposition::IgnoredLate);
             }
             let mut events = vec![IncomingEvent::Turn {
@@ -349,6 +353,9 @@ fn item_event<M: ResourceMapper>(
     mapper: &M,
     declarations: &crate::acp::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
+    if adapter.has_provisional_turn() {
+        return provisional::verify_first_user_message(adapter, params, requested);
+    }
     let turn = expect_thread_and_turn(adapter, params)?;
     let item = params
         .get("item")

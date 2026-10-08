@@ -23,6 +23,15 @@ impl CodexAdapter {
         &self.goal_state
     }
 
+    pub(crate) fn active_observed_goal(&self) -> bool {
+        self.goal_supported()
+            && matches!(
+                &self.goal_state,
+                GoalState::Goal { snapshot }
+                    if snapshot.status == crate::acp::goal::GoalStatus::Active
+            )
+    }
+
     pub(crate) fn goal_get(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
         if !self.goal_supported() {
             return Err(AdapterError::CapabilityUnavailable);
