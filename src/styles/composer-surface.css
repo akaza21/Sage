@@ -142,22 +142,6 @@
   white-space: nowrap;
 }
 
-.composer__image-thumbnail {
-  width: 28px;
-  height: 28px;
-  flex: none;
-  border-radius: var(--radius-sm);
-  object-fit: contain;
-}
-
-.composer__image-placeholder {
-  max-width: 110px;
-  overflow: hidden;
-  color: var(--color-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer__attachment-remove {
   display: grid;
   width: 20px;
