@@ -22,6 +22,10 @@ struct FixtureRecord {
 struct FixtureProcess(Arc<Mutex<FixtureRecord>>);
 
 impl TerminalProcess for FixtureProcess {
+    fn shell_path(&self) -> &str {
+        "fixture-shell"
+    }
+
     fn write(&mut self, bytes: &[u8]) -> Result<(), TerminalError> {
         self.0.lock().unwrap().writes.push(bytes.to_vec());
         Ok(())

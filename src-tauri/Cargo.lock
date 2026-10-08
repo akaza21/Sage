@@ -2557,6 +2557,7 @@ name = "sage"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol-schema",
+ "base64 0.22.1",
  "regex",
  "rusqlite",
  "serde",

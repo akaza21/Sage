@@ -262,6 +262,11 @@ pub fn run() {
                 return true;
             }
             let handle: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+                user_terminal::ipc::terminal_create,
+                user_terminal::ipc::terminal_write,
+                user_terminal::ipc::terminal_resize,
+                user_terminal::ipc::terminal_read,
+                user_terminal::ipc::terminal_close,
                 resource_commands::get_bootstrap_snapshot,
                 voice_input::start_voice_input,
                 voice_input::stop_voice_input,

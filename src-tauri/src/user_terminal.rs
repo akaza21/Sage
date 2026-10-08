@@ -1,13 +1,18 @@
 use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use rusqlite::OptionalExtension;
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, atomic::AtomicBool},
+};
 
+pub(crate) mod ipc;
 mod output;
+mod stream;
 #[cfg(windows)]
 mod windows;
 
 use output::TerminalOutputSink;
-pub use output::TerminalOutputSnapshot;
+pub use output::{TerminalOutputPage, TerminalOutputSnapshot};
 
 pub const MAX_PER_CHAT: usize = 4;
 pub const MAX_PER_PROJECT: usize = 16;
@@ -16,6 +21,7 @@ pub const OUTPUT_BYTES: usize = 1_048_576;
 pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
 pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
+pub const OUTPUT_PAGE_BYTES: usize = 48_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TerminalSessionId(uuid::Uuid);
@@ -36,6 +42,7 @@ pub enum TerminalError {
     InvalidDimensions,
     InvalidInput,
     UnknownSession,
+    Busy,
     Backend,
 }
 
@@ -49,6 +56,7 @@ pub struct TerminalScope {
 pub struct TerminalAuthority<'a>(&'a crate::state::AppState);
 
 trait TerminalProcess: Send {
+    fn shell_path(&self) -> &str;
     fn write(&mut self, bytes: &[u8]) -> Result<(), TerminalError>;
     fn resize(&mut self, columns: u16, rows: u16) -> Result<(), TerminalError>;
     fn terminate(&mut self) -> Result<(), TerminalError>;
@@ -121,10 +129,19 @@ struct Session {
     scope: TerminalScope,
     revision: TerminalRevision,
     output: TerminalOutputSink,
+    reader_busy: Arc<AtomicBool>,
     process: Box<dyn TerminalProcess>,
 }
 
 impl TerminalSessionPort {
+    fn shell_path(&self, handle: TerminalHandle) -> Result<String, TerminalError> {
+        let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let session = sessions
+            .get(&handle.id)
+            .ok_or(TerminalError::UnknownSession)?;
+        Ok(session.process.shell_path().to_owned())
+    }
+
     fn new(factory: Box<dyn TerminalFactory>) -> Self {
         Self {
             factory,
@@ -206,6 +223,7 @@ impl TerminalSessionPort {
                 scope: scope.clone(),
                 revision,
                 output,
+                reader_busy: Arc::new(AtomicBool::new(false)),
                 process,
             },
         );
@@ -307,6 +325,7 @@ impl TerminalSessionPort {
             return Err(TerminalError::InvalidScope);
         }
         session.process.terminate()?;
+        session.output.wake();
         sessions.remove(&handle.id);
         Ok(())
     }
@@ -345,6 +364,7 @@ impl TerminalSessionPort {
         for id in ids {
             if let Some(session) = sessions.get_mut(&id) {
                 if session.process.terminate().is_ok() {
+                    session.output.wake();
                     sessions.remove(&id);
                 } else {
                     failed = true;

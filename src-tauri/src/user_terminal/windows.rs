@@ -112,6 +112,7 @@ impl TerminalFactory for ConPtyFactory {
             }
         });
         let mut running = ConPtyProcess {
+            shell_path: shell.to_string_lossy().into_owned(),
             job,
             process,
             thread,
@@ -130,6 +131,7 @@ impl TerminalFactory for ConPtyFactory {
 }
 
 struct ConPtyProcess {
+    shell_path: String,
     job: TerminalJobBoundary,
     process: Handle,
     thread: Handle,
@@ -139,6 +141,10 @@ struct ConPtyProcess {
 }
 
 impl TerminalProcess for ConPtyProcess {
+    fn shell_path(&self) -> &str {
+        &self.shell_path
+    }
+
     fn write(&mut self, bytes: &[u8]) -> Result<(), TerminalError> {
         self.input
             .as_mut()
