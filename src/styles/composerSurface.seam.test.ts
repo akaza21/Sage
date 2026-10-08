@@ -31,7 +31,7 @@ describe("Composer surface stylesheet seam", () => {
   });
   it("matches the Codex single-card footprint and round white action", async () => {
     const surfaceCss = await composerRules();
-    expect(surfaceCss).toMatch(/\.composer\s*\{[^}]*max-width:\s*466px;/s);
+    expect(surfaceCss).toMatch(/\.composer\s*\{[^}]*max-width:\s*664px;/s);
     expect(surfaceCss).toMatch(
       /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
     );
@@ -96,7 +96,7 @@ describe("Composer surface stylesheet seam", () => {
     const surfaceCss = await composerRules();
 
     expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*width:\s*min\(466px,\s*calc\(100% - 32px\)\);[^}]*margin:\s*0 auto;/s,
+      /\.composer\s*\{[^}]*width:\s*min\(664px,\s*calc\(100% - 32px\)\);[^}]*margin:\s*0 auto;/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer textarea\s*\{[^}]*min-height:\s*44px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,

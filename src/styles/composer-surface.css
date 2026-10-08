@@ -1,7 +1,7 @@
 .composer {
   position: relative;
-  width: min(466px, calc(100% - 32px));
-  max-width: 466px;
+  width: min(664px, calc(100% - 32px));
+  max-width: 664px;
   margin: 0 auto;
   overflow: visible;
   border: 1px solid var(--composer-border);
@@ -17,7 +17,6 @@
   border-color: var(--highlight-focus-edge);
   box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
 }
-
 .composer__input-area {
   position: relative;
   display: flex;
@@ -44,7 +43,6 @@
 .composer textarea::placeholder {
   color: var(--color-text-muted);
 }
-
 .composer textarea:disabled {
   color: var(--color-text-disabled);
   cursor: not-allowed;
@@ -211,6 +209,8 @@
 
 .composer__model-menu {
   right: 0;
+  width: min(232px, calc(100vw - 32px));
+  max-width: min(232px, calc(100vw - 32px));
 }
 
 .composer__options .select-control,

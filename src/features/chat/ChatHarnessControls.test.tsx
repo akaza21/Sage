@@ -363,6 +363,7 @@ describe("composer permission mode picker", () => {
       ...claude,
       id: "codex",
       name: "Codex",
+      version: "0.146.0",
       bindingId: "codex-app-server",
     };
     const opencode = {
@@ -432,6 +433,10 @@ describe("composer permission mode picker", () => {
       claudeRow.querySelector(".searchable-picker__selected-check"),
     ).not.toBeNull();
     expect(codexRow).toHaveTextContent("Astra High");
+    expect(
+      codexRow.querySelector(".searchable-picker__option-copy"),
+    ).not.toHaveTextContent("0.146.0");
+    expect(codexRow).toHaveAccessibleName(/0\.146\.0/);
     expect(
       codexRow.querySelector('img[src="/harness-codex.svg"]'),
     ).not.toBeNull();

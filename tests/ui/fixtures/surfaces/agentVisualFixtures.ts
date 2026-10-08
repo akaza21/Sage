@@ -504,6 +504,29 @@ export function buildAgentPages(
           272_000,
         ),
       ];
+    case "agent-composer-goal":
+      return [
+        {
+          ...composerContextPage(
+            "visual-chat-composer-goal",
+            "Composer goal and context",
+            6_000,
+            272_000,
+          ),
+          goal: {
+            kind: "goal",
+            snapshot: {
+              objective: "Ship the release safely",
+              status: "active",
+              tokenBudget: 1_000,
+              tokensUsed: 42,
+              timeUsedSeconds: 125,
+              createdAt: null,
+              updatedAt: null,
+            },
+          },
+        },
+      ];
     case "agent-composer-context-over-capacity":
       return [
         composerContextPage(

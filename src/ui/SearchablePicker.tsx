@@ -64,6 +64,7 @@ const PickerOption = memo(function PickerOption({
       type="button"
       role="option"
       aria-label={candidate.accessibleLabel}
+      title={candidate.disabledReason}
       className="searchable-picker__option menu-item"
       aria-disabled={disabled || undefined}
       aria-describedby={disabled ? `${id}-reason` : undefined}

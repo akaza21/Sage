@@ -3013,7 +3013,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — installed but not drivableSage did not admit this harness and will not start it.",
+        name: "Unavailable harness — installed but not drivable. Sage did not admit this harness and will not start it.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));

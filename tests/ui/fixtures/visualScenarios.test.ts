@@ -31,6 +31,7 @@ describe("visual scenario contract", () => {
         mode: "agent",
         resource: "empty",
       },
+      { name: "agent-composer-goal", mode: "agent", resource: "empty" },
       {
         name: "agent-composer-context-over-capacity",
         mode: "agent",

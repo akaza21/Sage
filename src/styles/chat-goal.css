@@ -17,6 +17,8 @@
 }
 
 .chat-goal-container {
+  width: calc(100% - 24px);
+  margin: 0 auto;
   background: var(--color-plane-raised);
   border-radius: var(--radius-xl);
 }

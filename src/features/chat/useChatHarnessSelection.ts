@@ -32,7 +32,7 @@ export function harnessPickerCandidates(
   return harnesses.map((harness) => {
     const icon = harnessIconKind(harness.name);
     const availability = harnessAvailability(harness);
-    const name = `${harness.name}${harness.version ? ` — ${harness.version}` : ""}`;
+    const name = harness.name;
     const catalog =
       harness.id === selectedHarnessId
         ? models
@@ -67,7 +67,7 @@ export function harnessPickerCandidates(
       label: name,
       triggerLabel: harness.name,
       secondaryLabel: showStatus ? statusLine : detail,
-      accessibleLabel: `${name}${statusLine}${availability.disabledReason ?? ""}`,
+      accessibleLabel: `${name}${harness.version ? ` — ${harness.version}` : ""}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
       disabledReason: availability.disabledReason,
     };
   });

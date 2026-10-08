@@ -14,6 +14,7 @@ export type VisualScenarioName =
   | "agent-composer-narrow"
   | "agent-composer-context-unknown"
   | "agent-composer-context-known"
+  | "agent-composer-goal"
   | "agent-composer-context-over-capacity"
   | "agent-session-mode-closed"
   | "agent-session-mode-open"
@@ -69,6 +70,7 @@ export const AGENT_VISUAL_SCENARIOS: readonly VisualScenarioName[] = [
   "agent-composer-narrow",
   "agent-composer-context-unknown",
   "agent-composer-context-known",
+  "agent-composer-goal",
   "agent-composer-context-over-capacity",
   "agent-session-mode-closed",
   "agent-session-mode-open",

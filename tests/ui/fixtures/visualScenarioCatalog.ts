@@ -28,6 +28,7 @@ const SCENARIO_META: Record<
   "agent-composer-narrow": { mode: "agent", resource: "empty" },
   "agent-composer-context-unknown": { mode: "agent", resource: "empty" },
   "agent-composer-context-known": { mode: "agent", resource: "empty" },
+  "agent-composer-goal": { mode: "agent", resource: "empty" },
   "agent-composer-context-over-capacity": {
     mode: "agent",
     resource: "empty",
