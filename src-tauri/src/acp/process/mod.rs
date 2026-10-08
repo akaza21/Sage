@@ -19,6 +19,11 @@ pub(crate) use windows::monotonic_tick;
 pub(crate) use windows::{
     PreviewJobBoundary, PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess,
 };
+#[cfg(windows)]
+pub(crate) use windows::{
+    command_line as windows_command_line, environment_block as windows_environment_block,
+    wide_z as windows_wide_z,
+};
 
 #[cfg(all(test, not(windows)))]
 pub(crate) use unix::launch_fixture_for_test;

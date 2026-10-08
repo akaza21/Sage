@@ -29,9 +29,8 @@ pub(crate) use self::authority::{RunningTree, TreeControl};
 use self::batch::parse_npm_codex_launcher;
 pub(crate) use self::clock::monotonic_tick;
 use self::clock::performance_clock;
-use self::encoding::{
-    cmd_batch_launcher_command_line, cmd_working_directory, command_line, environment_block, wide_z,
-};
+use self::encoding::{cmd_batch_launcher_command_line, cmd_working_directory};
+pub(crate) use self::encoding::{command_line, environment_block, wide_z};
 pub(crate) use self::io::{StdinEndpoint, StdoutEndpoint};
 use self::job::JobBoundary;
 pub(crate) use self::job::JobBoundary as TerminalJobBoundary;

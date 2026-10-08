@@ -1677,7 +1677,13 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Mode change was rejected")).toBeInTheDocument();
   });
 
-  it("explains how to recover from a nonfatal Claude sign-in refusal", () => {
+  it("offers a clicked-only Claude login and an explicit sign-in recheck", async () => {
+    const start = vi
+      .spyOn(acpDesktop, "startClaudeAuthLogin")
+      .mockResolvedValue();
+    const status = vi
+      .spyOn(acpDesktop, "getClaudeAuthStatus")
+      .mockResolvedValue({ loggedIn: true });
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -1689,7 +1695,10 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
-          signIn: { command: "claude", hint: "Use /login." },
+          signIn: {
+            command: "claude auth login",
+            hint: "Complete sign-in in the terminal.",
+          },
         },
       ],
       selectedHarnessId: "claude-code",
@@ -1702,8 +1711,47 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Claude Code requires sign-in before it can continue. Run claude. Use /login. Then try again.",
+      "Claude Code requires sign-in before it can continue. Run claude auth login. Complete sign-in in the terminal. Then try again.",
     );
+    expect(start).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Claude sign-in" }),
+    );
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    await waitFor(() => expect(status).toHaveBeenCalledOnce());
+    expect(
+      screen.getByText("Claude reports signed in. Send your prompt again."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeEnabled();
+    let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
+    status.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCheck = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    act(() => {
+      useWorkbenchStore.setState({
+        nativeTransitionEpoch:
+          useWorkbenchStore.getState().nativeTransitionEpoch + 1,
+      });
+    });
+    await act(async () => finishCheck({ loggedIn: true }));
+    expect(
+      screen.queryByText("Claude reports signed in. Send your prompt again."),
+    ).not.toBeInTheDocument();
+    status.mockRejectedValueOnce(new Error("secret detail"));
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    expect(
+      await screen.findByText(
+        "Could not start or check sign-in. Run claude auth login in a terminal.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("secret detail")).not.toBeInTheDocument();
   });
 
   it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {

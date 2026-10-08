@@ -199,6 +199,19 @@ describe("ACP desktop bridge", () => {
     expect(JSON.stringify(response)).not.toContain("never-forward");
   });
 
+  it("projects only Claude's boolean sign-in fact", async () => {
+    invokeMock.mockResolvedValue({ loggedIn: true, token: "never-forward" });
+    expect(await acpDesktop.getClaudeAuthStatus()).toEqual({ loggedIn: true });
+    expect(invokeMock).toHaveBeenCalledWith(
+      "get_claude_auth_status",
+      undefined,
+    );
+    invokeMock.mockResolvedValue({ loggedIn: "true" });
+    await expect(acpDesktop.getClaudeAuthStatus()).rejects.toThrow(
+      "Claude Code sign-in status was invalid.",
+    );
+  });
+
   it("rejects invalid auth phases and revisions at the WebView boundary", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({

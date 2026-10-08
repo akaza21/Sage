@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 mod catalog_definition;
+mod claude_auth;
 mod discovery_state;
 use catalog_definition::{CuratedProtocol, definition};
 use discovery_state::DiscoveryState;

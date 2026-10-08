@@ -94,12 +94,12 @@ describe("turn terminal reason", () => {
   it("shows the Sage remediation for a sign-in failure", async () => {
     await renderTurn("failed", {
       kind: "authRequired",
-      remediation: "Sign in by running claude and completing /login.",
+      remediation: "Sign in by running claude auth login.",
     });
 
     expect(within(header()).getByText("Not signed in")).toBeTruthy();
     const remediation = within(header()).getByText(
-      "Sign in by running claude and completing /login.",
+      "Sign in by running claude auth login.",
     );
     expect(remediation).toHaveAttribute("data-turn-reason-remediation", "");
     expect(header().querySelector("[data-turn-reason-message]")).toBeNull();

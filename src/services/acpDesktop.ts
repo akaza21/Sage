@@ -262,6 +262,18 @@ export const acpDesktop = {
     return invokeCodexAuth("logout_codex_auth", request);
   },
 
+  async startClaudeAuthLogin(): Promise<void> {
+    await invokeNative("start_claude_auth_login");
+  },
+
+  async getClaudeAuthStatus(): Promise<{ loggedIn: boolean }> {
+    const value: unknown = await invokeNative("get_claude_auth_status");
+    if (!isRecord(value) || typeof value.loggedIn !== "boolean") {
+      throw new Error("Claude Code sign-in status was invalid.");
+    }
+    return { loggedIn: value.loggedIn };
+  },
+
   async discoverCodex(
     request: GetCodexDiscoveryRequest,
   ): Promise<CodexDiscoveryResponse> {

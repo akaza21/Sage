@@ -350,6 +350,8 @@ pub fn run() {
                 commands::acp::codex_auth::start_codex_auth,
                 commands::acp::codex_auth::cancel_codex_auth,
                 commands::acp::codex_auth::logout_codex_auth,
+                commands::acp::claude_auth::get_claude_auth_status,
+                commands::acp::claude_auth::start_claude_auth_login,
                 commands::acp::start_acp_session,
                 commands::acp::activate_acp_session,
                 commands::acp::send_acp_turn,

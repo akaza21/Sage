@@ -119,7 +119,7 @@ pub(crate) const PROFILES: &[StandardAcpProfile] = &[
         other_tool_label: "Claude tool",
         vendor_updates: CLAUDE_VENDOR_UPDATES,
         passthrough_env: &[],
-        remediation: "Sign in by running claude and completing /login. Sage reuses that login from your Claude configuration directory.",
+        remediation: "Sign in by running claude auth login. Sage reuses that login from your Claude configuration directory.",
     },
     StandardAcpProfile {
         harness_id: "gemini-cli",

@@ -1,5 +1,6 @@
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+pub(crate) mod claude_auth;
 pub(crate) mod codex_auth;
 pub(crate) mod edit_disposition;
 mod errors;

@@ -89,8 +89,8 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
         executable: HarnessExecutable::Claude,
         install_layout: InstallLayout::NpmGlobal,
         sign_in: Some(KnownHarnessSignIn {
-            command: "claude",
-            hint: "Then run /login.",
+            command: "claude auth login",
+            hint: "Complete sign-in in the terminal.",
         }),
     },
     KnownHarnessSpec {

@@ -23,6 +23,7 @@ import {
 } from "./composerChrome";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
+import { ClaudeAuthActions } from "./ClaudeAuthActions";
 import "../../styles/queued-messages.css";
 
 export function ChatComposerRegion({
@@ -42,6 +43,8 @@ export function ChatComposerRegion({
   projectTransitioning,
   workbenchError,
   chatError,
+  claudeSignInRequired,
+  claudeAuthScope,
   availableBinding,
   canPrompt,
   discoveryPhase,
@@ -89,6 +92,8 @@ export function ChatComposerRegion({
   projectTransitioning: boolean;
   workbenchError: string | null;
   chatError: string | null;
+  claudeSignInRequired?: boolean;
+  claudeAuthScope?: string;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -225,6 +230,9 @@ export function ChatComposerRegion({
       {chatError ? (
         <div className="composer__error" role="alert">
           {chatError}
+          {claudeSignInRequired ? (
+            <ClaudeAuthActions key={claudeAuthScope} />
+          ) : null}
         </div>
       ) : null}
       {missingBindingNotice ? (

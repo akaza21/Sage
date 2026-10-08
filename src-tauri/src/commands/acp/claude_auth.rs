@@ -1,0 +1,337 @@
+use std::{
+    ffi::OsString,
+    io::Read,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
+
+use serde_json::Value;
+use tauri::State;
+
+use crate::state::AppState;
+
+const STATUS_LIMIT: u64 = 4_096;
+const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
+type ClaudeEnvironment = Vec<(OsString, OsString)>;
+
+#[cfg(windows)]
+mod windows_login;
+#[cfg(windows)]
+use windows_login::launch_login;
+
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeAuthStatus {
+    logged_in: bool,
+}
+
+fn parse_status(bytes: &[u8]) -> Option<ClaudeAuthStatus> {
+    let value: Value = serde_json::from_slice(bytes).ok()?;
+    let logged_in = value.get("loggedIn")?.as_bool()?;
+    Some(ClaudeAuthStatus { logged_in })
+}
+
+#[tauri::command]
+pub async fn get_claude_auth_status(
+    state: State<'_, AppState>,
+) -> Result<ClaudeAuthStatus, &'static str> {
+    let path = state
+        .harnesses
+        .claude_cli_path()
+        .ok_or("Claude Code CLI is unavailable.")?;
+    let environment = state
+        .harnesses
+        .claude_auth_environment()
+        .ok_or("Claude Code binding is unavailable.")?;
+    tauri::async_runtime::spawn_blocking(move || run_status(&path, &environment))
+        .await
+        .map_err(|_| "Claude Code sign-in check failed.")?
+}
+
+#[tauri::command]
+pub fn start_claude_auth_login(state: State<'_, AppState>) -> Result<(), &'static str> {
+    let path = state
+        .harnesses
+        .claude_cli_path()
+        .ok_or("Claude Code CLI is unavailable.")?;
+    let environment = state
+        .harnesses
+        .claude_auth_environment()
+        .ok_or("Claude Code binding is unavailable.")?;
+    let cwd = auth_cwd(&environment)?;
+    launch_login(&path, &environment, &cwd)
+}
+
+fn auth_cwd(environment: &ClaudeEnvironment) -> Result<PathBuf, &'static str> {
+    let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let profile = environment
+        .iter()
+        .find(|(name, _)| name == key)
+        .map(|(_, value)| PathBuf::from(value))
+        .ok_or("Claude Code profile directory is unavailable.")?;
+    if !profile.is_absolute() || !profile.is_dir() {
+        return Err("Claude Code profile directory is unavailable.");
+    }
+    #[cfg(windows)]
+    if !matches!(
+        profile.components().next(),
+        Some(std::path::Component::Prefix(prefix))
+            if matches!(
+                prefix.kind(),
+                std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_)
+            )
+    ) {
+        return Err("Claude Code profile directory is unavailable.");
+    }
+    Ok(profile)
+}
+
+fn status_command(path: &Path, environment: &ClaudeEnvironment) -> Result<Command, &'static str> {
+    let mut command = Command::new(path);
+    command.args(["auth", "status", "--json"]);
+    command.env_clear().envs(environment.iter().cloned());
+    command.current_dir(auth_cwd(environment)?);
+    Ok(command)
+}
+
+fn run_status(
+    path: &Path,
+    environment: &ClaudeEnvironment,
+) -> Result<ClaudeAuthStatus, &'static str> {
+    run_status_with_timeout(path, environment, STATUS_TIMEOUT)
+}
+
+fn run_status_with_timeout(
+    path: &Path,
+    environment: &ClaudeEnvironment,
+    timeout: Duration,
+) -> Result<ClaudeAuthStatus, &'static str> {
+    let mut command = status_command(path, environment)?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "Claude Code sign-in check could not start.")?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("Claude Code sign-in check failed.")?;
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout.take(STATUS_LIMIT + 1).read_to_end(&mut bytes);
+        let _ = sender.send(result.map(|_| bytes));
+    });
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(exit)) => {
+                let bytes = receiver
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .map_err(|_| "Claude Code sign-in check timed out.")?
+                    .map_err(|_| "Claude Code sign-in check failed.")?;
+                if bytes.len() > STATUS_LIMIT as usize {
+                    return Err("Claude Code sign-in response was too large.");
+                }
+                let status =
+                    parse_status(&bytes).ok_or("Claude Code sign-in response was invalid.")?;
+                if !exit.success() && status.logged_in {
+                    return Err("Claude Code sign-in check failed.");
+                }
+                return Ok(status);
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) | Err(_) => {
+                let _ = child.kill();
+                thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Err("Claude Code sign-in check timed out.");
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn launch_login(_: &Path, _: &ClaudeEnvironment, _: &Path) -> Result<(), &'static str> {
+    Err("Open a terminal and run claude auth login.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_accepts_only_a_boolean_login_fact() {
+        assert_eq!(
+            parse_status(br#"{"loggedIn":false,"authMethod":"none","token":"secret"}"#),
+            Some(ClaudeAuthStatus { logged_in: false })
+        );
+        assert_eq!(
+            parse_status(br#"{"loggedIn":true,"authMethod":"claude.ai"}"#),
+            Some(ClaudeAuthStatus { logged_in: true })
+        );
+        assert_eq!(parse_status(br#"{"loggedIn":"true"}"#), None);
+        assert_eq!(parse_status(b"not json"), None);
+    }
+
+    #[test]
+    fn auth_commands_require_an_existing_absolute_profile_directory() {
+        let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        assert!(auth_cwd(&Vec::new()).is_err());
+        assert!(auth_cwd(&vec![(OsString::from(key), OsString::from("relative"))]).is_err());
+        assert_eq!(
+            auth_cwd(&vec![(
+                OsString::from(key),
+                std::env::temp_dir().into_os_string()
+            )]),
+            Ok(std::env::temp_dir())
+        );
+    }
+
+    #[cfg(windows)]
+    fn fixture_script(body: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let directory =
+            std::env::temp_dir().join(format!("sage-claude-auth-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join("claude.cmd");
+        std::fs::write(&path, format!("@echo off\r\n{body}\r\n")).unwrap();
+        (path, directory)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn signed_out_cli_exit_is_reported_without_exposing_other_json_fields() {
+        let (path, directory) =
+            fixture_script("echo {\"loggedIn\":false,\"authMethod\":\"none\"}\r\nexit /b 1");
+        assert_eq!(
+            run_status(&path, &std::env::vars_os().collect()),
+            Ok(ClaudeAuthStatus { logged_in: false })
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn malformed_or_failed_cli_status_cannot_be_reported_as_signed_in() {
+        let (path, directory) = fixture_script("echo {\"loggedIn\":true}\r\nexit /b 1");
+        assert_eq!(
+            run_status(&path, &std::env::vars_os().collect()),
+            Err("Claude Code sign-in check failed.")
+        );
+        std::fs::write(&path, "@echo off\r\necho not-json\r\n").unwrap();
+        assert_eq!(
+            run_status(&path, &std::env::vars_os().collect()),
+            Err("Claude Code sign-in response was invalid.")
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn missing_and_slow_cli_status_fail_closed() {
+        let (path, directory) = fixture_script(":loop\r\ngoto loop");
+        assert_eq!(
+            run_status_with_timeout(
+                &path,
+                &std::env::vars_os().collect(),
+                Duration::from_millis(30)
+            ),
+            Err("Claude Code sign-in check timed out.")
+        );
+        let missing = directory.join("missing.exe");
+        assert_eq!(
+            run_status(&missing, &std::env::vars_os().collect()),
+            Err("Claude Code sign-in check could not start.")
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn login_uses_fixed_arguments_in_a_real_console_with_a_fixture() {
+        const SOURCE: &str = r#"
+            #[link(name = "kernel32")]
+            unsafe extern "system" {
+                fn GetConsoleWindow() -> *mut std::ffi::c_void;
+                fn GetStdHandle(kind: u32) -> *mut std::ffi::c_void;
+                fn GetConsoleMode(handle: *mut std::ffi::c_void, mode: *mut u32) -> i32;
+            }
+            fn main() {
+                let marker = std::env::var_os("SAGE_CLAUDE_AUTH_FIXTURE_MARKER").unwrap();
+                let arguments: Vec<String> = std::env::args().skip(1).collect();
+                let console = unsafe { GetConsoleWindow() as usize };
+                let mut mode = 0;
+                let input = unsafe {
+                    GetConsoleMode(GetStdHandle(-10_i32 as u32), &mut mode) != 0
+                };
+                let cwd = std::env::current_dir().unwrap();
+                std::fs::write(marker, format!("{:?}|{console}|{input}|{}", arguments, cwd.display())).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        "#;
+        let directory =
+            std::env::temp_dir().join(format!("sage-claude-console-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let source = directory.join("fixture.rs");
+        let executable = directory.join("claude.exe");
+        let marker = directory.join("marker.txt");
+        std::fs::write(&source, SOURCE).unwrap();
+        assert!(
+            Command::new("rustc")
+                .args([
+                    source.as_os_str(),
+                    std::ffi::OsStr::new("-o"),
+                    executable.as_os_str()
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut environment: ClaudeEnvironment = std::env::vars_os().collect();
+        environment.push((
+            OsString::from("SAGE_CLAUDE_AUTH_FIXTURE_MARKER"),
+            marker.as_os_str().to_owned(),
+        ));
+        environment.retain(|(key, _)| key != "USERPROFILE");
+        environment.push((
+            OsString::from("USERPROFILE"),
+            directory.as_os_str().to_owned(),
+        ));
+        assert_eq!(
+            launch_login(&executable, &environment, &auth_cwd(&environment).unwrap()),
+            Ok(())
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !marker.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let content = std::fs::read_to_string(&marker).unwrap();
+        let (arguments, rest) = content.split_once('|').unwrap();
+        let (console, rest) = rest.split_once('|').unwrap();
+        let (input, cwd) = rest.split_once('|').unwrap();
+        assert_eq!(arguments, "[\"auth\", \"login\"]");
+        assert_eq!(input, "true");
+        assert_eq!(
+            PathBuf::from(cwd).canonicalize().unwrap(),
+            directory.canonicalize().unwrap()
+        );
+        let console: usize = console.parse().unwrap();
+        assert_ne!(console, 0);
+        assert_ne!(
+            console,
+            unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize
+        );
+        thread::sleep(Duration::from_millis(150));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}

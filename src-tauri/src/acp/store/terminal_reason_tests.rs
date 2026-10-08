@@ -308,7 +308,7 @@ fn a_remediation_survives_the_round_trip_beside_its_message() {
             terminal_reason: Some(TurnTerminalOutcome {
                 reason: TurnTerminalReason::AuthRequired,
                 message: Some("authentication required".to_owned()),
-                remediation: Some("Sign in by running claude and completing /login.".to_owned()),
+                remediation: Some("Sign in by running claude auth login.".to_owned()),
             }),
         }],
     )
@@ -318,7 +318,7 @@ fn a_remediation_survives_the_round_trip_beside_its_message() {
         Some(TurnTerminalReasonProjection {
             kind: TurnTerminalReason::AuthRequired,
             message: Some("authentication required".to_owned()),
-            remediation: Some("Sign in by running claude and completing /login.".to_owned()),
+            remediation: Some("Sign in by running claude auth login.".to_owned()),
         })
     );
 }

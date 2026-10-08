@@ -67,6 +67,7 @@ export function ChatSurface({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
   const acpRetentionIncomplete = useAcpRetentionIncomplete(chatId);
@@ -346,6 +347,11 @@ export function ChatSurface({
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
+        claudeSignInRequired={
+          selectedHarnessId === "claude-code" &&
+          acpActions.errorKind === "signInRequired"
+        }
+        claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
         discoveryPhase={discoveryPhase}
