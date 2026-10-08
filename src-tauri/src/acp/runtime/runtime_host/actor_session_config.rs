@@ -18,9 +18,15 @@ impl<E: RuntimeEngine> Actor<E> {
             reply,
             deadline,
         } = envelope;
-        let super::super::types::HostCommand::ConfigureSession(intent) = command else {
-            let _ = reply.send(Err(HostError::State));
-            return;
+        let (owner, goal_mutation) = match &command {
+            super::super::types::HostCommand::ConfigureSession(intent) => {
+                (intent.owner.clone(), false)
+            }
+            super::super::types::HostCommand::NativeRpc(intent) => (intent.owner.clone(), true),
+            _ => {
+                let _ = reply.send(Err(HostError::State));
+                return;
+            }
         };
         if std::time::Instant::now() >= deadline {
             let _ = reply.send(Err(HostError::Deadline));
@@ -31,7 +37,7 @@ impl<E: RuntimeEngine> Actor<E> {
             return;
         }
         if !matches!(self.state, HostState::Idle | HostState::Running)
-            || !self.matches_owner(&intent.owner)
+            || !self.matches_owner(&owner)
         {
             let _ = reply.send(Err(HostError::Intent));
             return;
@@ -41,7 +47,6 @@ impl<E: RuntimeEngine> Actor<E> {
             return;
         };
         self.next_config_operation = operation_id;
-        let owner = intent.owner.clone();
         let completion_owner = owner.clone();
         let mailbox = std::sync::Arc::clone(mailbox);
         let completion = ConfigCompletionSink::new(move |result| {
@@ -56,11 +61,18 @@ impl<E: RuntimeEngine> Actor<E> {
             owner,
             reply,
             deadline,
+            goal_mutation,
         });
-        if let Err(error) = self
-            .engine
-            .begin_configure_session(&intent, deadline, completion)
-        {
+        let begin = match command {
+            super::super::types::HostCommand::ConfigureSession(intent) => self
+                .engine
+                .begin_configure_session(&intent, deadline, completion),
+            super::super::types::HostCommand::NativeRpc(intent) => {
+                self.engine.begin_native_rpc(&intent, deadline, completion)
+            }
+            _ => unreachable!(),
+        };
+        if let Err(error) = begin {
             self.fail_pending_config(error);
         }
     }
@@ -82,9 +94,13 @@ impl<E: RuntimeEngine> Actor<E> {
         if let Err(error) = &completion.result {
             self.apply_config_error(error);
         }
-        let reply = completion
-            .result
-            .map(|()| HostReply::Outcome(HostOutcome::SessionConfigured));
+        let reply = completion.result.map(|()| {
+            HostReply::Outcome(if pending.goal_mutation {
+                HostOutcome::GoalMutationApplied
+            } else {
+                HostOutcome::SessionConfigured
+            })
+        });
         let _ = pending.reply.send(reply);
     }
 

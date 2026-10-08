@@ -8,6 +8,33 @@ use super::{
     scheduler::RuntimeOwner,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GoalAction {
+    PauseExisting,
+    ClearExisting,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NativeRpcIntent {
+    pub(crate) owner: RuntimeOwner,
+    pub(crate) request: NativeRpcRequest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NativeRpcRequest {
+    Goal(GoalAction),
+}
+
+impl NativeRpcIntent {
+    pub(crate) fn actual_bytes(&self) -> usize {
+        self.owner.project_id.as_str().len()
+            + self.owner.chat_id.as_str().len()
+            + self.owner.session_id.as_str().len()
+            + std::mem::size_of::<RuntimeEpoch>()
+            + 1
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum GoalState {

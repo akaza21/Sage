@@ -103,6 +103,9 @@ impl CodexRuntime {
                 Ok(batch.finish())
             }
             IngressDisposition::IgnoredLate => one(AdapterEvent::IgnoredLate),
+            IngressDisposition::GoalMutationRejected => {
+                Err(AdapterRuntimeError::GoalMutationRejected)
+            }
             IngressDisposition::DuplicateTerminal => one(AdapterEvent::IgnoredDuplicate),
             IngressDisposition::DuplicateServerRequest { denial: None } => {
                 one(AdapterEvent::IgnoredDuplicate)

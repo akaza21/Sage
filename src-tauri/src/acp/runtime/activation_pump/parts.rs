@@ -81,6 +81,20 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn config_pending(&self) -> bool {
         self.adapter.config_pending()
     }
+    pub(crate) fn goal_pending(&self) -> bool {
+        self.adapter.goal_pending()
+    }
+    pub(crate) fn write_goal(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        action: crate::acp::goal::GoalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_goal(
+            &mut self.adapter,
+            transport,
+            action,
+        )
+    }
     pub(crate) fn write_session_config(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,

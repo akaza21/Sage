@@ -80,7 +80,7 @@ impl RuntimeHost {
     ) -> Result<HostReply, HostError> {
         let actor_settles_deadline = matches!(
             &command,
-            HostCommand::ConfigureSession(_) | HostCommand::Steer(_)
+            HostCommand::ConfigureSession(_) | HostCommand::NativeRpc(_) | HostCommand::Steer(_)
         );
         let steer = matches!(&command, HostCommand::Steer(_));
         match self.lifecycle.load(Ordering::Acquire) {

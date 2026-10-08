@@ -56,6 +56,7 @@ impl CodexAdapter {
             goal_state: super::GoalState::Unsupported,
             goal_notification_generation: 0,
             goal_get_fence: None,
+            goal_mutation_fence: None,
         }
     }
 

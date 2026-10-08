@@ -47,4 +47,36 @@ where
             _ => false,
         }
     }
+
+    pub(crate) fn goal_pending(&self) -> bool {
+        match self {
+            Self::Idle(idle) => idle.parts.goal_pending(),
+            Self::Reusable(parts) => parts.completed.goal_pending(),
+            Self::Active(active) => active.turn.driver.goal_pending(),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn begin_native_rpc<Auth>(
+        &mut self,
+        context: &FirstTurnWorkerContext<Auth>,
+        intent: &crate::acp::goal::NativeRpcIntent,
+        deadline: std::time::Instant,
+    ) -> Result<(), HostError> {
+        if context.mailbox.reader_terminal_queued() || std::time::Instant::now() >= deadline {
+            return Err(HostError::RecoveryRequired);
+        }
+        if intent.owner != context.owner || self.goal_pending() {
+            return Err(HostError::Intent);
+        }
+        let crate::acp::goal::NativeRpcRequest::Goal(action) = intent.request;
+        match self {
+            Self::Idle(idle) => idle.parts.write_goal(&mut idle.transport, action),
+            Self::Reusable(parts) => parts.completed.write_goal(&mut parts.transport, action),
+            Self::Active(active) if active.stdout_allowed() => {
+                active.turn.driver.begin_native_rpc(intent)
+            }
+            _ => Err(HostError::State),
+        }
+    }
 }

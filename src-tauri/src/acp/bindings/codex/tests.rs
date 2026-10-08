@@ -139,6 +139,94 @@ fn managed_codex_does_not_send_goal_get() {
 }
 
 #[test]
+fn only_observed_existing_goal_can_emit_a_paused_status_mutation() {
+    let mut managed = adapter();
+    ready(&mut managed);
+    assert!(managed.goal_pause(60).is_err());
+
+    let mut observed = adapter();
+    observed_goal_ready(&mut observed);
+    assert!(observed.goal_pause(60).is_err());
+    observed.goal_updated(&serde_json::json!({
+        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5
+    }));
+    let request = observed.goal_pause(60).unwrap();
+    let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+    assert_eq!(wire["method"], "thread/goal/set");
+    assert_eq!(
+        wire["params"],
+        serde_json::json!({"threadId":"thread-1","status":"paused"})
+    );
+    assert!(!observed.has_active_turn());
+}
+
+#[test]
+fn clear_requires_an_observed_existing_goal_and_projects_only_confirmed_clear() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    assert!(adapter.goal_clear(61).is_err());
+    adapter.goal_updated(&json!({
+        "objective":"Keep the native goal","status":"active","tokensUsed":3,"timeUsedSeconds":5
+    }));
+    let request = adapter.goal_clear(61).unwrap();
+    let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+    assert_eq!(wire["method"], "thread/goal/clear");
+    assert_eq!(wire["params"], json!({"threadId":"thread-1"}));
+    assert!(adapter.goal_clear(62).is_err());
+    let refusal = adapter
+        .ingest(br#"{"id":61,"result":{"cleared":false}}"#, &Mapper)
+        .unwrap();
+    assert_eq!(refusal, IngressDisposition::GoalMutationRejected);
+    assert_eq!(
+        adapter.goal_state().objective(),
+        Some("Keep the native goal")
+    );
+    adapter.goal_clear(63).unwrap();
+    let accepted = adapter
+        .ingest(br#"{"id":63,"result":{"cleared":true}}"#, &Mapper)
+        .unwrap();
+    assert_eq!(accepted, IngressDisposition::IgnoredLate);
+    assert_eq!(adapter.goal_state().availability(), "noGoal");
+}
+
+#[test]
+fn newer_goal_notification_wins_over_late_pause_reply_and_refusal_is_nonfatal() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_updated(&json!({
+        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5
+    }));
+    adapter.goal_pause(64).unwrap();
+    adapter.goal_updated(&json!({
+        "objective":"Newer","status":"blocked","tokensUsed":4,"timeUsedSeconds":6
+    }));
+    adapter.ingest(br#"{"id":64,"result":{"goal":{"objective":"Original","status":"paused","tokensUsed":3,"timeUsedSeconds":5}}}"#, &Mapper).unwrap();
+    assert_eq!(adapter.goal_state().objective(), Some("Newer"));
+    adapter.goal_pause(65).unwrap();
+    let refusal = adapter
+        .ingest(
+            br#"{"id":65,"error":{"code":-1,"message":"denied"}}"#,
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(refusal, IngressDisposition::GoalMutationRejected);
+    assert_eq!(adapter.goal_state().objective(), Some("Newer"));
+}
+
+#[test]
+fn malformed_pause_reply_is_refused_without_changing_the_observed_goal() {
+    let mut adapter = adapter();
+    observed_goal_ready(&mut adapter);
+    adapter.goal_updated(&json!({
+        "objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5
+    }));
+    adapter.goal_pause(66).unwrap();
+    let refusal = adapter.ingest(br#"{"id":66,"result":{"goal":{"objective":"Original","status":"active","tokensUsed":3,"timeUsedSeconds":5}}}"#, &Mapper).unwrap();
+    assert_eq!(refusal, IngressDisposition::GoalMutationRejected);
+    assert_eq!(adapter.goal_state().objective(), Some("Original"));
+}
+
+#[test]
 fn newer_goal_notification_wins_over_late_get_response() {
     let mut adapter = adapter();
     observed_goal_ready(&mut adapter);

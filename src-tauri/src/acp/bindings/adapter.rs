@@ -10,6 +10,9 @@ use crate::acp::{
     transport::{Frame, OutboundFrame},
 };
 
+mod model;
+pub(crate) use model::{AdapterIdentity, AdapterModel};
+
 /// Native-only command input. This type deliberately has no `Debug` or
 /// serialization implementation because it can contain a canonical absolute
 /// path or prompt text.
@@ -55,29 +58,6 @@ pub(crate) trait ResourceMapper {
 
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         None
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct AdapterIdentity {
-    pub(crate) binding_digest: [u8; 32],
-    pub(crate) runtime_epoch: RuntimeEpoch,
-    pub(crate) session_id: SageAgentSessionId,
-    pub(crate) external_id: ExternalId,
-    pub(crate) turn_id: Option<ExternalId>,
-    pub(crate) turn_client_message_id: Option<RequiredText<512>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct AdapterModel {
-    pub(crate) id: ModelId,
-    pub(crate) name: RequiredText<512>,
-    pub(crate) is_default: bool,
-}
-
-impl AdapterModel {
-    pub(crate) fn actual_bytes(&self) -> Option<usize> {
-        self.id.as_str().len().checked_add(self.name.as_str().len())
     }
 }
 
@@ -381,6 +361,15 @@ pub(crate) trait HarnessAdapter {
     fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
         None
     }
+    fn goal_pending(&self) -> bool {
+        false
+    }
+    fn mutate_goal(
+        &mut self,
+        _action: crate::acp::goal::GoalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         None
     }
@@ -425,6 +414,8 @@ pub(crate) enum AdapterRuntimeError {
     Operation,
     #[error("the harness rejected the correlated session configuration mutation")]
     ConfigMutationRejected,
+    #[error("the harness rejected the correlated native Goal mutation")]
+    GoalMutationRejected,
     #[error("the adapter does not advertise this command")]
     UnsupportedCommand,
     #[error("there is no exact pending permission intent for this decision")]

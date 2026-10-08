@@ -41,7 +41,11 @@ where
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
         }
-        settle_pending_config(&mut pending_config, state.config_pending());
+        settle_pending_config(
+            &mut pending_config,
+            state.config_pending(),
+            state.goal_pending(),
+        );
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
             tracing::warn!(
@@ -84,6 +88,18 @@ where
                                 return failed(FirstTurnWorkerState::Idle(idle));
                             };
                             config.complete(Err(HostError::ConfigMutationRejected));
+                            (
+                                RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
+                                None,
+                            )
+                        }
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::GoalMutation,
+                        )) => {
+                            let Some(config) = pending_config.take() else {
+                                return failed(FirstTurnWorkerState::Idle(idle));
+                            };
+                            config.complete(Err(HostError::GoalMutationRejected));
                             (
                                 RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                                 None,
@@ -165,6 +181,18 @@ where
                                 return failed(FirstTurnWorkerState::Reusable(parts));
                             };
                             config.complete(Err(HostError::ConfigMutationRejected));
+                            (
+                                RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
+                                None,
+                            )
+                        }
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(
+                            NonfatalRefusal::GoalMutation,
+                        )) => {
+                            let Some(config) = pending_config.take() else {
+                                return failed(FirstTurnWorkerState::Reusable(parts));
+                            };
+                            config.complete(Err(HostError::GoalMutationRejected));
                             (
                                 RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                                 None,

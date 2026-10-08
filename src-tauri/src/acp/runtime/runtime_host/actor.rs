@@ -90,7 +90,10 @@ impl<E: RuntimeEngine> Actor<E> {
                     }
                 }
                 HostMessage::Command(envelope) => {
-                    if matches!(envelope.command, HostCommand::ConfigureSession(_)) {
+                    if matches!(
+                        envelope.command,
+                        HostCommand::ConfigureSession(_) | HostCommand::NativeRpc(_)
+                    ) {
                         self.begin_configure_session(envelope, &mailbox);
                         continue;
                     }
@@ -153,7 +156,7 @@ impl<E: RuntimeEngine> Actor<E> {
         deadline: Instant,
     ) -> Result<HostReply, HostError> {
         match command {
-            HostCommand::ConfigureSession(_) => Err(HostError::State),
+            HostCommand::ConfigureSession(_) | HostCommand::NativeRpc(_) => Err(HostError::State),
             HostCommand::ResolvePermission {
                 owner,
                 request_id,

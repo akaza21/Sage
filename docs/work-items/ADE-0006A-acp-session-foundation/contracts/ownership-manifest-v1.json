@@ -183,6 +183,7 @@
         "src-tauri/src/acp/bindings/adapter.rs",
         "src-tauri/src/acp/bindings/adapter/batch_builder.rs",
         "src-tauri/src/acp/bindings/adapter/byte_count.rs",
+        "src-tauri/src/acp/bindings/adapter/model.rs",
         "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",
         "src-tauri/src/acp/bindings/command_summary.rs",
         "src-tauri/src/acp/bindings/registry.rs",

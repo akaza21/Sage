@@ -78,6 +78,17 @@ impl HarnessAdapter for NativeRuntime {
     fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
         self.0.goal_state()
     }
+    fn goal_pending(&self) -> bool {
+        self.0.goal_pending()
+    }
+    fn mutate_goal(
+        &mut self,
+        action: crate::acp::goal::GoalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        let egress = self.0.mutate_goal(action)?;
+        self.publish_goal();
+        Ok(egress)
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.0.session_config()
     }

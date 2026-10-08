@@ -15,6 +15,30 @@ use super::{ProcessLivePort, WorkerCommand, WorkerReply};
 
 impl LiveRuntimePort for ProcessLivePort {
     type ZeroProof = super::WorkerZeroProof;
+    fn begin_native_rpc(
+        &mut self,
+        intent: &crate::acp::goal::NativeRpcIntent,
+        deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        let response = self
+            .mailbox
+            .submit_worker_until(
+                WorkerCommand::NativeRpc {
+                    intent: intent.clone(),
+                    completion,
+                },
+                deadline,
+            )
+            .map_err(super::support::map_mailbox)?;
+        match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(Ok(WorkerReply::Unit)) => Ok(()),
+            Ok(Ok(_)) => Err(HostError::State),
+            Ok(Err(error)) => Err(error),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
+        }
+    }
     fn begin_configure_session(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,

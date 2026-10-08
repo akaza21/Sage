@@ -16,6 +16,7 @@ use super::{
 pub(super) struct PendingConfig {
     completion: ConfigCompletionSink,
     deadline: std::time::Instant,
+    goal_mutation: bool,
 }
 
 impl PendingConfig {
@@ -49,11 +50,19 @@ pub(super) fn fail_pending_config(pending: &mut Option<PendingConfig>, error: Ho
     }
 }
 
-pub(super) fn settle_pending_config(pending: &mut Option<PendingConfig>, config_pending: bool) {
+pub(super) fn settle_pending_config(
+    pending: &mut Option<PendingConfig>,
+    config_pending: bool,
+    goal_pending: bool,
+) {
     let Some(config) = pending.take() else {
         return;
     };
-    if !config_pending {
+    if !(if config.goal_mutation {
+        goal_pending
+    } else {
+        config_pending
+    }) {
         config.complete(Ok(()));
     } else if config.expired() {
         config.complete(Err(HostError::Deadline));
@@ -108,24 +117,43 @@ where
             .expect("checked pending config")
             .complete(Err(HostError::Closed));
     }
-    if matches!(&envelope.command, WorkerCommand::ConfigureSession { .. }) {
+    if matches!(
+        &envelope.command,
+        WorkerCommand::ConfigureSession { .. } | WorkerCommand::NativeRpc { .. }
+    ) {
         let mut state = state;
         let deadline = envelope.deadline();
         let (command, responder) = envelope.into_parts();
-        let WorkerCommand::ConfigureSession { intent, completion } = command else {
-            unreachable!("configuration command matched")
-        };
         if pending_config.is_some() {
             responder.respond(Err(HostError::State));
+            let completion = match command {
+                WorkerCommand::ConfigureSession { completion, .. }
+                | WorkerCommand::NativeRpc { completion, .. } => completion,
+                _ => unreachable!("mutation command matched"),
+            };
             completion.complete(Err(HostError::State));
             return (RunnerAction::Continue(state), None);
         }
-        match state.begin_configure(context, &intent, deadline) {
+        let (begin, completion, goal_mutation) = match command {
+            WorkerCommand::ConfigureSession { intent, completion } => (
+                state.begin_configure(context, &intent, deadline),
+                completion,
+                false,
+            ),
+            WorkerCommand::NativeRpc { intent, completion } => (
+                state.begin_native_rpc(context, &intent, deadline),
+                completion,
+                true,
+            ),
+            _ => unreachable!("mutation command matched"),
+        };
+        match begin {
             Ok(()) => {
                 responder.respond(Ok(super::super::WorkerReply::Unit));
                 *pending_config = Some(PendingConfig {
                     completion,
                     deadline,
+                    goal_mutation,
                 });
             }
             Err(error) => {
@@ -188,6 +216,19 @@ where
                     );
                 };
                 config.complete(Err(HostError::ConfigMutationRejected));
+                return (
+                    RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                    terminal_callback,
+                );
+            }
+            Err(DriverError::Refused(NonfatalRefusal::GoalMutation)) => {
+                let Some(config) = pending_config.take() else {
+                    return (
+                        RunnerAction::Failure(FirstTurnWorkerState::Active(active)),
+                        terminal_callback,
+                    );
+                };
+                config.complete(Err(HostError::GoalMutationRejected));
                 return (
                     RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
                     terminal_callback,

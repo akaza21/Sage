@@ -157,6 +157,7 @@ pub(crate) struct CodexAdapter {
     goal_state: GoalState,
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
+    goal_mutation_fence: Option<(u64, u64)>,
 }
 
 impl CodexAdapter {
@@ -281,6 +282,9 @@ impl CodexAdapter {
         }
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);
+        }
+        if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
+            self.goal_mutation_fence = None;
         }
         let removed = self.remove_pending(id);
         debug_assert_eq!(removed, Some(kind));

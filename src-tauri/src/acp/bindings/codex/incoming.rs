@@ -27,6 +27,9 @@ use requests::server_request;
 mod notifications;
 use notifications::notification;
 
+mod response;
+use response::{browser_mcp_unavailable, response};
+
 pub(crate) trait ResourceMapper {
     fn map_existing(
         &self,
@@ -125,6 +128,7 @@ pub(crate) enum IncomingEvent {
 pub(crate) enum IngressDisposition {
     Events(Vec<IncomingEvent>),
     IgnoredLate,
+    GoalMutationRejected,
     DuplicateTerminal,
     DuplicateServerRequest { denial: Option<Vec<u8>> },
 }
@@ -210,190 +214,4 @@ fn ingest_inner<M: ResourceMapper>(
         return Ok(IngressDisposition::IgnoredLate);
     }
     notification(adapter, method, params, mapper, declarations)
-}
-
-fn response(
-    adapter: &mut CodexAdapter,
-    object: &Map<String, Value>,
-) -> Result<IngressDisposition, IngressError> {
-    let id = object
-        .get("id")
-        .and_then(Value::as_u64)
-        .ok_or(IngressError::Malformed)?;
-    let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
-    if let Some(error) = object.get("error") {
-        if kind == RequestKind::GoalGet {
-            let _ = error;
-            adapter.goal_get_failed(id);
-            let removed = adapter.take_pending(id);
-            debug_assert_eq!(removed, Some(kind));
-            return Ok(IngressDisposition::IgnoredLate);
-        }
-        let message = error
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("Codex request failed");
-        let payload = error_payload("codexRpc", message, false)?;
-        if kind != RequestKind::TurnStart {
-            let removed = adapter.take_pending(id);
-            debug_assert_eq!(removed, Some(kind));
-        }
-        return match kind {
-            RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
-                super::state::TurnStartFailure::Failed(turn) => {
-                    Ok(IngressDisposition::Events(vec![
-                        IncomingEvent::Error(payload),
-                        IncomingEvent::Turn {
-                            id: turn,
-                            state: TurnState::Failed,
-                        },
-                    ]))
-                }
-                super::state::TurnStartFailure::Late => Ok(IngressDisposition::DuplicateTerminal),
-            },
-            RequestKind::Interrupt => {
-                let turn = adapter.fail_interrupt().map_err(identity)?;
-                Ok(IngressDisposition::Events(vec![
-                    IncomingEvent::Error(payload),
-                    IncomingEvent::Turn {
-                        id: turn,
-                        state: TurnState::Failed,
-                    },
-                ]))
-            }
-            RequestKind::Unsubscribe => Ok(IngressDisposition::Events(vec![
-                IncomingEvent::Error(payload),
-                IncomingEvent::Acknowledged {
-                    closes_session: false,
-                },
-            ])),
-            RequestKind::Steer => Ok(IngressDisposition::Events(vec![
-                IncomingEvent::SteerResponse {
-                    request_id: id,
-                    accepted: false,
-                },
-                IncomingEvent::Error(payload),
-            ])),
-            _ => Ok(IncomingEvent::Error(payload).into()),
-        };
-    }
-    if kind == RequestKind::GoalGet {
-        let result = object.get("result").and_then(Value::as_object);
-        adapter
-            .goal_get_result(id, result.and_then(|result| result.get("goal")))
-            .map_err(|_| IngressError::Malformed)?;
-        let removed = adapter.take_pending(id);
-        debug_assert_eq!(removed, Some(kind));
-        return Ok(IngressDisposition::IgnoredLate);
-    }
-    let result = object
-        .get("result")
-        .and_then(Value::as_object)
-        .ok_or(IngressError::Malformed)?;
-    if kind != RequestKind::TurnStart {
-        let removed = adapter.take_pending(id);
-        debug_assert_eq!(removed, Some(kind));
-    }
-    let event = match kind {
-        RequestKind::Initialize => IncomingEvent::Initialized {
-            capabilities: adapter.accept_initialize(result).map_err(capability)?,
-        },
-        RequestKind::Start | RequestKind::Resume => {
-            let thread = result
-                .get("thread")
-                .and_then(Value::as_object)
-                .ok_or(IngressError::Malformed)?;
-            let external = text(thread, "id", 512)?;
-            let id = adapter.bind_thread(external).map_err(identity)?;
-            IncomingEvent::SessionReady { id }
-        }
-        RequestKind::Read => {
-            let thread = result
-                .get("thread")
-                .and_then(Value::as_object)
-                .ok_or(IngressError::Malformed)?;
-            let external = text(thread, "id", 512)?;
-            let id = adapter.bind_thread(external).map_err(identity)?;
-            IncomingEvent::SessionLoaded { id }
-        }
-        RequestKind::Models => {
-            let (models, next_cursor) = parse_models(result)?;
-            IncomingEvent::Models {
-                models,
-                next_cursor,
-            }
-        }
-        RequestKind::TurnStart => {
-            let turn = result
-                .get("turn")
-                .and_then(Value::as_object)
-                .ok_or(IngressError::Malformed)?;
-            let external = text(turn, "id", 512)?;
-            let (id, binding) = adapter
-                .complete_turn_start(id, external)
-                .map_err(identity)?;
-            match binding {
-                super::state::TurnBinding::PreviousTerminal => {
-                    return Ok(IngressDisposition::DuplicateTerminal);
-                }
-                super::state::TurnBinding::Active => {
-                    return Ok(IngressDisposition::IgnoredLate);
-                }
-                super::state::TurnBinding::Provisional => {
-                    return Ok(IngressDisposition::IgnoredLate);
-                }
-                super::state::TurnBinding::NewlyActive => {}
-            }
-            IncomingEvent::Turn {
-                id,
-                state: TurnState::Sending,
-            }
-        }
-        RequestKind::Interrupt => IncomingEvent::Acknowledged {
-            closes_session: false,
-        },
-        RequestKind::Steer => {
-            let turn_id = text(result, "turnId", 512)?;
-            if !adapter.has_active_turn() || adapter.expect_turn(turn_id).is_err() {
-                return Err(IngressError::Malformed);
-            }
-            IncomingEvent::SteerResponse {
-                request_id: id,
-                accepted: true,
-            }
-        }
-        RequestKind::Unsubscribe => {
-            adapter.clear_command_items();
-            IncomingEvent::Acknowledged {
-                closes_session: true,
-            }
-        }
-        RequestKind::GoalGet => unreachable!("handled above"),
-    };
-    if matches!(
-        kind,
-        RequestKind::Start | RequestKind::Resume | RequestKind::Read
-    ) {
-        let external = result
-            .get("thread")
-            .and_then(Value::as_object)
-            .and_then(|thread| thread.get("id"))
-            .and_then(Value::as_str)
-            .ok_or(IngressError::Malformed)?;
-        if adapter.take_browser_mcp_failure_for_thread(external) {
-            return Ok(IngressDisposition::Events(vec![
-                event,
-                browser_mcp_unavailable()?,
-            ]));
-        }
-    }
-    Ok(event.into())
-}
-
-fn browser_mcp_unavailable() -> Result<IncomingEvent, IngressError> {
-    Ok(IncomingEvent::Error(error_payload(
-        "browserMcpUnavailable",
-        "Browser tools are unavailable for this Codex chat. You can continue chatting, but browser actions will not work until a new chat starts with a working browser helper.",
-        false,
-    )?))
 }

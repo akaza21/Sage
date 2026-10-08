@@ -25,6 +25,16 @@ pub(crate) enum LiveWrite {
 pub(crate) trait LiveRuntimePort: Send + 'static {
     type ZeroProof: Send + 'static;
 
+    fn begin_native_rpc(
+        &mut self,
+        _intent: &crate::acp::goal::NativeRpcIntent,
+        _deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        completion.complete(Err(HostError::State));
+        Ok(())
+    }
+
     fn begin_configure_session(
         &mut self,
         _intent: &crate::acp::session_config::ConfigIntent,
@@ -132,6 +142,17 @@ impl<P: LiveRuntimePort> LiveRuntimeEngine<P> {
 }
 
 impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
+    fn begin_native_rpc(
+        &mut self,
+        intent: &crate::acp::goal::NativeRpcIntent,
+        deadline: Instant,
+        completion: ConfigCompletionSink,
+    ) -> Result<(), HostError> {
+        if self.port.owner() != &intent.owner || self.zero_proof.is_some() {
+            return Err(HostError::Intent);
+        }
+        self.port.begin_native_rpc(intent, deadline, completion)
+    }
     fn begin_configure_session(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,

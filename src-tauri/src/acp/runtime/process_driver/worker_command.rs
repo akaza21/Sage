@@ -26,6 +26,10 @@ pub(crate) enum WorkerCommand {
         intent: crate::acp::session_config::ConfigIntent,
         completion: ConfigCompletionSink,
     },
+    NativeRpc {
+        intent: crate::acp::goal::NativeRpcIntent,
+        completion: ConfigCompletionSink,
+    },
     AbandonConfiguration {
         owner: RuntimeOwner,
     },
@@ -90,6 +94,7 @@ impl WorkerCommand {
         use crate::acp::limits::LIMITS;
         match self {
             Self::ConfigureSession { .. }
+            | Self::NativeRpc { .. }
             | Self::AbandonConfiguration { .. }
             | Self::ResolvePermission { .. } => LIMITS.deadlines_ms.ordinary_rpc,
             Self::DispatchCancel(_) => LIMITS.deadlines_ms.cancel_dispatch,
@@ -131,6 +136,7 @@ impl WorkerCommand {
     fn actual_bytes(&self) -> Option<usize> {
         match self {
             Self::ConfigureSession { intent, .. } => Some(intent.actual_bytes()),
+            Self::NativeRpc { intent, .. } => Some(intent.actual_bytes()),
             Self::AbandonConfiguration { owner } => owner_bytes(owner).checked_add(1),
             Self::ResolvePermission {
                 owner, request_id, ..

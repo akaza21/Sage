@@ -1,10 +1,57 @@
 use super::*;
 use crate::acp::{
-    goal::{GoalNoticeSink, GoalState},
+    goal::{GoalAction, GoalNoticeSink, GoalState, NativeRpcIntent, NativeRpcRequest},
     scheduler::RuntimeOwner,
 };
 
 impl AcpService {
+    #[cfg(test)]
+    pub(crate) fn goal_channel_for_test(&self) -> std::sync::Arc<crate::acp::goal::GoalChannel> {
+        std::sync::Arc::clone(&self.runtime.goal)
+    }
+    #[cfg(test)]
+    pub(crate) fn install_goal_test_runtime(
+        &self,
+        owner: RuntimeOwner,
+        host: std::sync::Arc<crate::acp::runtime::RuntimeHost>,
+        goal: GoalState,
+    ) {
+        self.runtime.reserve_start(owner.clone()).unwrap();
+        self.runtime.goal.update(&owner, goal);
+        self.runtime.finish_start(&owner, host).unwrap();
+        self.runtime.publish_start(&owner).unwrap();
+    }
+    pub(crate) fn mutate_existing_goal(
+        &self,
+        owner: RuntimeOwner,
+        action: GoalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        let host = self
+            .runtime
+            .for_owner(&owner)
+            .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        if !matches!(
+            self.runtime.goal.snapshot(&owner),
+            Some(GoalState::Goal { .. })
+        ) {
+            return Err(crate::acp::runtime::HostError::Intent);
+        }
+        let result = host.native_rpc(NativeRpcIntent {
+            owner: owner.clone(),
+            request: NativeRpcRequest::Goal(action),
+        });
+        if matches!(
+            result,
+            Err(crate::acp::runtime::HostError::Unavailable
+                | crate::acp::runtime::HostError::Closed
+                | crate::acp::runtime::HostError::Deadline
+                | crate::acp::runtime::HostError::DeliveryUnknown
+                | crate::acp::runtime::HostError::RecoveryRequired)
+        ) {
+            self.retain_config_effect_recovery(owner, host);
+        }
+        result.map(|_| ())
+    }
     pub(crate) fn set_goal_notice_sink(&self, sink: GoalNoticeSink) {
         self.runtime.goal.set_sink(sink);
     }

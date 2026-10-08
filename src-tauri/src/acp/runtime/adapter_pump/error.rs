@@ -6,6 +6,8 @@ use super::PumpJournalError;
 pub(crate) enum NonfatalRefusal {
     #[error("the harness rejected the session configuration mutation")]
     ConfigMutation,
+    #[error("the harness rejected the native Goal mutation")]
+    GoalMutation,
     #[error("the harness requires sign-in before it can continue")]
     SignIn,
 }
@@ -14,6 +16,7 @@ impl NonfatalRefusal {
     pub(crate) fn from_adapter(error: &AdapterRuntimeError) -> Option<Self> {
         match error {
             AdapterRuntimeError::ConfigMutationRejected => Some(Self::ConfigMutation),
+            AdapterRuntimeError::GoalMutationRejected => Some(Self::GoalMutation),
             AdapterRuntimeError::SignInRequired => Some(Self::SignIn),
             _ => None,
         }

@@ -69,6 +69,16 @@ where
                     None,
                 ))
             }
+            Err(DriverError::Refused(NonfatalRefusal::GoalMutation)) => {
+                let Some(config) = pending_config.take() else {
+                    return Err(failed(FirstTurnWorkerState::Active(active)));
+                };
+                config.complete(Err(HostError::GoalMutationRejected));
+                Ok((
+                    RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
+                    None,
+                ))
+            }
             Err(DriverError::Refused(NonfatalRefusal::SignIn)) => Ok((
                 RunnerAction::Continue(FirstTurnWorkerState::Active(active)),
                 None,

@@ -1095,7 +1095,7 @@ fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
 
 #[cfg(windows)]
 #[test]
-fn admitted_observed_codex_hydrates_goal_without_enabling_goal_set() {
+fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
     use std::{fs, sync::Arc};
 
     let path =
@@ -1164,6 +1164,72 @@ fn admitted_observed_codex_hydrates_goal_without_enabling_goal_set() {
     assert_eq!(
         runtime.goal_state().unwrap().objective(),
         Some("Ship safely")
+    );
+    let pause = runtime
+        .mutate_goal(crate::acp::goal::GoalAction::PauseExisting)
+        .unwrap();
+    let pause_wire: Value = serde_json::from_slice(pause.frame().payload()).unwrap();
+    assert_eq!(pause_wire["method"], "thread/goal/set");
+    assert_eq!(
+        pause_wire["params"],
+        json!({"threadId":"thread-goal","status":"paused"})
+    );
+    runtime
+        .ingest(
+            &frame(json!({"id":pause_wire["id"],"result":{"goal":{
+                "objective":"Ship safely","status":"paused","tokenBudget":1000,
+                "tokensUsed":42,"timeUsedSeconds":125
+            }}})),
+            &Mapper,
+        )
+        .unwrap();
+    let clear = runtime
+        .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
+        .unwrap();
+    let clear_wire: Value = serde_json::from_slice(clear.frame().payload()).unwrap();
+    assert_eq!(clear_wire["method"], "thread/goal/clear");
+    assert_eq!(clear_wire["params"], json!({"threadId":"thread-goal"}));
+    assert_eq!(
+        runtime
+            .ingest(
+                &frame(json!({"id":clear_wire["id"],"result":{"cleared":false}})),
+                &Mapper
+            )
+            .err(),
+        Some(AdapterRuntimeError::GoalMutationRejected)
+    );
+    assert_eq!(
+        runtime.goal_state().unwrap().objective(),
+        Some("Ship safely")
+    );
+    let clear = runtime
+        .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
+        .unwrap();
+    let clear_wire: Value = serde_json::from_slice(clear.frame().payload()).unwrap();
+    assert_eq!(
+        runtime
+            .ingest(
+                &frame(json!({"id":clear_wire["id"],"error":{"code":-1,"message":"denied"}})),
+                &Mapper
+            )
+            .err(),
+        Some(AdapterRuntimeError::GoalMutationRejected)
+    );
+    assert_eq!(
+        runtime.goal_state().unwrap().objective(),
+        Some("Ship safely")
+    );
+    let clear = runtime
+        .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
+        .unwrap();
+    runtime
+        .resolve_egress(clear.into_token(), EgressResolution::DeliveryUnknown)
+        .unwrap();
+    assert_eq!(runtime.goal_state().unwrap().availability(), "unavailable");
+    assert!(
+        runtime
+            .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
+            .is_err()
     );
     fs::remove_file(path).unwrap();
 }

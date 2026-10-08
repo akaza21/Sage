@@ -34,6 +34,20 @@ impl HarnessAdapter for CodexRuntime {
         Some(self.inner.goal_state().clone())
     }
 
+    fn goal_pending(&self) -> bool {
+        self.inner.goal_mutation_pending()
+    }
+
+    fn mutate_goal(
+        &mut self,
+        action: crate::acp::goal::GoalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        match action {
+            crate::acp::goal::GoalAction::PauseExisting => self.request(CodexAdapter::goal_pause),
+            crate::acp::goal::GoalAction::ClearExisting => self.request(CodexAdapter::goal_clear),
+        }
+    }
+
     fn capabilities(&self) -> Option<crate::acp::intent::CapabilitySnapshotV1> {
         self.inner.effective_capabilities().ok()
     }
@@ -212,10 +226,14 @@ impl HarnessAdapter for CodexRuntime {
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.request_id() {
-            if self.inner.pending_kind(request_id) == Some(RequestKind::GoalGet)
-                && resolution == EgressResolution::DeliveryUnknown
-            {
-                self.inner.goal_get_delivery_unknown(request_id);
+            if resolution == EgressResolution::DeliveryUnknown {
+                match self.inner.pending_kind(request_id) {
+                    Some(RequestKind::GoalGet) => self.inner.goal_get_delivery_unknown(request_id),
+                    Some(RequestKind::GoalPause | RequestKind::GoalClear) => {
+                        self.inner.goal_mutation_delivery_unknown(request_id)
+                    }
+                    _ => {}
+                }
             }
             if matches!(
                 resolution,
