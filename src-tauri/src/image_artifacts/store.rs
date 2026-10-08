@@ -103,4 +103,3 @@ pub(crate) fn verify_image_reference(
     }
     Ok(bytes)
 }
-
