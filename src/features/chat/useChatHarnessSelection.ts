@@ -173,7 +173,7 @@ export function useChatHarnessSelection(chatId?: string): {
   const selectedHarnessId =
     chatId === undefined
       ? globallySelectedHarnessId
-      : (chatSelection?.harnessId ?? null);
+      : (chatSelection?.harnessId ?? globallySelectedHarnessId);
   const selectedModelId =
     chatId === undefined
       ? globallySelectedModelId
@@ -191,22 +191,27 @@ export function useChatHarnessSelection(chatId?: string): {
       candidate.runtimeEpoch &&
       !["closed", "failed", "incompatible"].includes(candidate.state),
   );
-  const activeSessionHarnessId = session
+  const historicalSession =
+    !session && !page?.currentSessionId
+      ? page?.sessions.filter((candidate) => !candidate.legacy).at(-1)
+      : null;
+  const selectedSession = session ?? historicalSession;
+  const sessionHarnessId = selectedSession
     ? (harnesses.find(
         (harness) =>
           harness.transport === "acp" &&
-          harness.bindingId === session.bindingId,
+          harness.bindingId === selectedSession.bindingId,
       )?.id ?? null)
     : null;
   const sessionSelection = useMemo(
     () =>
-      activeSessionHarnessId
+      sessionHarnessId
         ? {
-            harnessId: activeSessionHarnessId,
-            modelId: session?.modelId ?? null,
+            harnessId: sessionHarnessId,
+            modelId: selectedSession?.modelId ?? null,
           }
         : null,
-    [activeSessionHarnessId, session?.modelId],
+    [sessionHarnessId, selectedSession?.modelId],
   );
   const discoveryPhase =
     sessionSelection?.harnessId === selectedHarnessId &&
@@ -216,7 +221,7 @@ export function useChatHarnessSelection(chatId?: string): {
         ? "ready"
         : harnessDiscoveryPhase;
   useLayoutEffect(() => {
-    if (!chatId || chatSelection?.harnessId) return;
+    if (!chatId || !page || chatSelection?.harnessId) return;
     const selection =
       sessionSelection ??
       (harnessDiscoveryPhase === "ready" && globallySelectedHarnessId
@@ -236,6 +241,7 @@ export function useChatHarnessSelection(chatId?: string): {
     globallySelectedHarnessId,
     globallySelectedModelId,
     harnessDiscoveryPhase,
+    page,
     sessionSelection,
     setChatHarnessSelection,
   ]);

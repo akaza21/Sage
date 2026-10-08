@@ -5,7 +5,7 @@ use crate::acp::limits::LIMITS;
 use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase, JOURNEY_CASES};
 
-const CHARACTERIZATION_CASES: [(&str, &str); 8] = [
+const CHARACTERIZATION_CASES: [(&str, &str); 9] = [
     (
         "characterization-turn-success",
         r#"[{"op":"awaitClient","kind":"initialize"},{"op":"emitKnownFrame","shape":"initializeSuccess","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"newSession"},{"op":"emitKnownFrame","shape":"newSessionSuccess","externalSessionId":"fixture-persisted-session-1","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"prompt"},{"op":"emitKnownFrame","shape":"textStart","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textDelta","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textComplete","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"turnComplete","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"close"}]"#,
@@ -33,6 +33,10 @@ const CHARACTERIZATION_CASES: [(&str, &str); 8] = [
     (
         "codex-item-completed-then-exit",
         r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexItemCompleted"},{"op":"exit","code":17}]"#,
+    ),
+    (
+        "codex-partial-turn-at-shutdown",
+        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexDelta"},{"op":"awaitClient","kind":"codexSteer"}]"#,
     ),
     (
         "characterization-resume-turn-success",

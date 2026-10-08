@@ -3447,6 +3447,103 @@ describe("ChatSurface ACP resource integration", () => {
 });
 
 describe("ChatSurface per-chat composer", () => {
+  it("restores a failed Codex chat from durable history instead of the simulator", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 1,
+      nativeTransitionEpoch: 1,
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      chatUiById: {},
+      harnesses: [
+        {
+          id: "sage-simulator",
+          name: "Simulator",
+          description: "Development",
+          installState: "available",
+          source: "development",
+          accountModelDiscovery: false,
+          transport: "legacySimulator",
+          bindingId: null,
+        },
+        {
+          id: "codex",
+          name: "Codex",
+          description: "ACP",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: true,
+          transport: "acp",
+          bindingId: "codex-app-server",
+        },
+      ],
+      selectedHarnessId: "sage-simulator",
+      selectedModelId: null,
+      harnessDiscoveryPhase: "ready",
+    });
+    const failedPage = {
+      ...projection(),
+      currentSessionId: null,
+      sessions: [
+        {
+          id: "session-a",
+          ordinal: 0,
+          bindingId: "codex-app-server",
+          modelId: "gpt-6-astra",
+          state: "failed",
+          residency: "cold",
+          legacy: false,
+          runtimeEpoch: null,
+        },
+      ] as never,
+      turns: [
+        {
+          ...projection().turns[0],
+          state: "failed",
+          items: [
+            {
+              ...itemBase("user-prompt"),
+              kind: "text",
+              payload: { role: "user", text: "Design a small task manager" },
+            } as AcpItem,
+            {
+              ...itemBase("partial-answer"),
+              ordinal: 1,
+              kind: "text",
+              lifecycle: "cancelled",
+              payload: { role: "assistant", text: "Start with durable tasks" },
+            } as AcpItem,
+          ],
+        },
+      ],
+    } as AcpChatPage;
+
+    hooks.page = null;
+    const view = render(<ChatSurface chatId="chat-a" />);
+    expect(
+      useWorkbenchStore.getState().chatUiById["chat-a"]?.harnessId,
+    ).toBeUndefined();
+    hooks.page = failedPage;
+    view.rerender(<ChatSurface chatId="chat-a" />);
+    await settleLazyModules();
+
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"]?.harnessId).toBe(
+      "codex",
+    );
+    expect(screen.getByText("Design a small task manager")).toBeVisible();
+    expect(screen.getByText("Start with durable tasks")).toBeVisible();
+    expect(screen.queryByText("Development simulator")).toBeNull();
+  });
+
   it("keeps harness selection and prompt routing with the owning mounted Chat", async () => {
     vi.spyOn(desktop, "listHarnessModels").mockImplementation(
       async (harnessId) =>
