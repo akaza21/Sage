@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -395,12 +396,21 @@ describe("AgentTaskHeader working status", () => {
       screen.getByRole("dialog", { name: "Chat resources" }),
     ).toHaveFocus();
     expect(screen.getByText("Outputs")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Outputs" })).toHaveTextContent(
+      "Create a file or site",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Outputs" })).queryByText("0"),
+    ).toBeNull();
     expect(screen.getByText("Subagents")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Subagents" })).toHaveAttribute(
       "title",
       "Recent subagents from the latest 128 turns and 256 items per turn",
     );
     expect(screen.getByText("Sources")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Sources" })).queryByText("0"),
+    ).toBeNull();
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
       key: "Escape",
     });
@@ -628,6 +638,9 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
+    expect(
+      within(screen.getByRole("region", { name: "Outputs" })).queryByText("1"),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Open output report.md" }),
     );
@@ -747,6 +760,9 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
+    expect(
+      within(screen.getByRole("region", { name: "Sources" })).queryByText("1"),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Open source example.com" }),
     );

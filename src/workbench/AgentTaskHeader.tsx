@@ -216,7 +216,6 @@ export function AgentTaskHeader({
           >
             <section aria-label="Outputs">
               <strong>Outputs</strong>
-              <span>{outputs.length}</span>
               {outputs.length === 0 ? <p>Create a file or site</p> : null}
               {outputs.map((output) => (
                 <button
@@ -292,7 +291,6 @@ export function AgentTaskHeader({
             </section>
             <section aria-label="Sources">
               <strong>Sources</strong>
-              <span>{sources.length}</span>
               {(showAllSources ? sources : sources.slice(-3)).map(
                 (source, index) => {
                   const browserTab = tabs.find(
