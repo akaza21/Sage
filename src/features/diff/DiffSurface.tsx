@@ -9,16 +9,10 @@ import { diffCacheKey } from "../../domain/diffIdentity";
 import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
-import type { DiffLineKind, WorkbenchTab } from "../../domain/workbench";
+import type { WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
+import { DiffHunks } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
-
-const linePrefix: Record<DiffLineKind, string> = {
-  context: " ",
-  added: "+",
-  removed: "-",
-  meta: "\\",
-};
 
 export function DiffSurface({
   tab,
@@ -224,59 +218,27 @@ function DiffDocument({
         </>
       ) : null}
       {diff?.phase === "ready" ? (
-        <div
-          className="diff-editor"
-          role="table"
-          aria-label="Unified file diff"
-        >
-          {diff.value.binary ? (
-            <p className="resource-state">Binary file changed.</p>
-          ) : null}
-          {diff.value.hunks.map((hunk, hunkIndex) => (
-            <div className="diff-hunk" key={`${hunk.header}:${hunkIndex}`}>
-              <div className="diff-hunk__header" role="row">
-                {hunk.header}
-              </div>
-              {hunk.lines.map((line, lineIndex) => (
-                <div
-                  className={`diff-line diff-line--${line.kind}${canComment ? " diff-line--commentable" : ""}`}
-                  role="row"
-                  key={`${hunkIndex}:${lineIndex}`}
-                >
-                  <span role="cell">{line.oldLine}</span>
-                  <span role="cell">{line.newLine}</span>
-                  <div className="diff-line__comment-gutter" role="cell">
-                    {canComment &&
-                    tab.diffRef &&
+        <>
+          <DiffHunks
+            diff={diff.value}
+            label="Unified file diff"
+            limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
+            renderComment={
+              canComment && tab.diffRef
+                ? (line) =>
                     (line.newLine ?? line.oldLine) !== null &&
                     line.kind !== "meta" ? (
                       <DiffLineCommentComposer
-                        diffRef={tab.diffRef}
+                        diffRef={tab.diffRef!}
                         side={line.newLine !== null ? "new" : "old"}
                         line={(line.newLine ?? line.oldLine)!}
                         onAdd={addContext}
                       />
-                    ) : null}
-                  </div>
-                  <code role="cell">
-                    {linePrefix[line.kind]}
-                    {line.text}
-                  </code>
-                </div>
-              ))}
-            </div>
-          ))}
-          {diff.value.hunks.length === 0 &&
-          !diff.value.binary &&
-          !diff.value.truncated ? (
-            <p className="resource-state">No textual changes for this file.</p>
-          ) : null}
-          {diff.value.truncated ? (
-            <p className="diff-limit">
-              Diff capped at 1,200 lines to protect UI responsiveness.
-            </p>
-          ) : null}
-        </div>
+                    ) : null
+                : undefined
+            }
+          />
+        </>
       ) : null}
     </section>
   );

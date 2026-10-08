@@ -10,10 +10,11 @@ import type {
 } from "../../../domain/acp";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
-import type { AgentDiffRef } from "../../../domain/agentDiff";
+import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { projectAgentEditSummary } from "./agentEditSummary";
+import { InlineSavedDiff } from "./InlineSavedDiff";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -65,6 +66,7 @@ export function TurnEditSummary({
     null,
   );
   const [dispositionError, setDispositionError] = useState(false);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
   if (
     summary.changes.length === 0 &&
     !summary.sourceTruncated &&
@@ -128,9 +130,10 @@ export function TurnEditSummary({
           className="acp-file-changes__header"
           type="button"
           aria-expanded={expanded}
-          onClick={() =>
-            setExpansion({ turnId: turn.id, completed, expanded: !expanded })
-          }
+          onClick={() => {
+            setExpansion({ turnId: turn.id, completed, expanded: !expanded });
+            if (expanded) setPreviewKey(null);
+          }}
         >
           <Files size={16} aria-hidden="true" />
           <strong>{fileLabel}</strong>
@@ -181,7 +184,9 @@ export function TurnEditSummary({
                       {change.deletions === null ? "—" : `-${change.deletions}`}
                     </span>
                   </span>
-                  <span>{change.summary}</span>
+                  <span className="acp-file-changes__summary">
+                    {change.summary}
+                  </span>
                 </li>
               );
             }
@@ -235,7 +240,34 @@ export function TurnEditSummary({
                     </span>
                   </span>
                 )}
-                <span>{change.summary}</span>
+                <span className="acp-file-changes__summary">
+                  {change.summary}
+                </span>
+                {admitted && change.diffRef ? (
+                  <button
+                    type="button"
+                    className="acp-file-changes__preview-toggle"
+                    aria-label={`Preview saved diff ${qualifiedLabel}`}
+                    aria-expanded={previewKey === agentDiffKey(change.diffRef)}
+                    onClick={() =>
+                      setPreviewKey((current) =>
+                        current === agentDiffKey(change.diffRef!)
+                          ? null
+                          : agentDiffKey(change.diffRef!),
+                      )
+                    }
+                  >
+                    Preview saved diff
+                  </button>
+                ) : null}
+                {change.diffRef &&
+                previewKey === agentDiffKey(change.diffRef) ? (
+                  <InlineSavedDiff
+                    key={previewKey}
+                    resource={resource}
+                    diffRef={change.diffRef}
+                  />
+                ) : null}
               </li>
             );
           })}

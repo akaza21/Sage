@@ -108,6 +108,303 @@ describe("actual saved-edit card to shared Diff surface", () => {
     expect(git).not.toHaveBeenCalled();
     expect(acpDesktop.getFileSnapshot).not.toHaveBeenCalled();
   });
+  it("previews a retained saved edit inline without opening a Diff tab or reading Git", async () => {
+    const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
+    const openDiff = vi.fn();
+    const page = snapshotPage();
+    const { rerender } = render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+        onOpenDiff={openDiff}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    expect(
+      screen.getByRole("button", { name: "Open diff Root / src/a.ts" }),
+    ).toBeVisible();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    expect(
+      await screen.findByRole("table", { name: "Inline saved diff" }),
+    ).toBeVisible();
+    expect(screen.getByText("-old")).toBeVisible();
+    expect(screen.getByText("+new")).toBeVisible();
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledWith({
+      ...ref,
+      projectGeneration: "1",
+      expectedProjectionRevision: "1",
+    });
+    expect(useWorkbenchStore.getState().tabs).toHaveLength(0);
+    expect(openDiff).not.toHaveBeenCalled();
+    expect(git).not.toHaveBeenCalled();
+
+    rerender(
+      <TurnEditSummary
+        page={{ ...page }}
+        turn={{ ...page.turns[0] }}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+        onOpenDiff={openDiff}
+      />,
+    );
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    expect(
+      screen.queryByRole("table", { name: "Inline saved diff" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    expect(
+      screen.queryByRole("table", { name: "Inline saved diff" }),
+    ).toBeNull();
+  });
+  it("refuses an inline read when the saved edit is no longer retained by its Chat", async () => {
+    const page = snapshotPage();
+    act(() =>
+      projection.setState({
+        page: { ...page, currentSessionId: "replacement" as never },
+      }),
+    );
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("unavailable");
+    expect(acpDesktop.getFileSnapshot).not.toHaveBeenCalled();
+  });
+  it("discards a late inline snapshot after the Chat session changes", async () => {
+    let resolveRead!: (
+      value: Awaited<ReturnType<typeof acpDesktop.getFileSnapshot>>,
+    ) => void;
+    vi.mocked(acpDesktop.getFileSnapshot).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const page = snapshotPage();
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading saved diff");
+    await waitFor(() =>
+      expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce(),
+    );
+    act(() =>
+      projection.setState({
+        page: { ...page, currentSessionId: "replacement" as never },
+      }),
+    );
+    await act(async () =>
+      resolveRead({
+        ...ref,
+        projectionRevision: "1" as never,
+        oldText: "old\n",
+        newText: "new\n",
+        oldBytes: 4,
+        newBytes: 4,
+      }),
+    );
+    expect(
+      screen.queryByRole("table", { name: "Inline saved diff" }),
+    ).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("unavailable");
+  });
+  it("settles an in-flight preview when its projection advances and retries explicitly", async () => {
+    let resolveRead!: (
+      value: Awaited<ReturnType<typeof acpDesktop.getFileSnapshot>>,
+    ) => void;
+    vi.mocked(acpDesktop.getFileSnapshot)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRead = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        ...ref,
+        projectionRevision: "2" as never,
+        oldText: "old\n",
+        newText: "current\n",
+        oldBytes: 4,
+        newBytes: 8,
+      });
+    const page = snapshotPage();
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    await waitFor(() =>
+      expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce(),
+    );
+    act(() =>
+      projection.setState({
+        page: { ...page, projectionRevision: "2" as never },
+      }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Retry");
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
+    await act(async () =>
+      resolveRead({
+        ...ref,
+        projectionRevision: "1" as never,
+        oldText: "old\n",
+        newText: "stale\n",
+        oldBytes: 4,
+        newBytes: 6,
+      }),
+    );
+    expect(screen.queryByText("+stale")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry saved diff" }));
+    expect(await screen.findByText("+current")).toBeVisible();
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledTimes(2);
+    expect(acpDesktop.getFileSnapshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expectedProjectionRevision: "2" }),
+    );
+  });
+  it("hides ready preview bytes when its projection advances until explicit retry", async () => {
+    const page = snapshotPage();
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    expect(await screen.findByText("+new")).toBeVisible();
+    act(() =>
+      projection.setState({
+        page: { ...page, projectionRevision: "2" as never },
+      }),
+    );
+    expect(screen.queryByText("+new")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Retry saved diff" }),
+    ).toBeVisible();
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledOnce();
+  });
+  it("offers an explicit retry after an inline snapshot error", async () => {
+    vi.mocked(acpDesktop.getFileSnapshot)
+      .mockRejectedValueOnce(new Error("Snapshot unavailable"))
+      .mockResolvedValueOnce({
+        ...ref,
+        projectionRevision: "1" as never,
+        oldText: "old\n",
+        newText: "new\n",
+        oldBytes: 4,
+        newBytes: 4,
+      });
+    const page = snapshotPage();
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Snapshot unavailable",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry saved diff" }));
+    expect(
+      await screen.findByRole("table", { name: "Inline saved diff" }),
+    ).toBeVisible();
+    expect(acpDesktop.getFileSnapshot).toHaveBeenCalledTimes(2);
+  });
+  it("limits inline rows while leaving the full saved Diff action available", async () => {
+    const oldText = Array.from(
+      { length: 150 },
+      (_, index) => `old-${index}\n`,
+    ).join("");
+    const newText = Array.from(
+      { length: 150 },
+      (_, index) => `new-${index}\n`,
+    ).join("");
+    vi.mocked(acpDesktop.getFileSnapshot).mockResolvedValue({
+      ...ref,
+      projectionRevision: "1" as never,
+      oldText,
+      newText,
+      oldBytes: oldText.length,
+      newBytes: newText.length,
+    });
+    const page = snapshotPage();
+    render(
+      <TurnEditSummary
+        page={page}
+        turn={page.turns[0]}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+        onOpenDiff={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Preview saved diff Root / src/a.ts",
+      }),
+    );
+    const table = await screen.findByRole("table", {
+      name: "Inline saved diff",
+    });
+    expect(table.querySelectorAll('[role="row"]')).toHaveLength(121);
+    expect(screen.getByText(/Preview limited; open full diff/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Open diff Root / src/a.ts" }),
+    ).toBeVisible();
+  });
   it("opens the immutable pair without Git, and hides cached text after session replacement", async () => {
     const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
     const page = snapshotPage();

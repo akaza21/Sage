@@ -202,7 +202,7 @@
   display: none;
 }
 
-.acp-file-changes li > span:last-child {
+.acp-file-changes li > .acp-file-changes__summary {
   grid-column: 1 / -1;
   overflow: hidden;
   padding: 0 var(--space-1) 2px;
@@ -211,6 +211,26 @@
   line-height: var(--line-height-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.acp-file-changes__preview-toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.acp-file-changes__preview-toggle:hover,
+.acp-file-changes__preview-toggle:focus-visible {
+  color: var(--color-text-primary);
+}
+
+.acp-inline-diff {
+  min-width: 0;
+  max-height: 240px;
+  overflow: auto;
 }
 
 .acp-file-changes__disposition {
