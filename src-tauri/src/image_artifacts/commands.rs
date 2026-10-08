@@ -10,7 +10,7 @@ use crate::{
     state::AppState,
 };
 
-use super::store::ingest_image;
+use super::store::{ingest_image, remove_pending_image};
 
 const MAX_IMAGE_BASE64_BYTES: usize = 5_592_408;
 
@@ -23,6 +23,15 @@ pub(crate) struct UploadChatImageRequest {
     pub(crate) media_type: ImageMediaType,
     pub(crate) data_base64: String,
     pub(crate) label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RemoveChatImageRequest {
+    project_id: String,
+    project_generation: u64,
+    chat_id: String,
+    artifact_id: String,
 }
 
 #[tauri::command]
@@ -39,6 +48,36 @@ pub(crate) async fn upload_chat_image(
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(crate) async fn remove_chat_image(
+    state: State<'_, AppState>,
+    request: RemoveChatImageRequest,
+) -> Result<(), String> {
+    let transition = state.project_transitions.lock().await;
+    if request.project_generation != *transition {
+        return Err("Project changed before image removal".into());
+    }
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if database.active_project_id()?.as_deref() != Some(request.project_id.as_str()) {
+            return Err(AppError::InvalidRequest(
+                "image project is not active".into(),
+            ));
+        }
+        let connection = database.write_connection()?;
+        remove_pending_image(
+            &connection,
+            database.image_artifact_root()?,
+            &request.project_id,
+            &request.chat_id,
+            &request.artifact_id,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn upload_image_payload(

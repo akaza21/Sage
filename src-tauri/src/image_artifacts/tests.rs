@@ -4,7 +4,7 @@ use crate::{acp::intent::ImageMediaType, persistence::Database};
 
 use super::{
     commands::{UploadChatImageRequest, upload_image_payload},
-    store::ingest_image,
+    store::{ingest_image, remove_pending_image},
     verify_image_reference,
 };
 
@@ -173,6 +173,100 @@ fn upload_payload_rejects_plus_one_bytes_before_creating_an_artifact() {
         })
         .unwrap();
     assert_eq!(count, 0);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn pending_image_can_be_removed_only_by_its_chat_owner() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-image-remove-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let root = database.image_artifact_root().unwrap();
+    let bytes = STANDARD.decode(PNG_1X1).unwrap();
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "pixel.png",
+    )
+    .unwrap();
+
+    assert!(remove_pending_image(&connection, root, "p", "foreign", &image.artifact_id).is_err());
+    assert_eq!(
+        verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
+        bytes
+    );
+    remove_pending_image(&connection, root, "p", "c", &image.artifact_id).unwrap();
+    assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
+    assert!(!root.join(format!("{}.full", image.artifact_id)).exists());
+    assert!(!root.join(format!("{}.thumb", image.artifact_id)).exists());
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
+    let directory = std::env::temp_dir().join(format!("sage-image-limit-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let original = STANDARD.decode(PNG_1X1).unwrap();
+    let filler = vec![0; 4 * 1024 * 1024 - original.len() - 12];
+    let mut bytes = original[..33].to_vec();
+    bytes.extend_from_slice(&(filler.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(b"raNd");
+    bytes.extend_from_slice(&filler);
+    let mut crc = !0_u32;
+    for byte in b"raNd".iter().chain(filler.iter()) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xedb8_8320_u32 & (0_u32.wrapping_sub(crc & 1)));
+        }
+    }
+    bytes.extend_from_slice(&(!crc).to_be_bytes());
+    bytes.extend_from_slice(&original[33..]);
+    assert_eq!(bytes.len(), 4 * 1024 * 1024);
+    let root = database.image_artifact_root().unwrap();
+
+    let image = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "limit.png",
+    )
+    .unwrap();
+    assert_eq!(
+        verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
+        bytes
+    );
+    bytes.push(0);
+    assert!(
+        ingest_image(
+            &connection,
+            root,
+            "p",
+            "c",
+            ImageMediaType::Png,
+            &bytes,
+            "too-large.png"
+        )
+        .is_err()
+    );
+    drop(connection);
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
 }

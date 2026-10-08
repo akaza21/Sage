@@ -269,6 +269,31 @@ pub(super) fn thumb_path(root: &Path, id: &str) -> std::path::PathBuf {
     root.join(format!("{id}.thumb"))
 }
 
+pub(crate) fn remove_pending_image(
+    connection: &Connection,
+    root: &Path,
+    project_id: &str,
+    chat_id: &str,
+    artifact_id: &str,
+) -> AppResult<()> {
+    let id = Uuid::parse_str(artifact_id).map_err(|_| invalid("image artifact id is invalid"))?;
+    if id.to_string() != artifact_id || id.get_version() != Some(uuid::Version::Random) {
+        return Err(invalid("image artifact id is not canonical"));
+    }
+    validate_root(root)?;
+    let removed = connection.execute(
+        "DELETE FROM chat_image_artifacts
+         WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND lifecycle='pending'",
+        params![artifact_id, project_id, chat_id],
+    )?;
+    if removed != 1 {
+        return Err(invalid("pending image artifact is unavailable"));
+    }
+    migration::remove_image_file(&full_path(root, artifact_id))?;
+    migration::remove_image_file(&thumb_path(root, artifact_id))?;
+    Ok(())
+}
+
 pub(crate) fn verify_image_reference(
     connection: &Connection,
     root: &Path,
