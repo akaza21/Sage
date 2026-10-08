@@ -1,6 +1,4 @@
 use super::*;
-use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
-use std::io::Cursor;
 
 #[test]
 fn reopen_discards_pending_image_but_preserves_queued_image() {
@@ -13,29 +11,20 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
         let database = Database::open(&path).unwrap();
         database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
         database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-        let mut encoded = Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(RgbaImage::from_pixel(32, 32, Rgba([1, 2, 3, 128])))
-            .write_to(&mut encoded, ImageFormat::Png)
-            .unwrap();
-        let bytes = encoded.into_inner();
-        pending = crate::image_artifacts::create_pending_image(
-            &mut database.write_connection().unwrap(),
+        pending = crate::image_artifacts::insert_test_image(
+            &database.connection(),
             database.image_artifact_root().unwrap(),
             "p",
             "c",
-            &bytes,
             "pending.png",
-        )
-        .unwrap();
-        queued = crate::image_artifacts::create_pending_image(
-            &mut database.write_connection().unwrap(),
+        );
+        queued = crate::image_artifacts::insert_test_image(
+            &database.connection(),
             database.image_artifact_root().unwrap(),
             "p",
             "c",
-            &bytes,
             "queued.png",
-        )
-        .unwrap();
+        );
         database
             .replace_chat_queued_prompts(
                 "p",
@@ -107,19 +96,13 @@ fn queued_image_identity_is_committed_with_the_prompt_and_retired_on_removal() {
     let database = Database::open(&directory.join("sage.db")).unwrap();
     database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-    let mut encoded = Cursor::new(Vec::new());
-    DynamicImage::ImageRgba8(RgbaImage::from_pixel(32, 32, Rgba([1, 2, 3, 128])))
-        .write_to(&mut encoded, ImageFormat::Png)
-        .unwrap();
-    let image = crate::image_artifacts::create_pending_image(
-        &mut database.write_connection().unwrap(),
+    let image = crate::image_artifacts::insert_test_image(
+        &database.connection(),
         database.image_artifact_root().unwrap(),
         "p",
         "c",
-        &encoded.into_inner(),
         "image.png",
-    )
-    .unwrap();
+    );
     let prompt = DurableQueuedPrompt {
         id: "queue-1".into(),
         text: "later".into(),

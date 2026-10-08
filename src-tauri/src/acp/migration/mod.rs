@@ -26,7 +26,7 @@ mod tool_result_fold_tests;
 
 #[allow(unused_imports)]
 pub(crate) use identity::legacy_binding_digest;
-pub(crate) use image_files::{publish_image_file, read_image_file, remove_image_file};
+pub(crate) use image_files::{read_image_file, remove_image_file};
 
 use std::{fs, path::Path, time::Duration};
 

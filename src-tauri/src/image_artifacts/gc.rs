@@ -31,10 +31,8 @@ fn verify_file(path: &Path, expected_length: i64, expected_hash: &str, cap: u64)
 fn artifact_id(file_name: &str) -> Option<(&str, bool)> {
     let (id, full) = if let Some(id) = file_name.strip_suffix(".full") {
         (id, true)
-    } else if let Some(id) = file_name.strip_suffix(".thumb") {
-        (id, false)
     } else {
-        return None;
+        (file_name.strip_suffix(".thumb")?, false)
     };
     let uuid = Uuid::parse_str(id).ok()?;
     (uuid.to_string() == id).then_some((id, full))
@@ -113,34 +111,19 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
-    use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
-
     use super::*;
 
     #[test]
     fn reconciliation_removes_owned_orphans_and_rejects_live_corruption() {
         let opened = migration::open_or_migrate(Path::new(":memory:")).unwrap();
-        let (mut connection, _) = opened.into_parts();
+        let (connection, _) = opened.into_parts();
         connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
         connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
         let root = std::env::temp_dir()
             .join(format!("sage-image-gc-{}", Uuid::new_v4()))
             .join("image-artifacts");
-        let mut encoded = Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(RgbaImage::from_pixel(32, 32, Rgba([1, 2, 3, 128])))
-            .write_to(&mut encoded, ImageFormat::Png)
-            .unwrap();
-        let image = crate::image_artifacts::create_pending_image(
-            &mut connection,
-            &root,
-            "p",
-            "c",
-            &encoded.into_inner(),
-            "image.png",
-        )
-        .unwrap();
+        let image =
+            crate::image_artifacts::insert_test_image(&connection, &root, "p", "c", "image.png");
         connection
             .execute(
                 "UPDATE chat_image_artifacts SET lifecycle='queued',queue_id='q1' WHERE id=?1",

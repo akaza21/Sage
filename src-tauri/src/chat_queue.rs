@@ -88,15 +88,14 @@ impl Database {
         let mut images = HashMap::new();
         for prompt in prompts {
             for context in prompt.attached_context.as_slice() {
-                if let AttachedContext::Image(image) = context {
-                    if images
+                if let AttachedContext::Image(image) = context
+                    && images
                         .insert(image.artifact_id.clone(), (prompt.id.as_str(), image))
                         .is_some()
-                    {
-                        return Err(AppError::InvalidRequest(
-                            "Image artifact occurs in multiple queued prompts".into(),
-                        ));
-                    }
+                {
+                    return Err(AppError::InvalidRequest(
+                        "Image artifact occurs in multiple queued prompts".into(),
+                    ));
                 }
             }
         }
