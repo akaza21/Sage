@@ -97,6 +97,50 @@ it("collapses without closing sessions and blocks a fifth tab locally", async ()
   ).toBeInTheDocument();
 });
 
+it("selects a remaining tab when the closing tab was selected during native close", async () => {
+  let finishClose: (() => void) | undefined;
+  native.close.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishClose = resolve;
+      }),
+  );
+  render(<TerminalDockShell scope={scope} onClose={() => undefined} />);
+  await screen.findByRole("tab");
+  fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+  await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(2));
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Close terminal tab" })[0],
+  );
+  fireEvent.click(screen.getAllByRole("tab")[0]);
+  finishClose?.();
+  expect(
+    await screen.findByText(`Active session ${session(2).sessionId}`),
+  ).toBeInTheDocument();
+  expect(screen.getAllByRole("tab")).toHaveLength(1);
+});
+
+it("dismisses after a pending replacement creation fails following last-tab close", async () => {
+  let failCreate: ((error: Error) => void) | undefined;
+  native.create.mockImplementationOnce(async () => session(1));
+  native.create.mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        failCreate = reject;
+      }),
+  );
+  const onClose = vi.fn();
+  render(<TerminalDockShell scope={scope} onClose={onClose} />);
+  await screen.findByRole("tab");
+  fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+  await waitFor(() => expect(native.create).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole("button", { name: "Close terminal tab" }));
+  await waitFor(() => expect(screen.queryAllByRole("tab")).toHaveLength(0));
+  expect(onClose).not.toHaveBeenCalled();
+  failCreate?.(new Error("creation failed"));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+});
+
 it("does not retain a stale creation across a StrictMode remount", async () => {
   const resolves: Array<(value: ReturnType<typeof session>) => void> = [];
   native.create.mockImplementation(

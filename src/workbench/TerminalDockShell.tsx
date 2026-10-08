@@ -131,6 +131,7 @@ export function TerminalDockShell({
     disposed: false,
     lifecycle: 0,
     closingId: null as string | null,
+    dismissWhenCreateSettles: false,
   });
 
   const create = useCallback(async () => {
@@ -148,6 +149,7 @@ export function TerminalDockShell({
       }
       const next = [...owner.entries, { session, ended: false, message: null }];
       owner.entries = next;
+      owner.dismissWhenCreateSettles = false;
       setEntries(next);
       setActiveId(session.sessionId);
       setCollapsed(false);
@@ -157,10 +159,14 @@ export function TerminalDockShell({
     } finally {
       if (owner.lifecycle === lifecycle) {
         owner.creating = false;
-        if (!owner.disposed) setCreating(false);
+        if (!owner.disposed) {
+          setCreating(false);
+          if (owner.dismissWhenCreateSettles && owner.entries.length === 0)
+            onClose();
+        }
       }
     }
-  }, [scope]);
+  }, [scope, onClose]);
 
   useEffect(() => {
     const owner = ownerRef.current;
@@ -207,11 +213,15 @@ export function TerminalDockShell({
       );
       owner.entries = next;
       setEntries(next);
-      if (activeId === sessionId)
-        setActiveId(
-          next[Math.min(index, next.length - 1)]?.session.sessionId ?? null,
-        );
-      if (next.length === 0 && !owner.creating) onClose();
+      setActiveId((current) =>
+        current === sessionId
+          ? (next[Math.min(index, next.length - 1)]?.session.sessionId ?? null)
+          : current,
+      );
+      if (next.length === 0) {
+        if (owner.creating) owner.dismissWhenCreateSettles = true;
+        else onClose();
+      }
     } catch (error) {
       setMessage(errorLabel(error));
     } finally {
