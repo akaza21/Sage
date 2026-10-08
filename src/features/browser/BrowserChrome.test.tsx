@@ -412,6 +412,34 @@ it("shows a browser error when the clipboard denies a screenshot write", async (
   );
   expect(screen.queryByRole("status")).toBeNull();
 });
+it("does not confirm a stale screenshot after a pending clipboard write", async () => {
+  let finishWrite!: () => void;
+  const write = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      }),
+  );
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { write } });
+  vi.stubGlobal(
+    "ClipboardItem",
+    class {
+      constructor(public readonly items: Record<string, Blob>) {}
+    },
+  );
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Take a screenshot" }));
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+
+  const address = screen.getByRole("textbox", { name: "Address or search" });
+  fireEvent.change(address, { target: { value: "https://other.example/" } });
+  fireEvent.submit(address.closest("form")!);
+  expect(screen.queryByRole("status")).toBeNull();
+  await act(async () => finishWrite());
+  expect(screen.queryByRole("status")).toBeNull();
+});
 it("does not alter the clipboard when the page changes before capture", async () => {
   browserCaptureScreenshot.mockRejectedValueOnce(
     new Error("browser page changed; retry screenshot"),

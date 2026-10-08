@@ -229,6 +229,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           "image/png": new Blob([bytes], { type: "image/png" }),
         }),
       ]);
+      if (epoch !== screenshotEpoch.current) return;
       setScreenshotStatus("Screenshot copied to clipboard");
     } catch (cause) {
       if (epoch !== screenshotEpoch.current) return;
