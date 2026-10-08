@@ -9,6 +9,7 @@ async function composerRules() {
     "status-surfaces.css",
     "chat-surface.css",
     "composer-surface.css",
+    "composer-image.css",
   ];
   return (
     await Promise.all(
@@ -21,6 +22,7 @@ describe("Composer surface stylesheet seam", () => {
   it("keeps focused composer and related surface files below 400 lines", async () => {
     for (const file of [
       "composer-surface.css",
+      "composer-image.css",
       "chat-surface.css",
       "shared-controls.css",
       "status-surfaces.css",
@@ -70,7 +72,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__options,\s*\.composer__model-menu\s*\{[^}]*position:\s*absolute;/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto;/s,
+      /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+image\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto\s+auto;/s,
     );
   });
 

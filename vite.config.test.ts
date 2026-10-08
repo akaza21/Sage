@@ -37,6 +37,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/acp/AcpChatPresentation.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
+  "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
   "src/features/files/CodeMirrorEditorRuntime.ts",
   "src/features/files/FileSurface.tsx",
