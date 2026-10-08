@@ -191,18 +191,31 @@ describe("document token authority", () => {
   });
 
   it("drives document syntax colors from tokens in the editor runtime", async () => {
-    const [language, runtime] = await Promise.all([
+    const [language, runtime, runtimeGuard] = await Promise.all([
       readFile(resolve("src/styles/resource-document-language.css"), "utf8"),
       readFile(
         resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
+        "utf8",
+      ),
+      readFile(
+        resolve("src/features/files/CodeMirrorEditorRuntime.test.ts"),
         "utf8",
       ),
     ]);
     expect(runtime).toContain("HighlightStyle.define(");
     expect(runtime).toContain("defaultHighlightStyle.specs");
     expect(runtime).toContain("DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX");
-    expect(runtime).toContain("DOCUMENT_SYNTAX_SPEC_FINGERPRINT");
-    expect(runtime).toContain("refusing to mis-map token colors");
+    expect(runtimeGuard).toContain(
+      "assertDefaultSpecFingerprint(defaultHighlightStyle.specs)",
+    );
+    for (const driftCase of [
+      "rejects a same-count reorder of specs with matching style shapes",
+      "rejects drift in a non-color style value",
+      "rejects a changed default spec count",
+      "rejects drift in a default palette value",
+    ]) {
+      expect(runtimeGuard, driftCase).toContain(driftCase);
+    }
     expect(runtime).toContain(
       "syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true })",
     );

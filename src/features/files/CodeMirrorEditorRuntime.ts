@@ -4,7 +4,6 @@ import {
   defaultHighlightStyle,
   indentUnit,
   syntaxHighlighting,
-  type TagStyle,
 } from "@codemirror/language";
 import {
   Compartment,
@@ -64,9 +63,8 @@ import { utf8ByteLength } from "../../domain/text";
  * src/styles/global.css). Specs are the public default highlight table with
  * only color sources replaced, so tag order and non-color treatments match
  * the installed runtime exactly and prior pixels are preserved in both modes.
- * Null entries keep specs without color. The fingerprint guard below fails
- * closed on any count, order, or treatment drift that would otherwise
- * mis-map a token.
+ * Null entries keep specs without color. A CI test pins count, order, and
+ * treatments so dependency drift cannot silently mis-map a token.
  */
 const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly (string | null)[] = [
   "var(--doc-syntax-meta)",
@@ -89,63 +87,6 @@ const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly (string | null)[] = [
   "var(--doc-syntax-comment)",
   "var(--doc-syntax-invalid)",
 ];
-
-function stableStringFingerprint(value: string): number {
-  let fingerprint = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    fingerprint ^= value.charCodeAt(index);
-    fingerprint = Math.imul(fingerprint, 0x01000193);
-  }
-  return fingerprint >>> 0;
-}
-
-function specDescriptor(spec: TagStyle): string {
-  const tagIdentity = (Array.isArray(spec.tag) ? spec.tag : [spec.tag])
-    .map((tag) => String(tag))
-    .join("|");
-  const treatments = Object.entries(spec)
-    .filter(([key]) => key !== "tag")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${String(value)}`)
-    .join(",");
-  return `${tagIdentity}::${stableStringFingerprint(treatments)}`;
-}
-
-const DOCUMENT_SYNTAX_SPEC_FINGERPRINT: readonly string[] = [
-  "meta::1000159661",
-  "link::2608474521",
-  "heading::543165884",
-  "emphasis::1849161160",
-  "strong::1092292736",
-  "strikethrough::2460384273",
-  "keyword::4094803337",
-  "atom|bool|url|contentSeparator|labelName::3049790944",
-  "literal|inserted::3643890061",
-  "string|deleted::1766536593",
-  "regexp|escape|special(string)::717015775",
-  "definition(variableName)::682143542",
-  "local(variableName)::1717408810",
-  "typeName|namespace::3885285675",
-  "className::3593557204",
-  "special(variableName)|macroName::886169641",
-  "definition(propertyName)::766031637",
-  "comment::3104485131",
-  "invalid::290080614",
-];
-
-const installedSpecFingerprint =
-  defaultHighlightStyle.specs.map(specDescriptor);
-if (
-  installedSpecFingerprint.length !==
-    DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX.length ||
-  installedSpecFingerprint.some(
-    (entry, index) => entry !== DOCUMENT_SYNTAX_SPEC_FINGERPRINT[index],
-  )
-) {
-  throw new Error(
-    `Document syntax spec fingerprint mismatch (installed [${installedSpecFingerprint.join(" ")}]); refusing to mis-map token colors.`,
-  );
-}
 
 const documentSyntaxHighlightStyle = HighlightStyle.define(
   defaultHighlightStyle.specs.map((spec, index) => {
