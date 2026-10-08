@@ -206,6 +206,7 @@
 .chat-transcript-work__groups .acp-tool-rollup > summary {
   display: flex;
   justify-content: flex-start;
+  min-height: 28px;
   color: inherit;
   font-weight: inherit;
 }
