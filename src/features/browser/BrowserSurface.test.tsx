@@ -46,6 +46,7 @@ vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
 vi.mock("../../ports/nativeBrowserPort", () => ({
   openBrowser: (url?: string) => openBrowser(url),
   closeBrowser: vi.fn(async () => undefined),
+  browserPopupPending: vi.fn(async () => []),
   browserStatus: (tabId: string) => browserStatus(tabId),
   browserPageContext: (tabId: string, revision: string) =>
     browserPageContext(tabId, revision),

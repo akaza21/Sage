@@ -11,6 +11,7 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
 vi.mock("../ports/nativeBrowserPort", () => ({
   openBrowser: vi.fn(),
   closeBrowser: vi.fn().mockResolvedValue(undefined),
+  browserPopupPending: vi.fn().mockResolvedValue([]),
 }));
 
 import { closeBrowser } from "../ports/nativeBrowserPort";
