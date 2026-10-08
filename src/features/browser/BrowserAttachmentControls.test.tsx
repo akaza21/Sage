@@ -72,7 +72,9 @@ it("only attaches a settled tab to the chat the user chose and can detach it", a
   await waitFor(() =>
     expect(attach).toHaveBeenCalledWith("project-1", "chat-2", "browser-7"),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Detach tab from chat" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Detach tab from chat" }),
+  );
   await waitFor(() =>
     expect(detach).toHaveBeenCalledWith("project-1", "chat-2"),
   );
