@@ -106,7 +106,7 @@ describe("file rename contract", () => {
           source,
           target,
         }),
-      ).toThrow(/stale or invalid/);
+      ).toThrow("native file rename returned stale or invalid identity");
     }
   });
 

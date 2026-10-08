@@ -77,7 +77,7 @@ describe("folder rename contract", () => {
         source,
         target,
       }),
-    ).toThrow("invalid identity");
+    ).toThrow("native folder rename returned stale or invalid identity");
   });
 
   it("rejects a snapshot that retains a File or Diff tab beneath the folder", () => {
@@ -101,6 +101,6 @@ describe("folder rename contract", () => {
         source,
         target,
       }),
-    ).toThrow("invalid identity");
+    ).toThrow("native folder rename returned stale or invalid identity");
   });
 });
