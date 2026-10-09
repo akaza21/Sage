@@ -22,6 +22,7 @@ import {
   namedState,
   clickExpression,
   actionsFor,
+  freshEmptyChat,
 } from "./capture-native-chat-dom.mjs";
 import {
   runTool,
@@ -87,6 +88,34 @@ async function click(cdp, selector, deadline) {
         clickExpression(selector),
         Math.min(deadline, Date.now() + 5000),
       ),
+    deadline,
+  );
+}
+export async function prepareCaptureChat(cdp, harness, deadline) {
+  const observe = () =>
+    cdp.evaluate(OBSERVATION, Math.min(deadline, Date.now() + 5000));
+  const previous = await observe();
+  const compact = await cdp.evaluate(
+    "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))",
+    Math.min(deadline, Date.now() + 5000),
+  );
+  if (compact)
+    await click(cdp, 'button[aria-label="Open projects and chats"]', deadline);
+  await click(cdp, 'button[aria-label="New task"]', deadline);
+  await waitForState(
+    async () => freshEmptyChat(previous, await observe()),
+    deadline,
+  );
+  if (compact)
+    await click(cdp, 'button[aria-label="Close projects and chats"]', deadline);
+  await click(cdp, 'button[aria-label="Harness"]', deadline);
+  await click(
+    cdp,
+    '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
+    deadline,
+  );
+  await waitForState(
+    async () => (await observe()).selected === HARNESS[harness].id,
     deadline,
   );
 }
@@ -203,20 +232,7 @@ export async function capture(options) {
           options.height,
           observation.dpr,
         );
-        await click(cdp, 'button[aria-label="Harness"]', deadline);
-        await click(
-          cdp,
-          '[role="option"][data-option-id="' +
-            HARNESS[options.harness].id +
-            '"]',
-          deadline,
-        );
-        await waitForState(
-          async () =>
-            (await evaluate(OBSERVATION)).selected ===
-            HARNESS[options.harness].id,
-          deadline,
-        );
+        await prepareCaptureChat(cdp, options.harness, deadline);
         const submit = async () => {
           await waitForState(
             () =>

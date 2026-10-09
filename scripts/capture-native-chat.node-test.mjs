@@ -25,7 +25,82 @@ import {
   namedState,
   visibleRectangle,
   actionsFor,
+  OBSERVATION,
+  HARNESS,
+  clickExpression,
 } from "./capture-native-chat-dom.mjs";
+import { prepareCaptureChat } from "./capture-native-chat.mjs";
+
+function captureChatBoundary(width, harness, created = {}) {
+  const observation = {
+    chatId: "welcome-chat",
+    projectId: "project",
+    projectionLoaded: true,
+    turnCount: 1,
+    state: "completed",
+    selected: "simulator",
+    visible: {},
+    controls: {},
+    itemKinds: [],
+    toolStates: [],
+  };
+  const clicks = [];
+  const selectors = [
+    'button[aria-label="Open projects and chats"]',
+    'button[aria-label="New task"]',
+    'button[aria-label="Close projects and chats"]',
+    'button[aria-label="Harness"]',
+    '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
+  ];
+  const cdp = {
+    async evaluate(expression) {
+      if (expression === OBSERVATION) return { ...observation };
+      if (
+        expression ===
+        "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))"
+      )
+        return width < 760;
+      const selector = selectors.find(
+        (selector) => expression === clickExpression(selector),
+      );
+      assert.ok(selector, expression);
+      clicks.push(selector);
+      if (selector === selectors[1])
+        Object.assign(
+          observation,
+          {
+            chatId: "capture-chat",
+            turnCount: 0,
+            state: "none",
+          },
+          created,
+        );
+      if (selector === selectors[4]) observation.selected = HARNESS[harness].id;
+      return true;
+    },
+  };
+  const expectedClicks =
+    width < 760 ? selectors : [selectors[1], selectors[3], selectors[4]];
+  return { cdp, clicks, observation, expectedClicks };
+}
+
+test("Pi retry capture excludes the bootstrap welcome Turn without weakening its predicate", async () => {
+  const boundary = captureChatBoundary(1888, "pi");
+  const retry = {
+    ...boundary.observation,
+    bindingId: "pi-rpc",
+    selected: "pi",
+    turnCount: 2,
+    failedTurns: 0,
+    visible: { answer: true },
+    elements: [{ kind: "answer", text: "Synthetic retry completed." }],
+  };
+  const options = { harness: "pi", state: "turn-retry" };
+  assert.equal(namedState(options, retry).namedState, false);
+  await prepareCaptureChat(boundary.cdp, "pi", Date.now() + 1000);
+  retry.turnCount = boundary.observation.turnCount + 1;
+  assert.equal(namedState(options, retry).namedState, true);
+});
 
 const args = [
   "--harness",
@@ -35,6 +110,33 @@ const args = [
   "--width",
   "480",
 ];
+for (const width of [1888, 720, 480])
+  for (const harness of ["codex", "claude", "pi"]) {
+    test(`${harness} at ${width} captures a hydrated empty new chat in the same project`, async () => {
+      const boundary = captureChatBoundary(width, harness);
+      await prepareCaptureChat(boundary.cdp, harness, Date.now() + 1000);
+      assert.equal(
+        namedState({ harness, state: "new-chat" }, boundary.observation)
+          .namedState,
+        true,
+      );
+      assert.deepEqual(boundary.clicks, boundary.expectedClicks);
+    });
+    for (const [reason, created] of Object.entries({
+      unchanged: { chatId: "welcome-chat" },
+      foreign: { projectId: "foreign-project" },
+      unloaded: { projectionLoaded: false },
+      welcome: { turnCount: 1, state: "completed" },
+    }))
+      test(`${harness} at ${width} rejects ${reason} chat before harness selection`, async () => {
+        const boundary = captureChatBoundary(width, harness, created);
+        await assert.rejects(
+          prepareCaptureChat(boundary.cdp, harness, Date.now() + 25),
+          /state-timeout/u,
+        );
+        assert.equal(boundary.observation.selected, "simulator");
+      });
+  }
 test("capture arguments are closed, finite and reject duplicates", () => {
   assert.deepEqual(parseArgs(args), {
     harness: "claude",
@@ -195,28 +297,15 @@ test("named states do not mistake settled compaction or allowed approvals", () =
     permissionStates: ["resolvedAllowed"],
   };
   const options = { harness: "codex", state: "compaction-started" };
+  const check = (state, changes, harness = "codex") =>
+    namedState({ harness, state }, { ...observation, ...changes }).namedState;
   assert.equal(namedState(options, observation).namedState, false);
+  assert.equal(check("compaction-cancelled", { state: "cancelled" }), false);
   assert.equal(
-    namedState(
-      { ...options, state: "compaction-cancelled" },
-      { ...observation, state: "cancelled" },
-    ).namedState,
+    check("approval-declined", { state: "completed" }, "claude"),
     false,
   );
-  assert.equal(
-    namedState(
-      { harness: "claude", state: "approval-declined" },
-      { ...observation, state: "completed" },
-    ).namedState,
-    false,
-  );
-  assert.equal(
-    namedState(
-      { ...options, state: "compaction-completed" },
-      { ...observation, state: "completed" },
-    ).namedState,
-    true,
-  );
+  assert.equal(check("compaction-completed", { state: "completed" }), true);
   const wrongBinding = namedState(options, {
     ...observation,
     bindingId: "foreign",
@@ -224,37 +313,24 @@ test("named states do not mistake settled compaction or allowed approvals", () =
   });
   assert.equal(wrongBinding.binding, false);
   assert.equal(
-    namedState(options, {
-      ...observation,
-      visible: {},
-      compactionStates: ["started"],
-    }).namedState,
+    check(options.state, { visible: {}, compactionStates: ["started"] }),
     false,
   );
 });
 
 test("only rendered rectangles inside the viewport can prove visible state", () => {
   const viewport = { width: 480, height: 1000 };
-  assert.equal(
-    visibleRectangle({ x: 0, y: 0, width: 20, height: 20 }, viewport),
-    true,
-  );
-  assert.equal(
-    visibleRectangle({ x: 480, y: 0, width: 20, height: 20 }, viewport),
-    false,
-  );
-  assert.equal(
-    visibleRectangle({ x: 0, y: -20, width: 20, height: 20 }, viewport),
-    false,
-  );
-  assert.equal(
-    visibleRectangle({ x: 0, y: 0, width: 0, height: 20 }, viewport),
-    false,
-  );
-  assert.equal(
-    visibleRectangle({ x: NaN, y: 0, width: 20, height: 20 }, viewport),
-    false,
-  );
+  for (const [left, top, width, expected] of [
+    [0, 0, 20, true],
+    [480, 0, 20, false],
+    [0, -20, 20, false],
+    [0, 0, 0, false],
+    [NaN, 0, 20, false],
+  ])
+    assert.equal(
+      visibleRectangle({ x: left, y: top, width, height: 20 }, viewport),
+      expected,
+    );
 });
 test("CDP discovery body exact bound passes; plus-one cancels the stream", async () => {
   let cancelled = false;

@@ -36,6 +36,8 @@ export const OBSERVATION = String.raw`(async()=>{
   const {useWorkbenchStore}=await import('/src/app/store.ts');
   const {acpProjectionStoreFor}=await import('/src/app/acpProjectionRegistry.ts');
   const store=useWorkbenchStore.getState(), page=acpProjectionStoreFor(store.activeTabId).getState().page;
+  const chatId=store.tabs.find(tab=>tab.id===store.activeTabId && tab.kind==='chat')?.id ?? null, projectId=store.project?.id ?? null;
+  const projectionLoaded=Boolean(page && page.chatId===chatId && page.projectId===projectId);
   const turns=page?.turns ?? [];
   if(turns.length>64)throw Error('projection-bound');
   const turn=turns.at(-1), session=page?.sessions?.find(session=>session.id===turn?.sessionId) ?? page?.sessions?.at(-1);
@@ -56,8 +58,21 @@ export const OBSERVATION = String.raw`(async()=>{
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
   const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
-  return {dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  return {chatId,projectId,projectionLoaded,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
+
+export function freshEmptyChat(previous, observation) {
+  return Boolean(
+    previous.chatId &&
+    previous.projectId &&
+    observation.chatId &&
+    observation.chatId !== previous.chatId &&
+    observation.projectId === previous.projectId &&
+    observation.projectionLoaded === true &&
+    observation.turnCount === 0 &&
+    observation.state === "none",
+  );
+}
 
 export function namedState(options, observation) {
   const state = options.state,
