@@ -45,6 +45,18 @@ impl CodexBindingRegistration {
         })
     }
 
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn fixture_disabled() -> Self {
+        Self {
+            authority: Arc::new(CodexRegistrationAuthority {
+                state: Mutex::new(CodexRegistrationState::Unavailable(
+                    CodexAdmissionUnavailable::IndependentAdmission,
+                )),
+                fixture_only: true,
+            }),
+        }
+    }
+
     pub(crate) fn authenticate_observed(
         &self,
         executable: PathBuf,

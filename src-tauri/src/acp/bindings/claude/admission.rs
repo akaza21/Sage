@@ -14,6 +14,10 @@ use super::{
     CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT, ManifestError, validate_research_candidate,
 };
 
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "fixture_admission.rs"]
+mod fixture_admission;
+
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-agent-acp:v1:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -42,6 +46,8 @@ pub(crate) enum ClaudeAdmissionUnavailable {
 #[derive(Debug)]
 pub(crate) struct AdmittedClaudeBinding {
     candidate: super::AdmittedCandidate,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    fixture: Option<crate::launch_profile::FixtureSelection>,
     binding_digest: [u8; 32],
     binding_digest_hex: String,
     launch_environment: Vec<(OsString, OsString)>,
@@ -90,6 +96,8 @@ impl AdmittedClaudeBinding {
             .finalize()
             .into();
         Ok(Self {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            fixture: None,
             candidate,
             binding_digest_hex: binding_digest
                 .iter()
@@ -129,12 +137,17 @@ impl AdmittedClaudeBinding {
     pub(crate) fn launch_environment(
         &self,
     ) -> Result<Vec<(OsString, OsString)>, ClaudeAdmissionUnavailable> {
-        #[cfg(windows)]
-        self.revalidate_system_root()?;
+        self.revalidate()?;
         Ok(self.launch_environment.clone())
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), ClaudeAdmissionUnavailable> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(selection) = &self.fixture {
+            return selection
+                .revalidate()
+                .map_err(|_| ClaudeAdmissionUnavailable::Drift);
+        }
         self.candidate
             .require_launch_admission()
             .map_err(|_| ClaudeAdmissionUnavailable::Drift)?;
@@ -256,18 +269,24 @@ enum RegistrationState {
 #[derive(Debug)]
 pub(crate) struct ClaudeBindingRegistration {
     state: Mutex<RegistrationState>,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    fixture_only: bool,
 }
 
 impl ClaudeBindingRegistration {
     pub(crate) fn startup() -> Self {
         Self {
             state: Mutex::new(RegistrationState::Pending),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            fixture_only: false,
         }
     }
 
     fn from_discovery(discovery: ClaudeLaunchDiscovery) -> Self {
         Self {
             state: Mutex::new(Self::state_from_discovery(discovery)),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            fixture_only: false,
         }
     }
 
@@ -295,6 +314,10 @@ impl ClaudeBindingRegistration {
     }
 
     pub(crate) fn apply_discovery(&self, discovery: ClaudeLaunchDiscovery) {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture_only {
+            return;
+        }
         let next = Self::state_from_discovery(discovery);
         *self.lock_state() = next;
     }

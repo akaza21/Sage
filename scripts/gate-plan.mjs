@@ -1,13 +1,8 @@
 import { environmentForGateStep } from "./gate-env.mjs";
 
 const manifest = "src-tauri/Cargo.toml";
-const cargoTest = [
-  "cargo",
-  "test",
-  "--manifest-path",
-  manifest,
-  "--all-features",
-];
+const cargoConfiguration = ["--manifest-path", manifest, "--all-features"];
+const cargoTest = ["cargo", "test", ...cargoConfiguration];
 
 export const steps = {
   policy: ["node", "scripts/generate-acp-fixture-cases.mjs", "--check"],
@@ -38,6 +33,13 @@ export const steps = {
     "--",
     "-D",
     "warnings",
+  ],
+  "rust-fixture": [
+    "cargo",
+    "build",
+    ...cargoConfiguration,
+    "--bin",
+    "acp-adversarial-fixture",
   ],
   "rust-parallel": [
     ...cargoTest,
@@ -82,7 +84,7 @@ export const plans = {
     "vitest",
     "clippy",
   ],
-  rust: ["rust-parallel", "rust-git-proc", "rust-preview"],
+  rust: ["rust-fixture", "rust-parallel", "rust-git-proc", "rust-preview"],
   full: [
     "policy",
     "policy-modules",
@@ -92,6 +94,7 @@ export const plans = {
     "rustfmt",
     "vitest",
     "clippy",
+    "rust-fixture",
     "rust-parallel",
     "rust-git-proc",
     "rust-preview",

@@ -2,7 +2,44 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { environmentForGateStep } from "./gate-env.mjs";
-import { stepConfiguration, steps } from "./gate-plan.mjs";
+import { plans, stepConfiguration, steps } from "./gate-plan.mjs";
+
+test("Rust gates rebuild the fixture before the existing test phases", () => {
+  for (const mode of ["rust", "full"]) {
+    const plan = plans[mode];
+    const buildIndex = plan.indexOf("rust-fixture");
+    assert.ok(buildIndex >= 0, `${mode} must rebuild the fixture`);
+    assert.equal(plan.filter((name) => name === "rust-fixture").length, 1);
+    assert.deepEqual(plan.slice(buildIndex, buildIndex + 4), [
+      "rust-fixture",
+      "rust-parallel",
+      "rust-git-proc",
+      "rust-preview",
+    ]);
+  }
+  for (const mode of ["static", "fast"]) {
+    assert.ok(!plans[mode].includes("rust-fixture"));
+  }
+});
+
+test("fixture build shares the Rust tests' features and target environment", () => {
+  const fixture = stepConfiguration("rust-fixture");
+  assert.deepEqual(fixture.command, [
+    "cargo",
+    "build",
+    "--manifest-path",
+    "src-tauri/Cargo.toml",
+    "--all-features",
+    "--bin",
+    "acp-adversarial-fixture",
+  ]);
+  assert.equal(fixture.env, process.env);
+  for (const name of ["rust-parallel", "rust-git-proc", "rust-preview"]) {
+    const rust = stepConfiguration(name);
+    assert.equal(rust.env, fixture.env);
+    assert.deepEqual(rust.command.slice(2, 5), fixture.command.slice(2, 5));
+  }
+});
 
 test("gate serializes Vitest by default without changing other steps", () => {
   const environment = { KEEP: "value" };

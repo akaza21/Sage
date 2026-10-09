@@ -52,6 +52,19 @@ pub enum FixtureError {
     UnknownStep,
 }
 
+pub fn is_native_replay_case(case: &str) -> bool {
+    generated_cases::JOURNEY_CASES
+        .iter()
+        .any(|entry| entry.id == case)
+}
+
+#[cfg(all(windows, debug_assertions))]
+pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
+    generated_cases::JOURNEY_CASES
+        .iter()
+        .any(|entry| entry.id == case && entry.id.starts_with(&format!("{protocol}-")))
+}
+
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<i32, FixtureError> {
     interpreter::execute(FixtureInvocation::parse(arguments)?)
 }

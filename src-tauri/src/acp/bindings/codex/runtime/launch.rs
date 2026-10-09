@@ -88,7 +88,11 @@ impl CodexRuntime {
         let fixed_args = if binding.is_desktop_fixture() {
             vec![
                 OsString::from("--case"),
-                OsString::from("codex-steer-lost-result"),
+                OsString::from(
+                    binding
+                        .desktop_fixture_case()
+                        .ok_or(AdapterRuntimeError::LaunchUnavailable)?,
+                ),
                 OsString::from("--seed"),
                 OsString::from("0"),
             ]

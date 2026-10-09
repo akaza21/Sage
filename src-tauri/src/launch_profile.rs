@@ -13,10 +13,17 @@ use crate::acp::service::{
 const PROFILE_MARKER_NAME: &str = ".sage-disposable-profile-v1";
 const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
 
-mod desktop_codex_fixture;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-pub(crate) use desktop_codex_fixture::CodexFixtureSelection;
-pub(crate) use desktop_codex_fixture::reject_unavailable_codex_fixture_environment_inputs;
+mod desktop_claude_fixture;
+mod desktop_codex_fixture;
+mod fixture_selector;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) use fixture_selector::FixtureSelection;
+pub(crate) use fixture_selector::reject_unavailable_fixture_environment_inputs;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) type CodexFixtureSelection = FixtureSelection;
+#[cfg(test)]
+mod fixture_selector_tests;
 #[cfg(all(test, not(all(windows, feature = "acp-fixture", debug_assertions))))]
 use desktop_codex_fixture::reject_unavailable_codex_fixture_inputs;
 #[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
@@ -741,6 +748,10 @@ mod tests {
             "USERPROFILE" | "APPDATA" | "LOCALAPPDATA" | "TEMP" | "TMP"
         )));
         assert!(receipt.is_file());
+        assert_eq!(
+            fs::read(&receipt).unwrap(),
+            b"sage:cp14:codex-fixture-launch-once:v1\n"
+        );
         assert!(reconstructed.consume_one_shot().is_err());
         let mut reopened_runtime =
             crate::acp::bindings::codex::CodexRuntime::from_admitted_binding(

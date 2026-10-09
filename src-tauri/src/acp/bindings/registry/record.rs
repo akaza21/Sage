@@ -336,6 +336,12 @@ impl AdmittedBindingRecord<'_> {
                 Ok(false)
             }
             (AdmittedBinding::Claude(_), super::ModelProvider::ClaudeAdapter) => Ok(false),
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            (AdmittedBinding::Claude(binding), super::ModelProvider::NoAccountModels)
+                if binding.is_fixture() =>
+            {
+                Ok(false)
+            }
             (AdmittedBinding::OpenCode { .. }, super::ModelProvider::NoAccountModels) => Ok(false),
             _ => Err(RegistryAdmissionUnavailable::Drift),
         }

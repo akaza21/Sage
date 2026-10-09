@@ -13,10 +13,11 @@ const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown
 
 pub(super) fn await_request(
     input: &mut impl Read,
+    output: &mut impl Write,
     state: &mut WireState,
     expected_method: &str,
 ) -> Result<(), FixtureError> {
-    loop {
+    for _ in 0..32 {
         let Some(request) = read_json_line(input, state)? else {
             return if expected_method == "thread/unsubscribe" {
                 Ok(())
@@ -32,6 +33,10 @@ pub(super) fn await_request(
         if object.get("id").is_none() && expected_method != method {
             continue;
         }
+        if method == "thread/read" {
+            emit_child_read(&request, output, state)?;
+            continue;
+        }
         if method != expected_method {
             return Err(FixtureError::InvalidArguments);
         }
@@ -44,6 +49,39 @@ pub(super) fn await_request(
         }
         return Err(FixtureError::InvalidArguments);
     }
+    Err(FixtureError::ExpandedLimit)
+}
+
+fn emit_child_read(
+    request: &Value,
+    output: &mut impl Write,
+    state: &mut WireState,
+) -> Result<(), FixtureError> {
+    let id = request
+        .get("id")
+        .and_then(Value::as_u64)
+        .ok_or(FixtureError::InvalidArguments)?;
+    let params = request
+        .get("params")
+        .ok_or(FixtureError::InvalidArguments)?;
+    let child = params
+        .get("threadId")
+        .and_then(Value::as_str)
+        .filter(|child| matches!(*child, "fixture-child-1" | "fixture-child-2"))
+        .ok_or(FixtureError::InvalidArguments)?;
+    if params.get("includeTurns").and_then(Value::as_bool) != Some(true) {
+        return Err(FixtureError::InvalidArguments);
+    }
+    emit_json(
+        output,
+        state,
+        &json!({"jsonrpc":"2.0","id":id,"result":{"thread":{
+            "id":child,"parentThreadId":THREAD_ID,"turns":[{
+                "id":"fixture-child-turn","itemsView":"full","status":"completed",
+                "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
+            }]
+        }}}),
+    )
 }
 
 pub(super) fn emit_response(
@@ -126,6 +164,9 @@ pub(super) fn emit_notification(
             "method":"turn/completed",
             "params":{"threadId":THREAD_ID,"turn":{"id":turn_id,"status":"completed"}}
         }),
+        "error" => {
+            json!({"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":THREAD_ID,"turn":{"id":turn_id,"status":"failed","error":{"message":"Synthetic replay failure; retry is safe.","codexErrorInfo":"other","additionalDetails":null}}}})
+        }
         "interrupted" => json!({
             "jsonrpc":"2.0",
             "method":"turn/completed",
@@ -136,7 +177,10 @@ pub(super) fn emit_notification(
     emit_json(output, state, &notification)
 }
 
-fn read_json_line(input: &mut impl Read, state: &WireState) -> Result<Option<Value>, FixtureError> {
+pub(super) fn read_json_line(
+    input: &mut impl Read,
+    state: &WireState,
+) -> Result<Option<Value>, FixtureError> {
     if !state.stdin_open {
         return Err(FixtureError::InvalidArguments);
     }
@@ -159,7 +203,7 @@ fn read_json_line(input: &mut impl Read, state: &WireState) -> Result<Option<Val
     }
 }
 
-fn emit_json(
+pub(super) fn emit_json(
     output: &mut impl Write,
     state: &mut WireState,
     value: &Value,

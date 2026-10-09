@@ -209,6 +209,56 @@ mod tests {
     }
 
     #[cfg(windows)]
+    fn remove_fixture_directory(directory: &Path) -> std::io::Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match std::fs::remove_dir_all(directory) {
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(error)
+                    if matches!(error.raw_os_error(), Some(32 | 33))
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn fixture_cleanup_waits_for_a_sharing_handle_to_be_released() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let (path, directory) = fixture_script("exit /b 0");
+        thread::scope(|scope| {
+            let handle = std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&path)
+                .unwrap();
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let cleanup_directory = &directory;
+            scope.spawn(move || {
+                sender
+                    .send(remove_fixture_directory(cleanup_directory))
+                    .unwrap()
+            });
+            assert!(matches!(
+                receiver.recv_timeout(Duration::from_millis(30)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ));
+            drop(handle);
+            receiver
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap()
+                .unwrap();
+        });
+        assert!(!directory.exists());
+    }
+
+    #[cfg(windows)]
     #[test]
     fn signed_out_cli_exit_is_reported_without_exposing_other_json_fields() {
         let (path, directory) =
@@ -217,7 +267,7 @@ mod tests {
             run_status(&path, &std::env::vars_os().collect()),
             Ok(ClaudeAuthStatus { logged_in: false })
         );
-        std::fs::remove_dir_all(directory).unwrap();
+        remove_fixture_directory(&directory).unwrap();
     }
 
     #[cfg(windows)]
@@ -233,7 +283,7 @@ mod tests {
             run_status(&path, &std::env::vars_os().collect()),
             Err("Claude Code sign-in response was invalid.")
         );
-        std::fs::remove_dir_all(directory).unwrap();
+        remove_fixture_directory(&directory).unwrap();
     }
 
     #[cfg(windows)]
@@ -253,7 +303,7 @@ mod tests {
             run_status(&missing, &std::env::vars_os().collect()),
             Err("Claude Code sign-in check could not start.")
         );
-        std::fs::remove_dir_all(directory).unwrap();
+        remove_fixture_directory(&directory).unwrap();
     }
 
     #[cfg(windows)]
@@ -332,6 +382,6 @@ mod tests {
             unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize
         );
         thread::sleep(Duration::from_millis(150));
-        std::fs::remove_dir_all(directory).unwrap();
+        remove_fixture_directory(&directory).unwrap();
     }
 }

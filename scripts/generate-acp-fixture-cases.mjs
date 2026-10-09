@@ -1,3 +1,5 @@
+import { nativeCases } from "./acp-native-cases.mjs";
+import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -118,7 +120,6 @@ const rows = document.cases.map((fixtureCase) => {
   return `    FrozenCase { id: ${JSON.stringify(fixtureCase.id)}, steps_json: r#"${steps}"#, owner: FrozenOwner::${owner}, phase: FrozenPhase::${phase}, #[cfg(test)] oracle_json: r#"${oracle}"# },`;
 });
 
-// Live Codex journeys extend the child runner without changing the frozen C0 contract.
 const journeyCases = [
   {
     id: "codex-steer-lost-result",
@@ -137,6 +138,9 @@ const journeyCases = [
     ],
   },
 ];
+journeyCases.push(...nativeCases());
+if (privacyFailuresForRecords(journeyCases, false).length)
+  throw new Error("native fixture privacy violation");
 const journeyIds = new Set();
 for (const fixtureCase of journeyCases) {
   if (

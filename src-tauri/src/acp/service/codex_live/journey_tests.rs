@@ -646,7 +646,7 @@ async fn assert_lost_steer_result_after_reopen(
     setup
         .service
         .send_codex_turn(setup.turn_command(&owner))
-        .unwrap();
+        .expect("first fixture prompt must be delivered; rebuild acp-adversarial-fixture with --features acp-fixture before focused --lib journeys");
     let turn_id = setup.wait_for_running_turn(&owner);
     let queued = DurableQueuedPrompt {
         id: "same-message-id".into(),
@@ -1186,3 +1186,7 @@ fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: 
 #[cfg(windows)]
 #[path = "journey_shutdown_tests.rs"]
 mod journey_shutdown_tests;
+
+#[cfg(all(feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/native_claude_tests.rs"]
+mod native_claude_tests;

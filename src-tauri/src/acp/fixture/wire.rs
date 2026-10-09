@@ -7,6 +7,16 @@ use crate::acp::limits::LIMITS;
 use super::FixtureError;
 use super::interpreter::{field_str, field_u64};
 
+#[cfg(test)]
+#[path = "wire_acp_tests.rs"]
+mod acp_tests;
+
+#[cfg(test)]
+#[path = "wire_codex_tests.rs"]
+mod codex_tests;
+
+#[path = "wire_acp.rs"]
+mod acp;
 #[path = "wire_codex.rs"]
 mod codex;
 
@@ -15,6 +25,7 @@ pub(super) struct WireState {
     stdout_open: bool,
     expanded_bytes: u64,
     last_request_id: Option<u64>,
+    prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
 }
@@ -26,6 +37,7 @@ impl WireState {
             stdout_open: true,
             expanded_bytes: 0,
             last_request_id: None,
+            prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
         }
@@ -96,7 +108,11 @@ fn await_client_kind(
     output: &mut impl Write,
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
-    let expected_method = match field_str(step, "kind")? {
+    let kind = field_str(step, "kind")?;
+    if kind.starts_with("acp") {
+        return acp::await_request(input, output, state, kind);
+    }
+    let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
         "codexResume" => Some("thread/resume"),
@@ -109,7 +125,7 @@ fn await_client_kind(
     };
     match expected_method {
         Some(method) => {
-            codex::await_request(input, state, method)?;
+            codex::await_request(input, output, state, method)?;
             if method == "turn/interrupt" {
                 let _ = codex::emit_response("ack", state, output);
                 codex::emit_notification("interrupted", state, output)?;
@@ -148,7 +164,26 @@ fn emit_known(
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
     let shape = field_str(step, "shape")?;
+    if shape.starts_with("acp") {
+        return acp::emit(step, state, output);
+    }
+    if shape == "codexNative" {
+        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
+        params["threadId"] = serde_json::json!(acp::SESSION);
+        params["turnId"] = serde_json::json!(
+            state
+                .current_turn_id
+                .as_deref()
+                .ok_or(FixtureError::InvalidArguments)?
+        );
+        return codex::emit_json(
+            output,
+            state,
+            &serde_json::json!({"jsonrpc":"2.0","method":field_str(step,"method")?,"params":params}),
+        );
+    }
     match shape {
+        "codexError" => return codex::emit_notification("error", state, output),
         "codexInitializeResult" => return codex::emit_response("initialize", state, output),
         "codexInitializeResult0146" => {
             return codex::emit_response("initialize0146", state, output);
@@ -380,27 +415,7 @@ fn write_stderr(
 }
 
 #[cfg(test)]
-pub(super) fn capture_steps(steps: &[Value]) -> Result<(Vec<u8>, Vec<u8>), FixtureError> {
-    let awaiting = steps
-        .iter()
-        .filter(|step| {
-            matches!(
-                step.get("op").and_then(Value::as_str),
-                Some("awaitClient" | "readPromptBytes" | "readRequestBytes")
-            )
-        })
-        .count();
-    let mut input = io::Cursor::new(vec![b'\n'; awaiting]);
-    let mut output = Vec::new();
-    let mut error = Vec::new();
-    let mut state = WireState::new();
-    for step in steps {
-        if matches!(
-            super::interpreter::classify(field_str(step, "op")?)?,
-            super::interpreter::StepOwner::Wire
-        ) {
-            execute_with_io(step, &mut state, &mut input, &mut output, &mut error)?;
-        }
-    }
-    Ok((output, error))
-}
+#[path = "wire_capture_steps.rs"]
+mod capture;
+#[cfg(test)]
+pub(super) use capture::capture_steps;

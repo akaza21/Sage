@@ -47,6 +47,13 @@ impl AdmittedCodexBinding {
     }
 
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_fixture_case(&self) -> Option<&str> {
+        self.desktop_fixture
+            .as_ref()
+            .map(|fixture| fixture.selection.case.as_str())
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pub(crate) fn desktop_fixture_project_root(&self) -> Option<&std::path::Path> {
         self.desktop_fixture
             .as_ref()

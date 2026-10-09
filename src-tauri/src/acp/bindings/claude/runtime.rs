@@ -241,6 +241,10 @@ impl ClaudeRuntime {
         binding
             .revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if binding.is_fixture() {
+            return binding.fixture_launch(self.runtime_epoch.get(), project_root, &self.mcp);
+        }
         let candidate = binding.candidate();
         let environment = crate::acp::process::BoundedEnvironment::new(
             binding

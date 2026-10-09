@@ -1,0 +1,264 @@
+import path from "node:path";
+import { HARNESS } from "./capture-native-chat-dom.mjs";
+import { nativeCases } from "./acp-native-cases.mjs";
+import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
+
+export const STATES = new Set(
+  nativeCases().map(({ id }) => id.replace(/^(codex|claude)-/u, "")),
+);
+const SHA = /^[a-f0-9]{64}$/u;
+const IDENTIFIER = /^[a-zA-Z0-9_-]{1,128}$/u;
+function fail(code) {
+  throw new Error(code);
+}
+function keys(value, allowed) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join("|") !== [...allowed].sort().join("|")
+  )
+    fail("probe-schema");
+}
+function finite(value, min = 0, max = 16384) {
+  if (!Number.isFinite(value) || value < min || value > max)
+    fail("probe-number");
+}
+function flags(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).length > 32 ||
+    Object.entries(value).some(
+      ([key, value]) => !IDENTIFIER.test(key) || typeof value !== "boolean",
+    )
+  )
+    fail("probe-flags");
+}
+export function assertPrivacy(value) {
+  const json = JSON.stringify(value);
+  if (
+    privacyFailuresForRecords([value], false).length ||
+    /(?:sk-(?:ant-)?|Bearer\s|api[_-]?key|secret-command|private-sentinel)/iu.test(
+      json,
+    )
+  )
+    fail("privacy");
+}
+export function parseArgs(args) {
+  const values = {};
+  if (args.length !== 6) fail("arguments");
+  for (let index = 0; index < args.length; index += 2) {
+    const key = args[index];
+    if (!["--harness", "--state", "--width"].includes(key) || key in values)
+      fail("arguments");
+    values[key] = args[index + 1];
+  }
+  const harness = values["--harness"],
+    state = values["--state"],
+    width = Number(values["--width"]);
+  if (
+    !["codex", "claude", "pi"].includes(harness) ||
+    !STATES.has(state) ||
+    !["1888", "720", "480"].includes(values["--width"])
+  )
+    fail("arguments");
+  return {
+    harness,
+    state,
+    width,
+    height: width === 1888 ? 1096 : 1000,
+    caseId: harness + "-" + state,
+  };
+}
+export function evidencePaths(directory, options) {
+  if (
+    !STATES.has(options.state) ||
+    !["codex", "claude", "pi"].includes(options.harness) ||
+    ![1888, 720, 480].includes(options.width)
+  )
+    fail("evidence-path");
+  const base = path.resolve(directory),
+    stem = options.state + "-" + options.harness + "-" + options.width;
+  const png = path.resolve(base, stem + ".png"),
+    probe = path.resolve(base, stem + ".probe.json");
+  if ([png, probe].some((file) => path.dirname(file) !== base))
+    fail("evidence-path");
+  return { png, probe };
+}
+export function validateDimensions(dimensions, width, height, dpr) {
+  keys(dimensions, ["outer", "client", "css"]);
+  for (const size of Object.values(dimensions)) {
+    keys(size, ["width", "height"]);
+    finite(size.width, 1);
+    finite(size.height, 1);
+  }
+  if (dpr !== 1) fail("dpr-mismatch");
+  if (dimensions.outer.width !== width || dimensions.outer.height !== height)
+    fail("resize-clamp");
+  if (
+    dimensions.client.width !== dimensions.css.width ||
+    dimensions.client.height !== dimensions.css.height ||
+    dimensions.client.width > width ||
+    dimensions.client.height > height
+  )
+    fail("viewport-mismatch");
+}
+export function validateProbe(probe) {
+  keys(probe, [
+    "schemaVersion",
+    "caseId",
+    "bindingId",
+    "turnId",
+    "hashes",
+    "protocol",
+    "webviewVersion",
+    "dpr",
+    "dimensions",
+    "predicates",
+    "elements",
+    "controls",
+    "overflow",
+    "timing",
+    "verdict",
+  ]);
+  if (
+    probe.schemaVersion !== 1 ||
+    probe.verdict !== "captured" ||
+    !/^(codex|claude)-[a-z0-9-]+$/u.test(probe.caseId) ||
+    !STATES.has(probe.caseId.replace(/^(codex|claude)-/u, "")) ||
+    !["codex-app-server", "claude-agent-acp"].includes(probe.bindingId) ||
+    !IDENTIFIER.test(probe.turnId) ||
+    !["standard-acp-1", "codex-app-server-0.146.0"].includes(probe.protocol) ||
+    typeof probe.webviewVersion !== "string" ||
+    !/^\d+(?:\.\d+){1,3}$/u.test(probe.webviewVersion)
+  )
+    fail("probe-identity");
+  const harness = HARNESS[probe.caseId.split("-")[0]];
+  if (
+    probe.bindingId !== harness?.binding ||
+    probe.protocol !== harness?.protocol
+  )
+    fail("probe-identity");
+  keys(probe.hashes, ["build", "fixture", "source"]);
+  if (
+    !SHA.test(probe.hashes.build) ||
+    !SHA.test(probe.hashes.fixture) ||
+    !/^[a-f0-9]{40,64}$/u.test(probe.hashes.source)
+  )
+    fail("probe-hash");
+  validateDimensions(
+    probe.dimensions,
+    probe.dimensions.outer.width,
+    probe.dimensions.outer.height,
+    probe.dpr,
+  );
+  flags(probe.predicates);
+  flags(probe.controls);
+  flags(probe.overflow);
+  if (probe.predicates.namedState !== true || probe.predicates.binding !== true)
+    fail("state-predicate");
+  keys(probe.timing, ["elapsedMs"]);
+  finite(probe.timing.elapsedMs, 0, 120000);
+  if (!Array.isArray(probe.elements) || probe.elements.length > 64)
+    fail("probe-elements");
+  for (const element of probe.elements) {
+    keys(element, ["kind", "text", "x", "y", "width", "height"]);
+    if (
+      !IDENTIFIER.test(element.kind) ||
+      typeof element.text !== "string" ||
+      Buffer.byteLength(element.text, "utf8") > 512
+    )
+      fail("probe-text");
+    for (const field of ["x", "y"]) finite(element[field], -16384);
+    for (const field of ["width", "height"]) finite(element[field]);
+  }
+  assertPrivacy(probe);
+  if (Buffer.byteLength(JSON.stringify(probe), "utf8") > 65536)
+    fail("probe-bytes");
+  return probe;
+}
+export function admitTarget(targets, port) {
+  if (!Array.isArray(targets) || targets.length > 32) fail("cdp-target");
+  const owned = targets.filter(
+    (target) =>
+      target.type === "page" &&
+      target.url === "http://127.0.0.1:1420/" &&
+      /^Sage(?:$|\s)/u.test(target.title),
+  );
+  if (owned.length !== 1) fail("cdp-target");
+  const target = owned[0];
+  if (
+    !IDENTIFIER.test(target.id) ||
+    target.webSocketDebuggerUrl !==
+      "ws://127.0.0.1:" +
+        port +
+        "/devtools/page/" +
+        encodeURIComponent(target.id)
+  )
+    fail("cdp-target");
+  return target;
+}
+export function validatePng(bytes, viewport) {
+  if (
+    !Buffer.isBuffer(bytes) ||
+    bytes.length < 24 ||
+    bytes.length > 8 * 1024 * 1024 ||
+    bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" ||
+    bytes.toString("ascii", 12, 16) !== "IHDR" ||
+    bytes.readUInt32BE(16) !== viewport.width ||
+    bytes.readUInt32BE(20) !== viewport.height
+  )
+    fail("png-viewport");
+  if (
+    /(?:sk-ant-|secret-command|C:\\Users\\|\/home\/|\/Users\/)/u.test(
+      bytes.toString("latin1"),
+    )
+  )
+    fail("png-privacy");
+}
+export async function waitForState(predicate, deadline) {
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))),
+    );
+  }
+  fail("state-timeout");
+}
+export async function withOwnedCapture(run, close, stop) {
+  try {
+    return await run();
+  } finally {
+    try {
+      await close();
+    } finally {
+      await stop();
+    }
+  }
+}
+
+export async function readBoundedResponse(response, maximum = 65536) {
+  if (!response.body) fail("cdp-discovery-body");
+  const reader = response.body.getReader(),
+    chunks = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > maximum) {
+        await reader.cancel();
+        fail("cdp-discovery-bound");
+      }
+      chunks.push(Buffer.from(next.value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(
+    Buffer.concat(chunks, bytes),
+  );
+}

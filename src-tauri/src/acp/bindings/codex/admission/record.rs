@@ -119,7 +119,7 @@ impl AdmittedCodexBinding {
         digest.update(selection.artifact_path.as_os_str().as_encoded_bytes());
         digest.update(selection.artifact_sha256);
         digest.update(selection.artifact_bytes.to_le_bytes());
-        digest.update(b"codex-steer-lost-result");
+        digest.update(selection.case.as_bytes());
         let binding_digest: [u8; 32] = digest.finalize().into();
         let artifact_digest = sha256_hex(entrypoint.sha256);
         let environment = [

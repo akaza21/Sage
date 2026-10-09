@@ -101,7 +101,7 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(windows, feature = "acp-fixture"))]
 use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
-    launch_profile::{reject_unavailable_codex_fixture_environment_inputs, resolve_launch_profile},
+    launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
     persistence::Database,
     state::AppState,
     workspace::development_workspace_root,
@@ -142,11 +142,14 @@ pub fn run() {
                 app.path().app_data_dir()?,
                 app.path().app_local_data_dir()?,
             )?;
-            reject_unavailable_codex_fixture_environment_inputs()?;
+            reject_unavailable_fixture_environment_inputs()?;
             #[cfg(all(windows, feature = "acp-fixture"))]
             let fixture_mode = resolve_desktop_fixture_mode_from_environment(&profile)?;
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            let codex_fixture_mode = matches!(&fixture_mode, DesktopFixtureMode::CodexFixture(_));
+            let native_fixture_mode = matches!(
+                &fixture_mode,
+                DesktopFixtureMode::CodexFixture(_) | DesktopFixtureMode::ClaudeFixture(_)
+            );
             fs::create_dir_all(profile.durable_dir())?;
             let database = Database::open(&profile.durable_dir().join("sage.db"))?;
             let seed_project_root = if profile.is_disposable() {
@@ -191,6 +194,15 @@ pub fn run() {
                 #[cfg(debug_assertions)]
                 DesktopFixtureMode::CodexFixture(selection) => {
                     AppState::try_new_codex_fixture_desktop(
+                        database,
+                        settings,
+                        app.handle().clone(),
+                        selection,
+                    )?
+                }
+                #[cfg(debug_assertions)]
+                DesktopFixtureMode::ClaudeFixture(selection) => {
+                    AppState::try_new_claude_fixture_desktop(
                         database,
                         settings,
                         app.handle().clone(),
@@ -252,7 +264,7 @@ pub fn run() {
             };
             main_window.build()?;
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            if !codex_fixture_mode {
+            if !native_fixture_mode {
                 AppState::refresh_harnesses_after_window_shown(app.handle().clone());
             }
             #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]

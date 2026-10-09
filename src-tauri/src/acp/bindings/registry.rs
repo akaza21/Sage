@@ -99,10 +99,36 @@ impl BindingRegistry {
         selection: crate::launch_profile::CodexFixtureSelection,
     ) -> Result<Self, CodexAdmissionUnavailable> {
         let codex = CodexBindingRegistration::desktop_fixture(selection)?;
-        let mut registry = Self::new(codex, ClaudeBindingRegistration::startup());
+        let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
         registry.codex.model_provider = ModelProvider::NoAccountModels;
         registry.codex.auth_provider = AuthProvider::None;
+        registry.isolate_fixture_records(true);
         Ok(registry)
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_claude_fixture(
+        selection: crate::launch_profile::FixtureSelection,
+    ) -> Result<Self, ClaudeAdmissionUnavailable> {
+        let claude = ClaudeBindingRegistration::desktop_fixture(selection)?;
+        let mut registry = Self::new(CodexBindingRegistration::fixture_disabled(), claude);
+        registry.claude.model_provider = ModelProvider::NoAccountModels;
+        registry.claude.auth_provider = AuthProvider::None;
+        registry.isolate_fixture_records(false);
+        Ok(registry)
+    }
+
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    fn isolate_fixture_records(&mut self, codex: bool) {
+        let disabled = if codex {
+            &mut self.claude
+        } else {
+            &mut self.codex
+        };
+        disabled.session_operations_enabled = false;
+        disabled.model_provider = ModelProvider::NoAccountModels;
+        disabled.auth_provider = AuthProvider::None;
+        self.opencode.session_operations_enabled = false;
     }
 
     pub(crate) fn new(codex: CodexBindingRegistration, claude: ClaudeBindingRegistration) -> Self {
