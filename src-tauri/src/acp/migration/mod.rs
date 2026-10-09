@@ -3,7 +3,6 @@ mod build_intent;
 mod file_artifact;
 mod fingerprint;
 mod identity;
-mod image_backup;
 mod image_files;
 mod legacy;
 mod legacy_events;
@@ -24,6 +23,7 @@ mod test_failpoint;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
+mod v18_backup;
 
 #[allow(unused_imports)]
 pub(crate) use identity::legacy_binding_digest;
@@ -40,7 +40,7 @@ use crate::{
 };
 
 use self::{
-    backup::{VerifiedBackup, ensure, verify_retained_pair, verify_sqlite},
+    backup::{VerifiedBackup, ensure, load_retained_pair, verify_sqlite},
     fingerprint::{
         SchemaClass, classify_path, database_fingerprint, file_fingerprint, open_read_only,
     },
@@ -122,7 +122,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     fs::create_dir_all(paths.parent())?;
     let _lock = MigrationLock::acquire(paths.parent())?;
     paths.validate_containment()?;
-    image_backup::admit_recovery(&paths)?;
+    v18_backup::admit_recovery(&paths)?;
 
     if paths.replacement_manifest.exists() {
         if paths.replacement_build_intent.exists() {
@@ -137,7 +137,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     }
 
     let source_schema = probe::classify_live(&paths)?;
-    image_backup::admit_source(&paths, source_schema)?;
+    v18_backup::admit_source(&paths, source_schema)?;
     match source_schema {
         SchemaClass::Fresh => {
             reject_unexpected_backup_artifacts(&paths)?;
@@ -157,7 +157,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             Ok(opened_database(connection, anchor))
         }
         SchemaClass::CurrentV18 => {
-            reject_partial_backup_publication(&paths)?;
+            let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != SchemaClass::CurrentV18 {
                 return invalid("current SQLite path changed before its anchored open");
@@ -355,7 +355,7 @@ fn reject_unexpected_backup_artifacts(paths: &MigrationPaths) -> AppResult<()> {
     Ok(())
 }
 
-fn reject_partial_backup_publication(paths: &MigrationPaths) -> AppResult<()> {
+fn reject_partial_backup_publication(paths: &MigrationPaths) -> AppResult<Option<VerifiedBackup>> {
     if paths.backup_stage.exists()
         || paths.backup_journal.exists()
         || paths.backup_build_intent.exists()
@@ -368,9 +368,9 @@ fn reject_partial_backup_publication(paths: &MigrationPaths) -> AppResult<()> {
         return invalid("retained backup pair is incomplete");
     }
     if paths.backup_final.exists() {
-        verify_retained_pair(paths)?;
+        return load_retained_pair(paths).map(Some);
     }
-    Ok(())
+    Ok(None)
 }
 
 fn invalid<T>(message: &str) -> AppResult<T> {

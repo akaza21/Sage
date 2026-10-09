@@ -3,6 +3,8 @@ use super::*;
 mod child_thread;
 mod item_kind;
 #[cfg(test)]
+pub(super) use child_thread::apply_through_v16;
+#[cfg(test)]
 pub(super) use child_thread::apply_through_v17;
 #[cfg(test)]
 pub(super) use child_thread::build_fresh_v16;

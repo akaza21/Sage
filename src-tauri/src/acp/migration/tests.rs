@@ -91,7 +91,7 @@ fn populated_v16_item_rebuild_reaches_v18_with_owner_and_triggers_intact() {
     let new_payload = "{\"kind\":\"compactionNotice\"}";
     let new_digest = format!("{:x}", Sha256::digest(new_payload.as_bytes()));
     upgraded.execute("INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES('notice','project','chat','session','turn',1,1,'primary','compactionNotice','completed','native-notice',?1,?2,?3,0,1,1,1)", params![new_payload, new_payload.len() as i64, new_digest]).unwrap();
-    let paths = MigrationPaths::new(&directory.database()).unwrap();
+    let paths = v18_backup::paths_for_v18(&MigrationPaths::new(&directory.database()).unwrap());
     assert_eq!(
         fingerprint::classify_path(&paths.backup_final).unwrap(),
         SchemaClass::CurrentV16

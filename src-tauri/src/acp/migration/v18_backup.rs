@@ -1,5 +1,5 @@
 use super::{
-    backup::{VerifiedBackup, ensure, load_retained_pair},
+    backup::{VerifiedBackup, ensure},
     fingerprint::SchemaClass,
     invalid,
     paths::MigrationPaths,
@@ -20,8 +20,8 @@ pub(super) fn paths_for_v18(paths: &MigrationPaths) -> MigrationPaths {
     versioned
 }
 
-pub(super) fn ensure_for_v17(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
-    reject_partial_backup_publication(paths)?;
+pub(super) fn ensure_for_v18_source(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
+    let _ = reject_partial_backup_publication(paths)?;
     let versioned = paths_for_v18(paths);
     versioned.validate_containment()?;
     ensure(&versioned)
@@ -40,13 +40,15 @@ pub(super) fn admit_source(paths: &MigrationPaths, schema: SchemaClass) -> AppRe
     let versioned = paths_for_v18(paths);
     versioned.validate_containment()?;
     match schema {
-        SchemaClass::CurrentV17 => Ok(()),
+        SchemaClass::CurrentV16 | SchemaClass::CurrentV17 => Ok(()),
         SchemaClass::CurrentV18 => {
-            reject_partial_backup_publication(&versioned)?;
-            if versioned.backup_final.exists()
-                && load_retained_pair(&versioned)?.source.database.schema != SchemaClass::CurrentV17
+            if let Some(backup) = reject_partial_backup_publication(&versioned)?
+                && !matches!(
+                    backup.source.database.schema,
+                    SchemaClass::CurrentV16 | SchemaClass::CurrentV17
+                )
             {
-                return invalid("v18 backup does not retain the exact v17 source schema");
+                return invalid("v18 backup does not retain an exact v16 or v17 source schema");
             }
             Ok(())
         }

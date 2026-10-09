@@ -18,6 +18,20 @@ pub(in crate::acp::migration) fn apply_v18(connection: &mut Connection) -> AppRe
     apply_item_kind_version(connection, 18, SchemaClass::CurrentV18, apply_v18_steps)
 }
 
+pub(in crate::acp::migration) fn apply_v17_and_v18_atomically(
+    connection: &mut Connection,
+) -> AppResult<()> {
+    apply_item_kind_version(connection, 18, SchemaClass::CurrentV18, |connection| {
+        apply_v17_steps(connection)?;
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (17, ?1)",
+            [now_millis()],
+        )?;
+        connection.pragma_update(None, "user_version", 17)?;
+        apply_v18_steps(connection)
+    })
+}
+
 fn apply_item_kind_version(
     connection: &mut Connection,
     version: i64,

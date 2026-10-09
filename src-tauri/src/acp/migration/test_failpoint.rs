@@ -5,6 +5,36 @@ use crate::error::{AppError, AppResult};
 thread_local! {
     static ARMED: Cell<Option<&'static str>> = const { Cell::new(None) };
     static AVAILABLE_BYTES: Cell<Option<u64>> = const { Cell::new(None) };
+    static RETAINED_PAIR_LOADS: Cell<Option<u64>> = const { Cell::new(None) };
+}
+
+pub(super) struct RetainedPairLoadsGuard {
+    previous: Option<u64>,
+}
+
+pub(super) fn observe_retained_pair_loads() -> RetainedPairLoadsGuard {
+    let previous = RETAINED_PAIR_LOADS.with(|value| value.replace(Some(0)));
+    RetainedPairLoadsGuard { previous }
+}
+
+pub(super) fn record_retained_pair_load() {
+    RETAINED_PAIR_LOADS.with(|value| {
+        if let Some(count) = value.get() {
+            value.set(Some(count + 1));
+        }
+    });
+}
+
+impl RetainedPairLoadsGuard {
+    pub(super) fn count(&self) -> u64 {
+        RETAINED_PAIR_LOADS.with(|value| value.get().unwrap_or(0))
+    }
+}
+
+impl Drop for RetainedPairLoadsGuard {
+    fn drop(&mut self) {
+        RETAINED_PAIR_LOADS.with(|value| value.set(self.previous));
+    }
 }
 
 pub(super) struct AvailableBytesGuard {

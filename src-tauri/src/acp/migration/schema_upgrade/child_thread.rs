@@ -67,8 +67,11 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
     paths: &MigrationPaths,
     source_schema: SchemaClass,
 ) -> AppResult<OpenedDatabase> {
-    let verified_backup = if source_schema == SchemaClass::CurrentV17 {
-        super::super::image_backup::ensure_for_v17(paths)?
+    let verified_backup = if matches!(
+        source_schema,
+        SchemaClass::CurrentV16 | SchemaClass::CurrentV17
+    ) {
+        super::super::v18_backup::ensure_for_v18_source(paths)?
     } else {
         ensure(paths)?
     };
@@ -167,10 +170,14 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
     ) {
         apply_v16(&mut connection)?;
     }
-    if source_schema != SchemaClass::CurrentV17 {
-        super::item_kind::apply_v17(&mut connection)?;
+    if source_schema == SchemaClass::CurrentV16 {
+        super::item_kind::apply_v17_and_v18_atomically(&mut connection)?;
+    } else {
+        if source_schema != SchemaClass::CurrentV17 {
+            super::item_kind::apply_v17(&mut connection)?;
+        }
+        super::item_kind::apply_v18(&mut connection)?;
     }
-    super::item_kind::apply_v18(&mut connection)?;
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
 }

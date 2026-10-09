@@ -74,11 +74,14 @@ pub(super) fn ensure(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
     Ok(verified)
 }
 
+#[cfg(test)]
 pub(super) fn verify_retained_pair(paths: &MigrationPaths) -> AppResult<()> {
     load_retained_pair(paths).map(|_| ())
 }
 
 pub(super) fn load_retained_pair(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
+    #[cfg(test)]
+    super::test_failpoint::record_retained_pair_load();
     let manifest: BackupManifest = read(&paths.manifest_final)?;
     manifest.validate_identity()?;
     if !manifest.source.database.schema.requires_retained_backup()
