@@ -37,9 +37,14 @@
 //
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { openAgentSnapshotDiff } from "./resourceVisualHelpers";
-import { expectLiveThinkingFixtureLine } from "./agentVisualHelpers";
+import {
+  expectLiveThinkingFixtureLine,
+  openComposerOptions,
+  revealWorkedContent,
+} from "./agentVisualHelpers";
 import {
   installScenario,
   openScenario,
@@ -123,11 +128,7 @@ async function anchorScenario(page: Page, scenario: PendingScenario) {
   ).toBeVisible();
 
   if (scenario === "agent-declared-test") {
-    const worked = page.locator("details.chat-transcript-work");
-    await expect(worked.locator(":scope > summary")).toBeVisible();
-    await worked.locator(":scope > summary").click();
-    await expect(worked).toHaveAttribute("open", "");
-    await expect(toolRollup(page).locator("summary")).toBeVisible();
+    await revealWorkedContent(toolRollup(page).locator("summary"));
   }
   if (scenario === "agent-single") {
     await expect(
@@ -172,18 +173,6 @@ interface PendingConformanceItem {
 
 export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
   {
-    id: "M11",
-    region: "composer",
-    element: "thinking-level picker, fourth slot in the control row",
-    scenario: "agent-single",
-    blockedOn:
-      "being re-scoped — threading a Codex-specific effort field through the generic prompt pipeline was the wrong shape",
-    probe: (page) =>
-      composer(page).getByRole("button", {
-        name: /thinking|effort|reasoning/i,
-      }),
-  },
-  {
     id: "L1",
     region: "left rail",
     element: "`Agents | Editor` mode segment hosted inside the rail",
@@ -220,8 +209,7 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
     element: "avatar on the user turn",
     scenario: "agent-single",
     blockedOn: null,
-    probe: (page) =>
-      page.locator(".acp-message--user .acp-message__meta").locator("svg, img"),
+    probe: (page) => page.locator(".acp-message--user").locator("svg, img"),
   },
   {
     id: "C10",
@@ -231,8 +219,8 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
     blockedOn: null,
     probe: (page) =>
       page
-        .locator(".acp-message--assistant .acp-message__meta")
-        .locator("svg, img"),
+        .locator(".acp-message--assistant")
+        .locator("svg:not(.acp-code-block svg), img"),
   },
   {
     id: "R2",
@@ -297,17 +285,34 @@ function registerPendingTests(scenario: PendingScenario) {
 test.describe("Agent Panel V1 conformance — pending target elements", () => {
   test.use({ viewport: AGENT_VIEWPORT });
 
-  test("keeps the pending queue and the inventory document in step", () => {
+  test("keeps the pending queue and the inventory document in step", async () => {
     // Guards the list itself: duplicate or empty ids would let an item drop out
     // of the queue silently.
     const ids = PENDING_CONFORMANCE_ITEMS.map((item) => item.id);
     expect(new Set(ids).size, "pending ids are unique").toBe(ids.length);
     expect(ids.every((id) => /^[A-Z]\d+$/.test(id))).toBe(true);
-    expect(
-      ids,
-      "the pending queue's order mirrors the table in " +
-        "docs/design/agent-panel-conformance.md",
-    ).toEqual(["M11", "L1", "M14", "C20", "C8", "C10", "R2", "R5", "R6"]);
+    const inventory = await readFile(
+      new URL("../../docs/design/agent-panel-conformance.md", import.meta.url),
+      "utf8",
+    );
+    const queue = inventory.split(/^## Pending queue\s*$/m)[1];
+    expect(queue, "inventory has a pending queue section").toBeDefined();
+    const documentedIds = [
+      ...queue!.matchAll(/^\|\s*\d+\s*\|\s*`([A-Z]\d+)`/gm),
+    ].map((match) => match[1]);
+    expect(ids, "pending probes mirror the document's ordered queue").toEqual(
+      documentedIds,
+    );
+    const statuses = new Map(
+      [
+        ...inventory.matchAll(
+          /^\|\s*([A-Z]\d+)\s*\|.*?\|\s*(present|different|absent)\s*\|/gm,
+        ),
+      ].map((match) => [match[1], match[2]]),
+    );
+    for (const id of ids)
+      expect(statuses.get(id), `${id} is inventoried as absent`).toBe("absent");
+    expect(statuses.get("M11")).toBe("present");
   });
 
   registerPendingTests("agent-single");
@@ -762,8 +767,7 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(workedSummary).toContainText(/^Worked/);
     await expect(worked).not.toHaveAttribute("open", "");
     await expect(toolRollup(page).locator("summary")).toBeHidden();
-    await workedSummary.click();
-    await expect(worked).toHaveAttribute("open", "");
+    await revealWorkedContent(toolRollup(page).locator("summary"));
 
     // C24 — `Ran tests` ships off a declared `scripts.test`.
     const rollup = toolRollup(page);
@@ -878,6 +882,44 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
 
 test.describe("Agent Panel V1 conformance — composer", () => {
   test.use({ viewport: AGENT_VIEWPORT });
+
+  test("renders M11 Thinking level when the bound session advertises effort", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      fixtures.installVisualComposerEffortFixture();
+    });
+    const thinking = composer(page).getByRole("button", {
+      name: "Thinking level",
+      exact: true,
+    });
+    await expect(thinking).toBeVisible();
+    await expect(thinking).toBeEnabled();
+    await expect(thinking).toHaveText("Medium");
+    await thinking.click();
+    const input = page.getByRole("combobox", {
+      name: "Thinking level",
+      exact: true,
+    });
+    const choices = page.getByRole("listbox", {
+      name: "Thinking level",
+      exact: true,
+    });
+    await expect(input).toBeFocused();
+    await expect(choices.getByRole("option")).toHaveText([
+      "Low",
+      "Medium",
+      "High",
+    ]);
+    await expect(
+      choices.getByRole("option", { name: "Medium", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Escape");
+    await expect(thinking).toBeFocused();
+  });
 
   test("frames the composer and pins its placeholder", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
@@ -1033,11 +1075,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(
       composer(page).getByRole("button", { name: "Project", exact: true }),
     ).toHaveCount(0);
-    await options.click();
-    const menu = composer(page).getByRole("dialog", {
-      name: "Composer options menu",
-    });
-    await expect(menu).toBeVisible();
+    const menu = await openComposerOptions(page);
     await expect(options).toHaveAttribute("aria-expanded", "true");
     const project = menu.getByRole("button", { name: "Project", exact: true });
     await expect(project).toBeVisible();
@@ -1130,11 +1168,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(
       composer(page).getByRole("button", { name: "Session mode", exact: true }),
     ).toHaveCount(0);
-    await options.click();
-    const menu = composer(page).getByRole("dialog", {
-      name: "Composer options menu",
-    });
-    await expect(menu).toBeVisible();
+    const menu = await openComposerOptions(page);
     expect(
       await menu
         .getByRole("button")

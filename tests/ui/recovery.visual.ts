@@ -19,6 +19,24 @@ test.describe("Wave 2 canonical visual states", () => {
     test(`${name} stays visually stable`, async ({ page }) => {
       const workbench = await openScenario(page, name, mode);
       await assertAgentLandmarks(page);
+      if (name === "error") {
+        const failure = page.getByRole("group", {
+          name: "Turn failed",
+          exact: true,
+        });
+        await expect(
+          failure.getByText(
+            "The preview process stopped unexpectedly. The Chat is preserved and can be retried.",
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await expect(
+          failure.getByRole("button", { name: "Retry", exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.locator("details.chat-transcript-work"),
+        ).not.toHaveAttribute("open", "");
+      }
       await settleTranscriptAtEnd(page);
       await expectNoViewportOverflow(page);
       await takeCanonicalScreenshot(workbench, name);
@@ -67,6 +85,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     const working = page.locator(".project-chat__working");
     await expect(working).toBeVisible();
-    await expect(working).toHaveCSS("animation-duration", "0s");
+    await expect(working).toHaveCSS("animation-name", "none");
   });
 });

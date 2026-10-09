@@ -1216,7 +1216,12 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
         const directory = element.querySelector<HTMLElement>(".tab__dir")!;
         const box = element.getBoundingClientRect();
         const baseBox = basename.getBoundingClientRect();
+        const scroller = element.closest<HTMLElement>(".tab-strip__scroll")!;
+        const scrollerBox = scroller.getBoundingClientRect();
         return {
+          tabInsideScroller:
+            box.left >= scrollerBox.left - 1 &&
+            box.right <= scrollerBox.right + 1,
           basenameText: basename.textContent,
           directoryDisplay: getComputedStyle(directory).display,
           basenameEllipsis: getComputedStyle(basename).textOverflow,
@@ -1226,6 +1231,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
         };
       });
       expect(legibility.basenameText).toBe("AgentChatPanes.tsx");
+      expect(legibility.tabInsideScroller).toBe(true);
       expect(legibility.directoryDisplay).toBe("none");
       expect(legibility.basenameEllipsis).toBe("ellipsis");
       expect(legibility.basenameWidth).toBeGreaterThan(40);

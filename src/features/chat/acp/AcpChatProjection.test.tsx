@@ -2109,6 +2109,68 @@ describe("AcpChatProjection", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
+  it("keeps a failed turn's latest error visible outside collapsed work", async () => {
+    const next = page("failed");
+    const error = {
+      ...textItem(),
+      id: "error-latest",
+      origin: "primary",
+      kind: "error",
+      lifecycle: "failed",
+      payload: {
+        code: "PREVIEW_UNAVAILABLE",
+        message: "The preview stopped. This Chat can be retried.",
+        recoverable: true,
+      },
+    } as AcpItem;
+    next.turns[0].items = [
+      {
+        ...error,
+        id: "error-earlier",
+        payload: { ...error.payload, message: "Earlier error" },
+      } as AcpItem,
+      error,
+    ];
+    await renderProjection(
+      <AcpChatProjection page={next} active onRetry={vi.fn()} />,
+    );
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    const message = within(failure).getByText(
+      "The preview stopped. This Chat can be retried.",
+    );
+    expect(message).toBeVisible();
+    expect(message.closest("details")).toBeNull();
+    expect(within(failure).queryByText("Earlier error")).toBeNull();
+    expect(
+      within(failure).getByRole("button", { name: "Retry" }),
+    ).toBeVisible();
+    const work = document.querySelector("details.chat-transcript-work");
+    expect(work).not.toBeNull();
+    expect(work).not.toHaveAttribute("open");
+  });
+
+  it("prefers the terminal reason over an earlier error item", async () => {
+    const next = page("failed", {
+      kind: "protocolError",
+      message: "Connection closed",
+    });
+    next.turns[0].items = [
+      {
+        ...textItem(),
+        kind: "error",
+        payload: {
+          code: "TOOL_ERROR",
+          message: "Earlier tool error",
+          recoverable: true,
+        },
+      } as AcpItem,
+    ];
+    await renderProjection(<AcpChatProjection page={next} active />);
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    expect(within(failure).getByText("Connection closed")).toBeVisible();
+    expect(within(failure).queryByText("Earlier tool error")).toBeNull();
+  });
+
   it("updates failed-turn Retry when the callback changes without a Turn revision", async () => {
     const next = page("failed", {
       kind: "protocolError",

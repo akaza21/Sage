@@ -27,6 +27,12 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .workbench--agent .project-chat__working {
+    animation: none;
+  }
+}
+
 .agent-task-header__resources {
   position: relative;
 }

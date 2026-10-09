@@ -4,6 +4,22 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Project and chat navigation stylesheet seams", () => {
+  it("removes the Agent rail spinner animation under reduced motion", async () => {
+    const projectCss = await readFile(
+      resolve("src/styles/project-navigation-surface.css"),
+      "utf8",
+    );
+    expect(projectCss).toMatch(
+      /\.workbench--agent \.project-chat__working\s*\{[^}]*animation:\s*sage-rail-spin/s,
+    );
+    expect(projectCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.workbench--agent \.project-chat__working\s*\{\s*animation:\s*none;/s,
+    );
+    expect(projectCss.indexOf("prefers-reduced-motion")).toBeGreaterThan(
+      projectCss.indexOf("animation: sage-rail-spin"),
+    );
+  });
+
   it("loads navigation rules from focused stylesheets, not the shell stylesheet", async () => {
     const [entry, shellCss, projectCss, chatCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),

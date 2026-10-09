@@ -256,8 +256,9 @@
   gap: 4px;
 }
 
-.agent-chat-pane--focused .surface-header {
-  box-shadow: inset 2px 0 0 var(--color-accent);
+.agent-chat-panes--split .agent-chat-pane--focused {
+  outline: 1px solid var(--color-border-strong);
+  outline-offset: -1px;
 }
 
 .agent-chat-pane__focus {
@@ -431,7 +432,7 @@
     box-shadow: none;
   }
 
-  .agent-chat-pane--focused .surface-header {
+  .agent-chat-panes--split .agent-chat-pane--focused {
     outline: 2px solid Highlight;
     outline-offset: -2px;
     box-shadow: none;

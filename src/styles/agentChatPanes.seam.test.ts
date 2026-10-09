@@ -18,8 +18,9 @@ describe("Agent Chat panes stylesheet seam", () => {
       /\.agent-chat-pane\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/s,
     );
     expect(panesCss).toMatch(
-      /\.agent-chat-pane--focused \.surface-header\s*\{[^}]*box-shadow:\s*inset 2px 0 0 var\(--color-accent\);/s,
+      /\.agent-chat-panes--split \.agent-chat-pane--focused\s*\{[^}]*outline:\s*1px solid var\(--color-border-strong\);[^}]*outline-offset:\s*-1px;/s,
     );
+    expect(panesCss).not.toContain(".agent-chat-pane--focused .surface-header");
     expect(panesCss).toMatch(
       /\.agent-chat-pane__title\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/s,
     );
@@ -32,7 +33,7 @@ describe("Agent Chat panes stylesheet seam", () => {
     );
     expect(modeCss).not.toContain(".composer__shortcut");
     expect(panesCss).toMatch(
-      /@media \(forced-colors: active\)[\s\S]*?\.agent-chat-pane--focused \.surface-header\s*\{[^}]*outline:\s*2px solid Highlight;/,
+      /@media \(forced-colors: active\)[\s\S]*?\.agent-chat-panes--split \.agent-chat-pane--focused\s*\{[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-2px;[^}]*box-shadow:\s*none;/,
     );
   });
 

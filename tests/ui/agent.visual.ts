@@ -13,6 +13,8 @@ import {
   expandChildActivityHierarchy,
   expectAgentImageContained,
   expectChildActivityContained,
+  expectFocusedChatIndicator,
+  openComposerOptions,
   releasePickerHarnessReadiness,
   runAgentCanonicalTest,
   revealWorkedContent,
@@ -173,19 +175,11 @@ async function expectComposerToolbarLaidOut(form: Locator) {
   ).toBeLessThanOrEqual(1);
 }
 
-async function openComposerOptions(page: Page) {
-  const form = page.locator("form.composer").first();
-  const trigger = form.getByRole("button", {
-    name: "Composer options",
-    exact: true,
-  });
-  await expect(trigger).toBeVisible();
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.click();
-  const menu = form.getByRole("dialog", { name: "Composer options menu" });
-  await expect(menu).toBeVisible();
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  return menu;
+async function expectPickerLabelUnclipped(label: Locator) {
+  await expect(label).toBeVisible();
+  expect(
+    await label.evaluate((node) => node.clientWidth >= node.scrollWidth),
+  ).toBe(true);
 }
 
 async function expectComposerPickerValue(
@@ -195,6 +189,10 @@ async function expectComposerPickerValue(
 ) {
   await expect(picker).toHaveAccessibleName(name);
   await expect(picker).toHaveText(value);
+  const label = picker.locator(".searchable-picker__trigger-label");
+  if (await label.count()) {
+    await expectPickerLabelUnclipped(label);
+  }
   expect(
     await picker.evaluate((node) => node.scrollWidth === node.clientWidth),
   ).toBe(true);
@@ -255,6 +253,10 @@ async function expectArtifactConstrainedComposer(
   await expect(
     form.getByRole("button", { name: "Harness", exact: true }),
   ).toContainText(expectedLabels[0]!);
+  const harnessLabel = form
+    .getByRole("button", { name: "Harness", exact: true })
+    .locator(".searchable-picker__trigger-label");
+  await expectPickerLabelUnclipped(harnessLabel);
   await expect(
     form.getByRole("button", { name: "Model", exact: true }),
   ).toHaveText(expectedLabels[1]!);
@@ -991,6 +993,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const panes = page.locator(".agent-chat-pane");
     const header = page.locator(".agent-task-header");
     await expect(panes).toHaveCount(2);
+    await expectFocusedChatIndicator(page);
     await expect(header).toHaveCount(1);
     await expect(panes.locator(".surface-header")).toHaveCount(0);
     await expect(header.locator(".agent-task-header__title")).toHaveText(
@@ -1149,6 +1152,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await waitingCancel.focus();
     await expect(waitingCancel).toBeFocused();
     await expect(waitingPane).toHaveClass(/agent-chat-pane--focused/);
+    await expectFocusedChatIndicator(page);
     await expect(header.locator(".agent-task-header__title")).toHaveText(
       "Editor consistency pass",
     );
@@ -1457,6 +1461,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-forced-colors.png");
+    await openScenario(page, "agent-dual", "agent");
+    await expectFocusedChatIndicator(page, true);
+    await page
+      .locator(".agent-chat-pane")
+      .nth(1)
+      .getByRole("button", { name: "Cancel turn", exact: true })
+      .focus();
+    await expect(page.locator(".agent-chat-pane").nth(1)).toHaveClass(
+      /agent-chat-pane--focused/,
+    );
+    await expectFocusedChatIndicator(page, true);
   });
 });
 
