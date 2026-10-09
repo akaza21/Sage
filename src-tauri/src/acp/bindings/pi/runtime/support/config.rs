@@ -15,13 +15,15 @@ impl PiRuntime {
         self.thinking_request_command = None;
     }
 
-    pub(crate) fn begin_thinking_discovery(
+    pub(in crate::acp::bindings::pi::runtime) fn begin_thinking_discovery(
         &mut self,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         if self.poisoned
             || !self.initialized
             || self.external_session.is_none()
-            || (self.active_turn.is_some() && !self.refresh_thinking_after_model)
+            || (self.active_turn.is_some()
+                && !self.refresh_thinking_after_model
+                && !self.available_thinking.is_empty())
             || self.thinking_request_command.is_some()
         {
             return Err(AdapterRuntimeError::Operation);

@@ -85,6 +85,30 @@ pub(super) fn ready_adapter() -> ObservedPi {
     }
 }
 
+pub(super) fn activated_adapter() -> ObservedPi {
+    let mut inner = fixture_runtime(91);
+    initialize(&mut inner);
+    let session = inner
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    let session = deliver(&mut inner, session);
+    let batch = inner
+        .ingest(&response(&session, Value::Null), &Mapper)
+        .unwrap();
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::SessionReady { .. }]
+    ));
+    assert!(batch.egress().is_empty());
+    ObservedPi {
+        inner,
+        observed: Arc::new(Mutex::new(Vec::new())),
+    }
+}
+
 pub(super) fn owner() -> RuntimeOwner {
     RuntimeOwner {
         project_id: SageProjectId::parse("project-pump-pi").unwrap(),
@@ -158,28 +182,45 @@ impl ProjectionPublisher for Publisher {
 pub(super) struct Fixture {
     pub(super) database: crate::persistence::Database,
     pub(super) observed: Arc<Mutex<Vec<AdapterEvent>>>,
+    external_session_id: ExternalId,
     handle: JournalHandle,
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Fixture {
     pub(super) fn new() -> Self {
+        Self::with_external_session_id(ExternalId::new("session", "pi-session-91-1").unwrap())
+    }
+
+    pub(super) fn with_external_session_id(external_session_id: ExternalId) -> Self {
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
-        database.connection().execute_batch(&format!(
-            "INSERT INTO projects VALUES('project-pump-pi','Pi',0,0,0);
-             INSERT INTO chats VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);
-             INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at)
-             VALUES('session-pi-91','project-pump-pi','chat-pump-pi',0,'pi','{}','pi-session-91-1','{{}}','active','hot',0,0);
-             INSERT INTO chat_session_heads VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0);
+        {
+            let connection = database.connection();
+            connection
+                .execute_batch(
+                    "INSERT INTO projects VALUES('project-pump-pi','Pi',0,0,0);
+                 INSERT INTO chats VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);",
+                )
+                .unwrap();
+            connection.execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at)
+                 VALUES('session-pi-91','project-pump-pi','chat-pump-pi',0,'pi',?1,?2,'{}','active','hot',0,0)",
+                rusqlite::params!["07".repeat(32), external_session_id.as_str()],
+            ).unwrap();
+            connection.execute_batch(
+                "INSERT INTO chat_session_heads VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0);
              INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at) VALUES('project-pump-pi','chat-pump-pi','session-pi-91',91,'running',0);
              INSERT INTO acp_project_usage VALUES('project-pump-pi',1,1,0,0,0,0,0);
              INSERT INTO acp_session_usage VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0,0,0,0,0,0);
-             UPDATE acp_store_usage SET chat_count=1,session_count=1;", "07".repeat(32))).unwrap();
+             UPDATE acp_store_usage SET chat_count=1,session_count=1;"
+            ).unwrap();
+        }
         let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
         let fixture = Self {
             database,
             observed: Arc::new(Mutex::new(Vec::new())),
+            external_session_id,
             handle,
             task: Some(runner.spawn()),
         };
@@ -202,7 +243,7 @@ impl Fixture {
             project_id: owner().project_id,
             chat_id: owner().chat_id,
             session_id: owner().session_id,
-            external_session_id: ExternalId::new("session", "pi-session-91-1").unwrap(),
+            external_session_id: self.external_session_id.clone(),
             runtime_epoch: owner().runtime_epoch,
         }
         .bind_turn(
@@ -216,6 +257,10 @@ impl Fixture {
     pub(super) fn pump(&self, mut adapter: ObservedPi) -> Pump {
         adapter.observed = self.observed.clone();
         let intent = self.intent(0);
+        assert_eq!(
+            adapter.inner.external_session.as_ref(),
+            Some(&intent.external_session_id)
+        );
         AdapterPump::new(
             adapter,
             SqliteAdapterBatchJournal::new(self.handle.clone(), intent.clone()),

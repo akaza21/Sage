@@ -89,6 +89,7 @@ impl PiTranslator {
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
             unknown_kinds: Default::default(),
+            unknown_suppression_emitted: false,
         });
         Ok(vec![outbound])
     }

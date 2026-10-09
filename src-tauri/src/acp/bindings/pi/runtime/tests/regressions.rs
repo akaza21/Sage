@@ -338,14 +338,17 @@ fn pi_nonblocking_extension_notifications_never_offer_approval() {
     let mut runtime = fixture_runtime(66);
     ready(&mut runtime);
     running(&mut runtime);
-    for event in [
-        json!({"type":"extension_ui_request","id":"notify-1","method":"notify","message":"Working","notifyType":"info"}),
-        json!({"type":"permission_request","id":"unproven"}),
-    ] {
-        let batch = runtime.ingest(&frame(event), &Mapper).unwrap();
-        assert!(matches!(batch.events(), [AdapterEvent::Unsupported(_)]));
-        assert!(batch.egress().is_empty());
-    }
+    let batch = runtime.ingest(&frame(json!({"type":"extension_ui_request","id":"notify-1","method":"notify","message":"Working","notifyType":"info"})), &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    assert!(batch.egress().is_empty());
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"permission_request","id":"unproven"})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Unsupported(_)]));
+    assert!(batch.egress().is_empty());
     let batch = runtime
         .ingest(
             &frame(thought_update("thinking_delta", Some("Still running"))),

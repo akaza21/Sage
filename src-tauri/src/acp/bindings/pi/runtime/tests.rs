@@ -412,7 +412,6 @@ fn pi_unproven_stream_shapes_and_features_remain_unsupported() {
         .expect("message start");
     for event in [
         json!({"type":"message_update","delta":"untyped arguments"}),
-        json!({"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"arguments"}}),
         json!({"type":"plan","entries":[{"content":"not a Pi plan event","status":"pending"}]}),
         json!({"type":"subagent_start","id":"unproven-child"}),
     ] {
@@ -422,6 +421,16 @@ fn pi_unproven_stream_shapes_and_features_remain_unsupported() {
         assert!(matches!(batch.events(), [AdapterEvent::Unsupported(_)]));
         assert!(batch.egress().is_empty());
     }
+}
+
+#[test]
+fn pi_toolcall_stream_arguments_are_absorbed_without_items() {
+    let mut runtime = fixture_runtime(47);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime.ingest(&frame(json!({"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"arguments"}})), &Mapper).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    assert!(batch.egress().is_empty());
 }
 
 #[test]

@@ -154,7 +154,26 @@ async fn pi_pump_idle_thinking_discovery_failures_keep_session_alive() {
         let fixture = Fixture::new();
         let mut pump = fixture.pump(adapter);
         start(&mut pump).await;
+        let discovery = discovery::state_read(&mut pump, "openai", "gpt").await;
+        assert!(pump.config_pending());
+        pump.push_stdout_chunk(
+            &reply(&discovery.0[1], json!({"levels":["off","high"]})),
+            31,
+        )
+        .await
+        .unwrap();
+        assert!(!pump.config_pending());
         settle(&mut pump).await;
+        let mut idle = pump
+            .try_into_completed_parts()
+            .unwrap_or_else(|_| panic!("recovered idle handoff"));
+        let mut transport = Capture::default();
+        idle.write_session_config(&mut transport, &intent("pi.thinking", "off"))
+            .unwrap();
+        idle.accept_idle_stdout_chunk(&reply(&transport.0[0], Value::Null), 32)
+            .await
+            .unwrap();
+        assert!(!idle.config_pending());
         fixture.finish().await;
     }
 }

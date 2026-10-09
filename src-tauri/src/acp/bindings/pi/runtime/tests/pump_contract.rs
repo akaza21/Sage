@@ -1,7 +1,9 @@
 use super::*;
 
 mod config;
+mod content_free;
 mod continuation;
+mod discovery;
 mod fixture;
 mod journey;
 
@@ -13,6 +15,8 @@ enum Row {
     Config,
     Lifecycle,
     Content,
+    ContentFree,
+    FireAndForget,
     Unknown,
 }
 #[derive(Clone, Copy)]
@@ -60,6 +64,8 @@ fn row_frames(row: Row) -> Vec<Value> {
             json!({"type":"compaction_start"}),
             json!({"type":"compaction_end","result":{}}),
         ],
+        Row::ContentFree => content_free::updates(),
+        Row::FireAndForget => content_free::notifications(),
         Row::Unknown => [
             "future_event",
             "future_event",
@@ -118,8 +124,8 @@ async fn exercise(row: Row, state: State) {
                     .all(|event| matches!(event, AdapterEvent::IgnoredLate))
             );
         }
-        (Row::Lifecycle, State::Live) => {
-            assert_eq!(events.len(), 6);
+        (Row::Lifecycle | Row::ContentFree | Row::FireAndForget, State::Live) => {
+            assert_eq!(events.len(), row_frames(row).len());
             assert!(
                 events
                     .iter()
@@ -224,7 +230,14 @@ async fn pi_pump_authority_denied_drops_all_contract_rows() {
     start(&mut pump).await;
     pump.push_stdout_chunk(&line(json!({"type":"tool_execution_start","toolCallId":"write-denied","toolName":"write","args":{}})), 5).await.unwrap();
     fixture.observed.lock().unwrap().clear();
-    for row in [Row::Session, Row::Lifecycle, Row::Content, Row::Unknown] {
+    for row in [
+        Row::Session,
+        Row::Lifecycle,
+        Row::Content,
+        Row::ContentFree,
+        Row::FireAndForget,
+        Row::Unknown,
+    ] {
         for value in row_frames(row) {
             pump.push_stdout_chunk(&line(value), 6).await.unwrap();
         }

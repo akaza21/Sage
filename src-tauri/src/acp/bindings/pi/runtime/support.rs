@@ -93,7 +93,10 @@ impl PiRuntime {
                 )
             }
             AdapterOutput::CommandAccepted { command } => {
-                let refresh = if command == "prompt" && self.refresh_thinking_after_model {
+                let refresh = if command == "prompt"
+                    && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
+                    && self.thinking_request_command.is_none()
+                {
                     Some(self.begin_one(
                         crate::acp::bindings::pi::Operation::GetState,
                         super::RequestKind::RefreshState,
@@ -182,6 +185,7 @@ impl PiRuntime {
                     state,
                 };
                 self.active_turn = None;
+                self.clear_thinking_request();
                 self.deny = None;
                 (Some(event), None)
             }
@@ -347,6 +351,13 @@ impl PiRuntime {
             AdapterOutput::Unsupported { kind } => {
                 (Some(unsupported(kind, "Unsupported Pi RPC event")), None)
             }
+            AdapterOutput::UnknownEventsSuppressed => (
+                Some(unsupported(
+                    "pi_unknown_event_limit",
+                    "Further unknown Pi RPC event notices are suppressed for this turn",
+                )),
+                None,
+            ),
             AdapterOutput::DuplicateIgnored => (Some(AdapterEvent::IgnoredDuplicate), None),
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
             AdapterOutput::Absorbed => (Some(AdapterEvent::Absorbed), None),

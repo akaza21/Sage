@@ -9,11 +9,18 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        self.live_turn()?;
+        self.live_turn_any_phase()?;
         let method = value
             .get("method")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if matches!(
+            method,
+            "notify" | "setStatus" | "setWidget" | "setTitle" | "set_editor_text"
+        ) {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        self.live_turn()?;
         if !matches!(method, "confirm" | "select") {
             return Ok(vec![AdapterOutput::Unsupported {
                 kind: "extension_ui_request".into(),

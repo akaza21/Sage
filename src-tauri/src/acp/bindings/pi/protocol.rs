@@ -156,6 +156,7 @@ pub enum AdapterOutput {
     Unsupported {
         kind: String,
     },
+    UnknownEventsSuppressed,
     DuplicateIgnored,
     LateIgnored,
     Absorbed,

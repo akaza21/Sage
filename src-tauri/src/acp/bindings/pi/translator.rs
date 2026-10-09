@@ -82,6 +82,7 @@ struct ActiveTurn {
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
     unknown_kinds: BTreeSet<String>,
+    unknown_suppression_emitted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,21 +245,21 @@ impl PiTranslator {
     }
 
     pub(crate) fn model_config_pending(&self) -> bool {
-        self.pending.values().any(|kind| {
-            matches!(
-                kind,
-                PendingKind::SetModel
-                    | PendingKind::SetThinkingLevel
-                    | PendingKind::State
-                    | PendingKind::ThinkingLevels
-            )
-        })
+        self.pending
+            .iter()
+            .any(|(id, kind)| kind.is_config() && !self.is_closed_config_read(id, *kind))
     }
 
     pub(crate) fn thinking_levels_request_id(&self) -> Option<&str> {
-        self.pending
-            .iter()
-            .find_map(|(id, kind)| (*kind == PendingKind::ThinkingLevels).then_some(id.as_str()))
+        self.pending.iter().find_map(|(id, kind)| {
+            (*kind == PendingKind::ThinkingLevels && !self.is_closed_config_read(id, *kind))
+                .then_some(id.as_str())
+        })
+    }
+
+    fn is_closed_config_read(&self, id: &str, kind: PendingKind) -> bool {
+        matches!(kind, PendingKind::State | PendingKind::ThinkingLevels)
+            && self.closed_config_requests.contains(id)
     }
 }
 

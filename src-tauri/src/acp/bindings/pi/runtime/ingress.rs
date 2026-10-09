@@ -26,7 +26,6 @@ impl PiRuntime {
                     return Err(support::map_pi(error));
                 }
                 if self.refresh_thinking_after_model {
-                    self.refresh_thinking_after_model = false;
                     self.current_thinking = None;
                     self.available_thinking.clear();
                 }
@@ -81,7 +80,6 @@ impl PiRuntime {
             .iter()
             .any(|value| matches!(value, crate::acp::bindings::pi::AdapterOutput::Error { .. }));
         if failed && self.refresh_thinking_after_model {
-            self.refresh_thinking_after_model = false;
             self.current_thinking = None;
             self.available_thinking.clear();
         }

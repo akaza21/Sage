@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+mod message;
 mod permission;
 mod tool_result;
 mod turn;
@@ -7,7 +8,7 @@ use tool_result::{tool_images, tool_text};
 
 use super::{ActiveTurn, EventPhase, PiTranslator, TOOLS_PER_TURN};
 use crate::acp::bindings::pi::{
-    decode::{ITEM_BYTES, bounded_delta, bounded_string, external_id, redact_structured_text},
+    decode::{bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
 };
 
@@ -73,50 +74,7 @@ impl PiTranslator {
                     external_id: message_id(value)?,
                 }])
             }
-            "message_update" => {
-                self.live_turn()?;
-                let event = value
-                    .get("assistantMessageEvent")
-                    .or_else(|| value.get("assistant_message_event"));
-                match event
-                    .and_then(|event| event.get("type"))
-                    .and_then(Value::as_str)
-                {
-                    Some("thinking_start") => {
-                        self.live_turn()?.thought_active = true;
-                        return Ok(vec![AdapterOutput::ThoughtStarted]);
-                    }
-                    Some("thinking_end") => {
-                        return Ok(self.complete_thought(TerminalOutcome::Completed));
-                    }
-                    _ => {}
-                }
-                let delta = event.and_then(|event| event.get("delta"));
-                let Some((text, redacted_tail)) = bounded_delta(delta, ITEM_BYTES)? else {
-                    return Ok(vec![AdapterOutput::Unsupported {
-                        kind: "message_update_without_text_delta".into(),
-                    }]);
-                };
-                match event
-                    .and_then(|event| event.get("type"))
-                    .and_then(Value::as_str)
-                {
-                    Some("thinking_delta") => {
-                        self.live_turn()?.thought_active = true;
-                        Ok(vec![AdapterOutput::ThoughtDelta {
-                            text,
-                            redacted_tail,
-                        }])
-                    }
-                    Some("text_delta") => Ok(vec![AdapterOutput::TextDelta {
-                        text,
-                        redacted_tail,
-                    }]),
-                    _ => Ok(vec![AdapterOutput::Unsupported {
-                        kind: "message_update_non_text_delta".into(),
-                    }]),
-                }
-            }
+            "message_update" => self.message_update(value),
             "message_end" => {
                 self.live_turn()?;
                 if !assistant_message(value) {
@@ -177,7 +135,13 @@ impl PiTranslator {
                     return Ok(vec![AdapterOutput::Absorbed]);
                 }
                 if turn.unknown_kinds.len() >= super::UNKNOWN_KINDS_PER_TURN {
-                    return Err(AdapterError::Limit("unknown event kinds per Turn"));
+                    return Ok(vec![
+                        if std::mem::replace(&mut turn.unknown_suppression_emitted, true) {
+                            AdapterOutput::Absorbed
+                        } else {
+                            AdapterOutput::UnknownEventsSuppressed
+                        },
+                    ]);
                 }
                 turn.unknown_kinds.insert(kind.to_owned());
                 Ok(vec![AdapterOutput::Unsupported {

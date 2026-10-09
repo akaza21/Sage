@@ -100,29 +100,30 @@ async fn pi_pump_200_tool_steps_absorb_lifecycle_markers_under_item_budget() {
     let fixture = Fixture::new();
     let mut pump = fixture.pump(ready_adapter());
     start(&mut pump).await;
+    let mut absorbed = 0;
     for step in 0..200 {
-        let id = format!("read-loop-{step}");
-        for value in row_frames(Row::Lifecycle).into_iter().chain([
-            tool_start(&id),
-            tool_end(&id, json!([{"type":"text","text":"Read"}])),
-        ]) {
+        fixture.observed.lock().unwrap().clear();
+        for value in content_free::tool_step(step) {
             pump.push_stdout_chunk(&line(value), 10).await.unwrap();
         }
-    }
-    settle(&mut pump).await;
-    assert_eq!(fixture.item_count(), 200);
-    assert!(fixture.item_count() < LIMITS.wire.items_per_turn);
-    assert!(!pump.teardown_required());
-    assert_eq!(
-        fixture
-            .observed
-            .lock()
-            .unwrap()
+        assert_eq!(fixture.item_count(), (step + 1) * 2);
+        let events = fixture.observed.lock().unwrap().clone();
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, AdapterEvent::Unsupported(_)))
+        );
+        absorbed += events
             .iter()
             .filter(|event| matches!(event, AdapterEvent::Absorbed))
-            .count(),
-        1200
-    );
+            .count();
+    }
+    answer(&mut pump, "Inspected 200 files").await;
+    settle(&mut pump).await;
+    assert_eq!(fixture.item_count(), 401);
+    assert!(fixture.item_count() < LIMITS.wire.items_per_turn);
+    assert!(!pump.teardown_required());
+    assert!(absorbed >= 200 * 25);
     fixture.finish().await;
 }
 
@@ -156,7 +157,7 @@ async fn pi_pump_unknown_notices_are_bounded_and_reset_each_turn() {
 }
 
 #[tokio::test]
-async fn pi_pump_unknown_kind_capacity_fails_closed_instead_of_silently_absorbing() {
+async fn pi_pump_unknown_kind_capacity_suppresses_once_without_teardown() {
     let fixture = Fixture::new();
     let mut pump = fixture.pump(ready_adapter());
     start(&mut pump).await;
@@ -165,13 +166,64 @@ async fn pi_pump_unknown_kind_capacity_fails_closed_instead_of_silently_absorbin
             .await
             .unwrap();
     }
-    assert!(matches!(
-        pump.push_stdout_chunk(&line(json!({"type":"future_over_capacity"})), 10)
-            .await,
-        Err(crate::acp::runtime::AdapterPumpError::Frame)
-    ));
-    assert!(pump.teardown_required());
-    assert_eq!(fixture.item_count(), 32);
+    fixture.observed.lock().unwrap().clear();
+    pump.push_stdout_chunk(&line(json!({"type":"future_over_capacity"})), 10)
+        .await
+        .unwrap();
+    let events = fixture.observed.lock().unwrap().clone();
+    assert!(
+        matches!(events.as_slice(), [AdapterEvent::Unsupported(NormalizedPayload::Unsupported { external_kind, summary })] if external_kind.as_str() == "pi_unknown_event_limit" && summary.as_str().contains("suppressed"))
+    );
+    assert_eq!(fixture.item_count(), 33);
+    fixture.observed.lock().unwrap().clear();
+    for kind in 32..232 {
+        for _ in 0..2 {
+            pump.push_stdout_chunk(&line(json!({"type":format!("future_{kind}")})), 10)
+                .await
+                .unwrap();
+        }
+    }
+    let events = fixture.observed.lock().unwrap().clone();
+    assert!(
+        events
+            .iter()
+            .all(|event| matches!(event, AdapterEvent::Absorbed))
+    );
+    assert!(!pump.teardown_required());
+    assert_eq!(fixture.item_count(), 33);
+    settle(&mut pump).await;
+    let idle = pump
+        .try_into_completed_parts()
+        .unwrap_or_else(|_| panic!("idle handoff"));
+    fixture.add_turn(1);
+    let mut pump = idle
+        .bind_turn(fixture.intent(1).active_turn)
+        .unwrap_or_else(|_| panic!("second turn"));
+    start_turn(&mut pump, 1).await;
+    fixture.observed.lock().unwrap().clear();
+    for kind in 0..34 {
+        pump.push_stdout_chunk(&line(json!({"type":format!("future_{kind}")})), 10)
+            .await
+            .unwrap();
+    }
+    let events = fixture.observed.lock().unwrap().clone();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AdapterEvent::Unsupported(_)))
+            .count(),
+        33
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AdapterEvent::Absorbed))
+            .count(),
+        1
+    );
+    assert_eq!(fixture.item_count(), 66);
+    settle(&mut pump).await;
+    assert!(!pump.teardown_required());
     fixture.finish().await;
 }
 

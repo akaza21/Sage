@@ -11,9 +11,11 @@ impl PiRuntime {
         self.current_model = state.model.as_ref().map(model_key).transpose()?;
         self.current_thinking = state.thinking_level;
         let _ = (state.has_session, state.is_streaming);
-        if self.refresh_thinking_after_model && self.active_turn.is_some() {
+        if (self.refresh_thinking_after_model || self.available_thinking.is_empty())
+            && self.active_turn.is_some()
+            && self.thinking_request_command.is_none()
+        {
             let levels = self.begin_thinking_discovery()?;
-            self.refresh_thinking_after_model = false;
             Ok((Some(AdapterEvent::IgnoredDuplicate), Some(levels)))
         } else {
             Ok((
@@ -52,6 +54,7 @@ impl PiRuntime {
         }
         self.clear_thinking_request();
         self.available_thinking = levels;
+        self.refresh_thinking_after_model = false;
         (Some(AdapterEvent::IgnoredDuplicate), None)
     }
 

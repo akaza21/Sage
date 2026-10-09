@@ -24,11 +24,11 @@ impl PiRuntime {
                 self.initialized = false;
             }
             RequestKind::Prompt => self.active_turn = None,
-            RequestKind::RefreshState => self.refresh_thinking_after_model = false,
             RequestKind::ThinkingLevels => {
                 self.clear_thinking_request();
             }
             RequestKind::Models
+            | RequestKind::RefreshState
             | RequestKind::SetModel
             | RequestKind::SetThinkingLevel
             | RequestKind::NewSession
