@@ -91,6 +91,13 @@ test("lane split and runner tests are explicitly recorded", () => {
   assert.ok(justifications.justified > 0);
   assert.equal(laneOfBudgetTest("acp-native-pi.node-test.mjs"), "portable");
   assert.ok(
+    discoverBudgetTestFiles().includes("htmlCompletionSchema.node-test.mjs"),
+  );
+  assert.equal(
+    laneOfBudgetTest("htmlCompletionSchema.node-test.mjs"),
+    "portable",
+  );
+  assert.ok(
     discoverBudgetTestFiles().includes(
       "capture-native-chat-source.node-test.mjs",
     ),

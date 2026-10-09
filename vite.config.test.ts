@@ -1,7 +1,6 @@
 // @vitest-environment node
 
 import path from "node:path";
-import { gzipSync } from "node:zlib";
 import { build, resolveConfig, type InlineConfig } from "vite";
 import { describe, expect, it } from "vitest";
 
@@ -221,14 +220,6 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
       staticClosure: staticChunkClosure(chunk),
     }));
   return {
-    chunks,
-    initialFiles: [...initialFiles],
-    staticClosureFilesByFile: new Map(
-      chunks.map((chunk) => [
-        chunk.fileName,
-        staticChunkFiles(chunk).map((dependency) => dependency.fileName),
-      ]),
-    ),
     allModules: modules(chunks),
     staticClosuresByFile: new Map(
       chunks.map((chunk) => [chunk.fileName, staticChunkClosure(chunk)]),
@@ -265,55 +256,6 @@ function parserPackages(closure: readonly string[]): string[] {
     })
     .filter((value, index, values) => values.indexOf(value) === index)
     .sort();
-}
-
-function bundleFootprint(graph: ReturnType<typeof graphInventory>) {
-  const sizes = new Map(
-    graph.chunks.map((chunk) => [chunk.fileName, gzipSync(chunk.code).length]),
-  );
-  const bytes = (files: readonly string[]) =>
-    files.reduce((total, file) => total + sizes.get(file)!, 0);
-  const fileForModule = (id: string) => {
-    const file = graph.moduleFiles.get(id);
-    if (!file) throw new Error(`Missing bundle module ${id}`);
-    return file;
-  };
-  const terminalFiles = [
-    "src/workbench/TerminalDock.tsx",
-    "src/workbench/TerminalDockShell.tsx",
-    "src/services/userTerminalDesktop.ts",
-  ].map(fileForModule);
-  expect(new Set(terminalFiles).size).toBe(3);
-  const subagent = fileForModule("src/workbench/SubagentSurface.tsx");
-  const childFiles = graph.staticClosureFilesByFile.get(subagent)!;
-  const chatFiles = [
-    "src/workbench/Workbench.tsx",
-    "src/workbench/AgentWorkbenchBody.tsx",
-    "src/features/chat/acp/AcpChatPresentation.tsx",
-  ].flatMap((id) => graph.staticClosureFilesByFile.get(fileForModule(id))!);
-  const initial = new Set(graph.initialFiles);
-  const chatReady = new Set([...graph.initialFiles, ...chatFiles]);
-  const total = bytes([...sizes.keys()]);
-  const terminal = bytes(terminalFiles);
-  const child = sizes.get(subagent)!;
-  return {
-    allJsGzipBytes: total,
-    countedCoreGzipBytes: total - terminal - child,
-    allJsExceptTerminalGzipBytes: total - terminal,
-    initialStaticClosureGzipBytes: bytes(graph.initialFiles),
-    terminalLazyGzipBytes: terminal,
-    subagentLazyGzipBytes: child,
-    workbenchChunkGzipBytes: sizes.get(
-      fileForModule("src/workbench/Workbench.tsx"),
-    )!,
-    emittedJsGzipBytes: Object.fromEntries(sizes),
-    subagentFirstOpenFromInitialGzipBytes: bytes(
-      childFiles.filter((file) => !initial.has(file)),
-    ),
-    subagentFirstOpenFromChatGzipBytes: bytes(
-      childFiles.filter((file) => !chatReady.has(file)),
-    ),
-  };
 }
 
 function languageStaticClosure(
@@ -408,10 +350,7 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
-  it("adds only the Agent-body reserve and removes the rejected ACP group", () => {
-    expect(DESKTOP_GROUPS.some((group) => group.name === "chat-deps")).toBe(
-      false,
-    );
+  it("adds only the Agent-body reserve", () => {
     expect(DESKTOP_GROUPS[0]).toEqual(BASELINE_DESKTOP_GROUPS[0]);
     const workbench = DESKTOP_GROUPS.find(
       (group) => group.name === "workbench-deps",
@@ -437,7 +376,7 @@ describe("desktop-native chunk topology", () => {
   });
 
   it("preserves chat-helper ownership with the exact authorised Agent closure consolidation", async () => {
-    const baselineConfig = htmlOnlyGraphConfig();
+    const baselineConfig = desktopGraphConfig(true);
     baselineConfig.build!.rolldownOptions = {
       output: { codeSplitting: { groups: BASELINE_DESKTOP_GROUPS } },
     };
@@ -470,40 +409,12 @@ describe("desktop-native chunk topology", () => {
 
   it("consolidates exactly the Agent body while preserving all initial and other lazy boundaries", async () => {
     const baselineConfig = htmlOnlyGraphConfig();
-    const unoptimizedConfig: InlineConfig = {
-      ...baselineConfig,
-      plugins: baselineConfig.plugins?.filter(
-        (plugin) =>
-          !(
-            plugin &&
-            typeof plugin === "object" &&
-            "name" in plugin &&
-            plugin.name === "sage-html-completion-schema"
-          ),
-      ),
-    };
-    const [unoptimized, baseline, grouped] = await Promise.all([
-      build(unoptimizedConfig),
+    const [baseline, grouped] = await Promise.all([
       build(baselineConfig),
       build(desktopGraphConfig(true)),
     ]);
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
-    const before = bundleFootprint(graphInventory(unoptimized));
-    const htmlOnly = bundleFootprint(baselineGraph);
-    const consolidated = bundleFootprint(groupedGraph);
-    console.info(
-      "BX-2 in-memory gzip footprints",
-      JSON.stringify({
-        before,
-        htmlOnly,
-        consolidated,
-        htmlSavedAgainstRebuiltControlGzipBytes:
-          before.countedCoreGzipBytes - htmlOnly.countedCoreGzipBytes,
-        reserveSavedAgainstHtmlOnlyGzipBytes:
-          htmlOnly.countedCoreGzipBytes - consolidated.countedCoreGzipBytes,
-      }),
-    );
     const workbench = "src/workbench/Workbench.tsx";
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);

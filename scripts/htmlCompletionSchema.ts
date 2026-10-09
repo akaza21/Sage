@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import MagicString from "magic-string";
 import type { Plugin } from "vite";
 
 const HTML_VERSION = "6.4.12";
@@ -11,10 +12,10 @@ const SCHEMA_END = "Schema.default = /*@__PURE__*/new Schema;";
 const EVENTS_START = "const eventAttributes =";
 const EVENTS_END = "for (let a of eventAttributes)";
 
-export function isolateHtmlCompletionSchema(
+function htmlCompletionSchemaEdit(
   source: string,
   version: string,
-): string {
+): MagicString {
   if (version !== HTML_VERSION) {
     throw new Error(
       `HTML completion schema version drift: expected ${HTML_VERSION}, got ${version}`,
@@ -31,7 +32,17 @@ export function isolateHtmlCompletionSchema(
   const end = source.indexOf(SCHEMA_END) + SCHEMA_END.length;
   const eventsStart = source.indexOf(EVENTS_START);
   const eventsEnd = source.indexOf(EVENTS_END);
-  return `${source.slice(0, start)}${source.slice(eventsStart, eventsEnd)}const Schema = /*@__PURE__*/(() => {\n${source.slice(start, eventsStart)}${source.slice(eventsEnd, end)}\nreturn Schema;\n})();${source.slice(end)}`;
+  return new MagicString(source)
+    .move(eventsStart, eventsEnd, start)
+    .appendRight(start, "const Schema = /*@__PURE__*/(() => {\n")
+    .appendLeft(end, "\nreturn Schema;\n})();");
+}
+
+export function isolateHtmlCompletionSchema(
+  source: string,
+  version: string,
+): string {
+  return htmlCompletionSchemaEdit(source, version).toString();
 }
 
 export function htmlCompletionSchemaPlugin(): Plugin {
@@ -53,9 +64,16 @@ export function htmlCompletionSchemaPlugin(): Plugin {
       const { version } = JSON.parse(
         readFileSync(path.resolve(path.dirname(id), "../package.json"), "utf8"),
       ) as { version: string };
-      const code = isolateHtmlCompletionSchema(source, version);
+      const edit = htmlCompletionSchemaEdit(source, version);
       transformCount += 1;
-      return { code, map: null };
+      return {
+        code: edit.toString(),
+        map: edit.generateMap({
+          source: id.replaceAll("\\", "/"),
+          includeContent: true,
+          hires: true,
+        }),
+      };
     },
     generateBundle() {
       if (transformCount !== 1) {
