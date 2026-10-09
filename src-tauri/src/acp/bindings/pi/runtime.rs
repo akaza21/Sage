@@ -170,8 +170,8 @@ impl HarnessAdapter for PiRuntime {
     fn configure(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.configure_session(intent)
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.configure_session(intent).map(Some)
     }
 
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {

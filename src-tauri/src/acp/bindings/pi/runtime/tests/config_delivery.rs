@@ -26,7 +26,10 @@ fn config_intent(id: &str, value: &str) -> ConfigIntent {
 fn direct_config_delivery(id: &str, value: &str, data: Value) {
     let mut runtime = fixture_runtime(92);
     ready(&mut runtime);
-    let egress = runtime.configure(&config_intent(id, value)).unwrap();
+    let egress = runtime
+        .configure(&config_intent(id, value))
+        .unwrap()
+        .expect("Pi config requires a wire command");
     let command = request(&egress);
     let token = egress.into_token();
     runtime
@@ -70,12 +73,18 @@ fn pi_idle_config_zero_byte_delivery_rolls_back_for_retry() {
         let mut runtime = fixture_runtime(92);
         ready(&mut runtime);
         let intent = config_intent(id, value);
-        let egress = runtime.configure(&intent).unwrap();
+        let egress = runtime
+            .configure(&intent)
+            .unwrap()
+            .expect("Pi config requires a wire command");
         runtime
             .resolve_egress(egress.into_token(), EgressResolution::WriteZeroBytes)
             .unwrap();
         assert!(!runtime.config_pending());
-        let retry = runtime.configure(&intent).unwrap();
+        let retry = runtime
+            .configure(&intent)
+            .unwrap()
+            .expect("Pi config retry requires a wire command");
         runtime
             .resolve_egress(retry.into_token(), EgressResolution::Written)
             .unwrap();

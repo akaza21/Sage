@@ -539,7 +539,10 @@ fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
             },
         },
     };
-    let egress = runtime.configure(&intent).expect("model selection");
+    let egress = runtime
+        .configure(&intent)
+        .expect("model selection")
+        .expect("Pi model selection requires a wire command");
     let model_request = deliver(&mut runtime, egress);
     assert_eq!(model_request["type"], "set_model");
     assert_eq!(model_request["provider"], "anthropic");
@@ -648,7 +651,8 @@ fn pi_thinking_selection_is_correlated_and_model_bounded() {
     ));
     let egress = runtime
         .configure(&intent("off"))
-        .expect("thinking selection");
+        .expect("thinking selection")
+        .expect("Pi thinking selection requires a wire command");
     let request = deliver(&mut runtime, egress);
     assert_eq!(request["type"], "set_thinking_level");
     assert_eq!(request["level"], "off");

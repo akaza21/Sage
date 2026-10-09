@@ -6,7 +6,7 @@ use crate::acp::{
         ActivatedSession, ActiveTurnIntent, AdapterPump, CompletedActivationDriverParts,
         EgressTransport, IdleActivationParts, JournalHandle, ProjectionPublishError,
         ProjectionPublishStatus, ProjectionPublisher, PumpIntent, SessionPumpIntent,
-        SqliteAdapterBatchJournal, SystemDriverClock,
+        SqliteAdapterBatchJournal, StdinTransport, SystemDriverClock,
     },
     scheduler::RuntimeOwner,
     store::DatabaseAcpStore,
@@ -36,7 +36,7 @@ impl HarnessAdapter for ObservedPi {
     fn configure(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.inner.configure(intent)
     }
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -167,6 +167,10 @@ impl EgressTransport for Capture {
         assert!(self.0.len() <= 16);
         FrameWriteOutcome::Complete
     }
+}
+
+impl StdinTransport for Capture {
+    fn close(&mut self) {}
 }
 
 struct Publisher;

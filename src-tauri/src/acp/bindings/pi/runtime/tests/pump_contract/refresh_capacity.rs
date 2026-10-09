@@ -21,7 +21,7 @@ impl HarnessAdapter for SaturatedRefresh {
     fn configure(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.runtime.configure(intent)
     }
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
