@@ -15,8 +15,8 @@
 }
 
 .composer:focus-within {
-  border-color: var(--composer-focus-border);
-  box-shadow: var(--composer-shadow);
+  border-color: var(--highlight-focus-edge);
+  box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
 }
 .composer__input-area {
   position: relative;

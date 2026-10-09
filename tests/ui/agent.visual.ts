@@ -69,6 +69,29 @@ async function expectOpenPickerContained(
   expect(inside(popupBox, viewportBox)).toBe(true);
 }
 
+async function expectContextUsageRing(progress: Locator, percentage: number) {
+  await expect(progress).toBeVisible();
+  const ring = await progress.evaluate((element) => {
+    const style = getComputedStyle(element, "::before");
+    const box = element.getBoundingClientRect();
+    return {
+      fill: getComputedStyle(element).getPropertyValue(
+        "--composer-context-usage",
+      ),
+      gradient: style.backgroundImage,
+      mask: style.maskImage,
+      width: box.width,
+      height: box.height,
+    };
+  });
+  expect(ring.width).toBe(16);
+  expect(ring.height).toBe(16);
+  expect(ring.fill).toMatch(/%$/);
+  expect(Number.parseFloat(ring.fill)).toBeCloseTo(percentage, 5);
+  expect(ring.gradient).toContain("conic-gradient");
+  expect(ring.mask).toContain("radial-gradient");
+}
+
 type ComposerControlBox = {
   height: number;
   width: number;
@@ -402,7 +425,7 @@ test.describe("ED02 picker visual states", () => {
     ).toBeVisible();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await expect(trigger).toHaveText("Codex — test only");
+    await expect(trigger).toHaveText("Codex");
     await expect(trigger).toHaveAttribute("data-selected-id", "visual-acp");
     await expect(page.locator("html")).toHaveAttribute(
       "data-visual-harness-selection-count",
@@ -548,10 +571,19 @@ test.describe("ED02 picker visual states", () => {
     );
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
+    await expectComposerPickerValue(harnessTrigger, "Harness", "Codex");
+    await expectComposerPickerValue(
+      page.getByRole("button", { name: "Model", exact: true }),
+      "Model",
+      "GPT-5",
+    );
     await harnessTrigger.click();
     const input = page.getByRole("combobox", { name: "Harness" });
     const listbox = page.getByRole("listbox", { name: "Harness" });
     await expectOpenPickerContained(page, input, listbox);
+    await expect(
+      listbox.getByRole("option", { name: "Codex — test only", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
     await page.keyboard.press("Escape");
     await expect(harnessTrigger).toBeFocused();
@@ -632,7 +664,7 @@ test.describe("V2-4 session mode picker", () => {
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Harness", exact: true }),
       "Harness",
-      "Codex — test only",
+      "Codex",
     );
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
@@ -775,14 +807,16 @@ test.describe("V6 Composer context meter", () => {
     await expect(knownProgress).toHaveAttribute("aria-valuemin", "0");
     await expect(knownProgress).toHaveAttribute("aria-valuemax", "272000");
     await expect(knownProgress).toHaveAttribute("aria-valuenow", "6000");
+    await expect(knownProgress).toHaveAttribute("tabindex", "0");
     await expect(knownProgress).toHaveAttribute(
       "title",
-      "6,000 used / 272,000 total tokens",
+      "6k / 272k tokens · 2%",
     );
     await expect(knownProgress).toHaveAttribute(
       "aria-valuetext",
       "6,000 / 272,000 tokens used",
     );
+    await expectContextUsageRing(knownProgress, 2.205882);
     expect(
       await knownContext.evaluate((node) =>
         Boolean(node.closest(".composer__toolbar")),
@@ -820,7 +854,6 @@ test.describe("V6 Composer context meter", () => {
     const overCapacityProgress = overCapacityContext.getByRole("progressbar", {
       name: "300,000 used / 272,000 total tokens",
     });
-    const fill = overCapacityProgress.locator(".composer__context-usage-fill");
     await expect(overCapacityContext).toContainText("300K context");
     await expect(
       overCapacityContext.locator(".composer__context-usage-label"),
@@ -836,16 +869,9 @@ test.describe("V6 Composer context meter", () => {
     );
     await expect(overCapacityProgress).toHaveAttribute(
       "title",
-      "300,000 used / 272,000 total tokens",
+      "300k / 272k tokens · 110%",
     );
-    expect(
-      await fill.evaluate((element) => {
-        const fillWidth = element.getBoundingClientRect().width;
-        const trackWidth =
-          element.parentElement?.getBoundingClientRect().width ?? 0;
-        return trackWidth > 0 && fillWidth / trackWidth <= 1;
-      }),
-    ).toBe(true);
+    await expectContextUsageRing(overCapacityProgress, 100);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(
       overCapacityWorkbench,
@@ -857,9 +883,7 @@ test.describe("V6 Composer context meter", () => {
       reducedMotion: "reduce",
     });
     const forcedColors = await overCapacityProgress.evaluate((element) => {
-      const fillElement = element.querySelector<HTMLElement>(
-        ".composer__context-usage-fill",
-      );
+      const ring = getComputedStyle(element, "::before");
       const systemProbe = document.createElement("span");
       systemProbe.style.background = "Highlight";
       systemProbe.style.border = "1px solid CanvasText";
@@ -872,18 +896,21 @@ test.describe("V6 Composer context meter", () => {
       return {
         canvas,
         canvasText,
-        fill: fillElement
-          ? getComputedStyle(fillElement).backgroundColor
-          : null,
+        gradient: ring.backgroundImage,
         highlight,
-        track: getComputedStyle(element).backgroundColor,
-        trackBorder: getComputedStyle(element).borderTopColor,
-        trackBorderStyle: getComputedStyle(element).borderTopStyle,
+        mask: ring.maskImage,
+        trackBorder: ring.borderTopColor,
+        trackBorderStyle: ring.borderTopStyle,
+        trackBorderWidth: ring.borderTopWidth,
       };
     });
-    expect(forcedColors.fill).toBe(forcedColors.highlight);
-    expect(forcedColors.track).toBe(forcedColors.canvas);
+    expect(forcedColors.gradient).toContain("conic-gradient");
+    expect(forcedColors.gradient).toContain(forcedColors.highlight);
+    expect(forcedColors.gradient).toContain(forcedColors.canvas);
+    expect(forcedColors.mask).toBe("none");
     expect(forcedColors.trackBorder).toBe(forcedColors.canvasText);
+    expect(forcedColors.trackBorderStyle).toBe("solid");
+    expect(forcedColors.trackBorderWidth).toBe("1px");
   });
 });
 
@@ -1459,7 +1486,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await keyboardFocus.evaluate((trigger) => (trigger as HTMLElement).blur());
     await expect(page.locator(":focus-visible")).toHaveCount(0);
 
-    await settleTranscriptAtEnd(page);
+    await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-forced-colors.png");
     await openScenario(page, "agent-dual", "agent");
     await expectFocusedChatIndicator(page, true);

@@ -228,14 +228,14 @@ describe("Composer surface stylesheet seam", () => {
     );
   });
 
-  it("keeps the dark composer focus border and a system forced-colors edge", async () => {
+  it("retains the shared composer keyboard focus edge and halo with system forced colors", async () => {
     const surfaceCss = await composerRules();
     const globalCss = await readFile(resolve("src/styles/global.css"), "utf8");
 
     expect(surfaceCss).toMatch(
-      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--composer-focus-border\);[^}]*box-shadow:\s*var\(--composer-shadow\);/s,
+      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--highlight-focus-edge\);[^}]*box-shadow:\s*var\(--highlight-focus-halo-shadow\),\s*var\(--elevation-popover\);/s,
     );
-    expect(globalCss).toMatch(/--composer-focus-border:\s*#505050;/);
+    expect(globalCss).toMatch(/--highlight-focus-edge:\s*color-mix\(/);
     expect(surfaceCss).not.toMatch(
       /\.composer:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
     );
