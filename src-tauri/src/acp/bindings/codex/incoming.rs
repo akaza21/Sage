@@ -13,9 +13,7 @@ use super::{
 };
 
 pub(super) mod support;
-use support::{
-    capability, content, error_payload, identity, parse_models, permission, text, unsupported,
-};
+use support::{capability, error_payload, identity, permission, text, unsupported};
 pub(in crate::acp::bindings::codex) use support::{command_output_token, sanitize, validate_shape};
 
 mod items;
@@ -40,6 +38,10 @@ use notifications::notification;
 mod response;
 use response::{browser_mcp_unavailable, response};
 
+mod model_catalog;
+use model_catalog::parse_models;
+pub(in crate::acp::bindings::codex) use model_catalog::parse_reasoning_efforts;
+
 pub(crate) trait ResourceMapper {
     fn map_existing(
         &self,
@@ -55,7 +57,28 @@ pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
     "Codex emitted a message Sage does not project";
 
 pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
-    tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+    use tracing::callsite::Callsite;
+    if tracing::Level::WARN > tracing::level_filters::STATIC_MAX_LEVEL {
+        return;
+    }
+    let callsite = tracing::callsite! {
+        name: "codex.unprojected",
+        kind: tracing::metadata::Kind::EVENT,
+        target: module_path!(),
+        level: tracing::Level::WARN,
+        fields: message, codex_method
+    };
+    let metadata = callsite.metadata();
+    tracing::dispatcher::get_default(|dispatcher| {
+        if !dispatcher.enabled(metadata) {
+            return;
+        }
+        let message = tracing::field::display(UNPROJECTED_DIAGNOSTIC);
+        let method = tracing::field::display(sanitize(method));
+        let values: [Option<&dyn tracing::field::Value>; 2] = [Some(&message), Some(&method)];
+        let fields = metadata.fields().value_set_all(&values);
+        dispatcher.event(&tracing::Event::new(metadata, &fields));
+    });
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +86,14 @@ pub(crate) struct ModelDescriptor {
     pub(crate) id: RequiredText<512>,
     pub(crate) name: RequiredText<512>,
     pub(crate) is_default: bool,
+    pub(crate) default_effort: Option<RequiredText<512>>,
+    pub(crate) supported_efforts: Vec<ReasoningEffort>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReasoningEffort {
+    pub(crate) id: RequiredText<512>,
+    pub(crate) description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +111,8 @@ pub(crate) enum IncomingEvent {
     },
     SessionReady {
         id: ScopedExternalId,
+        current_model: Option<RequiredText<512>>,
+        current_effort: Option<RequiredText<512>>,
     },
     SessionLoaded {
         id: ScopedExternalId,

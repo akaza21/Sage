@@ -29,48 +29,54 @@ export function harnessPickerCandidates(
   modelLabel: string,
   effortLabel: string | null,
 ): SearchablePickerOption[] {
-  return harnesses.map((harness) => {
-    const icon = harnessIconKind(harness.name);
-    const availability = harnessAvailability(harness);
-    const name = harness.name;
-    const catalog =
-      harness.id === selectedHarnessId
-        ? models
-        : (cachedHarnessModels(harnessModelIdentity(harness)) ?? []);
-    const current =
-      catalog.find(
-        (model) =>
-          model.id ===
-          (harness.id === selectedHarnessId ? selectedModelId : null),
-      ) ??
-      catalog.find((model) => model.isDefault) ??
-      catalog[0];
-    const detail =
-      harness.id === selectedHarnessId && modelLabel !== "Model"
-        ? `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-        : (current?.name ?? "Default model");
-    const status = harness.versionChecking
-      ? "version checking…"
-      : harness.source === "development"
-        ? "test only"
-        : availability.label;
-    const statusLine = ` — ${status}`;
-    const showStatus =
-      harness.installState !== "available" ||
-      harness.versionChecking ||
-      harness.characterisation === "uncharacterised" ||
-      harness.source === "development";
-    return {
-      id: harness.id,
-      icon,
-      logo: `/harness-${icon ?? "generic"}.svg`,
-      label: name,
-      triggerLabel: harness.name,
-      secondaryLabel: showStatus ? statusLine : detail,
-      accessibleLabel: `${name}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
-      disabledReason: availability.disabledReason,
-    };
-  });
+  return [...harnesses]
+    .sort(
+      (left, right) =>
+        Number(Boolean(harnessAvailability(left).disabledReason)) -
+        Number(Boolean(harnessAvailability(right).disabledReason)),
+    )
+    .map((harness) => {
+      const icon = harnessIconKind(harness.name);
+      const availability = harnessAvailability(harness);
+      const name = harness.name;
+      const catalog =
+        harness.id === selectedHarnessId
+          ? models
+          : (cachedHarnessModels(harnessModelIdentity(harness)) ?? []);
+      const current =
+        catalog.find(
+          (model) =>
+            model.id ===
+            (harness.id === selectedHarnessId ? selectedModelId : null),
+        ) ??
+        catalog.find((model) => model.isDefault) ??
+        catalog[0];
+      const detail =
+        harness.id === selectedHarnessId && modelLabel !== "Model"
+          ? `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+          : (current?.name ?? "Default model");
+      const status = harness.versionChecking
+        ? "version checking…"
+        : harness.source === "development"
+          ? "test only"
+          : availability.label;
+      const statusLine = ` — ${status}`;
+      const showStatus =
+        harness.installState !== "available" ||
+        harness.versionChecking ||
+        harness.characterisation === "uncharacterised" ||
+        harness.source === "development";
+      return {
+        id: harness.id,
+        icon,
+        logo: `/harness-${icon ?? "generic"}.svg`,
+        label: name,
+        triggerLabel: harness.name,
+        secondaryLabel: showStatus ? statusLine : detail,
+        accessibleLabel: `${name}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
+        disabledReason: availability.disabledReason,
+      };
+    });
 }
 
 export function useComposerPopovers(disabled = false) {

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import "../../styles/composer-context.css";
 
 import type { ChatUsage } from "./acp/chatUsage";
 
@@ -28,6 +29,7 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
   const progress = Math.min(Math.max(total, 0), capacity);
   const formattedCapacity = capacity.toLocaleString();
   const fill = `${(progress / capacity) * 100}%`;
+  const tooltip = `${Math.round(total / 1_000)}k / ${Math.round(capacity / 1_000)}k tokens · ${Math.round((total / capacity) * 100)}%`;
   return (
     <span className="composer__context-item composer__context-item--usage">
       <span className="composer__context-usage-label">
@@ -35,7 +37,7 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
       </span>
       <span
         className="composer__context-usage"
-        title={`${formattedTotal} used / ${formattedCapacity} total tokens`}
+        title={tooltip}
         role="progressbar"
         aria-label={`${formattedTotal} used / ${formattedCapacity} total tokens`}
         tabIndex={0}
@@ -44,9 +46,7 @@ function UsageContext({ usage }: { usage: UsagePayload }) {
         aria-valuenow={progress}
         aria-valuetext={`${formattedTotal} / ${formattedCapacity} tokens used`}
         style={{ "--composer-context-usage": fill } as UsageStyle}
-      >
-        <span className="composer__context-usage-fill" aria-hidden="true" />
-      </span>
+      />
     </span>
   );
 }

@@ -39,8 +39,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 }
             }
             if let Some(current) = frame {
-                validate_structure(&current).map_err(|_| AdapterPumpError::Frame)?;
-                match self.adapter.ingest(&current, &self.resources) {
+                let batch = if validate_structure(&current).is_err() {
+                    self.adapter.discard_invalid_response(&current)
+                } else {
+                    self.adapter.ingest(&current, &self.resources)
+                };
+                match batch {
                     Ok(batch) => {
                         let (events, egress) = batch.into_parts();
                         if !egress.is_empty() {
@@ -146,11 +150,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         let Ok(egress) = self.adapter.command(AdapterCommand::CloseSession) else {
             return;
         };
-        let resolution = match transport.write(egress.frame()) {
-            FrameWriteOutcome::Complete => EgressResolution::Written,
-            FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
-            FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
-        };
+        let resolution = EgressResolution::from(transport.write(egress.frame()));
         let _ = self.adapter.resolve_egress(egress.into_token(), resolution);
     }
 

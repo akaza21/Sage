@@ -26,6 +26,8 @@ mod snapshots;
 use snapshots::ItemSnapshots;
 
 mod harness;
+mod ingress;
+mod model_config;
 
 mod factory;
 pub(crate) use factory::CodexRuntimeFactory;
@@ -41,6 +43,17 @@ pub(crate) struct CodexRuntime {
     pending_browser_failure_details: Vec<(String, String, usize)>,
     browser_failure_warning_logged: bool,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
+    selected_model_id: Option<crate::acp::intent::ModelId>,
+    selected_model: Option<super::incoming::ModelDescriptor>,
+    session_is_resume: bool,
+    selected_effort: Option<crate::acp::contract::RequiredText<512>>,
+    model_list_requested: bool,
+    model_catalog_idle_only: bool,
+    model_catalog_entries: usize,
+    model_catalog_bytes: usize,
+    next_model_cursor: Option<crate::acp::intent::PageCursor>,
+    model_pages_seen: u64,
+    session_config: Option<crate::acp::session_config::SessionConfig>,
 }
 
 impl CodexRuntime {
@@ -154,9 +167,24 @@ impl CodexRuntime {
                     )),
                 )
             }
-            IncomingEvent::SessionReady { id } => (
+            IncomingEvent::SessionReady {
+                id,
+                current_model,
+                current_effort,
+            } => (
                 {
                     self.snapshots.clear();
+                    if let Some(model) = current_model {
+                        if self.selected_model_id.as_ref() != Some(&model) {
+                            self.selected_model = None;
+                            self.session_config = None;
+                        }
+                        self.selected_model_id = Some(model);
+                    }
+                    if current_effort.is_some() {
+                        self.selected_effort = current_effort;
+                        self.refresh_model_config();
+                    }
                     AdapterEvent::SessionReady {
                         id: identity(id),
                         loaded: false,
@@ -177,7 +205,7 @@ impl CodexRuntime {
             IncomingEvent::Models {
                 models,
                 next_cursor,
-            } => (model_event(models, next_cursor)?, None),
+            } => self.apply_model_page(models, next_cursor),
             IncomingEvent::Turn { id, state } => (
                 {
                     if state.is_terminal() {

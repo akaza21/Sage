@@ -91,6 +91,17 @@ impl CodexRuntime {
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,
             native_rpc_reply: None,
+            selected_model_id: None,
+            selected_model: None,
+            session_is_resume: false,
+            selected_effort: None,
+            model_list_requested: false,
+            model_catalog_idle_only: false,
+            model_catalog_entries: 0,
+            model_catalog_bytes: 0,
+            next_model_cursor: None,
+            model_pages_seen: 0,
+            session_config: None,
         }
     }
 
@@ -132,6 +143,17 @@ impl CodexRuntime {
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,
             native_rpc_reply: None,
+            selected_model_id: None,
+            selected_model: None,
+            session_is_resume: false,
+            selected_effort: None,
+            model_list_requested: false,
+            model_catalog_idle_only: false,
+            model_catalog_entries: 0,
+            model_catalog_bytes: 0,
+            next_model_cursor: None,
+            model_pages_seen: 0,
+            session_config: None,
         };
         runtime.launch_authority = RuntimeLaunchAuthority::admitted(binding, project_root)?;
         Ok(runtime)

@@ -70,6 +70,18 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn discard_invalid_response(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.0.discard_invalid_response(frame)
+    }
+    fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.0.model_config_hydration()
+    }
+    fn finish_model_config_hydration(&mut self) {
+        self.0.finish_model_config_hydration();
+    }
     fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let egress = self.0.goal_get();
         self.publish_goal();
@@ -101,7 +113,7 @@ impl HarnessAdapter for NativeRuntime {
     fn configure(
         &mut self,
         intent: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let (owner, channel) = self.1.as_ref().ok_or(AdapterRuntimeError::Operation)?;
         if owner != &intent.owner {
             return Err(AdapterRuntimeError::Operation);
@@ -109,7 +121,11 @@ impl HarnessAdapter for NativeRuntime {
         channel
             .validate(intent)
             .map_err(|_| AdapterRuntimeError::Operation)?;
-        self.0.configure(intent)
+        let egress = self.0.configure(intent)?;
+        if egress.is_none() {
+            self.publish_config()?;
+        }
+        Ok(egress)
     }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.0.capabilities()
@@ -132,16 +148,7 @@ impl HarnessAdapter for NativeRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let batch = self.0.ingest(frame, resources)?;
-        if let Some((owner, channel)) = &self.1 {
-            match self.0.session_config() {
-                Some(config) => channel
-                    .update(owner, config)
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-                None => channel
-                    .remove(owner)
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-            }
-        }
+        self.publish_config()?;
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()
         {
@@ -166,6 +173,17 @@ impl HarnessAdapter for NativeRuntime {
 }
 
 impl NativeRuntime {
+    fn publish_config(&self) -> Result<(), AdapterRuntimeError> {
+        if let Some((owner, channel)) = &self.1 {
+            match self.0.session_config() {
+                Some(config) => channel.update(owner, config),
+                None => channel.remove(owner),
+            }
+            .map_err(|_| AdapterRuntimeError::Frame)?;
+        }
+        Ok(())
+    }
+
     fn publish_goal(&self) {
         if let Some((owner, channel)) = &self.2
             && let Some(goal) = self.0.goal_state()

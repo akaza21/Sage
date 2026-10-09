@@ -20,7 +20,6 @@ use super::types::{
 };
 
 const MODEL_PAGE_SIZE: u32 = 32;
-const MODEL_PAGE_LIMIT: usize = 4;
 const MODEL_LIMIT: usize = 128;
 const MODEL_RETAINED_BYTES: usize = 131_072;
 
@@ -226,12 +225,8 @@ impl CodexDiscoveryProtocol {
     }
 
     pub(crate) fn model_request(&mut self) -> Result<DiscoveryRequest, CodexDiscoveryError> {
-        if self.pages >= MODEL_PAGE_LIMIT {
-            return Err(if self.pages >= MODEL_PAGE_LIMIT {
-                CodexDiscoveryError::PageLimit
-            } else {
-                CodexDiscoveryError::Protocol
-            });
+        if self.pages >= crate::acp::limits::LIMITS.codex.model_catalog_pages as usize {
+            return Err(CodexDiscoveryError::PageLimit);
         }
         let account_pending = match self.phase {
             Phase::AccountReady => None,
@@ -329,7 +324,7 @@ impl CodexDiscoveryProtocol {
             {
                 return Err(CodexDiscoveryError::CursorLoop);
             }
-            if self.pages + 1 == MODEL_PAGE_LIMIT {
+            if self.pages + 1 == crate::acp::limits::LIMITS.codex.model_catalog_pages as usize {
                 return Err(CodexDiscoveryError::PageLimit);
             }
         }

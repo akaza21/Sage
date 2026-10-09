@@ -38,6 +38,13 @@
   line-height: 1.2;
 }
 
+.composer__harness .searchable-picker__trigger-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer__harness .searchable-picker__trigger-label small,
 .composer__harness-menu .searchable-picker__option-copy small {
   overflow: hidden;
@@ -58,6 +65,8 @@
   flex-direction: column;
   width: min(232px, calc(100vw - 32px));
   border-radius: var(--radius-composer-menu);
+  background: var(--color-plane-raised);
+  backdrop-filter: none;
 }
 
 .composer__harness-menu .searchable-picker__input,
@@ -72,17 +81,12 @@
   clip-path: inset(50%);
 }
 
-.composer__harness-menu:focus-within [role="listbox"] {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
-}
-
 .composer__harness-menu .searchable-picker__option {
   min-height: 48px;
   grid-template-columns: 20px minmax(0, 1fr) 16px;
   gap: 8px;
   padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .composer__harness-menu .searchable-picker__option:hover,

@@ -83,6 +83,7 @@ mod tests {
             &RequiredText::new("client", "client-ask").unwrap(),
             SessionAccessMode::Ask,
             TurnPolicySurface::Supported0146,
+            None,
         )
         .unwrap();
         let wire: Value = serde_json::from_slice(&request.bytes).unwrap();

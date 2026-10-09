@@ -64,6 +64,7 @@ fn idle_mode_update_changes_state_but_set_mode_ack_never_echoes() {
         .configure(&intent(ConfigMutation::Mode(
             ConfigId::new("mode", "code").unwrap(),
         )))
+        .unwrap()
         .unwrap();
     let id = request_id(&egress);
     let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -115,7 +116,7 @@ fn config_request_validates_and_complete_response_replaces_atomically() {
         })
     };
     assert!(runtime.configure(&mutation("missing")).is_err());
-    let egress = runtime.configure(&mutation("high")).unwrap();
+    let egress = runtime.configure(&mutation("high")).unwrap().unwrap();
     let id = request_id(&egress);
     let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
     assert_eq!(
@@ -134,6 +135,7 @@ fn config_request_validates_and_complete_response_replaces_atomically() {
             config_id: ConfigId::new("id", "flag").unwrap(),
             value: ConfigValue::Boolean { value: true },
         }))
+        .unwrap()
         .unwrap();
     let boolean_wire: Value = serde_json::from_slice(boolean.frame().payload()).unwrap();
     assert_eq!(
@@ -154,6 +156,7 @@ fn rejected_config_mutations_are_typed_nonfatal_and_preserve_authority() {
         .configure(&intent(ConfigMutation::Mode(
             ConfigId::new("mode", "code").unwrap(),
         )))
+        .unwrap()
         .unwrap();
     let mode_id = request_id(&mode);
     mode_runtime
@@ -189,6 +192,7 @@ fn rejected_config_mutations_are_typed_nonfatal_and_preserve_authority() {
                 value: ConfigId::new("value", "high").unwrap(),
             },
         }))
+        .unwrap()
         .unwrap();
     let option_id = request_id(&option);
     option_runtime
@@ -216,6 +220,7 @@ fn malformed_config_error_response_remains_fatal() {
             .configure(&intent(ConfigMutation::Mode(
                 ConfigId::new("mode", "code").unwrap(),
             )))
+            .unwrap()
             .unwrap();
         let id = request_id(&egress);
         runtime

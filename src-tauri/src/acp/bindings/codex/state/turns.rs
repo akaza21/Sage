@@ -76,27 +76,18 @@ impl CodexAdapter {
         Ok(self.scoped(ExternalKind::Session, id))
     }
 
-    pub(crate) fn accept_thread_started(
-        &mut self,
-        value: &str,
-    ) -> Result<Option<ScopedExternalId>, AdapterError> {
+    pub(crate) fn accept_thread_started(&mut self, value: &str) -> Result<(), AdapterError> {
         let mut pending = self.pending.iter().filter_map(|(id, kind)| {
             matches!(kind, RequestKind::Start | RequestKind::Resume).then_some(*id)
         });
-        let Some(request_id) = pending.next() else {
-            self.expect_thread(value)?;
-            return Ok(None);
+        let Some(_) = pending.next() else {
+            return self.expect_thread(value);
         };
         if pending.next().is_some() {
             return Err(AdapterError::ForeignRequest);
         }
-        let session = self.bind_thread(value)?;
-        let removed = self.remove_pending(request_id);
-        debug_assert!(matches!(
-            removed,
-            Some(RequestKind::Start | RequestKind::Resume)
-        ));
-        Ok(Some(session))
+        self.bind_thread(value)?;
+        Ok(())
     }
 
     pub(crate) fn expect_thread(&self, value: &str) -> Result<(), AdapterError> {

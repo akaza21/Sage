@@ -64,6 +64,7 @@ export function MenuPopover({
   initialFocus = "first",
   keepMounted = false,
   matchTriggerWidth = false,
+  gap = POPOVER_GAP,
   onDismiss,
   open,
   portalTarget = "document",
@@ -80,6 +81,7 @@ export function MenuPopover({
   initialFocus?: InitialFocus;
   keepMounted?: boolean;
   matchTriggerWidth?: boolean;
+  gap?: number;
   onDismiss: (reason: MenuDismissReason) => void;
   open: boolean;
   portalTarget?: PortalTarget;
@@ -114,9 +116,9 @@ export function MenuPopover({
       const roomAbove = anchor.top - VIEWPORT_GUTTER;
       const placeAbove = surface.height > roomBelow && roomAbove > roomBelow;
       const top = placeAbove
-        ? Math.max(VIEWPORT_GUTTER, anchor.top - surface.height - POPOVER_GAP)
+        ? Math.max(VIEWPORT_GUTTER, anchor.top - surface.height - gap)
         : Math.min(
-            anchor.bottom + POPOVER_GAP,
+            anchor.bottom + gap,
             window.innerHeight - surface.height - VIEWPORT_GUTTER,
           );
       const preferredLeft = anchor.right - width;
@@ -146,7 +148,7 @@ export function MenuPopover({
       window.removeEventListener("scroll", updatePosition, true);
       resizeObserver?.disconnect();
     };
-  }, [focusKey, matchTriggerWidth, open, portalRoot, triggerRef]);
+  }, [focusKey, gap, matchTriggerWidth, open, portalRoot, triggerRef]);
 
   useLayoutEffect(() => {
     if (!open) return;

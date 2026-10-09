@@ -3,12 +3,11 @@ use super::{
     normalize::{control_critical, validate_batch, validate_deny_pairs},
     *,
 };
-use crate::acp::redaction::sanitize_diagnostic_text;
 use crate::acp::runtime::terminal_detail;
 
 mod shape;
 mod teardown;
-use shape::{IngestMode, opens_json_container};
+use shape::IngestMode;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     pub(crate) async fn push_stdout_chunk(
@@ -89,6 +88,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         };
         self.enforce_provisional_deadline(now_millis)?;
         if validate_structure(&frame).is_err() {
+            if let Ok(batch) = self.adapter.discard_invalid_response(&frame) {
+                self.accept_batch(batch, now_millis, IngestMode::Deferred)
+                    .await?;
+                return Ok(true);
+            }
             return self.fail_deferred_frame().await;
         }
         match self.adapter.ingest(&frame, &self.resources) {
@@ -238,6 +242,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             if self.skip_stdout_preamble(&frame) {
                 return Ok(false);
             }
+            if let Ok(batch) = self.adapter.discard_invalid_response(&frame) {
+                self.accept_batch(batch, now_millis, mode).await?;
+                return Ok(true);
+            }
             return match mode {
                 IngestMode::Immediate => self.latch_frame(),
                 IngestMode::Deferred => self.fail_deferred_frame().await,
@@ -290,33 +298,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         };
         self.accept_batch(batch, now_millis, mode).await?;
         Ok(true)
-    }
-
-    fn skip_stdout_preamble(&mut self, frame: &Frame) -> bool {
-        let Some(mut window) = self.stdout_preamble else {
-            return false;
-        };
-        if opens_json_container(frame) {
-            self.stdout_preamble = None;
-            return false;
-        }
-        window.lines += 1;
-        window.bytes = window.bytes.saturating_add(frame.len());
-        if window.lines > STDOUT_PREAMBLE_MAX_LINES || window.bytes > STDOUT_PREAMBLE_MAX_BYTES {
-            self.stdout_preamble = None;
-            return false;
-        }
-        self.stdout_preamble = Some(window);
-        tracing::warn!(
-            activation_checkpoint = "adapter_pump.stdout.preamble_skipped",
-            preamble_lines = window.lines,
-            preamble_bytes = window.bytes,
-            preamble_max_lines = STDOUT_PREAMBLE_MAX_LINES,
-            preamble_max_bytes = STDOUT_PREAMBLE_MAX_BYTES,
-            preamble_line = %sanitize_diagnostic_text(&String::from_utf8_lossy(frame.as_bytes())),
-            "ACP adapter pump skipped non-protocol stdout preamble before the first frame"
-        );
-        true
     }
 
     async fn accept_batch(

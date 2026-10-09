@@ -70,6 +70,27 @@ fn advance_to_account(protocol: &mut CodexDiscoveryProtocol) -> u64 {
 }
 
 #[test]
+fn discovery_model_efforts_keep_strict_fields_and_collection_limit() {
+    for efforts in [
+        json!([{"reasoningEffort":"high","description":"Deep","extra":true}]),
+        json!([{"reasoningEffort":"high","description":"Deep\0"}]),
+        json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
+    ] {
+        let mut protocol = protocol();
+        let account_id = advance_to_account(&mut protocol);
+        protocol.accept_account(&frame(json!({"id":account_id,"result":{
+            "account":{"type":"chatgpt","email":null,"planType":"plus"},"requiresOpenaiAuth":true
+        }}))).unwrap();
+        let request = protocol.model_request().unwrap();
+        let mut entry = model("model", "Model", true);
+        entry["supportedReasoningEfforts"] = efforts;
+        assert_eq!(protocol.accept_model_page(&frame(json!({"id":request.id(),"result":{
+            "data":[entry],"nextCursor":null
+        }}))).unwrap_err(), CodexDiscoveryError::ModelCatalog);
+    }
+}
+
+#[test]
 fn discovery_requests_follow_the_pinned_handshake_and_page_32_contract() {
     let mut protocol = protocol();
     let initialize = protocol.initialize_request().unwrap();

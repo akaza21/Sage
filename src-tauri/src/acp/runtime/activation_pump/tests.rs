@@ -12,6 +12,9 @@ use crate::acp::{
 
 use super::*;
 
+#[path = "tests/model_catalog.rs"]
+mod model_catalog;
+
 struct FakeAdapter {
     capabilities: CapabilitySnapshotV1,
     batches: VecDeque<AdapterBatch>,

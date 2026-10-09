@@ -1,7 +1,7 @@
 use super::{CodexRuntime, IncomingEvent, IngressDisposition};
 
 impl CodexRuntime {
-    pub(super) fn record_browser_failure_diagnostic(
+    pub(in crate::acp::bindings::codex::runtime) fn record_browser_failure_diagnostic(
         &mut self,
         disposition: &IngressDisposition,
         frame: &[u8],

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::acp::{
-    bindings::adapter::{AdapterEvent, HarnessAdapter, ResourceMapper},
+    bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{
         ActiveDispatch, ActiveTurnIntent, AdapterPump, AdapterPumpError,
         CoordinatorActivationHandoff, CoordinatorActivationJournal, IdleActivationParts,
@@ -40,9 +40,8 @@ impl<A, J, R, T, C> CompletedActivationDriverParts<A, J, R, T, C>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
+    T: StdinTransport,
 {
-    /// Accepts only validated, explicitly ignorable frames that arrive after
-    /// activation hands its ready session to the idle live worker.
     pub(crate) fn accept_idle_stdout_chunk(
         &mut self,
         chunk: &[u8],
@@ -68,26 +67,20 @@ where
             }
             if let Some(frame) = frame {
                 if validate_structure(&frame).is_err() {
-                    log_idle_frame_rejection(&frame, "invalid-structure");
-                    return Err(AdapterPumpError::Frame);
-                }
-                if !is_available_commands_update(
+                    let batch = self.parts.discard_invalid_response(&frame).map_err(|_| {
+                        log_idle_frame_rejection(&frame, "invalid-structure");
+                        AdapterPumpError::Frame
+                    })?;
+                    self.parts.accept_idle_batch(batch, &mut self.transport)?;
+                } else if !is_available_commands_update(
                     &frame,
                     self.parts.session().external_session_id.as_str(),
                 ) {
                     match self.parts.ingest_idle_frame(&frame) {
                         Ok(batch) => {
-                            let (events, egress) = batch.into_parts();
-                            if !egress.is_empty()
-                                || !events.iter().all(|event| {
-                                    matches!(
-                                        event,
-                                        AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate
-                                    )
-                                })
-                            {
+                            if let Err(error) = self.parts.accept_idle_batch(batch, &mut self.transport) {
                                 log_idle_frame_rejection(&frame, "non-ignorable-event");
-                                return Err(AdapterPumpError::Frame);
+                                return Err(error);
                             }
                         }
                         Err(
@@ -95,6 +88,10 @@ where
                         ) => {
                             nonfatal_refusal =
                                 Some(crate::acp::runtime::NonfatalRefusal::ConfigMutation);
+                        }
+                        Err(crate::acp::bindings::adapter::AdapterRuntimeError::BatchBytes
+                            | crate::acp::bindings::adapter::AdapterRuntimeError::BatchCount) => {
+                            return Err(AdapterPumpError::BatchCapacity);
                         }
                         Err(_) => {
                             log_idle_frame_rejection(&frame, "adapter-rejected");

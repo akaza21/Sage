@@ -234,6 +234,7 @@ impl OutgoingRequest {
             client_message_id,
             crate::settings_store::SessionAccessMode::ReadOnly,
             TurnPolicySurface::Unsupported,
+            None,
         )
     }
 
@@ -244,23 +245,24 @@ impl OutgoingRequest {
         client_message_id: &RequiredText<512>,
         access_mode: crate::settings_store::SessionAccessMode,
         surface: TurnPolicySurface,
+        effort: Option<&RequiredText<512>>,
     ) -> Result<Self, RequestError> {
         let policy = turn_policy(surface, access_mode)?;
         validate_turn_policy(surface, access_mode, policy)?;
-        Self::build(
-            id,
-            RequestKind::TurnStart,
-            json!({
-                "threadId": thread_id.as_str(),
-                "clientUserMessageId": client_message_id.as_str(),
-                "input": [{"type": "text", "text": prompt.as_str()}],
-                "approvalPolicy": policy.approval,
-                "sandboxPolicy": {
-                    "type": policy.sandbox,
-                    "networkAccess": policy.network_access
-                }
-            }),
-        )
+        let mut params = json!({
+            "threadId": thread_id.as_str(),
+            "clientUserMessageId": client_message_id.as_str(),
+            "input": [{"type": "text", "text": prompt.as_str()}],
+            "approvalPolicy": policy.approval,
+            "sandboxPolicy": {
+                "type": policy.sandbox,
+                "networkAccess": policy.network_access
+            }
+        });
+        if let Some(effort) = effort {
+            params["effort"] = json!(effort.as_str());
+        }
+        Self::build(id, RequestKind::TurnStart, params)
     }
 
     pub(crate) fn interrupt(

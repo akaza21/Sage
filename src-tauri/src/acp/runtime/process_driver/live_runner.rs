@@ -168,6 +168,7 @@ where
             }
         };
     if let FirstTurnWorkerState::Idle(parts) = &mut initial {
+        parts.parts.hydrate_model_config(&mut parts.transport);
         parts.parts.hydrate_goal(&mut parts.transport);
     }
     if ready.send(Ok(())).is_err() {

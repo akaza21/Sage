@@ -292,12 +292,12 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             return Err(Box::new((self, ActivationPumpError::NotQuiescent)));
         }
         let session = self.ready.take().expect("completion readiness checked");
-        Ok(IdleActivationParts {
-            adapter: self.adapter,
-            journal: self.journal,
-            resources: self.resources,
+        Ok(IdleActivationParts::new(
+            self.adapter,
+            self.journal,
+            self.resources,
             session,
-        })
+        ))
     }
 
     pub(crate) fn try_into_recovery_parts(

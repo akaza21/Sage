@@ -147,21 +147,12 @@ pub(super) fn parse_model(value: &Value) -> Result<CodexModelSnapshot, CodexDisc
     validate_upgrade_info(model.get("upgradeInfo"))?;
     validate_availability_nux(model.get("availabilityNux"))?;
     model_text(model, "defaultReasoningEffort", 512)?;
-    let efforts = model
-        .get("supportedReasoningEfforts")
-        .and_then(Value::as_array)
-        .filter(|efforts| efforts.len() <= 32)
-        .ok_or(CodexDiscoveryError::ModelCatalog)?;
-    for effort in efforts {
-        let effort = effort
-            .as_object()
-            .ok_or(CodexDiscoveryError::ModelCatalog)?;
-        if effort.len() != 2 {
-            return Err(CodexDiscoveryError::ModelCatalog);
-        }
-        model_text(effort, "reasoningEffort", 512)?;
-        model_text(effort, "description", 8_192)?;
-    }
+    crate::acp::bindings::codex::incoming::parse_reasoning_efforts(
+        model
+            .get("supportedReasoningEfforts")
+            .ok_or(CodexDiscoveryError::ModelCatalog)?,
+    )
+    .map_err(|_| CodexDiscoveryError::ModelCatalog)?;
     validate_input_modalities(model.get("inputModalities"))?;
     bounded_text_array(model.get("additionalSpeedTiers"), 32, 512)?;
     validate_service_tiers(model.get("serviceTiers"))?;

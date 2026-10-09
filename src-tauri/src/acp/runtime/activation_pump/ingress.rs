@@ -39,16 +39,11 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         };
         let outcome = transport.write(egress.frame());
         let token = egress.into_token();
-        let (resolution, disposition) = match outcome {
-            FrameWriteOutcome::Complete => (EgressResolution::Written, ActivationFlush::Written),
-            FrameWriteOutcome::ZeroByteFailure => (
-                EgressResolution::WriteZeroBytes,
-                ActivationFlush::RetriedZeroBytes,
-            ),
-            FrameWriteOutcome::DeliveryUnknown { .. } => (
-                EgressResolution::DeliveryUnknown,
-                ActivationFlush::DeliveryUnknown,
-            ),
+        let resolution = EgressResolution::from(outcome);
+        let disposition = match outcome {
+            FrameWriteOutcome::Complete => ActivationFlush::Written,
+            FrameWriteOutcome::ZeroByteFailure => ActivationFlush::RetriedZeroBytes,
+            FrameWriteOutcome::DeliveryUnknown { .. } => ActivationFlush::DeliveryUnknown,
         };
         if self.adapter.resolve_egress(token, resolution).is_err() {
             self.fail_closed();
@@ -125,20 +120,22 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         now_millis: i64,
     ) -> Result<bool, ActivationPumpError> {
         let Some(frame) = frame else { return Ok(false) };
-        if validate_structure(&frame).is_err() {
-            self.fail_closed();
-            return Err(ActivationPumpError::Frame);
-        }
-        if self.is_ready_handoff_available_commands_update(&frame) {
-            return Ok(true);
-        }
-        let batch = self
-            .adapter
-            .ingest(&frame, &self.resources)
-            .map_err(|error| {
+        let batch = if validate_structure(&frame).is_err() {
+            self.adapter.discard_invalid_response(&frame).map_err(|_| {
                 self.fail_closed();
-                ActivationPumpError::Adapter(error)
-            })?;
+                ActivationPumpError::Frame
+            })?
+        } else {
+            if self.is_ready_handoff_available_commands_update(&frame) {
+                return Ok(true);
+            }
+            self.adapter
+                .ingest(&frame, &self.resources)
+                .map_err(|error| {
+                    self.fail_closed();
+                    ActivationPumpError::Adapter(error)
+                })?
+        };
         match self.accept_batch(batch, now_millis).await {
             Ok(()) => Ok(true),
             Err(error) => {

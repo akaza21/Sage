@@ -3,14 +3,14 @@ import {
   useCallback,
   useId,
   useLayoutEffect,
-  memo,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import { Check, ChevronDown } from "./leanIcons";
+import { ChevronDown } from "./leanIcons";
+import { PickerOption } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -33,79 +33,6 @@ export interface SearchablePickerOption {
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
 
-const PickerOption = memo(function PickerOption({
-  active,
-  candidate,
-  id,
-  onSelect,
-  onActivate,
-  onOptionElement,
-  onRender,
-  selected,
-}: {
-  active: boolean;
-  candidate: SearchablePickerOption;
-  id: string;
-  onActivate: (id: string) => void;
-  onOptionElement: (id: string, element: HTMLButtonElement | null) => void;
-  onRender?: (id: string) => void;
-  onSelect: (id: string) => void;
-  selected: boolean;
-}) {
-  onRender?.(candidate.id);
-  const disabled = Boolean(candidate.disabledReason);
-  const logo =
-    candidate.logo ??
-    (candidate.icon ? `/harness-${candidate.icon}.svg` : null);
-  return (
-    <button
-      ref={(element) => onOptionElement(candidate.id, element)}
-      id={id}
-      type="button"
-      role="option"
-      aria-label={candidate.accessibleLabel}
-      title={candidate.disabledReason}
-      className="searchable-picker__option menu-item"
-      aria-disabled={disabled || undefined}
-      aria-describedby={disabled ? `${id}-reason` : undefined}
-      aria-selected={selected}
-      data-option-id={candidate.id}
-      data-active={active || undefined}
-      disabled={disabled}
-      tabIndex={-1}
-      onMouseMove={() => !disabled && onActivate(candidate.id)}
-      onClick={() => !disabled && onSelect(candidate.id)}
-    >
-      {logo ? (
-        <img
-          src={logo}
-          alt=""
-          aria-hidden="true"
-          data-harness-icon={candidate.icon ?? "generic"}
-        />
-      ) : null}
-      <span className="searchable-picker__option-copy">
-        <span>{candidate.label}</span>
-        {candidate.secondaryLabel ? (
-          <small>{candidate.secondaryLabel}</small>
-        ) : null}
-      </span>
-      {selected && logo ? (
-        <Check
-          className="searchable-picker__selected-check"
-          size={14}
-          aria-hidden="true"
-        />
-      ) : null}
-      {candidate.disabledReason ? (
-        <span id={`${id}-reason`} className="searchable-picker__reason">
-          {candidate.disabledReason}
-        </span>
-      ) : null}
-    </button>
-  );
-});
-
 function optionId(prefix: string, id: string) {
   return `${prefix}-option-${encodeURIComponent(id)}`;
 }
@@ -119,7 +46,9 @@ export function SearchablePicker({
   footer,
   onOptionRender,
   popoverClassName,
+  popoverGap,
   triggerClassName,
+  showTriggerSecondary = true,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -137,7 +66,9 @@ export function SearchablePicker({
   footer?: string;
   onOptionRender?: (id: string) => void;
   popoverClassName?: string;
+  popoverGap?: number;
   triggerClassName?: string;
+  showTriggerSecondary?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -318,7 +249,7 @@ export function SearchablePicker({
         ) : null}
         <span className="searchable-picker__trigger-label">
           {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
-          {selected?.secondaryLabel ? (
+          {showTriggerSecondary && selected?.secondaryLabel ? (
             <small>{selected.secondaryLabel}</small>
           ) : null}
         </span>
@@ -340,6 +271,7 @@ export function SearchablePicker({
         focusStrategy="none"
         id={`${id}-popover`}
         matchTriggerWidth
+        gap={popoverGap}
         onDismiss={close}
         open={open && !disabled}
         portalTarget={portalTarget}

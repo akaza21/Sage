@@ -8,6 +8,7 @@ mod goal;
 mod permission_resolution;
 mod permissions;
 mod provisional;
+mod session;
 mod turn_prompt;
 mod turn_starts;
 mod turns;
@@ -22,7 +23,7 @@ pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId, ModelId},
+    intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
     limits::LIMITS,
 };
@@ -30,7 +31,7 @@ use crate::acp::{
 use super::{
     incoming::{IngressDisposition, ResourceMapper, ingest},
     manifest::{CuratedCapabilityCeiling, Platform},
-    request::{NativeProjectRoot, OutgoingRequest, RequestKind, initialized_notification},
+    request::{OutgoingRequest, RequestKind},
 };
 
 const TERMINAL_ID_BYTES: usize = 128 * 1024;
@@ -192,91 +193,8 @@ impl CodexAdapter {
         self.runtime_epoch
     }
 
-    pub(crate) fn project_root(&self, value: String) -> Result<NativeProjectRoot, AdapterError> {
-        NativeProjectRoot::new(self.platform, value).map_err(AdapterError::Request)
-    }
-
-    pub(crate) fn initialize(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        if self.negotiated.is_some()
-            || self
-                .pending
-                .iter()
-                .any(|(_, kind)| *kind == RequestKind::Initialize)
-        {
-            return Err(AdapterError::AlreadyInitialized);
-        }
-        self.reserve(OutgoingRequest::initialize(id)?)
-    }
-
-    pub(crate) fn initialized(&self) -> Result<Vec<u8>, AdapterError> {
-        self.require_method(|_| true)?;
-        initialized_notification().map_err(AdapterError::Request)
-    }
-
-    pub(crate) fn start(
-        &mut self,
-        id: u64,
-        root: &NativeProjectRoot,
-        model: Option<&ModelId>,
-    ) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.new_session)?;
-        self.reserve(OutgoingRequest::start(id, root, model)?)
-    }
-
-    pub(crate) fn resume(
-        &mut self,
-        id: u64,
-        external_thread_id: &ExternalId,
-        root: &NativeProjectRoot,
-        model: Option<&ModelId>,
-    ) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.resume_session)?;
-        self.reserve(OutgoingRequest::resume(
-            id,
-            external_thread_id,
-            root,
-            model,
-        )?)
-    }
-
-    pub(crate) fn read(
-        &mut self,
-        id: u64,
-        external_thread_id: &ExternalId,
-    ) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.load_session)?;
-        self.reserve(OutgoingRequest::read(id, external_thread_id)?)
-    }
-
-    pub(crate) fn models(
-        &mut self,
-        id: u64,
-        cursor: Option<&RequiredText<512>>,
-    ) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.models)?;
-        self.reserve(OutgoingRequest::models(id, cursor)?)
-    }
-
-    pub(crate) fn cancel(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.cancel)?;
-        let thread = self
-            .external_thread_id
-            .clone()
-            .ok_or(AdapterError::SessionUnavailable)?;
-        let turn = self
-            .active_turn_id
-            .clone()
-            .ok_or(AdapterError::TurnUnavailable)?;
-        self.reserve(OutgoingRequest::interrupt(id, &thread, &turn)?)
-    }
-
-    pub(crate) fn close(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
-        self.require_method(|methods| methods.snapshot.close_session)?;
-        let thread = self
-            .external_thread_id
-            .clone()
-            .ok_or(AdapterError::SessionUnavailable)?;
-        self.reserve(OutgoingRequest::unsubscribe(id, &thread)?)
+    pub(crate) fn session_id(&self) -> &SageAgentSessionId {
+        &self.session_id
     }
 
     pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {

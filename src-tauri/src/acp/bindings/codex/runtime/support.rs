@@ -4,7 +4,7 @@ use crate::acp::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
         AdapterRuntimeError, EgressToken, ResourceMapper,
     },
-    intent::{ExternalId, PageCursor},
+    intent::ExternalId,
     limits::LIMITS,
     transport::OutboundFrame,
 };
@@ -100,10 +100,9 @@ pub(super) fn one(event: AdapterEvent) -> Result<AdapterBatch, AdapterRuntimeErr
     AdapterBatch::new(vec![event], Vec::new())
 }
 
-pub(super) fn model_event(
+pub(super) fn model_values(
     models: Vec<ModelDescriptor>,
-    next_cursor: Option<PageCursor>,
-) -> Result<AdapterEvent, AdapterRuntimeError> {
+) -> Result<Vec<AdapterModel>, AdapterRuntimeError> {
     if models.len() > LIMITS.wire.models_or_config_entries as usize {
         return Err(AdapterRuntimeError::BatchCount);
     }
@@ -127,10 +126,48 @@ pub(super) fn model_event(
         name: model.name,
         is_default: model.is_default,
     }));
-    Ok(AdapterEvent::Models {
-        models: output,
-        next_cursor,
-    })
+    Ok(output)
+}
+
+pub(super) fn config_for_model(
+    model: &ModelDescriptor,
+    current: &str,
+) -> Option<crate::acp::session_config::SessionConfig> {
+    if model.supported_efforts.is_empty() {
+        return None;
+    }
+    let options: Vec<_> = model
+        .supported_efforts
+        .iter()
+        .map(|effort| {
+            let name = effort.id.as_str();
+            let mut chars = name.chars();
+            let label = chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default();
+            serde_json::json!({
+                "value":name,
+                "name":label,
+                "description":effort.description
+            })
+        })
+        .collect();
+    crate::acp::session_config::SessionConfig::from_wire(
+        &serde_json::json!({
+            "modes":null,
+            "configOptions":[{
+                "id":"effort",
+                "name":"Thinking level",
+                "category":"effort",
+                "type":"select",
+            "currentValue":current,
+                "options":options
+            }]
+        }),
+        true,
+    )
+    .ok()
 }
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {

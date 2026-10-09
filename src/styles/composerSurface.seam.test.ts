@@ -10,6 +10,7 @@ async function composerRules() {
     "chat-surface.css",
     "composer-surface.css",
     "composer-image.css",
+    "composer-context.css",
   ];
   return (
     await Promise.all(
@@ -35,10 +36,24 @@ describe("Composer surface stylesheet seam", () => {
     expect(height(trigger)).toBe("40");
     expect(height(wrapper)).toBe(height(trigger));
   });
+  it("keeps a system progress fill visible in forced colors", async () => {
+    const css = await readFile(
+      resolve("src/styles/composer-context.css"),
+      "utf8",
+    );
+    const forcedColors = css.slice(
+      css.indexOf("@media (forced-colors: active)"),
+    );
+    expect(forcedColors).toMatch(
+      /\.composer__context-usage::before\s*\{[^}]*forced-color-adjust:\s*none;[^}]*background:\s*conic-gradient\(\s*Highlight\s+var\(--composer-context-usage\),\s*Canvas\s+var\(--composer-context-usage\)\s*\);/s,
+    );
+  });
+
   it("keeps focused composer and related surface files below 400 lines", async () => {
     for (const file of [
       "composer-surface.css",
       "composer-image.css",
+      "composer-context.css",
       "chat-surface.css",
       "shared-controls.css",
       "status-surfaces.css",
@@ -135,9 +150,8 @@ describe("Composer surface stylesheet seam", () => {
     const surfaceCss = await composerRules();
 
     expect(surfaceCss).toMatch(/^\.composer__context-usage\b/m);
-    expect(surfaceCss).toMatch(/^\.composer__context-usage-fill\b/m);
     expect(surfaceCss).toMatch(
-      /\.composer__context-usage\s*\{[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-border-strong\);/s,
+      /\.composer__context-usage::before\s*\{[^}]*background:\s*conic-gradient\(/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer__input-area\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s,
@@ -164,7 +178,10 @@ describe("Composer surface stylesheet seam", () => {
       /\.project-scope__icon,\s*\.select-control__icon\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*color:\s*var\(--color-text-muted\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer__context-usage-fill\s*\{[^}]*width:\s*var\(--composer-context-usage\);[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--color-accent\);/s,
+      /\.composer__context-usage::before\s*\{[^}]*var\(--composer-context-usage\)[^}]*mask:\s*radial-gradient\(/s,
+    );
+    expect(surfaceCss).toMatch(
+      /\.composer__context-usage:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring\);[^}]*outline-offset:\s*var\(--focus-ring-offset\);/s,
     );
     expect(
       await readFile(resolve("src/styles/status-surfaces.css"), "utf8"),
@@ -172,7 +189,24 @@ describe("Composer surface stylesheet seam", () => {
       /@media \(forced-colors:\s*active\)\s*\{\s*\.send-button\s*\{[^}]*border:\s*1px solid CanvasText;/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer__context-usage\s*\{[^}]*border:[^}]*CanvasText;/s,
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer__context-usage::before\s*\{[^}]*border:[^}]*CanvasText;/s,
+    );
+  });
+
+  it("keeps access as an unbordered label until the access-menu slice", async () => {
+    const css = await composerRules();
+    const globalCss = await readFile(resolve("src/styles/global.css"), "utf8");
+    const accessRules = css.matchAll(
+      /\.composer__access-label(?:--write)?\s*\{([^}]*)\}/gs,
+    );
+    expect([...accessRules].map((rule) => rule[1])).toEqual([
+      expect.not.stringMatching(
+        /\b(?:padding|border|border-radius|background):/,
+      ),
+      expect.not.stringMatching(/\b(?:border-color|background):/),
+    ]);
+    expect(globalCss).not.toMatch(
+      /--composer-access-(?:border|fill|write-border|write-fill):/,
     );
   });
 
@@ -194,12 +228,14 @@ describe("Composer surface stylesheet seam", () => {
     );
   });
 
-  it("uses the shared soft focus treatment and a system forced-colors edge", async () => {
+  it("keeps the dark composer focus border and a system forced-colors edge", async () => {
     const surfaceCss = await composerRules();
+    const globalCss = await readFile(resolve("src/styles/global.css"), "utf8");
 
     expect(surfaceCss).toMatch(
-      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--highlight-focus-edge\);[^}]*box-shadow:\s*var\(--highlight-focus-halo-shadow\),\s*var\(--elevation-popover\);/s,
+      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--composer-focus-border\);[^}]*box-shadow:\s*var\(--composer-shadow\);/s,
     );
+    expect(globalCss).toMatch(/--composer-focus-border:\s*#505050;/);
     expect(surfaceCss).not.toMatch(
       /\.composer:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
     );

@@ -23,6 +23,7 @@ pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 #[serde(rename_all = "camelCase")]
 pub struct Limits {
     pub wire: WireLimits,
+    pub codex: CodexLimits,
     pub queues: QueueLimits,
     pub process: ProcessLimits,
     pub deadlines_ms: DeadlineLimits,
@@ -61,6 +62,12 @@ pub struct WireLimits {
     pub unsupported_summary_bytes: u64,
     pub items_per_turn: u64,
     pub item_bytes_per_turn: u64,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLimits {
+    pub model_catalog_pages: u64,
+    pub reasoning_efforts_per_model: u64,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -244,6 +251,10 @@ pub const LIMITS: Limits = Limits {
         unsupported_summary_bytes: 16_384,
         items_per_turn: 512,
         item_bytes_per_turn: 8_388_608,
+    },
+    codex: CodexLimits {
+        model_catalog_pages: 4,
+        reasoning_efforts_per_model: 32,
     },
     queues: QueueLimits {
         driver_data_messages: 256,

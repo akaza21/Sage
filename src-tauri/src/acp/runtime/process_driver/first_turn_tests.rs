@@ -49,6 +49,9 @@ use super::*;
 #[path = "first_turn_tests/steer_cancel_tests.rs"]
 mod steer_cancel_tests;
 
+#[path = "first_turn_tests/model_catalog_tests.rs"]
+mod model_catalog_tests;
+
 struct Authority(IntentSnapshot);
 
 struct MutableAuthority(Arc<Mutex<IntentSnapshot>>);
@@ -166,12 +169,12 @@ impl HarnessAdapter for Adapter {
     fn configure(
         &mut self,
         _: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.config_pending = true;
-        Ok(AdapterEgress::new(
+        Ok(Some(AdapterEgress::new(
             OutboundFrame::new(b"{}".to_vec()).unwrap(),
             EgressToken::request(1),
-        ))
+        )))
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {

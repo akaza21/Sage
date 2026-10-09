@@ -2,6 +2,17 @@ use super::*;
 use crate::acp::goal::GoalAction;
 use crate::acp::session_config::ConfigIntent;
 
+pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) {
+    let Ok(Some(egress)) = adapter.model_config_hydration() else {
+        return;
+    };
+    let resolution = EgressResolution::from(transport.write(egress.frame()));
+    let _ = adapter.resolve_egress(egress.into_token(), resolution);
+}
+
 pub(crate) fn write_goal<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -10,11 +21,7 @@ pub(crate) fn write_goal<A: HarnessAdapter>(
     use crate::acp::runtime::HostError;
     let egress = adapter.mutate_goal(action).map_err(|_| HostError::Intent)?;
     let outcome = transport.write(egress.frame());
-    let resolution = match outcome {
-        FrameWriteOutcome::Complete => EgressResolution::Written,
-        FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
-        FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
-    };
+    let resolution = EgressResolution::from(outcome);
     adapter
         .resolve_egress(egress.into_token(), resolution)
         .map_err(|_| HostError::RecoveryRequired)?;
@@ -36,11 +43,7 @@ pub(crate) fn write_child<A: HarnessAdapter>(
         .read_child(child_thread_id, parent_thread_id)
         .map_err(|_| HostError::Intent)?;
     let outcome = transport.write(egress.frame());
-    let resolution = match outcome {
-        FrameWriteOutcome::Complete => EgressResolution::Written,
-        FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
-        FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
-    };
+    let resolution = EgressResolution::from(outcome);
     adapter
         .resolve_egress(egress.into_token(), resolution)
         .map_err(|_| HostError::RecoveryRequired)?;
@@ -57,13 +60,11 @@ pub(crate) fn write_config<A: HarnessAdapter>(
     intent: &ConfigIntent,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
-    let egress = adapter.configure(intent).map_err(|_| HostError::Intent)?;
-    let outcome = transport.write(egress.frame());
-    let resolution = match outcome {
-        FrameWriteOutcome::Complete => EgressResolution::Written,
-        FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
-        FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
+    let Some(egress) = adapter.configure(intent).map_err(|_| HostError::Intent)? else {
+        return Ok(());
     };
+    let outcome = transport.write(egress.frame());
+    let resolution = EgressResolution::from(outcome);
     adapter
         .resolve_egress(egress.into_token(), resolution)
         .map_err(|_| HostError::RecoveryRequired)?;
@@ -127,6 +128,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 }
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
+    pub(crate) fn hydrate_model_config(&mut self, transport: &mut impl EgressTransport) {
+        hydrate_model_config(&mut self.adapter, transport);
+    }
+
     pub(crate) fn write_session_config(
         &mut self,
         transport: &mut impl EgressTransport,

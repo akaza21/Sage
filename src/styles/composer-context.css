@@ -1,0 +1,51 @@
+.composer__context-usage-label {
+  display: none;
+}
+
+.composer__context-usage {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-circle);
+}
+
+.composer__context-usage::before {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-circle);
+  background: conic-gradient(
+    var(--color-accent) var(--composer-context-usage),
+    var(--color-border-strong) var(--composer-context-usage)
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent 58%,
+    var(--color-canvas) 64%
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent 58%,
+    var(--color-canvas) 64%
+  );
+  content: "";
+}
+
+.composer__context-usage:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@media (forced-colors: active) {
+  .composer__context-usage::before {
+    border: 1px solid CanvasText;
+    forced-color-adjust: none;
+    background: conic-gradient(
+      Highlight var(--composer-context-usage),
+      Canvas var(--composer-context-usage)
+    );
+    -webkit-mask: none;
+    mask: none;
+  }
+}

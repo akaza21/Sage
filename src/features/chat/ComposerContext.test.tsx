@@ -41,7 +41,7 @@ describe("ComposerContext", () => {
       "aria-valuetext",
       `${(6_000).toLocaleString()} / ${(272_000).toLocaleString()} tokens used`,
     );
-    expect(meter).toHaveAttribute("title", "6,000 used / 272,000 total tokens");
+    expect(meter).toHaveAttribute("title", "6k / 272k tokens · 2%");
     expect(meter).toHaveAttribute("tabindex", "0");
     expect(meter).toHaveAttribute(
       "aria-label",
@@ -67,10 +67,7 @@ describe("ComposerContext", () => {
       "aria-valuetext",
       `${(300_000).toLocaleString()} / ${(272_000).toLocaleString()} tokens used`,
     );
-    expect(meter).toHaveAttribute(
-      "title",
-      "300,000 used / 272,000 total tokens",
-    );
+    expect(meter).toHaveAttribute("title", "300k / 272k tokens · 110%");
     expect(meter).toHaveStyle({ "--composer-context-usage": "100%" });
   });
 

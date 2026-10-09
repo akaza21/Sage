@@ -10,6 +10,25 @@ pub(super) fn response(
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
+    if kind == RequestKind::Models {
+        let removed = adapter.take_pending(id);
+        debug_assert_eq!(removed, Some(kind));
+        return Ok(
+            match object
+                .get("result")
+                .and_then(Value::as_object)
+                .filter(|_| !object.contains_key("error"))
+                .and_then(|result| parse_models(result).ok())
+            {
+                Some((models, next_cursor)) => IncomingEvent::Models {
+                    models,
+                    next_cursor,
+                }
+                .into(),
+                None => IngressDisposition::IgnoredLate,
+            },
+        );
+    }
     if let Some(error) = object.get("error") {
         if matches!(
             kind,
@@ -113,7 +132,19 @@ pub(super) fn response(
                 .ok_or(IngressError::Malformed)?;
             let external = text(thread, "id", 512)?;
             let id = adapter.bind_thread(external).map_err(identity)?;
-            IncomingEvent::SessionReady { id }
+            let current_model = result
+                .get("model")
+                .and_then(Value::as_str)
+                .and_then(|value| RequiredText::new("model", value.to_owned()).ok());
+            let current_effort = result
+                .get("reasoningEffort")
+                .and_then(Value::as_str)
+                .and_then(|value| RequiredText::new("reasoningEffort", value.to_owned()).ok());
+            IncomingEvent::SessionReady {
+                id,
+                current_model,
+                current_effort,
+            }
         }
         RequestKind::Read => {
             let thread = result
@@ -123,13 +154,6 @@ pub(super) fn response(
             let external = text(thread, "id", 512)?;
             let id = adapter.bind_thread(external).map_err(identity)?;
             IncomingEvent::SessionLoaded { id }
-        }
-        RequestKind::Models => {
-            let (models, next_cursor) = parse_models(result)?;
-            IncomingEvent::Models {
-                models,
-                next_cursor,
-            }
         }
         RequestKind::TurnStart => {
             let turn = result
@@ -176,7 +200,8 @@ pub(super) fn response(
                 closes_session: true,
             }
         }
-        RequestKind::GoalGet
+        RequestKind::Models
+        | RequestKind::GoalGet
         | RequestKind::GoalPause
         | RequestKind::GoalClear
         | RequestKind::ChildRead => {

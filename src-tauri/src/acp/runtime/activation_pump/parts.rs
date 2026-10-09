@@ -60,21 +60,27 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn hydrate_model_config(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) {
+        crate::acp::runtime::adapter_pump::session_config::hydrate_model_config(
+            &mut self.adapter,
+            transport,
+        );
+    }
+
     /// Best-effort read-only hydration after the activation handoff. A Goal
     /// read failure never changes the durable Session or Turn outcome.
     pub(crate) fn hydrate_goal(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
     ) {
-        use crate::acp::{bindings::adapter::EgressResolution, transport::FrameWriteOutcome};
+        use crate::acp::bindings::adapter::EgressResolution;
         let Ok(Some(egress)) = self.adapter.goal_get() else {
             return;
         };
-        let resolution = match transport.write(egress.frame()) {
-            FrameWriteOutcome::Complete => EgressResolution::Written,
-            FrameWriteOutcome::ZeroByteFailure => EgressResolution::WriteZeroBytes,
-            FrameWriteOutcome::DeliveryUnknown { .. } => EgressResolution::DeliveryUnknown,
-        };
+        let resolution = EgressResolution::from(transport.write(egress.frame()));
         let _ = self.adapter.resolve_egress(egress.into_token(), resolution);
     }
 
@@ -131,10 +137,59 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             intent,
         )
     }
+    pub(crate) fn discard_invalid_response(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.adapter.discard_invalid_response(frame)
+    }
     pub(crate) fn ingest_idle_frame(
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.adapter.ingest(frame, &self.resources)
+    }
+
+    pub(crate) fn accept_idle_batch(
+        &mut self,
+        batch: AdapterBatch,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) -> Result<(), crate::acp::runtime::AdapterPumpError> {
+        use crate::acp::{
+            bindings::adapter::{AdapterEvent, EgressResolution},
+            runtime::AdapterPumpError,
+        };
+        let (events, egress) = batch.into_parts();
+        let mut catalog = None;
+        for event in events {
+            match event {
+                AdapterEvent::Models {
+                    models,
+                    next_cursor,
+                } if catalog.is_none() => {
+                    catalog = Some((models, next_cursor));
+                }
+                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate => {}
+                _ => return Err(AdapterPumpError::Frame),
+            }
+        }
+        if egress.len() > 1
+            || egress
+                .iter()
+                .any(|value| value.token().is_control() || value.token().request_id().is_none())
+            || (!egress.is_empty() && catalog.as_ref().is_none_or(|(_, cursor)| cursor.is_none()))
+        {
+            return Err(AdapterPumpError::Frame);
+        }
+        if let Some((models, next_cursor)) = catalog {
+            self.session.models.extend(models);
+            self.session.next_model_cursor = next_cursor;
+        }
+        for value in egress {
+            let resolution = EgressResolution::from(transport.write(value.frame()));
+            self.adapter
+                .resolve_egress(value.into_token(), resolution)?;
+        }
+        Ok(())
     }
 }

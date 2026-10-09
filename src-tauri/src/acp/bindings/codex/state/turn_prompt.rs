@@ -50,6 +50,17 @@ impl CodexAdapter {
         client_message_id: &RequiredText<512>,
         access_mode: SessionAccessMode,
     ) -> Result<OutgoingRequest, AdapterError> {
+        self.prompt_with_effort(id, prompt, client_message_id, access_mode, None)
+    }
+
+    pub(crate) fn prompt_with_effort(
+        &mut self,
+        id: u64,
+        prompt: &Prompt,
+        client_message_id: &RequiredText<512>,
+        access_mode: SessionAccessMode,
+        effort: Option<&RequiredText<512>>,
+    ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.prompt)?;
         if self.turn_start_correlations.has_pending()
             || self.active_turn_id.is_some()
@@ -71,6 +82,7 @@ impl CodexAdapter {
                 self.observed_build_characterisation,
                 &self.runtime_version,
             ),
+            effort,
         )?)?;
         self.turn_start_correlations
             .register(id, client_message_id.clone());

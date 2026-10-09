@@ -1966,12 +1966,12 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(5);
-    expect(options[0]).toHaveTextContent("Codex — not installed");
-    expect(options[0]).toBeDisabled();
-    expect(options[1]).toHaveTextContent("Pi — not installed");
-    expect(options[2]).toHaveTextContent("Claude Code — not installed");
-    expect(options[3]).toHaveTextContent("Oh My Pi — not installed");
-    expect(options[4]).toHaveTextContent("Simulator — test only");
+    expect(options[0]).toHaveTextContent("Simulator — test only");
+    expect(options[1]).toHaveTextContent("Codex — not installed");
+    expect(options[1]).toBeDisabled();
+    expect(options[2]).toHaveTextContent("Pi — not installed");
+    expect(options[3]).toHaveTextContent("Claude Code — not installed");
+    expect(options[4]).toHaveTextContent("Oh My Pi — not installed");
   });
 
   it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
@@ -2019,10 +2019,10 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(3);
-    expect(options[0]).toHaveTextContent("Codex — installed but not drivable");
-    expect(options[0]).toBeDisabled();
-    expect(options[1]).toHaveTextContent("Pi — not installed");
-    expect(options[2]).toHaveTextContent("Simulator — test only");
+    expect(options[0]).toHaveTextContent("Simulator — test only");
+    expect(options[1]).toHaveTextContent("Codex — installed but not drivable");
+    expect(options[1]).toBeDisabled();
+    expect(options[2]).toHaveTextContent("Pi — not installed");
   });
 
   it("keeps the available development fallback visible when the selected harness is absent", () => {
@@ -2061,8 +2061,8 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent("Pi — not installed");
-    expect(options[1]).toHaveTextContent("Simulator — test only");
+    expect(options[0]).toHaveTextContent("Simulator — test only");
+    expect(options[1]).toHaveTextContent("Pi — not installed");
   });
 
   it("marks the development simulator as test-only without policy claims", () => {

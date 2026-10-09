@@ -203,16 +203,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .and_then(|(request, replay)| (!replay).then_some(request.to_owned()))
             .or_else(|| egress.token().allow_request().map(str::to_owned));
         let outcome = transport.write(egress.frame());
-        let (resolution, disposition) = match outcome {
-            FrameWriteOutcome::Complete => (EgressResolution::Written, FlushDisposition::Written),
-            FrameWriteOutcome::ZeroByteFailure => (
-                EgressResolution::WriteZeroBytes,
-                FlushDisposition::ZeroBytes,
-            ),
-            FrameWriteOutcome::DeliveryUnknown { .. } => (
-                EgressResolution::DeliveryUnknown,
-                FlushDisposition::DeliveryUnknown,
-            ),
+        let resolution = EgressResolution::from(outcome);
+        let disposition = match outcome {
+            FrameWriteOutcome::Complete => FlushDisposition::Written,
+            FrameWriteOutcome::ZeroByteFailure => FlushDisposition::ZeroBytes,
+            FrameWriteOutcome::DeliveryUnknown { .. } => FlushDisposition::DeliveryUnknown,
         };
         let result = self.adapter.resolve_egress(egress.into_token(), resolution);
         let delivery_unknown = disposition == FlushDisposition::DeliveryUnknown;

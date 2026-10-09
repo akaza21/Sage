@@ -4,8 +4,8 @@ use crate::acp::lifecycle::{ItemLifecycle, ServerRequestState, TerminalUpdate, T
 
 use super::super::state::{AdapterError, ExternalKind, TurnStartFailure, TurnStartedRejection};
 use super::{
-    CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
-    normalize_item, normalize_materialized_command, record_unprojected,
+    CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ResourceMapper, normalize_item,
+    record_unprojected,
     support::{
         error_payload, expect_thread_and_turn, identity, parse_usage, request_id_text, text,
     },
@@ -15,6 +15,8 @@ mod child_thread;
 pub(super) use child_thread::item_event as child_item_event;
 pub(super) use child_thread::turn_completed as child_turn_completed;
 mod deltas;
+mod items;
+use items::item_event;
 mod plan;
 mod provisional;
 use deltas::{DeltaKind, command_output_delta, delta_event, summary_part_added};
@@ -33,19 +35,10 @@ pub(super) fn notification<M: ResourceMapper>(
                 .get("thread")
                 .and_then(Value::as_object)
                 .ok_or(IngressError::Malformed)?;
-            match adapter
+            adapter
                 .accept_thread_started(text(thread, "id", 512)?)
-                .map_err(identity)?
-            {
-                Some(id) => {
-                    let mut events = vec![IncomingEvent::SessionReady { id }];
-                    if adapter.take_browser_mcp_failure_for_thread(text(thread, "id", 512)?) {
-                        events.push(super::browser_mcp_unavailable()?);
-                    }
-                    Ok(IngressDisposition::Events(events))
-                }
-                None => Ok(IngressDisposition::IgnoredLate),
-            }
+                .map_err(identity)?;
+            Ok(IngressDisposition::IgnoredLate)
         }
         "remoteControl/status/changed" => {
             let _installation = text(params, "installationId", 512)?;
@@ -335,88 +328,4 @@ fn turn_completed(
         TerminalUpdate::NoOp => Ok(IngressDisposition::DuplicateTerminal),
         TerminalUpdate::Conflict => Err(IngressError::TerminalConflict),
     }
-}
-
-fn item_event<M: ResourceMapper>(
-    adapter: &mut CodexAdapter,
-    params: &Map<String, Value>,
-    requested: ItemLifecycle,
-    mapper: &M,
-    declarations: &crate::acp::declared_test::DeclaredTestCommands,
-) -> Result<IngressDisposition, IngressError> {
-    if adapter.has_provisional_turn() {
-        return provisional::verify_first_user_message(adapter, params, requested);
-    }
-    let turn = expect_thread_and_turn(adapter, params)?;
-    let item = params
-        .get("item")
-        .and_then(Value::as_object)
-        .ok_or(IngressError::Malformed)?;
-    let external = text(item, "id", 512)?;
-    if adapter.turn_is_terminal(turn) && !adapter.item_is_terminal(turn, external) {
-        return Ok(IngressDisposition::IgnoredLate);
-    }
-    let command = (item.get("type").and_then(Value::as_str) == Some("commandExecution"))
-        .then(|| {
-            adapter.materialize_command_item(
-                turn,
-                external,
-                item,
-                mapper,
-                declarations,
-                requested.is_terminal(),
-            )
-        })
-        .transpose()?;
-    let normalized = match command.as_ref() {
-        Some(command) => Some(normalize_materialized_command(command)?),
-        None => normalize_item(item, requested, mapper)?,
-    };
-    let Some((mut payload, tool_state, terminal)) = normalized else {
-        return Ok(IngressDisposition::Events(vec![]));
-    };
-    let lifecycle = terminal.unwrap_or(requested);
-    if lifecycle.is_terminal() {
-        match adapter
-            .accept_item_terminal(turn, external, lifecycle)
-            .map_err(identity)?
-        {
-            TerminalUpdate::NoOp => return Ok(IngressDisposition::DuplicateTerminal),
-            TerminalUpdate::Conflict => return Err(IngressError::TerminalConflict),
-            TerminalUpdate::Apply => {}
-        }
-    }
-    if let Some(command) = command {
-        if lifecycle.is_terminal() {
-            adapter.remove_command_item(external);
-        } else {
-            adapter.commit_command_item(turn, external, command)?;
-        }
-    }
-    let child_thread_id = child_thread::native_id(item, params)?;
-    if let Some(child) = &child_thread_id {
-        adapter.learn_bound_child(child.as_str());
-    }
-    adapter.enrich_subagent_payload(&mut payload);
-    adapter.learn_child_threads(&payload);
-    let id = adapter
-        .scoped_in_turn(ExternalKind::Item, turn, external)
-        .map_err(identity)?;
-    Ok(match child_thread_id {
-        Some(child_thread_id) => IncomingEvent::ChildThreadItem {
-            id,
-            lifecycle,
-            payload,
-            child_thread_id,
-        }
-        .into(),
-        None => IncomingEvent::Item {
-            id,
-            lifecycle,
-            tool_state,
-            payload,
-            update_mode: ItemUpdateMode::Replace,
-        }
-        .into(),
-    })
 }

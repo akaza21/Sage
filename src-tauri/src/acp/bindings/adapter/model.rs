@@ -52,3 +52,87 @@ pub(crate) enum AdapterRuntimeError {
     #[error("egress resolution does not match the reserved adapter intent")]
     EgressIntent,
 }
+
+pub(crate) trait HarnessAdapter {
+    fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    fn finish_model_config_hydration(&mut self) {}
+    fn provisional_turn_pending(&self) -> bool {
+        false
+    }
+    fn goal_get(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    fn goal_state(&self) -> Option<crate::acp::goal::GoalState> {
+        None
+    }
+    fn goal_pending(&self) -> bool {
+        false
+    }
+    fn native_rpc_pending(&self) -> bool {
+        self.goal_pending()
+    }
+    fn child_read_pending(&self) -> bool {
+        false
+    }
+    fn read_child(
+        &mut self,
+        _child_thread_id: &str,
+        _parent_thread_id: &str,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
+        Err(AdapterRuntimeError::Frame)
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        None
+    }
+    fn mutate_goal(
+        &mut self,
+        _action: crate::acp::goal::GoalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+        None
+    }
+    fn refusal_detail(&self) -> Option<RefusalDetail> {
+        None
+    }
+    fn config_pending(&self) -> bool {
+        false
+    }
+    fn configure(
+        &mut self,
+        _intent: &crate::acp::session_config::ConfigIntent,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn capabilities(&self) -> Option<CapabilitySnapshotV1>;
+    fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError>;
+    fn cancel_permission(
+        &mut self,
+        _request_id: &SageServerRequestId,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    fn discard_invalid_response(
+        &mut self,
+        _frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::Frame)
+    }
+    fn ingest(
+        &mut self,
+        frame: &Frame,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError>;
+    fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
+    fn resolve_egress(
+        &mut self,
+        token: EgressToken,
+        resolution: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError>;
+}

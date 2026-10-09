@@ -6,7 +6,7 @@ use crate::acp::{
     limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };
 
-use super::{IngressError, ModelDescriptor, ResourceMapper};
+use super::{IngressError, ResourceMapper};
 use crate::acp::bindings::codex::state::{AdapterError, CodexAdapter};
 
 pub(in crate::acp::bindings::codex) fn command_cwd<M: ResourceMapper>(
@@ -28,53 +28,6 @@ pub(in crate::acp::bindings::codex) fn command_exit_code(item: &Map<String, Valu
     item.get("exitCode")
         .and_then(Value::as_i64)
         .and_then(|code| i32::try_from(code).ok())
-}
-
-pub(super) fn parse_models(
-    result: &Map<String, Value>,
-) -> Result<(Vec<ModelDescriptor>, Option<RequiredText<512>>), IngressError> {
-    let data = result
-        .get("data")
-        .and_then(Value::as_array)
-        .ok_or(IngressError::Malformed)?;
-    if data.len() > LIMITS.wire.models_or_config_entries as usize {
-        return Err(IngressError::CollectionLimit);
-    }
-    let mut total = 0_usize;
-    let mut models = Vec::with_capacity(data.len());
-    for value in data {
-        let model = value.as_object().ok_or(IngressError::Malformed)?;
-        let id = text(model, "id", 512)?;
-        let name = text(model, "displayName", 512)?;
-        total = total.saturating_add(id.len()).saturating_add(name.len());
-        if total > LIMITS.wire.models_or_config_bytes as usize
-            || models
-                .iter()
-                .any(|existing: &ModelDescriptor| existing.id.as_str() == id)
-        {
-            return Err(IngressError::CollectionLimit);
-        }
-        models.push(ModelDescriptor {
-            id: RequiredText::new("modelId", id.to_owned()).map_err(content)?,
-            name: RequiredText::new("modelName", name.to_owned()).map_err(content)?,
-            is_default: model
-                .get("isDefault")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-        });
-    }
-    let next_cursor = result
-        .get("nextCursor")
-        .filter(|value| !value.is_null())
-        .map(|value| {
-            let cursor = value.as_str().ok_or(IngressError::Malformed)?;
-            if cursor.is_empty() || cursor.len() > LIMITS.wire.page_cursor_bytes as usize {
-                return Err(IngressError::CollectionLimit);
-            }
-            RequiredText::new("modelCursor", cursor.to_owned()).map_err(content)
-        })
-        .transpose()?;
-    Ok((models, next_cursor))
 }
 
 pub(super) fn expect_thread_and_turn<'a>(
@@ -404,88 +357,5 @@ pub(super) fn content(_: crate::acp::contract::ContractError) -> IngressError {
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::{IngressError, parse_usage, sanitize};
-    use crate::acp::intent::NormalizedPayload;
-
-    #[test]
-    fn usage_context_window_is_known_only_for_a_positive_bounded_integer() {
-        let known = json!({
-            "tokenUsage": {
-                "last": { "inputTokens": 3, "outputTokens": 2 },
-                "modelContextWindow": 272000
-            }
-        });
-        assert_eq!(
-            parse_usage(known.as_object().unwrap()),
-            Ok(NormalizedPayload::Usage {
-                input_tokens: 3,
-                output_tokens: 2,
-                context_window: Some(272_000),
-            })
-        );
-
-        let unknown = json!({
-            "tokenUsage": { "last": { "inputTokens": 3, "outputTokens": 2 } }
-        });
-        assert_eq!(
-            parse_usage(unknown.as_object().unwrap()),
-            Ok(NormalizedPayload::Usage {
-                input_tokens: 3,
-                output_tokens: 2,
-                context_window: None,
-            })
-        );
-    }
-
-    #[test]
-    fn invalid_usage_context_windows_are_unknown_without_rejecting_usage() {
-        for invalid in [
-            json!(0),
-            json!(-1),
-            json!(1.5),
-            json!(u64::from(u32::MAX) + 1),
-            json!("272000"),
-            json!(null),
-            json!({}),
-        ] {
-            let params = json!({
-                "tokenUsage": {
-                    "last": { "inputTokens": 3, "outputTokens": 2 },
-                    "modelContextWindow": invalid
-                }
-            });
-            assert_eq!(
-                parse_usage(params.as_object().unwrap()),
-                Ok(NormalizedPayload::Usage {
-                    input_tokens: 3,
-                    output_tokens: 2,
-                    context_window: None,
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn malformed_usage_counts_still_fail_closed() {
-        for last in [
-            json!({ "outputTokens": 2 }),
-            json!({ "inputTokens": 3 }),
-            json!({ "inputTokens": -1, "outputTokens": 2 }),
-            json!({ "inputTokens": 3, "outputTokens": "2" }),
-        ] {
-            let params = json!({ "tokenUsage": { "last": last } });
-            assert_eq!(
-                parse_usage(params.as_object().unwrap()),
-                Err(IngressError::Malformed)
-            );
-        }
-    }
-
-    #[test]
-    fn generic_bearer_colon_does_not_carry_redaction_to_the_next_token() {
-        assert_eq!(sanitize("Bearer: opaque"), "[redacted] opaque");
-    }
-}
+#[path = "support/tests.rs"]
+mod tests;

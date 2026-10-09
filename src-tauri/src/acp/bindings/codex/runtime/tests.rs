@@ -200,10 +200,663 @@ fn ready(runtime: &mut CodexRuntime) {
 }
 
 #[test]
-fn thread_started_notification_completes_the_pending_new_session() {
+fn bound_turn_applies_catalog_pages_even_before_prompt_dispatch() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime.finish_model_config_hydration();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{
+                "data":[{"id":"selected","displayName":"Selected","isDefault":true,
+                    "defaultReasoningEffort":"high","supportedReasoningEfforts":[
+                        {"reasoningEffort":"high","description":"Deep"}]}],"nextCursor":"page-2"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(batch.egress().is_empty());
+    assert_eq!(
+        serde_json::to_value(runtime.session_config().unwrap()).unwrap()["configOptions"][0]["currentValue"],
+        "high"
+    );
+    assert_eq!(
+        runtime.selected_model.as_ref().unwrap().id.as_str(),
+        "selected"
+    );
+    assert!(
+        runtime
+            .command(AdapterCommand::ModelPage { cursor: None })
+            .is_err()
+    );
+}
+
+#[test]
+fn catalog_rpc_failure_is_ignored_and_session_stays_promptable() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":list_id,"error":{"code":-32601,"message":"Method not found"}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert!(batch.egress().is_empty());
+    assert!(runtime.session_config().is_none());
+    assert!(
+        runtime
+            .command(AdapterCommand::Prompt {
+                prompt: Prompt::new("prompt", "continue").unwrap(),
+                client_message_id: RequiredText::new("client", "catalog-failure").unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
+            .is_ok()
+    );
+}
+
+#[test]
+fn codex_session_requests_model_efforts_after_becoming_ready() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
-    let _request = runtime
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    let batch = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        batch.events(),
+        [AdapterEvent::SessionReady { .. }]
+    ));
+    assert!(batch.egress().is_empty());
+    let hydration = runtime.model_config_hydration().unwrap().unwrap();
+    let request: Value = serde_json::from_slice(hydration.frame().payload()).unwrap();
+    assert_eq!(request["method"], "model/list");
+}
+
+#[test]
+fn codex_model_list_exposes_supported_thinking_levels() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    let ready = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(ready.egress().is_empty());
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[
+            {"reasoningEffort":"low","description":"Quick"},
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(config["configOptions"][0]["category"], "effort");
+    assert_eq!(config["configOptions"][0]["currentValue"], "medium");
+    assert_eq!(config["configOptions"][0]["options"][2]["value"], "high");
+}
+
+#[test]
+fn codex_model_without_efforts_hides_thinking_config() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium","supportedReasoningEfforts":[]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(runtime.session_config().is_none());
+}
+
+#[test]
+fn model_efforts_accept_the_exact_collection_limit() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    let efforts: Vec<_> = (0..32)
+        .map(|index| {
+            json!({
+                "reasoningEffort":format!("effort-{index}"),"description":"Deep"
+            })
+        })
+        .collect();
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"model","displayName":"Model","isDefault":true,
+        "defaultReasoningEffort":"effort-0","supportedReasoningEfforts":efforts
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(
+        config["configOptions"][0]["options"]
+            .as_array()
+            .unwrap()
+            .len(),
+        32
+    );
+}
+
+#[test]
+fn model_effort_pages_with_invalid_fields_or_collections_are_ignored_and_stop_paging() {
+    for efforts in [
+        json!([{"reasoningEffort":"e".repeat(513),"description":"Deep"}]),
+        json!([{"reasoningEffort":"high","description":"Deep","unknown":true}]),
+        json!([{"reasoningEffort":"high","description":"Deep\0"}]),
+        json!((0..33).map(|index| json!({"reasoningEffort":format!("effort-{index}"),"description":"Deep"})).collect::<Vec<_>>()),
+        json!({"reasoningEffort":"high","description":"not an array"}),
+    ] {
+        for partial in [false, true] {
+            let (mut runtime, list_id) = model_page_rejection::runtime_waiting_for_effort_page(partial);
+            model_page_rejection::assert_invalid_model_page_is_ignored(
+                &mut runtime, list_id, json!({"data":[{
+                    "id":"model","displayName":"Model","isDefault":true,
+                    "supportedReasoningEfforts":efforts
+                }],"nextCursor":"third"}),
+            );
+        }
+    }
+}
+
+#[test]
+fn over_budget_model_effort_pages_are_ignored_and_stop_paging() {
+    let efforts: Vec<Value> = (0..17)
+        .map(|index| {
+            json!({
+                "reasoningEffort":format!("effort-{index}"),
+                "description":"x".repeat(8_192)
+            })
+        })
+        .collect();
+    for partial in [false, true] {
+        let (mut runtime, list_id) = model_page_rejection::runtime_waiting_for_effort_page(partial);
+        model_page_rejection::assert_invalid_model_page_is_ignored(
+            &mut runtime,
+            list_id,
+            json!({"data":[{
+                "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+                "defaultReasoningEffort":"effort-0",
+                "supportedReasoningEfforts":efforts
+            }],"nextCursor":"third"}),
+        );
+    }
+}
+
+#[test]
+fn resumed_thread_without_requested_model_uses_actual_model_efforts() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let resume = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("thread", "thread-1").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&resume),"result":{
+                "thread":{"id":"thread-1"},"model":"non-default","reasoningEffort":"high"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+                "id":"default","displayName":"Default","isDefault":true,
+                "defaultReasoningEffort":"medium",
+                "supportedReasoningEfforts":[{"reasoningEffort":"medium","description":"Balanced"}]
+            },{
+                "id":"non-default","displayName":"Non-default","isDefault":false,
+                "defaultReasoningEffort":"low",
+                "supportedReasoningEfforts":[
+                    {"reasoningEffort":"low","description":"Fast"},
+                    {"reasoningEffort":"high","description":"Deep"}
+                ]
+            }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+    assert_eq!(config["configOptions"][0]["currentValue"], "high");
+    assert_eq!(config["configOptions"][0]["options"][0]["value"], "low");
+    assert_eq!(config["configOptions"][0]["options"][1]["value"], "high");
+}
+
+#[test]
+fn resumed_codex_thread_uses_reported_effort_not_catalog_default() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let resume = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("thread", "thread-1").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&resume),"result":{
+                "thread":{"id":"thread-1"},"reasoningEffort":"high"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(runtime.session_config().unwrap()).unwrap()["configOptions"][0]["currentValue"],
+        "high"
+    );
+}
+
+#[test]
+fn resumed_codex_thread_without_reported_effort_hides_thinking_config() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let resume = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("thread", "thread-1").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&resume),"result":{
+                "thread":{"id":"thread-1"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(runtime.session_config().is_none());
+}
+
+#[test]
+fn starting_resume_clears_model_page_effort_until_current_effort_is_known() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let list = runtime
+        .command(AdapterCommand::ModelPage { cursor: None })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&list),"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[{"reasoningEffort":"medium","description":"Balanced"}]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        runtime
+            .session_config()
+            .unwrap()
+            .config_options
+            .as_slice()
+            .len(),
+        1
+    );
+    let resume = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("thread", "thread-1").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    assert_eq!(
+        runtime
+            .session_config()
+            .map_or(0, |config| config.config_options.as_slice().len()),
+        0
+    );
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&resume),"result":{
+                "thread":{"id":"thread-1"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        runtime
+            .session_config()
+            .map_or(0, |config| config.config_options.as_slice().len()),
+        0
+    );
+}
+
+#[test]
+fn session_effort_survives_thread_started_before_or_after_response() {
+    for (resume_session, started_first) in
+        [(false, true), (false, false), (true, true), (true, false)]
+    {
+        let mut runtime = fixture_runtime();
+        initialize(&mut runtime);
+        let command = if resume_session {
+            AdapterCommand::ResumeSession {
+                external_session_id: ExternalId::new("thread", "thread-1").unwrap(),
+                native_root: r"C:\repo".into(),
+                model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+            }
+        } else {
+            AdapterCommand::NewSession {
+                native_root: r"C:\repo".into(),
+                model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+            }
+        };
+        let request = runtime.command(command).unwrap();
+        let started = frame(json!({"method":"thread/started","params":{
+            "thread":{"id":"thread-1"}
+        }}));
+        let response = frame(json!({"id":request_id(&request),"result":{
+            "thread":{"id":"thread-1"},"reasoningEffort":"high"
+        }}));
+        if started_first {
+            let notification = runtime.ingest(&started, &Mapper).unwrap();
+            assert!(
+                notification
+                    .events()
+                    .iter()
+                    .all(|event| !matches!(event, AdapterEvent::SessionReady { .. }))
+            );
+            let ready = runtime.ingest(&response, &Mapper).unwrap();
+            assert!(matches!(
+                ready.events(),
+                [AdapterEvent::SessionReady { .. }]
+            ));
+        } else {
+            let ready = runtime.ingest(&response, &Mapper).unwrap();
+            assert!(matches!(
+                ready.events(),
+                [AdapterEvent::SessionReady { .. }]
+            ));
+            let notification = runtime.ingest(&started, &Mapper).unwrap();
+            assert!(matches!(notification.events(), [AdapterEvent::IgnoredLate]));
+        }
+        let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+        runtime
+            .ingest(
+                &frame(json!({"id":list_id,"result":{"data":[{
+            "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+            "defaultReasoningEffort":"medium",
+            "supportedReasoningEfforts":[
+                {"reasoningEffort":"medium","description":"Balanced"},
+                {"reasoningEffort":"high","description":"Deep"}
+            ]
+        }],"nextCursor":null}})),
+                &Mapper,
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(runtime.session_config().unwrap()).unwrap()["configOptions"][0]["currentValue"],
+            "high"
+        );
+    }
+}
+
+#[test]
+fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
+    use crate::acp::{
+        contract::SageChatId,
+        scheduler::RuntimeOwner,
+        session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
+    };
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let effort = "e".repeat(512);
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"model","displayName":"Model","isDefault":true,
+        "defaultReasoningEffort":"medium","supportedReasoningEfforts":[
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":effort,"description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let intent = ConfigIntent {
+        owner: RuntimeOwner {
+            project_id: SageProjectId::parse("project-1").unwrap(),
+            chat_id: SageChatId::parse("chat-1").unwrap(),
+            session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        },
+        expected_config_revision: ConfigRevision::first(),
+        mutation: ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "effort").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", effort.clone()).unwrap(),
+            },
+        },
+    };
+    assert!(runtime.configure(&intent).unwrap().is_none());
+    let before = runtime.session_config().unwrap();
+    assert_eq!(
+        serde_json::to_value(&before).unwrap()["configOptions"][0]["currentValue"],
+        effort
+    );
+    let oversized = ConfigIntent {
+        mutation: ConfigMutation::Option {
+            config_id: ConfigId::new("configId", "effort").unwrap(),
+            value: ConfigValue::Select {
+                value: ConfigId::new("value", format!("{effort}x")).unwrap(),
+            },
+        },
+        ..intent
+    };
+    assert!(runtime.configure(&oversized).is_err());
+    assert_eq!(runtime.session_config().unwrap(), before);
+    let prompt = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "keep full bounded effort").unwrap(),
+            client_message_id: RequiredText::new("client", "bounded-effort").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
+    assert_eq!(request["params"]["effort"], effort);
+}
+
+#[test]
+fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
+    use crate::acp::{
+        contract::SageChatId,
+        scheduler::RuntimeOwner,
+        session_config::{ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
+    };
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "gpt-6-astra").unwrap()),
+        })
+        .unwrap();
+    let ready = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(ready.egress().is_empty());
+    let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list_id,"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let intent = ConfigIntent {
+        owner: RuntimeOwner {
+            project_id: SageProjectId::parse("project-1").unwrap(),
+            chat_id: SageChatId::parse("chat-1").unwrap(),
+            session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        },
+        expected_config_revision: ConfigRevision::first(),
+        mutation: ConfigMutation::Option {
+            config_id: RequiredText::new("configId", "effort").unwrap(),
+            value: ConfigValue::Select {
+                value: RequiredText::new("value", "high").unwrap(),
+            },
+        },
+    };
+    let channel = std::sync::Arc::new(crate::acp::session_config::ConfigChannel::default());
+    channel.reserve(intent.owner.clone());
+    channel
+        .update(&intent.owner, runtime.session_config().unwrap())
+        .unwrap();
+    channel.publish(&intent.owner);
+    let owner = intent.owner.clone();
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(runtime);
+    runtime.attach_config(owner.clone(), std::sync::Arc::clone(&channel));
+    assert!(runtime.configure(&intent).unwrap().is_none());
+    assert_eq!(
+        serde_json::to_value(channel.snapshot(&owner).unwrap().config).unwrap()["configOptions"][0]
+            ["currentValue"],
+        "high"
+    );
+    assert!(!runtime.config_pending());
+    let invalid = ConfigIntent {
+        expected_config_revision: channel.snapshot(&owner).unwrap().config_revision,
+        mutation: ConfigMutation::Option {
+            config_id: RequiredText::new("configId", "effort").unwrap(),
+            value: ConfigValue::Select {
+                value: RequiredText::new("value", "unsupported").unwrap(),
+            },
+        },
+        ..intent
+    };
+    assert!(runtime.configure(&invalid).is_err());
+    let page = runtime
+        .command(AdapterCommand::ModelPage { cursor: None })
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"id":request_id(&page),"result":{"data":[{
+        "id":"gpt-6-astra","displayName":"GPT-6 Astra","isDefault":true,
+        "defaultReasoningEffort":"medium",
+        "supportedReasoningEfforts":[
+            {"reasoningEffort":"medium","description":"Balanced"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(runtime.session_config().unwrap()).unwrap()["configOptions"][0]["currentValue"],
+        "high"
+    );
+    let prompt = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "use selected effort").unwrap(),
+            client_message_id: RequiredText::new("client", "effort-turn").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
+    assert_eq!(request["method"], "turn/start");
+    assert_eq!(request["params"]["effort"], "high");
+    let schema: Value = serde_json::from_slice(include_bytes!(
+        "../../../../../testdata/acp/codex/observed-0146-effort-schema.json"
+    ))
+    .unwrap();
+    let methods = schema["clientRequestMethods"].as_array().unwrap();
+    assert!(methods.contains(&request["method"]));
+    assert!(!methods.contains(&json!("thread/settings/update")));
+    assert_eq!(schema["reasoningEffort"]["type"], "string");
+}
+
+#[test]
+fn thread_started_notification_waits_for_the_pending_new_session_response() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let request = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\repo".into(),
             model: None,
@@ -219,14 +872,21 @@ fn thread_started_notification_completes_the_pending_new_session() {
         )
         .expect("Codex 0.146 thread-started notification");
 
-    assert!(matches!(
-        batch.events(),
-        [AdapterEvent::SessionReady { .. }]
-    ));
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
     assert!(
         batch.egress().is_empty(),
         "thread notification does not send a Goal RPC before the session response"
     );
+    let ready = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&request),"result":{"thread":{"id":"thread-0146"}}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(
+        ready.events(),
+        [AdapterEvent::SessionReady { .. }]
+    ));
 }
 
 #[test]
@@ -1409,7 +2069,7 @@ fn observed_mcp_cancelled_status_notification_is_ignored_during_activation() {
 fn failed_optional_browser_mcp_does_not_abort_chat_activation() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
-    let _request = runtime
+    let request = runtime
         .command(AdapterCommand::NewSession {
             native_root: r"C:\repo".into(),
             model: None,
@@ -1453,6 +2113,13 @@ fn failed_optional_browser_mcp_does_not_abort_chat_activation() {
             &frame(json!({"method":"thread/started","params":{
                 "thread":{"id":"thread-observed"}
             }})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(started.events(), [AdapterEvent::IgnoredLate]));
+    let started = runtime
+        .ingest(
+            &frame(json!({"id":request_id(&request),"result":{"thread":{"id":"thread-observed"}}})),
             &Mapper,
         )
         .unwrap();
@@ -3008,3 +3675,6 @@ fn harness_neutral_batches_enforce_count_and_actual_byte_limits() {
 }
 
 mod cancel_contract_tests;
+
+#[path = "tests/model_page_rejection.rs"]
+mod model_page_rejection;

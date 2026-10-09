@@ -433,7 +433,7 @@ describe("composer permission mode picker", () => {
       { id: "astra", name: "Astra High", isDefault: true },
     ]);
     useWorkbenchStore.setState({
-      harnesses: [claude, codex, opencode, unavailable],
+      harnesses: [unavailable, claude, codex, opencode],
       selectedHarnessId: claude.id,
       models: [{ id: "opus", name: "Opus 5" }],
     });
@@ -471,7 +471,7 @@ describe("composer permission mode picker", () => {
     });
     const trigger = screen.getByRole("button", { name: "Harness" });
     expect(trigger).toHaveTextContent("Claude Code");
-    expect(trigger).toHaveTextContent("Opus 5 High");
+    expect(trigger).not.toHaveTextContent("Opus 5 High");
     expect(
       trigger.querySelector('img[src="/harness-claude.svg"]'),
     ).not.toBeNull();
@@ -494,6 +494,10 @@ describe("composer permission mode picker", () => {
       "Default model",
     );
     expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /Missing/ })).toHaveTextContent(
+      "not installed",
+    );
+    expect(screen.getAllByRole("option").at(-1)).toHaveTextContent("Missing");
     const input = screen.getByRole("combobox", { name: "Harness" });
     expect(input).toHaveAttribute("readonly");
     fireEvent.keyDown(input, { key: "ArrowDown" });
