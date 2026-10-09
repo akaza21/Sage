@@ -28,10 +28,19 @@ public static class NativeChatCaptureWindow {
 '@
 $height = if ($Width -eq 1888) { 1096 } else { 1000 }
 [void][NativeChatCaptureWindow]::ShowWindow($owner.MainWindowHandle, 9)
-if (![NativeChatCaptureWindow]::SetWindowPos($owner.MainWindowHandle, [IntPtr]::Zero, 0, 0, $Width, $height, 0x0044)) { throw 'native-resize-failed' }
 $outer = New-Object NativeChatCaptureWindow+Rect
 $client = New-Object NativeChatCaptureWindow+Rect
-if (![NativeChatCaptureWindow]::GetWindowRect($owner.MainWindowHandle, [ref]$outer) -or ![NativeChatCaptureWindow]::GetClientRect($owner.MainWindowHandle, [ref]$client)) { throw 'native-bounds-failed' }
+$outerWidth = $Width
+$outerHeight = $height
+for ($attempt = 0; $attempt -lt 4; $attempt++) {
+    if (![NativeChatCaptureWindow]::SetWindowPos($owner.MainWindowHandle, [IntPtr]::Zero, 0, 0, $outerWidth, $outerHeight, 0x0044)) { throw 'native-resize-failed' }
+    if (![NativeChatCaptureWindow]::GetWindowRect($owner.MainWindowHandle, [ref]$outer) -or ![NativeChatCaptureWindow]::GetClientRect($owner.MainWindowHandle, [ref]$client)) { throw 'native-bounds-failed' }
+    $clientWidth = $client.Right - $client.Left
+    $clientHeight = $client.Bottom - $client.Top
+    if ($clientWidth -eq $Width -and $clientHeight -eq $height) { break }
+    $outerWidth = $outer.Right - $outer.Left + $Width - $clientWidth
+    $outerHeight = $outer.Bottom - $outer.Top + $height - $clientHeight
+}
 $version = (Get-Process -Id $listener.OwningProcess).MainModule.FileVersionInfo.FileVersion
 if ($version -notmatch '\d+(\.\d+){1,3}') { throw 'webview-version-missing' }
 @{ outer = @{ width = $outer.Right - $outer.Left; height = $outer.Bottom - $outer.Top }; client = @{ width = $client.Right - $client.Left; height = $client.Bottom - $client.Top }; webviewVersion = $Matches[0] } | ConvertTo-Json -Compress

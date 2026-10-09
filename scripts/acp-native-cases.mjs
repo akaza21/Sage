@@ -108,7 +108,7 @@ export function nativeCases() {
                 emit("codexInitializeResult0146"),
                 wait("codexStart"),
                 emit("codexThreadResult"),
-                ...(state === "effort-menu"
+                ...(["effort-menu", "model-menu"].includes(state)
                   ? [
                       wait("codexModelList"),
                       emit("codexModelListEffortResult"),

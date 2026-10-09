@@ -1,5 +1,6 @@
 import {
   closeSync,
+  lstatSync,
   existsSync,
   openSync,
   readSync,
@@ -23,6 +24,80 @@ import {
 
 const RUN_ID =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
+export function safeDestination(file) {
+  try {
+    if (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink())
+      throw new Error("evidence-reparse");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+export function persistCapture(
+  {
+    output,
+    options,
+    run,
+    directory,
+    timing,
+    elapsedMs,
+    nativeBounds,
+    captured,
+    error,
+  },
+  write = writeFileSync,
+) {
+  let pngCreated = false;
+  if (!error) {
+    try {
+      captured.probe.timing = { elapsedMs, steps: timing.steps };
+      validateProbe(captured.probe);
+      const handle = openSync(output.png, "wx");
+      pngCreated = true;
+      try {
+        write(handle, captured.screenshot);
+      } finally {
+        closeSync(handle);
+      }
+      write(output.probe, JSON.stringify(captured.probe, null, 2) + "\n");
+      return {
+        verdict: "captured",
+        run,
+        directory,
+        png: path.basename(output.png),
+      };
+    } catch (failure) {
+      error = failure;
+      if (pngCreated) {
+        if (timing.steps.length < 64) timing.record("png-rollback-start");
+        try {
+          unlinkSync(output.png);
+          if (timing.steps.length < 64) timing.record("png-rollback-finished");
+        } catch (cleanupError) {
+          error = new Error("capture-png-cleanup", { cause: cleanupError });
+        }
+      }
+    }
+  }
+  const reason = /^[a-z0-9-]{1,80}$/u.test(error.message)
+    ? error.message
+    : "capture-operation-blocked";
+  if (timing.steps.length < 64) timing.record("capture-blocked");
+  const blocked = {
+    schemaVersion: 1,
+    caseId: options.caseId,
+    harness: options.harness,
+    state: options.state,
+    width: options.width,
+    verdict: "blocked",
+    reason,
+    timing: { elapsedMs, steps: timing.steps },
+  };
+  if (nativeBounds) blocked.nativeBounds = nativeBounds;
+  if (error.cleanupError) blocked.cleanupError = error.cleanupError;
+  assertPrivacy(blocked);
+  write(output.probe, JSON.stringify(blocked, null, 2) + "\n");
+  return { ...blocked, run };
+}
 export function stagingPaths(workspace, run, options) {
   if (!RUN_ID.test(run)) throw new Error("capture-run");
   requireNativeCase(options.harness, options.state);
@@ -83,7 +158,7 @@ export function promoteCapture(workspace, options) {
     probe.dpr,
   );
   const png = readStagedFile(staged.png, 8 * 1024 * 1024);
-  validatePng(png, probe.dimensions.css);
+  validatePng(png, options);
   const directory = path.join(
     workspace,
     "docs",

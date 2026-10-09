@@ -60,7 +60,7 @@ pub fn is_native_replay_case(case: &str) -> bool {
 
 #[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_lists_models(case: &str) -> bool {
-    case == "codex-effort-menu"
+    matches!(case, "codex-effort-menu" | "codex-model-menu")
 }
 
 #[cfg(all(windows, debug_assertions))]

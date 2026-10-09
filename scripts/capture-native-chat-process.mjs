@@ -168,16 +168,53 @@ export async function stopOwned(child) {
     });
   }
 }
-export function cleanupRoots(roots) {
-  if (!roots || !existsSync(roots.owned)) return;
-  const resolved = requirePlain(roots.owned, true),
-    proof = requirePlain(roots.proof, true);
-  if (
-    path.dirname(resolved) !== proof ||
-    !/^nc1-[a-f0-9-]{36}$/u.test(path.basename(resolved))
-  )
-    throw new Error("cleanup-containment");
-  for (const directory of [roots.profile, roots.project])
-    requirePlain(directory, true);
-  rmSync(resolved, { recursive: true });
+export async function cleanupRoots(
+  roots,
+  {
+    remove = rmSync,
+    pause = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
+  } = {},
+) {
+  for (let attempt = 1; attempt <= 21; attempt++) {
+    if (!roots || !existsSync(roots.owned)) return;
+    try {
+      const resolved = requirePlain(roots.owned, true),
+        proof = requirePlain(roots.proof, true);
+      if (
+        path.dirname(resolved) !== proof ||
+        !/^nc1-[a-f0-9-]{36}$/u.test(path.basename(resolved))
+      )
+        throw new Error("cleanup-containment");
+      for (const directory of [roots.profile, roots.project])
+        if (existsSync(directory)) requirePlain(directory, true);
+      remove(resolved, { recursive: true });
+      return;
+    } catch (error) {
+      if (!error.code) throw error;
+      if (
+        ["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"].includes(error.code) &&
+        attempt < 21
+      ) {
+        await pause(500);
+        continue;
+      }
+      const relative =
+        typeof error.path === "string"
+          ? path.relative(path.resolve(roots.owned), path.resolve(error.path))
+          : "";
+      const failure = new Error("roots-cleanup-failed", { cause: error });
+      failure.cleanupError = {
+        code: /^[A-Z0-9_]{1,32}$/u.test(error.code) ? error.code : "UNKNOWN",
+        syscall: /^[a-zA-Z0-9_]{1,32}$/u.test(error.syscall)
+          ? error.syscall
+          : "remove",
+        path:
+          relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+            ? relative.split(path.sep).join("/").slice(0, 256)
+            : "owned-root",
+        attempts: attempt,
+      };
+      throw failure;
+    }
+  }
 }

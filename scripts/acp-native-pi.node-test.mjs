@@ -4,7 +4,11 @@ import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { readFileSync } from "node:fs";
-import { actionsFor, namedState } from "./capture-native-chat-dom.mjs";
+import {
+  actionsFor,
+  namedState,
+  scopeToTurn,
+} from "./capture-native-chat-dom.mjs";
 import { piIdleConfigJourney } from "./acp-native-pi-cases.mjs";
 
 test("Pi snapshots retain streamed blocks and terminal messages match their final partial", () => {
@@ -147,10 +151,15 @@ test("Pi compaction waits through agent_end and replays continuation before sett
 });
 
 test("Pi capture predicates distinguish compaction outcomes and read-only notices", () => {
-  assert.deepEqual(actionsFor("cancelled-dialog"), [
-    ".chat-transcript-work > summary",
-    ".acp-unknown .acp-details > summary",
-  ]);
+  assert.deepEqual(
+    actionsFor("cancelled-dialog", "pi").map((action) =>
+      scopeToTurn(action, "pi-turn"),
+    ),
+    [
+      '.acp-turn[data-turn-id="pi-turn"] .chat-transcript-work > summary',
+      '.acp-turn[data-turn-id="pi-turn"] .acp-unknown .acp-details > summary',
+    ],
+  );
   const observation = {
     bindingId: "pi-rpc",
     selected: "pi",

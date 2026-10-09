@@ -103,13 +103,18 @@ export function validateDimensions(dimensions, width, height, dpr) {
     finite(size.height, 1);
   }
   if (dpr !== 1) fail("dpr-mismatch");
-  if (dimensions.outer.width !== width || dimensions.outer.height !== height)
+  if (
+    ![1888, 720, 480].includes(width) ||
+    height !== (width === 1888 ? 1096 : 1000) ||
+    dimensions.client.width !== width ||
+    dimensions.client.height !== height
+  )
     fail("resize-clamp");
   if (
     dimensions.client.width !== dimensions.css.width ||
     dimensions.client.height !== dimensions.css.height ||
-    dimensions.client.width > width ||
-    dimensions.client.height > height
+    dimensions.client.width > dimensions.outer.width ||
+    dimensions.client.height > dimensions.outer.height
   )
     fail("viewport-mismatch");
 }
@@ -163,8 +168,8 @@ export function validateProbe(probe) {
     fail("probe-hash");
   validateDimensions(
     probe.dimensions,
-    probe.dimensions.outer.width,
-    probe.dimensions.outer.height,
+    probe.dimensions.client.width,
+    probe.dimensions.client.width === 1888 ? 1096 : 1000,
     probe.dpr,
   );
   flags(probe.predicates);
@@ -172,8 +177,29 @@ export function validateProbe(probe) {
   flags(probe.overflow);
   if (probe.predicates.namedState !== true || probe.predicates.binding !== true)
     fail("state-predicate");
-  keys(probe.timing, ["elapsedMs"]);
+  keys(probe.timing, ["elapsedMs", "steps"]);
   finite(probe.timing.elapsedMs, 0, 120000);
+  if (!Array.isArray(probe.timing.steps) || probe.timing.steps.length > 64)
+    fail("timing-bound");
+  for (const step of probe.timing.steps) {
+    keys(step, [
+      "step",
+      "atMs",
+      "turnId",
+      "state",
+      "cancelPresent",
+      "assistantRendered",
+    ]);
+    if (
+      !IDENTIFIER.test(step.step) ||
+      !IDENTIFIER.test(step.turnId) ||
+      !IDENTIFIER.test(step.state) ||
+      typeof step.cancelPresent !== "boolean" ||
+      typeof step.assistantRendered !== "boolean"
+    )
+      fail("probe-timing");
+    finite(step.atMs, 0, Number.MAX_SAFE_INTEGER);
+  }
   if (!Array.isArray(probe.elements) || probe.elements.length > 64)
     fail("probe-elements");
   for (const element of probe.elements) {
@@ -192,14 +218,16 @@ export function validateProbe(probe) {
     fail("probe-bytes");
   return probe;
 }
-export function admitTarget(targets, port) {
+/** Returns the single owned Sage page target, or null while none is present yet. */
+export function selectOwnedTarget(targets, port) {
   if (!Array.isArray(targets) || targets.length > 32) fail("cdp-target");
   const owned = targets.filter(
     (target) =>
-      target.type === "page" &&
+      target?.type === "page" &&
       target.url === "http://127.0.0.1:1420/" &&
       /^Sage(?:$|\s)/u.test(target.title),
   );
+  if (owned.length === 0) return null;
   if (owned.length !== 1) fail("cdp-target");
   const target = owned[0];
   if (
@@ -212,6 +240,52 @@ export function admitTarget(targets, port) {
   )
     fail("cdp-target");
   return target;
+}
+export function admitTarget(targets, port) {
+  const target = selectOwnedTarget(targets, port);
+  if (!target) fail("cdp-target");
+  return target;
+}
+/**
+ * Polls until exactly one owned page target appears. An unreachable or empty
+ * listing waits; ambiguous or malformed owned targets and the deadline fail closed.
+ */
+export async function discoverOwnedTarget(poll, port, deadline) {
+  let selected = null;
+  try {
+    await waitForState(async () => {
+      const targets = await poll();
+      if (targets === undefined) return false;
+      selected = selectOwnedTarget(targets, port);
+      return selected !== null;
+    }, deadline);
+  } catch (error) {
+    if (error.message === "state-timeout") fail("cdp-target");
+    throw error;
+  }
+  return selected;
+}
+/** Polls the owned app's loopback /json listing while the app stays alive. */
+export function discoverOwnedPage(port, deadline, child) {
+  return discoverOwnedTarget(
+    async () => {
+      if (child.exitCode !== null || child.signalCode !== null || !child.pid)
+        fail("owned-app-exited");
+      let response;
+      try {
+        response = await fetch("http://127.0.0.1:" + port + "/json", {
+          signal: AbortSignal.timeout(1000),
+        });
+      } catch {
+        return undefined;
+      }
+      const bytes = await readBoundedResponse(response);
+      if (!response.ok) fail("cdp-discovery-bound");
+      return JSON.parse(bytes);
+    },
+    port,
+    deadline,
+  );
 }
 export function validatePng(bytes, viewport) {
   if (

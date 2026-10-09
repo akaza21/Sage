@@ -1,4 +1,10 @@
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
+export const IDLE_CAPTURE_STATES = Object.freeze([
+  "new-chat",
+  "composer-idle",
+  "harness-menu",
+  "add-menu",
+]);
 export const HARNESS = Object.freeze({
   pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-0.83.0" },
   codex: {
@@ -30,9 +36,43 @@ export function visibleRectangle(rectangle, viewport) {
     rectangle.y + rectangle.height > 0
   );
 }
+/**
+ * A closed <details> hides its descendants except its own summary. The element
+ * itself may be a closed <details>: its summary row is still rendered.
+ */
+export function hiddenByClosedDetails(element) {
+  for (
+    let details = element.parentElement?.closest("details:not([open])");
+    details;
+    details = details.parentElement?.closest("details:not([open])")
+  )
+    if (!details.querySelector(":scope > summary")?.contains(element))
+      return true;
+  return false;
+}
+export function assistantTextRendered(turnId, document, visible) {
+  return Array.from(document.querySelectorAll(".acp-turn"))
+    .filter((element) => element.dataset.turnId === turnId)
+    .some((element) =>
+      Array.from(
+        element.querySelectorAll(
+          ".acp-message--assistant .acp-markdown, .acp-permission:not(.acp-permission--settled) > p:first-of-type",
+        ),
+      ).some((text) => visible(text) && text.textContent.trim().length > 0),
+    );
+}
 export const IMAGE_ATTACHMENT = String.raw`(()=>{const input=document.querySelector('input[aria-label="Choose images"]');if(!input || input.disabled)return false;const transfer=new DataTransfer();transfer.items.add(new File([Uint8Array.from(atob(${JSON.stringify(NATIVE_IMAGE_BASE64)}),character=>character.charCodeAt(0))],"synthetic-replay.png",{type:"image/png"}));input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));return true})()`;
 
-export const OBSERVATION = String.raw`(async()=>{
+/** Selects the title-bar Agent window mode; true only once it is checked. */
+export const AGENT_MODE = String.raw`(()=>{const inputs=document.querySelectorAll('input[name="workbench-window-mode"][value="agent"]');if(inputs.length!==1 || inputs[0].disabled)return false;if(!inputs[0].checked)inputs[0].click();return inputs[0].checked})()`;
+/**
+ * Observes the newest Turn owned by the expected binding. The project welcome
+ * Turn belongs to another binding and may transiently sort last.
+ */
+export function observationFor(binding) {
+  if (!/^[a-z0-9-]{1,64}$/u.test(binding)) throw new Error("binding-identity");
+  return String.raw`(async()=>{
+  const expectedBinding=${JSON.stringify(binding)};
   const {useWorkbenchStore}=await import('/src/app/store.ts');
   const {acpProjectionStoreFor}=await import('/src/app/acpProjectionRegistry.ts');
   const store=useWorkbenchStore.getState(), page=acpProjectionStoreFor(store.activeTabId).getState().page;
@@ -40,11 +80,14 @@ export const OBSERVATION = String.raw`(async()=>{
   const projectionLoaded=Boolean(page && page.chatId===chatId && page.projectId===projectId);
   const turns=page?.turns ?? [];
   if(turns.length>64)throw Error('projection-bound');
-  const turn=turns.at(-1), session=page?.sessions?.find(session=>session.id===turn?.sessionId) ?? page?.sessions?.at(-1);
   const selected=document.querySelector('button[aria-label="Harness"]')?.getAttribute('data-selected-id');
   const harness=store.harnesses?.find(harness=>harness.id===selected);
+  const sessionOf=turn=>page?.sessions?.find(session=>session.id===turn?.sessionId);
+  const owned=turns.filter(turn=>sessionOf(turn)?.bindingId===expectedBinding);
+  const turn=owned.at(-1) ?? turns.at(-1), session=sessionOf(turn);
   const visibleRectangle=${visibleRectangle.toString()};
-  const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !Array.from(element.closest("details:not([open])") ? [element.closest("details:not([open])")] : []).some(details=>!details.querySelector("summary")?.contains(element)));
+  const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
+  const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>Array.from(document.querySelectorAll(selector)).some(visible);
   const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'.tab[data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]',attachment:'.composer__attachment'};
   const elements=[]; let charged=0;
@@ -57,9 +100,11 @@ export const OBSERVATION = String.raw`(async()=>{
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
-  return {chatId,projectId,projectionLoaded,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !document.querySelector('button[aria-label="Model"]')?.disabled,effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
+  const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,document,visible);
+  return {chatId,projectId,projectionLoaded,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
+}
 
 export function freshEmptyChat(previous, observation) {
   return Boolean(
@@ -74,11 +119,46 @@ export function freshEmptyChat(previous, observation) {
   );
 }
 
+/** Turn states from src/domain/acp.ts TurnState. */
+export const LIVE_TURN_STATES = Object.freeze([
+  "running",
+  "waitingModel",
+  "waitingTool",
+  "waitingApproval",
+  "waitingUser",
+]);
+export const SETTLED_TURN_STATES = Object.freeze([
+  "completed",
+  "interrupted",
+  "cancelled",
+  "failed",
+  "deliveryUnknown",
+]);
+export function liveTurnReady(observation, turnId, bindingId) {
+  return (
+    observation.turnId === turnId &&
+    observation.bindingId === bindingId &&
+    LIVE_TURN_STATES.includes(observation.state) &&
+    observation.controls.stop === true &&
+    observation.assistantRendered === true
+  );
+}
+export function liveActionExpression(observation, selector, turnId, bindingId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(turnId)) throw new Error("turn-identity");
+  return `(async()=>{
+    const latest=await ${observation};
+    if(latest.turnId!==${JSON.stringify(turnId)} || latest.bindingId!==${JSON.stringify(bindingId)})return 'turn-identity-drift';
+    if(${JSON.stringify(SETTLED_TURN_STATES)}.includes(latest.state))return 'turn-action-settled';
+    const LIVE_TURN_STATES=${JSON.stringify(LIVE_TURN_STATES)};
+    if(!(${liveTurnReady.toString()})(latest,${JSON.stringify(turnId)},${JSON.stringify(bindingId)}))return false;
+    return ${clickExpression(selector)};
+  })()`;
+}
 export function namedState(options, observation) {
   const state = options.state,
     view = observation.visible,
     terminal = observation.state === "completed",
-    live = observation.state === "running",
+    live = LIVE_TURN_STATES.includes(observation.state),
     rendered = (kind) => observation.itemKinds.includes(kind);
   const predicates = {
     binding: observation.bindingId === HARNESS[options.harness]?.binding,
@@ -202,6 +282,38 @@ export function clickExpression(selector) {
     ")];if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()"
   );
 }
+/** Opens the single matching disclosure summary; idempotent, true once open. */
+export function openExpression(selector) {
+  return (
+    "(()=>{const elements=[...document.querySelectorAll(" +
+    JSON.stringify(selector) +
+    ")];const details=elements[0]?.parentElement;if(elements.length!==1 || details?.tagName!=='DETAILS')return false;if(!details.open){elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click()}return details.open})()"
+  );
+}
+export function isDisclosure(selector) {
+  return selector.endsWith("> summary");
+}
+export function isLiveTurnAction(selector) {
+  return (
+    selector === 'button[aria-label="Cancel turn"]' ||
+    selector.includes(".acp-permission__actions button:")
+  );
+}
+const LAST_TURN = ".acp-turn:last-of-type ";
+/**
+ * The project welcome turn precedes the replayed one, and the newest section can
+ * render after the projection settles; pin latest-turn actions to its identity.
+ */
+export function scopeToTurn(selector, turnId) {
+  if (!selector.startsWith(LAST_TURN)) return selector;
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(turnId)) throw new Error("turn-identity");
+  return (
+    '.acp-turn[data-turn-id="' +
+    turnId +
+    '"] ' +
+    selector.slice(LAST_TURN.length)
+  );
+}
 export function actionsFor(state, harness) {
   if (state === "turn-retry" && harness === "pi") return [];
   if (
@@ -226,24 +338,26 @@ export function actionsFor(state, harness) {
     ].includes(state)
   )
     return [
-      ".chat-transcript-work > summary",
-      ...(state === "tool-expanded" ? [".acp-tool-rollup > summary"] : []),
+      LAST_TURN + ".chat-transcript-work > summary",
+      ...(state === "tool-expanded"
+        ? [LAST_TURN + ".acp-tool-rollup > summary"]
+        : []),
       ...(state === "cancelled-dialog"
-        ? [".acp-unknown .acp-details > summary"]
+        ? [LAST_TURN + ".acp-unknown .acp-details > summary"]
         : []),
       ...(["subagents-popover", "child-opened"].includes(state)
-        ? [".acp-subagent-row"]
+        ? [LAST_TURN + ".acp-subagent-row"]
         : []),
     ];
   if (state === "approval-approved")
     return [
-      ".acp-permission__actions button:first-child",
-      ".acp-turn:last-of-type .chat-transcript-work > summary",
+      LAST_TURN + ".acp-permission__actions button:first-child",
+      LAST_TURN + ".chat-transcript-work > summary",
     ];
   if (state === "approval-declined")
     return [
-      ".acp-permission__actions button:last-child",
-      ".acp-turn:last-of-type .chat-transcript-work > summary",
+      LAST_TURN + ".acp-permission__actions button:last-child",
+      LAST_TURN + ".chat-transcript-work > summary",
     ];
   if (state === "turn-stopped") return ['button[aria-label="Cancel turn"]'];
   if (state === "turn-retry") return [".acp-turn__failure button"];

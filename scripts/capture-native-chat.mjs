@@ -1,28 +1,35 @@
-import { writeFileSync, lstatSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
-import { stagingPaths } from "./capture-native-chat-evidence.mjs";
+import {
+  stagingPaths,
+  safeDestination,
+  persistCapture,
+} from "./capture-native-chat-evidence.mjs";
 import {
   parseArgs,
   requireNativeCase,
   validateProbe,
   validateDimensions,
   validatePng,
-  admitTarget,
+  discoverOwnedPage,
   waitForState,
   withOwnedCapture,
-  readBoundedResponse,
 } from "./capture-native-chat-contract.mjs";
 import {
-  OBSERVATION,
+  observationFor,
+  AGENT_MODE,
   IMAGE_ATTACHMENT,
   HARNESS,
+  IDLE_CAPTURE_STATES,
   namedState,
-  clickExpression,
+  openExpression,
+  isDisclosure,
+  isLiveTurnAction,
+  scopeToTurn,
+  SETTLED_TURN_STATES,
   actionsFor,
-  freshEmptyChat,
 } from "./capture-native-chat-dom.mjs";
 import {
   runTool,
@@ -42,7 +49,22 @@ import {
   waitForVite,
   assertOwnedVite,
   servedAssetHash,
+  COLD_ASSET_TIMEOUT_MS,
+  buildCheckout,
 } from "./capture-native-chat-source.mjs";
+import {
+  click,
+  stableLayout,
+  clickReadyTurn,
+  captureTiming,
+  captureStep,
+  submitTurn,
+  cleanupCapture,
+  prepareCaptureChat,
+  waitForComposerIdle,
+  retainCaptureError,
+} from "./capture-native-chat-drive.mjs";
+export { prepareCaptureChat } from "./capture-native-chat-drive.mjs";
 export {
   parseArgs,
   evidencePaths,
@@ -53,127 +75,23 @@ const workspace = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const idleStates = new Set([
-  "new-chat",
-  "composer-idle",
-  "harness-menu",
-  "add-menu",
-]);
-
-async function discover(port, deadline, child) {
-  let selected;
-  await waitForState(async () => {
-    if (child.exitCode !== null || child.signalCode !== null || !child.pid)
-      throw new Error("owned-app-exited");
-    let response;
-    try {
-      response = await fetch("http://127.0.0.1:" + port + "/json", {
-        signal: AbortSignal.timeout(1000),
-      });
-    } catch {
-      return false;
-    }
-    const bytes = await readBoundedResponse(response);
-    if (!response.ok || Buffer.byteLength(bytes) > 65536)
-      throw new Error("cdp-discovery-bound");
-    selected = admitTarget(JSON.parse(bytes), port);
-    return true;
-  }, deadline);
-  return selected;
-}
-async function click(cdp, selector, deadline) {
-  await waitForState(
-    () =>
-      cdp.evaluate(
-        clickExpression(selector),
-        Math.min(deadline, Date.now() + 5000),
-      ),
-    deadline,
-  );
-}
-export async function prepareCaptureChat(cdp, harness, deadline) {
-  const observe = () =>
-    cdp.evaluate(OBSERVATION, Math.min(deadline, Date.now() + 5000));
-  let previous;
-  await waitForState(async () => {
-    const observation = await observe();
-    if (
-      !observation.chatId ||
-      !observation.projectId ||
-      observation.projectionLoaded !== true
-    )
-      return false;
-    previous = observation;
-    return true;
-  }, deadline);
-  const compact = await cdp.evaluate(
-    "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))",
-    Math.min(deadline, Date.now() + 5000),
-  );
-  if (compact)
-    await click(cdp, 'button[aria-label="Open projects and chats"]', deadline);
-  await click(cdp, 'button[aria-label="New task"]', deadline);
-  await waitForState(
-    async () => freshEmptyChat(previous, await observe()),
-    deadline,
-  );
-  if (compact)
-    await click(cdp, 'button[aria-label="Close projects and chats"]', deadline);
-  await click(cdp, 'button[aria-label="Harness"]', deadline);
-  await click(
-    cdp,
-    '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
-    deadline,
-  );
-  await waitForState(
-    async () => (await observe()).selected === HARNESS[harness].id,
-    deadline,
-  );
-}
-async function stableLayout(cdp, deadline) {
-  await cdp.evaluate(
-    "(async()=>{await document.fonts.ready;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true})()",
-    Math.min(deadline, Date.now() + 10000),
-  );
-  let prior = null,
-    consecutive = 0;
-  await waitForState(async () => {
-    const observation = await cdp.evaluate(
-      OBSERVATION,
-      Math.min(deadline, Date.now() + 5000),
-    );
-    const signature = JSON.stringify([
-      observation.css,
-      observation.elements.map(({ kind, x, y, width, height }) => ({
-        kind,
-        x,
-        y,
-        width,
-        height,
-      })),
-    ]);
-    consecutive = signature === prior ? consecutive + 1 : 0;
-    prior = signature;
-    return consecutive >= 3;
-  }, deadline);
-}
-function safeDestination(file) {
-  try {
-    if (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink())
-      throw new Error("evidence-reparse");
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-}
-
 export async function capture(options) {
+  const timing = captureTiming();
+  timing.record("capture-start");
   const run = randomUUID();
   const { directory, ...output } = stagingPaths(workspace, run, options);
   ensurePlainDirectory(directory);
   requirePlain(directory, true);
   for (const file of Object.values(output)) safeDestination(file);
-  let child, viteChild, cdp, roots, nativeBounds, webviewVersion;
-  const started = Date.now(),
+  let child,
+    viteChild,
+    cdp,
+    roots,
+    nativeBounds,
+    webviewVersion,
+    captured,
+    captureError;
+  let started = Date.now(),
     deadline = started + 90000;
   try {
     if (process.platform !== "win32") throw new Error("windows-required");
@@ -183,10 +101,14 @@ export async function capture(options) {
     if (typeof globalThis.WebSocket !== "function")
       throw new Error("node-websocket-unavailable");
     const source = await cleanSource(workspace);
+    timing.record("source-clean");
     viteChild = await launchOwnedVite(workspace);
     await waitForVite(viteChild);
-    const servedAsset = await servedAssetHash();
+    const servedAsset = await servedAssetHash(fetch, COLD_ASSET_TIMEOUT_MS);
+    timing.record("served-asset-ready");
     assertOwnedVite(viteChild);
+    started = Date.now();
+    deadline = started + 90000;
     const debugDir = path.join(
       process.env.CARGO_TARGET_DIR ||
         path.join(workspace, "src-tauri", "target"),
@@ -196,12 +118,16 @@ export async function capture(options) {
     const fixture = executableIdentity(
       path.join(debugDir, "acp-adversarial-fixture.exe"),
     );
-    roots = freshRoots(workspace);
+    roots = freshRoots(
+      await buildCheckout(workspace, process.env.NATIVE_CAPTURE_BUILD_CHECKOUT),
+    );
     const port = await reservePort();
     child = launchOwned(build, fixture, roots, options, port);
-    const captured = await withOwnedCapture(
+    timing.record("app-launched");
+    captured = await withOwnedCapture(
       async () => {
-        const target = await discover(port, deadline, child);
+        const target = await discoverOwnedPage(port, deadline, child);
+        timing.record("cdp-target-ready");
         nativeBounds = JSON.parse(
           await runTool("powershell.exe", [
             "-NoProfile",
@@ -227,8 +153,12 @@ export async function capture(options) {
           openDeadline: Date.now() + 10000,
           WebSocketImpl: globalThis.WebSocket,
         });
+        const OBSERVATION = observationFor(HARNESS[options.harness].binding);
+        const clickCapture = (selector) =>
+          click(cdp, selector, deadline, timing.record);
         const evaluate = (expression) =>
           cdp.evaluate(expression, Math.min(deadline, Date.now() + 5000));
+        await waitForState(() => evaluate(AGENT_MODE), deadline);
         await waitForState(
           () =>
             evaluate(
@@ -237,22 +167,24 @@ export async function capture(options) {
           deadline,
         );
         let observation = await evaluate(OBSERVATION);
+        timing.record("window-ready", observation);
         validateDimensions(
           { ...nativeBounds, css: observation.css },
           options.width,
           options.height,
           observation.dpr,
         );
-        await prepareCaptureChat(cdp, options.harness, deadline);
+        await prepareCaptureChat(cdp, options.harness, deadline, timing.record);
+        let submittedTurnId;
         const submit = async () => {
-          await waitForState(
-            () =>
-              evaluate(
-                '(()=>{const input=document.querySelector(\'textarea[aria-label="Message agent"]\');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,"Inspect the fixed synthetic native replay example.");input.dispatchEvent(new Event("input",{bubbles:true}));return true})()',
-              ),
+          submittedTurnId = await submitTurn(
+            evaluate,
+            OBSERVATION,
+            clickCapture,
+            HARNESS[options.harness].binding,
             deadline,
+            timing.record,
           );
-          await click(cdp, 'button[aria-label="Send message"]', deadline);
         };
         if (options.state.startsWith("approval-")) {
           await submit();
@@ -260,18 +192,12 @@ export async function capture(options) {
             async () => (await evaluate(OBSERVATION)).state === "completed",
             deadline,
           );
-          await click(cdp, 'button[aria-label="Composer options"]', deadline);
-          await click(cdp, 'button[aria-label="Permission mode"]', deadline);
-          await click(cdp, '[role="option"][data-option-id="ask"]', deadline);
-          await click(cdp, 'button[aria-label="Composer options"]', deadline);
+          await clickCapture('button[aria-label="Composer options"]');
+          await clickCapture('button[aria-label="Permission mode"]');
+          await clickCapture('[role="option"][data-option-id="ask"]');
+          await clickCapture('button[aria-label="Composer options"]');
         }
-        if (!idleStates.has(options.state)) {
-          await submit();
-          await waitForState(
-            async () => (await evaluate(OBSERVATION)).turnId !== "none",
-            deadline,
-          );
-        }
+        if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
         if (options.state === "jump-to-latest")
           await evaluate(
             '(()=>{const transcript=document.querySelector(".message-list");if(!transcript)return false;transcript.scrollTop=0;transcript.dispatchEvent(new Event("scroll"));return true})()',
@@ -283,8 +209,46 @@ export async function capture(options) {
           );
           await waitForState(() => evaluate(IMAGE_ATTACHMENT), deadline);
         }
-        for (const selector of actionsFor(options.state, options.harness))
-          await click(cdp, selector, deadline);
+        if (options.state === "model-menu")
+          await waitForComposerIdle(
+            evaluate,
+            OBSERVATION,
+            submittedTurnId,
+            HARNESS[options.harness].binding,
+            deadline,
+            timing.record,
+          );
+        for (const action of actionsFor(options.state, options.harness)) {
+          let latest = await evaluate(OBSERVATION);
+          if (isLiveTurnAction(action)) {
+            await clickReadyTurn(
+              evaluate,
+              OBSERVATION,
+              scopeToTurn(action, submittedTurnId),
+              submittedTurnId,
+              HARNESS[options.harness].binding,
+              deadline,
+              timing.record,
+            );
+            continue;
+          }
+          timing.record("action-start", latest);
+          if (!isDisclosure(action)) {
+            await clickCapture(scopeToTurn(action, latest.turnId));
+            timing.record("action-clicked", latest);
+            continue;
+          }
+          await waitForState(async () => {
+            latest = await evaluate(OBSERVATION);
+            return SETTLED_TURN_STATES.includes(latest.state);
+          }, deadline);
+          const selector = scopeToTurn(action, latest.turnId);
+          await waitForState(
+            () => evaluate(openExpression(selector)),
+            deadline,
+          );
+          timing.record("disclosure-opened", latest);
+        }
         await waitForState(async () => {
           observation = await evaluate(OBSERVATION);
           const predicates = namedState(options, observation);
@@ -292,15 +256,16 @@ export async function capture(options) {
             predicates.binding && predicates.selected && predicates.namedState
           );
         }, deadline);
-        await stableLayout(cdp, deadline);
+        await stableLayout(cdp, deadline, OBSERVATION);
         observation = await evaluate(OBSERVATION);
+        timing.record("layout-stable", observation);
         validateDimensions(
           { ...nativeBounds, css: observation.css },
           options.width,
           options.height,
           observation.dpr,
         );
-        const probe = validateProbe({
+        const probe = {
           schemaVersion: 1,
           caseId: options.caseId,
           bindingId: observation.bindingId,
@@ -319,14 +284,16 @@ export async function capture(options) {
           elements: observation.elements,
           controls: observation.controls,
           overflow: observation.overflow,
-          timing: { elapsedMs: Date.now() - started },
+          timing: { elapsedMs: Date.now() - started, steps: timing.steps },
           verdict: "captured",
-        });
+        };
+        timing.record("screenshot-start", observation);
         const screenshot = Buffer.from(
           await cdp.screenshot(Math.min(deadline, Date.now() + 10000)),
           "base64",
         );
-        validatePng(screenshot, observation.css);
+        validatePng(screenshot, options);
+        timing.record("screenshot-captured", observation);
         const final = await evaluate(OBSERVATION);
         if (
           final.dpr !== 1 ||
@@ -335,57 +302,67 @@ export async function capture(options) {
           !Object.values(namedState(options, final)).every(Boolean)
         )
           throw new Error("capture-state-drift");
-        return { screenshot, probe };
+        timing.record("capture-verified", final);
+        probe.timing.elapsedMs = Date.now() - started;
+        return { screenshot, probe: validateProbe(probe) };
       },
       async () => {
-        if (cdp) await cdp.close(Date.now() + 5000);
+        const closeError = await cleanupCapture(timing.record, [
+          {
+            step: "cdp-close",
+            action: cdp ? () => cdp.close(Date.now() + 5000) : null,
+          },
+        ]);
+        captureError = retainCaptureError(captureError, closeError);
+        if (!captureError) cdp = undefined;
       },
       async () => {
-        await stopOwned(child);
-        cleanupRoots(roots);
+        await captureStep(timing.record, "app-stop", () => stopOwned(child));
+        child = undefined;
+        await captureStep(timing.record, "roots-cleanup", () =>
+          cleanupRoots(roots),
+        );
         roots = undefined;
       },
     );
     await verifySource(workspace, source);
+    timing.record("source-reverified");
     assertOwnedVite(viteChild);
     if ((await servedAssetHash()) !== servedAsset)
       throw new Error("served-asset-drift");
     assertOwnedVite(viteChild);
-    writeFileSync(output.png, captured.screenshot);
-    writeFileSync(output.probe, JSON.stringify(captured.probe, null, 2) + "\n");
-    return {
-      verdict: "captured",
-      run,
-      directory: path.relative(workspace, directory),
-      png: path.basename(output.png),
-    };
+    timing.record("served-asset-reverified");
   } catch (error) {
-    const reason = /^[a-z0-9-]{1,80}$/u.test(error.message)
-      ? error.message
-      : "capture-operation-blocked";
-    const blocked = {
-      schemaVersion: 1,
-      caseId: options.caseId,
-      harness: options.harness,
-      state: options.state,
-      width: options.width,
-      verdict: "blocked",
-      reason,
-    };
-    if (nativeBounds) blocked.nativeBounds = nativeBounds;
-    writeFileSync(output.probe, JSON.stringify(blocked, null, 2) + "\n");
-    return { ...blocked, run };
+    captureError = retainCaptureError(error, captureError);
   } finally {
-    try {
-      if (child) await stopOwned(child);
-    } finally {
-      try {
-        if (viteChild) await stopOwned(viteChild);
-      } finally {
-        cleanupRoots(roots);
-      }
-    }
+    const cleanupError = await cleanupCapture(timing.record, [
+      {
+        step: "cdp-close",
+        action: cdp ? () => cdp.close(Date.now() + 5000) : null,
+      },
+      { step: "app-stop", action: child ? () => stopOwned(child) : null },
+      {
+        step: "vite-stop",
+        action: viteChild ? () => stopOwned(viteChild) : null,
+      },
+      {
+        step: "roots-cleanup",
+        action: roots ? () => cleanupRoots(roots) : null,
+      },
+    ]);
+    captureError = retainCaptureError(captureError, cleanupError);
   }
+  return persistCapture({
+    output,
+    options,
+    run,
+    directory: path.relative(workspace, directory),
+    timing,
+    elapsedMs: Date.now() - started,
+    nativeBounds,
+    captured,
+    error: captureError,
+  });
 }
 
 if (

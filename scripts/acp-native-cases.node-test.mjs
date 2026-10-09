@@ -3,11 +3,36 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
+import { answer } from "./acp-native-case-events.mjs";
+test("stopped, failed and running fixtures never claim replay completion", () => {
+  for (const state of [
+    "turn-stopped",
+    "turn-error",
+    "turn-retry",
+    "turn-running",
+    "composer-stop",
+  ]) {
+    assert.equal(
+      answer(state),
+      "The synthetic example is available for native replay review.",
+    );
+    for (const harness of ["codex", "claude"]) {
+      const entry = nativeCases().find(
+        ({ id }) => id === `${harness}-${state}`,
+      );
+      assert.ok(entry);
+      assert.doesNotMatch(
+        JSON.stringify(entry.steps),
+        /Native replay completed/u,
+      );
+    }
+  }
+});
 test("native Codex cases hydrate Goal with the case's admitted model page", () => {
   for (const entry of nativeCases().filter(({ id }) =>
     id.startsWith("codex-"),
   )) {
-    if (entry.id === "codex-effort-menu") {
+    if (["codex-effort-menu", "codex-model-menu"].includes(entry.id)) {
       assert.deepEqual(entry.steps.slice(4, 9), [
         { op: "awaitClient", kind: "codexModelList" },
         { op: "emitKnownFrame", shape: "codexModelListEffortResult" },

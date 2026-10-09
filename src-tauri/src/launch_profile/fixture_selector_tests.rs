@@ -82,7 +82,7 @@ fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[test]
-fn desktop_codex_model_listing_is_enabled_only_for_the_effort_case() {
+fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
     use crate::acp::bindings::codex::{AdmittedCodexBinding, CodexAdapter};
     use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
     use sha2::{Digest, Sha256};
@@ -104,6 +104,8 @@ fn desktop_codex_model_listing_is_enabled_only_for_the_effort_case() {
     let hash = format!("{:x}", Sha256::digest(b"synthetic fixture"));
     for (case, models) in [
         ("codex-effort-menu", true),
+        ("codex-model-menu", true),
+        ("codex-turn-completed", false),
         ("codex-steer-lost-result", false),
     ] {
         let selection = fixture_selector::resolve_selection(

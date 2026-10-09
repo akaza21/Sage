@@ -25,7 +25,7 @@ export const answer = (state) => {
         (index + 1) +
         "\n\nA bounded replay paragraph verifies native scrolling and transcript layout.",
     ).join("\n\n");
-  return "Native replay completed. The synthetic example is ready for review.";
+  return "The synthetic example is available for native replay review.";
 };
 
 export function events(harness, state) {

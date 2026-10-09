@@ -10,11 +10,14 @@ import {
   rmSync,
 } from "node:fs";
 import { ensurePlainDirectory } from "./capture-native-chat-process.mjs";
+import { captureTiming } from "./capture-native-chat-drive.mjs";
 import {
   parseArgs,
   evidencePaths,
   validateProbe,
   admitTarget,
+  selectOwnedTarget,
+  discoverOwnedTarget,
   validateDimensions,
   validatePng,
   waitForState,
@@ -25,8 +28,12 @@ import {
 import {
   namedState,
   visibleRectangle,
+  hiddenByClosedDetails,
+  openExpression,
+  isDisclosure,
+  scopeToTurn,
+  observationFor,
   actionsFor,
-  OBSERVATION,
   HARNESS,
   clickExpression,
 } from "./capture-native-chat-dom.mjs";
@@ -55,7 +62,8 @@ function captureChatBoundary(width, harness, created = {}) {
   ];
   const cdp = {
     async evaluate(expression) {
-      if (expression === OBSERVATION) return { ...observation };
+      if (expression === observationFor(HARNESS[harness].binding))
+        return { ...observation };
       if (
         expression ===
         "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))"
@@ -95,7 +103,10 @@ for (const [reason, unhydrated] of Object.entries({
     let observations = 0;
     const cdp = {
       async evaluate(expression) {
-        if (expression === OBSERVATION && boundary.clicks.length === 0) {
+        if (
+          expression === observationFor(HARNESS.pi.binding) &&
+          boundary.clicks.length === 0
+        ) {
           observations += 1;
           return {
             ...boundary.observation,
@@ -211,15 +222,15 @@ const probe = () => ({
   webviewVersion: "130.0.1.0",
   dpr: 1,
   dimensions: {
-    outer: { width: 480, height: 1000 },
-    client: { width: 464, height: 961 },
-    css: { width: 464, height: 961 },
+    outer: { width: 496, height: 1039 },
+    client: { width: 480, height: 1000 },
+    css: { width: 480, height: 1000 },
   },
   predicates: { namedState: true, binding: true },
   elements: [],
   controls: { model: true },
   overflow: { horizontal: false },
-  timing: { elapsedMs: 100 },
+  timing: { elapsedMs: 100, steps: [] },
   verdict: "captured",
 });
 test("Pi capture and probe protocols agree with the binding version constant", () => {
@@ -288,10 +299,35 @@ test("DPR, clamp, wrong CDP target and PNG viewport mismatches fail closed", () 
   const png = Buffer.alloc(24);
   Buffer.from("89504e470d0a1a0a", "hex").copy(png);
   png.write("IHDR", 12);
-  png.writeUInt32BE(464, 16);
-  png.writeUInt32BE(961, 20);
+  png.writeUInt32BE(480, 16);
+  png.writeUInt32BE(1000, 20);
   assert.doesNotThrow(() => validatePng(png, value.dimensions.css));
-  assert.throws(() => validatePng(png, { width: 480, height: 1000 }));
+  assert.throws(() => validatePng(png, { width: 720, height: 1000 }));
+});
+test("probe timestamps have a finite closed schema and a 64-step limit", () => {
+  const timing = captureTiming();
+  for (let index = 0; index < 64; index++)
+    timing.record("turn-observed", {
+      turnId: "new-turn",
+      state: "running",
+      controls: { stop: true },
+      assistantRendered: true,
+    });
+  const value = probe();
+  value.timing.steps = timing.steps;
+  assert.equal(validateProbe(value), value);
+  assert.throws(() => timing.record("extra"), /timing-bound/u);
+  for (const mutate of [
+    (value) => value.timing.steps.push(value.timing.steps[0]),
+    (value) => (value.timing.steps[0].atMs = Infinity),
+    (value) => (value.timing.steps[0].turnId = "private-sentinel"),
+    (value) => (value.timing.steps[0].extra = true),
+    (value) => (value.timing.steps[0].cancelPresent = "yes"),
+  ]) {
+    const changed = structuredClone(value);
+    mutate(changed);
+    assert.throws(() => validateProbe(changed));
+  }
 });
 test("stalled predicates are bounded and teardown runs on failure", async () => {
   await assert.rejects(
@@ -426,7 +462,278 @@ test("plan entry requires an offered plan mode, not a permission control", () =>
     false,
   );
   assert.deepEqual(actionsFor("approval-approved"), [
-    ".acp-permission__actions button:first-child",
+    ".acp-turn:last-of-type .acp-permission__actions button:first-child",
     ".acp-turn:last-of-type .chat-transcript-work > summary",
   ]);
+});
+test("disclosure actions target only the latest turn, not the project welcome turn", () => {
+  for (const state of ["tool-finished", "tools-grouped", "tool-expanded"])
+    for (const selector of actionsFor(state))
+      assert.match(selector, /^.acp-turn:last-of-type /u);
+});
+function node(tag, { open = false, parent = null } = {}) {
+  const element = { tag, open, parentElement: parent, children: [] };
+  if (parent) parent.children.push(element);
+  element.contains = (other) => {
+    for (let current = other; current; current = current.parentElement)
+      if (current === element) return true;
+    return false;
+  };
+  element.closest = (selector) => {
+    assert.equal(selector, "details:not([open])");
+    for (let current = element; current; current = current.parentElement)
+      if (current.tag === "details" && !current.open) return current;
+    return null;
+  };
+  element.querySelector = (selector) => {
+    assert.equal(selector, ":scope > summary");
+    return element.children.find((child) => child.tag === "summary") ?? null;
+  };
+  return element;
+}
+test("a closed disclosure row is visible; its body and closed ancestors hide content", () => {
+  const work = node("details", { open: true });
+  const rollup = node("details", { parent: work });
+  const summary = node("summary", { parent: rollup });
+  const label = node("span", { parent: summary });
+  const body = node("div", { parent: rollup });
+  assert.equal(hiddenByClosedDetails(rollup), false);
+  assert.equal(hiddenByClosedDetails(label), false);
+  assert.equal(hiddenByClosedDetails(body), true);
+  work.open = false;
+  node("summary", { parent: work });
+  assert.equal(hiddenByClosedDetails(rollup), true);
+  assert.equal(hiddenByClosedDetails(label), true);
+});
+test("disclosure opening is idempotent and refuses ambiguous or non-details targets", () => {
+  const run = (elements) =>
+    new Function("document", "return " + openExpression("x > summary"))({
+      querySelectorAll: () => elements,
+    });
+  let clicks = 0;
+  const details = { tagName: "DETAILS", open: false };
+  const summary = {
+    parentElement: details,
+    scrollIntoView() {},
+    click() {
+      clicks += 1;
+      details.open = !details.open;
+    },
+  };
+  assert.equal(run([summary]), true);
+  assert.equal(run([summary]), true);
+  assert.equal(clicks, 1);
+  assert.equal(run([summary, summary]), false);
+  assert.equal(run([{ ...summary, parentElement: { tagName: "DIV" } }]), false);
+  assert.equal(run([]), false);
+  assert.equal(
+    isDisclosure(".acp-turn:last-of-type .chat-transcript-work > summary"),
+    true,
+  );
+  assert.equal(isDisclosure('button[aria-label="Cancel turn"]'), false);
+});
+test("live predicates accept waiting turn states but not queued or settled ones", () => {
+  const observation = (state) => ({
+    state,
+    visible: { pendingApproval: true, thought: true },
+    itemKinds: [],
+    toolStates: [],
+    controls: {},
+  });
+  const pending = (state) =>
+    namedState(
+      { harness: "claude", state: "approval-pending" },
+      observation(state),
+    ).namedState;
+  assert.equal(pending("waitingApproval"), true);
+  assert.equal(pending("running"), true);
+  for (const state of [
+    "queued",
+    "sending",
+    "cancelling",
+    "completed",
+    "failed",
+  ])
+    assert.equal(pending(state), false);
+});
+test("latest-turn actions are pinned to the observed turn identity", () => {
+  assert.equal(
+    scopeToTurn(
+      ".acp-turn:last-of-type .chat-transcript-work > summary",
+      "turn-1",
+    ),
+    '.acp-turn[data-turn-id="turn-1"] .chat-transcript-work > summary',
+  );
+  assert.equal(
+    scopeToTurn('button[aria-label="Cancel turn"]', "none"),
+    'button[aria-label="Cancel turn"]',
+  );
+  for (const turnId of ['x"] *', "none]", ""])
+    assert.throws(
+      () => scopeToTurn(".acp-turn:last-of-type summary", turnId),
+      /turn-identity/u,
+    );
+});
+test("observation pins the expected binding and rejects injected identities", () => {
+  assert.match(
+    observationFor("claude-agent-acp"),
+    /const expectedBinding="claude-agent-acp";/u,
+  );
+  for (const binding of ['x";alert(1);"', "", "A".repeat(65)])
+    assert.throws(() => observationFor(binding), /binding-identity/u);
+});
+test("hydrated empty chats bind to the selected harness, not a retained welcome session", async () => {
+  for (const harness of ["codex", "claude", "pi"]) {
+    const selected = HARNESS[harness];
+    const store = {
+      activeTabId: "empty-chat",
+      project: { id: "project" },
+      tabs: [{ id: "empty-chat", kind: "chat" }],
+      harnesses: [{ id: selected.id, bindingId: selected.binding }],
+    };
+    const page = {
+      chatId: "empty-chat",
+      projectId: "project",
+      turns: [],
+      sessions: [{ id: "welcome-session", bindingId: "simulator" }],
+    };
+    const expression = observationFor(selected.binding)
+      .replace("await import('/src/app/store.ts')", "workbench")
+      .replace("await import('/src/app/acpProjectionRegistry.ts')", "registry");
+    const observe = new Function(
+      "workbench",
+      "registry",
+      "document",
+      "devicePixelRatio",
+      "innerWidth",
+      "innerHeight",
+      "return " + expression,
+    );
+    const observation = await observe(
+      { useWorkbenchStore: { getState: () => store } },
+      { acpProjectionStoreFor: () => ({ getState: () => ({ page }) }) },
+      {
+        querySelector: () => ({ getAttribute: () => selected.id }),
+        querySelectorAll: () => [],
+        documentElement: { scrollWidth: 720 },
+      },
+      1,
+      720,
+      1000,
+    );
+    assert.equal(observation.projectionLoaded, true);
+    assert.equal(observation.bindingId, selected.binding);
+    assert.equal(observation.turnCount, 0);
+    for (const state of ["new-chat", "composer-idle", "harness-menu"]) {
+      const predicates = namedState(
+        { harness, state },
+        {
+          ...observation,
+          controls: { stop: false, send: true },
+          visible: { harnessMenu: true },
+        },
+      );
+      assert.deepEqual(predicates, {
+        binding: true,
+        selected: true,
+        namedState: true,
+      });
+    }
+  }
+});
+const ownedTarget = {
+  id: "owned",
+  type: "page",
+  title: "Sage",
+  url: "http://127.0.0.1:1420/",
+  webSocketDebuggerUrl: "ws://127.0.0.1:9223/devtools/page/owned",
+};
+test("target selection waits on absent or untitled pages and rejects ambiguity", () => {
+  assert.equal(selectOwnedTarget([], 9223), null);
+  assert.equal(
+    selectOwnedTarget(
+      [{ ...ownedTarget, url: "about:blank", title: "" }],
+      9223,
+    ),
+    null,
+  );
+  assert.equal(
+    selectOwnedTarget([{ ...ownedTarget, title: "127.0.0.1:1420/" }], 9223),
+    null,
+  );
+  assert.equal(selectOwnedTarget([ownedTarget], 9223), ownedTarget);
+  assert.throws(
+    () => selectOwnedTarget([ownedTarget, ownedTarget], 9223),
+    /cdp-target/u,
+  );
+  assert.throws(
+    () =>
+      selectOwnedTarget(
+        [{ ...ownedTarget, webSocketDebuggerUrl: "ws://evil/" }],
+        9223,
+      ),
+    /cdp-target/u,
+  );
+  assert.throws(() => selectOwnedTarget({}, 9223), /cdp-target/u);
+  assert.throws(
+    () => selectOwnedTarget(Array(33).fill({}), 9223),
+    /cdp-target/u,
+  );
+});
+test("target title boundaries admit Sage suffixes but reject prefix lookalikes and mixed ambiguity", () => {
+  const suffixed = { ...ownedTarget, title: "Sage synthetic project" };
+  assert.equal(selectOwnedTarget([suffixed], 9223), suffixed);
+  assert.equal(
+    selectOwnedTarget([{ ...ownedTarget, title: "Sages-other" }], 9223),
+    null,
+  );
+  const second = {
+    ...suffixed,
+    id: "second",
+    webSocketDebuggerUrl: "ws://127.0.0.1:9223/devtools/page/second",
+  };
+  assert.throws(
+    () => selectOwnedTarget([ownedTarget, second], 9223),
+    /cdp-target/u,
+  );
+});
+test("discovery polls until the owned page appears and fails closed at its deadline", async () => {
+  const listings = [
+    undefined,
+    [],
+    [{ ...ownedTarget, title: "" }],
+    [ownedTarget],
+  ];
+  let polls = 0;
+  assert.equal(
+    await discoverOwnedTarget(
+      async () => listings[polls++],
+      9223,
+      Date.now() + 5000,
+    ),
+    ownedTarget,
+  );
+  assert.equal(polls, 4);
+  await assert.rejects(
+    discoverOwnedTarget(async () => [], 9223, Date.now() + 120),
+    /^Error: cdp-target$/u,
+  );
+  await assert.rejects(
+    discoverOwnedTarget(
+      async () => [ownedTarget, ownedTarget],
+      9223,
+      Date.now() + 5000,
+    ),
+    /cdp-target/u,
+  );
+  await assert.rejects(
+    discoverOwnedTarget(
+      async () => {
+        throw new Error("owned-app-exited");
+      },
+      9223,
+      Date.now() + 5000,
+    ),
+    /owned-app-exited/u,
+  );
 });

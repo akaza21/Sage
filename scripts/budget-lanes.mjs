@@ -44,6 +44,8 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
   "capture-native-chat-source.node-test.mjs",
+  "capture-native-chat-sizing.node-test.mjs",
+  "capture-native-chat-turn.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
@@ -399,6 +401,16 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat-source.node-test.mjs",
     reason:
       "Portable mocked source-provenance, owned-Vite launch-contract and local staging/promotion privacy checks; never launches Vite or a native app.",
+  },
+  {
+    file: "capture-native-chat-sizing.node-test.mjs",
+    reason:
+      "Portable DPR-1 requested-client geometry and PNG dimension contracts; no native app or window is launched.",
+  },
+  {
+    file: "capture-native-chat-turn.node-test.mjs",
+    reason:
+      "Portable simulated DOM readiness, bounded probe timestamp and acceptance-matrix admission checks; blocked-run coverage exits before launching an app.",
   },
   {
     file: "check-harness-trace-privacy.node-test.mjs",
