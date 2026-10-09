@@ -55,7 +55,6 @@ pub(super) struct TurnIntent {
     thought_redacted_tail: bool,
     tools: BTreeMap<String, crate::acp::intent::NormalizedPayload>,
     tool_snapshot_bytes: usize,
-    next_item: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +83,7 @@ pub(crate) struct PiRuntime {
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
     next_session: u64,
+    next_item: u64,
     pub(super) model_count: u16,
     pub(super) current_model: Option<String>,
     pub(super) available_models: Vec<ModelSummary>,
@@ -139,6 +139,7 @@ impl PiRuntime {
             reservations: BTreeMap::new(),
             next_egress: 0,
             next_session: 0,
+            next_item: 0,
             model_count: 0,
             current_model: None,
             available_models: Vec::new(),
@@ -230,7 +231,6 @@ impl HarnessAdapter for PiRuntime {
                     thought_redacted_tail: false,
                     tools: BTreeMap::new(),
                     tool_snapshot_bytes: 0,
-                    next_item: 0,
                 });
                 Ok(egress)
             }
@@ -276,9 +276,7 @@ impl HarnessAdapter for PiRuntime {
                         != self.external_session.as_ref()
                         || self.thinking_request_owner.as_ref()
                             != Some(&(self.session_id.clone(), self.runtime_epoch));
-                    self.thinking_request_session = None;
-                    self.thinking_request_owner = None;
-                    self.thinking_request_command = None;
+                    self.clear_thinking_request();
                     return AdapterBatch::new(
                         vec![if stale {
                             crate::acp::bindings::adapter::AdapterEvent::IgnoredLate
@@ -319,9 +317,7 @@ impl HarnessAdapter for PiRuntime {
             self.available_thinking.clear();
         }
         if thinking_reply && failed {
-            self.thinking_request_session = None;
-            self.thinking_request_owner = None;
-            self.thinking_request_command = None;
+            self.clear_thinking_request();
         }
         if failed && self.staged_initialize.is_some() {
             self.staged_initialize = None;

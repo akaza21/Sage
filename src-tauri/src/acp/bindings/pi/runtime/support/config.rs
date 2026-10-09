@@ -9,6 +9,12 @@ use crate::acp::{
 };
 
 impl PiRuntime {
+    pub(in crate::acp::bindings::pi::runtime) fn clear_thinking_request(&mut self) {
+        self.thinking_request_session = None;
+        self.thinking_request_owner = None;
+        self.thinking_request_command = None;
+    }
+
     pub(crate) fn begin_thinking_discovery(
         &mut self,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {

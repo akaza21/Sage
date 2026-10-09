@@ -342,6 +342,12 @@ fn abort_capacity_failure_does_not_mark_an_unsent_interrupt() {
 
 #[test]
 fn denial_latch_survives_abort_enqueue_and_response_failures() {
+    let partial = json!({"role":"assistant","content":[{"type":"text","text":"blocked"}],
+        "api":"openai-responses","provider":"openai","model":"fixture-model","timestamp":0,
+        "stopReason":"stop","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,
+            "totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}}});
+    let update = serde_json::to_vec(&json!({"type":"message_update","message":partial,
+        "assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"blocked","partial":partial}})).unwrap();
     let mut translator = admitted_translator(17);
     accept_prompt(&mut translator, "turn-denied-full");
     translator.ingest(br#"{"type":"agent_start"}"#).unwrap();
@@ -360,7 +366,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         Err(AdapterError::CommandCapacity)
     );
     assert_eq!(
-        translator.ingest(br#"{"type":"message_update","delta":"blocked"}"#),
+        translator.ingest(&update),
         Ok(vec![AdapterOutput::LateIgnored])
     );
     translator
@@ -384,6 +390,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         .ingest(br#"{"type":"extension_ui_request","id":"gate-1","method":"confirm","title":"Allow tool?","message":"Allow write?"}"#)
         .unwrap();
     let abort = translator.begin(Operation::Abort).unwrap().remove(0);
+    translator.latch_authority_denial();
     assert_eq!(
         translator
             .ingest(&failed_response(&abort.command_id, "abort", Value::Null))
@@ -393,7 +400,7 @@ fn denial_latch_survives_abort_enqueue_and_response_failures() {
         }]
     );
     assert_eq!(
-        translator.ingest(br#"{"type":"message_update","delta":"blocked"}"#),
+        translator.ingest(&update),
         Ok(vec![AdapterOutput::LateIgnored])
     );
 }

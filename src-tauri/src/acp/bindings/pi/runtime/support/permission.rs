@@ -5,6 +5,7 @@ use crate::acp::{
 };
 
 use super::super::PiRuntime;
+use crate::acp::bindings::pi::protocol::is_allow_option;
 
 impl PiRuntime {
     pub(in crate::acp::bindings::pi::runtime) fn resolve_later_permission(
@@ -34,9 +35,11 @@ impl PiRuntime {
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
                 let body = match pending.method.as_str() {
                     "select" => {
-                        let Some(value) = pending.options.iter().find(|option| {
-                            matches!(option.to_ascii_lowercase().as_str(), "allow" | "allow once")
-                        }) else {
+                        let Some(value) = pending
+                            .options
+                            .iter()
+                            .find(|option| is_allow_option(option))
+                        else {
                             self.translator.remember_pending_ui(pending);
                             return Err(AdapterRuntimeError::LaterPermissionMiss);
                         };
@@ -56,7 +59,6 @@ impl PiRuntime {
                         return Err(AdapterRuntimeError::LaterPermissionMiss);
                     }
                 };
-                self.translator.release_permission_wait();
                 let bytes = serde_json::to_vec(&body).map_err(|_| AdapterRuntimeError::Frame)?;
                 let frame = crate::acp::transport::OutboundFrame::new(bytes)
                     .map_err(|_| AdapterRuntimeError::Frame)?;

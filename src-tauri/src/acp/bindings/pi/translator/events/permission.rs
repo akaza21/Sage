@@ -1,5 +1,7 @@
 use super::super::{PendingUiRequest, PiTranslator};
-use crate::acp::bindings::pi::{AdapterError, AdapterOutput, decode::external_id};
+use crate::acp::bindings::pi::{
+    AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
+};
 use serde_json::Value;
 
 impl PiTranslator {
@@ -36,9 +38,7 @@ impl PiTranslator {
                     Ok(option.to_owned())
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            if !options.iter().any(|option| {
-                matches!(option.to_ascii_lowercase().as_str(), "allow" | "allow once")
-            }) {
+            if !options.iter().any(|option| is_allow_option(option)) {
                 return Ok(vec![AdapterOutput::Unsupported {
                     kind: "extension_ui_request".into(),
                 }]);
@@ -47,7 +47,6 @@ impl PiTranslator {
         } else {
             Vec::new()
         };
-        self.live_turn()?.denial_latched = true;
         self.remember_pending_ui(PendingUiRequest {
             id: id.clone(),
             method: method.to_owned(),

@@ -17,6 +17,14 @@ impl PiTranslator {
         kind: &str,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        if matches!(
+            kind,
+            "thinking_level_changed" | "session_info_changed" | "queue_update" | "entry_appended"
+        ) {
+            return Ok(vec![AdapterOutput::Unsupported {
+                kind: kind.to_owned(),
+            }]);
+        }
         if kind != "agent_settled"
             && self
                 .active
@@ -26,7 +34,10 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if !matches!(kind, "agent_end" | "agent_settled")
-            && self.active.as_ref().is_some_and(|turn| turn.denial_latched)
+            && self
+                .active
+                .as_ref()
+                .is_some_and(|turn| turn.authority_denied)
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
@@ -224,7 +235,7 @@ impl PiTranslator {
         )?
         .ok_or(AdapterError::Malformed)?;
         if name != "read" {
-            self.live_turn()?.denial_latched = true;
+            self.live_turn()?.authority_denied = true;
             return Ok(vec![AdapterOutput::AuthorityBlocked {
                 external_id: id,
                 tool: name,
@@ -319,9 +330,9 @@ impl PiTranslator {
 }
 
 impl PiTranslator {
-    pub(crate) fn release_permission_wait(&mut self) {
+    pub(crate) fn latch_authority_denial(&mut self) {
         if let Some(turn) = self.active.as_mut() {
-            turn.denial_latched = false;
+            turn.authority_denied = true;
         }
         self.pending_ui = None;
     }

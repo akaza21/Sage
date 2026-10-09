@@ -81,7 +81,7 @@ impl PiTranslator {
             prompt_command_id: outbound.command_id.clone(),
             event_phase: EventPhase::PromptIssued,
             abort_requested: false,
-            denial_latched: false,
+            authority_denied: false,
             terminal: None,
             tools: BTreeMap::new(),
             compaction_active: false,

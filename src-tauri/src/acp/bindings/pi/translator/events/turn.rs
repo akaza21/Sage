@@ -51,7 +51,7 @@ impl PiTranslator {
         if turn.terminal.is_none() && turn.event_phase != EventPhase::AgentEnded {
             return Err(AdapterError::EventSequence);
         }
-        let outcome = if turn.abort_requested || turn.denial_latched {
+        let outcome = if turn.abort_requested || turn.authority_denied {
             TerminalOutcome::Interrupted
         } else {
             turn.settlement_outcome

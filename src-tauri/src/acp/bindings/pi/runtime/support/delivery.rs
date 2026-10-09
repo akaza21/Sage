@@ -26,9 +26,7 @@ impl PiRuntime {
             RequestKind::Prompt => self.active_turn = None,
             RequestKind::RefreshState => self.refresh_thinking_after_model = false,
             RequestKind::ThinkingLevels => {
-                self.thinking_request_session = None;
-                self.thinking_request_owner = None;
-                self.thinking_request_command = None;
+                self.clear_thinking_request();
             }
             RequestKind::Models
             | RequestKind::SetModel
@@ -64,6 +62,7 @@ impl PiRuntime {
         if outbound.len() != 1 {
             return Err(AdapterRuntimeError::MandatoryDenyTeardown);
         }
+        self.translator.latch_authority_denial();
         let outbound = outbound.remove(0);
         let frame = OutboundFrame::new(outbound.line.into_bytes())
             .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;

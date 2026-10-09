@@ -1,3 +1,7 @@
+pub(super) fn is_allow_option(option: &str) -> bool {
+    option.eq_ignore_ascii_case("allow") || option.eq_ignore_ascii_case("allow once")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
     Initialize,

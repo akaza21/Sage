@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
+mod followups;
 mod regressions;
+mod store_ingress;
 
 use super::*;
 use crate::acp::{
@@ -310,39 +312,58 @@ fn pi_read_tool_projects_bounded_result_without_losing_identity() {
 }
 
 #[test]
-fn pi_read_image_result_projects_agent_image() {
-    let mut runtime = fixture_runtime(34);
-    ready(&mut runtime);
-    running(&mut runtime);
-    runtime
-        .ingest(
-            &frame(json!({
-                "type":"tool_execution_start",
-                "toolCallId":"read-image",
-                "toolName":"read",
-                "args":{"path":r"C:\repo\src\lib.rs"}
-            })),
-            &Mapper,
-        )
-        .expect("read start");
-    let batch = runtime
-        .ingest(
-            &frame(json!({
-                "type":"tool_execution_end",
-                "toolCallId":"read-image",
-                "result":{"content":[{"type":"image","mimeType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII="}]},
-                "isError":false
-            })),
-            &Mapper,
-        )
-        .expect("read image end");
-    assert!(batch.events().iter().any(|event| matches!(
-        event,
-        AdapterEvent::Item {
-            payload: NormalizedPayload::Image { .. },
-            ..
-        }
-    )));
+fn pi_valid_and_invalid_read_images_are_visible_unsupported_without_bytes() {
+    for (epoch, data) in [
+        (
+            34,
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=",
+        ),
+        (35, "not-base64"),
+    ] {
+        let mut runtime = fixture_runtime(epoch);
+        ready(&mut runtime);
+        running(&mut runtime);
+        runtime
+            .ingest(
+                &frame(json!({
+                    "type":"tool_execution_start",
+                    "toolCallId":"read-image",
+                    "toolName":"read",
+                    "args":{"path":r"C:\repo\src\lib.rs"}
+                })),
+                &Mapper,
+            )
+            .expect("read start");
+        let batch = runtime
+            .ingest(
+                &frame(json!({
+                    "type":"tool_execution_end",
+                    "toolCallId":"read-image",
+                    "result":{"content":[{"type":"image","mimeType":"image/png","data":data}]},
+                    "isError":false
+                })),
+                &Mapper,
+            )
+            .expect("image fallback remains nonfatal");
+        assert!(batch.events().iter().any(|event| matches!(
+            event,
+            AdapterEvent::Item {
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Unsupported,
+                payload: NormalizedPayload::Unsupported { external_kind, summary },
+                ..
+            } if external_kind.as_str() == "pi_image"
+                && summary.as_str() == "Image output is unavailable: shared durable image admission is missing"
+        )));
+        assert!(!batch.events().iter().any(|event| matches!(
+            event,
+            AdapterEvent::Item {
+                payload: NormalizedPayload::Image { .. },
+                ..
+            }
+        )));
+        let projected = serde_json::to_string(batch.events()).expect("events json");
+        assert!(!projected.contains(data));
+    }
 }
 
 #[test]
@@ -450,39 +471,6 @@ fn pi_tool_snapshot_budget_is_reused_after_replacement_and_completion() {
             }]
         ));
     }
-}
-
-#[test]
-fn pi_invalid_read_image_is_visible_without_storing_bytes() {
-    let mut runtime = fixture_runtime(35);
-    ready(&mut runtime);
-    running(&mut runtime);
-    runtime
-        .ingest(
-            &frame(json!({
-                "type":"tool_execution_start",
-                "toolCallId":"bad-image",
-                "toolName":"read"
-            })),
-            &Mapper,
-        )
-        .expect("read start");
-    let batch = runtime
-        .ingest(
-            &frame(json!({
-                "type":"tool_execution_end",
-                "toolCallId":"bad-image",
-                "result":{"content":[{"type":"image","mimeType":"image/png","data":"not-base64"}]},
-                "isError":false
-            })),
-            &Mapper,
-        )
-        .expect("invalid image remains nonfatal");
-    assert!(batch.events().iter().any(|event| matches!(
-        event,
-        AdapterEvent::Unsupported(NormalizedPayload::Unsupported { summary, .. })
-            if summary.as_str() == "Image payload is not valid base64"
-    )));
 }
 
 #[test]

@@ -76,18 +76,17 @@ impl PiRuntime {
         &mut self,
         kind: &str,
     ) -> Result<ExternalId, AdapterRuntimeError> {
-        let turn = self
-            .active_turn
-            .as_mut()
+        self.active_turn
+            .as_ref()
             .ok_or(AdapterRuntimeError::Operation)?;
-        turn.next_item = turn
+        self.next_item = self
             .next_item
             .checked_add(1)
             .filter(|value| *value <= i64::MAX as u64)
             .ok_or(AdapterRuntimeError::Operation)?;
         external(
             "piItemId",
-            format!("pi-{kind}-{}-{}", self.runtime_epoch.get(), turn.next_item),
+            format!("pi-{kind}-{}-{}", self.runtime_epoch.get(), self.next_item),
         )
     }
 
@@ -327,10 +326,17 @@ pub(in crate::acp::bindings::pi::runtime) fn unsupported(
     kind: impl Into<String>,
     summary: impl Into<String>,
 ) -> AdapterEvent {
-    AdapterEvent::Unsupported(NormalizedPayload::Unsupported {
+    AdapterEvent::Unsupported(unsupported_payload(kind, summary))
+}
+
+pub(super) fn unsupported_payload(
+    kind: impl Into<String>,
+    summary: impl Into<String>,
+) -> NormalizedPayload {
+    NormalizedPayload::Unsupported {
         external_kind: SafeText::new("externalKind", kind).expect("Pi kind is bounded"),
         summary: SafeText::new("unsupportedSummary", summary).expect("fixed bounded summary"),
-    })
+    }
 }
 
 pub(super) fn model_key(model: &ModelSummary) -> Result<String, AdapterRuntimeError> {

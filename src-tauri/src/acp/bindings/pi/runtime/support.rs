@@ -162,14 +162,10 @@ impl PiRuntime {
                     || self.thinking_request_owner.as_ref()
                         != Some(&(self.session_id.clone(), self.runtime_epoch))
                 {
-                    self.thinking_request_session = None;
-                    self.thinking_request_owner = None;
-                    self.thinking_request_command = None;
+                    self.clear_thinking_request();
                     return Ok((Some(AdapterEvent::IgnoredLate), None));
                 }
-                self.thinking_request_session = None;
-                self.thinking_request_owner = None;
-                self.thinking_request_command = None;
+                self.clear_thinking_request();
                 self.available_thinking = levels;
                 (Some(AdapterEvent::Acknowledged), None)
             }
@@ -374,9 +370,7 @@ impl PiRuntime {
             AdapterOutput::AuthorityBlocked { external_id, tool } => {
                 self.block_authority(external_id, tool, resources)?
             }
-            AdapterOutput::Image { media_type, data } => {
-                (Some(self.image_event(media_type, data)?), None)
-            }
+            AdapterOutput::Image { .. } => (Some(self.image_event()?), None),
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {
                     code: SafeText::new("errorCode", code)

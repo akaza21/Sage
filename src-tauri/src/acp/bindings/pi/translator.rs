@@ -66,7 +66,7 @@ struct ActiveTurn {
     prompt_command_id: String,
     event_phase: EventPhase,
     abort_requested: bool,
-    denial_latched: bool,
+    authority_denied: bool,
     terminal: Option<TerminalOutcome>,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
