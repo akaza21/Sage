@@ -36,6 +36,8 @@ impl CodexAdapter {
             observed_build_characterisation: None,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             desktop_fixture: false,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            desktop_fixture_lists_models: false,
             pending: Vec::new(),
             negotiated: None,
             external_thread_id: None,
@@ -83,6 +85,9 @@ impl CodexAdapter {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         {
             adapter.desktop_fixture = binding.is_desktop_fixture();
+            adapter.desktop_fixture_lists_models = binding
+                .desktop_fixture_case()
+                .is_some_and(crate::acp::fixture::native_case_lists_models);
         }
         adapter
     }

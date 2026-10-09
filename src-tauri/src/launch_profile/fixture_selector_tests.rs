@@ -66,3 +66,60 @@ fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
     assert!(selection.revalidate().is_err());
     fs::remove_dir_all(proof).unwrap();
 }
+
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[test]
+fn desktop_codex_model_listing_is_enabled_only_for_the_effort_case() {
+    use crate::acp::bindings::codex::{AdmittedCodexBinding, CodexAdapter};
+    use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
+    use sha2::{Digest, Sha256};
+    let proof = std::env::temp_dir().join(format!("sage-nc1-models-{}", uuid::Uuid::new_v4()));
+    let profile_root = proof.join("profile");
+    let project = proof.join("project");
+    fs::create_dir_all(&profile_root).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    fs::write(profile_root.join(PROFILE_MARKER_NAME), PROFILE_MARKER_BYTES).unwrap();
+    let artifact = proof.join("fixture.exe");
+    fs::write(&artifact, b"synthetic fixture").unwrap();
+    let profile = resolve_launch_profile(
+        Some(profile_root.as_os_str()),
+        Some(project.as_os_str()),
+        proof.join("normal"),
+        proof.join("normal-webview"),
+    )
+    .unwrap();
+    let hash = format!("{:x}", Sha256::digest(b"synthetic fixture"));
+    for (case, models) in [
+        ("codex-effort-menu", true),
+        ("codex-steer-lost-result", false),
+    ] {
+        let selection = fixture_selector::resolve_selection(
+            &profile,
+            [
+                Some(artifact.as_os_str()),
+                Some(OsStr::new(&hash)),
+                Some(OsStr::new("17")),
+                Some(OsStr::new(case)),
+            ],
+            &proof,
+            "codex",
+        )
+        .unwrap()
+        .unwrap();
+        let binding = AdmittedCodexBinding::admit_desktop_fixture(selection).unwrap();
+        let mut adapter = CodexAdapter::from_admitted_binding(
+            &binding,
+            RuntimeEpoch::new(1).unwrap(),
+            SageAgentSessionId::parse("fixture-session").unwrap(),
+        );
+        let initialize = serde_json::json!({
+            "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+            "codexHome":proof.to_str().unwrap(),"platformFamily":"windows","platformOs":"windows"
+        });
+        adapter
+            .accept_initialize(initialize.as_object().unwrap())
+            .unwrap();
+        assert_eq!(adapter.models(2, None).is_ok(), models, "{case}");
+    }
+    fs::remove_dir_all(proof).unwrap();
+}

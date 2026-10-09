@@ -52,7 +52,7 @@ impl CodexAdapter {
             (
                 degrade::projected_desktop_fixture_capabilities(&self.capability_ceiling)
                     .map_err(|_| AdapterError::CapabilityUnavailable)?,
-                false,
+                self.desktop_fixture_lists_models,
             )
         } else {
             degrade::projected_capabilities(&self.capability_ceiling, observed)

@@ -391,7 +391,7 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
   {
     file: "capture-native-chat-source.node-test.mjs",
     reason:
-      "Portable mocked source-provenance and owned-Vite launch-contract checks; never launches Vite or a native app.",
+      "Portable mocked source-provenance, owned-Vite launch-contract and local staging/promotion privacy checks; never launches Vite or a native app.",
   },
   {
     file: "check-harness-trace-privacy.node-test.mjs",

@@ -1,11 +1,12 @@
 import { writeFileSync, lstatSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
+import { stagingPaths } from "./capture-native-chat-evidence.mjs";
 import {
   parseArgs,
   requireNativeCase,
-  evidencePaths,
   validateProbe,
   validateDimensions,
   validatePng,
@@ -126,14 +127,8 @@ function safeDestination(file) {
 }
 
 export async function capture(options) {
-  const directory = path.join(
-    workspace,
-    "docs",
-    "work-items",
-    "CODEX-PARITY",
-    "evidence",
-  );
-  const output = evidencePaths(directory, options);
+  const run = randomUUID();
+  const { directory, ...output } = stagingPaths(workspace, run, options);
   ensurePlainDirectory(directory);
   requirePlain(directory, true);
   for (const file of Object.values(output)) safeDestination(file);
@@ -334,7 +329,12 @@ export async function capture(options) {
     assertOwnedVite(viteChild);
     writeFileSync(output.png, captured.screenshot);
     writeFileSync(output.probe, JSON.stringify(captured.probe, null, 2) + "\n");
-    return { verdict: "captured", png: path.basename(output.png) };
+    return {
+      verdict: "captured",
+      run,
+      directory: path.relative(workspace, directory),
+      png: path.basename(output.png),
+    };
   } catch (error) {
     const reason = /^[a-z0-9-]{1,80}$/u.test(error.message)
       ? error.message
@@ -350,7 +350,7 @@ export async function capture(options) {
     };
     if (nativeBounds) blocked.nativeBounds = nativeBounds;
     writeFileSync(output.probe, JSON.stringify(blocked, null, 2) + "\n");
-    return blocked;
+    return { ...blocked, run };
   } finally {
     try {
       if (child) await stopOwned(child);

@@ -77,6 +77,9 @@ export const truthfulAbsentStates = Object.freeze({
     "compaction-started",
     "compaction-failed",
     "compaction-cancelled",
+    "approval-pending",
+    "approval-approved",
+    "approval-declined",
   ]),
   claude: Object.freeze([
     "child-opened",
@@ -102,7 +105,13 @@ export function nativeCases() {
               emit("codexInitializeResult0146"),
               wait("codexStart"),
               emit("codexThreadResult"),
-              wait("codexGoalGetWithOptionalModelList"),
+              ...(state === "effort-menu"
+                ? [
+                    wait("codexModelList"),
+                    emit("codexModelListEffortResult"),
+                    wait("codexGoalGet"),
+                  ]
+                : [wait("codexGoalGetWithOptionalModelList")]),
               emit("codexGoalMethodNotFound"),
               wait("codexTurnStart"),
               emit("codexTurnResult"),

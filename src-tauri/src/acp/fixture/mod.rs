@@ -59,6 +59,11 @@ pub fn is_native_replay_case(case: &str) -> bool {
 }
 
 #[cfg(all(windows, debug_assertions))]
+pub(crate) fn native_case_lists_models(case: &str) -> bool {
+    case == "codex-effort-menu"
+}
+
+#[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
     generated_cases::JOURNEY_CASES
         .iter()

@@ -25,6 +25,43 @@ fn codex_model_list_returns_one_correlated_terminal_catalog_page() {
 }
 
 #[test]
+fn codex_effort_catalog_returns_pinned_model_fields_and_three_offered_efforts() {
+    let mut state = WireState::new();
+    let mut input = Cursor::new(concat!(
+        r#"{"id":71,"method":"model/list","params":{"cursor":null}}"#,
+        "\n"
+    ));
+    let mut output = Vec::new();
+    for step in [
+        json!({"op":"awaitClient","kind":"codexModelList"}),
+        json!({"op":"emitKnownFrame","shape":"codexModelListEffortResult"}),
+    ] {
+        execute_with_io(&step, &mut state, &mut input, &mut output, &mut Vec::new()).unwrap();
+    }
+    let reply: Value = serde_json::from_slice(&output).unwrap();
+    let model = &reply["result"]["data"][0];
+    assert_eq!(reply["id"], 71);
+    assert_eq!(reply["result"]["nextCursor"], Value::Null);
+    assert_eq!(model["defaultReasoningEffort"], "medium");
+    let evidence: Value = serde_json::from_str(include_str!(
+        "../../../testdata/acp/codex/native-capture-wire-0146.json"
+    ))
+    .unwrap();
+    for field in evidence["modelRequired"].as_array().unwrap() {
+        assert!(model.get(field.as_str().unwrap()).is_some());
+    }
+    assert_eq!(
+        model["supportedReasoningEfforts"],
+        json!([
+            {"reasoningEffort":"low","description":"Quick synthetic replay"},
+            {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
+            {"reasoningEffort":"high","description":"Thorough synthetic replay"}
+        ])
+    );
+    assert!(output.len() < 1_024);
+}
+
+#[test]
 fn codex_optional_model_hydration_preserves_goal_and_turn_correlation() {
     for models in [false, true] {
         let mut bytes = String::new();

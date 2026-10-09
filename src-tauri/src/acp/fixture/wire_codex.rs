@@ -152,11 +152,22 @@ pub(super) fn emit_response(
             "platformOs": "windows"
         }),
         "thread" => json!({"thread":{"id": THREAD_ID}}),
-        "models" => json!({"data":[{
+        "models" | "effortModels" => {
+            let mut catalog = json!({"data":[{
             "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",
             "description":"Synthetic native replay model","isDefault":true,"hidden":false,
             "supportedReasoningEfforts":[]
-        }],"nextCursor":null}),
+        }],"nextCursor":null});
+            if shape == "effortModels" {
+                catalog["data"][0]["defaultReasoningEffort"] = json!("medium");
+                catalog["data"][0]["supportedReasoningEfforts"] = json!([
+                    {"reasoningEffort":"low","description":"Quick synthetic replay"},
+                    {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
+                    {"reasoningEffort":"high","description":"Thorough synthetic replay"}
+                ]);
+            }
+            catalog
+        }
         "turn" => {
             state.turn_count = state
                 .turn_count

@@ -3,10 +3,20 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
-test("native Codex cases hydrate Goal with one optional terminal model page", () => {
+test("native Codex cases hydrate Goal with the case's admitted model page", () => {
   for (const entry of nativeCases().filter(({ id }) =>
     id.startsWith("codex-"),
   )) {
+    if (entry.id === "codex-effort-menu") {
+      assert.deepEqual(entry.steps.slice(4, 9), [
+        { op: "awaitClient", kind: "codexModelList" },
+        { op: "emitKnownFrame", shape: "codexModelListEffortResult" },
+        { op: "awaitClient", kind: "codexGoalGet" },
+        { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+        { op: "awaitClient", kind: "codexTurnStart" },
+      ]);
+      continue;
+    }
     assert.deepEqual(
       entry.steps.slice(4, 7),
       [
@@ -189,4 +199,49 @@ test("catalogue excludes states the binding cannot represent", () => {
   );
   assert.equal(compaction.length, 1);
   assert.equal(compaction[0].method, "item/completed");
+});
+
+test("Codex context meter carries the full pinned token usage shape", () => {
+  const entry = nativeCases().find(({ id }) => id === "codex-context-meter");
+  const usage = entry.steps.find(
+    (step) => step.method === "thread/tokenUsage/updated",
+  );
+  assert.ok(usage);
+  assert.deepEqual(usage.params.tokenUsage, {
+    last: {
+      cachedInputTokens: 512,
+      inputTokens: 4096,
+      outputTokens: 1024,
+      reasoningOutputTokens: 256,
+      totalTokens: 5120,
+    },
+    total: {
+      cachedInputTokens: 512,
+      inputTokens: 4096,
+      outputTokens: 1024,
+      reasoningOutputTokens: 256,
+      totalTokens: 5120,
+    },
+    modelContextWindow: 32768,
+  });
+  const evidence = JSON.parse(
+    readFileSync(
+      new URL(
+        "../src-tauri/testdata/acp/codex/native-capture-wire-0146.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(evidence.runtimeVersion, "0.146.0");
+  assert.equal(
+    evidence.appServerSchemaSha256,
+    "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc",
+  );
+  for (const field of evidence.threadTokenUsageRequired)
+    assert.ok(field in usage.params.tokenUsage);
+  for (const field of evidence.usageBreakdownRequired) {
+    assert.ok(field in usage.params.tokenUsage.last);
+    assert.ok(field in usage.params.tokenUsage.total);
+  }
 });

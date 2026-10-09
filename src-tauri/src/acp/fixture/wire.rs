@@ -194,6 +194,7 @@ fn emit_known(
         }
         "codexThreadResult" => return codex::emit_response("thread", state, output),
         "codexModelListResult" => return codex::emit_response("models", state, output),
+        "codexModelListEffortResult" => return codex::emit_response("effortModels", state, output),
         "codexGoalMethodNotFound" => {
             return codex::emit_response("goalMethodNotFound", state, output);
         }

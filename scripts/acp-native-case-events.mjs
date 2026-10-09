@@ -244,6 +244,18 @@ export function events(harness, state) {
       kind: "execute",
       status: state === "approval-declined" ? "failed" : "completed",
     });
+  } else if (state === "context-meter") {
+    const usage = {
+      cachedInputTokens: 512,
+      inputTokens: 4096,
+      outputTokens: 1024,
+      reasoningOutputTokens: 256,
+      totalTokens: 5120,
+    };
+    codex("thread/tokenUsage/updated", {
+      tokenUsage: { last: usage, total: usage, modelContextWindow: 32768 },
+    });
+    text("Synthetic context usage is available.");
   } else if (state === "answer-image") {
     if (harness === "claude")
       acp({
