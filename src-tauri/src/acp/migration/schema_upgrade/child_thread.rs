@@ -67,7 +67,11 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
     paths: &MigrationPaths,
     source_schema: SchemaClass,
 ) -> AppResult<OpenedDatabase> {
-    let verified_backup = ensure(paths)?;
+    let verified_backup = if source_schema == SchemaClass::CurrentV17 {
+        super::super::image_backup::ensure_for_v17(paths)?
+    } else {
+        ensure(paths)?
+    };
     let anchor = platform::anchor_existing_sqlite(&paths.live, true)?;
     if probe::classify_live(paths)? != source_schema {
         return invalid("current SQLite path changed before its anchored upgrade");
@@ -101,7 +105,10 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
         SchemaClass::CurrentV9 => apply_v10(&mut connection)?,
         SchemaClass::CurrentV12 => apply_v13(&mut connection)?,
         SchemaClass::CurrentV13 => apply_v14(&mut connection)?,
-        SchemaClass::CurrentV14 | SchemaClass::CurrentV15 | SchemaClass::CurrentV16 => {}
+        SchemaClass::CurrentV14
+        | SchemaClass::CurrentV15
+        | SchemaClass::CurrentV16
+        | SchemaClass::CurrentV17 => {}
         SchemaClass::CurrentV11 => {
             apply_v12(&mut connection)?;
             apply_v13(&mut connection)?;
@@ -121,6 +128,7 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
             | SchemaClass::CurrentV14
             | SchemaClass::CurrentV15
             | SchemaClass::CurrentV16
+            | SchemaClass::CurrentV17
     ) {
         apply_v11(&mut connection)?;
     }
@@ -132,6 +140,7 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
             | SchemaClass::CurrentV14
             | SchemaClass::CurrentV15
             | SchemaClass::CurrentV16
+            | SchemaClass::CurrentV17
     ) {
         apply_v12(&mut connection)?;
         apply_v13(&mut connection)?;
@@ -142,19 +151,26 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
             | SchemaClass::CurrentV14
             | SchemaClass::CurrentV15
             | SchemaClass::CurrentV16
+            | SchemaClass::CurrentV17
     ) {
         apply_v14(&mut connection)?;
     }
     if !matches!(
         source_schema,
-        SchemaClass::CurrentV15 | SchemaClass::CurrentV16
+        SchemaClass::CurrentV15 | SchemaClass::CurrentV16 | SchemaClass::CurrentV17
     ) {
         apply_v15(&mut connection)?;
     }
-    if source_schema != SchemaClass::CurrentV16 {
+    if !matches!(
+        source_schema,
+        SchemaClass::CurrentV16 | SchemaClass::CurrentV17
+    ) {
         apply_v16(&mut connection)?;
     }
-    super::item_kind::apply_v17(&mut connection)?;
+    if source_schema != SchemaClass::CurrentV17 {
+        super::item_kind::apply_v17(&mut connection)?;
+    }
+    super::item_kind::apply_v18(&mut connection)?;
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
 }

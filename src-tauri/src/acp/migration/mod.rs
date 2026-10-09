@@ -3,6 +3,7 @@ mod build_intent;
 mod file_artifact;
 mod fingerprint;
 mod identity;
+mod image_backup;
 mod image_files;
 mod legacy;
 mod legacy_events;
@@ -47,7 +48,7 @@ use self::{
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
-    schema_upgrade::{apply_through_v17, build_fresh_v17, upgrade_current_through_v9},
+    schema_upgrade::{apply_through_v18, build_fresh_v18, upgrade_current_through_v9},
 };
 
 #[cfg(test)]
@@ -80,7 +81,7 @@ pub(crate) struct OpenedDatabase {
 
 #[cfg(all(test, not(windows)))]
 pub(crate) fn complete_v4_upgrade_for_test(connection: &mut Connection) -> AppResult<()> {
-    apply_through_v17(connection)
+    apply_through_v18(connection)
 }
 
 #[derive(Debug)]
@@ -111,7 +112,7 @@ impl std::ops::DerefMut for OpenedDatabase {
 pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     if path == Path::new(":memory:") {
         let mut connection = Connection::open_in_memory()?;
-        build_fresh_v17(&mut connection)?;
+        build_fresh_v18(&mut connection)?;
         return Ok(OpenedDatabase {
             connection,
             live_path_anchor: LivePathAnchor { _anchor: None },
@@ -121,6 +122,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     fs::create_dir_all(paths.parent())?;
     let _lock = MigrationLock::acquire(paths.parent())?;
     paths.validate_containment()?;
+    image_backup::admit_recovery(&paths)?;
 
     if paths.replacement_manifest.exists() {
         if paths.replacement_build_intent.exists() {
@@ -134,7 +136,9 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         recover_unmanifested_stage(&paths)?;
     }
 
-    match probe::classify_live(&paths)? {
+    let source_schema = probe::classify_live(&paths)?;
+    image_backup::admit_source(&paths, source_schema)?;
+    match source_schema {
         SchemaClass::Fresh => {
             reject_unexpected_backup_artifacts(&paths)?;
             let anchor = if path.exists() {
@@ -147,15 +151,15 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
                 platform::create_sqlite_stage(path)?
             };
             let mut connection = Connection::open(path)?;
-            build_fresh_v17(&mut connection)?;
+            build_fresh_v18(&mut connection)?;
             verify_current(&connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV17 => {
+        SchemaClass::CurrentV18 => {
             reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV17 {
+            if probe::classify_live(&paths)? != SchemaClass::CurrentV18 {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
@@ -163,6 +167,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
+        SchemaClass::CurrentV17 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV17),
         SchemaClass::CurrentV16 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV16),
         SchemaClass::CurrentV15 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV15),
         SchemaClass::CurrentV14 => upgrade_current_through_v9(&paths, SchemaClass::CurrentV14),
@@ -244,7 +249,7 @@ fn build_replacement(
     )?;
     Backup::new(&source, &mut destination)?.run_to_completion(256, Duration::ZERO, None)?;
     drop(source);
-    apply_through_v17(&mut destination)?;
+    apply_through_v18(&mut destination)?;
     verify_current(&destination)?;
     destination.close().map_err(|(_, error)| error)?;
     anchor.verify_path(&paths.replacement_stage)?;
@@ -307,8 +312,8 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV17 {
-        return invalid("database did not reach exact schema v17");
+    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV18 {
+        return invalid("database did not reach exact schema v18");
     }
     verify_sqlite(connection)?;
     let store_rows: i64 = connection.query_row(

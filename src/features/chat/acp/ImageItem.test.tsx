@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import { safeItem } from "../../../services/acpDesktopResponseItems";
 
 import { ImageItem } from "./ImageItem";
 
@@ -25,6 +26,48 @@ function item(dataUrl = `data:image/png;base64,${png}`, id = "image-one") {
 }
 
 describe("ImageItem", () => {
+  it("renders an image decoded from a reloaded SQLite chat projection", () => {
+    const reloaded = safeItem(
+      JSON.parse(
+        JSON.stringify({
+          id: "image-reloaded",
+          projectId: "project-one",
+          chatId: "chat-one",
+          sessionId: "session-one",
+          turnId: "turn-image",
+          runtimeEpoch: "1",
+          ordinal: 0,
+          origin: "primary",
+          activityId: null,
+          lifecycle: "completed",
+          revision: "0",
+          createdAt: 5,
+          updatedAt: 5,
+          terminalAt: 5,
+          toolState: null,
+          kind: "image",
+          payload: {
+            mediaType: "image/png",
+            dataUrl: `data:image/png;base64,${png}`,
+            source: "agent",
+          },
+        }),
+      ),
+    );
+    if (reloaded?.kind !== "image")
+      throw new Error("Image projection rejected");
+    const { unmount } = render(<ImageItem item={reloaded} />);
+    expect(
+      screen.getByRole("img", { name: "Image provided by the agent" }),
+    ).toHaveAttribute("src", `data:image/png;base64,${png}`);
+    unmount();
+    render(<ImageItem item={reloaded} />);
+    expect(
+      screen.getByRole("button", { name: "Open image viewer" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("opens only the admitted data URL in an in-Sage dialog and restores focus", async () => {
     render(<ImageItem item={item()} />);
     const trigger = screen.getByRole("button", { name: "Open image viewer" });

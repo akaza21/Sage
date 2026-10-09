@@ -3,14 +3,11 @@ use std::path::Path;
 use rusqlite::{Connection, types::ValueRef};
 use sha2::{Digest, Sha256};
 
-use crate::{
-    error::{AppError, AppResult},
-    project_migration,
-};
+use crate::error::{AppError, AppResult};
 
-use super::{INITIAL, V2, V3, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, legacy};
-
+mod expected;
 mod version;
+use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_fingerprint};
 use version::class_for_version;
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
@@ -43,6 +40,7 @@ pub(super) enum SchemaClass {
     CurrentV15,
     CurrentV16,
     CurrentV17,
+    CurrentV18,
 }
 
 impl SchemaClass {
@@ -73,6 +71,7 @@ impl SchemaClass {
                 | Self::CurrentV14
                 | Self::CurrentV15
                 | Self::CurrentV16
+                | Self::CurrentV17
         )
     }
 }
@@ -118,11 +117,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 18")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 19")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 17
+        || versions.len() > 18
         || versions
             .iter()
             .enumerate()
@@ -245,138 +244,6 @@ fn table_columns(connection: &Connection, quoted_table: &str) -> AppResult<Vec<S
         return invalid("table has no columns or exceeds the 128-column bound");
     }
     Ok(columns)
-}
-
-fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
-    schema_fingerprint(&expected_schema_connection(version)?)
-}
-
-fn expected_legacy_v10_session_events_fingerprint() -> AppResult<String> {
-    let expected = expected_schema_connection(10)?;
-    expected.execute_batch(V10_LEGACY_SESSION_EVENTS)?;
-    schema_fingerprint(&expected)
-}
-
-fn expected_schema_connection(version: u32) -> AppResult<Connection> {
-    let mut expected = Connection::open_in_memory()?;
-    expected.execute_batch(INITIAL)?;
-    if version >= 2 {
-        expected.execute_batch(V2)?;
-    }
-    if version >= 3 {
-        expected.execute_batch(V3)?;
-    }
-    if version >= 4 {
-        project_migration::migrate(&mut expected)?;
-    }
-    if version >= 5 {
-        let transaction = expected.transaction()?;
-        legacy::convert(&transaction, 0)?;
-        transaction.commit()?;
-    }
-    if version >= 6 {
-        expected.execute_batch(V6)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 6)?;
-    }
-    if version >= 7 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V7)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 7)?;
-    }
-    if version >= 8 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V8)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (8, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 8)?;
-    }
-    if version >= 9 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V9)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (9, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 9)?;
-    }
-    if version >= 10 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V10)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (10, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 10)?;
-    }
-    if version >= 11 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V11)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 11)?;
-    }
-    if version >= 12 {
-        expected.pragma_update(None, "foreign_keys", "OFF")?;
-        expected.execute_batch(V12)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 12)?;
-    }
-    if version >= 13 {
-        expected.execute_batch(V13)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 13)?;
-    }
-    if version >= 14 {
-        expected.execute_batch(V14)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 14)?;
-    }
-    if version >= 15 {
-        expected.execute_batch(V15)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (15, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 15)?;
-    }
-    if version >= 16 {
-        expected.execute_batch(V16)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (16, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 16)?;
-    }
-    if version >= 17 {
-        super::schema_upgrade::apply_v17_steps(&expected)?;
-        expected.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (17, 0)",
-            [],
-        )?;
-        expected.pragma_update(None, "user_version", 17)?;
-    }
-    Ok(expected)
 }
 
 fn quote_identifier(value: &str) -> String {

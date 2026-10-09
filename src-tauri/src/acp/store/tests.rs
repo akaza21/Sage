@@ -13,6 +13,8 @@ use crate::acp::{
 
 #[path = "cancelled_permission_tests.rs"]
 mod cancelled_permission_tests;
+#[path = "image_ingress_tests.rs"]
+mod image_ingress_tests;
 mod request_identity_tests;
 
 pub(super) fn setup() -> Connection {

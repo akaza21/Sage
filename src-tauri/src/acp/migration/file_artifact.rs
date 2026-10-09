@@ -183,7 +183,9 @@ fn artifact_cap(path: &Path) -> AppResult<u64> {
         })?;
     if matches!(
         name,
-        "sage.v5.db.stage-journal" | "sage.pre-v5.db.stage-journal"
+        "sage.v5.db.stage-journal"
+            | "sage.pre-v5.db.stage-journal"
+            | "sage.pre-v18.db.stage-journal"
     ) {
         Ok(super::limits::JOURNAL_BYTES)
     } else if name.ends_with("-wal") || name.contains("db-wal.retired") {
@@ -195,6 +197,8 @@ fn artifact_cap(path: &Path) -> AppResult<u64> {
         "sage.db"
             | "sage.pre-v5.db.stage"
             | "sage.pre-v5.db"
+            | "sage.pre-v18.db.stage"
+            | "sage.pre-v18.db"
             | "sage.v5.db.stage"
             | "sage.v4.db.retired"
             | "sage.migration-probe.db"
