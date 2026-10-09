@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 test("composer and harness picker match the owner's 96-DPI geometry", async ({
@@ -31,18 +32,37 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   expect(cardBox!.width).toBeLessThanOrEqual(236);
 
   const row = listbox.getByRole("option").first();
+  await expect(row).toHaveAccessibleName("Codex — test only");
   const rowBox = await row.boundingBox();
   expect(rowBox).not.toBeNull();
   expect(rowBox!.height).toBeGreaterThanOrEqual(48);
   expect(rowBox!.height).toBeLessThanOrEqual(52);
 
-  await page.keyboard.press("Escape");
-  await composer.getByRole("button", { name: "Model and effort" }).click();
-  const modelCard = page.getByRole("dialog", { name: "Model and effort menu" });
+  await row.click();
+  await expect(listbox).toHaveCount(0);
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  await expect(model).toBeDisabled();
+  await releasePickerHarnessReadiness(page);
+  await expect(model).toBeEnabled();
+  await expect(model).toHaveText("Model");
+  await model.click();
+  const modelCard = page.getByRole("dialog", { name: "Model picker" });
+  await expect(
+    modelCard.getByRole("combobox", { name: "Search models" }),
+  ).toBeFocused();
+  const models = modelCard.getByRole("grid", { name: "Models", exact: true });
+  await expect(models.getByRole("row")).toHaveCount(128);
+  await expect(
+    models.getByRole("gridcell", {
+      name: "Fresh advertised model 1 — Codex",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(models.locator('[aria-selected="true"]')).toHaveCount(0);
   const modelBox = await modelCard.boundingBox();
   expect(modelBox).not.toBeNull();
-  expect(modelBox!.width).toBeGreaterThanOrEqual(228);
-  expect(modelBox!.width).toBeLessThanOrEqual(236);
+  expect(modelBox!.width).toBeGreaterThanOrEqual(316);
+  expect(modelBox!.width).toBeLessThanOrEqual(324);
 });
 
 test("known context and Goal fit the reference composer without invented native data", async ({

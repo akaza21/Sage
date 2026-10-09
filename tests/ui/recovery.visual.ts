@@ -67,9 +67,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     const working = page.locator(".project-chat__working");
     await expect(working).toBeVisible();
-    // Playwright disables animations for visual snapshots, so inspect the
-    // actual animated rail marker. Its dedicated reduced-motion rule clears
-    // the animation name rather than relying on browser defaults.
-    await expect(working).toHaveCSS("animation-name", "none");
+    await expect(working).toHaveCSS("animation-duration", "0s");
   });
 });

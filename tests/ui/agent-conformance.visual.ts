@@ -35,14 +35,12 @@
 // pattern is the one to reach for, not the pending queue, which means "never
 // built".
 //
-// Reconciled 2026-09-21 against `490e4e0` (single-row control row, project
-// scope restored), `c9365fc` (composer chrome) and `b186868` (rollup
-// disclosure).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { openAgentSnapshotDiff } from "./resourceVisualHelpers";
 import {
+  installScenario,
   openScenario,
   settleTranscriptAtEnd,
 } from "./shared/visualBrowserPrimitives";
@@ -75,9 +73,6 @@ function toolRollup(page: Page): Locator {
  * `490e4e0`, but still wraps at narrow widths, so a flat left-to-right
  * comparison would read a wrapped control as "earlier" than one above it.
  *
- * Only interactive controls appear here. The project scope chip is a plain,
- * non-interactive `<span>` by design, so it is positioned by geometry in its own
- * test rather than being listed as a control it is not.
  */
 async function composerControlOrder(page: Page): Promise<string[]> {
   return composer(page).evaluate((form) =>
@@ -127,10 +122,19 @@ async function anchorScenario(page: Page, scenario: PendingScenario) {
   ).toBeVisible();
 
   if (scenario === "agent-declared-test") {
+    const worked = page.locator("details.chat-transcript-work");
+    await expect(worked.locator(":scope > summary")).toBeVisible();
+    await worked.locator(":scope > summary").click();
+    await expect(worked).toHaveAttribute("open", "");
     await expect(toolRollup(page).locator("summary")).toBeVisible();
   }
   if (scenario === "agent-single") {
-    await expect(page.locator(".acp-message__meta").first()).toBeVisible();
+    await expect(
+      page.locator(".acp-message--user").first().locator(".acp-markdown"),
+    ).toBeVisible();
+    await expect(
+      page.locator(".acp-message--assistant").first().locator(".acp-markdown"),
+    ).toBeVisible();
   }
   if (scenario === "diff") {
     // Without the artifact open, a probe scoped to the tab strip would pass
@@ -200,9 +204,6 @@ export const PENDING_CONFORMANCE_ITEMS: readonly PendingConformanceItem[] = [
         name: /globe|web search|browse|internet/i,
       }),
   },
-  // M4, M5 and M6 graduated on 2026-09-20 (`c9365fc`): the paperclip, `@` and
-  // `/` affordances now render, disabled with truthful reasons. They are
-  // asserted in "renders the affordance row beneath the input" below.
   {
     id: "C20",
     region: "centre conversation",
@@ -395,16 +396,31 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
       sidebar.getByRole("button", { name: "New task", exact: true }),
     ).toBeVisible();
 
-    // L4.
+    const filter = sidebar.getByRole("button", {
+      name: "Filter tasks",
+      exact: true,
+    });
+    const search = sidebar.getByRole("searchbox", { name: "Search tasks" });
+    await expect(filter).toBeVisible();
+    await expect(filter).toHaveAttribute("aria-expanded", "false");
+    await expect(search).toHaveCount(0);
+    await filter.click();
+    await expect(filter).toHaveAttribute("aria-expanded", "true");
+    await expect(search).toBeVisible();
+    await expect(search).toBeFocused();
     await expect(
-      sidebar.getByRole("searchbox", { name: "Search tasks" }),
+      sidebar.getByRole("button", { name: "Search all chats" }),
     ).toBeVisible();
+    await search.press("Escape");
+    await expect(filter).toHaveAttribute("aria-expanded", "false");
+    await expect(search).toHaveCount(0);
+    await expect(filter).toBeFocused();
 
     // L5, L6, L13 — present, and in the target's top-to-bottom order.
     const sections = sidebar.getByRole("region");
     await expect(sections).toHaveCount(3);
-    await expect(sections.nth(0)).toHaveAccessibleName("Pinned");
-    await expect(sections.nth(1)).toHaveAccessibleName("Projects");
+    await expect(sections.nth(0)).toHaveAccessibleName("Projects");
+    await expect(sections.nth(1)).toHaveAccessibleName("Pinned");
     await expect(sections.nth(2)).toHaveAccessibleName("Recent");
     for (let index = 0; index < 3; index += 1) {
       await expect(
@@ -416,7 +432,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L7, L10 — the project tree's active row and its branch chip. The rows
     // carry no role beyond `button`, so `aria-current` is the only semantic
     // handle on "this is the active project".
-    const projects = sections.nth(1);
+    const projects = sections.nth(0);
     const activeProject = projects.locator('button[aria-current="page"]');
     await expect(activeProject).toHaveCount(1);
     await expect(activeProject.locator(".project-row__branch")).toHaveCount(1);
@@ -471,7 +487,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toContainText(/Ctrl\+N|⌘N/);
   });
 
-  test("gives a pinned chat's title its own row above the metadata", async ({
+  test("keeps a pinned chat's title legible without redundant metadata", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -482,26 +498,26 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
 
     await expect(label).toBeVisible();
     await expect(context).toHaveCount(1);
+    await expect(context).toBeHidden();
 
     expect(
       await label.evaluate((node) => node.scrollWidth - node.clientWidth),
       "the pinned title is shown whole rather than clipped by its column",
     ).toBeLessThanOrEqual(0);
 
-    const [copyBox, titleBox, labelBox, contextBox] = await Promise.all([
+    const [copyBox, titleBox, labelBox] = await Promise.all([
       boundsOf(row.locator(".project-chat__copy")),
       boundsOf(row.locator(".project-chat__title")),
       boundsOf(label),
-      boundsOf(context),
     ]);
     expect(
       titleBox.width,
       "the title claims the whole copy column rather than sharing it",
     ).toBeGreaterThan(copyBox.width - 1);
     expect(
-      contextBox.y,
-      "the rail metadata sits below the title, not beside it",
-    ).toBeGreaterThanOrEqual(labelBox.y + labelBox.height - 1);
+      labelBox.x + labelBox.width,
+      "the whole title stays inside its copy column",
+    ).toBeLessThanOrEqual(copyBox.x + copyBox.width + 1);
   });
 
   test("renders Recent entries carrying a trailing state", async ({ page }) => {
@@ -532,7 +548,9 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
 test.describe("Agent Panel V1 conformance — centre conversation", () => {
   test.use({ viewport: AGENT_VIEWPORT });
 
-  test("renders the task header and chat tab strip", async ({ page }) => {
+  test("renders the task header with rail-owned chat navigation", async ({
+    page,
+  }) => {
     await openScenario(page, "agent-single", "agent");
     const header = page.locator(".agent-task-header");
 
@@ -565,28 +583,31 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       header.getByRole("button", { name: /^Chat actions for / }),
     ).toHaveCount(1);
 
-    // C5 — different. `Hand off` exists, but in the pane action row rather
-    // than the task header the target places it in.
     await expect(
       header.getByRole("button", { name: "Hand off chat" }),
-      "C5: Handoff is not in the breadcrumb row yet",
+      "Handoff is an action-menu item, not a breadcrumb-row button",
     ).toHaveCount(0);
+    const actions = header.getByRole("button", { name: /^Chat actions for / });
+    await actions.click();
     await expect(
-      page.getByRole("button", { name: "Hand off chat", exact: true }),
-    ).toHaveCount(1);
-
-    // C6, C7 — named closable chat tabs plus a `+`.
-    const tabs = page.getByRole("tablist", { name: "Chat tabs" });
-    await expect(tabs.getByRole("tab")).toHaveCount(1);
+      page.getByRole("menuitem", { name: "Hand off chat", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(actions).toBeFocused();
+    await expect(page.getByRole("tablist", { name: "Chat tabs" })).toHaveCount(
+      0,
+    );
     await expect(
-      tabs.getByRole("button", { name: /^Archive chat / }),
-    ).toHaveCount(1);
+      rail(page).getByRole("button", {
+        name: /^Open chat Agent navigation polish/,
+      }),
+    ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "New agent chat" }),
-    ).toHaveCount(1);
+      rail(page).getByRole("button", { name: "New task", exact: true }),
+    ).toBeVisible();
   });
 
-  test("renders turn identity as the target's name-and-timestamp pair", async ({
+  test("keeps message bodies visible without redundant identity chrome", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -596,9 +617,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // C11 — different: the assistant turn is named `Agent`, not `Sage`.
     const user = page.locator(".acp-message--user").first();
     const assistant = page.locator(".acp-message--assistant").first();
+    await expect(user).toBeVisible();
+    await expect(assistant).toBeVisible();
+    await expect(user.locator(".acp-markdown")).toBeVisible();
+    await expect(user.locator(".acp-markdown")).toHaveText(
+      "Review the Agent and Editor surfaces and make the experience feel coherent.",
+    );
+    await expect(assistant.locator(".acp-markdown")).toBeVisible();
+    await expect(assistant.locator(".acp-markdown")).toContainText(
+      "The core hierarchy is now consistent.",
+    );
     await expect(user.locator(".acp-message__role")).toHaveText("You");
+    await expect(user.locator(".acp-message__meta")).toBeHidden();
     await expect(user.locator(".acp-message__meta time")).toHaveCount(1);
     await expect(assistant.locator(".acp-message__role")).toHaveText("Agent");
+    await expect(assistant.locator(".acp-message__meta")).toBeHidden();
     await expect(assistant.locator(".acp-message__meta time")).toHaveCount(1);
   });
 
@@ -722,11 +755,20 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
   }) => {
     await openScenario(page, "agent-declared-test", "agent");
     await settleTranscriptAtEnd(page);
+    const worked = page.locator("details.chat-transcript-work");
+    const workedSummary = worked.locator(":scope > summary");
+    await expect(workedSummary).toBeVisible();
+    await expect(workedSummary).toContainText(/^Worked/);
+    await expect(worked).not.toHaveAttribute("open", "");
+    await expect(toolRollup(page).locator("summary")).toBeHidden();
+    await workedSummary.click();
+    await expect(worked).toHaveAttribute("open", "");
 
     // C24 — `Ran tests` ships off a declared `scripts.test`.
     const rollup = toolRollup(page);
     await expect(rollup).toHaveCount(1);
     const summary = rollup.locator("summary");
+    await expect(summary).toBeVisible();
     await expect(summary).toContainText("Ran tests");
 
     // C25 — the pass count is a decided omission: the projection carries a
@@ -818,6 +860,20 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     expect(
       await label.evaluate((node) => getComputedStyle(node).color),
     ).not.toBe("rgba(0, 0, 0, 0)");
+
+    await installScenario(page, "waiting");
+    const thought = page.locator('[data-activity-kind="thought"]');
+    await expect(thought).toHaveCount(1);
+    await expect(thought).toHaveAttribute("data-activity-state", "inProgress");
+    const thoughtSummary = thought.locator(":scope > summary");
+    await expect(thoughtSummary).toContainText("Thinking");
+    await thoughtSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(thought).toHaveAttribute("open", "");
+    await expect(thought.locator(".acp-thought__working")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(thought).not.toHaveAttribute("open", "");
+    await expect(thoughtSummary).toBeFocused();
   });
 });
 
@@ -830,86 +886,69 @@ test.describe("Agent Panel V1 conformance — composer", () => {
 
   test("frames the composer and pins its placeholder", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
-
-    // M1 — a single framed region.
     await expect(composer(page)).toHaveCount(1);
-
-    // M3 — present since `c9365fc`: the target's own wording. The focus chord
-    // moved out of the placeholder into an `sr-only` description, so it is
-    // still announced without crowding the visible prompt.
-    await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
-    ).toHaveAttribute(
-      "placeholder",
-      "Ask Sage to build, investigate, or explain…",
-    );
-    await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
-    ).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
+    const input = page.getByRole("textbox", { name: "Message agent" });
+    await expect(input).toHaveAttribute("placeholder", "Do anything");
+    await expect(input).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
   });
 
-  test("renders the affordance row beneath the input", async ({ page }) => {
-    // M4, M5, M6 — present since `c9365fc`, and deliberately **disabled with a
-    // truthful reason**: nothing backs attachments, mentions or slash commands
-    // yet. Asserting presence alone would let them silently become fake working
-    // controls, so each one's disabled state and its stated reason are pinned
-    // together.
+  test("offers options, supported image input and dictation below the prompt", async ({
+    page,
+  }) => {
     await openScenario(page, "agent-single", "agent");
-    const affordances = composer(page).getByLabel("Composer actions", {
+    const form = composer(page);
+    const toolbar = form.locator(".composer__toolbar");
+    await expect(toolbar).toBeVisible();
+    const options = toolbar.getByRole("button", {
+      name: "Composer options",
       exact: true,
     });
-    await expect(affordances).toBeVisible();
-
-    const expected = [
-      {
-        id: "M4",
-        name: "Attach files: File attachments are not available in this composer.",
-      },
-      {
-        id: "M5",
-        name: "Mention context: Mentions are not available in this composer.",
-      },
-      {
-        id: "M6",
-        name: "Insert slash command: Slash commands are not available in this composer.",
-      },
-    ];
-    await expect(affordances.getByRole("button")).toHaveCount(expected.length);
-    for (const [index, { id, name }] of expected.entries()) {
-      const control = affordances.getByRole("button").nth(index);
-      await expect(
-        control,
-        `${id}: accessible name and order`,
-      ).toHaveAccessibleName(name);
-      await expect(
-        control,
-        `${id}: must stay disabled until something backs it`,
-      ).toBeDisabled();
-    }
-
-    // The row sits beneath the input, as the target draws it.
-    const [inputBox, affordanceBox, toolbarBox] = await Promise.all([
-      boundsOf(page.getByRole("textbox", { name: "Message agent" })),
-      boundsOf(affordances),
-      boundsOf(composer(page).locator(".composer__toolbar")),
+    await expect(options).toBeEnabled();
+    await expect(options).toHaveAttribute("aria-haspopup", "dialog");
+    await expect(options).toHaveAttribute("aria-expanded", "false");
+    const images = toolbar.getByRole("button", {
+      name: "Add images",
+      exact: true,
+    });
+    await expect(images).toBeDisabled();
+    await expect(images).toHaveAttribute(
+      "title",
+      "Image input is unavailable for the selected binding.",
+    );
+    const chooseImages = form.getByLabel("Choose images", { exact: true });
+    await expect(chooseImages).toBeDisabled();
+    await expect(chooseImages).toHaveAttribute("type", "file");
+    await expect(chooseImages).toHaveAttribute(
+      "accept",
+      "image/png,image/jpeg",
+    );
+    await expect(chooseImages).toHaveAttribute("multiple", "");
+    await expect(chooseImages).toHaveAttribute("tabindex", "-1");
+    const dictation = toolbar.getByRole("button", {
+      name: "Start dictation",
+      exact: true,
+    });
+    await expect(dictation).toBeEnabled();
+    await expect(dictation).toHaveAttribute("aria-pressed", "false");
+    await expect(dictation).toHaveAttribute(
+      "title",
+      "Speech may be processed by an online service",
+    );
+    await expect(toolbar.getByRole("button")).toHaveCount(7);
+    const [inputBox, toolbarBox] = await Promise.all([
+      boundsOf(form.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(toolbar),
     ]);
-    expect(
-      affordanceBox.y,
-      "the affordance row sits below the input",
-    ).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 1);
-    expect(
-      affordanceBox.y,
-      "the affordance row sits above the control row",
-    ).toBeLessThan(toolbarBox.y);
+    expect(toolbarBox.y).toBeGreaterThanOrEqual(
+      inputBox.y + inputBox.height - 1,
+    );
   });
 
-  test("holds exactly the controls it holds today", async ({ page }) => {
+  test("pins the closed composer's interactive inventory", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
-
-    // The composer's full interactive inventory, in DOM order. This is the
-    // backstop for every composer slot at once: a paperclip, an `@`, a `/`, an
-    // effort picker or a globe toggle all fail here the moment they appear,
-    // whatever they end up being called.
+    await expect(
+      composer(page).getByRole("button", { name: "Send message" }),
+    ).toBeVisible();
     const inventory = await composer(page).evaluate((form) =>
       [
         ...form.querySelectorAll<HTMLElement>(
@@ -920,176 +959,121 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
       ),
     );
-    expect(
-      inventory,
-      "the composer's control inventory changed — reconcile " +
-        "docs/design/agent-panel-conformance.md and the pending queue",
-    ).toEqual([
+    expect(inventory).toEqual([
       "Message agent",
-      "Attach files: File attachments are not available in this composer.",
-      "Mention context: Mentions are not available in this composer.",
-      "Insert slash command: Slash commands are not available in this composer.",
+      "Composer options",
+      "Choose images",
+      "Add images",
       "Harness",
       "Model",
-      "Permission mode",
+      "Start dictation",
       "Send message",
     ]);
+    await expect(composer(page).locator(".composer__access-label")).toHaveText(
+      "Read-only",
+    );
+    await expect(
+      composer(page).getByRole("dialog", { name: "Composer options menu" }),
+    ).toHaveCount(0);
   });
 
-  test("lays the control row out left to right, with send trailing", async ({
+  test("orders toolbar actions, harness and model with send trailing", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
-    const form = composer(page);
-
-    // M10 — present. The settled order is Sage's own, not the target's:
-    //
-    //   harness → model → project scope → thinking level → mode → globe → send
-    //
-    // Only the slots that exist can be asserted. Thinking level (M11) and globe
-    // (M14) are pending, so today's assertable order is
-    // harness → model → [project scope] → send, with mode slotting in when a
-    // session advertises one (covered separately). Project scope is a
-    // non-interactive chip, so it is absent from `composerControlOrder` by
-    // design and is positioned in its own test below.
-    const order = await composerControlOrder(page);
-    expect(
-      order.indexOf("Harness"),
-      "M10: the harness picker leads the settled control-row order",
-    ).toBe(0);
-    expect(
-      order.indexOf("Model"),
-      "M10: the model picker follows the harness picker",
-    ).toBe(1);
-    expect(order.at(-1), "the send button trails the control row").toBe(
+    await expect(
+      composer(page).getByRole("button", { name: "Send message" }),
+    ).toBeVisible();
+    expect(await composerControlOrder(page)).toEqual([
+      "Composer options",
+      "Add images",
+      "Harness",
+      "Model",
+      "Start dictation",
       "Send message",
-    );
-
-    // M15 — the send button is already a filled accent square, so the target's
-    // remaining difference is scale and glyph, neither of which is structural.
-    const send = await boundsOf(
-      form.getByRole("button", { name: "Send message" }),
-    );
-    expect(
-      Math.abs(send.width - send.height),
-      "M15: the send button is square",
-    ).toBeLessThanOrEqual(1);
-  });
-
-  test("keeps the control row on a single line", async ({ page }) => {
-    // The row wrapped once — harness and model on one line, mode and the policy
-    // chip on the next — and the visual suite certified it, because the
-    // baseline had been regenerated alongside the change. Measured by **centre
-    // line**, never by top edge: send is deliberately the taller emphasized
-    // square, so equal tops would be the anomaly rather than the goal.
-    await openScenario(page, "agent-single", "agent");
-
-    const spread = await composer(page).evaluate((form) => {
-      const row = form.querySelector<HTMLElement>(".composer__toolbar");
-      if (!row) return null;
-      const centres = [
-        ...row.querySelectorAll<HTMLElement>(
-          'button, [role="button"], .project-scope, .access-mode',
-        ),
-      ]
-        .filter((node) => node.getBoundingClientRect().height > 0)
-        .map((node) => {
-          const bounds = node.getBoundingClientRect();
-          return bounds.top + bounds.height / 2;
-        });
-      if (centres.length === 0) return null;
-      return {
-        count: centres.length,
-        spread: Math.max(...centres) - Math.min(...centres),
-      };
-    });
-
-    expect(spread, "the control row must exist to be measured").not.toBeNull();
-    if (!spread) return;
-    expect(
-      spread.count,
-      "the control row holds harness, model, project scope and send",
-    ).toBeGreaterThanOrEqual(4);
-    expect(
-      spread.spread,
-      "the control row wrapped: its items no longer share a centre line",
-    ).toBeLessThanOrEqual(1);
-  });
-
-  test("names the project the composer will act on", async ({ page }) => {
-    // M12 — present again since `490e4e0`, after being deleted as dead code.
-    //
-    // Asserted in its **honest** shape, not the reference's. The target draws
-    // `Sage ⌄`, but Sage's chip is deliberately non-interactive: a chevron on
-    // something that cannot be activated is a false affordance, the same class
-    // of defect as the fabricated `Ctrl+N` this codebase removed once already.
-    // When a later lane makes it a real picker, the chevron returns with the
-    // behaviour it advertises — and these assertions will fail and say so.
-    await openScenario(page, "agent-single", "agent");
-    const scope = composer(page).locator(".project-scope");
-
-    await expect(scope).toHaveCount(1);
-    await expect(scope, "M12: the chip names the active project").toHaveText(
-      "Sage",
-    );
-    await expect(
-      scope,
-      "M12: the chip must state why it cannot be switched",
-    ).toHaveAttribute("title", "Project switching is unavailable");
-
-    // Non-interactive: no button, no widget role, not focusable, no chevron.
-    await expect(
-      scope.getByRole("button"),
-      "M12: the scope chip must not offer an action nothing backs",
-    ).toHaveCount(0);
-    expect(
-      await scope.evaluate((node) => ({
-        tag: node.tagName.toLowerCase(),
-        role: node.getAttribute("role"),
-        tabIndex: node.getAttribute("tabindex"),
-        // One decorative folder glyph, aria-hidden. A second glyph would be the
-        // chevron coming back without the behaviour it promises.
-        glyphs: node.querySelectorAll("svg").length,
-        glyphsHidden: [...node.querySelectorAll("svg")].every(
-          (glyph) => glyph.getAttribute("aria-hidden") === "true",
-        ),
-      })),
-      "M12: the scope chip is a plain, unfocusable span with one hidden glyph",
-    ).toEqual({
-      tag: "span",
-      role: null,
-      tabIndex: null,
-      glyphs: 1,
-      glyphsHidden: true,
-    });
-
-    // Settled order: it sits between the model picker and everything after it.
-    const [model, scopeBox, send] = await Promise.all([
-      boundsOf(composer(page).getByRole("button", { name: "Model" })),
-      boundsOf(scope),
+    ]);
+    const [images, access, harness, send] = await Promise.all([
+      boundsOf(
+        composer(page).getByRole("button", { name: "Add images", exact: true }),
+      ),
+      boundsOf(composer(page).locator(".composer__access-label")),
+      boundsOf(
+        composer(page).getByRole("button", { name: "Harness", exact: true }),
+      ),
       boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
-    expect(model.x, "M12: project scope follows the model picker").toBeLessThan(
-      scopeBox.x,
-    );
-    expect(scopeBox.x, "M12: project scope precedes send").toBeLessThan(send.x);
+    expect(access.x).toBeGreaterThanOrEqual(images.x + images.width - 1);
+    expect(access.x + access.width).toBeLessThanOrEqual(harness.x + 1);
+    expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
   });
 
-  test("renders the context meter inside the input's trailing band", async ({
+  test("keeps the closed toolbar on one line", async ({ page }) => {
+    await openScenario(page, "agent-single", "agent");
+    await expect(
+      composer(page).getByRole("button", { name: "Send message" }),
+    ).toBeVisible();
+    const centres = await composer(page)
+      .locator(".composer__toolbar")
+      .evaluate((row) =>
+        [
+          ...row.querySelectorAll<HTMLElement>(
+            'button, [role="button"], .composer__access-label',
+          ),
+        ].map((node) => {
+          const bounds = node.getBoundingClientRect();
+          return bounds.top + bounds.height / 2;
+        }),
+      );
+    expect(centres).toHaveLength(7);
+    expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
+  });
+
+  test("names the active project in the options menu", async ({ page }) => {
+    await openScenario(page, "agent-single", "agent");
+    const options = composer(page).getByRole("button", {
+      name: "Composer options",
+      exact: true,
+    });
+    await expect(options).toBeVisible();
+    await expect(
+      composer(page).getByRole("button", { name: "Project", exact: true }),
+    ).toHaveCount(0);
+    await options.click();
+    const menu = composer(page).getByRole("dialog", {
+      name: "Composer options menu",
+    });
+    await expect(menu).toBeVisible();
+    await expect(options).toHaveAttribute("aria-expanded", "true");
+    const project = menu.getByRole("button", { name: "Project", exact: true });
+    await expect(project).toBeVisible();
+    await expect(project).toBeEnabled();
+    await expect(project).toHaveText("Sage");
+    await expect(project).toHaveAttribute("aria-haspopup", "listbox");
+    const permission = menu.getByRole("button", {
+      name: "Permission mode",
+      exact: true,
+    });
+    await expect(permission).toBeVisible();
+    await expect(permission).toHaveText("Read-only");
+    await options.click();
+    await expect(menu).toHaveCount(0);
+    await expect(options).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("keeps reported context in the toolbar without overlapping the prompt", async ({
     page,
   }) => {
-    // M7, M8, M9 — present since `c9365fc`. The meter now reads `6K context`
-    // and sits inside the input area's trailing band, above the affordance and
-    // control rows, which is the target's shape.
     await openScenario(page, "agent-composer-context-known", "agent");
-    const context = page.getByLabel("Composer context", { exact: true });
-
+    const context = composer(page).getByLabel("Composer context", {
+      exact: true,
+    });
+    await expect(context).toBeVisible();
     await expect(context).toContainText("6K context");
-    const meter = context.getByRole("progressbar", { name: "Reported usage" });
+    const meter = context.getByRole("progressbar", {
+      name: "6,000 used / 272,000 total tokens",
+      exact: true,
+    });
     await expect(meter).toHaveCount(1);
-
-    // The compact label must not cost the real numbers: they stay in the
-    // accessible value text, so assistive tech still gets the truth.
     await expect(meter).toHaveAttribute("aria-valuemin", "0");
     await expect(meter).toHaveAttribute("aria-valuemax", "272000");
     await expect(meter).toHaveAttribute("aria-valuenow", "6000");
@@ -1097,90 +1081,78 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "aria-valuetext",
       "6,000 / 272,000 tokens used",
     );
-
-    // M9 — structurally inside the input area, and above the control row.
     expect(
       await context.evaluate((node) =>
-        Boolean(node.closest(".composer__input-area")),
+        Boolean(node.closest(".composer__toolbar")),
       ),
-      "M9: the meter lives inside the input area, not in a row of its own",
     ).toBe(true);
-    const [toolbarBox, contextBox] = await Promise.all([
-      boundsOf(composer(page).locator(".composer__toolbar")),
-      boundsOf(context),
-    ]);
-    expect(
-      contextBox.y + contextBox.height,
-      "M9: the meter sits above the control row",
-    ).toBeLessThanOrEqual(toolbarBox.y + 1);
-
-    const [inputAreaBox, textareaBox, meterBox] = await Promise.all([
-      boundsOf(composer(page).locator(".composer__input-area")),
+    const [inputBox, contextBox, micBox, sendBox] = await Promise.all([
       boundsOf(composer(page).getByRole("textbox", { name: "Message agent" })),
-      boundsOf(meter),
-    ]);
-    expect(
-      textareaBox.y + textareaBox.height,
-      "M9: the meter clears the prompt instead of overlapping it",
-    ).toBeLessThanOrEqual(contextBox.y + 1);
-    expect(
-      inputAreaBox.x + inputAreaBox.width - (meterBox.x + meterBox.width),
-      "M9: the meter is pinned to the trailing edge of the input band",
-    ).toBeLessThanOrEqual(16);
-    expect(
-      meterBox.x,
-      "M9: the meter is trailing, not leading",
-    ).toBeGreaterThan(inputAreaBox.x + inputAreaBox.width / 2);
-  });
-
-  test("keeps the meter honest when capacity is unknown", async ({ page }) => {
-    // M7's data contract: a bare reported count and no progressbar when the
-    // runtime advertises no capacity. `6K context` must never be implied over
-    // a capacity Sage was not told.
-    await openScenario(page, "agent-composer-context-unknown", "agent");
-    const context = page.getByLabel("Composer context", { exact: true });
-
-    await expect(context).toContainText("Reported usage · 6,000 tokens");
-    await expect(context).not.toContainText("6K context");
-    await expect(context.getByRole("progressbar")).toHaveCount(0);
-  });
-
-  test("renders the mode picker in its settled control-row slot", async ({
-    page,
-  }) => {
-    // M13 — present. The settled order places mode after project scope and
-    // before the globe. Project scope is non-interactive, so it does not appear
-    // in the control order; its position relative to mode is asserted directly.
-    await openScenario(page, "agent-session-mode-closed", "agent");
-
-    const order = await composerControlOrder(page);
-    expect(
-      order,
-      "M13: the mode picker's settled slot is after model and before send",
-    ).toEqual([
-      "Harness",
-      "Model",
-      "Session mode",
-      "Permission mode",
-      "Send message",
-    ]);
-
-    const [scope, mode] = await Promise.all([
-      boundsOf(composer(page).locator(".project-scope")),
+      boundsOf(context),
       boundsOf(
         composer(page).getByRole("button", {
-          name: "Session mode",
+          name: "Start dictation",
           exact: true,
         }),
       ),
+      boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
-    expect(scope.x, "M13: project scope precedes the mode picker").toBeLessThan(
-      mode.x,
+    expect(contextBox.y).toBeGreaterThanOrEqual(
+      inputBox.y + inputBox.height - 1,
     );
+    expect(contextBox.x).toBeGreaterThanOrEqual(micBox.x + micBox.width - 1);
+    expect(contextBox.x + contextBox.width).toBeLessThanOrEqual(sendBox.x + 1);
+    expect(
+      Math.abs(
+        contextBox.y + contextBox.height / 2 - (sendBox.y + sendBox.height / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+  });
 
+  test("does not imply a context meter when capacity is unknown", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-composer-context-unknown", "agent");
+    await expect(
+      composer(page).getByRole("textbox", { name: "Message agent" }),
+    ).toBeVisible();
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toHaveCount(0);
+    await expect(composer(page).getByRole("progressbar")).toHaveCount(0);
+    await expect(composer(page)).not.toContainText("6K context");
+  });
+
+  test("keeps session and permission modes in the options menu", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-session-mode-closed", "agent");
+    const options = composer(page).getByRole("button", {
+      name: "Composer options",
+      exact: true,
+    });
+    await expect(options).toBeVisible();
     await expect(
       composer(page).getByRole("button", { name: "Session mode", exact: true }),
+    ).toHaveCount(0);
+    await options.click();
+    const menu = composer(page).getByRole("dialog", {
+      name: "Composer options menu",
+    });
+    await expect(menu).toBeVisible();
+    expect(
+      await menu
+        .getByRole("button")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("aria-label")),
+        ),
+    ).toEqual(["Project", "Session mode", "Permission mode"]);
+    await expect(
+      menu.getByRole("button", { name: "Session mode", exact: true }),
     ).toHaveText("Review changes");
+    await expect(
+      menu.getByRole("button", { name: "Permission mode", exact: true }),
+    ).toHaveText("Read-only");
   });
 });
 
@@ -1275,9 +1247,6 @@ test.describe("Agent Panel V1 conformance — right tab region", () => {
     await draft.fill("Conformance probe");
     await page.getByRole("button", { name: "Add to prompt" }).click();
 
-    // M2 — present, and in the target's own position. Resolved against the
-    // reference image rather than the prose: the image puts the chips on the
-    // affordance row *beneath* the input, alongside the paperclip, `@` and `/`.
     const attachments = composer(page).getByRole("list", {
       name: "Attached context",
     });
@@ -1288,27 +1257,30 @@ test.describe("Agent Panel V1 conformance — right tab region", () => {
       chip.getByRole("button", { name: /^Remove .* context$/ }),
     ).toHaveCount(1);
 
-    const [chipBox, inputBox, affordanceBox] = await Promise.all([
+    expect(
+      await attachments.evaluate((node) =>
+        Boolean(node.closest(".composer__attachment-row")),
+      ),
+    ).toBe(true);
+    const [chipBox, inputBox, toolbarBox, formBox] = await Promise.all([
       boundsOf(attachments),
       boundsOf(page.getByRole("textbox", { name: "Message agent" })),
-      boundsOf(composer(page).getByLabel("Composer actions", { exact: true })),
+      boundsOf(composer(page).locator(".composer__toolbar")),
+      boundsOf(composer(page)),
     ]);
     expect(
       chipBox.y,
       "M2: the attached-context chip row sits beneath the composer input",
     ).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 1);
-    expect(
-      Math.abs(
-        chipBox.y +
-          chipBox.height / 2 -
-          (affordanceBox.y + affordanceBox.height / 2),
-      ),
-      "M2: the chips share the affordance row rather than taking a row of " +
-        "their own",
-    ).toBeLessThanOrEqual(affordanceBox.height);
-    expect(
-      chipBox.x,
-      "M2: the chips follow the affordance glyphs",
-    ).toBeGreaterThanOrEqual(affordanceBox.x);
+    expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(toolbarBox.y + 1);
+    expect(chipBox.x).toBeGreaterThanOrEqual(formBox.x);
+    expect(chipBox.x + chipBox.width).toBeLessThanOrEqual(
+      formBox.x + formBox.width,
+    );
+    await chip.getByRole("button", { name: /^Remove .* context$/ }).click();
+    await expect(attachments).toHaveCount(0);
+    await expect(
+      composer(page).locator(".composer__attachment-row"),
+    ).toHaveCount(0);
   });
 });

@@ -30,6 +30,7 @@ import {
 } from "./agentTurnJourneyModel";
 import { MAX_SCRIPTED_EVENTS } from "./agentTurnJourneyLimits";
 import { createJourneyFixtureState } from "./agentTurnJourneyWorkbench";
+import { journeySnapshot } from "./agentTurnJourneySnapshot";
 
 export { JOURNEY_IDS, type JourneyEvent } from "./agentTurnJourneyModel";
 export { MAX_SCRIPTED_EVENTS } from "./agentTurnJourneyLimits";
@@ -57,6 +58,18 @@ function recordEvent(state: FixtureState, event: JourneyEvent): void {
 
 function publish(state: FixtureState, page: AcpChatPage): string {
   state.pages.set(page.chatId, structuredClone(page));
+  const rail = journeySnapshot(
+    state,
+    state.activeProjectId,
+    state.transitionEpoch,
+  );
+  useWorkbenchStore.setState((current) => ({
+    projects: rail.projects,
+    tabs: current.tabs.map((tab) => {
+      const receipt = rail.tabs.find((entry) => entry.id === tab.id);
+      return receipt ? { ...tab, status: receipt.status } : tab;
+    }),
+  }));
   const store = acpProjectionStoreFor(page.chatId);
   const scope = store.getState().scope;
   const disposition = scope

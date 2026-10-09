@@ -1,6 +1,8 @@
 import { expect, type Page, type TestInfo } from "@playwright/test";
 
 import type { JourneyEvent } from "./agentTurnJourneyFixture";
+import type { TurnState } from "../../../src/domain/acp";
+import { turnStateLabels } from "../../../src/features/chat/acp/statusSemantics";
 
 const FIXED_TIME = "2026-09-04T12:00:00.000Z";
 const MAX_SCREENSHOT_ATTACHMENTS = 12;
@@ -102,30 +104,77 @@ export function pane(page: Page, name: "Alpha" | "Beta" | "Gamma") {
   return page.getByRole("region", { name: `Chat pane ${name}` });
 }
 
-export function turnStatus(
+export async function expectTurnState(
+  page: Page,
   owner: ReturnType<typeof pane>,
   ordinal: number,
-  name: string,
+  state: TurnState,
 ) {
-  return owner
-    .getByRole("region", { name: `Turn ${ordinal}` })
-    .getByRole("status", { name });
+  const turn = owner.getByRole("region", {
+    name: "Turn " + ordinal,
+    exact: true,
+  });
+  await expect(turn).toBeVisible();
+  await expect(turn).toHaveAttribute("data-turn-state", state);
+  await expect(turn.locator(".acp-turn__state")).toHaveText(
+    turnStateLabels[state],
+  );
+  if (
+    (await owner.getAttribute("class"))?.includes("agent-chat-pane--focused")
+  ) {
+    await expect(
+      page.locator(".agent-task-header").getByRole("status"),
+    ).toHaveText(turnStateLabels[state]);
+  }
+}
+
+export async function expectRunningComposerReadyToQueue(
+  owner: ReturnType<typeof pane>,
+) {
+  const composer = owner.getByRole("textbox", { name: "Message agent" });
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Enter to queue a message",
+  );
+  await expect(composer).toHaveAccessibleDescription(
+    /Enter queues a message while this turn runs/,
+  );
+  await expect(
+    owner.getByRole("button", { name: "Harness", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    owner.getByRole("button", { name: "Model", exact: true }),
+  ).toBeDisabled();
+  await expect(owner.locator(".composer__disabled-reason")).toHaveCount(0);
 }
 
 export async function focusPane(page: Page, name: "Alpha" | "Beta") {
   const target = pane(page, name);
-  const focusButton = target.getByRole("button", {
-    name: new RegExp(`${name}$`),
-  });
-  await focusButton.focus();
-  await expect(focusButton).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("complementary", { name: "Projects and chats" })
+    .getByRole("button", {
+      name: new RegExp("^Open chat " + name + "(?:, pinned)?$"),
+    })
+    .click();
+  await expect(target).toHaveClass(/agent-chat-pane--focused/);
   await expect(target.locator("form.composer")).toHaveAttribute(
     "aria-busy",
     "false",
   );
   await expect(
-    target.getByRole("region", { name: `Agent chat ${name}` }),
+    target.getByRole("region", { name: "Agent chat " + name }),
   ).toBeVisible();
+  const composer = target.getByRole("textbox", { name: "Message agent" });
+  if (await composer.isEnabled()) {
+    await composer.focus();
+    await expect(composer).toBeFocused();
+  } else {
+    const cancel = target.getByRole("button", { name: "Cancel turn" });
+    await expect(cancel).toBeEnabled();
+    await cancel.focus();
+    await expect(cancel).toBeFocused();
+  }
   await settleRender(page);
   return target;
 }

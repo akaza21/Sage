@@ -1,9 +1,15 @@
-import type { SageProjectId } from "../../../src/domain/acp";
+import type {
+  AcpChatPage,
+  SageChatId,
+  SageProjectId,
+} from "../../../src/domain/acp";
 import type {
   BootstrapSnapshot,
   ProjectListItem,
+  SessionStatus,
   WorkbenchTab,
 } from "../../../src/domain/workbench";
+import { projectChatLiveSnapshot } from "../../../src/features/chat/acp/chatLiveSnapshot";
 import {
   JOURNEY_IDS,
   sessionId,
@@ -11,6 +17,14 @@ import {
 } from "./agentTurnJourneyModel";
 
 const fixedNow = Date.UTC(2026, 8, 4, 12, 0, 0);
+
+export function journeyRailStatus(
+  page: AcpChatPage | undefined,
+): SessionStatus {
+  if (!page || page.turns.length === 0) return "idle";
+  const snapshot = projectChatLiveSnapshot(page.chatId, page);
+  return snapshot.statusTone === "idle" ? "complete" : snapshot.statusTone;
+}
 
 function projectRows(): ProjectListItem[] {
   return [
@@ -83,10 +97,19 @@ export function journeySnapshot(
   projectId: SageProjectId,
   epoch: number,
 ): BootstrapSnapshot {
-  const tabs = tabsFor(projectId);
+  const tabs = tabsFor(projectId).map((tab) => ({
+    ...tab,
+    status: journeyRailStatus(state.pages.get(tab.id as SageChatId)),
+  }));
   return {
     transitionEpoch: epoch,
-    projects: projectRows(),
+    projects: projectRows().map((project) => ({
+      ...project,
+      railChats: project.railChats?.map((chat) => ({
+        ...chat,
+        status: journeyRailStatus(state.pages.get(chat.id as SageChatId)),
+      })),
+    })),
     project: {
       id: projectId,
       name:

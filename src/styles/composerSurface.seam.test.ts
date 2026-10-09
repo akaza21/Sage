@@ -19,6 +19,22 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {
+    const css = await readFile(
+      resolve("src/styles/harness-picker.css"),
+      "utf8",
+    );
+    const wrapper = css.match(
+      /^\.composer__harness\.composer__control-trigger\s*\{([^}]*)\}/m,
+    );
+    const trigger = css.match(
+      /^\.composer__harness \.searchable-picker__trigger\s*\{([^}]*)\}/m,
+    );
+    const height = (rule: RegExpMatchArray | null) =>
+      rule?.[1].match(/(?:^|;)\s*height:\s*(\d+)px;/)?.[1];
+    expect(height(trigger)).toBe("40");
+    expect(height(wrapper)).toBe(height(trigger));
+  });
   it("keeps focused composer and related surface files below 400 lines", async () => {
     for (const file of [
       "composer-surface.css",

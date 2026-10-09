@@ -59,13 +59,18 @@ test("CP-17(d) refs 07/13/17: Subagent row opens a bounded right-pane tab at 560
     rightPane.getByRole("heading", { name: "Reviewer" }),
   ).toBeVisible();
   await expect(
-    rightPane.getByText(/full child transcript is not available/),
+    rightPane.getByText(
+      "Child transcript is unavailable. Try reopening this view.",
+      { exact: true },
+    ),
   ).toBeVisible();
   const canvasBox = await rightPane
     .locator(".agent-artifact-pane__canvas")
     .boundingBox();
   const copyBox = await rightPane
-    .getByText(/full child transcript is not available/)
+    .getByText("Child transcript is unavailable. Try reopening this view.", {
+      exact: true,
+    })
     .boundingBox();
   expect(canvasBox && copyBox && copyBox.x >= canvasBox.x + 12).toBeTruthy();
   await expect(rightPane).not.toContainText("private-child-key");

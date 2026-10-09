@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import type {
   VisualScenarioMode,
@@ -22,11 +22,37 @@ export async function assertAgentLandmarks(page: Page) {
     }),
   ).toBeVisible();
   await expect(
-    projectSidebar.getByRole("button", { name: "Search all chats" }),
+    projectSidebar.getByRole("button", { name: "Filter tasks", exact: true }),
   ).toBeVisible();
 }
 
+export async function releasePickerHarnessReadiness(page: Page) {
+  await page.evaluate(() => {
+    const visualWindow = window as typeof window & {
+      __releaseVisualPickerHarnessReady?: () => void;
+    };
+    const release = visualWindow.__releaseVisualPickerHarnessReady;
+    if (!release) throw new Error("Harness readiness fixture was not armed");
+    release();
+  });
+}
+
+export async function revealWorkedContent(content: Locator) {
+  await expect(content).toHaveCount(1);
+  const worked = content.locator(
+    "xpath=ancestor::details[contains(@class, 'chat-transcript-work')][1]",
+  );
+  if (await worked.count()) {
+    if ((await worked.getAttribute("open")) === null) {
+      await worked.locator(":scope > summary").click();
+    }
+    await expect(worked).toHaveAttribute("open", "");
+  }
+  await expect(content).toBeVisible();
+}
+
 export async function expectAgentImageContained(page: Page) {
+  await revealWorkedContent(page.locator(".acp-image"));
   const image = page.getByRole("img", {
     name: "Image provided by the agent",
   });
@@ -161,18 +187,28 @@ export async function runAgentCanonicalTest(
     const cards = page.locator(".acp-activity-card");
     await expect(cards).toHaveCount(8);
     await expect(page.locator('[data-activity-kind="execute"]')).toBeVisible();
+    const execution = page.locator(
+      '.acp-tool-rollup[data-activity-kind="execute"]',
+    );
+    await execution.locator("summary").click();
+    await expect(execution).toHaveAttribute("open", "");
     await expect(page.locator('[data-activity-kind="search"]')).toHaveAttribute(
       "data-activity-state",
       "inProgress",
     );
-    await expect(page.locator('[data-activity-kind="fetch"]')).toContainText(
-      "Review preview",
-    );
+    const fetch = page.locator('.acp-tool-rollup[data-activity-kind="fetch"]');
+    await fetch.locator("summary").click();
+    await expect(fetch).toHaveAttribute("open", "");
+    await expect(fetch).toContainText("Review preview");
+    await expect(
+      fetch.getByRole("group", { name: "Review preview" }),
+    ).toBeVisible();
     await expect(page.locator('[data-activity-kind="usage"]')).toHaveCount(0);
     await expect(page.locator('[data-activity-kind="error"]')).toContainText(
       "Retry available",
     );
     await expect(page.locator('[data-activity-kind="thought"]')).toHaveCount(0);
+    await settleTranscriptAtEnd(page);
     const command = page.locator(".acp-tool-command--line");
     await expect(command).toBeVisible();
     expect(

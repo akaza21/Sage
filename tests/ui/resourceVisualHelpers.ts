@@ -20,8 +20,20 @@ export async function openAgentScenario(page: Page, name: VisualScenarioName) {
   return page.locator("main.workbench");
 }
 
+export async function expandAgentSnapshotEdits(page: Page) {
+  const edits = page.getByRole("region", { name: "Files edited in turn 1" });
+  const disclosure = edits.getByRole("button", { name: /^1 file changed/ });
+  await expect(disclosure).toBeVisible();
+  if ((await disclosure.getAttribute("aria-expanded")) === "false") {
+    await disclosure.click();
+  }
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  return edits;
+}
+
 export async function openAgentSnapshotDiff(page: Page) {
-  await page
+  const edits = await expandAgentSnapshotEdits(page);
+  await edits
     .getByRole("button", {
       name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
     })

@@ -19,6 +19,7 @@ import {
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
 import {
+  expandAgentSnapshotEdits,
   exerciseResourceStates,
   openAgentScenario,
   openAgentSnapshotDiff,
@@ -130,7 +131,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Diff src/workbench/AgentChatPanes.tsx",
     });
     await expect(file).toHaveAttribute("aria-selected", "true");
-    await expect(file.getByText("File", { exact: true })).toBeVisible();
+    await expect(file.locator(".tab__basename")).toHaveText(
+      "AgentChatPanes.tsx",
+    );
+    await expect(file.locator("svg")).toHaveCount(1);
     await expect(file.getByTitle("Unsaved changes")).toBeVisible();
     await expect(diff).toHaveCount(0);
     await page.evaluate(async () => {
@@ -139,7 +143,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       await fixtures.openVisualPinnedDiffThroughProduction();
     });
     await expect(diff).toHaveAttribute("aria-selected", "false");
-    await expect(diff.getByText("Diff", { exact: true })).toBeVisible();
+    await expect(diff.locator(".tab__basename")).toHaveText(
+      "AgentChatPanes.tsx",
+    );
+    await expect(diff.locator("svg")).toHaveCount(1);
     await expect(diff).toHaveAccessibleDescription("New resource");
     await expect(
       resources.getByRole("button", {
@@ -153,11 +160,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
   }) => {
     await page.setViewportSize({ width: 1_380, height: 880 });
     await openScenario(page, "agent-dual", "agent");
-    const secondFocus = page
-      .locator(".agent-chat-pane__focus")
-      .filter({ hasText: "Editor consistency pass" });
-    await secondFocus.click();
-    await expect(secondFocus).toHaveAttribute("aria-pressed", "true");
+    const secondPane = page.getByRole("region", {
+      name: "Chat pane Editor consistency pass",
+      exact: true,
+    });
+    await expect(
+      secondPane.getByRole("textbox", { name: "Message agent" }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: /^Open chat Editor consistency pass$/ })
+      .click();
+    await expect(secondPane).toHaveClass(/agent-chat-pane--focused/);
 
     await page.evaluate(async () => {
       const fixtures =
@@ -174,10 +187,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "false");
     await expect(
-      page
-        .locator(".agent-chat-pane__focus")
-        .filter({ hasText: "Editor consistency pass" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByRole("region", {
+        name: "Chat pane Editor consistency pass",
+        exact: true,
+      }),
+    ).toHaveClass(/agent-chat-pane--focused/);
 
     const pinned = resources.getByRole("button", {
       name: "Pinned resource, new Preview available",
@@ -207,10 +221,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     );
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(
-      page
-        .locator(".agent-chat-pane__focus")
-        .filter({ hasText: "Editor consistency pass" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByRole("region", {
+        name: "Chat pane Editor consistency pass",
+        exact: true,
+      }),
+    ).toHaveClass(/agent-chat-pane--focused/);
 
     const rail = page.getByRole("complementary", {
       name: "Projects and chats",
@@ -219,10 +234,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .getByRole("button", { name: /Open chat Agent navigation polish/ })
       .click();
     await expect(
-      page
-        .locator(".agent-chat-pane__focus")
-        .filter({ hasText: "Agent navigation polish" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByRole("region", {
+        name: "Chat pane Agent navigation polish",
+        exact: true,
+      }),
+    ).toHaveClass(/agent-chat-pane--focused/);
     await expect(
       resources.getByRole("tab", {
         name: "Diff src/workbench/AgentChatPanes.tsx",
@@ -233,10 +249,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .getByRole("button", { name: /Open chat Editor consistency pass/ })
       .click();
     await expect(
-      page
-        .locator(".agent-chat-pane__focus")
-        .filter({ hasText: "Editor consistency pass" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByRole("region", {
+        name: "Chat pane Editor consistency pass",
+        exact: true,
+      }),
+    ).toHaveClass(/agent-chat-pane--focused/);
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
   });
@@ -460,7 +477,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       tabSize: "4",
     });
     expect(customEditorAppearance.whitespace).toBeGreaterThan(0);
-    await expect(agentPage.locator(".file-header__metadata")).toBeHidden();
+    await expect(agentPage.locator(".file-header__metadata")).toBeVisible();
+    await expect(agentPage.locator(".file-header__metadata")).toContainText(
+      "UTF-8 · LF",
+    );
     await expect(
       agentPage.locator(".file-breadcrumb__item").last(),
     ).toBeVisible();
@@ -714,6 +734,7 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await installScenario(page, "diff");
     await page.evaluate(() => document.fonts.ready);
     const workbench = page.locator("main.workbench");
+    await expandAgentSnapshotEdits(page);
     await expect(
       page.getByRole("button", {
         name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
@@ -757,6 +778,7 @@ test.describe("AV-03 Agent document ready baselines", () => {
         });
       };
     });
+    await expandAgentSnapshotEdits(page);
     await page
       .getByRole("button", {
         name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
@@ -788,12 +810,10 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(toggle.locator("svg")).toHaveCount(1);
     await expect(toggle.locator("small")).toHaveCount(0);
 
-    for (let step = 0; step < 32; step += 1) {
-      if (await toggle.evaluate((node) => node === document.activeElement)) {
-        break;
-      }
-      await page.keyboard.press("Tab");
-    }
+    await page
+      .getByRole("button", { name: "Start dictation", exact: true })
+      .focus();
+    await page.keyboard.press("Tab");
     await expect(toggle).toBeFocused();
     const focusRing = await toggle.evaluate((node) => {
       const style = getComputedStyle(node);
@@ -825,11 +845,14 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expectNoViewportOverflow(page);
   });
 
-  test("fits the collapsed idle Preview receipt in the desktop rail", async ({
+  test("fits the collapsed ready Preview receipt in the desktop rail", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1_380, height: 880 });
-    const workbench = await openAgentScenario(page, "agent-single");
+    const workbench = await openAgentScenario(page, "preview");
+    await page
+      .getByRole("button", { name: "Collapse files, changes, and preview" })
+      .click();
     await expect(workbench).not.toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
       name: "Show preview · Ready · 1 resource",
@@ -933,7 +956,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Show preview · Ready · 1 resource",
+      name: "Show preview · Waiting",
     });
     expect(
       await toggle.evaluate((node) => {
@@ -944,7 +967,7 @@ test.describe("V6a Agent right-resource state shell", () => {
           width: bounds.width,
         };
       }),
-    ).toEqual({ count: "1", width: 44, height: 44 });
+    ).toEqual({ count: undefined, width: 44, height: 44 });
 
     await toggle.click();
     await expect(
@@ -967,7 +990,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Show preview · Ready · 1 resource",
+      name: "Show preview · Waiting",
     });
     await expect(toggle.locator("small")).toHaveCount(0);
     await toggle.click();
@@ -1000,104 +1023,39 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     const resources = page.getByRole("complementary", {
       name: "Agent artifacts",
     });
+    await expect(resources.getByRole("tab", { name: "Preview" })).toHaveCount(
+      0,
+    );
     await expect(
-      resources.getByRole("tab", { name: "Preview" }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(
-      resources.getByRole("status").filter({ hasText: "Preview is idle" }),
+      resources.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
     await expect(
-      resources.getByRole("button", { name: "Back" }),
-    ).toBeDisabled();
+      resources.getByText(
+        "Open a file or change from the conversation. Preview will appear when this Chat starts a loopback server.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(resources.locator(".harness-browser")).toHaveCount(0);
     await expect(
-      resources.getByRole("button", { name: "Reload preview" }),
-    ).toBeDisabled();
-    const idleGeometry = await resources.evaluate((root) => {
-      const browser = root.querySelector<HTMLElement>(".harness-browser");
-      const chrome = root.querySelector<HTMLElement>(
-        ".harness-browser__chrome",
-      );
-      const button = root.querySelector<HTMLElement>(
-        ".harness-browser__chrome button",
-      );
-      const input = root.querySelector<HTMLElement>(
-        ".harness-browser__address input",
-      );
-      const body = root.querySelector<HTMLElement>(
-        ".harness-browser > .resource-state",
-      );
-      const denied = root.querySelector<HTMLElement>(
-        ".harness-browser__denied",
-      );
-      if (!browser || !chrome || !button || !input || !body) {
-        throw new Error("Preview chrome geometry probe missing");
-      }
-      return {
-        chromeHeight: chrome.getBoundingClientRect().height,
-        buttonHeight: getComputedStyle(button).height,
-        inputHeight: getComputedStyle(input).height,
-        browser: browser.getBoundingClientRect().toJSON(),
-        chrome: chrome.getBoundingClientRect().toJSON(),
-        body: body.getBoundingClientRect().toJSON(),
-        denied: denied ? denied.getBoundingClientRect().toJSON() : null,
-      };
+      resources.getByRole("textbox", { name: "Preview address" }),
+    ).toHaveCount(0);
+    await expect(page.getByTitle("Sage browser")).toHaveCount(0);
+    const waiting = resources.getByRole("region", {
+      name: "Waiting for this Chat",
     });
-    expect(idleGeometry.chromeHeight).toBe(36);
-    expect(idleGeometry.buttonHeight).toBe("28px");
-    expect(idleGeometry.inputHeight).toBe("28px");
-    expect(idleGeometry.denied).toBeNull();
-    expect(idleGeometry.body.y).toBeGreaterThanOrEqual(
-      idleGeometry.chrome.y + idleGeometry.chrome.height - 1,
-    );
-    expect(idleGeometry.body.y + idleGeometry.body.height).toBeLessThanOrEqual(
-      idleGeometry.browser.y + idleGeometry.browser.height + 1,
-    );
-    const idleAddress = resources.getByRole("textbox", {
-      name: "Preview address",
-    });
-    await idleAddress.fill("https://example.com/");
-    await idleAddress.press("Enter");
-    await expect(
-      resources.getByRole("alert").filter({
-        hasText: "Only loopback HTTP(S) with a port",
+    expect(
+      await waiting.evaluate((node) => {
+        const canvas = node.closest(".agent-artifact-pane__canvas")!;
+        const bounds = node.getBoundingClientRect();
+        const parent = canvas.getBoundingClientRect();
+        return (
+          bounds.left >= parent.left &&
+          bounds.right <= parent.right &&
+          bounds.top >= parent.top &&
+          bounds.bottom <= parent.bottom
+        );
       }),
-    ).toBeVisible();
-    expect(await page.getByTitle("Sage browser").count()).toBe(0);
-    const idleDenied = await resources.evaluate((root) => {
-      const browser = root.querySelector<HTMLElement>(".harness-browser");
-      const chrome = root.querySelector<HTMLElement>(
-        ".harness-browser__chrome",
-      );
-      const denied = root.querySelector<HTMLElement>(
-        ".harness-browser__denied",
-      );
-      const body = root.querySelector<HTMLElement>(
-        ".harness-browser > .resource-state",
-      );
-      if (!browser || !chrome || !denied || !body) {
-        throw new Error("Preview denied-row probe missing");
-      }
-      return {
-        browser: browser.getBoundingClientRect().toJSON(),
-        chrome: chrome.getBoundingClientRect().toJSON(),
-        denied: denied.getBoundingClientRect().toJSON(),
-        body: body.getBoundingClientRect().toJSON(),
-      };
-    });
-    expect(idleDenied.denied.y).toBeGreaterThanOrEqual(
-      idleDenied.chrome.y + idleDenied.chrome.height - 1,
-    );
-    expect(idleDenied.body.y).toBeGreaterThanOrEqual(
-      idleDenied.denied.y + idleDenied.denied.height - 1,
-    );
-    expect(idleDenied.body.y + idleDenied.body.height).toBeLessThanOrEqual(
-      idleDenied.browser.y + idleDenied.browser.height + 1,
-    );
-    await idleAddress.fill("");
-    await expect(resources.locator(".harness-browser__denied")).toHaveCount(0);
-    await expect(
-      resources.getByRole("status").filter({ hasText: "Preview is idle" }),
-    ).toBeVisible();
+    ).toBe(true);
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("agent-preview-idle.png");
   });
@@ -1236,31 +1194,27 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       }
       await tab.scrollIntoViewIfNeeded();
       await expect(tab).toBeVisible();
+      await expect(tab).toHaveAccessibleName(tabName);
+      await expect(tab).toHaveAttribute("title", tabName);
       const legibility = await tab.evaluate((element) => {
-        const basename = element.querySelector<HTMLElement>(".tab__basename");
-        const dir = element.querySelector<HTMLElement>(".tab__dir");
-        const scroller = element.closest<HTMLElement>(".tab-strip__scroll");
-        if (!basename || !dir || !scroller) {
-          throw new Error("Long-path tab structure probe missing");
-        }
+        const basename = element.querySelector<HTMLElement>(".tab__basename")!;
+        const directory = element.querySelector<HTMLElement>(".tab__dir")!;
         const box = element.getBoundingClientRect();
         const baseBox = basename.getBoundingClientRect();
-        const scrollBox = scroller.getBoundingClientRect();
         return {
           basenameText: basename.textContent,
-          dirEllipsis: getComputedStyle(dir).textOverflow,
-          basenameFitsOwnBox: basename.scrollWidth <= basename.clientWidth + 1,
+          directoryDisplay: getComputedStyle(directory).display,
+          basenameEllipsis: getComputedStyle(basename).textOverflow,
+          basenameWidth: baseBox.width,
           basenameInsideTab:
             baseBox.left >= box.left - 1 && baseBox.right <= box.right + 1,
-          tabInsideScroller:
-            box.left >= scrollBox.left - 1 && box.right <= scrollBox.right + 1,
         };
       });
       expect(legibility.basenameText).toBe("AgentChatPanes.tsx");
-      expect(legibility.dirEllipsis).toBe("ellipsis");
-      expect(legibility.basenameFitsOwnBox).toBe(true);
+      expect(legibility.directoryDisplay).toBe("none");
+      expect(legibility.basenameEllipsis).toBe("ellipsis");
+      expect(legibility.basenameWidth).toBeGreaterThan(40);
       expect(legibility.basenameInsideTab).toBe(true);
-      expect(legibility.tabInsideScroller).toBe(true);
     };
     await assertLongTabLegible(`File ${longPath}`);
     await assertLongTabLegible(`Diff ${longPath}`);
@@ -1446,11 +1400,21 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(close).toBeVisible();
     await expect(trigger).toHaveCSS("display", "none");
     await previewTab.focus();
-    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    const newBrowser = resources.getByRole("button", {
+      name: "New browser tab",
+    });
+    await expect(newBrowser).toBeFocused();
+    await expect(
+      resources.getByRole("button", { name: "Pop out active tab" }),
+    ).toBeDisabled();
+    await page.keyboard.press("Tab");
     await expect(collapse).toBeFocused();
     await expect(collapse).toBeEnabled();
+    await page.keyboard.press("Shift+Tab");
+    await expect(newBrowser).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(previewTab).toBeFocused();
+    await expect(collapse).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(reload).toBeFocused();
     await page.keyboard.press("Tab");
@@ -1489,5 +1453,12 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(workbench).toHaveScreenshot(
       "agent-preview-keyboard-focus.png",
     );
+    await collapse.focus();
+    await page.keyboard.press("Space");
+    await expect(
+      resources.getByRole("button", {
+        name: "Show preview · Ready · 1 resource",
+      }),
+    ).toBeFocused();
   });
 });

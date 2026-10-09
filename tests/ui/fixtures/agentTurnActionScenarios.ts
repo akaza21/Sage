@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   audit,
   expectRequestCount,
+  expectRunningComposerReadyToQueue,
   focusPane,
   JOURNEY_IDS,
   openJourney,
@@ -10,7 +11,7 @@ import {
   runEvent,
   screenshotEvidence,
   settleRender,
-  turnStatus,
+  expectTurnState,
 } from "./agentTurnJourneyBrowser";
 import {
   expectActionIdentityEvidence,
@@ -58,19 +59,14 @@ export function registerAgentTurnActionScenarios() {
       chat: "alpha",
       state: "sending",
     });
-    await expect(alpha.getByRole("status", { name: "Sending" })).toBeVisible();
+    await expectTurnState(page, alpha, 1, "sending");
     await expect(betaComposer).toHaveValue("Preserve this Beta draft");
     await evidence("alpha-sending");
 
     await runEvent(page, { type: "publish", chat: "alpha", state: "running" });
-    await expect(alpha.getByRole("status", { name: "Running" })).toBeVisible();
-    await expect(alphaComposer).toBeDisabled();
-    await expect(
-      alpha.getByText(
-        "Wait for the active Turn to finish, or cancel it when available.",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    await expectTurnState(page, alpha, 1, "running");
+    await expectRunningComposerReadyToQueue(alpha);
+    await expectRequestCount(page, "sendRequests", 1);
     await expect(betaComposer).toHaveValue("Preserve this Beta draft");
     await evidence("alpha-running");
 
@@ -96,31 +92,30 @@ export function registerAgentTurnActionScenarios() {
       state: "sending",
     });
     await runEvent(page, { type: "publish", chat: "beta", state: "running" });
-    await expect(beta.getByRole("status", { name: "Running" })).toBeVisible();
-    await expect(alpha.getByRole("status", { name: "Running" })).toBeVisible();
+    await expectTurnState(page, beta, 1, "running");
+    await expectTurnState(page, alpha, 1, "running");
     await evidence("independent-beta-running");
 
     await focusPane(page, "Alpha");
-    await expect(alphaComposer).toBeDisabled();
+    await expectRunningComposerReadyToQueue(alpha);
     await alpha.getByRole("button", { name: "Cancel turn" }).click();
+    await expect(alphaComposer).toBeDisabled();
     await expect(
       alpha.getByRole("button", { name: "Cancel turn" }),
     ).toBeDisabled();
     await expectRequestCount(page, "cancelRequests", 1);
     await evidence("alpha-cancel-pending");
     await runEvent(page, { type: "resolveCancel", chat: "alpha" });
-    await expect(
-      alpha.getByRole("status", { name: "Cancelling" }),
-    ).toBeVisible();
+    await expectTurnState(page, alpha, 1, "cancelling");
     await evidence("alpha-cancelling");
     await runEvent(page, {
       type: "publish",
       chat: "alpha",
       state: "cancelled",
     });
-    await expect(turnStatus(alpha, 1, "Cancelled")).toBeVisible();
+    await expectTurnState(page, alpha, 1, "cancelled");
     await expect(alphaComposer).toBeEnabled();
-    await expect(beta.getByRole("status", { name: "Running" })).toBeVisible();
+    await expectTurnState(page, beta, 1, "running");
     await evidence("alpha-cancelled-beta-unaffected");
 
     const result = await audit(page);
@@ -171,10 +166,10 @@ export function registerAgentTurnActionScenarios() {
       chat: "alpha",
       state: "deliveryUnknown",
     });
-    await expect(turnStatus(alpha, 1, "Delivery unknown")).toBeVisible();
-    await expect(turnStatus(alpha, 1, "Delivery unknown")).toHaveText(
-      "Delivery unknown",
-    );
+    await expectTurnState(page, alpha, 1, "deliveryUnknown");
+    await expect(
+      alpha.getByRole("region", { name: "Turn 1", exact: true }),
+    ).toContainText("Uncertain delivery prompt");
     await expect(
       alpha.getByRole("button", { name: "Cancel turn" }),
     ).toHaveCount(0);

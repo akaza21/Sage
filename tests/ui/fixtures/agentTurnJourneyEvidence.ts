@@ -160,7 +160,7 @@ export function expectStaleIdentityEvidence(result: JourneyAudit): void {
     accepted("alpha", "2", 1, "1", "sending"),
     accepted("alpha", "3", 1, "2", "running"),
     {
-      ...accepted("alpha", "3", 1, "2", "running", "8"),
+      ...accepted("alpha", "3", 1, "2", "running", "9"),
       targetProjectId: JOURNEY_IDS.projectB,
       targetChatId: JOURNEY_IDS.gamma,
       disposition: "ignoredStaleIntent",
