@@ -37,11 +37,12 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "codemirror-deps",
     priority: 1,
-    test: /node_modules[\\/](?:@codemirror[\\/](?:state|view|language|commands|autocomplete)|@lezer[\\/](?:common|lr|highlight))[\\/]/,
+    test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
   },
   {
     name: "chat-ui",
     priority: 1,
+    includeDependenciesRecursively: false,
     test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:AcpChatPresentation|MermaidFigure|AcpChatProjection|AcpAnnouncementRegions))[^\\/]+\.tsx$/,
   },
   {

@@ -50,18 +50,40 @@ describe("ChatMarkdown code blocks", () => {
       unmount();
     }
   });
-  it("keeps bare script and style prose literal without swallowing a later fence", async () => {
+  it("strips README HTML tags but retains inner text and literal code in Chat and Editor", async () => {
     const { FileMarkdownPreview } =
       await import("../../files/FileMarkdownPreview");
     const text =
-      "Mention <script> and <style> safely.\n\n```html\n<script>literal</script>\n<style>literal</style>\n```\n\nAfterwards.";
+      '<details open><summary>**Setup**</summary>Use <br/>[readme](README.md) <img src="badge.svg" alt="badge"> and `<img>`; 2 < 3 > 1.</details>';
+    expect(renderMarkdownPreview(text).fileLinks).toMatchObject([
+      { label: "readme", destination: "README.md" },
+    ]);
     for (const component of [
       <ChatMarkdown text={text} />,
       <FileMarkdownPreview source={text} />,
     ]) {
       const { container, unmount } = render(component);
       expect(container.querySelector("p")).toHaveTextContent(
-        "Mention <script> and <style> safely.",
+        "SetupUse readme and <img>; 2 < 3 > 1.",
+      );
+      expect(container.querySelector("strong")).toHaveTextContent("Setup");
+      expect(container.querySelector("code")).toHaveTextContent("<img>");
+      expect(container.querySelector("details, summary, br, img")).toBeNull();
+      unmount();
+    }
+  });
+  it("retains script and style body text without swallowing prose or a later fence", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    const text =
+      "Mention <script>run()</script> and <style>body{}</style> safely. Bare <script> and <style> remain safe.\n\n```html\n<script>literal</script>\n<style>literal</style>\n```\n\nAfterwards.";
+    for (const component of [
+      <ChatMarkdown text={text} />,
+      <FileMarkdownPreview source={text} />,
+    ]) {
+      const { container, unmount } = render(component);
+      expect(container.querySelector("p")).toHaveTextContent(
+        "Mention run() and body{} safely. Bare and remain safe.",
       );
       expect(container.querySelector("pre")?.textContent).toBe(
         "<script>literal</script>\n<style>literal</style>",
@@ -74,6 +96,30 @@ describe("ChatMarkdown code blocks", () => {
   it("names table regions from their header cells", () => {
     render(<ChatMarkdown text={"| Name | Value |\n| - | - |\n| x | y |"} />);
     expect(screen.getByRole("region", { name: "Name, Value" })).toBeVisible();
+  });
+  it("bounds table region names without truncating visible headers in Chat and Editor", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    for (const [text, name, header] of [
+      [
+        "| One | Two | Three | Four |\n| - | - | - | - |",
+        "One, Two, Three",
+        "Four",
+      ],
+      [`| ${"A".repeat(300)} |\n| - |`, "A".repeat(128), "A".repeat(300)],
+    ]) {
+      for (const component of [
+        <ChatMarkdown text={text} />,
+        <FileMarkdownPreview source={text} />,
+      ]) {
+        const { unmount } = render(component);
+        expect(screen.getByRole("region", { name })).toBeVisible();
+        expect(
+          screen.getByRole("columnheader", { name: header }),
+        ).toBeVisible();
+        unmount();
+      }
+    }
   });
   it("copies a longer HTML fence without executing its shorter backtick line", async () => {
     const source = "```\n<script>run()</script>\n<style>body {}</style>";

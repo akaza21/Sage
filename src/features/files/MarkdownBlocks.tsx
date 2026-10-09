@@ -95,7 +95,9 @@ export function MarkdownBlocks({
         key={index}
         tabIndex={0}
         role="region"
-        aria-label={block.rows[0].join(", ") || "Table"}
+        aria-label={
+          block.rows[0].slice(0, 3).join(", ").slice(0, 128) || "Table"
+        }
       >
         <table>
           <thead>{row(block.rows[0], 0)}</thead>

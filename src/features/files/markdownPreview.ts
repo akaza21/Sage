@@ -196,6 +196,9 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     };
     const spans = parse(
       raw
+        .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (part) =>
+          part.startsWith("`") ? part : "",
+        )
         .replace(/`[^`]+`|\s+/gu, (part) => (part.startsWith("`") ? part : " "))
         .trim(),
       0,

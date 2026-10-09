@@ -265,7 +265,7 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
-  it("co-locates chat renderer helpers without expanding lazy resource closures", async () => {
+  it("co-locates chat renderer helpers without expanding Agent, editor or resource closures", async () => {
     const baselineConfig = desktopGraphConfig(true);
     const output = baselineConfig.build!.rolldownOptions!.output;
     if (!output || Array.isArray(output))
@@ -291,6 +291,8 @@ describe("desktop-native chunk topology", () => {
     expect(files.every((file) => typeof file === "string")).toBe(true);
     expect(new Set(files).size).toBe(1);
     for (const facade of [
+      "src/workbench/AgentWorkbenchBody.tsx",
+      "src/features/files/CodeMirrorEditorRuntime.ts",
       "src/features/files/FileSurface.tsx",
       "src/features/diff/DiffSurface.tsx",
     ]) {
@@ -402,7 +404,7 @@ describe("desktop-native chunk topology", () => {
       editorRuntimeClosure?.some((id) =>
         id.includes("node_modules/@lezer/lr/"),
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     for (const [language, allowlist] of Object.entries(
       CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST,

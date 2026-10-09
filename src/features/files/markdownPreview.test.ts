@@ -96,7 +96,7 @@ describe("renderMarkdownPreview", () => {
   });
   it("bounds literal markup list items and their formatting records", () => {
     const document = renderMarkdownPreview(
-      "- <div>\n".repeat(10000) + "- **Retained**",
+      "- `<div>`\n".repeat(10000) + "- **Retained**",
     );
     expect(document.truncated).toBe(true);
     const block = document.blocks[0];
@@ -286,7 +286,7 @@ describe("renderMarkdownPreview", () => {
         language: "",
         fenceClosed: true,
       },
-      { kind: "paragraph", text: "<script>alert(1)</script> diagram" },
+      { kind: "paragraph", text: "alert(1) diagram" },
     ]);
     expect(JSON.stringify(document)).not.toContain("https://example.test");
     expect(JSON.stringify(document)).toContain("alert(1)");
