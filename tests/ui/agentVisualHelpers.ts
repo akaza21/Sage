@@ -26,6 +26,42 @@ export async function assertAgentLandmarks(page: Page) {
   ).toBeVisible();
 }
 
+export async function expectLiveThinkingFixtureLine(page: Page) {
+  const thought = page.locator('[data-activity-kind="thought"]');
+  await expect(thought).toHaveCount(1);
+  await expect(thought).toHaveClass("acp-thought");
+  await expect(thought).toHaveText(
+    `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
+  );
+  await expect(thought.locator("summary, button, .acp-state")).toHaveCount(0);
+  expect(
+    await thought.evaluate((node) => {
+      const element = node as HTMLElement;
+      const style = getComputedStyle(element);
+      const color = style.color;
+      const originalColor = element.style.color;
+      element.style.color = "var(--color-text-muted)";
+      const mutedColor = getComputedStyle(element).color;
+      element.style.color = originalColor;
+      return {
+        muted: color === mutedColor,
+        clipped: element.scrollWidth > element.clientWidth,
+        overflow: style.overflow,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+        animation: style.animationName,
+      };
+    }),
+  ).toEqual({
+    muted: true,
+    clipped: true,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    animation: "none",
+  });
+}
+
 export async function releasePickerHarnessReadiness(page: Page) {
   await page.evaluate(() => {
     const visualWindow = window as typeof window & {
@@ -232,38 +268,7 @@ export async function runAgentCanonicalTest(
     await expectNoViewportOverflow(page);
   }
   if (name === "agent-thinking-live") {
-    const thought = page.locator(".acp-thought");
-    await expect(thought).toHaveCount(1);
-    await expect(thought).toHaveText(
-      `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
-    );
-    await expect(thought.locator("summary, button")).toHaveCount(0);
-    expect(
-      await thought.evaluate((node) => {
-        const element = node as HTMLElement;
-        const style = getComputedStyle(element);
-        const color = style.color;
-        const originalColor = element.style.color;
-        element.style.color = "var(--color-text-muted)";
-        const mutedColor = getComputedStyle(element).color;
-        element.style.color = originalColor;
-        return {
-          muted: color === mutedColor,
-          clipped: element.scrollWidth > element.clientWidth,
-          overflow: style.overflow,
-          textOverflow: style.textOverflow,
-          whiteSpace: style.whiteSpace,
-          animation: style.animationName,
-        };
-      }),
-    ).toEqual({
-      muted: true,
-      clipped: true,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      animation: "none",
-    });
+    await expectLiveThinkingFixtureLine(page);
   }
   if (name === "agent-image") {
     await expect(page.locator(".agent-chat-pane")).toHaveCount(2);

@@ -84,35 +84,53 @@ export async function openScenario(
   return workbench;
 }
 
-export async function settleTranscriptAtEnd(page: Page) {
-  await page.locator(".message-list").evaluateAll(async (lists) => {
-    let priorGeometry = "";
-    let stableFrames = 0;
-    for (let frame = 0; frame < 30 && stableFrames < 4; frame += 1) {
-      for (const list of lists) list.scrollTop = list.scrollHeight;
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
-      const geometry = lists
-        .map((list) => `${list.scrollHeight}:${list.clientHeight}`)
-        .join("|");
-      stableFrames = geometry === priorGeometry ? stableFrames + 1 : 0;
-      priorGeometry = geometry;
-    }
-    for (const list of lists) list.scrollTop = list.scrollHeight;
-  });
+async function settleTranscriptScroll(page: Page, edge: "start" | "end") {
+  await page.evaluate(() => document.fonts.ready);
   await expect
     .poll(() =>
-      page
-        .locator(".message-list")
-        .evaluateAll((lists) =>
-          lists.every(
-            (list) =>
-              list.scrollHeight - list.scrollTop - list.clientHeight <= 1,
-          ),
-        ),
+      page.locator(".message-list").evaluateAll(async (lists, targetEdge) => {
+        let priorGeometry = "";
+        let stableFrames = 0;
+        for (let frame = 0; frame < 30 && stableFrames < 4; frame += 1) {
+          for (const list of lists) {
+            list.scrollTo({
+              top: targetEdge === "start" ? 0 : list.scrollHeight,
+              behavior: "instant",
+            });
+          }
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+          const geometry = lists
+            .map(
+              (list) =>
+                `${list.scrollHeight}:${list.clientHeight}:${list.scrollTop}`,
+            )
+            .join("|");
+          stableFrames = geometry === priorGeometry ? stableFrames + 1 : 0;
+          priorGeometry = geometry;
+        }
+        return (
+          stableFrames >= 4 &&
+          lists.every((list) =>
+            targetEdge === "start"
+              ? Math.abs(list.scrollTop) <= 1
+              : Math.abs(
+                  list.scrollHeight - list.scrollTop - list.clientHeight,
+                ) <= 1,
+          )
+        );
+      }, edge),
     )
     .toBe(true);
+}
+
+export async function settleTranscriptAtStart(page: Page) {
+  await settleTranscriptScroll(page, "start");
+}
+
+export async function settleTranscriptAtEnd(page: Page) {
+  await settleTranscriptScroll(page, "end");
 }
 
 export async function expectNoViewportOverflow(page: Page) {

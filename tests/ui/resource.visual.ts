@@ -16,6 +16,7 @@ import {
   installScenario,
   openScenario,
   settleTranscriptAtEnd,
+  settleTranscriptAtStart,
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
 import {
@@ -158,7 +159,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
   test("keeps Follow latest and pinned resources scoped to each Chat", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1_380, height: 880 });
+    await page.setViewportSize({ width: 1_888, height: 880 });
     await openScenario(page, "agent-dual", "agent");
     const secondPane = page.getByRole("region", {
       name: "Chat pane Editor consistency pass",
@@ -182,10 +183,21 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Agent artifacts",
     });
     await expect(resources).not.toHaveClass(/agent-artifact-pane--collapsed/);
+    const resourceSplitter = page.getByRole("separator", {
+      name: "Resize files and preview",
+    });
+    await resourceSplitter.focus();
+    await page.keyboard.press("Home");
+    await expect(resourceSplitter).toHaveAttribute("aria-valuenow", "280");
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
     const tabs = resources.getByRole("tab");
+    const previewTab = resources.getByRole("tab", {
+      name: "Preview",
+      exact: true,
+    });
     await expect(tabs).toHaveCount(2);
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "false");
+    await expect(previewTab).toHaveAttribute("aria-selected", "false");
     await expect(
       page.getByRole("region", {
         name: "Chat pane Editor consistency pass",
@@ -198,7 +210,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     });
     await expect(pinned).toContainText("Pinned");
     await expect(pinned).toContainText("New");
-    await expect(tabs.nth(1)).toHaveAccessibleDescription("New resource");
+    await expect(previewTab).toHaveAccessibleDescription("New resource");
     await pinned.click();
     const following = resources.getByRole("button", {
       name: "Following latest resource",
@@ -219,7 +231,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         return resolved;
       }),
     );
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(previewTab).toHaveAttribute("aria-selected", "true");
     await expect(
       page.getByRole("region", {
         name: "Chat pane Editor consistency pass",
@@ -233,6 +245,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Agent navigation polish/ })
       .click();
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Agent navigation polish",
@@ -248,13 +261,14 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Editor consistency pass/ })
       .click();
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Editor consistency pass",
         exact: true,
       }),
     ).toHaveClass(/agent-chat-pane--focused/);
-    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+    await expect(previewTab).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
   });
 
@@ -931,6 +945,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByRole("status").filter({ hasText: "Loading diff…" }),
     ).toBeVisible();
+    await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-diff-loading.png");
     await setResourceState(page, "diff-error");
     await expect(

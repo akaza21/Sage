@@ -6,6 +6,7 @@ import {
   expectNoViewportOverflow,
   openScenario,
   settleTranscriptAtEnd,
+  settleTranscriptAtStart,
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
 import {
@@ -20,17 +21,17 @@ import {
 async function expectOpenPickerContained(
   page: Page,
   input: Locator,
-  listbox: Locator,
+  choices: Locator,
 ) {
   const popup = input.locator(
     "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' menu-popover ') or contains(concat(' ', normalize-space(@class), ' '), ' composer__popover ')][1]",
   );
   await expect(input).toBeFocused();
   await expect(popup).toBeVisible();
-  await expect(listbox).toBeVisible();
-  const [inputBox, listboxBox, popupBox, viewport] = await Promise.all([
+  await expect(choices).toBeVisible();
+  const [inputBox, choicesBox, popupBox, viewport] = await Promise.all([
     input.boundingBox(),
-    listbox.boundingBox(),
+    choices.boundingBox(),
     popup.boundingBox(),
     page.evaluate(() => ({
       height: window.innerHeight,
@@ -38,9 +39,9 @@ async function expectOpenPickerContained(
     })),
   ]);
   expect(inputBox).not.toBeNull();
-  expect(listboxBox).not.toBeNull();
+  expect(choicesBox).not.toBeNull();
   expect(popupBox).not.toBeNull();
-  if (!inputBox || !listboxBox || !popupBox) return;
+  if (!inputBox || !choicesBox || !popupBox) return;
   const inside = (
     child: { x: number; y: number; width: number; height: number },
     parent: { x: number; y: number; width: number; height: number },
@@ -57,12 +58,12 @@ async function expectOpenPickerContained(
   };
   expect(inputBox.width).toBeGreaterThan(0);
   expect(inputBox.height).toBeGreaterThan(0);
-  expect(listboxBox.width).toBeGreaterThan(0);
-  expect(listboxBox.height).toBeGreaterThan(0);
+  expect(choicesBox.width).toBeGreaterThan(0);
+  expect(choicesBox.height).toBeGreaterThan(0);
   expect(popupBox.width).toBeGreaterThan(0);
   expect(popupBox.height).toBeGreaterThan(0);
   expect(inside(inputBox, popupBox)).toBe(true);
-  expect(inside(listboxBox, popupBox)).toBe(true);
+  expect(inside(choicesBox, popupBox)).toBe(true);
   expect(inside(popupBox, viewportBox)).toBe(true);
 }
 
@@ -1032,6 +1033,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         lineWidth: getComputedStyle(node, "::after").width,
       })),
     ).toEqual({ focusVisible: true, lineWidth: "1px" });
+    const waitingGoal = panes.nth(1).locator(".chat-goal-entry > summary");
+    const waitingCancel = panes
+      .nth(1)
+      .getByRole("button", { name: "Cancel turn", exact: true });
+    await expect(waitingGoal).toBeVisible();
+    await expect(waitingCancel).toBeEnabled();
     await page.keyboard.press("Tab");
     await expect(panes.nth(1)).toHaveClass(/agent-chat-pane--focused/);
     expect(
@@ -1039,7 +1046,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         .nth(1)
         .evaluate((node) => node.contains(document.activeElement)),
     ).toBe(true);
+    await expect(waitingGoal).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(waitingCancel).toBeFocused();
     await page.keyboard.press("Shift+Tab");
+    await expect(waitingGoal).toBeFocused();
+    await chatSplitter.focus();
     await expect(chatSplitter).toBeFocused();
     await chatSplitter.evaluate((node) => (node as HTMLElement).blur());
     await page
@@ -1134,22 +1146,16 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       waitingPane.getByRole("textbox", { name: "Message agent" }),
     ).toBeDisabled();
-    const cancel = waitingPane.getByRole("button", { name: "Cancel turn" });
-    await expect(cancel).toBeEnabled();
-    await cancel.focus();
-    await expect(cancel).toBeFocused();
+    await waitingCancel.focus();
+    await expect(waitingCancel).toBeFocused();
     await expect(waitingPane).toHaveClass(/agent-chat-pane--focused/);
     await expect(header.locator(".agent-task-header__title")).toHaveText(
       "Editor consistency pass",
     );
-    const waitingSummary = waitingPane.locator(".message-list summary").first();
-    await expect(waitingSummary).toBeVisible();
-    await waitingSummary.focus();
-    await expect(waitingSummary).toBeFocused();
     await page.keyboard.press("Shift+Tab");
-    await expect(chatSplitter).toBeFocused();
+    await expect(waitingGoal).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(waitingSummary).toBeFocused();
+    await expect(waitingCancel).toBeFocused();
     expect(await measurePanes()).toEqual(before);
     await expectNoViewportOverflow(page);
   });
@@ -1332,7 +1338,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     expect(sharedFocus.edgeColor, focusIdentity).toBe(sharedFocus.resolvedEdge);
     expect(sharedFocus.halo, focusIdentity).not.toBe("none");
     expect(sharedFocus.halo, focusIdentity).toBe(sharedFocus.resolvedHalo);
-    await settleTranscriptAtEnd(page);
+    await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-keyboard-focus.png");
   });
 
@@ -1492,15 +1498,20 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.getByRole("button", { name: "Model" }).click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Model" }),
-      page.getByRole("listbox", { name: "Model" }),
+      page.getByRole("combobox", { name: "Search models" }),
+      page.getByRole("grid", { name: "Models" }),
     );
     await expectNoViewportOverflow(page);
 
     await openScenario(page, "agent-picker-handoff", "agent");
-    const handoffTrigger = page
-      .getByRole("region", { name: "Chat pane Source chat", exact: true })
-      .getByRole("button", { name: "Hand off chat", exact: true });
+    await page
+      .locator(".agent-task-header")
+      .getByRole("button", { name: /^Chat actions for / })
+      .click();
+    const handoffTrigger = page.getByRole("menuitem", {
+      name: "Hand off chat",
+      exact: true,
+    });
     await expect(handoffTrigger).toHaveCount(1);
     await expect(handoffTrigger).toBeEnabled();
     await handoffTrigger.click();

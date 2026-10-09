@@ -39,6 +39,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { openAgentSnapshotDiff } from "./resourceVisualHelpers";
+import { expectLiveThinkingFixtureLine } from "./agentVisualHelpers";
 import {
   installScenario,
   openScenario,
@@ -861,19 +862,13 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       await label.evaluate((node) => getComputedStyle(node).color),
     ).not.toBe("rgba(0, 0, 0, 0)");
 
-    await installScenario(page, "waiting");
-    const thought = page.locator('[data-activity-kind="thought"]');
-    await expect(thought).toHaveCount(1);
-    await expect(thought).toHaveAttribute("data-activity-state", "inProgress");
-    const thoughtSummary = thought.locator(":scope > summary");
-    await expect(thoughtSummary).toContainText("Thinking");
-    await thoughtSummary.focus();
-    await page.keyboard.press("Enter");
-    await expect(thought).toHaveAttribute("open", "");
-    await expect(thought.locator(".acp-thought__working")).toBeVisible();
-    await page.keyboard.press("Enter");
-    await expect(thought).not.toHaveAttribute("open", "");
-    await expect(thoughtSummary).toBeFocused();
+    await expect(page.locator('[data-activity-kind="thought"]')).toHaveCount(0);
+    await page.emulateMedia({
+      forcedColors: "none",
+      reducedMotion: "no-preference",
+    });
+    await installScenario(page, "agent-thinking-live");
+    await expectLiveThinkingFixtureLine(page);
   });
 });
 
