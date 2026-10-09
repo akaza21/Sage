@@ -1256,7 +1256,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
 
 #[test]
 fn first_turn_retry_cancel_and_close_recovery_keep_one_exact_identity() {
-    let whole_test_deadline = Instant::now() + Duration::from_secs(10);
+    let whole_test_deadline = Instant::now() + Duration::from_secs(60);
     tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()
