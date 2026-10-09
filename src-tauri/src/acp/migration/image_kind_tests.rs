@@ -332,7 +332,7 @@ fn v18_reopen_rejects_incomplete_image_backup_without_mutating_live_database() {
 }
 
 #[test]
-fn image_backup_fingerprints_admit_only_exact_versioned_artifact_names() {
+fn v18_backup_fingerprints_admit_only_exact_versioned_artifact_names() {
     let directory = TestDir::new();
     let paths = v18_backup::paths_for_v18(&MigrationPaths::new(&directory.database()).unwrap());
     for path in [
@@ -353,7 +353,7 @@ fn image_backup_fingerprints_admit_only_exact_versioned_artifact_names() {
 
 #[cfg(windows)]
 #[test]
-fn legacy_replacement_rejects_image_backup_artifacts_before_publication() {
+fn legacy_replacement_rejects_v18_backup_artifacts_before_publication() {
     let directory = TestDir::new();
     create_v4(&directory.database(), "Legacy replacement", true);
     let paths = MigrationPaths::new(&directory.database()).unwrap();

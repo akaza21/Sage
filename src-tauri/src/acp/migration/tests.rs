@@ -2971,3 +2971,6 @@ mod populated_v8_tests;
 
 #[path = "image_kind_tests.rs"]
 mod image_kind_tests;
+
+#[path = "v18_backup_tests.rs"]
+mod v18_backup_tests;

@@ -28,6 +28,67 @@ pub(super) struct VerifiedBackup {
 }
 
 pub(super) fn ensure(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
+    with_pinned_source(paths, |source_set| {
+        recover_backup_publication(paths, source_set)?;
+        if paths.backup_final.exists() && paths.manifest_final.exists() {
+            let verified = verify_final_pair(paths, source_set)?;
+            cleanup_backup_build(paths)?;
+            return Ok(verified);
+        }
+
+        let build_intent = begin_backup_build(paths, source_set)?;
+        create_backup_stage(paths, &build_intent.nonce)?;
+        let backup_database = verify_backup_database(&paths.backup_stage, &source_set.database)?;
+        let backup_file = file_fingerprint(&paths.backup_stage)?;
+        let manifest = BackupManifest::new(
+            source_set.clone(),
+            backup_file.clone(),
+            backup_database.clone(),
+            now_millis(),
+        );
+        write_stage(&paths.manifest_stage, &manifest)?;
+        verify_stage_pair(paths, source_set)?;
+        publish_stages(paths, &build_intent.nonce)?;
+        let verified = verify_final_pair(paths, source_set)?;
+        cleanup_backup_build(paths)?;
+        Ok(verified)
+    })
+}
+
+pub(super) fn recover_existing(
+    paths: &MigrationPaths,
+    expected_schema: super::fingerprint::SchemaClass,
+) -> AppResult<Option<VerifiedBackup>> {
+    with_pinned_source(paths, |source| {
+        if source.database.schema != expected_schema {
+            return invalid("backup recovery source schema changed before its pinned open");
+        }
+        recover_backup_publication(paths, source)?;
+        let retained = if paths.backup_final.exists() && paths.manifest_final.exists() {
+            Some(load_retained_pair(paths)?)
+        } else {
+            None
+        };
+        if paths.backup_build_intent.exists() {
+            let intent = read_backup_intent(paths, source)?;
+            stage_owner::retire_orphan_owner(
+                &paths.backup_stage,
+                &paths.backup_journal,
+                &paths.backup_stage_owner,
+                &intent.nonce,
+            )?;
+            cleanup_backup_build(paths)?;
+        } else if paths.backup_stage_owner.exists() || paths.backup_journal.exists() {
+            return invalid("unowned backup recovery artifacts are preserved");
+        }
+        Ok(retained.filter(|backup| backup.source.database == source.database))
+    })
+}
+
+fn with_pinned_source<T>(
+    paths: &MigrationPaths,
+    operation: impl FnOnce(&BackupSource) -> AppResult<T>,
+) -> AppResult<T> {
     require_free_bytes(paths.parent(), MIGRATION_FREE_BYTES)?;
     let live_anchor = anchor_existing_sqlite(&paths.live, true)?;
     let source = Connection::open_with_flags(
@@ -42,36 +103,11 @@ pub(super) fn ensure(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
     preflight_original_schema(&source, &paths.live, class)?;
     verify_sqlite(&source)?;
     let source_set = source_set(paths, &source)?;
-
-    recover_backup_publication(paths, &source_set)?;
-    if paths.backup_final.exists() && paths.manifest_final.exists() {
-        let verified = verify_final_pair(paths, &source_set)?;
-        cleanup_backup_build(paths)?;
-        source.execute_batch("ROLLBACK")?;
-        live_anchor.verify_path(&paths.live)?;
-        source.close().map_err(|(_, error)| error)?;
-        return Ok(verified);
-    }
-
-    let build_intent = begin_backup_build(paths, &source_set)?;
-    create_backup_stage(paths, &build_intent.nonce)?;
-    let backup_database = verify_backup_database(&paths.backup_stage, &source_set.database)?;
-    let backup_file = file_fingerprint(&paths.backup_stage)?;
-    let manifest = BackupManifest::new(
-        source_set.clone(),
-        backup_file.clone(),
-        backup_database.clone(),
-        now_millis(),
-    );
-    write_stage(&paths.manifest_stage, &manifest)?;
-    verify_stage_pair(paths, &source_set)?;
-    publish_stages(paths, &build_intent.nonce)?;
-    let verified = verify_final_pair(paths, &source_set)?;
-    cleanup_backup_build(paths)?;
+    let result = operation(&source_set)?;
     source.execute_batch("ROLLBACK")?;
     live_anchor.verify_path(&paths.live)?;
     source.close().map_err(|(_, error)| error)?;
-    Ok(verified)
+    Ok(result)
 }
 
 #[cfg(test)]

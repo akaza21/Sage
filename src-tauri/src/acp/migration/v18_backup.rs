@@ -1,5 +1,5 @@
 use super::{
-    backup::{VerifiedBackup, ensure},
+    backup::{VerifiedBackup, ensure, recover_existing},
     fingerprint::SchemaClass,
     invalid,
     paths::MigrationPaths,
@@ -20,10 +20,21 @@ pub(super) fn paths_for_v18(paths: &MigrationPaths) -> MigrationPaths {
     versioned
 }
 
-pub(super) fn ensure_for_v18_source(paths: &MigrationPaths) -> AppResult<VerifiedBackup> {
-    let _ = reject_partial_backup_publication(paths)?;
+pub(super) fn ensure_for_v18_source(
+    paths: &MigrationPaths,
+    schema: SchemaClass,
+) -> AppResult<VerifiedBackup> {
     let versioned = paths_for_v18(paths);
     versioned.validate_containment()?;
+    if schema == SchemaClass::CurrentV16 {
+        if let Some(backup) = recover_existing(paths, schema)?
+            && !versioned.has_backup_artifact()
+        {
+            return Ok(backup);
+        }
+    } else {
+        let _ = reject_partial_backup_publication(paths)?;
+    }
     ensure(&versioned)
 }
 

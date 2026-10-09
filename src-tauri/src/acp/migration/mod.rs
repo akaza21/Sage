@@ -342,14 +342,7 @@ fn recover_unmanifested_stage(paths: &MigrationPaths) -> AppResult<()> {
 }
 
 fn reject_unexpected_backup_artifacts(paths: &MigrationPaths) -> AppResult<()> {
-    if paths.backup_stage.exists()
-        || paths.backup_final.exists()
-        || paths.backup_journal.exists()
-        || paths.backup_build_intent.exists()
-        || paths.backup_stage_owner.exists()
-        || paths.manifest_stage.exists()
-        || paths.manifest_final.exists()
-    {
+    if paths.has_backup_artifact() {
         return invalid("migration backup artifacts coexist with a fresh database");
     }
     Ok(())

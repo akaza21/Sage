@@ -71,7 +71,7 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
         source_schema,
         SchemaClass::CurrentV16 | SchemaClass::CurrentV17
     ) {
-        super::super::v18_backup::ensure_for_v18_source(paths)?
+        super::super::v18_backup::ensure_for_v18_source(paths, source_schema)?
     } else {
         ensure(paths)?
     };

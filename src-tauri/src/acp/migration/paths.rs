@@ -92,6 +92,20 @@ impl MigrationPaths {
         .any(|path| path.exists())
     }
 
+    pub(super) fn has_backup_artifact(&self) -> bool {
+        [
+            &self.backup_stage,
+            &self.backup_journal,
+            &self.backup_build_intent,
+            &self.backup_stage_owner,
+            &self.backup_final,
+            &self.manifest_stage,
+            &self.manifest_final,
+        ]
+        .iter()
+        .any(|path| path.exists())
+    }
+
     pub(super) fn validate_containment(&self) -> AppResult<()> {
         let parent = self.parent();
         let metadata = std::fs::symlink_metadata(parent)?;
