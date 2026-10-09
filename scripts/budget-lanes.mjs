@@ -31,6 +31,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "ade0006a-package-source-stage.node-test.mjs",
   "ade0006a-package-tree-set.node-test.mjs",
   "ade0006a-package-tree.node-test.mjs",
+  "acp-native-cases.node-test.mjs",
   "app-smoke-server.node-test.mjs",
   "beta0001-acceptance-contract.node-test.mjs",
   "beta0001-acp05-pairing-receipt.node-test.mjs",
@@ -40,6 +41,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
   "budget-lanes.node-test.mjs",
+  "capture-native-chat.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
@@ -374,6 +376,16 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "budget-lanes.node-test.mjs",
     reason:
       "Inventory/migration assertion for the explicit lane manifest; portable pure discovery logic.",
+  },
+  {
+    file: "acp-native-cases.node-test.mjs",
+    reason:
+      "Portable checks of the bounded native fixture case catalogue and its privacy limits; no native capability required.",
+  },
+  {
+    file: "capture-native-chat.node-test.mjs",
+    reason:
+      "Portable checks of native capture argument, probe-schema and output-path rules; the capture itself runs only by hand.",
   },
   {
     file: "check-harness-trace-privacy.node-test.mjs",
