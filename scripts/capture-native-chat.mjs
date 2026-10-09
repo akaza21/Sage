@@ -147,17 +147,14 @@ export async function capture(options) {
     await waitForVite(viteChild);
     const servedAsset = await servedAssetHash();
     assertOwnedVite(viteChild);
-    const build = executableIdentity(
-      path.join(workspace, "src-tauri", "target", "debug", "sage.exe"),
+    const debugDir = path.join(
+      process.env.CARGO_TARGET_DIR ||
+        path.join(workspace, "src-tauri", "target"),
+      "debug",
     );
+    const build = executableIdentity(path.join(debugDir, "sage.exe"));
     const fixture = executableIdentity(
-      path.join(
-        workspace,
-        "src-tauri",
-        "target",
-        "debug",
-        "acp-adversarial-fixture.exe",
-      ),
+      path.join(debugDir, "acp-adversarial-fixture.exe"),
     );
     roots = freshRoots(workspace);
     const port = await reservePort();
