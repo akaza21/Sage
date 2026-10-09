@@ -17,6 +17,19 @@ const importer = path.join(root, "src/app/store.ts");
 const runtime = path.join(root, "src/ports/workbenchRuntime.desktop.ts");
 
 const DESKTOP_GROUPS = DESKTOP_NATIVE_CODE_SPLITTING_GROUPS;
+const BASELINE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
+  { name: "initial-deps", tags: ["$initial"], priority: 2 },
+  {
+    name: "workbench-deps",
+    priority: 1,
+    test: /src[\\/]workbench[\\/]Workbench\.tsx$/,
+  },
+  {
+    name: "codemirror-deps",
+    priority: 1,
+    test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
+  },
+];
 const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
 const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
   css: "src/features/files/editorLanguageCss.ts",
@@ -162,6 +175,14 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
     }));
   return {
     allModules: modules(chunks),
+    moduleFiles: new Map(
+      chunks.flatMap((chunk) =>
+        Object.keys(chunk.modules).map((id) => [
+          path.relative(root, id).split(path.sep).join("/"),
+          chunk.fileName,
+        ]),
+      ),
+    ),
     dynamicFacades: dynamicStaticClosures
       .flatMap(({ facadeModuleId }) => (facadeModuleId ? [facadeModuleId] : []))
       .sort(),
@@ -244,6 +265,44 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
+  it("co-locates chat renderer helpers without expanding lazy resource closures", async () => {
+    const baselineConfig = desktopGraphConfig(true);
+    const output = baselineConfig.build!.rolldownOptions!.output;
+    if (!output || Array.isArray(output))
+      throw new Error("Missing desktop output");
+    baselineConfig.build!.rolldownOptions!.output = {
+      ...output,
+      codeSplitting: {
+        groups: BASELINE_DESKTOP_GROUPS,
+      },
+    };
+    const [baseline, grouped] = await Promise.all([
+      build(baselineConfig),
+      build(desktopGraphConfig(true)),
+    ]);
+    const baselineGraph = graphInventory(baseline);
+    const groupedGraph = graphInventory(grouped);
+    const files = [
+      "src/features/chat/acp/TurnEditSummary.tsx",
+      "src/features/chat/acp/TurnActivityItem.tsx",
+      "src/features/chat/acp/ToolActivityRollupView.tsx",
+      "src/features/chat/acp/ChatCodeBlock.tsx",
+    ].map((id) => groupedGraph.moduleFiles.get(id));
+    expect(files.every((file) => typeof file === "string")).toBe(true);
+    expect(new Set(files).size).toBe(1);
+    for (const facade of [
+      "src/features/files/FileSurface.tsx",
+      "src/features/diff/DiffSurface.tsx",
+    ]) {
+      const closure = (graph: ReturnType<typeof graphInventory>) =>
+        graph.dynamicStaticClosures.find(
+          (entry) => entry.facadeModuleId === facade,
+        )?.staticClosure;
+      expect(closure(groupedGraph), facade).toBeDefined();
+      expect(closure(groupedGraph), facade).toEqual(closure(baselineGraph));
+    }
+  }, 90_000);
+
   it("enables bounded desktop groups only for the desktop-native build", async () => {
     expect(typeof Range).toBe("undefined");
     const desktopBuild = await resolveConfig(
@@ -339,6 +398,11 @@ describe("desktop-native chunk topology", () => {
       ),
     ).toBe(false);
     expect(parserPackages(editorRuntimeClosure ?? [])).toEqual([]);
+    expect(
+      editorRuntimeClosure?.some((id) =>
+        id.includes("node_modules/@lezer/lr/"),
+      ),
+    ).toBe(true);
 
     for (const [language, allowlist] of Object.entries(
       CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST,

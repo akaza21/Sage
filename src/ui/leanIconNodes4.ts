@@ -1,4 +1,8 @@
 import { leanIcon } from "./leanIconCore";
+export {
+  AlertTriangle as TriangleAlert,
+  CircleX as XCircle,
+} from "./leanIconNodes1";
 export const RefreshCw = leanIcon("lucide lucide-refresh-cw", [
   ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }],
   ["path", { d: "M21 3v5h-5" }],
@@ -103,16 +107,6 @@ export const Trash2 = leanIcon("lucide lucide-trash2 lucide-trash-2", [
   ["path", { d: "M3 6h18" }],
   ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }],
 ]);
-export const TriangleAlert = leanIcon("lucide lucide-triangle-alert", [
-  [
-    "path",
-    {
-      d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
-    },
-  ],
-  ["path", { d: "M12 9v4" }],
-  ["path", { d: "M12 17h.01" }],
-]);
 export const Unlink2 = leanIcon("lucide lucide-unlink2 lucide-unlink-2", [
   ["path", { d: "M15 7h2a5 5 0 0 1 0 10h-2m-6 0H7A5 5 0 0 1 7 7h2" }],
 ]);
@@ -132,9 +126,4 @@ export const Wrench = leanIcon("lucide lucide-wrench", [
 export const X = leanIcon("lucide lucide-x", [
   ["path", { d: "M18 6 6 18" }],
   ["path", { d: "m6 6 12 12" }],
-]);
-export const XCircle = leanIcon("lucide lucide-circle-x", [
-  ["circle", { cx: "12", cy: "12", r: "10" }],
-  ["path", { d: "m15 9-6 6" }],
-  ["path", { d: "m9 9 6 6" }],
 ]);

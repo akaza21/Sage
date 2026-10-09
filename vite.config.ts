@@ -37,7 +37,36 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "codemirror-deps",
     priority: 1,
-    test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
+    test: /node_modules[\\/](?:@codemirror[\\/](?:state|view|language|commands|autocomplete)|@lezer[\\/](?:common|lr|highlight))[\\/]/,
+  },
+  {
+    name: "chat-ui",
+    priority: 1,
+    test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:AcpChatPresentation|MermaidFigure|AcpChatProjection|AcpAnnouncementRegions))[^\\/]+\.tsx$/,
+  },
+  {
+    name: "markdown-rendering",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+  },
+  {
+    name: "diff-rendering",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    test: /src[\\/]features[\\/]diff[\\/]DiffHunks\.tsx$/,
+  },
+  {
+    name: "snapshotDiff",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    test: /src[\\/]features[\\/]diff[\\/]snapshotDiff\.ts$/,
+  },
+  {
+    name: "agent-diff-model",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    test: /(?:src[\\/]domain[\\/]agentDiff\.ts$|src[\\/]features[\\/]chat[\\/]acp[\\/]agentEditSummary\.ts$)/,
   },
 ];
 

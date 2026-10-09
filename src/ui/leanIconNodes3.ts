@@ -1,4 +1,5 @@
 import { leanIcon } from "./leanIconCore";
+export { Ellipsis as MoreHorizontal } from "./leanIconNodes1";
 export const Image = leanIcon("lucide lucide-image", [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" }],
   ["circle", { cx: "9", cy: "9", r: "2" }],
@@ -82,11 +83,6 @@ export const Mic = leanIcon("lucide lucide-mic", [
 ]);
 export const Minus = leanIcon("lucide lucide-minus", [
   ["path", { d: "M5 12h14" }],
-]);
-export const MoreHorizontal = leanIcon("lucide lucide-ellipsis", [
-  ["circle", { cx: "12", cy: "12", r: "1" }],
-  ["circle", { cx: "19", cy: "12", r: "1" }],
-  ["circle", { cx: "5", cy: "12", r: "1" }],
 ]);
 export const NotebookText = leanIcon("lucide lucide-notebook-text", [
   ["path", { d: "M2 6h4" }],
