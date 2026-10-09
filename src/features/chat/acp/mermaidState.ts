@@ -1,4 +1,8 @@
 export const MAX_STATE_NODES = 12;
+import {
+  mermaidLines,
+  clampMermaidLabel as clampStateLabel,
+} from "./mermaidText";
 export const MAX_STATE_EDGES = 24;
 
 export interface MermaidStateNode {
@@ -29,11 +33,7 @@ export function parseMermaidState(source: string): MermaidStateSource {
   if (utf8ByteLength(source) > 8192) {
     return { ok: false, reason: "limit" };
   }
-  const lines = source
-    .replace(/\r\n/gu, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
-    .filter((line) => line.length > 0);
+  const lines = mermaidLines(source);
   if (lines.length === 0 || !/^stateDiagram(?:-v2)?\b/iu.test(lines[0])) {
     return { ok: false, reason: "unsupported" };
   }
@@ -94,8 +94,4 @@ function admitState(states: MermaidStateNode[], id: string): boolean {
   return true;
 }
 
-function clampStateLabel(value: string): string {
-  const text = value.replace(/\s+/gu, " ").trim();
-  return text.length <= 64 ? text : text.slice(0, 64);
-}
 import { utf8ByteLength } from "../../../domain/text";

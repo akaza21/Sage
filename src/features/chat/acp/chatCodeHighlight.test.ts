@@ -43,19 +43,19 @@ describe("static code highlighting", () => {
     },
   );
 
-  it("admits the exact token bound and fails closed at plus one", async () => {
+  it("highlights the bounded token prefix and leaves overflow source plain", async () => {
     expect(
       await highlightCodeSource(
         "1\n".repeat(MAX_CODE_HIGHLIGHT_TOKENS),
         "python",
       ),
     ).toHaveLength(MAX_CODE_HIGHLIGHT_TOKENS);
-    expect(
-      await highlightCodeSource(
-        "1\n".repeat(MAX_CODE_HIGHLIGHT_TOKENS + 1),
-        "python",
-      ),
-    ).toBeNull();
+    const spans = await highlightCodeSource(
+      "1\n".repeat(MAX_CODE_HIGHLIGHT_TOKENS + 1),
+      "python",
+    );
+    expect(spans).toHaveLength(MAX_CODE_HIGHLIGHT_TOKENS);
+    expect(spans!.at(-1)!.to).toBe(1023);
     expect(await highlightCodeSource("x".repeat(4097), "python")).toBeNull();
     expect(await highlightCodeSource("plain", "plain")).toBeNull();
   });

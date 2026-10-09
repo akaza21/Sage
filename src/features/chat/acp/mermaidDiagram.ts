@@ -1,5 +1,6 @@
 import type { MermaidStateSource } from "./mermaidState";
 import { parseMermaidState } from "./mermaidState";
+import { mermaidLines, clampMermaidLabel as clampLabel } from "./mermaidText";
 
 export const MAX_MERMAID_NODES = 32;
 export const MAX_MERMAID_EDGES = 48;
@@ -75,22 +76,18 @@ export type MermaidSource =
   | { ok: false; reason: "unsupported" | "limit" };
 
 export function parseMermaidSource(source: string): MermaidSource {
-  const flowchart = parseMermaidFlowchart(source);
-  if (flowchart.ok) {
-    return { kind: "flowchart", ...flowchart };
+  for (const parse of [
+    parseMermaidFlowchart,
+    parseMermaidSequence,
+    parseMermaidClass,
+    parseMermaidState,
+  ]) {
+    const result = parse(source);
+    if (result.ok)
+      return "kind" in result ? result : { kind: "flowchart", ...result };
+    if (result.reason === "limit") return result;
   }
-  const sequence = parseMermaidSequence(source);
-  if (sequence.ok) {
-    return sequence;
-  }
-  if (flowchart.reason === "limit" || sequence.reason === "limit") {
-    return flowchart.reason === "limit" ? flowchart : sequence;
-  }
-  const klass = parseMermaidClass(source);
-  if (klass.ok || klass.reason === "limit") {
-    return klass;
-  }
-  return parseMermaidState(source);
+  return { ok: false, reason: "unsupported" };
 }
 
 const statementToken =
@@ -154,11 +151,7 @@ export function parseMermaidSequence(source: string): MermaidSource {
   if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
-  const lines = source
-    .replace(/\r\n/gu, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
-    .filter((line) => line.length > 0);
+  const lines = mermaidLines(source);
   if (lines.length === 0 || !/^sequenceDiagram\b/iu.test(lines[0])) {
     return { ok: false, reason: "unsupported" };
   }
@@ -333,17 +326,4 @@ function parseStatement(
   };
 }
 
-function clampLabel(value: string): string {
-  const text = value.replace(/\s+/gu, " ").trim();
-  return text.length <= MAX_MERMAID_LABEL
-    ? text
-    : text.slice(0, MAX_MERMAID_LABEL);
-}
-
-function mermaidLines(source: string): string[] {
-  return source
-    .split("\n")
-    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
-    .filter(Boolean);
-}
 import { utf8ByteLength } from "../../../domain/text";

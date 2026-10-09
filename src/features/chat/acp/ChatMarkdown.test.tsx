@@ -32,6 +32,49 @@ afterEach(() => {
 });
 
 describe("ChatMarkdown code blocks", () => {
+  it("normalizes CRLF lists and fenced source in both Chat and Editor", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    const text =
+      "- first\r\n- second\r\n\r\n```python\r\nprint(1)\r\nprint(2)\r\n```";
+    for (const component of [
+      <ChatMarkdown text={text} />,
+      <FileMarkdownPreview source={text} />,
+    ]) {
+      const { container, unmount } = render(component);
+      expect(container.querySelectorAll("ul")).toHaveLength(1);
+      expect(container.querySelectorAll("li")).toHaveLength(2);
+      expect(container.querySelector("pre")?.textContent).toBe(
+        "print(1)\nprint(2)",
+      );
+      unmount();
+    }
+  });
+  it("keeps bare script and style prose literal without swallowing a later fence", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    const text =
+      "Mention <script> and <style> safely.\n\n```html\n<script>literal</script>\n<style>literal</style>\n```\n\nAfterwards.";
+    for (const component of [
+      <ChatMarkdown text={text} />,
+      <FileMarkdownPreview source={text} />,
+    ]) {
+      const { container, unmount } = render(component);
+      expect(container.querySelector("p")).toHaveTextContent(
+        "Mention <script> and <style> safely.",
+      );
+      expect(container.querySelector("pre")?.textContent).toBe(
+        "<script>literal</script>\n<style>literal</style>",
+      );
+      expect(container.querySelector("script, style")).toBeNull();
+      expect(screen.getByText("Afterwards.")).toBeVisible();
+      unmount();
+    }
+  });
+  it("names table regions from their header cells", () => {
+    render(<ChatMarkdown text={"| Name | Value |\n| - | - |\n| x | y |"} />);
+    expect(screen.getByRole("region", { name: "Name, Value" })).toBeVisible();
+  });
   it("copies a longer HTML fence without executing its shorter backtick line", async () => {
     const source = "```\n<script>run()</script>\n<style>body {}</style>";
     const writeText = vi.fn().mockResolvedValue(undefined);

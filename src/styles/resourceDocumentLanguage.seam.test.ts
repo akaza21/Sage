@@ -220,15 +220,24 @@ describe("document token authority", () => {
       "syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true })",
     );
     expect(runtime).not.toContain("syntaxHighlighting(defaultHighlightStyle");
-    expect(runtime).toContain(
-      'import { highlightTree } from "@lezer/highlight"',
+    const { highlightCodeSource } =
+      await import("../features/files/CodeMirrorEditorRuntime");
+    const spans = await highlightCodeSource("return 1", "python");
+    expect(spans?.length).toBeGreaterThan(0);
+    const rules = [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules])
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule);
+    const colors = spans!.flatMap((span) =>
+      span.className
+        .split(" ")
+        .flatMap((name) =>
+          rules
+            .filter((rule) => rule.selectorText === `.${name}`)
+            .map((rule) => rule.style.getPropertyValue("color")),
+        ),
     );
-    expect(runtime).not.toMatch(
-      /import\s+[^;]*\b(?:tags|tagHighlighter)\b[^;]*from\s+["']@lezer\/highlight/u,
-    );
-    expect(runtime).toContain(
-      "highlightTree(\n    parser.parse(source),\n    documentSyntaxHighlightStyle,",
-    );
+    expect(colors).toContain("var(--doc-syntax-keyword)");
+    expect(colors).toContain("var(--doc-syntax-literal)");
     expect(runtime).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     for (const token of REQUIRED_DOC_TOKENS) {
       if (!token.startsWith("--doc-syntax-")) continue;

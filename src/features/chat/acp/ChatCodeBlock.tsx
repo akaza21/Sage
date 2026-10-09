@@ -6,6 +6,13 @@ import {
 } from "../../files/editorLanguage";
 import type { CodeSpan } from "../../files/CodeMirrorEditorRuntime";
 
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+  javascript: "js",
+  typescript: "ts",
+  python: "py",
+  rust: "rs",
+};
+
 export function ChatCodeBlock({
   language,
   source,
@@ -16,7 +23,7 @@ export function ChatCodeBlock({
   streaming?: boolean;
 }) {
   const normalized = language.trim().toLowerCase();
-  const path = `f.${({ javascript: "js", typescript: "ts", python: "py", rust: "rs" } as Record<string, string>)[normalized] ?? normalized}`;
+  const path = `f.${LANGUAGE_ALIASES[normalized] ?? normalized}`;
   const admitted = editorLanguageForPath(path);
   const label =
     (editorLanguageStatusLabel(path) ??
@@ -25,8 +32,10 @@ export function ChatCodeBlock({
   const identity = useMemo(() => ({ source, language }), [source, language]);
   const [copyState, setCopyState] = useState<{
     identity: typeof identity;
-    result: string;
+    status: string;
   } | null>(null);
+  const status = copyState?.identity === identity ? copyState.status : "";
+  const CopyIcon = status === "Copied" ? Check : Copy;
   const [wrap, setWrap] = useState(false);
   const [highlight, setHighlight] = useState<{
     identity: typeof identity;
@@ -66,7 +75,11 @@ export function ChatCodeBlock({
   }, [admitted, identity, source]);
   const parts: ReactNode[] = [];
   let offset = 0;
-  if (highlight?.identity === identity)
+  if (
+    highlight &&
+    highlight.identity.language === language &&
+    source.startsWith(highlight.identity.source)
+  )
     for (const span of highlight.spans) {
       parts.push(
         source.slice(offset, span.from),
@@ -77,7 +90,6 @@ export function ChatCodeBlock({
       offset = span.to;
     }
   parts.push(source.slice(offset));
-  const status = copyState?.identity === identity ? copyState.result : "";
   return (
     <section
       ref={region}
@@ -85,7 +97,11 @@ export function ChatCodeBlock({
       aria-label={label ? `${label} code` : "Code block"}
     >
       <header className="acp-code-block__header">
-        {label ? <span>{label}</span> : null}
+        {label ? (
+          <span className="acp-code-block__language">
+            <span aria-hidden="true">&lt;/&gt;</span> {label}
+          </span>
+        ) : null}
         <span className="acp-code-block__actions">
           {streaming ? (
             <span
@@ -103,16 +119,7 @@ export function ChatCodeBlock({
             title="Wrap code"
             onClick={() => setWrap(!wrap)}
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M2 3h12M2 7h9a3 3 0 0 1 0 6H7m2-2-2 2 2 2M2 11h2" />
-            </svg>
+            <span className="acp-code-block__wrap-icon" aria-hidden="true" />
           </button>
           <span role="status">{status}</span>
           <button
@@ -120,23 +127,19 @@ export function ChatCodeBlock({
             aria-label="Copy code"
             title="Copy code"
             onClick={async () => {
-              setCopyState({ identity, result: "" });
-              let result = "Copied";
+              setCopyState({ identity, status: "" });
+              let status = "Copied";
               try {
                 await navigator.clipboard.writeText(source);
               } catch {
-                result = "Copy failed";
+                status = "Copy failed";
               }
-              setCopyState((state) =>
-                state?.identity === identity ? { identity, result } : state,
+              setCopyState((current) =>
+                current?.identity === identity ? { identity, status } : current,
               );
             }}
           >
-            {status === "Copied" ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <Copy size={14} aria-hidden="true" />
-            )}
+            <CopyIcon size={14} aria-hidden="true" />
           </button>
         </span>
       </header>
@@ -144,7 +147,6 @@ export function ChatCodeBlock({
         tabIndex={0}
         style={{
           whiteSpace: wrap ? "pre-wrap" : "pre",
-          overflowWrap: wrap ? "anywhere" : undefined,
         }}
       >
         <code>{parts}</code>

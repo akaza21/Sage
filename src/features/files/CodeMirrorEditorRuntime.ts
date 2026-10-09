@@ -133,16 +133,14 @@ export async function highlightCodeSource(
   )?.parser;
   if (!parser) return null;
   const spans: CodeSpan[] = [];
-  let exceeded = false;
   highlightTree(
     parser.parse(source),
     documentSyntaxHighlightStyle,
     (from, to, className) => {
-      if (spans.length === MAX_CODE_HIGHLIGHT_TOKENS) exceeded = true;
-      else spans.push({ from, to, className });
+      if (spans.length < MAX_CODE_HIGHLIGHT_TOKENS)
+        spans.push({ from, to, className });
     },
   );
-  if (exceeded) return null;
   if (documentSyntaxHighlightStyle.module)
     StyleModule.mount(document, documentSyntaxHighlightStyle.module);
   return spans;

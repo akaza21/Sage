@@ -17,12 +17,14 @@ export function MarkdownBlocks({
     block: Extract<MarkdownPreviewBlock, { kind: "code" }>,
   ) => ReactNode;
 }) {
+  const formatsByLocation = new Map(
+    document.formats.map((format) => [
+      `${format.blockIndex}:${format.itemIndex}`,
+      format.spans,
+    ]),
+  );
   const inline = (text: string, blockIndex: number, itemIndex?: number) => {
-    const spans =
-      document.formats.find(
-        (format) =>
-          format.blockIndex === blockIndex && format.itemIndex === itemIndex,
-      )?.spans ?? [];
+    const spans = formatsByLocation.get(`${blockIndex}:${itemIndex}`) ?? [];
     const render = (formats: InlineFormat[]): ReactNode[] =>
       formats.map((format, index) =>
         typeof format === "string"
@@ -93,7 +95,7 @@ export function MarkdownBlocks({
         key={index}
         tabIndex={0}
         role="region"
-        aria-label="Table"
+        aria-label={block.rows[0].join(", ") || "Table"}
       >
         <table>
           <thead>{row(block.rows[0], 0)}</thead>

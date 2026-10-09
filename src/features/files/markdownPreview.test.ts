@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
@@ -30,13 +30,84 @@ describe("canPreviewDiagram", () => {
 });
 
 describe("renderMarkdownPreview", () => {
-  it("does not retain empty sanitized list items or their formatting records", () => {
+  it("bounds delimiter candidate checks with repeated opening brackets", () => {
+    const started = performance.now();
+    const document = renderMarkdownPreview("**" + "[".repeat(100000) + "]**");
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(document.truncated).toBe(true);
+    expect(document.blocks[0]).toMatchObject({ kind: "paragraph" });
+  });
+  it("fails closed before rejected delimiters can repeatedly scan the source suffix", () => {
+    const original = String.prototype.indexOf;
+    let searches = 0;
+    const search = vi
+      .spyOn(String.prototype, "indexOf")
+      .mockImplementation(function (
+        this: string,
+        marker: string,
+        from?: number,
+      ) {
+        if (marker === "**" && ++searches > 1000)
+          throw new Error("Unbounded delimiter search");
+        return original.call(this, marker, from);
+      });
+    let result: ReturnType<typeof renderMarkdownPreview> | undefined;
+    let failure: unknown;
+    try {
+      result = renderMarkdownPreview("**a ".repeat(50000));
+    } catch (error) {
+      failure = error;
+    } finally {
+      search.mockRestore();
+    }
+    expect(failure).toBeUndefined();
+    expect(searches).toBeLessThanOrEqual(1000);
+    expect(result?.truncated).toBe(true);
+  });
+  it.each(["my_var_name", "2 * 3 * 4", "see my_file and [x](src/a_b.ts)"])(
+    "respects delimiter flanking in %s without consuming links",
+    (source) => {
+      const document = renderMarkdownPreview(source);
+      expect(
+        document.formats[0].spans.some(
+          (span) => typeof span !== "string" && "tag" in span,
+        ),
+      ).toBe(false);
+      expect(document.fileLinks.map((link) => link.destination)).toEqual(
+        source.includes("[x]") ? ["src/a_b.ts"] : [],
+      );
+    },
+  );
+  it("supports short table delimiters and indented list fences", () => {
+    const document = renderMarkdownPreview(
+      "1. example\n   ```python\n   print(1)\n   ```\n\n| Name | Value |\n| - | :-: |\n| x | y |",
+    );
+    expect(document.blocks.map((block) => block.kind)).toEqual([
+      "list",
+      "code",
+      "table",
+    ]);
+    expect(document.blocks[1]).toMatchObject({
+      text: "print(1)",
+      language: "python",
+      fenceClosed: true,
+    });
+    expect(document.blocks[2]).toMatchObject({ align: [undefined, "center"] });
+  });
+  it("bounds literal markup list items and their formatting records", () => {
     const document = renderMarkdownPreview(
       "- <div>\n".repeat(10000) + "- **Retained**",
     );
-    expect(document.blocks).toEqual([{ kind: "list", items: ["Retained"] }]);
-    expect(document.formats).toHaveLength(1);
-    expect(document.formats[0].itemIndex).toBe(0);
+    expect(document.truncated).toBe(true);
+    const block = document.blocks[0];
+    expect(block.kind).toBe("list");
+    if (block.kind === "list")
+      expect(block.items.join("")).toHaveLength(
+        MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
+      );
+    expect(document.formats.length).toBeLessThanOrEqual(
+      MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
+    );
   });
   it("keeps root-relative paths eligible for native admission but rejects UNC links", () => {
     const document = renderMarkdownPreview(
@@ -70,12 +141,12 @@ describe("renderMarkdownPreview", () => {
       renderMarkdownPreview(`\`\`\`\`html\n${text}\n\`\`\`\``).blocks,
     ).toEqual([{ kind: "code", language: "html", text, fenceClosed: true }]);
   });
-  it("retains internal CRLF and exact block/source limits", () => {
+  it("normalizes CRLF while preserving exact block/source limits", () => {
     expect(
       renderMarkdownPreview(
         "```html\r\n<script>run()</script>\r\nline  \r\n```\r\n",
       ).blocks[0],
-    ).toMatchObject({ text: "<script>run()</script>\r\nline  " });
+    ).toMatchObject({ text: "<script>run()</script>\nline  " });
     expect(
       renderMarkdownPreview("x".repeat(MAX_MARKDOWN_PREVIEW_SOURCE_BYTES))
         .sourceLimitExceeded,
@@ -215,10 +286,10 @@ describe("renderMarkdownPreview", () => {
         language: "",
         fenceClosed: true,
       },
-      { kind: "paragraph", text: "diagram" },
+      { kind: "paragraph", text: "<script>alert(1)</script> diagram" },
     ]);
     expect(JSON.stringify(document)).not.toContain("https://example.test");
-    expect(JSON.stringify(document)).not.toContain("alert(1)");
+    expect(JSON.stringify(document)).toContain("alert(1)");
   });
 
   it("retains fenced code languages for mermaid projection", () => {
@@ -271,13 +342,13 @@ describe("renderMarkdownPreview", () => {
     );
   });
 
-  it("drops script and style that span markdown lines", () => {
+  it("retains script and style as literal text across markdown lines", () => {
     const document = renderMarkdownPreview(
       "<script>\n\n# alert(1)\n\n</script>\n\n<style>\n\nbody{}\n\n</style>\n\nSafe",
     );
-    expect(document.blocks).toEqual([{ kind: "paragraph", text: "Safe" }]);
-    expect(JSON.stringify(document)).not.toContain("alert(1)");
-    expect(JSON.stringify(document)).not.toContain("body{}");
+    expect(document.blocks.at(-1)).toEqual({ kind: "paragraph", text: "Safe" });
+    expect(JSON.stringify(document)).toContain("alert(1)");
+    expect(JSON.stringify(document)).toContain("body{}");
   });
 
   it("clamps a list as one visible block", () => {

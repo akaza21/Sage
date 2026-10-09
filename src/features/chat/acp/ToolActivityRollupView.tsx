@@ -6,7 +6,6 @@ import {
   FilePenLine,
   FolderOpen,
   Globe2,
-  LoaderCircle,
   Search,
   Terminal,
   Workflow,
@@ -24,44 +23,20 @@ import {
   type ToolRollup,
 } from "./toolActivityRollup";
 
-function ToolStateIcon({
-  state,
-}: {
-  state: ReturnType<typeof toolRollupState>;
-}) {
-  if (state === "completed") return null;
-  if (state === "failed") return <X aria-hidden="true" size={14} />;
-  if (state === "inProgress")
-    return (
-      <LoaderCircle
-        className="acp-tool-rollup__working"
-        aria-hidden="true"
-        size={14}
-      />
-    );
-  return <Circle aria-hidden="true" size={14} />;
-}
+const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
+  edit: FilePenLine,
+  delete: FilePenLine,
+  move: FilePenLine,
+  execute: Terminal,
+  read: FolderOpen,
+  search: Search,
+  fetch: Globe2,
+  think: BrainCircuit,
+};
 
 function ActivityKindIcon({ kind }: { kind: ToolRollup["kind"] }) {
-  const iconProps = { "aria-hidden": true as const, size: 14 };
-  switch (kind) {
-    case "edit":
-    case "delete":
-    case "move":
-      return <FilePenLine {...iconProps} data-activity-icon={kind} />;
-    case "execute":
-      return <Terminal {...iconProps} data-activity-icon={kind} />;
-    case "read":
-      return <FolderOpen {...iconProps} data-activity-icon={kind} />;
-    case "search":
-      return <Search {...iconProps} data-activity-icon={kind} />;
-    case "fetch":
-      return <Globe2 {...iconProps} data-activity-icon={kind} />;
-    case "think":
-      return <BrainCircuit {...iconProps} data-activity-icon={kind} />;
-    default:
-      return <Workflow {...iconProps} data-activity-icon={kind} />;
-  }
+  const Icon = activityIcons[kind] ?? Workflow;
+  return <Icon aria-hidden="true" size={14} data-activity-icon={kind} />;
 }
 
 export function ToolActivityRollup({
@@ -80,6 +55,7 @@ export function ToolActivityRollup({
     rollup.commandActivity,
   );
   const state = toolRollupState(rollup.items);
+  const StateIcon = state === "failed" ? X : Circle;
   const stateLabel = toolRollupStateLabel(state);
   const duration = toolRollupDurationLabel(rollup.items);
   const live = state === "inProgress";
@@ -93,7 +69,9 @@ export function ToolActivityRollup({
       <summary>
         <span className="acp-tool-rollup__summary-copy">
           <ActivityKindIcon kind={rollup.kind} />
-          {live ? null : <ToolStateIcon state={state} />}
+          {live || state === "completed" ? null : (
+            <StateIcon aria-hidden="true" size={14} />
+          )}
           <span
             className={`acp-tool-rollup__label${live ? " acp-live-shimmer" : ""}`}
           >

@@ -352,20 +352,6 @@
 }
 
 .acp-code-block {
-  --doc-syntax-meta: #aeb8c4;
-  --doc-syntax-keyword: #c792ea;
-  --doc-syntax-atom: #c792ea;
-  --doc-syntax-literal: #f78c6c;
-  --doc-syntax-string: #c3e88d;
-  --doc-syntax-regexp: #f78c6c;
-  --doc-syntax-variable-definition: #82aaff;
-  --doc-syntax-variable-local: #d6deeb;
-  --doc-syntax-type: #ffcb6b;
-  --doc-syntax-class: #ffcb6b;
-  --doc-syntax-variable-special: #89ddff;
-  --doc-syntax-property-definition: #82aaff;
-  --doc-syntax-comment: #aeb8c4;
-  --doc-syntax-invalid: #ff869a;
   margin: var(--space-3) 0;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle);
@@ -390,6 +376,18 @@
   align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+.acp-code-block__language {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.acp-code-block__wrap-icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  background: currentColor;
+  mask: url("./code-wrap.svg") center / contain no-repeat;
 }
 
 .acp-code-block__streaming {
@@ -417,6 +415,7 @@
 }
 
 .acp-code-block pre {
+  overflow-wrap: anywhere;
   overflow: auto;
   margin: 0;
   padding: var(--space-3);

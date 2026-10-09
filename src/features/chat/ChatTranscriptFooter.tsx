@@ -14,15 +14,13 @@ function lastAssistantItem(
   page: AcpChatPage | null,
 ): Extract<AcpItem, { kind: "text" }> | null {
   if (!page) return null;
-  const items = page.turns.flatMap((turn) => turn.items);
-  return (
-    [...items]
-      .reverse()
-      .find(
-        (item): item is Extract<AcpItem, { kind: "text" }> =>
-          item.kind === "text" && item.payload.role === "assistant",
-      ) ?? null
-  );
+  for (let turn = page.turns.length - 1; turn >= 0; turn--)
+    for (let index = page.turns[turn].items.length - 1; index >= 0; index--) {
+      const item = page.turns[turn].items[index];
+      if (item.kind === "text" && item.payload.role === "assistant")
+        return item;
+    }
+  return null;
 }
 
 export function ChatTranscriptTurnSummary({
@@ -46,14 +44,15 @@ export function ChatTranscriptTurnSummary({
     : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
 
   if (!hasActivities && !duration) return null;
+  const groups = children ? (
+    <div className="chat-transcript-work__groups">{children}</div>
+  ) : null;
 
   if (!terminal) {
     return (
       <div className="chat-transcript-work chat-transcript-work--running">
         <div className="chat-transcript-work__heading">{duration}</div>
-        {children ? (
-          <div className="chat-transcript-work__groups">{children}</div>
-        ) : null}
+        {groups}
       </div>
     );
   }
@@ -61,9 +60,7 @@ export function ChatTranscriptTurnSummary({
   return (
     <details className="chat-transcript-work">
       <summary>{duration ?? "Worked"}</summary>
-      {children ? (
-        <div className="chat-transcript-work__groups">{children}</div>
-      ) : null}
+      {groups}
     </details>
   );
 }
@@ -78,6 +75,7 @@ export function ChatTranscriptFooter({
   onRetry?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const CopyIcon = copied ? Check : Copy;
   const acpAssistant = lastAssistantItem(page);
   const legacyAssistant = [...messages]
     .reverse()
@@ -109,11 +107,7 @@ export function ChatTranscriptFooter({
       {text ? (
         <div className="chat-transcript-actions" aria-label="Message actions">
           <button type="button" onClick={() => void copyAnswer()}>
-            {copied ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <Copy size={14} aria-hidden="true" />
-            )}
+            <CopyIcon size={14} aria-hidden="true" />
             {copied ? "Copied" : "Copy"}
           </button>
           {onRetry ? (

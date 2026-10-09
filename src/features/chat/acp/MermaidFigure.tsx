@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import {
   parseMermaidSource,
   type MermaidDiagram,
@@ -7,6 +7,12 @@ import {
 
 export function MermaidFigure({ source }: { source: string }) {
   const diagram = parseMermaidSource(source);
+  const identity = useMemo(() => ({ source }), [source]);
+  const [copyState, setCopyState] = useState<{
+    identity: typeof identity;
+    status: string;
+  } | null>(null);
+  const status = copyState?.identity === identity ? copyState.status : "";
   return (
     <figure className="acp-mermaid">
       {diagram.ok ? (
@@ -24,12 +30,22 @@ export function MermaidFigure({ source }: { source: string }) {
       <button
         type="button"
         className="acp-mermaid__copy"
-        onClick={() => {
-          void navigator.clipboard?.writeText(source).catch(() => {});
+        onClick={async () => {
+          setCopyState({ identity, status: "" });
+          let status = "Copied";
+          try {
+            await navigator.clipboard.writeText(source);
+          } catch {
+            status = "Copy failed";
+          }
+          setCopyState((current) =>
+            current?.identity === identity ? { identity, status } : current,
+          );
         }}
       >
         Copy diagram source
       </button>
+      <span role="status">{status}</span>
     </figure>
   );
 }
@@ -88,17 +104,17 @@ function MermaidSvg({
         const to = byId.get(edge.to)!;
         const horizontal = diagram.direction === "LR";
         const returning = horizontal ? to.x <= from.x : to.y <= from.y;
-        const startX = from.x + (horizontal || returning ? 240 : 120);
-        const startY = from.y + (horizontal || returning ? 32 : 64);
-        const endX = to.x + (horizontal ? 0 : returning ? 240 : 120);
-        const endY = to.y + (horizontal || returning ? 32 : 0);
+        const startX = from.x + (horizontal ? 240 : 120);
+        const startY = from.y + (horizontal ? 32 : returning ? 0 : 64);
+        const endX = to.x + (horizontal ? 0 : 120);
+        const endY = to.y + (horizontal ? 32 : returning ? 64 : 0);
         const rail = horizontal
           ? Math.max(from.y, to.y) + 84
           : Math.max(from.x, to.x) + 280;
         const route = returning
           ? horizontal
             ? `L${startX + 20} ${startY}L${startX + 20} ${rail}L${endX - 16} ${rail}L${endX - 16} ${endY}`
-            : `L${rail} ${startY}L${rail} ${endY}`
+            : `L${startX} ${startY - 16}L${rail} ${startY - 16}L${rail} ${endY + 16}L${endX} ${endY + 16}`
           : "";
         return (
           <g key={index}>

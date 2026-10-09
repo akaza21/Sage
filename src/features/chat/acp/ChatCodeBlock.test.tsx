@@ -27,6 +27,36 @@ afterEach(() => {
 });
 
 describe("lazy code cards", () => {
+  it("keeps highlighted streaming prefixes until replacement spans are ready", async () => {
+    const finish: ((spans: CodeSpan[]) => void)[] = [];
+    vi.mocked(highlightCodeSource).mockImplementation(
+      () => new Promise((resolve) => finish.push(resolve)),
+    );
+    const { container, rerender } = render(
+      <ChatCodeBlock source="return 1" language="python" streaming />,
+    );
+    await waitFor(() => expect(finish).toHaveLength(1));
+    await act(async () =>
+      finish[0]([{ from: 0, to: 6, className: "keyword" }]),
+    );
+    rerender(
+      <ChatCodeBlock
+        source={"return 1\nreturn 2"}
+        language="python"
+        streaming
+      />,
+    );
+    await waitFor(() => expect(finish).toHaveLength(2));
+    expect(container.querySelector(".keyword")).toHaveTextContent("return");
+    expect(container.querySelector("code")?.textContent).toBe(
+      "return 1\nreturn 2",
+    );
+    await act(async () =>
+      finish[1]([{ from: 0, to: 6, className: "replacement" }]),
+    );
+    expect(container.querySelector(".keyword")).toBeNull();
+    expect(container.querySelector(".replacement")).toHaveTextContent("return");
+  });
   it("keeps source plain during loading and discards stale completions including A-B-A", async () => {
     const finish: ((spans: CodeSpan[]) => void)[] = [];
     vi.mocked(highlightCodeSource).mockImplementation(

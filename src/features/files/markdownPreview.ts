@@ -65,7 +65,25 @@ export function canPreviewDiagram(path: string): boolean {
 }
 
 const inlinePattern =
-  /`([^`]+)`|(\*\*|__)(.+?)\2(?![*_])|(\*|_)(.+?)\4(?![*_])|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)/gu;
+  /`([^`]+)`|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
+
+function delimiterFlanks(value: string, index: number, marker: string) {
+  const characterClass = (character: string) =>
+    !character || /\s/u.test(character)
+      ? 0
+      : /[\p{P}\p{S}]/u.test(character)
+        ? 1
+        : 2;
+  const before = characterClass(value[index - 1] ?? "");
+  const after = characterClass(value[index + marker.length] ?? "");
+  const left = after > 0 && (after !== 1 || before !== 2);
+  const right = before > 0 && (before !== 1 || after !== 2);
+  const underscore = marker[0] === "_";
+  return [
+    left && (!underscore || !right || before === 1),
+    right && (!underscore || !left || after === 1),
+  ];
+}
 
 export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
   const encoded = utf8Bytes(source);
@@ -76,12 +94,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     encoded.length > end
       ? new TextDecoder().decode(encoded.slice(0, end))
       : source;
-  const lines = windowed
-    .replace(
-      /(^(`{3,})[^\n]*\n[\s\S]*?(?:^\2`*[ \t]*\r?$|(?![\s\S])))|`[^`\n]+`|<(script|style)\b[^>]*>[\s\S]*?(?:<\/\3>|(?![\s\S]))/gimu,
-      (part) => (part.startsWith("<") ? "" : part),
-    )
-    .split("\n");
+  const lines = windowed.replace(/\r\n/gu, "\n").split("\n");
   const document: MarkdownPreviewDocument = {
     blocks: [],
     formats: [],
@@ -94,33 +107,72 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     document.fileLinks as MarkdownPreviewDocument["fileLinks"][number][];
   let remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
   let formatCount = 0;
+  let scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
 
   const inline = (raw: string, itemIndex?: number) => {
     let text = "";
     const append = (value: string) => {
       if (text.length + value.length > remaining) document.truncated = true;
-      const retained = value.slice(0, Math.max(0, remaining - text.length));
+      const retained = value.slice(0, remaining - text.length);
       text += retained;
       return retained;
     };
     const parse = (value: string, depth: number): InlineFormat[] => {
       const spans: InlineFormat[] = [];
       let position = 0;
-      for (const match of value.matchAll(inlinePattern)) {
+      const pattern = new RegExp(inlinePattern);
+      let match: RegExpExecArray | null;
+      scan: while ((match = pattern.exec(value))) {
+        const marker = match[5];
+        let content = match[1] ?? "";
+        if (marker) {
+          const opening = delimiterFlanks(value, match.index, marker);
+          let close = opening[0]
+            ? value.indexOf(marker, pattern.lastIndex)
+            : -1;
+          while (close >= 0) {
+            if ((scanBudget -= close - match.index) < 0) {
+              document.truncated = true;
+              break scan;
+            }
+            const closing = delimiterFlanks(value, close, marker);
+            content = value.slice(match.index + marker.length, close);
+            const prose = content.replace(/`[^`]*`/gu, "");
+            const label = prose.lastIndexOf("[");
+            if (
+              closing[1] &&
+              value[close + marker.length] !== marker[0] &&
+              (content.match(/`/gu)?.length ?? 0) % 2 === 0 &&
+              !(
+                label > prose.lastIndexOf("]") ||
+                (label >= 0 && prose.lastIndexOf("](") > prose.lastIndexOf(")"))
+              )
+            ) {
+              match[0] = value.slice(match.index, close + marker.length);
+              pattern.lastIndex = close + marker.length;
+              break;
+            }
+            close = value.indexOf(marker, close + 1);
+          }
+          if (close < 0) {
+            pattern.lastIndex = match.index + marker.length;
+            continue;
+          }
+        }
         spans.push(append(value.slice(position, match.index)));
         const from = text.length;
-        if (match[7] !== undefined) {
-          const label = append(match[7]);
+        if (match[3] !== undefined) {
+          const label = append(match[3]);
           if (
-            !match[6] &&
+            !match[2] &&
             links.length < MAX_CHAT_FILE_LINKS &&
-            text.length - from === match[7].length &&
-            fileLinkCandidate(match[8])
+            text.length - from === match[3].length &&
+            fileLinkCandidate(match[4])
           ) {
             spans.push({ link: links.length, label });
             links.push({
-              label: match[7],
-              destination: match[8],
+              label: match[3],
+              destination: match[4],
               blockIndex: blocks.length,
               itemIndex,
               offset: from,
@@ -128,14 +180,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
           } else spans.push(label);
         } else if (depth < 8 && formatCount < MAX_MARKDOWN_INLINE_FORMATS) {
           formatCount++;
-          const tag =
-            match[1] !== undefined ? "code" : match[2] ? "strong" : "em";
+          const tag = marker ? (marker.length === 2 ? "strong" : "em") : "code";
           const children =
-            tag === "code"
-              ? [append(match[1])]
-              : parse(match[3] ?? match[5], depth + 1);
+            tag === "code" ? [append(content)] : parse(content, depth + 1);
           spans.push({ tag, children });
-        } else spans.push(append(match[1] ?? match[3] ?? match[5]));
+        } else spans.push(append(content));
         position = match.index + match[0].length;
         if (text.length === remaining) {
           if (position < value.length) document.truncated = true;
@@ -147,9 +196,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     };
     const spans = parse(
       raw
-        .replace(/`[^`]+`|<[^>]+>|\s+/gu, (part) =>
-          part.startsWith("`") ? part : part.startsWith("<") ? "" : " ",
-        )
+        .replace(/`[^`]+`|\s+/gu, (part) => (part.startsWith("`") ? part : " "))
         .trim(),
       0,
     );
@@ -171,14 +218,19 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     }
     remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
     formatCount = 0;
-    const fence = /^(`{3,})(.*)$/u.exec(line);
+    scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
+    const fence = /^( *)(`{3,})(.*)$/u.exec(line);
     if (fence) {
-      const language = fence[2].trim().split(/\s/u)[0];
-      const closing = new RegExp(`^\`{${fence[1].length},}[ \\t]*\\r?$`, "u");
+      const language = fence[3].trim().split(/\s/u)[0];
+      const closing = new RegExp(`^ *\`{${fence[2].length},}[ \\t]*$`, "u");
       const start = ++cursor;
       while (cursor < lines.length && !closing.test(lines[cursor])) cursor++;
       const fenceClosed = cursor < lines.length;
-      const text = lines.slice(start, cursor).join("\n").replace(/\r$/u, "");
+      const indentation = new RegExp(`^ {0,${fence[1].length}}`, "u");
+      const text = lines
+        .slice(start, cursor)
+        .map((part) => part.replace(indentation, ""))
+        .join("\n");
       if (text.length > remaining) document.truncated = true;
       blocks.push({
         kind: "code",
@@ -204,7 +256,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     if (
       header.length &&
       separator.length === header.length &&
-      separator.every((cell) => /^:?-{3,}:?$/u.test(cell))
+      separator.every((cell) => /^:?-+:?$/u.test(cell))
     ) {
       const align = separator
         .slice(0, MAX_MARKDOWN_TABLE_COLUMNS)
@@ -265,7 +317,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       lines[cursor].trim() &&
       (quoted
         ? lines[cursor].startsWith("> ")
-        : !/^(?:```|#{1,6} |[-*] |\d{1,9}[.)] |> |\|)/u.test(lines[cursor]))
+        : !/^(?: *```|#{1,6} |[-*] |\d{1,9}[.)] |> |\|)/u.test(lines[cursor]))
     ) {
       parts.push(quoted ? lines[cursor].slice(2) : lines[cursor]);
       cursor++;

@@ -1,11 +1,22 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MermaidFigure } from "./MermaidFigure";
 import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures/cp22Answers";
 
 afterEach(cleanup);
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it("reports rejected diagram copying truthfully", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+    });
+    render(<MermaidFigure source={resetFlowchart} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy diagram source" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Copy failed");
+  });
   it.each([
     ["sequenceDiagram", "Alice->>Bob: message"],
     ["stateDiagram-v2", "Ready --> Done: transition"],
@@ -51,6 +62,16 @@ describe("bounded Mermaid flowchart rendering", () => {
     expect(screen.getByText("No")).toBeVisible();
     const paths = container.querySelectorAll("path[marker-end]");
     expect(paths[5].getAttribute("d")?.match(/L/g)?.length).toBeGreaterThan(1);
+    const positions = [...container.querySelectorAll("g[transform]")].map(
+      (node) => node.getAttribute("transform")!.match(/\d+/g)!.map(Number),
+    );
+    const path = paths[5].getAttribute("d")!;
+    expect(path).toMatch(
+      new RegExp(`^M${positions[4][0] + 120} ${positions[4][1]}L`),
+    );
+    expect(path).toMatch(
+      new RegExp(`L${positions[0][0] + 120} ${positions[0][1] + 64}$`),
+    );
   });
 
   it("keeps cycles finite and unsupported markup in fallback", () => {

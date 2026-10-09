@@ -103,11 +103,6 @@
   transform: rotate(180deg);
 }
 
-.acp-tool-rollup__working {
-  animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
-    infinite;
-}
-
 .acp-tool-rollup__items .acp-activity-card {
   margin-left: var(--space-2);
 }
