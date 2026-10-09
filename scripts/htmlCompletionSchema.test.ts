@@ -59,6 +59,32 @@ async function languageProbe(completions = false, transform = true) {
 }
 
 describe("guarded HTML completion schema", () => {
+  it("fails production builds when the HTML entry is renamed", async () => {
+    const renamedId = path
+      .resolve("node_modules/@codemirror/lang-html/dist/renamed.js")
+      .replaceAll("\\", "/");
+    await expect(
+      build({
+        configFile: false,
+        logLevel: "silent",
+        plugins: [
+          htmlCompletionSchemaPlugin(),
+          {
+            name: "renamed-html-entry-probe",
+            resolveId: (id) => (id === renamedId ? renamedId : undefined),
+            load: (id) => (id === renamedId ? source : undefined),
+          },
+        ],
+        build: {
+          write: false,
+          rolldownOptions: { input: renamedId },
+        },
+      }),
+    ).rejects.toThrow(
+      /HTML completion schema transform must apply exactly once.*got 0/,
+    );
+  });
+
   it("applies only to the pinned HTML ESM entry during builds", async () => {
     const plugin = htmlCompletionSchemaPlugin();
     expect(plugin.apply).toBe("build");

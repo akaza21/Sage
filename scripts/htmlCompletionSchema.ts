@@ -35,10 +35,14 @@ export function isolateHtmlCompletionSchema(
 }
 
 export function htmlCompletionSchemaPlugin(): Plugin {
+  let transformCount = 0;
   return {
     name: "sage-html-completion-schema",
     apply: "build",
     enforce: "pre",
+    buildStart() {
+      transformCount = 0;
+    },
     transform(source, id) {
       if (
         !/\/node_modules\/@codemirror\/lang-html\/dist\/index\.js$/.test(
@@ -49,7 +53,16 @@ export function htmlCompletionSchemaPlugin(): Plugin {
       const { version } = JSON.parse(
         readFileSync(path.resolve(path.dirname(id), "../package.json"), "utf8"),
       ) as { version: string };
-      return { code: isolateHtmlCompletionSchema(source, version), map: null };
+      const code = isolateHtmlCompletionSchema(source, version);
+      transformCount += 1;
+      return { code, map: null };
+    },
+    generateBundle() {
+      if (transformCount !== 1) {
+        this.error(
+          `HTML completion schema transform must apply exactly once per build; got ${transformCount}`,
+        );
+      }
     },
   };
 }
