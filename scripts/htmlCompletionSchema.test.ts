@@ -31,7 +31,7 @@ async function languageProbe(completions = false, transform = true) {
           export { loadMarkdownEditorLanguage } from "/src/features/files/editorLanguageMarkdown.ts";
           export { EditorState } from "@codemirror/state";
           export { EditorView } from "@codemirror/view";
-          export { syntaxTree } from "@codemirror/language";
+          export { ensureSyntaxTree } from "@codemirror/language";
           ${completions ? 'export { htmlCompletionSource, htmlCompletionSourceWith } from "@codemirror/lang-html";' : ""}
         `
             : undefined,
@@ -170,10 +170,11 @@ describe("guarded HTML completion schema", () => {
         doc: `${prefix}<div onclick="const attrAnswer = 1;" style="background: red"></span><script>const answer = 1;</script><style>.card { color: red; }</style>`,
         extensions: [load()],
       });
+      const tree = probe.ensureSyntaxTree(state, state.doc.length, 10_000)!;
       const names: string[] = [];
-      probe
-        .syntaxTree(state)
-        .iterate({ enter: (node: { name: string }) => names.push(node.name) });
+      tree.iterate({
+        enter: (node: { name: string }) => names.push(node.name),
+      });
       expect(names).toEqual(
         expect.arrayContaining(
           prefix
@@ -184,29 +185,19 @@ describe("guarded HTML completion schema", () => {
       expect(names).not.toContain("MismatchedCloseTag");
       expect(state.languageDataAt("autocomplete", prefix.length)).toEqual([]);
       expect(
-        probe
-          .syntaxTree(state)
-          .resolveInner(state.doc.toString().indexOf("attrAnswer") + 1).name,
+        tree.resolveInner(state.doc.toString().indexOf("attrAnswer") + 1).name,
       ).toBe("VariableDefinition");
       expect(
-        probe
-          .syntaxTree(state)
-          .resolveInner(state.doc.toString().indexOf("background") + 1).name,
+        tree.resolveInner(state.doc.toString().indexOf("background") + 1).name,
       ).toBe("PropertyName");
       expect(
-        probe
-          .syntaxTree(state)
-          .resolveInner(state.doc.toString().indexOf("answer =") + 1).name,
+        tree.resolveInner(state.doc.toString().indexOf("answer =") + 1).name,
       ).toBe("VariableDefinition");
       expect(
-        probe
-          .syntaxTree(state)
-          .resolveInner(state.doc.toString().indexOf("color:") + 1).name,
+        tree.resolveInner(state.doc.toString().indexOf("color:") + 1).name,
       ).toBe("PropertyName");
       expect(
-        probe
-          .syntaxTree(state)
-          .resolveInner(state.doc.toString().indexOf("</span>") + 3).name,
+        tree.resolveInner(state.doc.toString().indexOf("</span>") + 3).name,
       ).toBe("TagName");
       if (prefix) expect(names).toContain("ATXHeading1");
     }
