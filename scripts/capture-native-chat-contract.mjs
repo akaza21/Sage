@@ -4,12 +4,11 @@ import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 
 export const STATES = new Set([
-  ...nativeCases().map(({ id }) => id.replace(/^(codex|claude)-/u, "")),
+  ...nativeCases().map(({ id }) => id.replace(/^(codex|claude|pi)-/u, "")),
   ...Object.values(truthfulAbsentStates).flat(),
 ]);
 const CASE_IDS = new Set(nativeCases().map(({ id }) => id));
 export function requireNativeCase(harness, state) {
-  if (harness === "pi") fail("nc-1b-pending");
   if (truthfulAbsentStates[harness]?.includes(state))
     fail("truthful-absent-state");
   if (!CASE_IDS.has(harness + "-" + state)) fail("unsupported-state");
@@ -135,11 +134,15 @@ export function validateProbe(probe) {
   if (
     probe.schemaVersion !== 1 ||
     probe.verdict !== "captured" ||
-    !/^(codex|claude)-[a-z0-9-]+$/u.test(probe.caseId) ||
+    !/^(codex|claude|pi)-[a-z0-9-]+$/u.test(probe.caseId) ||
     !CASE_IDS.has(probe.caseId) ||
-    !["codex-app-server", "claude-agent-acp"].includes(probe.bindingId) ||
+    !["codex-app-server", "claude-agent-acp", "pi-rpc"].includes(
+      probe.bindingId,
+    ) ||
     !IDENTIFIER.test(probe.turnId) ||
-    !["standard-acp-1", "codex-app-server-0.146.0"].includes(probe.protocol) ||
+    !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-0.83.0"].includes(
+      probe.protocol,
+    ) ||
     typeof probe.webviewVersion !== "string" ||
     !/^\d+(?:\.\d+){1,3}$/u.test(probe.webviewVersion)
   )

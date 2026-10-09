@@ -69,13 +69,16 @@ test("bounded native catalogue", () => {
   assert.ok(cases.length > 60 && cases.length < 160);
   assert.equal(new Set(cases.map(({ id }) => id)).size, cases.length);
   for (const entry of cases) {
-    assert.match(entry.id, /^(codex|claude)-[a-z0-9-]+$/u);
+    assert.match(entry.id, /^(codex|claude|pi)-[a-z0-9-]+$/u);
     assert.ok(entry.steps.length > 5 && entry.steps.length <= 64);
     assert.ok(Buffer.byteLength(JSON.stringify(entry.steps)) < 65536);
     assert.equal(entry.steps[0].op, "awaitClient");
     assert.ok(
       entry.steps.some(
-        ({ kind }) => kind === "acpPrompt" || kind === "codexTurnStart",
+        ({ kind }) =>
+          kind === "acpPrompt" ||
+          kind === "codexTurnStart" ||
+          kind === "piPrompt",
       ),
     );
   }

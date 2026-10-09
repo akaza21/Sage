@@ -1,5 +1,6 @@
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 export const HARNESS = Object.freeze({
+  pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-0.83.0" },
   codex: {
     id: "codex",
     binding: "codex-app-server",
@@ -43,7 +44,7 @@ export const OBSERVATION = String.raw`(async()=>{
   const visibleRectangle=${visibleRectangle.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !Array.from(element.closest("details:not([open])") ? [element.closest("details:not([open])")] : []).some(details=>!details.querySelector("summary")?.contains(element)));
   const has=selector=>Array.from(document.querySelectorAll(selector)).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'.tab[data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]',attachment:'.composer__attachment'};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'.tab[data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]',attachment:'.composer__attachment'};
   const elements=[]; let charged=0;
   for(const [kind,selector] of Object.entries(selectors))for(const element of document.querySelectorAll(selector)){
     if(elements.length>=64)throw Error('probe-elements');
@@ -55,7 +56,7 @@ export const OBSERVATION = String.raw`(async()=>{
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
   const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
-  return {dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  return {dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 
 export function namedState(options, observation) {
@@ -107,6 +108,31 @@ export function namedState(options, observation) {
       terminal &&
       view.compaction &&
       observation.compactionStates?.includes("completed"),
+    "compaction-started":
+      options.harness === "pi" &&
+      live &&
+      view.compaction &&
+      observation.compactionStates?.includes("started"),
+    "compaction-failed":
+      options.harness === "pi" &&
+      terminal &&
+      view.compaction &&
+      observation.compactionStates?.includes("failed"),
+    "compaction-cancelled":
+      options.harness === "pi" &&
+      terminal &&
+      view.compaction &&
+      observation.compactionStates?.includes("cancelled"),
+    "non-read-denial":
+      options.harness === "pi" &&
+      ["cancelled", "interrupted"].includes(observation.state) &&
+      (view.tool || view.rollup) &&
+      observation.toolStates.includes("declined"),
+    "cancelled-dialog":
+      options.harness === "pi" &&
+      terminal &&
+      view.notice &&
+      observation.noticeKinds?.includes("pi_dialog_cancelled"),
     "approval-pending": live && view.pendingApproval,
     "approval-approved":
       terminal &&
@@ -121,7 +147,19 @@ export function namedState(options, observation) {
     "turn-error": observation.state === "failed",
     "turn-stopped": ["cancelled", "interrupted"].includes(observation.state),
     "turn-retry":
-      terminal && observation.turnCount >= 2 && observation.failedTurns >= 1,
+      options.harness === "pi"
+        ? terminal &&
+          observation.turnCount === 1 &&
+          observation.failedTurns === 0 &&
+          view.answer &&
+          observation.elements?.some(
+            (element) =>
+              element.kind === "answer" &&
+              element.text.includes("Synthetic retry completed."),
+          )
+        : terminal &&
+          observation.turnCount >= 2 &&
+          observation.failedTurns >= 1,
     "answer-table-lists": terminal && view.table,
     "answer-code": terminal && view.code,
     "answer-mermaid": terminal && view.mermaid,
@@ -149,7 +187,8 @@ export function clickExpression(selector) {
     ")];if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()"
   );
 }
-export function actionsFor(state) {
+export function actionsFor(state, harness) {
+  if (state === "turn-retry" && harness === "pi") return [];
   if (
     [
       "worked-expanded",
@@ -161,6 +200,10 @@ export function actionsFor(state) {
       "plan-completed",
       "answer-image",
       "compaction-completed",
+      "compaction-failed",
+      "compaction-cancelled",
+      "non-read-denial",
+      "cancelled-dialog",
       "subagents-finished",
       "subagents-grouped",
       "subagents-popover",
@@ -170,6 +213,9 @@ export function actionsFor(state) {
     return [
       ".chat-transcript-work > summary",
       ...(state === "tool-expanded" ? [".acp-tool-rollup > summary"] : []),
+      ...(state === "cancelled-dialog"
+        ? [".acp-unknown .acp-details > summary"]
+        : []),
       ...(["subagents-popover", "child-opened"].includes(state)
         ? [".acp-subagent-row"]
         : []),

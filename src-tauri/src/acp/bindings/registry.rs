@@ -16,7 +16,10 @@ use crate::acp::bindings::{
 mod claude;
 mod codex;
 mod opencode;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod pi;
 mod record;
+mod record_root;
 use record::{Admission, AdmittedBinding, RootPolicy};
 pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
 #[cfg(test)]
@@ -80,6 +83,8 @@ pub(crate) struct BindingRegistry {
     codex: BindingRecord,
     claude: BindingRecord,
     opencode: BindingRecord,
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pi: Option<BindingRecord>,
     #[cfg(test)]
     test_binding: Option<BindingRecord>,
 }
@@ -94,6 +99,21 @@ impl Default for BindingRegistry {
 }
 
 impl BindingRegistry {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn desktop_pi_fixture(
+        selection: crate::launch_profile::FixtureSelection,
+    ) -> Result<Self, crate::acp::bindings::adapter::AdapterRuntimeError> {
+        let binding =
+            crate::acp::bindings::pi::fixture_admission::PiFixtureBinding::admit(selection)?;
+        let mut registry = Self::new(
+            CodexBindingRegistration::fixture_disabled(),
+            ClaudeBindingRegistration::fixture_disabled(),
+        );
+        registry.isolate_fixture_records("pi");
+        registry.pi = Some(pi::record(binding));
+        Ok(registry)
+    }
+
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pub(crate) fn desktop_codex_fixture(
         selection: crate::launch_profile::CodexFixtureSelection,
@@ -189,6 +209,8 @@ impl BindingRegistry {
             },
             #[cfg(test)]
             test_binding: None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            pi: None,
         }
     }
 
@@ -231,6 +253,10 @@ impl BindingRegistry {
     }
 
     pub(crate) fn for_harness(&self, id: &str) -> Option<&BindingRecord> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
+            return Some(record);
+        }
         [self.codex(), self.claude(), self.opencode()]
             .into_iter()
             .find(|record| record.harness_id() == id)
@@ -258,6 +284,14 @@ impl BindingRegistry {
     }
 
     pub(crate) fn route(&self, binding_id: &str) -> Result<&BindingRecord, RegistryUnavailable> {
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if let Some(record) = self
+            .pi
+            .as_ref()
+            .filter(|record| record.binding_id() == binding_id)
+        {
+            return Ok(record);
+        }
         [&self.codex, &self.claude, &self.opencode]
             .into_iter()
             .find(|record| record.binding_id() == binding_id)
@@ -330,6 +364,8 @@ impl BindingRegistry {
         match self.test_binding.as_ref()?.admission {
             Admission::Codex(ref admission) => Some(admission.clone()),
             Admission::Claude(_) | Admission::OpenCode(_) => None,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(_) => None,
         }
     }
 }

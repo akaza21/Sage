@@ -224,10 +224,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
-            if self.phase != Phase::Initialized || !value.token().is_notification() {
+            if self.phase == Phase::AwaitingInitialized {
+                self.enqueue_initialization(value)?;
+            } else if self.phase == Phase::Initialized && value.token().is_notification() {
+                self.enqueue(value)?;
+            } else {
                 return self.protocol_error();
             }
-            self.enqueue(value)?;
         }
         if let Some(value) = ready {
             self.commit_ready(value, now_millis).await?;
@@ -235,6 +238,23 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             self.queue_session()?;
         }
         Ok(())
+    }
+
+    pub(super) fn enqueue_initialization(
+        &mut self,
+        value: AdapterEgress,
+    ) -> Result<(), ActivationPumpError> {
+        if value.token().request_id().is_none() || value.token().is_control() {
+            return self.protocol_error();
+        }
+        if self.initialization_requests >= LIMITS.queues.outstanding_rpc_per_session {
+            let _ = self
+                .adapter
+                .resolve_egress(value.into_token(), EgressResolution::QueueRejected);
+            return self.capacity_error();
+        }
+        self.initialization_requests += 1;
+        self.enqueue(value)
     }
 
     fn accept_models(

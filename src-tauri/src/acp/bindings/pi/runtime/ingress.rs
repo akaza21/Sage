@@ -107,6 +107,22 @@ impl PiRuntime {
         };
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
-        self.translate_outputs(outputs, staged, request_digest, resources)
+        let initialized = outputs
+            .iter()
+            .any(|value| matches!(value, crate::acp::bindings::pi::AdapterOutput::Initialized));
+        let batch = self.translate_outputs(outputs, staged, request_digest, resources)?;
+        if !initialized {
+            return Ok(batch);
+        }
+        let (mut events, egress) = batch.into_parts();
+        if let Some(index) = events.iter().position(|event| {
+            matches!(
+                event,
+                crate::acp::bindings::adapter::AdapterEvent::Initialized { .. }
+            )
+        }) {
+            events[..=index].rotate_right(1);
+        }
+        AdapterBatch::new(events, egress)
     }
 }

@@ -100,6 +100,21 @@ pub(crate) struct PiRuntime {
 }
 
 impl PiRuntime {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    pub(crate) fn from_fixture_binding(
+        binding: &super::fixture_admission::PiFixtureBinding,
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Result<Self, AdapterRuntimeError> {
+        binding.revalidate()?;
+        Ok(Self::new(
+            PiTranslator::fixture_admitted(runtime_epoch.get()),
+            binding.binding_digest(),
+            runtime_epoch,
+            session_id,
+        ))
+    }
+
     pub(crate) fn from_binding(
         binding: &ResearchPiBinding,
         binding_digest: [u8; 32],
@@ -114,7 +129,7 @@ impl PiRuntime {
     }
 
     #[cfg(test)]
-    fn fixture(runtime_epoch: RuntimeEpoch, session_id: SageAgentSessionId) -> Self {
+    pub(crate) fn fixture(runtime_epoch: RuntimeEpoch, session_id: SageAgentSessionId) -> Self {
         Self::new(
             PiTranslator::fixture_admitted(runtime_epoch.get()),
             [7; 32],

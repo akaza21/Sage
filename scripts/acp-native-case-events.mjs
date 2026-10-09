@@ -10,7 +10,7 @@ export const wait = (kind) => ({ op: "awaitClient", kind });
 const ROOT = "$ROOT/src/example.ts";
 const longLabel =
   "Inspect the bounded synthetic workspace and compare deterministic native replay presentation without executing commands";
-const answer = (state) => {
+export const answer = (state) => {
   if (state === "answer-table-lists")
     return "## Replay summary\n\n| State | Result |\n| --- | --- |\n| Native binding | Verified replay |\n| Storage | Durable projection |\n\n- Fixed synthetic input\n- Bounded protocol events\n\n1. Inspect\n2. Compare";
   if (state === "answer-code")

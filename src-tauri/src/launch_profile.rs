@@ -16,6 +16,8 @@ const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod desktop_claude_fixture;
 mod desktop_codex_fixture;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod desktop_pi_fixture;
 mod fixture_selector;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 pub(crate) use fixture_selector::FixtureSelection;

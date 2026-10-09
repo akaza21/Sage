@@ -10,7 +10,23 @@ fn codex_fixture_environment_values() -> [Option<std::ffi::OsString>; 4] {
 pub(crate) fn resolve_desktop_fixture_mode_from_environment(
     profile: &LaunchProfile,
 ) -> io::Result<DesktopFixtureMode> {
+    fixture_selector::reject_unavailable_fixture_environment_inputs()?;
     let codex = codex_fixture_environment_values();
+    #[cfg(debug_assertions)]
+    let pi = desktop_pi_fixture::environment_values();
+    #[cfg(debug_assertions)]
+    if pi.iter().any(Option::is_some) {
+        let selection = desktop_pi_fixture::resolve(
+            profile,
+            pi.each_ref().map(Option::as_deref),
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("checkout parent")
+                .join("work/cp-native-proof"),
+        )?
+        .ok_or_else(invalid_profile)?;
+        return Ok(DesktopFixtureMode::PiFixture(selection));
+    }
     #[cfg(debug_assertions)]
     let claude = desktop_claude_fixture::environment_values();
     #[cfg(debug_assertions)]
@@ -50,6 +66,8 @@ pub(crate) enum DesktopFixtureMode {
     CodexFixture(CodexFixtureSelection),
     #[cfg(debug_assertions)]
     ClaudeFixture(FixtureSelection),
+    #[cfg(debug_assertions)]
+    PiFixture(FixtureSelection),
 }
 
 #[cfg(all(windows, feature = "acp-fixture"))]

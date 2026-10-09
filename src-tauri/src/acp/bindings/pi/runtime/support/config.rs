@@ -119,6 +119,7 @@ impl PiRuntime {
         let mut config_options = vec![serde_json::json!({
             "id":"pi.model",
             "name":"Model",
+            "category":"model",
             "type":"select",
             "currentValue":current,
             "options":options

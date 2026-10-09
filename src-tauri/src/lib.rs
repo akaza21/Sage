@@ -148,7 +148,9 @@ pub fn run() {
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             let native_fixture_mode = matches!(
                 &fixture_mode,
-                DesktopFixtureMode::CodexFixture(_) | DesktopFixtureMode::ClaudeFixture(_)
+                DesktopFixtureMode::CodexFixture(_)
+                    | DesktopFixtureMode::ClaudeFixture(_)
+                    | DesktopFixtureMode::PiFixture(_)
             );
             fs::create_dir_all(profile.durable_dir())?;
             let database = Database::open(&profile.durable_dir().join("sage.db"))?;
@@ -209,6 +211,13 @@ pub fn run() {
                         selection,
                     )?
                 }
+                #[cfg(debug_assertions)]
+                DesktopFixtureMode::PiFixture(selection) => AppState::try_new_pi_fixture_desktop(
+                    database,
+                    settings,
+                    app.handle().clone(),
+                    selection,
+                )?,
                 DesktopFixtureMode::Ordinary => {
                     AppState::try_new_desktop(database, settings, app.handle().clone())?
                 }

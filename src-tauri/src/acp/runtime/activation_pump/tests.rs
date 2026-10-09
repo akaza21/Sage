@@ -15,6 +15,9 @@ use super::*;
 #[path = "tests/model_catalog.rs"]
 mod model_catalog;
 
+#[path = "tests/initialization.rs"]
+mod initialization;
+
 struct FakeAdapter {
     capabilities: CapabilitySnapshotV1,
     batches: VecDeque<AdapterBatch>,

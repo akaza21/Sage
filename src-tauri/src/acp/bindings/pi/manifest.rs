@@ -137,7 +137,7 @@ impl ResearchPiBinding {
 }
 
 impl LaunchAdmission {
-    #[cfg(test)]
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(super) const fn fixture() -> Self {
         Self {
             capabilities: PiBindingCapabilities::read_only_rpc(),

@@ -38,6 +38,8 @@ pub(super) fn binding(binding: &AdmittedBinding) -> Option<&Arc<AdmittedCodexBin
     match binding {
         AdmittedBinding::Codex(binding) => Some(binding),
         AdmittedBinding::Claude(_) | AdmittedBinding::OpenCode { .. } => None,
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        AdmittedBinding::Pi(_) => None,
     }
 }
 

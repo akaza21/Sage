@@ -12,6 +12,12 @@ pub(super) const CLAUDE_ENVIRONMENT_KEYS: [&str; 4] = [
     "SAGE_CLAUDE_FIXTURE_BYTES",
     "SAGE_CLAUDE_FIXTURE_CASE",
 ];
+pub(super) const PI_ENVIRONMENT_KEYS: [&str; 4] = [
+    "SAGE_PI_FIXTURE_PATH",
+    "SAGE_PI_FIXTURE_SHA256",
+    "SAGE_PI_FIXTURE_BYTES",
+    "SAGE_PI_FIXTURE_CASE",
+];
 const ENVIRONMENT_KEYS: [[&str; 4]; 4] = [
     [
         "SAGE_CHARACTERIZATION_FIXTURE_PATH",
@@ -21,12 +27,7 @@ const ENVIRONMENT_KEYS: [[&str; 4]; 4] = [
     ],
     CODEX_ENVIRONMENT_KEYS,
     CLAUDE_ENVIRONMENT_KEYS,
-    [
-        "SAGE_PI_FIXTURE_PATH",
-        "SAGE_PI_FIXTURE_SHA256",
-        "SAGE_PI_FIXTURE_BYTES",
-        "SAGE_PI_FIXTURE_CASE",
-    ],
+    PI_ENVIRONMENT_KEYS,
 ];
 
 pub(super) fn validate_inputs(inputs: [[Option<&OsStr>; 4]; 4], available: bool) -> io::Result<()> {
@@ -53,9 +54,6 @@ pub(crate) fn reject_unavailable_fixture_environment_inputs() -> io::Result<()> 
             .map(|values| values.each_ref().map(Option::as_deref)),
         cfg!(all(windows, feature = "acp-fixture", debug_assertions)),
     )?;
-    if values[3].iter().any(Option::is_some) {
-        return Err(invalid_profile());
-    }
     Ok(())
 }
 
@@ -74,6 +72,43 @@ pub(crate) struct FixtureSelection {
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 impl FixtureSelection {
+    pub(crate) fn launch_metadata(
+        &self,
+        binding_digest: [u8; 32],
+    ) -> Result<
+        (
+            uuid::Uuid,
+            crate::acp::process::ArtifactExpectation,
+            crate::acp::process::BoundedOsArgs,
+        ),
+        crate::acp::bindings::adapter::AdapterRuntimeError,
+    > {
+        use crate::acp::{
+            bindings::adapter::AdapterRuntimeError,
+            process::{ArtifactExpectation, BoundedOsArgs},
+        };
+        let identity = |digest: [u8; 32]| {
+            let mut bytes = [0; 16];
+            bytes.copy_from_slice(&digest[..16]);
+            uuid::Uuid::from_bytes(bytes)
+        };
+        let artifact = ArtifactExpectation::new(
+            identity(self.artifact_sha256),
+            self.artifact_path.clone(),
+            self.artifact_sha256,
+            self.artifact_bytes,
+        )
+        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let fixed_args = BoundedOsArgs::new(vec![
+            "--case".into(),
+            self.case.clone().into(),
+            "--seed".into(),
+            "0".into(),
+        ])
+        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        Ok((identity(binding_digest), artifact, fixed_args))
+    }
+
     pub(crate) fn revalidate(&self) -> io::Result<()> {
         require_plain_directory(&self.proof_root)?;
         if !self.profile_root.starts_with(&self.proof_root) || self.profile_root == self.proof_root

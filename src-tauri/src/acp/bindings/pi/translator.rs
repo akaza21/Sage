@@ -135,7 +135,7 @@ impl PiTranslator {
         Self::new(epoch, Some(admission))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn fixture_admitted(epoch: u64) -> Self {
         Self::admitted(epoch, LaunchAdmission::fixture())
     }

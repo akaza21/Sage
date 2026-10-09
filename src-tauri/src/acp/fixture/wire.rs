@@ -14,11 +14,16 @@ mod acp_tests;
 #[cfg(test)]
 #[path = "wire_codex_tests.rs"]
 mod codex_tests;
+#[cfg(test)]
+#[path = "wire_pi_tests.rs"]
+mod pi_tests;
 
 #[path = "wire_acp.rs"]
 mod acp;
 #[path = "wire_codex.rs"]
 mod codex;
+#[path = "wire_pi.rs"]
+mod pi;
 
 pub(super) struct WireState {
     stdin_open: bool,
@@ -28,6 +33,7 @@ pub(super) struct WireState {
     prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
+    pi: pi::PiWireState,
 }
 
 impl WireState {
@@ -40,6 +46,7 @@ impl WireState {
             prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
+            pi: pi::PiWireState::new(),
         }
     }
 
@@ -109,6 +116,9 @@ fn await_client_kind(
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let kind = field_str(step, "kind")?;
+    if kind.starts_with("pi") {
+        return pi::await_request(input, output, state, kind);
+    }
     if kind.starts_with("acp") {
         return acp::await_request(input, output, state, kind);
     }
@@ -168,6 +178,9 @@ fn emit_known(
     output: &mut impl Write,
 ) -> Result<(), FixtureError> {
     let shape = field_str(step, "shape")?;
+    if shape == "piNative" {
+        return pi::emit(step, state, output);
+    }
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);
     }
@@ -371,54 +384,10 @@ fn fill_stderr(
     Ok(())
 }
 
-pub(super) fn emit_repeated(
-    output: &mut impl Write,
-    state: &mut WireState,
-    byte: u8,
-    bytes: u64,
-) -> Result<(), FixtureError> {
-    state.charge(bytes)?;
-    let chunk = [byte; 4096];
-    let mut remaining = usize::try_from(bytes).map_err(|_| FixtureError::ExpandedLimit)?;
-    while remaining != 0 {
-        let take = remaining.min(chunk.len());
-        output
-            .write_all(&chunk[..take])
-            .map_err(|_| FixtureError::Io)?;
-        remaining -= take;
-    }
-    Ok(())
-}
-
-pub(super) fn write_stdout(
-    output: &mut impl Write,
-    state: &mut WireState,
-    bytes: &[u8],
-    flush_each: bool,
-) -> Result<(), FixtureError> {
-    if !state.stdout_open {
-        return Err(FixtureError::Io);
-    }
-    state.charge(bytes.len() as u64)?;
-    if flush_each {
-        for byte in bytes {
-            output.write_all(&[*byte]).map_err(|_| FixtureError::Io)?;
-            output.flush().map_err(|_| FixtureError::Io)?;
-        }
-    } else {
-        output.write_all(bytes).map_err(|_| FixtureError::Io)?;
-    }
-    Ok(())
-}
-
-fn write_stderr(
-    error: &mut impl Write,
-    state: &mut WireState,
-    bytes: &[u8],
-) -> Result<(), FixtureError> {
-    state.charge(bytes.len() as u64)?;
-    error.write_all(bytes).map_err(|_| FixtureError::Io)
-}
+#[path = "wire_output.rs"]
+mod output;
+use output::write_stderr;
+pub(super) use output::{emit_repeated, write_stdout};
 
 #[cfg(test)]
 #[path = "wire_capture_steps.rs"]

@@ -73,6 +73,7 @@ const liveStates = new Set([
   "composer-stop",
 ]);
 export const truthfulAbsentStates = Object.freeze({
+  pi: piAbsentStates,
   codex: Object.freeze([
     "compaction-started",
     "compaction-failed",
@@ -92,97 +93,103 @@ export const truthfulAbsentStates = Object.freeze({
   ]),
 });
 export function nativeCases() {
-  return ["codex", "claude"].flatMap((harness) => {
-    const states = [
-      ...sharedStates,
-      ...(harness === "codex" ? codexStates : claudeStates),
-    ].filter((state) => !truthfulAbsentStates[harness].includes(state));
-    return states.map((state) => {
-      const steps =
-        harness === "codex"
-          ? [
-              wait("codexInitialize"),
-              emit("codexInitializeResult0146"),
-              wait("codexStart"),
-              emit("codexThreadResult"),
-              ...(state === "effort-menu"
-                ? [
-                    wait("codexModelList"),
-                    emit("codexModelListEffortResult"),
-                    wait("codexGoalGet"),
-                  ]
-                : [wait("codexGoalGetWithOptionalModelList")]),
-              emit("codexGoalMethodNotFound"),
-              wait("codexTurnStart"),
-              emit("codexTurnResult"),
-              emit("codexStarted"),
-            ]
-          : [
-              wait("acpInitialize"),
-              emit("acpInitialize"),
-              wait("acpNew"),
-              emit("acpSession"),
-              wait("acpPrompt"),
-            ];
-      if (state.startsWith("approval-"))
-        steps.push(emit("acpCompleted"), wait("acpPrompt"));
-      steps.push(...events(harness, state));
-      if (liveStates.has(state) || state === "turn-stopped")
-        steps.push(wait(harness === "codex" ? "codexInterrupt" : "acpCancel"));
-      if (harness === "claude")
-        steps.push(
-          emit(
-            state === "turn-error" || state === "turn-retry"
-              ? "acpError"
-              : state === "turn-stopped" || liveStates.has(state)
-                ? "acpCancelled"
-                : "acpCompleted",
-          ),
-          wait("acpClose"),
-          emit("acpAck"),
-        );
-      else
-        steps.push(
-          ...(liveStates.has(state) || state === "turn-stopped"
-            ? []
-            : [
-                emit(
-                  state === "turn-error" || state === "turn-retry"
-                    ? "codexError"
-                    : "codexCompleted",
-                ),
-              ]),
-          wait("codexUnsubscribe"),
-          emit("codexAck"),
-        );
-      if (state === "turn-retry") {
-        steps.splice(
-          -2,
-          0,
-          ...(harness === "claude"
+  return [
+    ...piNativeCases(),
+    ...["codex", "claude"].flatMap((harness) => {
+      const states = [
+        ...sharedStates,
+        ...(harness === "codex" ? codexStates : claudeStates),
+      ].filter((state) => !truthfulAbsentStates[harness].includes(state));
+      return states.map((state) => {
+        const steps =
+          harness === "codex"
             ? [
-                wait("acpPrompt"),
-                emit("acpUpdate", {
-                  update: {
-                    sessionUpdate: "agent_message_chunk",
-                    content: {
-                      type: "text",
-                      text: "Synthetic retry completed.",
-                    },
-                  },
-                }),
-                emit("acpCompleted"),
-              ]
-            : [
+                wait("codexInitialize"),
+                emit("codexInitializeResult0146"),
+                wait("codexStart"),
+                emit("codexThreadResult"),
+                ...(state === "effort-menu"
+                  ? [
+                      wait("codexModelList"),
+                      emit("codexModelListEffortResult"),
+                      wait("codexGoalGet"),
+                    ]
+                  : [wait("codexGoalGetWithOptionalModelList")]),
+                emit("codexGoalMethodNotFound"),
                 wait("codexTurnStart"),
                 emit("codexTurnResult"),
                 emit("codexStarted"),
-                emit("codexDelta"),
-                emit("codexCompleted"),
-              ]),
-        );
-      }
-      return { id: harness + "-" + state, steps };
-    });
-  });
+              ]
+            : [
+                wait("acpInitialize"),
+                emit("acpInitialize"),
+                wait("acpNew"),
+                emit("acpSession"),
+                wait("acpPrompt"),
+              ];
+        if (state.startsWith("approval-"))
+          steps.push(emit("acpCompleted"), wait("acpPrompt"));
+        steps.push(...events(harness, state));
+        if (liveStates.has(state) || state === "turn-stopped")
+          steps.push(
+            wait(harness === "codex" ? "codexInterrupt" : "acpCancel"),
+          );
+        if (harness === "claude")
+          steps.push(
+            emit(
+              state === "turn-error" || state === "turn-retry"
+                ? "acpError"
+                : state === "turn-stopped" || liveStates.has(state)
+                  ? "acpCancelled"
+                  : "acpCompleted",
+            ),
+            wait("acpClose"),
+            emit("acpAck"),
+          );
+        else
+          steps.push(
+            ...(liveStates.has(state) || state === "turn-stopped"
+              ? []
+              : [
+                  emit(
+                    state === "turn-error" || state === "turn-retry"
+                      ? "codexError"
+                      : "codexCompleted",
+                  ),
+                ]),
+            wait("codexUnsubscribe"),
+            emit("codexAck"),
+          );
+        if (state === "turn-retry") {
+          steps.splice(
+            -2,
+            0,
+            ...(harness === "claude"
+              ? [
+                  wait("acpPrompt"),
+                  emit("acpUpdate", {
+                    update: {
+                      sessionUpdate: "agent_message_chunk",
+                      content: {
+                        type: "text",
+                        text: "Synthetic retry completed.",
+                      },
+                    },
+                  }),
+                  emit("acpCompleted"),
+                ]
+              : [
+                  wait("codexTurnStart"),
+                  emit("codexTurnResult"),
+                  emit("codexStarted"),
+                  emit("codexDelta"),
+                  emit("codexCompleted"),
+                ]),
+          );
+        }
+        return { id: harness + "-" + state, steps };
+      });
+    }),
+  ];
 }
+import { piNativeCases, piAbsentStates } from "./acp-native-pi-cases.mjs";

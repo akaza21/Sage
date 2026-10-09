@@ -170,6 +170,7 @@ pub(crate) struct ActivationPump<A, J, R> {
     egress: ReservedQueue<AdapterEgress>,
     phase: Phase,
     initialize_attempts: u8,
+    initialization_requests: u64,
     session_attempts: u8,
     capabilities: Option<CapabilitySnapshotV1>,
     models: Vec<AdapterModel>,
@@ -226,6 +227,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             egress,
             phase: Phase::Dormant,
             initialize_attempts: 0,
+            initialization_requests: 0,
             session_attempts: 0,
             capabilities: None,
             models: Vec::new(),
@@ -340,7 +342,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             .checked_add(1)
             .ok_or(ActivationPumpError::RetryExhausted)?;
         let value = self.adapter.command(AdapterCommand::Initialize)?;
-        self.enqueue(value)?;
+        self.enqueue_initialization(value)?;
         self.phase = Phase::InitializeQueued;
         Ok(())
     }

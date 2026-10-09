@@ -123,11 +123,11 @@ fn initialize(runtime: &mut PiRuntime) {
     assert!(matches!(
         batch.events(),
         [
-            AdapterEvent::Models { .. },
-            AdapterEvent::Initialized { .. }
+            AdapterEvent::Initialized { .. },
+            AdapterEvent::Models { .. }
         ]
     ));
-    let AdapterEvent::Models { models, .. } = &batch.events()[0] else {
+    let AdapterEvent::Models { models, .. } = &batch.events()[1] else {
         panic!("models")
     };
     assert_eq!(models.iter().filter(|model| model.is_default).count(), 1);
@@ -491,6 +491,7 @@ fn pi_available_models_project_session_config() {
     let config = runtime.session_config().expect("Pi config");
     let wire = serde_json::to_value(config).expect("config json");
     assert_eq!(wire["configOptions"][0]["id"], "pi.model");
+    assert_eq!(wire["configOptions"][0]["category"], "model");
     assert_eq!(wire["configOptions"][0]["currentValue"], "openai:gpt");
     assert_eq!(
         wire["configOptions"][0]["options"][0]["value"],

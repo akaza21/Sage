@@ -3,105 +3,18 @@ use std::sync::Arc;
 use crate::acp::{
     bindings::{
         claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
-        codex::{AdmittedCodexBinding, CodexBindingRegistration, CodexProjectRootAuthority},
+        codex::{AdmittedCodexBinding, CodexBindingRegistration},
         runtime::RuntimeFactory,
         standard_acp::{AdmittedStandardAcpBinding, OpenCodeBindingRegistration},
     },
     intent::CapabilitySnapshotV1,
-    resource_mapper::ConfiguredResourceRoot,
 };
 use crate::domain::{HarnessCharacterisation, HarnessUnavailableReason};
 
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum RootPolicy {
-    Codex,
-    Claude,
-    OpenCode,
-}
-
-pub(crate) enum BindingProjectRoot {
-    Codex(CodexProjectRootAuthority),
-    Claude(crate::project_registry::ProjectRootAuthority),
-    OpenCode(crate::project_registry::ProjectRootAuthority),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum BindingProjectRootError {
-    #[error("the admitted project root no longer revalidates")]
-    Revalidation,
-    #[error("the admitted project root is not valid UTF-8")]
-    NonUnicode,
-    #[error("the admitted project root is empty")]
-    Empty,
-}
-
-impl BindingProjectRoot {
-    pub(crate) fn project_matches(&self, project_id: &crate::acp::contract::SageProjectId) -> bool {
-        match self {
-            Self::Codex(root) => root.project_id() == project_id,
-            Self::Claude(root) => root.scope().0 == project_id,
-            Self::OpenCode(root) => root.scope().0 == project_id,
-        }
-    }
-
-    pub(crate) fn revalidate(&self) -> Result<(), BindingProjectRootError> {
-        match self {
-            Self::Codex(root) => root
-                .revalidate()
-                .map_err(|_| BindingProjectRootError::Revalidation),
-            Self::Claude(root) => root
-                .revalidate()
-                .map_err(|_| BindingProjectRootError::Revalidation),
-            Self::OpenCode(root) => root
-                .revalidate()
-                .map_err(|_| BindingProjectRootError::Revalidation),
-        }
-    }
-
-    pub(crate) fn native_root(&self) -> Result<String, BindingProjectRootError> {
-        let path = match self {
-            Self::Codex(root) => root.as_path(),
-            Self::Claude(root) => root.as_path(),
-            Self::OpenCode(root) => root.as_path(),
-        };
-        let path = path.to_str().ok_or(BindingProjectRootError::NonUnicode)?;
-        let path = path
-            .strip_prefix(r"\\?\")
-            .or_else(|| path.strip_prefix(r"//?/"))
-            .unwrap_or(path);
-        (!path.is_empty())
-            .then(|| path.to_owned())
-            .ok_or(BindingProjectRootError::Empty)
-    }
-
-    pub(crate) fn codex_project_root(
-        &self,
-    ) -> Result<&CodexProjectRootAuthority, RegistryAdmissionUnavailable> {
-        match self {
-            Self::Codex(root) => Ok(root),
-            Self::Claude(_) | Self::OpenCode(_) => Err(RegistryAdmissionUnavailable::Drift),
-        }
-    }
-
-    pub(crate) fn configured_resource_root(&self) -> ConfiguredResourceRoot {
-        match self {
-            Self::Codex(root) => ConfiguredResourceRoot {
-                root_id: root.root_id().clone(),
-                canonical_native_root: root.as_path().to_owned(),
-            },
-            Self::Claude(root) => ConfiguredResourceRoot {
-                root_id: root.scope().2.clone(),
-                canonical_native_root: root.as_path().to_owned(),
-            },
-            Self::OpenCode(root) => ConfiguredResourceRoot {
-                root_id: root.scope().2.clone(),
-                canonical_native_root: root.as_path().to_owned(),
-            },
-        }
-    }
-}
+pub(crate) use super::record_root::BindingProjectRoot;
+pub(super) use super::record_root::RootPolicy;
 
 type LaunchFactory = fn(
     AdmittedBinding,
@@ -132,6 +45,8 @@ pub(super) enum Admission {
     Codex(CodexBindingRegistration),
     Claude(Arc<ClaudeBindingRegistration>),
     OpenCode(Arc<OpenCodeBindingRegistration>),
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    Pi(Arc<crate::acp::bindings::pi::fixture_admission::PiFixtureBinding>),
 }
 
 pub(crate) struct BoundBuild {
@@ -143,6 +58,8 @@ pub(crate) struct BoundBuild {
 pub(super) enum AdmittedBinding {
     Codex(Arc<AdmittedCodexBinding>),
     Claude(Arc<AdmittedClaudeBinding>),
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    Pi(Arc<crate::acp::bindings::pi::fixture_admission::PiFixtureBinding>),
     OpenCode {
         registration: Arc<OpenCodeBindingRegistration>,
         binding: Arc<AdmittedStandardAcpBinding>,
@@ -180,6 +97,13 @@ impl BindingRecord {
 
     pub(crate) fn admit(&self) -> Result<AdmittedBindingRecord<'_>, RegistryAdmissionUnavailable> {
         let binding = match &self.admission {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(binding) => {
+                binding
+                    .revalidate()
+                    .map_err(|_| RegistryAdmissionUnavailable::Drift)?;
+                AdmittedBinding::Pi(binding.clone())
+            }
             Admission::Codex(admission) => admission
                 .refresh()
                 .map(AdmittedBinding::Codex)
@@ -207,6 +131,8 @@ impl BindingRecord {
 
     pub(crate) fn admission_available(&self) -> bool {
         match &self.admission {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(binding) => binding.revalidate().is_ok(),
             Admission::Codex(admission) => admission.is_available(),
             Admission::Claude(admission) => admission.is_available(),
             Admission::OpenCode(admission) => admission.is_available(),
@@ -215,6 +141,12 @@ impl BindingRecord {
 
     pub(crate) fn bound_build(&self) -> Option<BoundBuild> {
         match &self.admission {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(binding) => binding.revalidate().ok().map(|()| BoundBuild {
+                reported_version: crate::acp::bindings::pi::PI_VERSION.into(),
+                characterisation: HarnessCharacterisation::Characterised,
+                account_model_discovery: false,
+            }),
             Admission::Codex(admission) => admission.admitted().map(|binding| BoundBuild {
                 reported_version: binding.harness_version().to_owned(),
                 characterisation: binding.characterisation(),
@@ -240,6 +172,11 @@ impl BindingRecord {
         use crate::acp::bindings::codex::CodexAdmissionUnavailable as Codex;
         use crate::acp::bindings::standard_acp::OpenCodeAdmissionUnavailable as OpenCode;
         match &self.admission {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(binding) => binding
+                .revalidate()
+                .err()
+                .map(|_| HarnessUnavailableReason::DriftDetected),
             Admission::Codex(admission) => admission.unavailable().map(|reason| match reason {
                 Codex::Platform => HarnessUnavailableReason::PlatformUnsupported,
                 Codex::ObservationOnly => HarnessUnavailableReason::ObservationOnly,
@@ -304,6 +241,13 @@ impl AdmittedBindingRecord<'_> {
 
     pub(crate) fn identity(&self) -> BindingIdentity<'_> {
         match &self.binding {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            AdmittedBinding::Pi(binding) => BindingIdentity {
+                binding_digest: binding.binding_digest(),
+                binding_digest_hex: binding.binding_digest_hex(),
+                artifact_digest: binding.artifact_digest(),
+                harness_version: crate::acp::bindings::pi::PI_VERSION,
+            },
             AdmittedBinding::Codex(binding) => BindingIdentity {
                 binding_digest: binding.binding_digest(),
                 binding_digest_hex: binding.binding_digest_hex(),
@@ -327,6 +271,8 @@ impl AdmittedBindingRecord<'_> {
 
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {
         match (&self.binding, self.record.model_provider) {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            (AdmittedBinding::Pi(_), super::ModelProvider::NoAccountModels) => Ok(false),
             (AdmittedBinding::Codex(binding), super::ModelProvider::CodexAccount) => binding
                 .model_discovery_available()
                 .map_err(RegistryAdmissionUnavailable::Codex),
@@ -360,38 +306,17 @@ impl AdmittedBindingRecord<'_> {
         context: &crate::state::ActiveProjectContext<'_>,
     ) -> Result<BindingProjectRoot, ()> {
         match self.record.root_policy {
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            RootPolicy::Pi => super::record_root::single_root_authority(database, context)
+                .map(BindingProjectRoot::Pi),
             RootPolicy::Codex => database
                 .codex_project_root_authority(context)
                 .map(BindingProjectRoot::Codex)
                 .map_err(|_| ()),
-            RootPolicy::Claude => {
-                let roots = database
-                    .root_records(context.project_id().as_str())
-                    .map_err(|_| ())?;
-                let [root] = roots.as_slice() else {
-                    return Err(());
-                };
-                let root_id =
-                    crate::acp::contract::SageRootId::parse(root.id.clone()).map_err(|_| ())?;
-                database
-                    .project_root_authority(context, &root_id)
-                    .map(BindingProjectRoot::Claude)
-                    .map_err(|_| ())
-            }
-            RootPolicy::OpenCode => {
-                let roots = database
-                    .root_records(context.project_id().as_str())
-                    .map_err(|_| ())?;
-                let [root] = roots.as_slice() else {
-                    return Err(());
-                };
-                let root_id =
-                    crate::acp::contract::SageRootId::parse(root.id.clone()).map_err(|_| ())?;
-                database
-                    .project_root_authority(context, &root_id)
-                    .map(BindingProjectRoot::OpenCode)
-                    .map_err(|_| ())
-            }
+            RootPolicy::Claude => super::record_root::single_root_authority(database, context)
+                .map(BindingProjectRoot::Claude),
+            RootPolicy::OpenCode => super::record_root::single_root_authority(database, context)
+                .map(BindingProjectRoot::OpenCode),
         }
     }
 

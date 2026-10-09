@@ -256,7 +256,7 @@ export async function capture(options) {
           );
           await waitForState(() => evaluate(IMAGE_ATTACHMENT), deadline);
         }
-        for (const selector of actionsFor(options.state))
+        for (const selector of actionsFor(options.state, options.harness))
           await click(cdp, selector, deadline);
         await waitForState(async () => {
           observation = await evaluate(OBSERVATION);

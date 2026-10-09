@@ -43,7 +43,7 @@ fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
     )
     .unwrap();
     let hash = format!("{:x}", Sha256::digest(b"synthetic fixture"));
-    let select = |case: &str, digest: &str| {
+    let select = |case: &str, digest: &str, protocol: &str| {
         fixture_selector::resolve_selection(
             &profile,
             [
@@ -53,13 +53,26 @@ fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
                 Some(OsStr::new(case)),
             ],
             &proof,
-            "claude",
+            protocol,
         )
     };
-    assert!(select("codex-turn-completed", &hash).is_err());
-    assert!(select("claude-unknown", &hash).is_err());
-    assert!(select("claude-turn-completed", &"00".repeat(32)).is_err());
-    let selection = select("claude-turn-completed", &hash).unwrap().unwrap();
+    for protocol in ["claude", "pi"] {
+        assert!(select("codex-turn-completed", &hash, protocol).is_err());
+        assert!(select(&format!("{protocol}-unknown"), &hash, protocol).is_err());
+        assert!(
+            select(
+                &format!("{protocol}-turn-completed"),
+                &"00".repeat(32),
+                protocol
+            )
+            .is_err()
+        );
+        let selection = select(&format!("{protocol}-turn-completed"), &hash, protocol)
+            .unwrap()
+            .unwrap();
+        selection.revalidate().unwrap();
+    }
+    let selection = select("pi-turn-completed", &hash, "pi").unwrap().unwrap();
     selection.consume_one_shot().unwrap();
     assert!(selection.consume_one_shot().is_err());
     fs::write(artifact, b"changed artifact!").unwrap();

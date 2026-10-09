@@ -1,0 +1,21 @@
+{
+  "runtimeVersion": "0.83.0",
+  "sourceCommit": "845d6ff1f6643aba440341cce877ce1c43ebbc39",
+  "sourceFiles": [
+    "packages/coding-agent/src/modes/rpc/rpc-types.ts",
+    "packages/coding-agent/src/modes/rpc/rpc-mode.ts",
+    "packages/coding-agent/src/core/agent-session.ts"
+  ],
+  "reviewedFixtures": [
+    "read_only_turn.jsonl",
+    "compaction_continuation.jsonl",
+    "compaction_outcomes.jsonl",
+    "retry_continuation.jsonl"
+  ],
+  "responseRequired": ["type", "id", "command", "success"],
+  "messageUpdateRequired": ["type", "message", "assistantMessageEvent"],
+  "toolStartRequired": ["type", "toolCallId", "toolName", "args"],
+  "toolEndRequired": ["type", "toolCallId", "toolName", "result", "isError"],
+  "settlementEvent": "agent_settled",
+  "content": "Fixed synthetic replay only; IDs are correlated at runtime and project paths are substituted from the disposable launch root. No model call or command runs."
+}

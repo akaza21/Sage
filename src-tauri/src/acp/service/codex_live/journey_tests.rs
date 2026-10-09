@@ -1190,3 +1190,6 @@ mod journey_shutdown_tests;
 #[cfg(all(feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/native_claude_tests.rs"]
 mod native_claude_tests;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/native_pi_tests.rs"]
+mod native_pi_tests;

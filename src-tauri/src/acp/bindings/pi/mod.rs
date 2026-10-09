@@ -6,6 +6,12 @@
 //! ADE-0006C's artifact and read-only containment gates are accepted.
 
 mod decode;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) mod fixture_admission;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+pub(crate) mod fixture_runtime;
+#[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
+mod fixture_tests;
 mod manifest;
 mod protocol;
 mod runtime;

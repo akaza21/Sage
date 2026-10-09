@@ -122,9 +122,11 @@ export function launchOwned(build, fixture, roots, options, port) {
       key === "WEBVIEW2_USER_DATA_FOLDER"
     )
       delete environment[key];
-  const prefix = { codex: "SAGE_CODEX_FIXTURE", claude: "SAGE_CLAUDE_FIXTURE" }[
-    options.harness
-  ];
+  const prefix = {
+    codex: "SAGE_CODEX_FIXTURE",
+    claude: "SAGE_CLAUDE_FIXTURE",
+    pi: "SAGE_PI_FIXTURE",
+  }[options.harness];
   Object.assign(environment, {
     SAGE_DISPOSABLE_PROFILE_ROOT: roots.profile,
     SAGE_PROJECT_ROOT: roots.project,

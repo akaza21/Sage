@@ -1,10 +1,7 @@
 use super::*;
 use crate::acp::{
     bindings::adapter::AdapterRuntimeError,
-    process::{
-        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
-        RequiredContainment, TreeLimits,
-    },
+    process::{BoundedEnvironment, LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits},
 };
 
 impl ClaudeBindingRegistration {
@@ -93,32 +90,14 @@ impl AdmittedClaudeBinding {
         }
         root.revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let identity = |digest: [u8; 32]| {
-            let mut bytes = [0; 16];
-            bytes.copy_from_slice(&digest[..16]);
-            uuid::Uuid::from_bytes(bytes)
-        };
-        let artifact = ArtifactExpectation::new(
-            identity(selection.artifact_sha256),
-            selection.artifact_path.clone(),
-            selection.artifact_sha256,
-            selection.artifact_bytes,
-        )
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let fixed_args = BoundedOsArgs::new(vec![
-            "--case".into(),
-            selection.case.clone().into(),
-            "--seed".into(),
-            "0".into(),
-        ])
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        let (binding_id, artifact, fixed_args) = selection.launch_metadata(self.binding_digest)?;
         let environment = BoundedEnvironment::new(self.launch_environment.clone())
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         selection
             .consume_one_shot()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         Ok(LaunchSpec {
-            binding_id: identity(self.binding_digest),
+            binding_id,
             runtime_epoch: epoch,
             artifact,
             fixed_args,
