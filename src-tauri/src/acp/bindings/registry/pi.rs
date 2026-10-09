@@ -4,9 +4,9 @@ use crate::acp::{
     bindings::{
         adapter::AdapterRuntimeError,
         pi::{
+            PI_VERSION,
             fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
             fixture_runtime::PiFixtureRuntimeFactory,
-            manifest::PI_VERSION,
         },
         runtime::RuntimeFactory,
     },
