@@ -1,8 +1,6 @@
 import { MermaidFigureBoundary } from "../chat/acp/MermaidFigureBoundary";
-import {
-  renderMarkdownPreview,
-  type MarkdownPreviewBlock,
-} from "./markdownPreview";
+import { renderMarkdownPreview } from "./markdownPreview";
+import { MarkdownBlocks } from "./MarkdownBlocks";
 
 export function FileMarkdownPreview({
   source,
@@ -11,49 +9,20 @@ export function FileMarkdownPreview({
   source: string;
   asDiagram?: boolean;
 }) {
-  if (asDiagram) {
-    return (
-      <article className="file-markdown-preview" aria-label="Diagram preview">
-        <MermaidFigureBoundary source={source} />
-      </article>
-    );
-  }
-
-  const document = renderMarkdownPreview(source);
+  const document = asDiagram ? null : renderMarkdownPreview(source);
   return (
-    <article className="file-markdown-preview" aria-label="Markdown preview">
-      {document.blocks.map((block, index) => (
-        <PreviewBlock key={`${block.kind}:${index}`} block={block} />
-      ))}
-      {document.sourceLimitExceeded || document.truncated ? (
+    <article
+      className="file-markdown-preview"
+      aria-label={asDiagram ? "Diagram preview" : "Markdown preview"}
+    >
+      {document ? (
+        <MarkdownBlocks document={document} />
+      ) : (
+        <MermaidFigureBoundary source={source} />
+      )}
+      {document?.sourceLimitExceeded || document?.truncated ? (
         <p>Preview truncated</p>
       ) : null}
     </article>
   );
-}
-
-function PreviewBlock({ block }: { block: MarkdownPreviewBlock }) {
-  switch (block.kind) {
-    case "heading":
-      if (block.level === 1) return <h1>{block.text}</h1>;
-      if (block.level === 2) return <h2>{block.text}</h2>;
-      return <h3>{block.text}</h3>;
-    case "paragraph":
-      return <p>{block.text}</p>;
-    case "quote":
-      return <blockquote>{block.text}</blockquote>;
-    case "code":
-      if (block.language.toLowerCase() === "mermaid") {
-        return <MermaidFigureBoundary source={block.text} />;
-      }
-      return <pre>{block.text}</pre>;
-    case "list":
-      return (
-        <ul>
-          {block.items.map((item, index) => (
-            <li key={`${item}:${index}`}>{item}</li>
-          ))}
-        </ul>
-      );
-  }
 }

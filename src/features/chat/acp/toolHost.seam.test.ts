@@ -7,11 +7,44 @@ import {
   CURATED_APPLY_FILE_TOOL_NAME,
   CURATED_BROWSE_TOOL_NAME,
   createToolHost,
+  invokeBrowseTool,
 } from "./toolHost";
 
 const acpDirectory = path.resolve(import.meta.dirname);
 
 describe("curated tool-host seam", () => {
+  it("invokes only the curated browse capability with native owner and URL admission", async () => {
+    const { clearBrowseSessions, setHarnessBrowseOwner } =
+      await import("../../preview/harnessBrowse");
+    clearBrowseSessions();
+    const owner = {
+      projectId: "project:narrow",
+      projectGeneration: "1",
+      transitionEpoch: 1,
+      chatId: "chat:narrow",
+      sessionId: "session-1",
+      runtimeEpoch: "1",
+    } as HarnessBrowseOwner;
+    setHarnessBrowseOwner(owner, [owner.chatId]);
+    const intent = { owner, url: "http://127.0.0.1:5173/app" };
+    expect(invokeBrowseTool(CURATED_APPLY_FILE_TOOL_NAME, intent)).toBeNull();
+    expect(invokeBrowseTool(CURATED_BROWSE_TOOL_NAME, intent)?.href).toBe(
+      intent.url,
+    );
+    expect(
+      invokeBrowseTool(CURATED_BROWSE_TOOL_NAME, {
+        ...intent,
+        url: "https://example.com/",
+      }),
+    ).toBeNull();
+    expect(
+      invokeBrowseTool(CURATED_BROWSE_TOOL_NAME, {
+        ...intent,
+        owner: { ...owner, runtimeEpoch: "2" as never },
+      }),
+    ).toBeNull();
+    clearBrowseSessions();
+  });
   it("admits only typed apply and browse tools", () => {
     const toolHost = createToolHost();
 

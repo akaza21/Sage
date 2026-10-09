@@ -13,7 +13,7 @@ export function ChatLegacyTranscript({
 }) {
   return (
     <>
-      {developmentSimulator ? (
+      {import.meta.env.DEV && developmentSimulator ? (
         <div className="project-intro">
           <span className="project-intro__icon">
             <Check size={17} aria-hidden="true" />
@@ -48,7 +48,7 @@ export function ChatLegacyTranscript({
           </article>
         );
       })}
-      <EditSummary />
+      {import.meta.env.DEV ? <EditSummary /> : null}
     </>
   );
 }

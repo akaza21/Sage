@@ -1,0 +1,70 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { MermaidFigure } from "./MermaidFigure";
+import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures/cp22Answers";
+
+afterEach(cleanup);
+
+describe("bounded Mermaid flowchart rendering", () => {
+  it.each([
+    ["sequenceDiagram", "Alice->>Bob: message"],
+    ["stateDiagram-v2", "Ready --> Done: transition"],
+  ])("keeps all admitted rows in the %s coordinate space", (header, edge) => {
+    const { container } = render(
+      <MermaidFigure source={[header, ...Array(8).fill(edge)].join("\n")} />,
+    );
+    const height = Number(
+      screen.getByRole("img").getAttribute("viewBox")!.split(" ")[3],
+    );
+    const rows = [...container.querySelectorAll("line[y1]")].map((line) =>
+      Number(line.getAttribute("y1")),
+    );
+    expect(Math.max(...rows)).toBeLessThan(height);
+  });
+  it.each([
+    [
+      "sequence",
+      "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: Hi",
+      "Hello",
+    ],
+    ["class", "classDiagram\nAnimal <|-- Duck\nAnimal : +int age", "extends"],
+    [
+      "state",
+      "stateDiagram-v2\n[*] --> Ready\nReady --> Done: finish",
+      "finish",
+    ],
+  ])("preserves the %s subset and labels", (kind, source, label) => {
+    render(<MermaidFigure source={source} />);
+    expect(
+      screen.getByRole("img", { name: `Mermaid ${kind} diagram` }),
+    ).toBeVisible();
+    expect(screen.getByText(label)).toBeVisible();
+  });
+  it("wraps six-node labels, points arrows at boundaries and routes the return branch", () => {
+    const { container } = render(<MermaidFigure source={resetFlowchart} />);
+    const diagram = screen.getByRole("img", { name: "Mermaid diagram" });
+    expect(diagram).toHaveAttribute("height", "620");
+    expect(container.querySelectorAll("path[marker-end]")).toHaveLength(6);
+    expect(container.querySelector("marker")).not.toBeNull();
+    expect(container.querySelectorAll("tspan").length).toBeGreaterThan(6);
+    expect(screen.getByText("Yes")).toBeVisible();
+    expect(screen.getByText("No")).toBeVisible();
+    const paths = container.querySelectorAll("path[marker-end]");
+    expect(paths[5].getAttribute("d")?.match(/L/g)?.length).toBeGreaterThan(1);
+  });
+
+  it("keeps cycles finite and unsupported markup in fallback", () => {
+    const { rerender } = render(
+      <MermaidFigure source={"graph LR\nA --> B\nB --> A"} />,
+    );
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "viewBox",
+      expect.not.stringContaining("NaN"),
+    );
+    rerender(
+      <MermaidFigure source={"graph TD\nA[<script>bad</script>] --> B"} />,
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText(/could not be drawn/)).toBeVisible();
+  });
+});

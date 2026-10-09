@@ -262,12 +262,40 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
   background: var(--color-panel);
+  overflow: auto;
 }
 
 .acp-mermaid svg {
   display: block;
-  max-width: 100%;
+  min-width: 320px;
   color: var(--color-text-primary);
+}
+
+.acp-mermaid text {
+  font-size: 12px;
+  fill: currentColor;
+  paint-order: stroke;
+  stroke: var(--color-panel);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.acp-mermaid text:not([text-anchor]) {
+  text-anchor: middle;
+}
+
+.acp-mermaid :is(rect, polygon) {
+  fill: var(--surface-raised);
+  stroke: currentColor;
+}
+
+.acp-mermaid :is(path, line) {
+  fill: none;
+  stroke: currentColor;
+}
+
+.acp-mermaid marker path {
+  fill: currentColor;
 }
 
 .acp-mermaid__copy,

@@ -23,7 +23,7 @@ import {
 } from "../../preview/harnessBrowse";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
-import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
+import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 import { toolDurationLabel } from "./toolActivityRollup";
 
@@ -170,13 +170,10 @@ function Presentation({
                 ) {
                   return;
                 }
-                const opened = createToolHost().invoke(
-                  CURATED_BROWSE_TOOL_NAME,
-                  {
-                    owner,
-                    url: browse.href,
-                  },
-                );
+                const opened = invokeBrowseTool(CURATED_BROWSE_TOOL_NAME, {
+                  owner,
+                  url: browse.href,
+                });
                 if (opened) {
                   useAgentArtifactFollowStore
                     .getState()

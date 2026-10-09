@@ -30,6 +30,126 @@ describe("canPreviewDiagram", () => {
 });
 
 describe("renderMarkdownPreview", () => {
+  it("does not retain empty sanitized list items or their formatting records", () => {
+    const document = renderMarkdownPreview(
+      "- <div>\n".repeat(10000) + "- **Retained**",
+    );
+    expect(document.blocks).toEqual([{ kind: "list", items: ["Retained"] }]);
+    expect(document.formats).toHaveLength(1);
+    expect(document.formats[0].itemIndex).toBe(0);
+  });
+  it("keeps root-relative paths eligible for native admission but rejects UNC links", () => {
+    const document = renderMarkdownPreview(
+      String.raw`[local](\README.md) [unc](\\server\README.md)`,
+    );
+    expect(document.fileLinks.map((link) => link.destination)).toEqual([
+      String.raw`\README.md`,
+    ]);
+  });
+  it("retains inline code markup and whitespace before sanitizing prose", () => {
+    const document = renderMarkdownPreview(
+      "Use `<div>` and `a  b` and `<script>run()</script>`.",
+    );
+    expect(document.blocks[0]).toMatchObject({
+      text: "Use <div> and a  b and <script>run()</script>.",
+    });
+    expect(
+      document.formats[0].spans.filter(
+        (span) => typeof span !== "string" && "tag" in span,
+      ),
+    ).toEqual([
+      { tag: "code", children: ["<div>"] },
+      { tag: "code", children: ["a  b"] },
+      { tag: "code", children: ["<script>run()</script>"] },
+    ]);
+  });
+
+  it("retains shorter backtick lines inside a longer literal fence", () => {
+    const text = "```\n<script>run()</script>\n<style>body {}</style>";
+    expect(
+      renderMarkdownPreview(`\`\`\`\`html\n${text}\n\`\`\`\``).blocks,
+    ).toEqual([{ kind: "code", language: "html", text, fenceClosed: true }]);
+  });
+  it("retains internal CRLF and exact block/source limits", () => {
+    expect(
+      renderMarkdownPreview(
+        "```html\r\n<script>run()</script>\r\nline  \r\n```\r\n",
+      ).blocks[0],
+    ).toMatchObject({ text: "<script>run()</script>\r\nline  " });
+    expect(
+      renderMarkdownPreview("x".repeat(MAX_MARKDOWN_PREVIEW_SOURCE_BYTES))
+        .sourceLimitExceeded,
+    ).toBe(false);
+    expect(
+      renderMarkdownPreview("x".repeat(MAX_MARKDOWN_PREVIEW_SOURCE_BYTES + 1))
+        .sourceLimitExceeded,
+    ).toBe(true);
+    expect(
+      renderMarkdownPreview(Array(64).fill("# H").join("\n")).truncated,
+    ).toBe(false);
+    expect(
+      renderMarkdownPreview(Array(65).fill("# H").join("\n")).truncated,
+    ).toBe(true);
+  });
+  it("retains literal fenced scripts and whitespace without admitting code links", () => {
+    const source =
+      "<script>run()</script>\n  <style>body {}</style>  \n[readme](README.md)";
+    const document = renderMarkdownPreview(`\`\`\`html\n${source}\n\`\`\``);
+    expect(document.blocks[0]).toMatchObject({ kind: "code", text: source });
+    expect(document.fileLinks).toEqual([]);
+  });
+
+  it("parses ordered lists and aligned tables with escaped pipes and file links", () => {
+    const document = renderMarkdownPreview(
+      "3. **Database**\n4. `validator`\n\n| Name | Detail |\n| :--- | ---: |\n| **SQLite** | a\\|b [readme](README.md:7) |",
+    );
+    expect(document.blocks[0]).toMatchObject({
+      kind: "list",
+      ordered: true,
+      start: 3,
+      items: ["Database", "validator"],
+    });
+    expect(document.blocks[1]).toEqual({
+      kind: "table",
+      align: ["left", "right"],
+      rows: [
+        ["Name", "Detail"],
+        ["SQLite", "a|b readme"],
+      ],
+    });
+    expect(document.fileLinks[0]).toMatchObject({
+      blockIndex: 1,
+      itemIndex: 3,
+      label: "readme",
+      destination: "README.md:7",
+      offset: 4,
+    });
+  });
+
+  it("bounds tables at 32 body rows, 12 columns and 4096 retained characters", () => {
+    const table = (rows: number, columns = 1) =>
+      [
+        Array(columns).fill("H").join(" | "),
+        Array(columns).fill("---").join(" | "),
+        ...Array.from({ length: rows }, () =>
+          Array(columns).fill("cell").join(" | "),
+        ),
+      ]
+        .map((row) => `| ${row} |`)
+        .join("\n");
+    expect(renderMarkdownPreview(table(32)).truncated).toBe(false);
+    expect(renderMarkdownPreview(table(33)).truncated).toBe(true);
+    expect(renderMarkdownPreview(table(1, 12)).truncated).toBe(false);
+    expect(renderMarkdownPreview(table(1, 13)).truncated).toBe(true);
+    expect(
+      renderMarkdownPreview(`| H |\n| --- |\n| ${"x".repeat(4095)} |`)
+        .truncated,
+    ).toBe(false);
+    expect(
+      renderMarkdownPreview(`| H |\n| --- |\n| ${"x".repeat(4096)} |`)
+        .truncated,
+    ).toBe(true);
+  });
   it("retains only bounded file-link candidates outside code fences", () => {
     const document = renderMarkdownPreview(
       [

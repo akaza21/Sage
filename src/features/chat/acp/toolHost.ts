@@ -19,6 +19,13 @@ export interface ToolHost {
   ): ReturnType<typeof applyBrowseIntent>;
 }
 
+export function invokeBrowseTool(
+  toolId: string,
+  intent: HarnessBrowseIntent,
+): ReturnType<typeof applyBrowseIntent> {
+  return toolId === CURATED_BROWSE_TOOL_NAME ? applyBrowseIntent(intent) : null;
+}
+
 export function createToolHost(): ToolHost {
   return {
     canInvoke(toolId) {
@@ -29,9 +36,6 @@ export function createToolHost(): ToolHost {
     },
     applyFileIntent: applyAgentFileIntent,
     applyBrowseIntent,
-    invoke(toolId, intent) {
-      if (toolId !== CURATED_BROWSE_TOOL_NAME) return null;
-      return applyBrowseIntent(intent);
-    },
+    invoke: invokeBrowseTool,
   };
 }

@@ -220,7 +220,15 @@ describe("document token authority", () => {
       "syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true })",
     );
     expect(runtime).not.toContain("syntaxHighlighting(defaultHighlightStyle");
-    expect(runtime).not.toContain("@lezer/highlight");
+    expect(runtime).toContain(
+      'import { highlightTree } from "@lezer/highlight"',
+    );
+    expect(runtime).not.toMatch(
+      /import\s+[^;]*\b(?:tags|tagHighlighter)\b[^;]*from\s+["']@lezer\/highlight/u,
+    );
+    expect(runtime).toContain(
+      "highlightTree(\n    parser.parse(source),\n    documentSyntaxHighlightStyle,",
+    );
     expect(runtime).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     for (const token of REQUIRED_DOC_TOKENS) {
       if (!token.startsWith("--doc-syntax-")) continue;

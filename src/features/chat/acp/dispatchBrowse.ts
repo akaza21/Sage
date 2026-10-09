@@ -3,7 +3,7 @@ import {
   extractAdmittedBrowseUrl,
   harnessBrowseOwner,
 } from "../../preview/harnessBrowse";
-import { CURATED_BROWSE_TOOL_NAME, createToolHost } from "./toolHost";
+import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 
 function toolBrowseUrl(item: AcpItem): string | null {
   if (item.kind !== "toolCall") {
@@ -26,14 +26,7 @@ export function dispatchBrowseFromAcpPage(
     "projectId" | "chatId" | "currentSessionId" | "sessions" | "turns"
   >,
 ): void {
-  const host = createToolHost();
-  if (
-    !page.currentSessionId ||
-    !host.canInvoke(CURATED_BROWSE_TOOL_NAME) ||
-    !host.invoke
-  ) {
-    return;
-  }
+  if (!page.currentSessionId) return;
   const owner = harnessBrowseOwner();
   const currentSession = page.sessions.find(
     (session) => session.id === page.currentSessionId,
@@ -61,7 +54,7 @@ export function dispatchBrowseFromAcpPage(
       }
       const url = toolBrowseUrl(item);
       if (!url) continue;
-      host.invoke(CURATED_BROWSE_TOOL_NAME, {
+      invokeBrowseTool(CURATED_BROWSE_TOOL_NAME, {
         owner,
         url,
       });

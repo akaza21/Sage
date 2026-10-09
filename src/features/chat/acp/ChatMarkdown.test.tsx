@@ -14,7 +14,10 @@ import {
 } from "../../files/markdownPreview";
 import * as markdownPreview from "../../files/markdownPreview";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { openAgentArtifact } from "../../../app/openAgentArtifact";
+import {
+  agentArtifactOwnerIsCurrent,
+  openAgentArtifact,
+} from "../../../app/openAgentArtifact";
 import { useWorkbenchStore } from "../../../app/store";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 
@@ -29,6 +32,161 @@ afterEach(() => {
 });
 
 describe("ChatMarkdown code blocks", () => {
+  it("copies a longer HTML fence without executing its shorter backtick line", async () => {
+    const source = "```\n<script>run()</script>\n<style>body {}</style>";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const { container } = render(
+      <ChatMarkdown text={`\`\`\`\`html\n${source}\n\`\`\`\``} />,
+    );
+    expect(container.querySelector("code")?.textContent).toBe(source);
+    expect(container.querySelector("script, style")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    expect(writeText).toHaveBeenCalledWith(source);
+    expect(await screen.findByText("Copied")).toBeVisible();
+  });
+
+  it.each(["denied", "stale"])(
+    "does not jump to a line after %s file admission",
+    async (outcome) => {
+      vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
+        resource: { rootId: "root-a", relativePath: "README.md" },
+        lineNumber: 12,
+      });
+      if (outcome === "denied")
+        vi.mocked(openAgentArtifact).mockResolvedValueOnce(false);
+      else vi.mocked(agentArtifactOwnerIsCurrent).mockReturnValueOnce(false);
+      const jump = vi
+        .spyOn(useWorkbenchStore.getState(), "openFileLocation")
+        .mockResolvedValue();
+      render(
+        <ChatMarkdown
+          text="**[readme](README.md:12)**"
+          fileReferenceOwner={
+            {
+              projectId: "project-a",
+              chatId: "chat-a",
+              sessionId: "session-a",
+            } as AgentArtifactOwner
+          }
+        />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open README.md" }),
+      );
+      await Promise.resolve();
+      expect(jump).not.toHaveBeenCalled();
+    },
+  );
+  it("preserves adjacent literal inline code in Chat and Editor", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    const text = "Use `<div>` and `a  b`.";
+    for (const component of [
+      <ChatMarkdown text={text} />,
+      <FileMarkdownPreview source={text} />,
+    ]) {
+      const { container, unmount } = render(component);
+      expect(
+        [...container.querySelectorAll("code")].map(
+          (element) => element.textContent,
+        ),
+      ).toEqual(["<div>", "a  b"]);
+      unmount();
+    }
+  });
+  it("nests emphasis inside strong and keeps inline code literal", () => {
+    const { container } = render(
+      <ChatMarkdown text="**strong and *nested*** with `**literal**`" />,
+    );
+    expect(container.querySelector("strong em")).toHaveTextContent("nested");
+    expect(container.querySelector("code")).toHaveTextContent("**literal**");
+  });
+  it("renders shared semantic formatting and table cells in Chat and Editor preview", async () => {
+    const { FileMarkdownPreview } =
+      await import("../../files/FileMarkdownPreview");
+    const text =
+      "# Heading\n\n**strong** and *emphasis* with `inline`\n\n2. ordered\n\n| Name | Value |\n| :--- | ---: |\n| **SQLite** | a\\|b |";
+    for (const component of [
+      <ChatMarkdown text={text} />,
+      <FileMarkdownPreview source={text} />,
+    ]) {
+      const { container, unmount } = render(component);
+      expect(screen.getByRole("heading", { name: "Heading" })).toBeVisible();
+      expect(container.querySelector("strong")).toHaveTextContent("strong");
+      expect(container.querySelector("em")).toHaveTextContent("emphasis");
+      expect(container.querySelector("code")).toHaveTextContent("inline");
+      expect(container.querySelector("ol")).toHaveAttribute("start", "2");
+      expect(screen.getByRole("columnheader", { name: "Name" })).toHaveStyle({
+        textAlign: "left",
+      });
+      expect(screen.getByRole("cell", { name: "a|b" })).toHaveStyle({
+        textAlign: "right",
+      });
+      unmount();
+    }
+  });
+
+  it("keeps unlabelled cards unlabelled and wrap independent per fence", () => {
+    render(
+      <ChatMarkdown text={"```\nfirst\n```\n\n```unknown\nsecond\n```"} />,
+    );
+    expect(screen.queryByText("Code")).toBeNull();
+    const controls = screen.getAllByRole("button", { name: "Wrap code" });
+    expect(controls[0]).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(controls[0]);
+    expect(controls[0]).toHaveAttribute("aria-pressed", "true");
+    expect(controls[1]).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("copies fenced HTML literally and reports clipboard rejection truthfully", async () => {
+    const source = "<script>run()</script>\n  <style>body {}</style>  ";
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const { container } = render(
+      <ChatMarkdown text={`\`\`\`html\n${source}\n\`\`\``} />,
+    );
+    expect(container.querySelector("script, style")).toBeNull();
+    expect(container.querySelector("pre")).toHaveTextContent(
+      "<script>run()</script>",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    expect(writeText).toHaveBeenCalledWith(source);
+    expect(await screen.findByRole("status")).toHaveTextContent("Copy failed");
+    expect(screen.queryByText("Copied")).toBeNull();
+  });
+
+  it("preserves resolved links inside strong text and table cells", async () => {
+    vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({
+      resource: { rootId: "root-a", relativePath: "README.md" },
+      lineNumber: 7,
+    });
+    const owner = {
+      projectId: "project-a",
+      chatId: "chat-a",
+      sessionId: "session-a",
+    } as AgentArtifactOwner;
+    render(
+      <ChatMarkdown
+        text={
+          "**[readme](README.md:7)**\n\n| File |\n| --- |\n| *[readme](README.md:7)* |"
+        }
+        fileReferenceOwner={owner}
+      />,
+    );
+    const links = await screen.findAllByRole("button", {
+      name: "Open README.md",
+    });
+    expect(links).toHaveLength(2);
+    expect(links[0].closest("strong")).not.toBeNull();
+    expect(links[1].closest("td")?.querySelector("em")).not.toBeNull();
+  });
   it("opens a natively resolved assistant file link through Chat admission", async () => {
     const resource = { rootId: "root-a", relativePath: "README.md" };
     vi.spyOn(acpDesktop, "resolveChatFileReference").mockResolvedValue({

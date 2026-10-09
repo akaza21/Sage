@@ -4,6 +4,7 @@ import {
   defaultHighlightStyle,
   indentUnit,
   syntaxHighlighting,
+  language as languageFacet,
 } from "@codemirror/language";
 import {
   Compartment,
@@ -25,7 +26,14 @@ import {
   DEFAULT_EDITOR_APPEARANCE,
   type EditorAppearance,
 } from "./editorAppearance";
-import { editorLanguageForPath, loadEditorLanguage } from "./editorLanguage";
+import {
+  editorLanguageForPath,
+  loadEditorLanguage,
+  type EditorLanguage,
+} from "./editorLanguage";
+import { highlightTree } from "@lezer/highlight";
+import { StyleModule } from "style-mod";
+import { MAX_MARKDOWN_PREVIEW_BLOCK_CHARS } from "./markdownLimits";
 
 interface RuntimeProps {
   ariaLabel: string;
@@ -99,6 +107,46 @@ const documentSyntaxHighlightStyle = HighlightStyle.define(
     return { ...rest, color: token };
   }),
 );
+
+export const MAX_CODE_HIGHLIGHT_TOKENS = 512;
+export interface CodeSpan {
+  from: number;
+  to: number;
+  className: string;
+}
+
+export async function highlightCodeSource(
+  source: string,
+  language: EditorLanguage,
+  current = () => true,
+): Promise<CodeSpan[] | null> {
+  if (
+    !current() ||
+    language === "plain" ||
+    source.length > MAX_MARKDOWN_PREVIEW_BLOCK_CHARS
+  )
+    return null;
+  const extensions = await loadEditorLanguage(language);
+  if (!current()) return null;
+  const parser = EditorState.create({ extensions }).facet(
+    languageFacet,
+  )?.parser;
+  if (!parser) return null;
+  const spans: CodeSpan[] = [];
+  let exceeded = false;
+  highlightTree(
+    parser.parse(source),
+    documentSyntaxHighlightStyle,
+    (from, to, className) => {
+      if (spans.length === MAX_CODE_HIGHLIGHT_TOKENS) exceeded = true;
+      else spans.push({ from, to, className });
+    },
+  );
+  if (exceeded) return null;
+  if (documentSyntaxHighlightStyle.module)
+    StyleModule.mount(document, documentSyntaxHighlightStyle.module);
+  return spans;
+}
 
 function withinUtf8Limit(document: Text, limit: number) {
   if (document.length > limit) {

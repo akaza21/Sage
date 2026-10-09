@@ -868,7 +868,14 @@ describe("FileSurface Markdown Preview", () => {
       screen.getByRole("article", { name: "Markdown preview" }),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Title" })).toBeVisible();
-    expect(screen.getByText("Hello world and docs.")).toBeVisible();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "Hello world and docs.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("world", { selector: "strong" })).toBeVisible();
     expect(screen.queryByText("https://example.test")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Return to editor" }),

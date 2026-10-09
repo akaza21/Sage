@@ -93,18 +93,14 @@ export function parseMermaidSource(source: string): MermaidSource {
   return parseMermaidState(source);
 }
 
-const nodeToken =
-  /^([A-Za-z][A-Za-z0-9_-]*)(?:\[([^\]]{1,64})\]|\(([^)]{1,64})\)|\{([^}]{1,64})\})?/;
+const statementToken =
+  /^([A-Za-z][A-Za-z0-9_-]*)(?:\[([^\]]{1,64})\]|\(([^)]{1,64})\)|\{([^}]{1,64})\})?(?:\s*(?:-->|---)(?:\|([^|]{1,64})\|)?\s*([A-Za-z][A-Za-z0-9_-]*)(?:\[([^\]]{1,64})\]|\(([^)]{1,64})\)|\{([^}]{1,64})\})?)?$/u;
 
 export function parseMermaidFlowchart(source: string): MermaidDiagram {
   if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
-  const lines = source
-    .replace(/\r\n/gu, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
-    .filter((line) => line.length > 0);
+  const lines = mermaidLines(source);
   if (lines.length === 0) {
     return { ok: false, reason: "unsupported" };
   }
@@ -217,11 +213,7 @@ export function parseMermaidClass(source: string): MermaidSource {
   if (utf8ByteLength(source) > MAX_MERMAID_SOURCE_BYTES) {
     return { ok: false, reason: "limit" };
   }
-  const lines = source
-    .replace(/\r\n/gu, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
-    .filter((line) => line.length > 0);
+  const lines = mermaidLines(source);
   if (lines.length === 0 || !/^classDiagram\b/iu.test(lines[0])) {
     return { ok: false, reason: "unsupported" };
   }
@@ -310,56 +302,34 @@ function admitActor(actors: string[], name: string): boolean {
   return true;
 }
 
-function parseStatement(line: string): {
-  nodes: MermaidNode[];
-  edges: MermaidEdge[];
-} | null {
-  const left = takeNode(line, 0);
-  if (!left) {
-    return null;
-  }
-  const rest = line.slice(left.next).trim();
-  if (rest.length === 0) {
-    return { nodes: [left.node], edges: [] };
-  }
-  const arrow = /^(-->|---)(?:\|([^|]{1,64})\|)?\s*/u.exec(rest);
-  if (!arrow) {
-    return null;
-  }
-  const right = takeNode(rest.slice(arrow[0].length), 0);
-  if (!right || right.next !== rest.slice(arrow[0].length).length) {
-    return null;
-  }
+function parseStatement(
+  line: string,
+): { nodes: MermaidNode[]; edges: MermaidEdge[] } | null {
+  const match = statementToken.exec(line);
+  if (!match) return null;
+  const nodes: MermaidNode[] = (match[6] ? [1, 6] : [1]).map((offset) => ({
+    id: match[offset],
+    label: clampLabel(
+      match[offset + 1] ??
+        match[offset + 2] ??
+        match[offset + 3] ??
+        match[offset],
+    ),
+    shape: match[offset + 3] ? "diamond" : match[offset + 2] ? "round" : "rect",
+  }));
+  if (nodes.some((node) => /[<>]|javascript:/iu.test(node.label))) return null;
   return {
-    nodes: [left.node, right.node],
-    edges: [
-      {
-        from: left.node.id,
-        to: right.node.id,
-        label: clampLabel(arrow[2] ?? ""),
-      },
-    ],
-  };
-}
-
-function takeNode(
-  source: string,
-  start: number,
-): { node: MermaidNode; next: number } | null {
-  const match = nodeToken.exec(source.slice(start));
-  if (!match) {
-    return null;
-  }
-  const id = match[1];
-  const label = clampLabel(match[2] ?? match[3] ?? match[4] ?? id);
-  const shape: MermaidNode["shape"] = match[4]
-    ? "diamond"
-    : match[3]
-      ? "round"
-      : "rect";
-  return {
-    node: { id, label, shape },
-    next: start + match[0].length,
+    nodes,
+    edges:
+      nodes.length === 2
+        ? [
+            {
+              from: nodes[0].id,
+              to: nodes[1].id,
+              label: clampLabel(match[5] ?? ""),
+            },
+          ]
+        : [],
   };
 }
 
@@ -368,5 +338,12 @@ function clampLabel(value: string): string {
   return text.length <= MAX_MERMAID_LABEL
     ? text
     : text.slice(0, MAX_MERMAID_LABEL);
+}
+
+function mermaidLines(source: string): string[] {
+  return source
+    .split("\n")
+    .map((line) => line.replace(/\s*%%.*$/u, "").trim())
+    .filter(Boolean);
 }
 import { utf8ByteLength } from "../../../domain/text";
