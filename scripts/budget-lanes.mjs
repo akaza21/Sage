@@ -59,6 +59,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "hr6-harness-selection.node-test.mjs",
   "hr6-permission-evidence.node-test.mjs",
   "hr6-tool-evidence.node-test.mjs",
+  "htmlCompletionSchema.node-test.mjs",
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
@@ -448,6 +449,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "source-functional-av01-preview-process.node-test.mjs",
     reason:
       "Native-Windows owned-child process identity capture, live rejection, and disappearance proof for the AV01 Preview helper.",
+  },
+  {
+    file: "htmlCompletionSchema.node-test.mjs",
+    reason:
+      "Portable BX-2 build-transform guard proof; runs the HTML schema plugin against in-memory module sources.",
   },
   {
     file: "verify-web-bundle.node-test.mjs",
