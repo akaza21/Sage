@@ -127,6 +127,11 @@ fn initialize(runtime: &mut PiRuntime) {
             AdapterEvent::Models { .. }
         ]
     ));
+    let AdapterEvent::Initialized { capabilities } = &batch.events()[0] else {
+        panic!("initialized")
+    };
+    assert_eq!(capabilities.model_count, 1);
+    assert_eq!(runtime.capabilities().as_ref(), Some(capabilities));
     let AdapterEvent::Models { models, .. } = &batch.events()[1] else {
         panic!("models")
     };

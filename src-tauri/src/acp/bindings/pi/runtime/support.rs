@@ -51,15 +51,20 @@ impl PiRuntime {
         }
         let staged_id = staged.as_ref().and_then(|value| value.token().request_id());
         let mut builder = AdapterBatchBuilder::new();
+        let mut initialized = None;
         for output in outputs {
             let (event, egress) = self.translate_output(output, request_digest, resources)?;
             let mandatory = egress
                 .as_ref()
                 .is_some_and(|value| value.token().is_mandatory());
             if let Some(event) = event {
-                builder
-                    .push_event(event)
-                    .map_err(|error| self.batch_failure(error, mandatory, staged_id))?;
+                if matches!(event, AdapterEvent::Initialized { .. }) {
+                    initialized = Some(event);
+                } else {
+                    builder
+                        .push_event(event)
+                        .map_err(|error| self.batch_failure(error, mandatory, staged_id))?;
+                }
             }
             if let Some(egress) = egress {
                 builder
@@ -72,7 +77,13 @@ impl PiRuntime {
                 .push_egress(staged)
                 .map_err(|error| self.batch_failure(error, false, staged_id))?;
         }
-        Ok(builder.finish())
+        let batch = builder.finish();
+        if let Some(initialized) = initialized {
+            let (events, egress) = batch.into_parts();
+            AdapterBatch::new(std::iter::once(initialized).chain(events).collect(), egress)
+        } else {
+            Ok(batch)
+        }
     }
 
     fn translate_output(

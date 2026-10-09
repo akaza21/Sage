@@ -6,6 +6,7 @@ import {
   mkdirSync,
   symlinkSync,
   existsSync,
+  readFileSync,
   rmSync,
 } from "node:fs";
 import { ensurePlainDirectory } from "./capture-native-chat-process.mjs";
@@ -84,23 +85,32 @@ function captureChatBoundary(width, harness, created = {}) {
   return { cdp, clicks, observation, expectedClicks };
 }
 
-test("Pi retry capture excludes the bootstrap welcome Turn without weakening its predicate", async () => {
-  const boundary = captureChatBoundary(1888, "pi");
-  const retry = {
-    ...boundary.observation,
-    bindingId: "pi-rpc",
-    selected: "pi",
-    turnCount: 2,
-    failedTurns: 0,
-    visible: { answer: true },
-    elements: [{ kind: "answer", text: "Synthetic retry completed." }],
-  };
-  const options = { harness: "pi", state: "turn-retry" };
-  assert.equal(namedState(options, retry).namedState, false);
-  await prepareCaptureChat(boundary.cdp, "pi", Date.now() + 1000);
-  retry.turnCount = boundary.observation.turnCount + 1;
-  assert.equal(namedState(options, retry).namedState, true);
-});
+for (const [reason, unhydrated] of Object.entries({
+  chat: { chatId: null },
+  project: { projectId: null },
+  projection: { projectionLoaded: false },
+}))
+  test(`capture waits for the previous ${reason} before creating a new task`, async () => {
+    const boundary = captureChatBoundary(1888, "pi");
+    let observations = 0;
+    const cdp = {
+      async evaluate(expression) {
+        if (expression === OBSERVATION && boundary.clicks.length === 0) {
+          observations += 1;
+          return {
+            ...boundary.observation,
+            ...(observations === 1 ? unhydrated : {}),
+          };
+        }
+        assert.equal(observations, 2);
+        return boundary.cdp.evaluate(expression);
+      },
+    };
+    await prepareCaptureChat(cdp, "pi", Date.now() + 1000);
+    assert.deepEqual(boundary.clicks, boundary.expectedClicks);
+    assert.equal(boundary.observation.chatId, "capture-chat");
+    assert.equal(boundary.observation.turnCount, 0);
+  });
 
 const args = [
   "--harness",
@@ -211,6 +221,23 @@ const probe = () => ({
   overflow: { horizontal: false },
   timing: { elapsedMs: 100 },
   verdict: "captured",
+});
+test("Pi capture and probe protocols agree with the binding version constant", () => {
+  const manifest = readFileSync(
+    new URL("../src-tauri/src/acp/bindings/pi/manifest.rs", import.meta.url),
+    "utf8",
+  );
+  const version = manifest.match(/pub const PI_VERSION: &str = "([^"]+)";/u);
+  assert.ok(version);
+  const protocol = `pi-rpc-${version[1]}`;
+  assert.equal(HARNESS.pi.protocol, protocol);
+  const value = {
+    ...probe(),
+    caseId: "pi-turn-completed",
+    bindingId: HARNESS.pi.binding,
+    protocol,
+  };
+  assert.equal(validateProbe(value), value);
 });
 test("probe exact limits pass; plus-one, privacy and unknown fields fail", () => {
   const exact = probe();

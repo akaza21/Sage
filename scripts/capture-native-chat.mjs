@@ -94,7 +94,18 @@ async function click(cdp, selector, deadline) {
 export async function prepareCaptureChat(cdp, harness, deadline) {
   const observe = () =>
     cdp.evaluate(OBSERVATION, Math.min(deadline, Date.now() + 5000));
-  const previous = await observe();
+  let previous;
+  await waitForState(async () => {
+    const observation = await observe();
+    if (
+      !observation.chatId ||
+      !observation.projectId ||
+      observation.projectionLoaded !== true
+    )
+      return false;
+    previous = observation;
+    return true;
+  }, deadline);
   const compact = await cdp.evaluate(
     "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))",
     Math.min(deadline, Date.now() + 5000),

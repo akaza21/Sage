@@ -6,6 +6,7 @@ use crate::acp::{
         pi::{
             fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
             fixture_runtime::PiFixtureRuntimeFactory,
+            manifest::PI_VERSION,
         },
         runtime::RuntimeFactory,
     },
@@ -58,7 +59,7 @@ pub(super) fn capabilities(
         .map_err(|_: AdapterRuntimeError| RegistryAdmissionUnavailable::Drift)?;
     Ok(CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
-        protocol_version: RequiredText::new("protocolVersion", "pi-rpc-0.83.0")
+        protocol_version: RequiredText::new("protocolVersion", format!("pi-rpc-{PI_VERSION}"))
             .map_err(|_| RegistryAdmissionUnavailable::Drift)?,
         new_session: true,
         resume_session: false,
