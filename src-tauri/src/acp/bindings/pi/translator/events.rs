@@ -129,26 +129,28 @@ impl PiTranslator {
                 Ok(output)
             }
             "extension_ui_request" => self.extension_request(value),
-            _ => {
-                let turn = self.live_turn_any_phase()?;
-                if turn.unknown_kinds.contains(kind) {
-                    return Ok(vec![AdapterOutput::Absorbed]);
-                }
-                if turn.unknown_kinds.len() >= super::UNKNOWN_KINDS_PER_TURN {
-                    return Ok(vec![
-                        if std::mem::replace(&mut turn.unknown_suppression_emitted, true) {
-                            AdapterOutput::Absorbed
-                        } else {
-                            AdapterOutput::UnknownEventsSuppressed
-                        },
-                    ]);
-                }
-                turn.unknown_kinds.insert(kind.to_owned());
-                Ok(vec![AdapterOutput::Unsupported {
-                    kind: redact_structured_text(kind),
-                }])
-            }
+            _ => self.unknown_event(kind),
         }
+    }
+
+    fn unknown_event(&mut self, kind: &str) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let turn = self.live_turn_any_phase()?;
+        if turn.unknown_kinds.contains(kind) {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        }
+        if turn.unknown_kinds.len() >= super::UNKNOWN_KINDS_PER_TURN {
+            return Ok(vec![
+                if std::mem::replace(&mut turn.unknown_suppression_emitted, true) {
+                    AdapterOutput::Absorbed
+                } else {
+                    AdapterOutput::UnknownEventsSuppressed
+                },
+            ]);
+        }
+        turn.unknown_kinds.insert(kind.to_owned());
+        Ok(vec![AdapterOutput::Unsupported {
+            kind: redact_structured_text(kind),
+        }])
     }
 
     fn live_turn(&mut self) -> Result<&mut ActiveTurn, AdapterError> {

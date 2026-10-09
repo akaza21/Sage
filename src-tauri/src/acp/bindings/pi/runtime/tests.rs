@@ -354,7 +354,7 @@ fn pi_valid_and_invalid_read_images_are_visible_unsupported_without_bytes() {
                 payload: NormalizedPayload::Unsupported { external_kind, summary },
                 ..
             } if external_kind.as_str() == "pi_image"
-                && summary.as_str() == "Image output is unavailable: shared durable image admission is missing"
+                && summary.as_str() == "Pi image output is not yet admitted"
         )));
         assert!(!batch.events().iter().any(|event| matches!(
             event,

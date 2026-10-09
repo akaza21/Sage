@@ -80,6 +80,7 @@ pub(crate) struct PiRuntime {
     pub(super) external_session: Option<ExternalId>,
     pub(super) active_turn: Option<TurnIntent>,
     pub(super) deny: Option<DenyIntent>,
+    cancelled_dialogs: BTreeMap<String, DenyStage>,
     staged_initialize: Option<Outbound>,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
@@ -136,6 +137,7 @@ impl PiRuntime {
             external_session: None,
             active_turn: None,
             deny: None,
+            cancelled_dialogs: BTreeMap::new(),
             staged_initialize: None,
             reservations: BTreeMap::new(),
             next_egress: 0,
@@ -255,6 +257,9 @@ impl HarnessAdapter for PiRuntime {
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
+        if token.cancelled_permission_request().is_some() {
+            return self.commit_dialog_cancel(token);
+        }
         self.commit_deny(token)
     }
 
@@ -263,6 +268,9 @@ impl HarnessAdapter for PiRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        if token.cancelled_permission_request().is_some() {
+            return self.resolve_dialog_cancel(token, resolution);
+        }
         if token.deny_request().is_some() {
             return self.resolve_deny(token, resolution);
         }

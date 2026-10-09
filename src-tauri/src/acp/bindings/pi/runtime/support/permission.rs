@@ -1,13 +1,88 @@
 use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressResolution, EgressToken},
     contract::SageServerRequestId,
+    limits::LIMITS,
     runtime::permissions::PermissionDecision,
+    transport::OutboundFrame,
 };
 
-use super::super::PiRuntime;
+use super::super::{DenyStage, PiRuntime};
 use crate::acp::bindings::pi::protocol::is_allow_option;
 
 impl PiRuntime {
+    pub(super) fn cancel_dialog(
+        &mut self,
+        id: String,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize
+            || self.cancelled_dialogs.contains_key(&id)
+        {
+            self.poison();
+            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+        }
+        let external = super::identity::external("piDialogId", id.clone())?;
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "type":"extension_ui_response", "id":id, "cancelled":true,
+        }))
+        .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        let frame =
+            OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
+        self.cancelled_dialogs.insert(id, DenyStage::Prepared);
+        Ok(AdapterEgress::new(
+            frame,
+            EgressToken::permission_cancel(external),
+        ))
+    }
+
+    pub(in crate::acp::bindings::pi::runtime) fn commit_dialog_cancel(
+        &mut self,
+        token: &EgressToken,
+    ) -> Result<(), AdapterRuntimeError> {
+        let id = token
+            .cancelled_permission_request()
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        let stage = self
+            .cancelled_dialogs
+            .get_mut(id)
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        if *stage == DenyStage::Prepared {
+            *stage = DenyStage::Committed;
+        }
+        Ok(())
+    }
+
+    pub(in crate::acp::bindings::pi::runtime) fn resolve_dialog_cancel(
+        &mut self,
+        token: EgressToken,
+        resolution: EgressResolution,
+    ) -> Result<(), AdapterRuntimeError> {
+        let id = token
+            .cancelled_permission_request()
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        if matches!(
+            resolution,
+            EgressResolution::QueueRejected
+                | EgressResolution::WriteZeroBytes
+                | EgressResolution::DeliveryUnknown
+        ) {
+            self.poison();
+            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
+        }
+        let stage = self
+            .cancelled_dialogs
+            .get_mut(id)
+            .ok_or(AdapterRuntimeError::EgressIntent)?;
+        match (*stage, resolution) {
+            (DenyStage::Committed, EgressResolution::Queued) => *stage = DenyStage::Queued,
+            (DenyStage::Queued, EgressResolution::Written) => {
+                self.cancelled_dialogs.remove(id);
+            }
+            (DenyStage::Queued, EgressResolution::Queued) => {}
+            _ => return Err(AdapterRuntimeError::EgressIntent),
+        }
+        Ok(())
+    }
+
     pub(in crate::acp::bindings::pi::runtime) fn resolve_later_permission(
         &mut self,
         request_id: &SageServerRequestId,

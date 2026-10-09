@@ -21,12 +21,13 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         self.live_turn()?;
-        if !matches!(method, "confirm" | "select") {
-            return Ok(vec![AdapterOutput::Unsupported {
-                kind: "extension_ui_request".into(),
-            }]);
+        if !matches!(method, "confirm" | "select" | "input" | "editor") {
+            return self.unknown_event("extension_ui_request");
         }
         let id = external_id(value.get("id"))?.ok_or(AdapterError::Malformed)?;
+        if matches!(method, "input" | "editor") {
+            return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
+        }
         let options = if method == "select" {
             let values = value
                 .get("options")
@@ -46,9 +47,7 @@ impl PiTranslator {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             if !options.iter().any(|option| is_allow_option(option)) {
-                return Ok(vec![AdapterOutput::Unsupported {
-                    kind: "extension_ui_request".into(),
-                }]);
+                return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
             }
             options
         } else {

@@ -146,6 +146,9 @@ pub enum AdapterOutput {
     PermissionRequested {
         external_id: String,
     },
+    DialogCancelled {
+        external_id: String,
+    },
     AuthorityBlocked {
         external_id: String,
         tool: String,

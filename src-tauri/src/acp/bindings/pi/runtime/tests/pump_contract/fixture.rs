@@ -261,6 +261,14 @@ impl Fixture {
             adapter.inner.external_session.as_ref(),
             Some(&intent.external_session_id)
         );
+        self.pump_adapter(adapter)
+    }
+
+    pub(super) fn pump_adapter<A: HarnessAdapter>(
+        &self,
+        adapter: A,
+    ) -> AdapterPump<A, SqliteAdapterBatchJournal, Mapper> {
+        let intent = self.intent(0);
         AdapterPump::new(
             adapter,
             SqliteAdapterBatchJournal::new(self.handle.clone(), intent.clone()),
@@ -306,10 +314,15 @@ pub(super) fn reply(command: &Value, data: Value) -> Vec<u8> {
         json!({"type":"response","id":command["id"],"command":command["type"],"success":true,"data":data}),
     )
 }
-pub(super) async fn start(pump: &mut Pump) {
+pub(super) async fn start<A: HarnessAdapter>(
+    pump: &mut AdapterPump<A, SqliteAdapterBatchJournal, Mapper>,
+) {
     start_turn(pump, 0).await;
 }
-pub(super) async fn start_turn(pump: &mut Pump, ordinal: u64) {
+pub(super) async fn start_turn<A: HarnessAdapter>(
+    pump: &mut AdapterPump<A, SqliteAdapterBatchJournal, Mapper>,
+    ordinal: u64,
+) {
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect").unwrap(),
         client_message_id: RequiredText::new("client", format!("turn-pump-{ordinal}")).unwrap(),
@@ -326,7 +339,9 @@ pub(super) async fn start_turn(pump: &mut Pump, ordinal: u64) {
         .unwrap();
 }
 
-pub(super) async fn settle(pump: &mut Pump) {
+pub(super) async fn settle<A: HarnessAdapter>(
+    pump: &mut AdapterPump<A, SqliteAdapterBatchJournal, Mapper>,
+) {
     pump.push_stdout_chunk(&line(json!({"type":"agent_end","messages":[]})), 20)
         .await
         .unwrap();

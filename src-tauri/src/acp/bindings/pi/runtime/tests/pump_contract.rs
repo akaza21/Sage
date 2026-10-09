@@ -6,6 +6,8 @@ mod continuation;
 mod discovery;
 mod fixture;
 mod journey;
+mod refresh_capacity;
+mod review_nits;
 
 use fixture::*;
 

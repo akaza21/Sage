@@ -97,10 +97,12 @@ impl PiRuntime {
                     && (self.refresh_thinking_after_model || self.available_thinking.is_empty())
                     && self.thinking_request_command.is_none()
                 {
-                    Some(self.begin_one(
+                    self.refresh_thinking_after_model = true;
+                    self.begin_one(
                         crate::acp::bindings::pi::Operation::GetState,
                         super::RequestKind::RefreshState,
-                    )?)
+                    )
+                    .ok()
                 } else {
                     None
                 };
@@ -337,6 +339,13 @@ impl PiRuntime {
             AdapterOutput::AuthorityBlocked { external_id, tool } => {
                 self.block_authority(external_id, tool, resources)?
             }
+            AdapterOutput::DialogCancelled { external_id } => (
+                Some(unsupported(
+                    "pi_dialog_cancelled",
+                    "Pi extension dialog was cancelled: this dialog is not supported",
+                )),
+                Some(self.cancel_dialog(external_id)?),
+            ),
             AdapterOutput::Image { .. } => (Some(self.image_event()?), None),
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {

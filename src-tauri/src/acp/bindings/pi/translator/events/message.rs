@@ -37,9 +37,7 @@ impl PiTranslator {
         self.live_turn()?;
         let delta = event.and_then(|event| event.get("delta"));
         let Some((text, redacted_tail)) = bounded_delta(delta, ITEM_BYTES)? else {
-            return Ok(vec![AdapterOutput::Unsupported {
-                kind: "message_update_without_text_delta".into(),
-            }]);
+            return self.unknown_event("message_update_without_text_delta");
         };
         match event
             .and_then(|event| event.get("type"))
@@ -56,9 +54,7 @@ impl PiTranslator {
                 text,
                 redacted_tail,
             }]),
-            _ => Ok(vec![AdapterOutput::Unsupported {
-                kind: "message_update_non_text_delta".into(),
-            }]),
+            _ => self.unknown_event("message_update_non_text_delta"),
         }
     }
 }
