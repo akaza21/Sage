@@ -67,11 +67,28 @@ describe("bounded Mermaid flowchart rendering", () => {
     );
     const path = paths[5].getAttribute("d")!;
     expect(path).toMatch(
-      new RegExp(`^M${positions[4][0] + 120} ${positions[4][1]}L`),
+      new RegExp(`^M${positions[4][0] + 240} ${positions[4][1] + 32}L`),
     );
     expect(path).toMatch(
-      new RegExp(`L${positions[0][0] + 120} ${positions[0][1] + 64}$`),
+      new RegExp(`L${positions[0][0] + 240} ${positions[0][1] + 32}$`),
     );
+    const connectorX = String(positions[0][0] + 120);
+    expect(
+      path.match(/\d+ \d+/g)!.map((point) => point.split(" ")[0]),
+    ).not.toContain(connectorX);
+  });
+
+  it("routes a left-to-right return below its nodes inside the diagram", () => {
+    const { container } = render(
+      <MermaidFigure source={"graph LR\nA --> B\nB --> A"} />,
+    );
+    const height = Number(
+      screen.getByRole("img").getAttribute("viewBox")!.split(" ")[3],
+    );
+    const [forward, back] = container.querySelectorAll("path[marker-end]");
+    expect(forward.getAttribute("d")).toBe("M260 52L320 52");
+    expect(back.getAttribute("d")).toBe("M440 84L440 96L140 96L140 84");
+    expect(height).toBeGreaterThan(96);
   });
 
   it("keeps cycles finite and unsupported markup in fallback", () => {

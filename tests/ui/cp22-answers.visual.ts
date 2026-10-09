@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  openScenario,
+  settleChatProjections,
+  settleTranscriptAtEnd,
+} from "./shared/visualBrowserPrimitives";
+import { revealWorkedContent } from "./agentVisualHelpers";
 import {
   flowchartSource,
   pythonAnswer,
@@ -10,6 +15,7 @@ import {
 test.use({ deviceScaleFactor: 1 });
 
 async function installAnswer(page: Page, text: string, streaming = false) {
+  await settleChatProjections(page);
   await page.evaluate(
     async ({ text, streaming }) => {
       const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
@@ -75,6 +81,7 @@ for (const width of [1888, 560, 480]) {
     await expect(page.locator(".acp-markdown strong").first()).toHaveText(
       "Harnesses",
     );
+    await settleTranscriptAtEnd(page);
     await assertContained(page);
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-table-${width}.png`,
@@ -83,6 +90,7 @@ for (const width of [1888, 560, 480]) {
     const code = page.getByRole("region", { name: "Python code" });
     await code.scrollIntoViewIfNeeded();
     await expect(code.locator("code span").first()).toBeVisible();
+    await settleTranscriptAtEnd(page);
     await assertContained(page);
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-python-${width}.png`,
@@ -162,6 +170,7 @@ for (const width of [1888, 560, 480]) {
       page.getByRole("img", { name: "Mermaid diagram" }),
     ).toBeVisible();
     await expect(page.locator("path[marker-end]")).toHaveCount(6);
+    await settleTranscriptAtEnd(page);
     await assertContained(page);
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-flowchart-${width}.png`,
@@ -186,9 +195,11 @@ test("CP-22 admitted image viewer remains keyboard accessible", async ({
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "agent-image", "agent");
+  await revealWorkedContent(page.locator(".acp-image"));
   const trigger = page
     .getByRole("button", { name: "Open image viewer" })
     .first();
+  await expect(trigger).toBeVisible();
   await trigger.scrollIntoViewIfNeeded();
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -216,6 +227,7 @@ test("CP-22 Pi-compatible text-only projection has no fabricated image controls"
     page.getByRole("button", { name: "Open image viewer" }),
   ).toHaveCount(0);
   await expect(page.locator(".acp-image")).toHaveCount(0);
+  await settleTranscriptAtEnd(page);
   await assertContained(page);
   await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
     "cp22-text-only.png",

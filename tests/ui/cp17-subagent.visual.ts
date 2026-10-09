@@ -1,12 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
 
 test("CP-17(d) refs 07/13/17: Subagent row opens a bounded right-pane tab at 560 px", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1936, height: 1048 });
   await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([

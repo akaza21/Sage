@@ -305,6 +305,7 @@ test.describe("Wave 2 canonical visual states", () => {
     (scenario) =>
       AGENT_VISUAL_SCENARIOS.includes(scenario.name) &&
       ![
+        "rich",
         "agent-command-rollup",
         "agent-picker-harness-model",
         "agent-picker-handoff",
@@ -1050,6 +1051,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       panes.nth(0).getByRole("button", { name: "Send message" }),
     ).toBeDisabled();
+    const waitingActivity = panes.nth(1).locator(".acp-tool-rollup > summary");
+    await expect(waitingActivity).toBeVisible();
     await primaryDictation.focus();
     await page.keyboard.press("Tab");
     await expect(chatSplitter).toBeFocused();
@@ -1076,6 +1079,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         .nth(1)
         .evaluate((node) => node.contains(document.activeElement)),
     ).toBe(true);
+    await expect(waitingActivity).toBeFocused();
+    await page.keyboard.press("Tab");
     await expect(waitingGoal).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(waitingCancel).toBeFocused();

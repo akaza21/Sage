@@ -1,6 +1,7 @@
 // Boundary: parameterized, mode-neutral browser primitives for the visual
 // lane (fixed clock, workbench layout, navigation, font/reflow settlement,
-// transcript settlement, viewport-overflow probe, canonical screenshot).
+// chat projection and transcript settlement, viewport-overflow probe,
+// canonical screenshot).
 // This module owns no scenario registry, no mode branches, no landmark or
 // surface assertions, and registers no tests. Scenario ownership,
 // landmarks, and surface branches live in the owning specs and
@@ -84,7 +85,33 @@ export async function openScenario(
   return workbench;
 }
 
+export async function settleChatProjections(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { acpProjectionStoreFor } =
+          await import("/src/app/acpProjectionRegistry.ts");
+        return [
+          ...document.querySelectorAll<HTMLElement>(
+            ".acp-chat-projection[data-chat-id]",
+          ),
+        ].every((projection) => {
+          const state = acpProjectionStoreFor(
+            projection.dataset.chatId as never,
+          ).getState();
+          return (
+            state.requestSequence > 0 &&
+            state.activeLoad === null &&
+            !projection.querySelector(':scope > p[role="status"]')
+          );
+        });
+      }),
+    )
+    .toBe(true);
+}
+
 async function settleTranscriptScroll(page: Page, edge: "start" | "end") {
+  await settleChatProjections(page);
   await page.evaluate(() => document.fonts.ready);
   await expect
     .poll(() =>

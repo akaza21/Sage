@@ -136,6 +136,7 @@ describe("visual scenario surface ownership", () => {
       "agent-long",
       "agent-activity-family",
       "agent-thinking-live",
+      "rich",
       "agent-declared-test",
       "agent-command-rollup",
       "agent-image",
@@ -315,6 +316,27 @@ describe("visual scenario surface ownership", () => {
     expect(visualWindow.__activateVisualHandoffTarget).toBeUndefined();
   });
 
+  it("installs rich answers into the owning Agent chat without extra panes", async () => {
+    await act(async () => {
+      await installVisualScenario("rich");
+    });
+    const chat = buildVisualScenario("rich").pages[0];
+    const state = useWorkbenchStore.getState();
+    expect(state.activeTabId).toBe(chat.chatId);
+    expect(
+      state.tabs.filter((tab) => tab.kind === "chat").map((tab) => tab.id),
+    ).toEqual([chat.chatId]);
+    const { container } = render(createElement(AgentChatPanes));
+    await waitFor(() =>
+      expect(container.querySelectorAll(".agent-chat-pane")).toHaveLength(1),
+    );
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll(".acp-message--assistant"),
+      ).toHaveLength(1),
+    );
+  });
+
   it("seeds the Editor repository fixture as one authoritative ready inventory", () => {
     const scenario = buildVisualScenario("editor");
     applyVisualWorkbenchState(scenario, fixtureTabs(scenario));
@@ -368,6 +390,7 @@ describe("visual scenario surface ownership", () => {
       "agent-long": "agent",
       "agent-activity-family": "agent",
       "agent-thinking-live": "agent",
+      rich: "agent",
       "agent-declared-test": "agent",
       "agent-command-rollup": "agent",
       "agent-image": "agent",

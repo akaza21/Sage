@@ -48,6 +48,7 @@ import {
 import {
   installScenario,
   openScenario,
+  settleChatProjections,
   settleTranscriptAtEnd,
 } from "./shared/visualBrowserPrimitives";
 
@@ -887,6 +888,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
+    await settleChatProjections(page);
     await page.evaluate(async () => {
       const fixtures =
         await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");

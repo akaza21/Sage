@@ -1,12 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
 
 test("CP-16 refs 08/13: primary activity rows keep a 32 px scale cadence and admitted order", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1936, height: 1048 });
   await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
   await expect(page.locator(".acp-tool-rollup").first()).toBeVisible();
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
@@ -95,6 +99,7 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
 }) => {
   await page.setViewportSize({ width: 1936, height: 1048 });
   await openScenario(page, "waiting", "agent");
+  await settleChatProjections(page);
   await expect(page.locator(".acp-tool-rollup").first()).toBeVisible();
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =

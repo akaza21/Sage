@@ -11,6 +11,7 @@ describe("visual scenario contract", () => {
       { name: "agent-long", mode: "agent", resource: "empty" },
       { name: "agent-activity-family", mode: "agent", resource: "empty" },
       { name: "agent-thinking-live", mode: "agent", resource: "empty" },
+      { name: "rich", mode: "agent", resource: "empty" },
       { name: "agent-declared-test", mode: "agent", resource: "empty" },
       { name: "agent-command-rollup", mode: "agent", resource: "empty" },
       { name: "agent-image", mode: "agent", resource: "empty" },
@@ -84,6 +85,22 @@ describe("visual scenario contract", () => {
         buildVisualScenario(scenario.name),
       );
     }
+  });
+
+  it("seeds rich answers as one completed text-only turn for replacement", () => {
+    const scenario = buildVisualScenario("rich");
+    expect(scenario).toMatchObject({ mode: "agent", resource: "empty" });
+    expect(scenario.pages).toHaveLength(1);
+    const chat = scenario.pages[0];
+    expect(chat.turns).toHaveLength(1);
+    expect(chat.turns[0]).toMatchObject({ state: "completed" });
+    expect(chat.turns[0].items.map((item) => item.kind)).toEqual([
+      "text",
+      "text",
+    ]);
+    expect(chat.turns[0].items[1]).toMatchObject({
+      payload: { role: "assistant" },
+    });
   });
 
   it("bounds the long transcript while preserving a running final turn", () => {

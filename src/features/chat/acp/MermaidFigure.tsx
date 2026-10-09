@@ -104,17 +104,18 @@ function MermaidSvg({
         const to = byId.get(edge.to)!;
         const horizontal = diagram.direction === "LR";
         const returning = horizontal ? to.x <= from.x : to.y <= from.y;
-        const startX = from.x + (horizontal ? 240 : 120);
-        const startY = from.y + (horizontal ? 32 : returning ? 0 : 64);
-        const endX = to.x + (horizontal ? 0 : 120);
-        const endY = to.y + (horizontal ? 32 : returning ? 64 : 0);
+        const lateral = horizontal !== returning;
+        const startX = from.x + (lateral ? 240 : 120);
+        const startY = from.y + (lateral ? 32 : 64);
+        const endX = to.x + (lateral ? (returning ? 240 : 0) : 120);
+        const endY = to.y + (lateral ? 32 : returning ? 64 : 0);
         const rail = horizontal
-          ? Math.max(from.y, to.y) + 84
+          ? Math.max(from.y, to.y) + 76
           : Math.max(from.x, to.x) + 280;
         const route = returning
           ? horizontal
-            ? `L${startX + 20} ${startY}L${startX + 20} ${rail}L${endX - 16} ${rail}L${endX - 16} ${endY}`
-            : `L${startX} ${startY - 16}L${rail} ${startY - 16}L${rail} ${endY + 16}L${endX} ${endY + 16}`
+            ? `L${startX} ${rail}L${endX} ${rail}`
+            : `L${rail} ${startY}L${rail} ${endY}`
           : "";
         return (
           <g key={index}>

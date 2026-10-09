@@ -484,6 +484,10 @@ export function buildAgentPages(
       return [activityFamilyPage()];
     case "agent-thinking-live":
       return [liveThinkingPage()];
+    case "rich": {
+      const result = standardPage("visual-chat-rich", "Rich answers", "simple");
+      return [{ ...result, turns: result.turns.slice(0, 1) }];
+    }
     case "agent-declared-test":
       return [declaredTestPage()];
     case "agent-command-rollup":
