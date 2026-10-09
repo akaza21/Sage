@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import type { OutputOptions } from "rolldown";
+import { htmlCompletionSchemaPlugin } from "./scripts/htmlCompletionSchema";
 
 const host = process.env.TAURI_DEV_HOST;
 const sourceMaps = process.env.SAGE_BUILD_SOURCEMAPS === "1";
@@ -32,7 +33,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    test: /src[\\/]workbench[\\/]Workbench\.tsx$/,
+    test: /src[\\/]workbench[\\/](?:Workbench|AgentWorkbenchBody)\.tsx$/,
   },
   {
     name: "codemirror-deps",
@@ -120,7 +121,11 @@ export function desktopNativeWorkbenchRuntimePlugin(
 
 export default defineConfig(({ command, mode }) => ({
   cacheDir: process.env.SAGE_VITE_CACHE_DIR,
-  plugins: [react(), desktopNativeWorkbenchRuntimePlugin(command, mode)],
+  plugins: [
+    react(),
+    desktopNativeWorkbenchRuntimePlugin(command, mode),
+    htmlCompletionSchemaPlugin(),
+  ],
   clearScreen: false,
   server: {
     port: 1420,

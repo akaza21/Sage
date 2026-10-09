@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { build, resolveConfig, type InlineConfig } from "vite";
 import { describe, expect, it } from "vitest";
 
@@ -58,7 +59,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/services/acpFileSnapshot.ts",
-  "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -68,8 +68,41 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
-];
+].sort();
+
+const CONSOLIDATED_AGENT_MODULES = [
+  "src/app/subagentPaneStore.ts",
+  "src/features/chat/acp/chatLiveSnapshot.ts",
+  "src/features/chat/acp/useAcpChatLiveSnapshot.ts",
+  "src/features/chatSearch/ChatSearchControl.tsx",
+  "src/features/chatSearch/chatSearchDesktop.ts",
+  "src/features/preview/AgentPreviewSurface.tsx",
+  "src/features/preview/previewDesktop.ts",
+  "src/features/preview/previewPresentation.ts",
+  "src/features/preview/previewProjectionStore.ts",
+  "src/features/preview/useHarnessBrowseSession.ts",
+  "src/workbench/AgentArtifactCollapsedPane.tsx",
+  "src/workbench/AgentArtifactHeader.tsx",
+  "src/workbench/AgentArtifactPane.tsx",
+  "src/workbench/agentArtifactTabPresentation.ts",
+  "src/workbench/AgentArtifactTabStrip.tsx",
+  "src/workbench/AgentChatPane.tsx",
+  "src/workbench/AgentChatPanes.tsx",
+  "src/workbench/agentPreviewControllerOwner.ts",
+  "src/workbench/AgentRailFilterMenu.tsx",
+  "src/workbench/AgentRailSections.tsx",
+  "src/workbench/agentRailViewPrefs.ts",
+  "src/workbench/AgentTaskHeader.tsx",
+  "src/workbench/AgentWorkbenchBody.tsx",
+  "src/workbench/artifactChipStats.ts",
+  "src/workbench/LeftSidebar.tsx",
+  "src/workbench/ProjectChatActionMenu.tsx",
+  "src/workbench/ProjectChatNavigation.tsx",
+  "src/workbench/ProjectChatRailGlyph.tsx",
+  "src/workbench/useAgentArtifactFollowLifecycle.ts",
+].sort();
 
 const CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST = {
   css: ["@lezer/css"],
@@ -120,6 +153,20 @@ function desktopGraphConfig(withInitialGroup: boolean): InlineConfig {
   };
 }
 
+function htmlOnlyGraphConfig(): InlineConfig {
+  const configured = desktopGraphConfig(true);
+  configured.build!.rolldownOptions = {
+    output: {
+      codeSplitting: {
+        groups: DESKTOP_GROUPS.map((group) =>
+          group.name === "workbench-deps" ? BASELINE_DESKTOP_GROUPS[1]! : group,
+        ),
+      },
+    },
+  };
+  return configured;
+}
+
 function graphInventory(result: Awaited<ReturnType<typeof build>>) {
   const outputs = Array.isArray(result) ? result : [result];
   const chunks = outputs
@@ -128,7 +175,7 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
   const byFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
   const modules = (entries: readonly (typeof chunks)[number][]) =>
     entries.flatMap((chunk) => Object.keys(chunk.modules)).sort();
-  const staticChunkClosure = (entry: (typeof chunks)[number]) => {
+  const staticChunkFiles = (entry: (typeof chunks)[number]) => {
     const files = new Set([entry.fileName]);
     const pending = [entry.fileName];
     while (pending.length > 0) {
@@ -142,12 +189,12 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
         }
       }
     }
-    return modules(
-      [...files]
-        .map((fileName) => byFileName.get(fileName))
-        .filter((chunk): chunk is (typeof chunks)[number] => Boolean(chunk)),
-    );
+    return [...files]
+      .map((fileName) => byFileName.get(fileName))
+      .filter((chunk): chunk is (typeof chunks)[number] => Boolean(chunk));
   };
+  const staticChunkClosure = (entry: (typeof chunks)[number]) =>
+    modules(staticChunkFiles(entry));
   const initialFiles = new Set(
     chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName),
   );
@@ -174,7 +221,18 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
       staticClosure: staticChunkClosure(chunk),
     }));
   return {
+    chunks,
+    initialFiles: [...initialFiles],
+    staticClosureFilesByFile: new Map(
+      chunks.map((chunk) => [
+        chunk.fileName,
+        staticChunkFiles(chunk).map((dependency) => dependency.fileName),
+      ]),
+    ),
     allModules: modules(chunks),
+    staticClosuresByFile: new Map(
+      chunks.map((chunk) => [chunk.fileName, staticChunkClosure(chunk)]),
+    ),
     moduleFiles: new Map(
       chunks.flatMap((chunk) =>
         Object.keys(chunk.modules).map((id) => [
@@ -209,6 +267,55 @@ function parserPackages(closure: readonly string[]): string[] {
     .sort();
 }
 
+function bundleFootprint(graph: ReturnType<typeof graphInventory>) {
+  const sizes = new Map(
+    graph.chunks.map((chunk) => [chunk.fileName, gzipSync(chunk.code).length]),
+  );
+  const bytes = (files: readonly string[]) =>
+    files.reduce((total, file) => total + sizes.get(file)!, 0);
+  const fileForModule = (id: string) => {
+    const file = graph.moduleFiles.get(id);
+    if (!file) throw new Error(`Missing bundle module ${id}`);
+    return file;
+  };
+  const terminalFiles = [
+    "src/workbench/TerminalDock.tsx",
+    "src/workbench/TerminalDockShell.tsx",
+    "src/services/userTerminalDesktop.ts",
+  ].map(fileForModule);
+  expect(new Set(terminalFiles).size).toBe(3);
+  const subagent = fileForModule("src/workbench/SubagentSurface.tsx");
+  const childFiles = graph.staticClosureFilesByFile.get(subagent)!;
+  const chatFiles = [
+    "src/workbench/Workbench.tsx",
+    "src/workbench/AgentWorkbenchBody.tsx",
+    "src/features/chat/acp/AcpChatPresentation.tsx",
+  ].flatMap((id) => graph.staticClosureFilesByFile.get(fileForModule(id))!);
+  const initial = new Set(graph.initialFiles);
+  const chatReady = new Set([...graph.initialFiles, ...chatFiles]);
+  const total = bytes([...sizes.keys()]);
+  const terminal = bytes(terminalFiles);
+  const child = sizes.get(subagent)!;
+  return {
+    allJsGzipBytes: total,
+    countedCoreGzipBytes: total - terminal - child,
+    allJsExceptTerminalGzipBytes: total - terminal,
+    initialStaticClosureGzipBytes: bytes(graph.initialFiles),
+    terminalLazyGzipBytes: terminal,
+    subagentLazyGzipBytes: child,
+    workbenchChunkGzipBytes: sizes.get(
+      fileForModule("src/workbench/Workbench.tsx"),
+    )!,
+    emittedJsGzipBytes: Object.fromEntries(sizes),
+    subagentFirstOpenFromInitialGzipBytes: bytes(
+      childFiles.filter((file) => !initial.has(file)),
+    ),
+    subagentFirstOpenFromChatGzipBytes: bytes(
+      childFiles.filter((file) => !chatReady.has(file)),
+    ),
+  };
+}
+
 function languageStaticClosure(
   graph: ReturnType<typeof graphInventory>,
   language: EditorLanguageWithParser,
@@ -219,6 +326,42 @@ function languageStaticClosure(
   );
   expect(matches).toHaveLength(1);
   return matches[0]!.staticClosure;
+}
+
+function closureForModule(
+  graph: ReturnType<typeof graphInventory>,
+  id: string,
+) {
+  const file = graph.moduleFiles.get(id);
+  const closure = graph.staticClosuresByFile.get(file ?? "");
+  if (!closure) throw new Error(`Missing static closure for ${id}`);
+  return closure;
+}
+
+function consolidatedClosure(
+  baseline: ReturnType<typeof graphInventory>,
+  id: string,
+) {
+  const original = closureForModule(baseline, id);
+  const workbenchMembers = [
+    "src/workbench/Workbench.tsx",
+    ...CONSOLIDATED_AGENT_MODULES,
+  ];
+  if (
+    !original.some((module) =>
+      workbenchMembers.some((member) =>
+        module.replaceAll("\\", "/").endsWith(`/${member}`),
+      ),
+    )
+  ) {
+    return original;
+  }
+  return [
+    ...new Set([
+      ...original,
+      ...closureForModule(baseline, "src/workbench/AgentWorkbenchBody.tsx"),
+    ]),
+  ].sort();
 }
 
 describe("desktop-native runtime resolver", () => {
@@ -265,16 +408,38 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
-  it("co-locates chat renderer helpers without expanding Agent, editor or resource closures", async () => {
-    const baselineConfig = desktopGraphConfig(true);
-    const output = baselineConfig.build!.rolldownOptions!.output;
-    if (!output || Array.isArray(output))
-      throw new Error("Missing desktop output");
-    baselineConfig.build!.rolldownOptions!.output = {
-      ...output,
-      codeSplitting: {
-        groups: BASELINE_DESKTOP_GROUPS,
-      },
+  it("adds only the Agent-body reserve and removes the rejected ACP group", () => {
+    expect(DESKTOP_GROUPS.some((group) => group.name === "chat-deps")).toBe(
+      false,
+    );
+    expect(DESKTOP_GROUPS[0]).toEqual(BASELINE_DESKTOP_GROUPS[0]);
+    const workbench = DESKTOP_GROUPS.find(
+      (group) => group.name === "workbench-deps",
+    );
+    expect(workbench?.priority).toBe(1);
+    if (!(workbench?.test instanceof RegExp))
+      throw new Error("Expected a bounded Workbench filter");
+    for (const separator of ["/", "\\"]) {
+      const id = (module: string) =>
+        `${root}/src/workbench/${module}.tsx`.replaceAll("/", separator);
+      expect(workbench.test.test(id("Workbench"))).toBe(true);
+      expect(workbench.test.test(id("AgentWorkbenchBody"))).toBe(true);
+      for (const module of [
+        "SubagentSurface",
+        "SettingsSurface",
+        "SourceControlView",
+        "TerminalDock",
+        "TerminalDockShell",
+      ]) {
+        expect(workbench.test.test(id(module)), module).toBe(false);
+      }
+    }
+  });
+
+  it("preserves chat-helper ownership with the exact authorised Agent closure consolidation", async () => {
+    const baselineConfig = htmlOnlyGraphConfig();
+    baselineConfig.build!.rolldownOptions = {
+      output: { codeSplitting: { groups: BASELINE_DESKTOP_GROUPS } },
     };
     const [baseline, grouped] = await Promise.all([
       build(baselineConfig),
@@ -290,18 +455,113 @@ describe("desktop-native chunk topology", () => {
     ].map((id) => groupedGraph.moduleFiles.get(id));
     expect(files.every((file) => typeof file === "string")).toBe(true);
     expect(new Set(files).size).toBe(1);
+    expect(files[0]).toMatch(/chat-ui-/);
     for (const facade of [
       "src/workbench/AgentWorkbenchBody.tsx",
       "src/features/files/CodeMirrorEditorRuntime.ts",
       "src/features/files/FileSurface.tsx",
       "src/features/diff/DiffSurface.tsx",
     ]) {
-      const closure = (graph: ReturnType<typeof graphInventory>) =>
-        graph.dynamicStaticClosures.find(
-          (entry) => entry.facadeModuleId === facade,
-        )?.staticClosure;
-      expect(closure(groupedGraph), facade).toBeDefined();
-      expect(closure(groupedGraph), facade).toEqual(closure(baselineGraph));
+      expect(closureForModule(groupedGraph, facade), facade).toEqual(
+        consolidatedClosure(baselineGraph, facade),
+      );
+    }
+  }, 90_000);
+
+  it("consolidates exactly the Agent body while preserving all initial and other lazy boundaries", async () => {
+    const baselineConfig = htmlOnlyGraphConfig();
+    const unoptimizedConfig: InlineConfig = {
+      ...baselineConfig,
+      plugins: baselineConfig.plugins?.filter(
+        (plugin) =>
+          !(
+            plugin &&
+            typeof plugin === "object" &&
+            "name" in plugin &&
+            plugin.name === "sage-html-completion-schema"
+          ),
+      ),
+    };
+    const [unoptimized, baseline, grouped] = await Promise.all([
+      build(unoptimizedConfig),
+      build(baselineConfig),
+      build(desktopGraphConfig(true)),
+    ]);
+    const baselineGraph = graphInventory(baseline);
+    const groupedGraph = graphInventory(grouped);
+    const before = bundleFootprint(graphInventory(unoptimized));
+    const htmlOnly = bundleFootprint(baselineGraph);
+    const consolidated = bundleFootprint(groupedGraph);
+    console.info(
+      "BX-2 in-memory gzip footprints",
+      JSON.stringify({
+        before,
+        htmlOnly,
+        consolidated,
+        htmlSavedAgainstRebuiltControlGzipBytes:
+          before.countedCoreGzipBytes - htmlOnly.countedCoreGzipBytes,
+        reserveSavedAgainstHtmlOnlyGzipBytes:
+          htmlOnly.countedCoreGzipBytes - consolidated.countedCoreGzipBytes,
+      }),
+    );
+    const workbench = "src/workbench/Workbench.tsx";
+    const agent = "src/workbench/AgentWorkbenchBody.tsx";
+    const sharedFile = groupedGraph.moduleFiles.get(workbench);
+    const baselineFile = baselineGraph.moduleFiles.get(workbench);
+    expect(sharedFile).toMatch(/workbench-deps-/);
+    expect(groupedGraph.moduleFiles.get(agent)).toBe(sharedFile);
+    const movedModules = [...groupedGraph.moduleFiles]
+      .filter(
+        ([id, file]) =>
+          id.startsWith("src/") &&
+          /\.[cm]?[jt]sx?$/.test(id) &&
+          file === sharedFile &&
+          baselineGraph.moduleFiles.get(id) !== baselineFile,
+      )
+      .map(([id]) => id)
+      .sort();
+    expect(movedModules).toEqual(CONSOLIDATED_AGENT_MODULES);
+    expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
+    expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
+    expect(new Set(groupedGraph.allModules).size).toBe(
+      groupedGraph.allModules.length,
+    );
+    const subagent = "src/workbench/SubagentSurface.tsx";
+    const childFile = groupedGraph.moduleFiles.get(subagent);
+    expect(childFile).toMatch(/SubagentSurface-/);
+    expect(childFile).not.toBe(sharedFile);
+    expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
+    for (const facade of [workbench, agent, ...REQUIRED_DYNAMIC_FACADES]) {
+      expect(closureForModule(groupedGraph, facade), facade).toEqual(
+        consolidatedClosure(baselineGraph, facade),
+      );
+    }
+    for (const facade of [
+      workbench,
+      agent,
+      "src/features/chat/acp/AcpChatPresentation.tsx",
+    ]) {
+      expect(
+        closureForModule(groupedGraph, facade).some((id) =>
+          id.endsWith(subagent),
+        ),
+        facade,
+      ).toBe(false);
+    }
+    for (const facade of [workbench, agent, subagent]) {
+      expect(
+        closureForModule(groupedGraph, facade).some((id) =>
+          /(?:@codemirror|@xterm|MermaidFigure\.tsx|CodeMirrorEditorRuntime\.ts|TerminalDock\.tsx)/.test(
+            id,
+          ),
+        ),
+        facade,
+      ).toBe(false);
+    }
+    for (const facade of Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES)) {
+      expect(closureForModule(groupedGraph, facade), facade).toEqual(
+        closureForModule(baselineGraph, facade),
+      );
     }
   }, 90_000);
 
