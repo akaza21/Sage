@@ -58,5 +58,6 @@ impl PiTranslator {
         };
         self.pending.remove(&intent.state_id);
         self.pending.remove(&intent.models_id);
+        self.closed_config_requests.remove(&intent.state_id);
     }
 }

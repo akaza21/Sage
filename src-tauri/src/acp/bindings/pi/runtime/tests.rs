@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
+mod config_delivery;
 mod followups;
+mod pump_contract;
 mod regressions;
 mod store_ingress;
 
@@ -139,7 +141,7 @@ fn ready(runtime: &mut PiRuntime) {
             &Mapper,
         )
         .expect("levels response");
-    assert!(matches!(batch.events(), [AdapterEvent::Acknowledged]));
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredDuplicate]));
     assert!(batch.egress().is_empty());
 }
 
@@ -545,6 +547,19 @@ fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
     let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
     assert_eq!(wire["configOptions"][0]["currentValue"], "anthropic:claude");
     assert!(wire["configOptions"][1].is_null());
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredDuplicate]));
+    assert!(batch.egress().is_empty());
+    let prompt = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect").unwrap(),
+            client_message_id: RequiredText::new("client", "model-refresh").unwrap(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    let prompt = deliver(&mut runtime, prompt);
+    let batch = runtime
+        .ingest(&response(&prompt, Value::Null), &Mapper)
+        .unwrap();
     assert_eq!(batch.egress().len(), 1);
     let state = request(&batch.egress()[0]);
     let token = batch.egress()[0].token().clone();
@@ -712,7 +727,7 @@ fn pi_empty_thinking_levels_keep_model_only_config() {
 }
 
 #[test]
-fn pi_malformed_or_failed_levels_keep_model_only_with_diagnostic() {
+fn pi_malformed_or_failed_idle_levels_keep_model_only_without_egress() {
     let mut malformed = fixture_runtime(42);
     let levels = ready_until_levels(&mut malformed);
     let batch = malformed
@@ -722,7 +737,7 @@ fn pi_malformed_or_failed_levels_keep_model_only_with_diagnostic() {
         batch
             .events()
             .iter()
-            .any(|event| matches!(event, AdapterEvent::Unsupported(_)))
+            .any(|event| matches!(event, AdapterEvent::IgnoredDuplicate))
     );
     assert!(
         serde_json::to_value(malformed.session_config().unwrap()).unwrap()["configOptions"][1]
@@ -738,7 +753,7 @@ fn pi_malformed_or_failed_levels_keep_model_only_with_diagnostic() {
         batch
             .events()
             .iter()
-            .any(|event| matches!(event, AdapterEvent::Error(_)))
+            .any(|event| matches!(event, AdapterEvent::IgnoredDuplicate))
     );
     assert!(
         serde_json::to_value(failed.session_config().unwrap()).unwrap()["configOptions"][1]

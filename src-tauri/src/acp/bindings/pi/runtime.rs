@@ -15,6 +15,7 @@ use super::{
     TerminalOutcome,
 };
 
+mod ingress;
 mod support;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,90 +251,7 @@ impl HarnessAdapter for PiRuntime {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        if self.poisoned {
-            return Err(AdapterRuntimeError::Operation);
-        }
-        let thinking_reply = self.thinking_request_command.as_ref().is_some_and(|id| {
-            serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
-                .ok()
-                .is_some_and(|value| {
-                    value.get("type").and_then(serde_json::Value::as_str) == Some("response")
-                        && value.get("id").and_then(serde_json::Value::as_str) == Some(id)
-                        && value.get("command").and_then(serde_json::Value::as_str)
-                            == Some("get_available_thinking_levels")
-                })
-        });
-        let outputs = match self.translator.ingest(frame.as_bytes()) {
-            Ok(outputs) => outputs,
-            Err(error) => {
-                if self.refresh_thinking_after_model {
-                    self.refresh_thinking_after_model = false;
-                    self.current_thinking = None;
-                    self.available_thinking.clear();
-                }
-                if thinking_reply {
-                    let stale = self.thinking_request_session.as_ref()
-                        != self.external_session.as_ref()
-                        || self.thinking_request_owner.as_ref()
-                            != Some(&(self.session_id.clone(), self.runtime_epoch));
-                    self.clear_thinking_request();
-                    return AdapterBatch::new(
-                        vec![if stale {
-                            crate::acp::bindings::adapter::AdapterEvent::IgnoredLate
-                        } else {
-                            support::unsupported(
-                                "pi_thinking_levels",
-                                "Pi thinking levels reply was not usable",
-                            )
-                        }],
-                        Vec::new(),
-                    );
-                }
-                if self.staged_initialize.take().is_some() {
-                    self.poisoned = true;
-                }
-                return Err(support::map_pi(error));
-            }
-        };
-        let hidden_models = self.staged_initialize.is_some()
-            && outputs
-                .iter()
-                .any(|value| matches!(value, super::AdapterOutput::Models(_)));
-        if hidden_models {
-            self.staged_initialize = None;
-            self.poisoned = true;
-            return Err(AdapterRuntimeError::Frame);
-        }
-        let advance = self.staged_initialize.is_some()
-            && outputs
-                .iter()
-                .any(|value| matches!(value, super::AdapterOutput::State(_)));
-        let failed = outputs
-            .iter()
-            .any(|value| matches!(value, super::AdapterOutput::Error { .. }));
-        if failed && self.refresh_thinking_after_model {
-            self.refresh_thinking_after_model = false;
-            self.current_thinking = None;
-            self.available_thinking.clear();
-        }
-        if thinking_reply && failed {
-            self.clear_thinking_request();
-        }
-        if failed && self.staged_initialize.is_some() {
-            self.staged_initialize = None;
-        }
-        let staged = if advance {
-            let outbound = self
-                .staged_initialize
-                .take()
-                .ok_or(AdapterRuntimeError::Operation)?;
-            Some(self.reserve(outbound, RequestKind::InitializeSecond)?)
-        } else {
-            None
-        };
-        let request_digest =
-            request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
-        self.translate_outputs(outputs, staged, request_digest, resources)
+        self.ingest_frame(frame, resources)
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -378,7 +296,12 @@ impl HarnessAdapter for PiRuntime {
                     .reservations
                     .get(&id)
                     .ok_or(AdapterRuntimeError::EgressIntent)?;
-                if reservation.phase != DeliveryPhase::Queued {
+                if reservation.phase != DeliveryPhase::Queued
+                    && !matches!(
+                        reservation.kind,
+                        RequestKind::SetModel | RequestKind::SetThinkingLevel
+                    )
+                {
                     return Err(AdapterRuntimeError::EgressIntent);
                 }
                 self.reservations.remove(&id);

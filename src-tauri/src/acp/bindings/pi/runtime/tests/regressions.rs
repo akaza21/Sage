@@ -94,14 +94,16 @@ fn assert_continuation(fixture: &str) {
     for line in fixture.lines() {
         let value: Value = serde_json::from_str(line).unwrap();
         let settled = value["type"] == "agent_settled";
+        let session_notification = value["type"] == "entry_appended";
         let batch = runtime
             .ingest(&frame(value), &Mapper)
             .expect("continuation");
         assert!(
-            !batch
-                .events()
-                .iter()
-                .any(|event| matches!(event, AdapterEvent::IgnoredLate))
+            session_notification
+                || !batch
+                    .events()
+                    .iter()
+                    .any(|event| matches!(event, AdapterEvent::IgnoredLate))
         );
         for event in batch.events() {
             if let AdapterEvent::Turn {

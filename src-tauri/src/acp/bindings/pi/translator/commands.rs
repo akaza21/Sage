@@ -23,6 +23,7 @@ impl PiTranslator {
             return Ok(());
         }
         self.pending.remove(command_id);
+        self.closed_config_requests.remove(command_id);
         if kind == PendingKind::SetThinkingLevel {
             self.pending_thinking = None;
         }
@@ -87,6 +88,7 @@ impl PiTranslator {
             compaction_active: false,
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
+            unknown_kinds: Default::default(),
         });
         Ok(vec![outbound])
     }

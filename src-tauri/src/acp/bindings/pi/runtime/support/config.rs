@@ -21,7 +21,7 @@ impl PiRuntime {
         if self.poisoned
             || !self.initialized
             || self.external_session.is_none()
-            || self.active_turn.is_some()
+            || (self.active_turn.is_some() && !self.refresh_thinking_after_model)
             || self.thinking_request_command.is_some()
         {
             return Err(AdapterRuntimeError::Operation);

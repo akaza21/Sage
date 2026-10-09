@@ -21,9 +21,10 @@ impl PiTranslator {
             kind,
             "thinking_level_changed" | "session_info_changed" | "queue_update" | "entry_appended"
         ) {
-            return Ok(vec![AdapterOutput::Unsupported {
-                kind: kind.to_owned(),
-            }]);
+            return Ok(vec![AdapterOutput::LateIgnored]);
+        }
+        if self.active.is_none() {
+            return Ok(vec![AdapterOutput::LateIgnored]);
         }
         if kind != "agent_settled"
             && self
@@ -40,6 +41,12 @@ impl PiTranslator {
                 .is_some_and(|turn| turn.authority_denied)
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
+        }
+        if matches!(kind, "turn_start" | "turn_end")
+            || kind.starts_with("auto_retry_")
+            || kind.starts_with("summarization_retry_")
+        {
+            return Ok(vec![AdapterOutput::Absorbed]);
         }
         match kind {
             "agent_start" => {
@@ -165,7 +172,14 @@ impl PiTranslator {
             }
             "extension_ui_request" => self.extension_request(value),
             _ => {
-                self.session_turn()?;
+                let turn = self.live_turn_any_phase()?;
+                if turn.unknown_kinds.contains(kind) {
+                    return Ok(vec![AdapterOutput::Absorbed]);
+                }
+                if turn.unknown_kinds.len() >= super::UNKNOWN_KINDS_PER_TURN {
+                    return Err(AdapterError::Limit("unknown event kinds per Turn"));
+                }
+                turn.unknown_kinds.insert(kind.to_owned());
                 Ok(vec![AdapterOutput::Unsupported {
                     kind: redact_structured_text(kind),
                 }])
@@ -193,6 +207,13 @@ impl PiTranslator {
         &mut self,
         incoming: TerminalOutcome,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|turn| turn.terminal.is_none())
+        {
+            self.close_config_requests();
+        }
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
         match turn.terminal {
             Some(current) if current == incoming => Ok(vec![AdapterOutput::DuplicateIgnored]),
@@ -215,6 +236,15 @@ impl PiTranslator {
                 Ok(events)
             }
         }
+    }
+
+    pub(super) fn close_config_requests(&mut self) {
+        self.closed_config_requests.extend(
+            self.pending
+                .iter()
+                .filter(|(_, kind)| kind.is_config())
+                .map(|(id, _)| id.clone()),
+        );
     }
 
     fn complete_thought(&mut self, outcome: TerminalOutcome) -> Vec<AdapterOutput> {
@@ -331,6 +361,7 @@ impl PiTranslator {
 
 impl PiTranslator {
     pub(crate) fn latch_authority_denial(&mut self) {
+        self.close_config_requests();
         if let Some(turn) = self.active.as_mut() {
             turn.authority_denied = true;
         }

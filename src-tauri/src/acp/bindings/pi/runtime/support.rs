@@ -15,6 +15,7 @@ mod authority;
 mod capabilities;
 mod compaction;
 mod config;
+mod config_reply;
 mod delivery;
 mod errors;
 mod identity;
@@ -27,7 +28,7 @@ mod tool_cache;
 use capabilities::capabilities;
 pub(super) use errors::map_pi;
 pub(super) use identity::unsupported;
-use identity::{external, model_event, model_key, text_payload};
+use identity::{external, model_event, text_payload};
 
 impl PiRuntime {
     pub(super) fn translate_outputs(
@@ -91,7 +92,17 @@ impl PiRuntime {
                     None,
                 )
             }
-            AdapterOutput::CommandAccepted { .. } => (Some(AdapterEvent::Acknowledged), None),
+            AdapterOutput::CommandAccepted { command } => {
+                let refresh = if command == "prompt" && self.refresh_thinking_after_model {
+                    Some(self.begin_one(
+                        crate::acp::bindings::pi::Operation::GetState,
+                        super::RequestKind::RefreshState,
+                    )?)
+                } else {
+                    None
+                };
+                (Some(AdapterEvent::Acknowledged), refresh)
+            }
             AdapterOutput::SessionReset => {
                 self.next_session = self
                     .next_session
@@ -117,18 +128,7 @@ impl PiRuntime {
                     None,
                 )
             }
-            AdapterOutput::State(state) => {
-                self.current_model = state.model.as_ref().map(model_key).transpose()?;
-                self.current_thinking = state.thinking_level;
-                let _ = (state.has_session, state.is_streaming);
-                if self.refresh_thinking_after_model {
-                    self.refresh_thinking_after_model = false;
-                    let levels = self.begin_thinking_discovery()?;
-                    (None, Some(levels))
-                } else {
-                    (None, None)
-                }
-            }
+            AdapterOutput::State(state) => self.state_reply(state)?,
             AdapterOutput::Models(models) => {
                 let event = model_event(models.clone(), self.current_model.as_deref())?;
                 if let AdapterEvent::Models { models, .. } = &event {
@@ -140,46 +140,9 @@ impl PiRuntime {
                 self.available_models = models;
                 (Some(event), None)
             }
-            AdapterOutput::ModelSelected(model) => {
-                let selected = model_key(&model)?;
-                if !self.available_models.iter().any(|candidate| {
-                    model_key(candidate).ok().as_deref() == Some(selected.as_str())
-                }) {
-                    return Err(AdapterRuntimeError::Frame);
-                }
-                self.current_model = Some(selected);
-                self.current_thinking = None;
-                self.available_thinking.clear();
-                self.refresh_thinking_after_model = true;
-                let state = self.begin_one(
-                    crate::acp::bindings::pi::Operation::GetState,
-                    super::RequestKind::RefreshState,
-                )?;
-                (Some(AdapterEvent::Acknowledged), Some(state))
-            }
-            AdapterOutput::ThinkingLevels(levels) => {
-                if self.thinking_request_session.as_ref() != self.external_session.as_ref()
-                    || self.thinking_request_owner.as_ref()
-                        != Some(&(self.session_id.clone(), self.runtime_epoch))
-                {
-                    self.clear_thinking_request();
-                    return Ok((Some(AdapterEvent::IgnoredLate), None));
-                }
-                self.clear_thinking_request();
-                self.available_thinking = levels;
-                (Some(AdapterEvent::Acknowledged), None)
-            }
-            AdapterOutput::ThinkingSelected(level) => {
-                if !self
-                    .available_thinking
-                    .iter()
-                    .any(|available| available == &level)
-                {
-                    return Err(AdapterRuntimeError::Frame);
-                }
-                self.current_thinking = Some(level);
-                (Some(AdapterEvent::Acknowledged), None)
-            }
+            AdapterOutput::ModelSelected(model) => self.model_selected(model)?,
+            AdapterOutput::ThinkingLevels(levels) => self.thinking_levels(levels),
+            AdapterOutput::ThinkingSelected(level) => self.thinking_selected(level)?,
             AdapterOutput::Messages(messages) => {
                 let _ = messages;
                 (
@@ -386,6 +349,7 @@ impl PiRuntime {
             }
             AdapterOutput::DuplicateIgnored => (Some(AdapterEvent::IgnoredDuplicate), None),
             AdapterOutput::LateIgnored => (Some(AdapterEvent::IgnoredLate), None),
+            AdapterOutput::Absorbed => (Some(AdapterEvent::Absorbed), None),
         };
         Ok(pair)
     }

@@ -158,10 +158,13 @@ pub enum AdapterOutput {
     },
     DuplicateIgnored,
     LateIgnored,
+    Absorbed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AdapterError {
+    #[error("Pi rejected the session configuration mutation")]
+    ConfigMutationRejected,
     #[error("Pi operation is not supported by the pinned RPC binding: {0}")]
     UnsupportedOperation(&'static str),
     #[error("Pi prompting is unavailable until the curated artifact graph is admitted")]

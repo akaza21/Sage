@@ -19,7 +19,7 @@ fn pi_thinking_level_changed_without_an_active_turn_is_nonfatal() {
                 &Mapper,
             )
             .expect("idle session notification");
-        assert!(matches!(batch.events(), [AdapterEvent::Unsupported(_)]));
+        assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
         assert!(batch.egress().is_empty());
     }
 }
@@ -259,5 +259,5 @@ fn pi_thinking_discovery_queue_rollback_allows_a_fresh_request() {
     let batch = runtime
         .ingest(&response(&next, json!({"levels":["off","high"]})), &Mapper)
         .unwrap();
-    assert!(matches!(batch.events(), [AdapterEvent::Acknowledged]));
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredDuplicate]));
 }

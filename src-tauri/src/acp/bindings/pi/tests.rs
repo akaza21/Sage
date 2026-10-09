@@ -410,7 +410,7 @@ fn id_less_events_require_the_exact_prompt_start_terminal_grammar() {
     let mut translator = admitted_translator(19);
     assert_eq!(
         translator.ingest(br#"{"type":"agent_start"}"#),
-        Err(AdapterError::StaleIntent)
+        Ok(vec![AdapterOutput::LateIgnored])
     );
 
     let first = translator
@@ -703,7 +703,10 @@ fn frame_and_history_boundaries_accept_exact_and_reject_plus_one() {
     exact.resize(FRAME_BYTES - suffix.len(), b'a');
     exact.extend_from_slice(suffix);
     let mut translator = PiTranslator::unavailable(14);
-    assert_eq!(translator.ingest(&exact), Err(AdapterError::StaleIntent));
+    assert_eq!(
+        translator.ingest(&exact),
+        Ok(vec![AdapterOutput::LateIgnored])
+    );
     exact.insert(exact.len() - suffix.len(), b'a');
     assert_eq!(
         translator.ingest(&exact),
@@ -753,7 +756,7 @@ fn malformed_unknown_foreign_and_unsupported_inputs_are_deterministic() {
     );
     assert_eq!(
         translator.ingest(br#"{"type":"future_event","payload":{"secret":"sk-private"}}"#),
-        Err(AdapterError::StaleIntent)
+        Ok(vec![AdapterOutput::LateIgnored])
     );
     for operation in [
         Operation::Resume,
