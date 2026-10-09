@@ -1,5 +1,34 @@
 use super::*;
 
+pub(super) const CODEX_ENVIRONMENT_KEYS: [&str; 4] = [
+    "SAGE_CODEX_FIXTURE_PATH",
+    "SAGE_CODEX_FIXTURE_SHA256",
+    "SAGE_CODEX_FIXTURE_BYTES",
+    "SAGE_CODEX_FIXTURE_CASE",
+];
+pub(super) const CLAUDE_ENVIRONMENT_KEYS: [&str; 4] = [
+    "SAGE_CLAUDE_FIXTURE_PATH",
+    "SAGE_CLAUDE_FIXTURE_SHA256",
+    "SAGE_CLAUDE_FIXTURE_BYTES",
+    "SAGE_CLAUDE_FIXTURE_CASE",
+];
+const ENVIRONMENT_KEYS: [[&str; 4]; 4] = [
+    [
+        "SAGE_CHARACTERIZATION_FIXTURE_PATH",
+        "SAGE_CHARACTERIZATION_FIXTURE_SHA256",
+        "SAGE_CHARACTERIZATION_FIXTURE_BYTES",
+        "SAGE_CHARACTERIZATION_CASE",
+    ],
+    CODEX_ENVIRONMENT_KEYS,
+    CLAUDE_ENVIRONMENT_KEYS,
+    [
+        "SAGE_PI_FIXTURE_PATH",
+        "SAGE_PI_FIXTURE_SHA256",
+        "SAGE_PI_FIXTURE_BYTES",
+        "SAGE_PI_FIXTURE_CASE",
+    ],
+];
+
 pub(super) fn validate_inputs(inputs: [[Option<&OsStr>; 4]; 4], available: bool) -> io::Result<()> {
     let selected = inputs
         .iter()
@@ -17,33 +46,7 @@ pub(super) fn validate_inputs(inputs: [[Option<&OsStr>; 4]; 4], available: bool)
 }
 
 pub(crate) fn reject_unavailable_fixture_environment_inputs() -> io::Result<()> {
-    let values = [
-        [
-            "SAGE_CHARACTERIZATION_FIXTURE_PATH",
-            "SAGE_CHARACTERIZATION_FIXTURE_SHA256",
-            "SAGE_CHARACTERIZATION_FIXTURE_BYTES",
-            "SAGE_CHARACTERIZATION_CASE",
-        ],
-        [
-            "SAGE_CODEX_FIXTURE_PATH",
-            "SAGE_CODEX_FIXTURE_SHA256",
-            "SAGE_CODEX_FIXTURE_BYTES",
-            "SAGE_CODEX_FIXTURE_CASE",
-        ],
-        [
-            "SAGE_CLAUDE_FIXTURE_PATH",
-            "SAGE_CLAUDE_FIXTURE_SHA256",
-            "SAGE_CLAUDE_FIXTURE_BYTES",
-            "SAGE_CLAUDE_FIXTURE_CASE",
-        ],
-        [
-            "SAGE_PI_FIXTURE_PATH",
-            "SAGE_PI_FIXTURE_SHA256",
-            "SAGE_PI_FIXTURE_BYTES",
-            "SAGE_PI_FIXTURE_CASE",
-        ],
-    ]
-    .map(|keys| keys.map(std::env::var_os));
+    let values = ENVIRONMENT_KEYS.map(|keys| keys.map(std::env::var_os));
     validate_inputs(
         values
             .each_ref()

@@ -49,10 +49,7 @@ const codexStates = [
   "subagents-grouped",
   "subagents-popover",
   "child-opened",
-  "compaction-started",
   "compaction-completed",
-  "compaction-failed",
-  "compaction-cancelled",
 ];
 const claudeStates = [
   "subagents-started",
@@ -74,14 +71,30 @@ const liveStates = new Set([
   "subagents-started",
   "plan-running",
   "composer-stop",
-  "compaction-started",
 ]);
+export const truthfulAbsentStates = Object.freeze({
+  codex: Object.freeze([
+    "compaction-started",
+    "compaction-failed",
+    "compaction-cancelled",
+  ]),
+  claude: Object.freeze([
+    "child-opened",
+    "compaction-started",
+    "compaction-completed",
+    "compaction-failed",
+    "compaction-cancelled",
+    "effort-menu",
+    "context-meter",
+  ]),
+});
 export function nativeCases() {
-  return ["codex", "claude"].flatMap((harness) =>
-    [
+  return ["codex", "claude"].flatMap((harness) => {
+    const states = [
       ...sharedStates,
       ...(harness === "codex" ? codexStates : claudeStates),
-    ].map((state) => {
+    ].filter((state) => !truthfulAbsentStates[harness].includes(state));
+    return states.map((state) => {
       const steps =
         harness === "codex"
           ? [
@@ -89,7 +102,7 @@ export function nativeCases() {
               emit("codexInitializeResult0146"),
               wait("codexStart"),
               emit("codexThreadResult"),
-              wait("codexGoalGet"),
+              wait("codexGoalGetWithOptionalModelList"),
               emit("codexGoalMethodNotFound"),
               wait("codexTurnStart"),
               emit("codexTurnResult"),
@@ -161,6 +174,6 @@ export function nativeCases() {
         );
       }
       return { id: harness + "-" + state, steps };
-    }),
-  );
+    });
+  });
 }

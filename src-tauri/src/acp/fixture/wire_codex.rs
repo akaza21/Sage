@@ -17,6 +17,24 @@ pub(super) fn await_request(
     state: &mut WireState,
     expected_method: &str,
 ) -> Result<(), FixtureError> {
+    await_request_inner(input, output, state, expected_method, false)
+}
+
+pub(super) fn await_goal_with_optional_models(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    state: &mut WireState,
+) -> Result<(), FixtureError> {
+    await_request_inner(input, output, state, "thread/goal/get", true)
+}
+
+fn await_request_inner(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    state: &mut WireState,
+    expected_method: &str,
+    mut optional_models: bool,
+) -> Result<(), FixtureError> {
     for _ in 0..32 {
         let Some(request) = read_json_line(input, state)? else {
             return if expected_method == "thread/unsubscribe" {
@@ -36,6 +54,25 @@ pub(super) fn await_request(
         if method == "thread/read" {
             emit_child_read(&request, output, state)?;
             continue;
+        }
+        if method == "model/list" {
+            if request
+                .pointer("/params/cursor")
+                .is_some_and(|cursor| !cursor.is_null())
+            {
+                return Err(FixtureError::InvalidArguments);
+            }
+            if optional_models {
+                state.last_request_id = Some(
+                    object
+                        .get("id")
+                        .and_then(Value::as_u64)
+                        .ok_or(FixtureError::InvalidArguments)?,
+                );
+                emit_response("models", state, output)?;
+                optional_models = false;
+                continue;
+            }
         }
         if method != expected_method {
             return Err(FixtureError::InvalidArguments);
@@ -115,6 +152,11 @@ pub(super) fn emit_response(
             "platformOs": "windows"
         }),
         "thread" => json!({"thread":{"id": THREAD_ID}}),
+        "models" => json!({"data":[{
+            "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",
+            "description":"Synthetic native replay model","isDefault":true,"hidden":false,
+            "supportedReasoningEfforts":[]
+        }],"nextCursor":null}),
         "turn" => {
             state.turn_count = state
                 .turn_count

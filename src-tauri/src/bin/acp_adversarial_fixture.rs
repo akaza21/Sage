@@ -1,7 +1,9 @@
 fn main() {
-    if std::env::args()
+    if std::env::args_os()
         .nth(2)
-        .is_some_and(|case| sage_lib::acp::fixture::is_native_replay_case(&case))
+        .as_deref()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(sage_lib::acp::fixture::is_native_replay_case)
     {
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(120));

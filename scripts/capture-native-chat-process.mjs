@@ -78,11 +78,11 @@ export function executableIdentity(file) {
   if (bytes === 0) throw new Error("artifact-empty");
   return { path: resolved, bytes, sha256: digest.digest("hex") };
 }
-export async function reservePort() {
+export async function reservePort(requestedPort = 0) {
   const server = net.createServer();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(requestedPort, "127.0.0.1", resolve);
   });
   const port = server.address().port;
   await new Promise((resolve, reject) =>

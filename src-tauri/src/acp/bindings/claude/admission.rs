@@ -137,7 +137,12 @@ impl AdmittedClaudeBinding {
     pub(crate) fn launch_environment(
         &self,
     ) -> Result<Vec<(OsString, OsString)>, ClaudeAdmissionUnavailable> {
-        self.revalidate()?;
+        #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+        if self.fixture.is_some() {
+            self.revalidate()?;
+        }
+        #[cfg(windows)]
+        self.revalidate_system_root()?;
         Ok(self.launch_environment.clone())
     }
 

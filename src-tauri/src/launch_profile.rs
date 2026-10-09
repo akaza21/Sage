@@ -24,8 +24,6 @@ pub(crate) use fixture_selector::reject_unavailable_fixture_environment_inputs;
 pub(crate) type CodexFixtureSelection = FixtureSelection;
 #[cfg(test)]
 mod fixture_selector_tests;
-#[cfg(all(test, not(all(windows, feature = "acp-fixture", debug_assertions))))]
-use desktop_codex_fixture::reject_unavailable_codex_fixture_inputs;
 #[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
 pub(crate) use desktop_codex_fixture::resolve_codex_fixture_selection;
 #[cfg(all(test, windows, feature = "acp-fixture", debug_assertions))]
@@ -382,21 +380,6 @@ mod tests {
         assert_eq!(profile.project_root(), None);
         assert!(!normal_durable.exists());
         assert!(!normal_webview.exists());
-    }
-
-    #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
-    #[test]
-    fn reserved_codex_fixture_inputs_are_rejected_in_this_build() {
-        assert!(reject_unavailable_codex_fixture_inputs([None; 4]).is_ok());
-        assert!(
-            reject_unavailable_codex_fixture_inputs([
-                Some(OsStr::new("fixture.exe")),
-                None,
-                None,
-                None,
-            ])
-            .is_err()
-        );
     }
 
     #[test]

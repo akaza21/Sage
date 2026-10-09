@@ -1744,6 +1744,10 @@ fn admitted_runtime_launch_contract_scopes_state_and_environment() {
     assert_eq!(binding.launch_environment().unwrap(), expected);
     assert_eq!(binding.candidate().runtime_path, node);
     assert_eq!(binding.candidate().artifact_path, adapter);
+    fs::remove_file(&adapter).unwrap();
+    fs::remove_file(&node).unwrap();
+    assert_eq!(binding.launch_environment().unwrap(), expected);
+    assert_eq!(binding.revalidate(), Err(ClaudeAdmissionUnavailable::Drift));
     fs::remove_dir_all(root).unwrap();
 }
 

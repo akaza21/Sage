@@ -42,6 +42,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-source-functional-profile.node-test.mjs",
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
+  "capture-native-chat-source.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
@@ -386,6 +387,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat.node-test.mjs",
     reason:
       "Portable checks of native capture argument, probe-schema and output-path rules; the capture itself runs only by hand.",
+  },
+  {
+    file: "capture-native-chat-source.node-test.mjs",
+    reason:
+      "Portable mocked source-provenance and owned-Vite launch-contract checks; never launches Vite or a native app.",
   },
   {
     file: "check-harness-trace-privacy.node-test.mjs",

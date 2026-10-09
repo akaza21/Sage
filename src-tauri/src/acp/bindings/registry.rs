@@ -102,7 +102,7 @@ impl BindingRegistry {
         let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
         registry.codex.model_provider = ModelProvider::NoAccountModels;
         registry.codex.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(true);
+        registry.isolate_fixture_records(registry.codex.harness_id);
         Ok(registry)
     }
 
@@ -114,21 +114,19 @@ impl BindingRegistry {
         let mut registry = Self::new(CodexBindingRegistration::fixture_disabled(), claude);
         registry.claude.model_provider = ModelProvider::NoAccountModels;
         registry.claude.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(false);
+        registry.isolate_fixture_records(registry.claude.harness_id);
         Ok(registry)
     }
 
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    fn isolate_fixture_records(&mut self, codex: bool) {
-        let disabled = if codex {
-            &mut self.claude
-        } else {
-            &mut self.codex
-        };
-        disabled.session_operations_enabled = false;
-        disabled.model_provider = ModelProvider::NoAccountModels;
-        disabled.auth_provider = AuthProvider::None;
-        self.opencode.session_operations_enabled = false;
+    fn isolate_fixture_records(&mut self, active_harness: &str) {
+        for record in [&mut self.codex, &mut self.claude, &mut self.opencode] {
+            if record.harness_id != active_harness {
+                record.session_operations_enabled = false;
+                record.model_provider = ModelProvider::NoAccountModels;
+                record.auth_provider = AuthProvider::None;
+            }
+        }
     }
 
     pub(crate) fn new(codex: CodexBindingRegistration, claude: ClaudeBindingRegistration) -> Self {

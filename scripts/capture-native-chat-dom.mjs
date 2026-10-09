@@ -103,22 +103,10 @@ export function namedState(options, observation) {
     "plan-running": live && view.plan,
     "plan-completed": terminal && view.plan,
     "plan-mode-entry": view.addMenu && view.planEntry,
-    "compaction-started":
-      live &&
-      view.compaction &&
-      observation.compactionStates?.some((state) =>
-        ["started", "streaming"].includes(state),
-      ),
     "compaction-completed":
       terminal &&
       view.compaction &&
       observation.compactionStates?.includes("completed"),
-    "compaction-failed":
-      view.compaction && observation.compactionStates?.includes("failed"),
-    "compaction-cancelled":
-      ["cancelled", "interrupted"].includes(observation.state) &&
-      view.compaction &&
-      observation.compactionStates?.includes("cancelled"),
     "approval-pending": live && view.pendingApproval,
     "approval-approved":
       terminal &&
@@ -172,10 +160,7 @@ export function actionsFor(state) {
       "git-finished",
       "plan-completed",
       "answer-image",
-      "compaction-started",
       "compaction-completed",
-      "compaction-failed",
-      "compaction-cancelled",
       "subagents-finished",
       "subagents-grouped",
       "subagents-popover",

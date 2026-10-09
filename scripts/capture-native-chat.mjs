@@ -2,9 +2,9 @@ import { writeFileSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
-import { nativeCases } from "./acp-native-cases.mjs";
 import {
   parseArgs,
+  requireNativeCase,
   evidencePaths,
   validateProbe,
   validateDimensions,
@@ -33,6 +33,14 @@ import {
   stopOwned,
   cleanupRoots,
 } from "./capture-native-chat-process.mjs";
+import {
+  cleanSource,
+  verifySource,
+  launchOwnedVite,
+  waitForVite,
+  assertOwnedVite,
+  servedAssetHash,
+} from "./capture-native-chat-source.mjs";
 export {
   parseArgs,
   evidencePaths,
@@ -47,7 +55,6 @@ const idleStates = new Set([
   "new-chat",
   "composer-idle",
   "harness-menu",
-
   "add-menu",
 ]);
 
@@ -130,20 +137,21 @@ export async function capture(options) {
   ensurePlainDirectory(directory);
   requirePlain(directory, true);
   for (const file of Object.values(output)) safeDestination(file);
-  let child, cdp, roots, nativeBounds, webviewVersion;
+  let child, viteChild, cdp, roots, nativeBounds, webviewVersion;
   const started = Date.now(),
     deadline = started + 90000;
   try {
     if (process.platform !== "win32") throw new Error("windows-required");
-    if (options.harness === "pi") throw new Error("nc-1b-pending");
-    if (!nativeCases().some((entry) => entry.id === options.caseId))
-      throw new Error("truthful-absent-no-case");
+    requireNativeCase(options.harness, options.state);
+    if (options.caseId !== options.harness + "-" + options.state)
+      throw new Error("case-identity");
     if (typeof globalThis.WebSocket !== "function")
       throw new Error("node-websocket-unavailable");
-    const vite = await fetch("http://127.0.0.1:1420/", {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!vite.ok) throw new Error("vite-unavailable");
+    const source = await cleanSource(workspace);
+    viteChild = await launchOwnedVite(workspace);
+    await waitForVite(viteChild);
+    const servedAsset = await servedAssetHash();
+    assertOwnedVite(viteChild);
     const build = executableIdentity(
       path.join(workspace, "src-tauri", "target", "debug", "sage.exe"),
     );
@@ -156,7 +164,6 @@ export async function capture(options) {
         "acp-adversarial-fixture.exe",
       ),
     );
-    const source = await runTool("git", ["-C", workspace, "rev-parse", "HEAD"]);
     roots = freshRoots(workspace);
     const port = await reservePort();
     child = launchOwned(build, fixture, roots, options, port);
@@ -240,14 +247,7 @@ export async function capture(options) {
           await click(cdp, 'button[aria-label="Composer options"]', deadline);
         }
         if (!idleStates.has(options.state)) {
-          await waitForState(
-            () =>
-              evaluate(
-                '(()=>{const input=document.querySelector(\'textarea[aria-label="Message agent"]\');if(!input || input.disabled)return false;const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set;setter.call(input,"Inspect the fixed synthetic native replay example.");input.dispatchEvent(new Event("input",{bubbles:true}));return true})()',
-              ),
-            deadline,
-          );
-          await click(cdp, 'button[aria-label="Send message"]', deadline);
+          await submit();
           await waitForState(
             async () => (await evaluate(OBSERVATION)).turnId !== "none",
             deadline,
@@ -286,7 +286,12 @@ export async function capture(options) {
           caseId: options.caseId,
           bindingId: observation.bindingId,
           turnId: observation.turnId,
-          hashes: { build: build.sha256, fixture: fixture.sha256, source },
+          hashes: {
+            build: build.sha256,
+            fixture: fixture.sha256,
+            source,
+            servedAsset,
+          },
           protocol: HARNESS[options.harness].protocol,
           webviewVersion,
           dpr: observation.dpr,
@@ -322,6 +327,11 @@ export async function capture(options) {
         roots = undefined;
       },
     );
+    await verifySource(workspace, source);
+    assertOwnedVite(viteChild);
+    if ((await servedAssetHash()) !== servedAsset)
+      throw new Error("served-asset-drift");
+    assertOwnedVite(viteChild);
     writeFileSync(output.png, captured.screenshot);
     writeFileSync(output.probe, JSON.stringify(captured.probe, null, 2) + "\n");
     return { verdict: "captured", png: path.basename(output.png) };
@@ -342,8 +352,15 @@ export async function capture(options) {
     writeFileSync(output.probe, JSON.stringify(blocked, null, 2) + "\n");
     return blocked;
   } finally {
-    if (child) await stopOwned(child);
-    cleanupRoots(roots);
+    try {
+      if (child) await stopOwned(child);
+    } finally {
+      try {
+        if (viteChild) await stopOwned(viteChild);
+      } finally {
+        cleanupRoots(roots);
+      }
+    }
   }
 }
 
@@ -355,8 +372,11 @@ if (
     const result = await capture(parseArgs(process.argv.slice(2)));
     console.log(JSON.stringify(result));
     if (result.verdict !== "captured") process.exitCode = 1;
-  } catch {
-    console.error("native-chat-capture-blocked");
+  } catch (error) {
+    const reason = /^[a-z0-9-]{1,80}$/u.test(error.message)
+      ? error.message
+      : "capture-operation-blocked";
+    console.error("native-chat-capture-blocked: " + reason);
     process.exitCode = 1;
   }
 }

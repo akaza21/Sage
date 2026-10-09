@@ -2,13 +2,7 @@ use super::*;
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 pub(super) fn environment_values() -> [Option<std::ffi::OsString>; 4] {
-    [
-        "SAGE_CLAUDE_FIXTURE_PATH",
-        "SAGE_CLAUDE_FIXTURE_SHA256",
-        "SAGE_CLAUDE_FIXTURE_BYTES",
-        "SAGE_CLAUDE_FIXTURE_CASE",
-    ]
-    .map(std::env::var_os)
+    fixture_selector::CLAUDE_ENVIRONMENT_KEYS.map(std::env::var_os)
 }
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]

@@ -66,6 +66,21 @@ test("evidence paths cannot escape the selected directory", () => {
   ])
     assert.throws(() => evidencePaths(root, { ...parseArgs(args), state }));
 });
+test("capture explicitly rejects truthful-absent pairs", () => {
+  for (const [harness, state] of [
+    ["codex", "compaction-started"],
+    ["codex", "compaction-failed"],
+    ["codex", "compaction-cancelled"],
+    ["claude", "effort-menu"],
+    ["claude", "context-meter"],
+    ["claude", "child-opened"],
+  ])
+    assert.throws(
+      () =>
+        parseArgs(["--harness", harness, "--state", state, "--width", "480"]),
+      /truthful-absent-state/u,
+    );
+});
 const probe = () => ({
   schemaVersion: 1,
   caseId: "claude-turn-completed",
@@ -75,6 +90,7 @@ const probe = () => ({
     build: "a".repeat(64),
     fixture: "b".repeat(64),
     source: "c".repeat(40),
+    servedAsset: "d".repeat(64),
   },
   protocol: "standard-acp-1",
   webviewVersion: "130.0.1.0",
@@ -110,6 +126,8 @@ test("probe exact limits pass; plus-one, privacy and unknown fields fail", () =>
     (value) => (value.bindingId = "codex-app-server"),
     (value) => (value.protocol = "codex-app-server-0.146.0"),
     (value) => (value.dump = "private"),
+    (value) => (value.hashes.servedAsset = "d".repeat(63)),
+    (value) => (value.caseId = "claude-effort-menu"),
     (value) => (value.elements[0].x = Infinity),
     (value) => (value.elements[0].text = "C:\\Users\\someone\\secret"),
   ]) {

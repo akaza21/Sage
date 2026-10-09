@@ -112,10 +112,14 @@ fn await_client_kind(
     if kind.starts_with("acp") {
         return acp::await_request(input, output, state, kind);
     }
+    if kind == "codexGoalGetWithOptionalModelList" {
+        return codex::await_goal_with_optional_models(input, output, state);
+    }
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
         "codexResume" => Some("thread/resume"),
+        "codexModelList" => Some("model/list"),
         "codexGoalGet" => Some("thread/goal/get"),
         "codexTurnStart" => Some("turn/start"),
         "codexSteer" => Some("turn/steer"),
@@ -189,6 +193,7 @@ fn emit_known(
             return codex::emit_response("initialize0146", state, output);
         }
         "codexThreadResult" => return codex::emit_response("thread", state, output),
+        "codexModelListResult" => return codex::emit_response("models", state, output),
         "codexGoalMethodNotFound" => {
             return codex::emit_response("goalMethodNotFound", state, output);
         }

@@ -184,7 +184,7 @@ export function events(harness, state) {
           "other",
           "Synthetic bounded delegate metadata",
           state !== "subagents-started",
-          { _meta: { toolName: "Task" } },
+          { _meta: { claudeCode: { toolName: "Task" } } },
         );
     } else {
       const count = state === "subagents-grouped" ? 2 : 1;
@@ -230,7 +230,7 @@ export function events(harness, state) {
           status: status === "in_progress" ? "inProgress" : status,
         })),
       });
-  } else if (state.startsWith("compaction")) {
+  } else if (state === "compaction-completed") {
     codex("item/completed", {
       item: { type: "contextCompaction", id: "fixture-compaction" },
     });

@@ -88,7 +88,16 @@ test("every original check-lanes case has a declared successor", () => {
 
 test("lane split and runner tests are explicitly recorded", () => {
   const justifications = verifyLaneJustifications();
-  assert.equal(justifications.justified, 26);
+  assert.equal(justifications.justified, 27);
+  assert.ok(
+    discoverBudgetTestFiles().includes(
+      "capture-native-chat-source.node-test.mjs",
+    ),
+  );
+  assert.equal(
+    laneOfBudgetTest("capture-native-chat-source.node-test.mjs"),
+    "portable",
+  );
   assert.equal(
     laneOfBudgetTest("chat-performance-budget.node-test.mjs"),
     "windows",

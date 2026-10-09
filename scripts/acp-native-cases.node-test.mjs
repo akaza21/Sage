@@ -1,7 +1,59 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
+test("native Codex cases hydrate Goal with one optional terminal model page", () => {
+  for (const entry of nativeCases().filter(({ id }) =>
+    id.startsWith("codex-"),
+  )) {
+    assert.deepEqual(
+      entry.steps.slice(4, 7),
+      [
+        { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+        { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+        { op: "awaitClient", kind: "codexTurnStart" },
+      ],
+      entry.id,
+    );
+  }
+});
+
+test("curated Codex journeys hydrate Models and Goal before the first turn", () => {
+  const source = readFileSync(
+    new URL("../src-tauri/src/acp/fixture/cases.rs", import.meta.url),
+    "utf8",
+  );
+  const cases = [...source.matchAll(/r#"(\[.*?\])"#/gu)]
+    .map((match) => JSON.parse(match[1]))
+    .filter((steps) => steps.some(({ kind }) => kind === "codexTurnStart"));
+  assert.equal(cases.length, 6);
+  for (const steps of cases) {
+    assert.deepEqual(steps.slice(4, 9), [
+      { op: "awaitClient", kind: "codexModelList" },
+      { op: "emitKnownFrame", shape: "codexModelListResult" },
+      { op: "awaitClient", kind: "codexGoalGet" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+    ]);
+  }
+});
+
+test("generated lost-Steer supports model-enabled and desktop admission", () => {
+  const source = readFileSync(
+    new URL("../src-tauri/src/acp/fixture/generated_cases.rs", import.meta.url),
+    "utf8",
+  );
+  const match = source.match(
+    /id: "codex-steer-lost-result", steps_json: r#"(\[.*?\])"#/u,
+  );
+  assert.ok(match);
+  assert.deepEqual(JSON.parse(match[1]).slice(4, 7), [
+    { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+    { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+    { op: "awaitClient", kind: "codexTurnStart" },
+  ]);
+});
 test("bounded native catalogue", () => {
   const cases = nativeCases();
   assert.ok(cases.length > 60 && cases.length < 160);
@@ -87,7 +139,9 @@ test("catalogue carries admitted wire evidence and finite continuations", () => 
   );
   assert.equal(delegates.length, 2);
   for (const delegate of delegates)
-    assert.equal(delegate.update._meta.toolName, "Task");
+    assert.deepEqual(delegate.update._meta, {
+      claudeCode: { toolName: "Task" },
+    });
   assert.equal(
     frames("claude-subagents-grouped").filter(
       (step) => step.update?.status === "completed",
@@ -115,4 +169,24 @@ test("catalogue carries admitted wire evidence and finite continuations", () => 
     catalogue.some((entry) => entry.id === "claude-child-opened"),
     false,
   );
+});
+
+test("catalogue excludes states the binding cannot represent", () => {
+  const ids = new Set(nativeCases().map(({ id }) => id));
+  for (const id of [
+    "codex-compaction-started",
+    "codex-compaction-failed",
+    "codex-compaction-cancelled",
+    "claude-effort-menu",
+    "claude-context-meter",
+  ])
+    assert.equal(ids.has(id), false, id);
+  const completed = nativeCases().find(
+    ({ id }) => id === "codex-compaction-completed",
+  );
+  const compaction = completed.steps.filter(
+    (step) => step.params?.item?.type === "contextCompaction",
+  );
+  assert.equal(compaction.length, 1);
+  assert.equal(compaction[0].method, "item/completed");
 });

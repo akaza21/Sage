@@ -1,27 +1,9 @@
-#[cfg(any(test, all(windows, feature = "acp-fixture")))]
+#[cfg(all(windows, feature = "acp-fixture"))]
 use super::*;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
 fn codex_fixture_environment_values() -> [Option<std::ffi::OsString>; 4] {
-    [
-        std::env::var_os("SAGE_CODEX_FIXTURE_PATH"),
-        std::env::var_os("SAGE_CODEX_FIXTURE_SHA256"),
-        std::env::var_os("SAGE_CODEX_FIXTURE_BYTES"),
-        std::env::var_os("SAGE_CODEX_FIXTURE_CASE"),
-    ]
-}
-
-#[cfg(all(test, not(all(windows, feature = "acp-fixture", debug_assertions))))]
-pub(crate) fn reject_unavailable_codex_fixture_inputs(
-    inputs: [Option<&OsStr>; 4],
-) -> io::Result<()> {
-    if cfg!(all(windows, feature = "acp-fixture", debug_assertions))
-        || inputs.iter().all(|input| input.is_none())
-    {
-        Ok(())
-    } else {
-        Err(invalid_profile())
-    }
+    fixture_selector::CODEX_ENVIRONMENT_KEYS.map(std::env::var_os)
 }
 
 #[cfg(all(windows, feature = "acp-fixture"))]

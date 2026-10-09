@@ -1,11 +1,19 @@
 import path from "node:path";
 import { HARNESS } from "./capture-native-chat-dom.mjs";
-import { nativeCases } from "./acp-native-cases.mjs";
+import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 
-export const STATES = new Set(
-  nativeCases().map(({ id }) => id.replace(/^(codex|claude)-/u, "")),
-);
+export const STATES = new Set([
+  ...nativeCases().map(({ id }) => id.replace(/^(codex|claude)-/u, "")),
+  ...Object.values(truthfulAbsentStates).flat(),
+]);
+const CASE_IDS = new Set(nativeCases().map(({ id }) => id));
+export function requireNativeCase(harness, state) {
+  if (harness === "pi") fail("nc-1b-pending");
+  if (truthfulAbsentStates[harness]?.includes(state))
+    fail("truthful-absent-state");
+  if (!CASE_IDS.has(harness + "-" + state)) fail("unsupported-state");
+}
 const SHA = /^[a-f0-9]{64}$/u;
 const IDENTIFIER = /^[a-zA-Z0-9_-]{1,128}$/u;
 function fail(code) {
@@ -64,6 +72,7 @@ export function parseArgs(args) {
     !["1888", "720", "480"].includes(values["--width"])
   )
     fail("arguments");
+  requireNativeCase(harness, state);
   return {
     harness,
     state,
@@ -127,7 +136,7 @@ export function validateProbe(probe) {
     probe.schemaVersion !== 1 ||
     probe.verdict !== "captured" ||
     !/^(codex|claude)-[a-z0-9-]+$/u.test(probe.caseId) ||
-    !STATES.has(probe.caseId.replace(/^(codex|claude)-/u, "")) ||
+    !CASE_IDS.has(probe.caseId) ||
     !["codex-app-server", "claude-agent-acp"].includes(probe.bindingId) ||
     !IDENTIFIER.test(probe.turnId) ||
     !["standard-acp-1", "codex-app-server-0.146.0"].includes(probe.protocol) ||
@@ -141,10 +150,11 @@ export function validateProbe(probe) {
     probe.protocol !== harness?.protocol
   )
     fail("probe-identity");
-  keys(probe.hashes, ["build", "fixture", "source"]);
+  keys(probe.hashes, ["build", "fixture", "source", "servedAsset"]);
   if (
     !SHA.test(probe.hashes.build) ||
     !SHA.test(probe.hashes.fixture) ||
+    !SHA.test(probe.hashes.servedAsset) ||
     !/^[a-f0-9]{40,64}$/u.test(probe.hashes.source)
   )
     fail("probe-hash");
@@ -239,7 +249,7 @@ export async function withOwnedCapture(run, close, stop) {
   }
 }
 
-export async function readBoundedResponse(response, maximum = 65536) {
+export async function readBoundedBytes(response, maximum = 65536) {
   if (!response.body) fail("cdp-discovery-body");
   const reader = response.body.getReader(),
     chunks = [];
@@ -258,7 +268,10 @@ export async function readBoundedResponse(response, maximum = 65536) {
   } finally {
     reader.releaseLock();
   }
+  return Buffer.concat(chunks, bytes);
+}
+export async function readBoundedResponse(response, maximum = 65536) {
   return new TextDecoder("utf-8", { fatal: true }).decode(
-    Buffer.concat(chunks, bytes),
+    await readBoundedBytes(response, maximum),
   );
 }
