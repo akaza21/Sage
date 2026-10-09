@@ -1,5 +1,6 @@
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
+    limits::LIMITS,
     transport::Frame,
 };
 
@@ -182,6 +183,15 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             return Err(AdapterPumpError::Frame);
         }
         if let Some((models, next_cursor)) = catalog {
+            let count = self
+                .session
+                .models
+                .len()
+                .checked_add(models.len())
+                .ok_or(AdapterPumpError::BatchCapacity)?;
+            if count > LIMITS.wire.models_or_config_entries as usize {
+                return Err(AdapterPumpError::BatchCapacity);
+            }
             self.session.models.extend(models);
             self.session.next_model_cursor = next_cursor;
         }

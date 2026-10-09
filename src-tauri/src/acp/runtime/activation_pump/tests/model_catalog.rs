@@ -28,6 +28,83 @@ fn request_id(egress: &AdapterEgress) -> u64 {
         .unwrap()
 }
 
+struct IdleCatalogTransport(usize);
+
+impl crate::acp::runtime::EgressTransport for IdleCatalogTransport {
+    fn write(&mut self, _frame: &crate::acp::transport::OutboundFrame) -> FrameWriteOutcome {
+        self.0 += 1;
+        FrameWriteOutcome::Complete
+    }
+}
+
+#[test]
+fn idle_catalog_accepts_exact_shared_model_limit_and_rejects_one_more_before_mutation_or_egress() {
+    let advertised = capabilities(true, true);
+    let activation = intent(ActivationMode::New {
+        native_root: r"C:\repo".into(),
+        model: None,
+    });
+    let model = |index| AdapterModel {
+        id: ModelId::new("modelId", format!("model-{index}")).unwrap(),
+        name: RequiredText::new("modelName", format!("Model {index}")).unwrap(),
+        is_default: false,
+    };
+    let limit = LIMITS.wire.models_or_config_entries as usize;
+    let session = ActivatedSession {
+        binding_digest: activation.binding_digest,
+        project_id: activation.project_id,
+        chat_id: activation.chat_id,
+        session_id: activation.session_id,
+        external_session_id: ExternalId::new("thread", "thread-catalog").unwrap(),
+        runtime_epoch: activation.runtime_epoch,
+        capabilities: advertised.clone(),
+        models: (0..limit - 1).map(model).collect(),
+        next_model_cursor: None,
+    };
+    let mut idle =
+        IdleActivationParts::new(adapter(advertised, vec![]), (), NoResources(17), session);
+    let mut transport = IdleCatalogTransport(0);
+    idle.accept_idle_batch(
+        AdapterBatch::new(
+            vec![AdapterEvent::Models {
+                models: vec![model(limit - 1)],
+                next_cursor: Some(PageCursor::new("cursor", "next").unwrap()),
+            }],
+            vec![],
+        )
+        .unwrap(),
+        &mut transport,
+    )
+    .unwrap();
+    assert_eq!(
+        idle.session().models,
+        (0..limit).map(model).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        idle.session().next_model_cursor.as_ref().unwrap().as_str(),
+        "next"
+    );
+    let retained = idle.session().clone();
+    let over = AdapterBatch::new(
+        vec![AdapterEvent::Models {
+            models: vec![model(limit)],
+            next_cursor: Some(PageCursor::new("cursor", "over").unwrap()),
+        }],
+        vec![AdapterEgress::new(
+            crate::acp::transport::OutboundFrame::new(b"{\"id\":1}".to_vec()).unwrap(),
+            EgressToken::request(1),
+        )],
+    )
+    .unwrap();
+    assert!(matches!(
+        idle.accept_idle_batch(over, &mut transport),
+        Err(crate::acp::runtime::AdapterPumpError::BatchCapacity)
+    ));
+    assert_eq!(idle.session(), &retained);
+    assert_eq!(transport.0, 0);
+    assert!(idle.adapter.resolutions.lock().unwrap().is_empty());
+}
+
 #[test]
 fn catalog_error_before_activation_preserves_empty_or_partial_catalog_and_live_session() {
     runtime().block_on(async {

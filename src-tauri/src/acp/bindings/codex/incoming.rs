@@ -57,28 +57,7 @@ pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
     "Codex emitted a message Sage does not project";
 
 pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
-    use tracing::callsite::Callsite;
-    if tracing::Level::WARN > tracing::level_filters::STATIC_MAX_LEVEL {
-        return;
-    }
-    let callsite = tracing::callsite! {
-        name: "codex.unprojected",
-        kind: tracing::metadata::Kind::EVENT,
-        target: module_path!(),
-        level: tracing::Level::WARN,
-        fields: message, codex_method
-    };
-    let metadata = callsite.metadata();
-    tracing::dispatcher::get_default(|dispatcher| {
-        if !dispatcher.enabled(metadata) {
-            return;
-        }
-        let message = tracing::field::display(UNPROJECTED_DIAGNOSTIC);
-        let method = tracing::field::display(sanitize(method));
-        let values: [Option<&dyn tracing::field::Value>; 2] = [Some(&message), Some(&method)];
-        let fields = metadata.fields().value_set_all(&values);
-        dispatcher.event(&tracing::Event::new(metadata, &fields));
-    });
+    tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
