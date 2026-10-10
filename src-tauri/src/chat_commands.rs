@@ -250,7 +250,7 @@ mod tests {
                 selected.active_tab_id.as_deref(),
                 Some(first_chat_id.as_str())
             );
-            assert_eq!(selected.messages.len(), 1);
+            assert!(selected.messages.is_empty());
 
             fs::write(root.join("notes.txt"), "current selection").unwrap();
             let selected_resource = ResourceRef {

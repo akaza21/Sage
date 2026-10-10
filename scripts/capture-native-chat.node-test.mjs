@@ -49,7 +49,7 @@ import {
 } from "./capture-native-chat-dom.mjs";
 import { prepareCaptureChat } from "./capture-native-chat.mjs";
 
-function captureChatBoundary(width, harness, created = {}) {
+function captureChatBoundary(width, harness, created = {}, initial = {}) {
   const observation = {
     chatId: "welcome-chat",
     projectId: "project",
@@ -61,6 +61,7 @@ function captureChatBoundary(width, harness, created = {}) {
     controls: {},
     itemKinds: [],
     toolStates: [],
+    ...initial,
   };
   const clicks = [];
   const archived = [];
@@ -238,6 +239,25 @@ test("native admission rejects product gaps instead of waiting for inert control
 });
 for (const width of [1888, 720, 480])
   for (const harness of ["codex", "claude", "pi"]) {
+    test(
+      harness +
+        " at " +
+        width +
+        " still prepares a fresh chat after empty project startup",
+      async () => {
+        const boundary = captureChatBoundary(
+          width,
+          harness,
+          {},
+          { turnCount: 0, state: "none" },
+        );
+        await prepareCaptureChat(boundary.cdp, harness, Date.now() + 1000);
+        assert.equal(boundary.observation.turnCount, 0);
+        assert.equal(boundary.observation.state, "none");
+        assert.equal(boundary.observation.selected, HARNESS[harness].id);
+        assert.deepEqual(boundary.clicks, boundary.expectedClicks);
+      },
+    );
     test(`${harness} at ${width} captures a hydrated empty new chat in the same project`, async () => {
       const boundary = captureChatBoundary(width, harness);
       await prepareCaptureChat(boundary.cdp, harness, Date.now() + 1000);

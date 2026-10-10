@@ -140,7 +140,8 @@ const Turn = memo(
             item.kind === "thoughtSummary" &&
             terminalItemLifecycles.has(item.lifecycle)
           ) &&
-          !(item.kind === "text" && item.payload.role === "user"),
+          !(item.kind === "text" && item.payload.role === "user") &&
+          !(terminal && item.kind === "text" && !item.payload.text.trim()),
       )
       .sort(
         (left, right) =>

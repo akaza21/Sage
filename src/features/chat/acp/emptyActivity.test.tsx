@@ -1,0 +1,117 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import type { AcpItem, TurnProjection } from "../../../domain/acp";
+import { AcpChatPresentation } from "./AcpChatPresentation";
+import { page, textItem } from "./acpProjection.fixture";
+
+afterEach(cleanup);
+
+function renderTurn(state: TurnProjection["state"], items: AcpItem[]) {
+  const projection = page(state);
+  projection.turns = [
+    {
+      ...projection.turns[0],
+      createdAt: 1_000,
+      terminalAt:
+        state === "running" || state === "waitingApproval" ? null : 1_000,
+      items,
+    },
+  ];
+  return render(
+    <AcpChatPresentation
+      page={projection}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
+  );
+}
+
+describe("empty turn activity", () => {
+  it("does not disclose blank progress as completed activity", () => {
+    const progress = {
+      ...textItem(),
+      id: "blank-progress",
+      ordinal: 1,
+      payload: { role: "assistant", text: "   " },
+    } as AcpItem;
+    const answer = { ...textItem(), ordinal: 2 };
+    const { container } = renderTurn("completed", [progress, answer]);
+    expect(screen.getByText("Normalized answer")).toBeVisible();
+    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+  });
+
+  it.each([
+    "completed",
+    "cancelled",
+    "interrupted",
+    "failed",
+    "deliveryUnknown",
+  ] as const)("does not disclose empty work for a %s turn", (state) => {
+    const { container } = renderTurn(state, []);
+    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+    expect(screen.queryByText("Worked for 0s")).toBeNull();
+  });
+
+  it("keeps a real zero-duration answer without an empty disclosure", () => {
+    const answer = textItem();
+    answer.payload.text =
+      "This project is ready. Choose a harness and begin a persistent chat.";
+    const { container } = renderTurn("completed", [answer]);
+    expect(screen.getByText(answer.payload.text)).toBeVisible();
+    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+  });
+
+  it("keeps Working visible while waiting for the first token", () => {
+    const { container } = renderTurn("running", []);
+    expect(
+      container.querySelector(".chat-transcript-work--running"),
+    ).toBeVisible();
+    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+  });
+
+  it("retains the zero-duration disclosure when there is renderable activity", () => {
+    const notice = {
+      ...textItem(),
+      kind: "compactionNotice",
+      id: "compaction-1",
+      lifecycle: "completed",
+      payload: {},
+    } as unknown as AcpItem;
+    const { container } = renderTurn("completed", [notice, textItem()]);
+    expect(screen.getByText("Worked for 0s")).toBeVisible();
+    expect(
+      container.querySelector("details.chat-transcript-work"),
+    ).not.toHaveAttribute("open");
+    expect(
+      container.querySelector(".chat-transcript-work__groups"),
+    ).toHaveTextContent("Context automatically compacted");
+  });
+
+  it.each(["waitingApproval", "completed"] as const)(
+    "keeps a pending approval visible in a %s turn",
+    (state) => {
+      const permission = {
+        ...textItem(),
+        kind: "permissionRequest",
+        lifecycle: "running",
+        toolState: "waitingForApproval",
+        payload: {
+          requestId: "permission-1",
+          state: "received",
+          label: "Read file",
+          summary: "Allow reading the file",
+          offeredOptionKinds: ["allow_once", "reject_once"],
+        },
+      } as unknown as AcpItem;
+      renderTurn(state, [permission]);
+      expect(
+        screen.getByRole("group", { name: "Permission request" }),
+      ).toBeVisible();
+      expect(screen.getByRole("button", { name: "Approve" })).toBeVisible();
+    },
+  );
+});

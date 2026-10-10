@@ -31,7 +31,6 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     let database = Database::open(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
-    let chat_id = initial.active_tab_id.unwrap();
     let mut tabs = initial.tabs;
     tabs.push(crate::domain::WorkbenchTab {
         id: "browser-1".into(),
@@ -64,11 +63,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
         tab.kind == "browser" && tab.id == "browser-1" && tab.status.as_deref() == Some("closed")
     }));
     assert_eq!(snapshot.session_id, None);
-    assert_eq!(snapshot.messages.len(), 1);
-    assert_eq!(
-        snapshot.messages[0].session_id,
-        durable_welcome_session(&reopened, &chat_id)
-    );
+    assert!(snapshot.messages.is_empty());
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -299,7 +294,7 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
     assert_eq!(snapshot.session_id.as_deref(), Some("codex-session"));
     assert_eq!(snapshot.selected_harness_id.as_deref(), Some("codex"));
     assert_eq!(snapshot.selected_model_id.as_deref(), Some("codex-model"));
-    assert_eq!(snapshot.messages.len(), 1);
+    assert!(snapshot.messages.is_empty());
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -320,6 +315,9 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
         .into_iter()
         .find(|tab| tab.id == chat_id)
         .unwrap();
+    let history = database
+        .append_simulator_turn(&chat_id, "persisted prompt", "persisted answer")
+        .unwrap();
     database
         .persist_project_layout(&ProjectLayoutRequest {
             project_id: project.id.clone(),
@@ -339,7 +337,7 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
-    assert_eq!(durable_before, (1, 1, 1));
+    assert_eq!(durable_before, (1, 1, 2));
     assert_eq!(
         database
             .connection()
@@ -384,12 +382,10 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     let reattached = Database::open(&path).unwrap();
     let restored = reattached.bootstrap_snapshot().unwrap();
     assert_eq!(restored.active_tab_id.as_deref(), Some(chat_id.as_str()));
-    assert_eq!(restored.session_id, None);
-    assert_eq!(restored.messages.len(), 1);
-    assert_eq!(
-        restored.messages[0].session_id,
-        durable_welcome_session(&reattached, &chat_id)
-    );
+    assert_eq!(restored.session_id, Some(history.session_id));
+    assert_eq!(restored.messages.len(), 2);
+    assert_eq!(restored.messages[0].text, "persisted prompt");
+    assert_eq!(restored.messages[1].text, "persisted answer");
     let durable_final: (i64, i64, i64) = reattached
         .connection()
         .query_row(
@@ -403,17 +399,6 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     assert_eq!(durable_final, durable_before);
     drop(reattached);
     fs::remove_dir_all(base).unwrap();
-}
-
-fn durable_welcome_session(database: &Database, chat_id: &str) -> String {
-    database
-        .connection()
-        .query_row(
-            "SELECT id FROM agent_sessions WHERE chat_id=?1 ORDER BY ordinal LIMIT 1",
-            [chat_id],
-            |row| row.get(0),
-        )
-        .unwrap()
 }
 
 #[test]
@@ -448,7 +433,12 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     database
         .append_simulator_turn(&second_chat_id, "second prompt", "second response")
         .unwrap();
-    assert_eq!(database.messages_for_chat(&first_chat_id).unwrap().len(), 1);
+    assert!(
+        database
+            .messages_for_chat(&first_chat_id)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         database.messages_for_chat(&second_chat_id).unwrap().len(),
         2
@@ -487,7 +477,7 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
         })
         .unwrap();
     let first_restored = reopened.bootstrap_snapshot().unwrap();
-    assert_eq!(first_restored.messages.len(), 1);
+    assert!(first_restored.messages.is_empty());
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }

@@ -1008,19 +1008,22 @@ describe("AcpChatProjection", () => {
     );
     const attachment = container.querySelector(".acp-image");
     const bubble = container.querySelector(".acp-message--user");
-    const work = container.querySelector(".chat-transcript-work");
+    const answer = container.querySelector(".acp-message--assistant");
     expect(attachment).not.toBeNull();
     expect(
       screen.getByRole("img", { name: "Image attached by you" }),
     ).toBeInTheDocument();
     expect(attachment?.closest(".acp-turn__attachments")).not.toBeNull();
     expect(bubble).not.toBeNull();
+    expect(answer).not.toBeNull();
+    expect(container.querySelector(".chat-transcript-work")).toBeNull();
     expect(
       attachment!.compareDocumentPosition(bubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      bubble!.compareDocumentPosition(work!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      bubble!.compareDocumentPosition(answer!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

@@ -75,10 +75,10 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                 .load_chat_page(setup.project_id.clone(), setup.chat_id.clone(), None)
                 .unwrap()
                 .projection_revision;
-            assert_ne!(
+            assert_eq!(
                 revision,
                 ProjectionRevision::ZERO,
-                "the seeded project chat requires its current projection revision"
+                "the empty project chat starts at projection revision zero"
             );
             let mut start = setup.start_command_for(&setup.chat_id, revision);
             start.binding_id = BindingId::new("bindingId", "claude-agent-acp").unwrap();

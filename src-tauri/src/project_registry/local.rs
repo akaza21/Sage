@@ -40,14 +40,13 @@ pub(super) fn ensure_local_project(database: &Database) -> AppResult<ProjectSumm
     }
     let project_id = Uuid::new_v4().to_string();
     let tab_id = Uuid::new_v4().to_string();
-    let session_id = Uuid::new_v4().to_string();
     let now = now_millis();
     transaction.execute(
         "INSERT INTO projects(id, name, created_at, updated_at, last_opened_at)
          VALUES (?1, 'Local', ?2, ?2, ?2)",
         params![project_id, now],
     )?;
-    seed_project(&transaction, &project_id, &tab_id, &session_id, None, now)?;
+    seed_project(&transaction, &project_id, &tab_id, None, now)?;
     let summary = project_summary_in(&transaction, &project_id)?;
     transaction.commit()?;
     Ok(summary)

@@ -5,19 +5,43 @@ use uuid::Uuid;
 use super::*;
 use crate::domain::{ProjectLayoutRequest, ProjectSwitchRequest};
 
-fn session(database: &Database) -> String {
+mod welcome;
+
+fn legacy_welcome_session(database: &Database) -> String {
+    historical_simulator_session(database, "simulatorTurnCommitted")
+}
+
+fn historical_simulator_session(database: &Database, fact_kind: &str) -> String {
     let root = std::env::temp_dir().join(format!("sage-events-root-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     fs::remove_dir_all(root).unwrap();
-    database
-        .connection()
+    install_legacy_welcome(database, &project.id, fact_kind)
+}
+
+fn install_legacy_welcome(database: &Database, project: &str, fact_kind: &str) -> String {
+    let mut connection = database.write_connection().unwrap();
+    let transaction = connection.transaction().unwrap();
+    let (chat, now): (String, i64) = transaction
         .query_row(
-            "SELECT id FROM agent_sessions WHERE project_id=?1",
-            [project.id],
-            |row| row.get(0),
+            "SELECT id,created_at FROM chats WHERE project_id=?1 AND ordinal=0",
+            [project],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .unwrap()
+        .unwrap();
+    let session = Uuid::new_v4().to_string();
+    store::seed_legacy_welcome(
+        &transaction,
+        project,
+        &chat,
+        &session,
+        now,
+        &payload("assistant", "Historical onboarding").unwrap(),
+        fact_kind,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    session
 }
 
 fn chat(database: &Database, session_id: &str) -> String {
@@ -34,16 +58,16 @@ fn chat(database: &Database, session_id: &str) -> String {
 #[test]
 fn simulator_seed_and_turn_are_v5_and_ledgers_remain_exact() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let appended = database
         .append_simulator_turn(&chat_id, "hello", "ack")
         .unwrap();
     let session_id = appended.session_id;
     let messages = appended.messages;
-    assert_eq!(messages.len(), 3);
-    assert_eq!(messages[1].role, "user");
-    assert_eq!(messages[2].role, "assistant");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[1].role, "assistant");
     let connection = database.connection();
     let durable: (i64, i64, i64, i64) = connection
         .query_row(
@@ -98,17 +122,16 @@ fn simulator_seed_and_turn_are_v5_and_ledgers_remain_exact() {
 }
 
 #[test]
-fn fresh_project_welcome_is_closed_and_first_prompt_lazily_installs_head() {
+fn historical_welcome_is_closed_and_first_prompt_lazily_installs_head() {
     let base = std::env::temp_dir().join(format!("sage-fresh-chat-v5-{}", Uuid::new_v4()));
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
     let database = Database::open(&path).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let initial = database.bootstrap_snapshot().unwrap();
     assert_eq!(initial.session_id, None);
-    assert_eq!(initial.messages.len(), 1);
-    assert_eq!(initial.messages[0].session_id, welcome_session_id);
+    assert!(initial.messages.is_empty());
     let welcome_shape: (String, String, i64, i64, i64) = database
         .connection()
         .query_row(
@@ -129,11 +152,15 @@ fn fresh_project_welcome_is_closed_and_first_prompt_lazily_installs_head() {
         .unwrap();
     assert_eq!(welcome_shape, ("closed".into(), "cold".into(), 0, 0, 0));
 
+    drop(database);
+    let database = Database::open(&path).unwrap();
+    assert!(database.bootstrap_snapshot().unwrap().messages.is_empty());
+
     let appended = database
         .append_simulator_turn(&chat_id, "first prompt", "ack")
         .unwrap();
     assert_ne!(appended.session_id, welcome_session_id);
-    assert_eq!(appended.messages.len(), 3);
+    assert_eq!(appended.messages.len(), 2);
     let current_shape: (String, String, i64, i64, i64) = database
         .connection()
         .query_row(
@@ -159,7 +186,7 @@ fn fresh_project_welcome_is_closed_and_first_prompt_lazily_installs_head() {
     let reopened = Database::open(&path).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(restored.session_id, Some(session_id));
-    assert_eq!(restored.messages.len(), 3);
+    assert_eq!(restored.messages.len(), 2);
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -170,7 +197,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
     let database = Database::open(&path).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let deep = database
         .append_simulator_turn_for_model(&chat_id, "sim-deep", "deep", "ack")
@@ -240,7 +267,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
             "ready".into()
         )
     );
-    assert_eq!(fast.messages.len(), 7);
+    assert_eq!(fast.messages.len(), 6);
     drop(reopened);
 
     let restarted = Database::open(&path).unwrap();
@@ -254,7 +281,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
 #[test]
 fn simulator_model_replacement_and_turn_roll_back_as_one_transaction() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let deep = database
         .append_simulator_turn_for_model(&chat_id, "sim-deep", "deep", "ack")
@@ -317,7 +344,7 @@ fn simulator_model_replacement_and_turn_roll_back_as_one_transaction() {
 #[test]
 fn full_session_ledger_blocks_new_turn_without_touching_history() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let session_id = database
         .append_simulator_turn(&chat_id, "first", "ack")
@@ -367,7 +394,7 @@ fn simulator_preserves_ade0005_capacity_boundary_after_v5() {
     fs::create_dir_all(&base).unwrap();
     let database_path = base.join("sage.db");
     let database = Database::open(&database_path).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
 
     let mut session_id = None;
@@ -380,7 +407,7 @@ fn simulator_preserves_ade0005_capacity_boundary_after_v5() {
         last_sequence = appended.messages.last().unwrap().sequence;
     }
     let session_id = session_id.unwrap();
-    assert_eq!(last_sequence, 5_001);
+    assert_eq!(last_sequence, 5_000);
     let durable_items: i64 = database
         .connection()
         .query_row(
@@ -399,7 +426,7 @@ fn simulator_preserves_ade0005_capacity_boundary_after_v5() {
     let reopened = Database::open(&database_path).unwrap();
     let projection = reopened.messages(&session_id).unwrap();
     assert_eq!(projection.len(), MAX_BOOTSTRAP_MESSAGES as usize);
-    assert_eq!(projection.last().unwrap().sequence, 5_001);
+    assert_eq!(projection.last().unwrap().sequence, 5_000);
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -410,7 +437,7 @@ fn native_reopen_is_idempotent_for_simulator_projection_and_ledgers() {
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
     let database = Database::open(&path).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let appended = database
         .append_simulator_turn(&chat_id, "hello", "ack")
@@ -455,7 +482,7 @@ fn native_reopen_is_idempotent_for_simulator_projection_and_ledgers() {
 #[test]
 fn simulator_turn_rolls_back_both_items_when_interrupted() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let session_id = session(&database);
+    let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         database.append_simulator_turn_with_hook(&chat_id, "user", "assistant", || {
@@ -463,7 +490,7 @@ fn simulator_turn_rolls_back_both_items_when_interrupted() {
         })
     }));
     assert!(result.is_err());
-    assert_eq!(database.messages(&session_id).unwrap().len(), 1);
+    assert!(database.messages(&session_id).unwrap().is_empty());
 }
 
 #[test]
@@ -476,14 +503,8 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
     let database_path = base.join("sage.db");
     let database = Database::open(&database_path).unwrap();
     let project_a = database.create_project_from_root(&root_a).unwrap();
-    let welcome_session_a: String = database
-        .connection()
-        .query_row(
-            "SELECT id FROM agent_sessions WHERE project_id=?1",
-            [&project_a.id],
-            |row| row.get(0),
-        )
-        .unwrap();
+    let welcome_session_a =
+        install_legacy_welcome(&database, &project_a.id, "simulatorTurnCommitted");
     let chat_a = chat(&database, &welcome_session_a);
     let project_b = database.create_project_from_root(&root_b).unwrap();
     let current_b = database.bootstrap_snapshot().unwrap();
@@ -515,7 +536,7 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
     switching.join().unwrap().unwrap();
     drop(database);
     let reopened = Database::open(&database_path).unwrap();
-    assert_eq!(reopened.messages(&session_a).unwrap().len(), 3);
+    assert_eq!(reopened.messages(&session_a).unwrap().len(), 2);
     assert_eq!(reopened.active_project_id().unwrap(), Some(project_b.id));
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
@@ -524,9 +545,9 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
 #[test]
 fn inactive_simulator_session_is_rejected_before_any_item() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let session_a = session(&database);
+    let session_a = legacy_welcome_session(&database);
     let chat_a = chat(&database, &session_a);
-    let _session_b = session(&database);
+    let _session_b = legacy_welcome_session(&database);
     let before: i64 = database
         .connection()
         .query_row(
@@ -554,7 +575,7 @@ fn inactive_simulator_session_is_rejected_before_any_item() {
 #[test]
 fn transcript_uses_latest_bounded_window() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let session_id = session(&database);
+    let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let mut connection = database.connection();
     let transaction = connection.transaction().unwrap();
@@ -584,7 +605,7 @@ fn transcript_uses_latest_bounded_window() {
 #[test]
 fn native_projection_truncates_oldest_messages_without_rejecting_durable_turns() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let welcome_session_id = session(&database);
+    let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let large = "x".repeat(240_000);
     let mut last = None;
@@ -605,8 +626,8 @@ fn native_projection_truncates_oldest_messages_without_rejecting_durable_turns()
         )
         .unwrap();
     assert_eq!(durable_items, 40);
-    assert!(last.messages.len() < 41);
-    assert_eq!(last.messages.last().unwrap().sequence, 41);
+    assert!(last.messages.len() < 40);
+    assert_eq!(last.messages.last().unwrap().sequence, 40);
     assert!(
         last.messages
             .iter()
@@ -619,7 +640,7 @@ fn native_projection_truncates_oldest_messages_without_rejecting_durable_turns()
 #[test]
 fn transcript_rejects_a_mismatched_item_ledger_before_projection() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let session_id = session(&database);
+    let session_id = legacy_welcome_session(&database);
     database
         .connection()
         .execute(
@@ -638,7 +659,7 @@ fn transcript_rejects_a_mismatched_item_ledger_before_projection() {
 #[test]
 fn oversized_message_is_rejected_without_a_partial_turn() {
     let database = Database::open(Path::new(":memory:")).unwrap();
-    let session_id = session(&database);
+    let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let before: i64 = database
         .connection()

@@ -3,7 +3,7 @@ import { Copy, RotateCcw, Check } from "../../ui/leanIcons";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
-import { terminalTurnStates } from "./acp/statusSemantics";
+import { getPermissionStatus, terminalTurnStates } from "./acp/statusSemantics";
 import { dayTimeLabel } from "./chatTimestamp";
 import {
   formatWorkedDuration,
@@ -42,7 +42,7 @@ export function ChatTranscriptTurnSummary({
     ? formatWorkedDuration(turn.createdAt, turn.terminalAt)
     : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
 
-  if (!hasActivities && !duration) return null;
+  if (terminal && !hasActivities) return null;
   const groups = children ? (
     <div className="chat-transcript-work__groups">{children}</div>
   ) : null;
@@ -57,7 +57,14 @@ export function ChatTranscriptTurnSummary({
   }
 
   return (
-    <details className="chat-transcript-work">
+    <details
+      className="chat-transcript-work"
+      open={turn.items.some(
+        (item) =>
+          item.kind === "permissionRequest" &&
+          !getPermissionStatus(item).terminal,
+      )}
+    >
       <summary>{duration ?? "Worked"}</summary>
       {groups}
     </details>

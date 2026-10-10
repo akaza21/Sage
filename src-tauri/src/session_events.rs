@@ -1,3 +1,4 @@
+pub(crate) mod legacy_welcome;
 mod store;
 
 use rusqlite::params;
@@ -25,24 +26,6 @@ pub const MAX_GLOBAL_EVENT_BYTES: i64 = 256 * 1024 * 1024;
 struct MessagePayload {
     role: String,
     text: String,
-}
-
-pub(crate) fn seed_simulator_chat(
-    transaction: &rusqlite::Transaction<'_>,
-    project_id: &str,
-    tab_id: &str,
-    session_id: &str,
-    now: i64,
-    initial_payload: &str,
-) -> AppResult<()> {
-    store::seed_simulator_chat(
-        transaction,
-        project_id,
-        tab_id,
-        session_id,
-        now,
-        initial_payload,
-    )
 }
 
 impl Database {
@@ -157,6 +140,7 @@ fn messages_for_chat_in(
     chat_id: &str,
 ) -> AppResult<Vec<ChatMessage>> {
     verify_chat_item_ledgers(connection, chat_id)?;
+    let welcome = legacy_welcome::turn_id(connection, chat_id)?.unwrap_or_default();
     let mut statement = connection.prepare(
         "WITH ordered AS (
                SELECT i.id,i.session_id,i.payload_json,i.created_at,
@@ -168,6 +152,7 @@ fn messages_for_chat_in(
                JOIN agent_sessions s ON s.id=i.session_id
                WHERE i.chat_id=?1 AND i.kind='text' AND i.origin='primary'
                  AND (s.legacy=1 OR s.binding_id=?3)
+                 AND t.id<>?4
              )
              SELECT id,session_id,sequence,payload_json,created_at FROM ordered
              ORDER BY sequence DESC LIMIT ?2",
@@ -175,7 +160,8 @@ fn messages_for_chat_in(
     let mut rows = statement.query(params![
         chat_id,
         MAX_BOOTSTRAP_MESSAGES,
-        crate::harnesses::SIMULATOR_ID
+        crate::harnesses::SIMULATOR_ID,
+        welcome
     ])?;
     let mut messages = Vec::with_capacity(MAX_BOOTSTRAP_MESSAGES as usize);
     let mut bytes = 0_i64;

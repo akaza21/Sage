@@ -263,20 +263,22 @@ fn load_turn_rows(
     chat: &SageChatId,
     cursor: Option<&super::history_cursor::Boundary>,
 ) -> Result<(Vec<TurnRow>, bool), StoreError> {
+    let welcome = crate::session_events::legacy_welcome::turn_id(connection, chat.as_str())?
+        .unwrap_or_default();
     let base = "SELECT t.id,t.project_id,t.chat_id,t.session_id,s.ordinal,
                        t.runtime_epoch,t.ordinal,t.state,t.revision,
                        t.created_at,t.updated_at,t.terminal_at
                 FROM turns t JOIN agent_sessions s ON s.id=t.session_id
-                WHERE t.project_id=?1 AND t.chat_id=?2";
+                WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id<>?3";
     let sql = match cursor {
         Some(boundary) if boundary.includes_boundary_turn() => format!(
-            "{base} AND (s.ordinal<?3 OR (s.ordinal=?3 AND
-             (t.ordinal<?4 OR (t.ordinal=?4 AND t.id<=?5))))
+            "{base} AND (s.ordinal<?4 OR (s.ordinal=?4 AND
+             (t.ordinal<?5 OR (t.ordinal=?5 AND t.id<=?6))))
              ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"
         ),
         Some(_) => format!(
-            "{base} AND (s.ordinal<?3 OR (s.ordinal=?3 AND
-             (t.ordinal<?4 OR (t.ordinal=?4 AND t.id<?5))))
+            "{base} AND (s.ordinal<?4 OR (s.ordinal=?4 AND
+             (t.ordinal<?5 OR (t.ordinal=?5 AND t.id<?6))))
              ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"
         ),
         None => format!("{base} ORDER BY s.ordinal DESC,t.ordinal DESC,t.id DESC LIMIT 21"),
@@ -305,6 +307,7 @@ fn load_turn_rows(
             params![
                 project.as_str(),
                 chat.as_str(),
+                welcome,
                 boundary.session_ordinal,
                 boundary.turn_ordinal,
                 boundary.turn_id
@@ -314,7 +317,7 @@ fn load_turn_rows(
             result.push(row?);
         }
     } else {
-        for row in statement.query_map(params![project.as_str(), chat.as_str()], mapper)? {
+        for row in statement.query_map(params![project.as_str(), chat.as_str(), welcome], mapper)? {
             result.push(row?);
         }
     }

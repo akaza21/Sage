@@ -233,7 +233,6 @@ impl Database {
         let project_id = Uuid::new_v4().to_string();
         let root_id = Uuid::new_v4().to_string();
         let tab_id = Uuid::new_v4().to_string();
-        let session_id = Uuid::new_v4().to_string();
         let now = now_millis();
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
@@ -261,7 +260,6 @@ impl Database {
             &transaction,
             &project_id,
             &tab_id,
-            &session_id,
             Some(root_id.as_str()),
             now,
         )?;

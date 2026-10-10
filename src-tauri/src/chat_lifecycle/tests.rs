@@ -176,7 +176,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
         })
         .unwrap();
     let active_before = database.bootstrap_snapshot().unwrap();
-    assert_eq!(active_before.messages.len(), 1);
+    assert!(active_before.messages.is_empty());
     database
         .rename_chat(&RenameChatRequest {
             project_id: project.id.clone(),
@@ -364,7 +364,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
         restarted.active_tab_id.as_deref(),
         Some(first_chat_id.as_str())
     );
-    assert_eq!(restarted.messages.len(), 1);
+    assert!(restarted.messages.is_empty());
     assert_eq!(
         restarted
             .tabs

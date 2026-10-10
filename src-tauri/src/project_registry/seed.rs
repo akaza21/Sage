@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::{
+    chat_lifecycle::attach_chat_tab_in,
     error::AppResult,
     project_registry::{canonical_comparison_key, persisted_path_text},
-    session_events::seed_simulator_chat,
 };
 use rusqlite::{OptionalExtension, params};
 
@@ -33,7 +33,6 @@ pub(super) fn seed_project(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,
     tab_id: &str,
-    session_id: &str,
     root_id: Option<&str>,
     now: i64,
 ) -> AppResult<()> {
@@ -45,12 +44,27 @@ pub(super) fn seed_project(
                  '{}', ?3, ?3)",
         params![tab_id, project_id, now],
     )?;
-    let payload = serde_json::json!({
-        "role": "assistant",
-        "text": "This project is ready. Choose a harness and begin a persistent chat."
-    })
-    .to_string();
-    seed_simulator_chat(transaction, project_id, tab_id, session_id, now, &payload)?;
+    transaction.execute(
+        "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+         VALUES (?1,?2,0,'Chat: New project',0,?3,?3)",
+        params![tab_id, project_id, now],
+    )?;
+    attach_chat_tab_in(transaction, project_id, tab_id, now)?;
+    transaction.execute(
+        "INSERT INTO acp_project_usage(
+           project_id,chat_count,session_count,turn_count,item_count,fact_count,payload_bytes,revision
+         ) VALUES (?1,1,0,0,0,0,0,0)",
+        [project_id],
+    )?;
+    if transaction.execute(
+        "UPDATE acp_store_usage SET chat_count=chat_count+1,revision=revision+1 WHERE singleton=1",
+        [],
+    )? != 1
+    {
+        return Err(crate::error::AppError::InvalidRequest(
+            "global ACP usage ledger is absent".into(),
+        ));
+    }
     transaction.execute(
         "INSERT INTO project_layouts
          (project_id, active_tab_id, selected_root_id,
@@ -81,3 +95,6 @@ pub(super) fn active_project_in(
         .optional()?
         .flatten())
 }
+
+#[cfg(test)]
+mod tests;
