@@ -76,10 +76,10 @@ test("CP-16 refs 08/13: primary activity rows keep a 32 px scale cadence and adm
     ),
   ).toHaveText([
     "First note",
-    "Ran 1 command",
-    "Ran tests · 1 command",
-    "Ran 1 command",
-    "Ran tests · 1 command",
+    "Ran Ran one",
+    "Ran tests · Ran two",
+    "Ran Ran three",
+    "Ran tests · Ran four",
     "Second note",
   ]);
   const rows = work.locator(".acp-tool-rollup__label");

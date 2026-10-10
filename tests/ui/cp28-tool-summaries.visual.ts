@@ -108,13 +108,19 @@ for (const layout of [
         const summary = label.closest("summary")!;
         const row = summary.closest("details")!;
         const style = getComputedStyle(label);
+        // line-height may compute to "normal"; measure one rendered line.
+        const probe = label.cloneNode() as HTMLElement;
+        probe.textContent = "x";
+        label.after(probe);
+        const lineHeight = probe.getBoundingClientRect().height;
+        probe.remove();
         return {
           textLength: label.textContent?.length,
           whiteSpace: style.whiteSpace,
           overflow: style.textOverflow,
           flexShrink: style.flexShrink,
           height: label.getBoundingClientRect().height,
-          lineHeight: Number.parseFloat(style.lineHeight),
+          lineHeight,
           ellipsized: label.scrollWidth > label.clientWidth,
           rowOverflow: row.scrollWidth - row.clientWidth,
           contained:
@@ -127,6 +133,7 @@ for (const layout of [
       expect(geometry.overflow).toBe("ellipsis");
       expect(geometry.flexShrink).toBe("1");
       expect(geometry.ellipsized).toBe(true);
+      expect(geometry.lineHeight).toBeGreaterThan(0);
       expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight + 1);
       expect(geometry.rowOverflow).toBeLessThanOrEqual(1);
       expect(geometry.contained).toBe(true);
