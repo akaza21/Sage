@@ -31,6 +31,13 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     let database = Database::open(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
+    let history = database
+        .append_simulator_turn(
+            initial.active_tab_id.as_deref().unwrap(),
+            "chat beside browser",
+            "preserved chat answer",
+        )
+        .unwrap();
     let mut tabs = initial.tabs;
     tabs.push(crate::domain::WorkbenchTab {
         id: "browser-1".into(),
@@ -62,8 +69,10 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     assert!(snapshot.tabs.iter().any(|tab| {
         tab.kind == "browser" && tab.id == "browser-1" && tab.status.as_deref() == Some("closed")
     }));
-    assert_eq!(snapshot.session_id, None);
-    assert!(snapshot.messages.is_empty());
+    assert_eq!(snapshot.session_id, Some(history.session_id));
+    assert_eq!(snapshot.messages.len(), 2);
+    assert_eq!(snapshot.messages[0].text, "chat beside browser");
+    assert_eq!(snapshot.messages[1].text, "preserved chat answer");
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -102,7 +111,10 @@ fn insert_empty_chat(database: &Database, project_id: &str, chat_id: &str, ordin
 
 #[test]
 fn active_empty_chat_never_projects_another_chats_head_or_history() {
-    let (database, project_id, _) = database_with_project();
+    let (database, project_id, chat_id) = database_with_project();
+    database
+        .append_simulator_turn(&chat_id, "other chat prompt", "other chat answer")
+        .unwrap();
     insert_empty_chat(&database, &project_id, "chat-empty", 1);
     database
         .connection()
@@ -122,6 +134,9 @@ fn active_empty_chat_never_projects_another_chats_head_or_history() {
 fn corrupt_non_chat_attachment_cannot_drive_chat_projection() {
     let (database, _, chat_id) = database_with_project();
     database
+        .append_simulator_turn(&chat_id, "attached chat prompt", "attached chat answer")
+        .unwrap();
+    database
         .connection()
         .execute(
             "UPDATE workbench_tabs SET kind='settings' WHERE id=?1",
@@ -137,7 +152,10 @@ fn corrupt_non_chat_attachment_cannot_drive_chat_projection() {
 
 #[test]
 fn file_active_bootstrap_uses_the_latest_chat_ordinal() {
-    let (database, project_id, _) = database_with_project();
+    let (database, project_id, chat_id) = database_with_project();
+    database
+        .append_simulator_turn(&chat_id, "older chat prompt", "older chat answer")
+        .unwrap();
     insert_empty_chat(&database, &project_id, "chat-latest", 1);
     let root_id: String = database
         .connection()
@@ -411,6 +429,9 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
+    let first_history = database
+        .append_simulator_turn(&first_chat_id, "first prompt", "first response")
+        .unwrap();
 
     let second_chat_id = database
         .create_chat(&ProjectLayoutRequest {
@@ -433,12 +454,10 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     database
         .append_simulator_turn(&second_chat_id, "second prompt", "second response")
         .unwrap();
-    assert!(
-        database
-            .messages_for_chat(&first_chat_id)
-            .unwrap()
-            .is_empty()
-    );
+    let first_messages = database.messages_for_chat(&first_chat_id).unwrap();
+    assert_eq!(first_messages.len(), 2);
+    assert_eq!(first_messages[0].text, "first prompt");
+    assert_eq!(first_messages[1].text, "first response");
     assert_eq!(
         database.messages_for_chat(&second_chat_id).unwrap().len(),
         2
@@ -477,7 +496,10 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
         })
         .unwrap();
     let first_restored = reopened.bootstrap_snapshot().unwrap();
-    assert!(first_restored.messages.is_empty());
+    assert_eq!(first_restored.session_id, Some(first_history.session_id));
+    assert_eq!(first_restored.messages.len(), 2);
+    assert_eq!(first_restored.messages[0].text, "first prompt");
+    assert_eq!(first_restored.messages[1].text, "first response");
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }

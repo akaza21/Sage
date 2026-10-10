@@ -210,6 +210,13 @@ mod tests {
             let database = Database::open(&database_path).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let initial = database.bootstrap_snapshot().unwrap();
+            let history = database
+                .append_simulator_turn(
+                    initial.active_tab_id.as_deref().unwrap(),
+                    "first chat prompt",
+                    "first chat answer",
+                )
+                .unwrap();
             let layout = ProjectLayoutRequest {
                 project_id: project.id,
                 tabs: initial.tabs,
@@ -250,7 +257,10 @@ mod tests {
                 selected.active_tab_id.as_deref(),
                 Some(first_chat_id.as_str())
             );
-            assert!(selected.messages.is_empty());
+            assert_eq!(selected.session_id, Some(history.session_id));
+            assert_eq!(selected.messages.len(), 2);
+            assert_eq!(selected.messages[0].text, "first chat prompt");
+            assert_eq!(selected.messages[1].text, "first chat answer");
 
             fs::write(root.join("notes.txt"), "current selection").unwrap();
             let selected_resource = ResourceRef {

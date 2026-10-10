@@ -153,6 +153,9 @@ fn refuses_to_move_a_chat_that_has_an_agent_session() {
         .unwrap()
         .active_tab_id
         .unwrap();
+    database
+        .append_simulator_turn(&chat_id, "keep this chat here", "session exists")
+        .unwrap();
     let second = database.create_project_from_root(&second_root).unwrap();
     let error = database
         .move_chat(&MoveChatRequest {

@@ -103,6 +103,9 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
+    let history = database
+        .append_simulator_turn(&first_chat_id, "remember this prompt", "preserved answer")
+        .unwrap();
     let second_chat_id = database
         .create_chat(&ProjectLayoutRequest {
             project_id: project.id.clone(),
@@ -176,7 +179,13 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
         })
         .unwrap();
     let active_before = database.bootstrap_snapshot().unwrap();
-    assert!(active_before.messages.is_empty());
+    assert_eq!(
+        active_before.session_id.as_deref(),
+        Some(history.session_id.as_str())
+    );
+    assert_eq!(active_before.messages.len(), 2);
+    assert_eq!(active_before.messages[0].text, "remember this prompt");
+    assert_eq!(active_before.messages[1].text, "preserved answer");
     database
         .rename_chat(&RenameChatRequest {
             project_id: project.id.clone(),
@@ -364,7 +373,10 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
         restarted.active_tab_id.as_deref(),
         Some(first_chat_id.as_str())
     );
-    assert!(restarted.messages.is_empty());
+    assert_eq!(restarted.session_id, Some(history.session_id));
+    assert_eq!(restarted.messages.len(), 2);
+    assert_eq!(restarted.messages[0].text, "remember this prompt");
+    assert_eq!(restarted.messages[1].text, "preserved answer");
     assert_eq!(
         restarted
             .tabs
@@ -390,6 +402,9 @@ fn renames_a_chat_on_a_non_active_project_without_switching() {
         .bootstrap_snapshot()
         .unwrap()
         .active_tab_id
+        .unwrap();
+    database
+        .append_simulator_turn(&cross_chat, "research prompt", "research answer")
         .unwrap();
     let sessions_before: i64 = database
         .connection()
