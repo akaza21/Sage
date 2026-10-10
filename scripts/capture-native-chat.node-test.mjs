@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import path from "node:path";
 import {
   mkdtempSync,
@@ -10,7 +11,11 @@ import {
   rmSync,
 } from "node:fs";
 import { ensurePlainDirectory } from "./capture-native-chat-process.mjs";
-import { captureTiming } from "./capture-native-chat-drive.mjs";
+import {
+  captureTiming,
+  driveCaptureChat,
+  cleanupCapture,
+} from "./capture-native-chat-drive.mjs";
 import {
   archivePreviousChatExpression,
   SINGLE_CAPTURE_PANE,
@@ -19,7 +24,6 @@ import {
   parseArgs,
   evidencePaths,
   validateProbe,
-  admitTarget,
   selectOwnedTarget,
   discoverOwnedTarget,
   validateDimensions,
@@ -41,6 +45,7 @@ import {
   HARNESS,
   IDLE_CAPTURE_STATES,
   clickExpression,
+  liveActionExpression,
 } from "./capture-native-chat-dom.mjs";
 import { prepareCaptureChat } from "./capture-native-chat.mjs";
 
@@ -190,8 +195,24 @@ const args = [
   "--state",
   "turn-completed",
   "--width",
-  "480",
+  "720",
 ];
+test("480 capture requests fail before setup with the product minimum width", () => {
+  const config = JSON.parse(
+    readFileSync(
+      new URL("../src-tauri/tauri.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(config.app.windows[0].minWidth, 720);
+  for (const harness of ["codex", "claude", "pi"])
+    for (const state of ["turn-completed", "responsive-480"])
+      assert.throws(
+        () =>
+          parseArgs(["--harness", harness, "--state", state, "--width", "480"]),
+        /width-480-blocked-by-product-minimum-720-owner-decision-required/u,
+      );
+});
 test("native admission rejects product gaps instead of waiting for inert controls", () => {
   for (const [harness, state] of [
     ["codex", "model-menu"],
@@ -242,11 +263,159 @@ for (const width of [1888, 720, 480])
         assert.equal(boundary.observation.selected, "simulator");
       });
   }
+for (const state of ["approval-approved", "approval-declined"])
+  test(`compact Claude ${state} capture leaves five timing slots after cleanup`, async () => {
+    const timing = captureTiming();
+    const boundary = captureChatBoundary(720, "claude");
+    const deadline = Date.now() + 1000;
+    const observationExpression = observationFor(HARNESS.claude.binding);
+    let warmupObservations = 0;
+    const observation = {
+      turnId: "none",
+      turnCount: 0,
+      state: "none",
+      bindingId: HARNESS.claude.binding,
+      controls: { stop: false, send: true, modelEnabled: true },
+      assistantRendered: true,
+    };
+    const cdp = {
+      async evaluate(expression) {
+        if (boundary.observation.selected !== HARNESS.claude.id)
+          return boundary.cdp.evaluate(expression);
+        if (expression === observationExpression) {
+          if (observation.turnCount === 1 && ++warmupObservations >= 2) {
+            observation.state = "completed";
+            observation.controls = {
+              stop: false,
+              send: true,
+              modelEnabled: true,
+            };
+          }
+          return { ...boundary.observation, ...observation };
+        }
+        if (
+          expression === clickExpression('button[aria-label="Send message"]')
+        ) {
+          assert.equal(observation.controls.send, true);
+          assert.equal(observation.controls.stop, false);
+          observation.turnCount++;
+          observation.turnId = "turn-" + observation.turnCount;
+          const warmup = observation.turnCount === 1;
+          observation.state = warmup ? "running" : "waitingApproval";
+          observation.controls = {
+            stop: true,
+            send: false,
+            modelEnabled: false,
+          };
+        }
+        if (
+          expression === clickExpression('button[aria-label="Permission mode"]')
+        ) {
+          assert.equal(observation.turnCount, 1);
+          assert.equal(observation.state, "completed");
+          assert.equal(observation.controls.modelEnabled, true);
+        }
+        if (
+          expression ===
+          liveActionExpression(
+            observationExpression,
+            scopeToTurn(actionsFor(state, "claude")[0], "turn-2"),
+            "turn-2",
+            HARNESS.claude.binding,
+          )
+        ) {
+          assert.equal(observation.state, "waitingApproval");
+          observation.state = "completed";
+          observation.controls = {
+            stop: false,
+            send: true,
+            modelEnabled: true,
+          };
+        }
+        return true;
+      },
+    };
+    for (const step of [
+      "capture-start",
+      "source-clean",
+      "served-asset-ready",
+      "app-launched",
+      "cdp-target-ready",
+      "window-ready",
+    ])
+      timing.record(step);
+    assert.deepEqual(
+      await driveCaptureChat(
+        cdp,
+        parseArgs(["--harness", "claude", "--state", state, "--width", "720"]),
+        deadline,
+        timing.record,
+      ),
+      { chatId: "capture-chat", projectId: "project" },
+    );
+    assert.equal(observation.turnCount, 2);
+    assert.equal(observation.state, "completed");
+    for (const step of [
+      "layout-stable",
+      "screenshot-start",
+      "screenshot-captured",
+      "capture-verified",
+    ])
+      timing.record(step, observation);
+    assert.equal(
+      await cleanupCapture(
+        timing.record,
+        ["cdp-close", "app-stop", "roots-cleanup"].map((step) => ({
+          step,
+          action: async () => {},
+        })),
+      ),
+      undefined,
+    );
+    timing.record("source-reverified");
+    timing.record("served-asset-reverified");
+    assert.equal(
+      await cleanupCapture(timing.record, [
+        { step: "vite-stop", action: async () => {} },
+      ]),
+      undefined,
+    );
+    assert.equal(timing.steps.length, 59);
+    const value = probe();
+    value.timing.steps = timing.steps;
+    assert.doesNotThrow(() => validateProbe(value));
+    for (let remaining = 0; remaining < 5; remaining++)
+      timing.record("reserved-cleanup");
+    assert.throws(() => timing.record("extra"), /timing-bound/u);
+  });
+test("capture evaluations keep the overall deadline and a fresh five-second per-call bound", async (context) => {
+  let now = 1000;
+  context.mock.method(Date, "now", () => now);
+  const calls = [];
+  const cdp = {
+    evaluate(expression, deadline) {
+      calls.push([expression, deadline]);
+      return Promise.resolve("observed");
+    },
+  };
+  const evaluate = boundedEvaluate(cdp, 9000);
+  assert.equal(await evaluate("first"), "observed");
+  now = 2000;
+  await evaluate("second");
+  now = 8500;
+  await evaluate("last");
+  assert.deepEqual(calls, [
+    ["first", 6000],
+    ["second", 7000],
+    ["last", 9000],
+  ]);
+});
+
 test("capture arguments are closed, finite and reject duplicates", () => {
   assert.deepEqual(parseArgs(args), {
     harness: "claude",
     state: "turn-completed",
-    width: 480,
+    width: 720,
     height: 1000,
     caseId: "claude-turn-completed",
   });
@@ -254,7 +423,7 @@ test("capture arguments are closed, finite and reject duplicates", () => {
     [],
     [...args, "--width", "720"],
     [...args, "--port", "1420"],
-    args.map((value) => (value === "480" ? "481" : value)),
+    args.map((value) => (value === "720" ? "481" : value)),
     args.map((value) => (value === "turn-completed" ? "../private" : value)),
   ])
     assert.throws(() => parseArgs(bad));
@@ -263,7 +432,7 @@ test("evidence paths cannot escape the selected directory", () => {
   const root = path.resolve("synthetic-evidence");
   assert.equal(
     evidencePaths(root, parseArgs(args)).png,
-    path.join(root, "turn-completed-claude-480.png"),
+    path.join(root, "turn-completed-claude-720.png"),
   );
   for (const state of [
     "../private",
@@ -287,7 +456,7 @@ test("capture explicitly rejects truthful-absent pairs", () => {
   ])
     assert.throws(
       () =>
-        parseArgs(["--harness", harness, "--state", state, "--width", "480"]),
+        parseArgs(["--harness", harness, "--state", state, "--width", "720"]),
       /truthful-absent-state/u,
     );
 });
@@ -363,23 +532,11 @@ test("probe exact limits pass; plus-one, privacy and unknown fields fail", () =>
     assert.throws(() => validateProbe(value));
   }
 });
-test("DPR, clamp, wrong CDP target and PNG viewport mismatches fail closed", () => {
+test("DPR, clamp and PNG viewport mismatches fail closed", () => {
   const value = probe();
   assert.doesNotThrow(() => validateDimensions(value.dimensions, 480, 1000, 1));
   assert.throws(() => validateDimensions(value.dimensions, 720, 1000, 1));
   assert.throws(() => validateDimensions(value.dimensions, 480, 1000, 2));
-  const target = {
-    id: "owned",
-    type: "page",
-    title: "Sage",
-    url: "http://127.0.0.1:1420/",
-    webSocketDebuggerUrl: "ws://127.0.0.1:9223/devtools/page/owned",
-  };
-  assert.equal(admitTarget([target], 9223), target);
-  assert.throws(() => admitTarget([target, target], 9223));
-  assert.throws(() =>
-    admitTarget([{ ...target, url: "https://example.invalid/" }], 9223),
-  );
   const png = Buffer.alloc(24);
   Buffer.from("89504e470d0a1a0a", "hex").copy(png);
   png.write("IHDR", 12);

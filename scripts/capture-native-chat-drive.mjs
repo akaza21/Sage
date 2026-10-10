@@ -1,5 +1,9 @@
 import { waitForState } from "./capture-native-chat-contract.mjs";
 import {
+  boundedEvaluate,
+  retainCaptureError,
+} from "./capture-native-chat-shared.mjs";
+import {
   archivePreviousChatExpression,
   SINGLE_CAPTURE_PANE,
   SCROLL_TO_START,
@@ -12,6 +16,12 @@ import {
   liveTurnReady,
   liveActionExpression,
   SETTLED_TURN_STATES,
+  IDLE_CAPTURE_STATES,
+  actionsFor,
+  isLiveTurnAction,
+  scopeToTurn,
+  isDisclosure,
+  openExpression,
 } from "./capture-native-chat-dom.mjs";
 
 export async function captureStep(record, step, action) {
@@ -33,8 +43,8 @@ export async function prepareCaptureChat(
   record = () => {},
 ) {
   const OBSERVATION = observationFor(HARNESS[harness].binding);
-  const observe = () =>
-    cdp.evaluate(OBSERVATION, Math.min(deadline, Date.now() + 5000));
+  const evaluate = boundedEvaluate(cdp, deadline);
+  const observe = () => evaluate(OBSERVATION);
   let previous;
   await waitForState(async () => {
     const observation = await observe();
@@ -48,9 +58,8 @@ export async function prepareCaptureChat(
     return true;
   }, deadline);
   record("fresh-chat-start", previous);
-  const compact = await cdp.evaluate(
+  const compact = await evaluate(
     "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))",
-    Math.min(deadline, Date.now() + 5000),
   );
   if (compact)
     await click(
@@ -70,18 +79,9 @@ export async function prepareCaptureChat(
     };
     return true;
   }, deadline);
-  if (
-    !(await cdp.evaluate(
-      archivePreviousChatExpression(previous.chatId),
-      Math.min(deadline, Date.now() + 5000),
-    ))
-  )
+  if (!(await evaluate(archivePreviousChatExpression(previous.chatId))))
     throw new Error("capture-chat-archive-failed");
-  await waitForState(
-    () =>
-      cdp.evaluate(SINGLE_CAPTURE_PANE, Math.min(deadline, Date.now() + 5000)),
-    deadline,
-  );
+  await waitForState(() => evaluate(SINGLE_CAPTURE_PANE), deadline);
   record("fresh-chat-ready", await observe());
   if (compact)
     await click(
@@ -104,6 +104,87 @@ export async function prepareCaptureChat(
   record("harness-selected", await observe());
   return captureChat;
 }
+export async function driveCaptureChat(cdp, options, deadline, record) {
+  const OBSERVATION = observationFor(HARNESS[options.harness].binding);
+  const evaluate = boundedEvaluate(cdp, deadline);
+  const clickCapture = (selector) => click(cdp, selector, deadline, record);
+  const captureChat = await prepareCaptureChat(
+    cdp,
+    options.harness,
+    deadline,
+    record,
+  );
+  let submittedTurnId;
+  const submit = async () => {
+    submittedTurnId = await submitTurn(
+      evaluate,
+      OBSERVATION,
+      clickCapture,
+      HARNESS[options.harness].binding,
+      deadline,
+      record,
+    );
+  };
+  if (options.state.startsWith("approval-")) {
+    await submit();
+    await waitForState(
+      async () => (await evaluate(OBSERVATION)).state === "completed",
+      deadline,
+    );
+    await clickCapture('button[aria-label="Composer options"]');
+    await clickCapture('button[aria-label="Permission mode"]');
+    await clickCapture('[role="option"][data-option-id="ask"]');
+    await clickCapture('button[aria-label="Composer options"]');
+  }
+  if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
+  if (options.state === "jump-to-latest")
+    await scrollCaptureTranscript(
+      evaluate,
+      OBSERVATION,
+      submittedTurnId,
+      HARNESS[options.harness].binding,
+      deadline,
+    );
+  if (options.state === "model-menu")
+    await waitForComposerIdle(
+      evaluate,
+      OBSERVATION,
+      submittedTurnId,
+      HARNESS[options.harness].binding,
+      deadline,
+      record,
+    );
+  for (const action of actionsFor(options.state, options.harness)) {
+    let latest = await evaluate(OBSERVATION);
+    if (isLiveTurnAction(action)) {
+      await clickReadyTurn(
+        evaluate,
+        OBSERVATION,
+        scopeToTurn(action, submittedTurnId),
+        submittedTurnId,
+        HARNESS[options.harness].binding,
+        deadline,
+        record,
+      );
+      continue;
+    }
+    record("action-start", latest);
+    if (!isDisclosure(action)) {
+      await clickCapture(scopeToTurn(action, latest.turnId));
+      record("action-clicked", latest);
+      continue;
+    }
+    await waitForState(async () => {
+      latest = await evaluate(OBSERVATION);
+      return SETTLED_TURN_STATES.includes(latest.state);
+    }, deadline);
+    const selector = scopeToTurn(action, latest.turnId);
+    await waitForState(() => evaluate(openExpression(selector)), deadline);
+    record("disclosure-opened", latest);
+  }
+  return captureChat;
+}
+
 export async function submitTurn(
   evaluate,
   observationExpression,
@@ -176,12 +257,6 @@ export async function scrollCaptureTranscript(
     return (await evaluate(observationExpression)).visible.jump === true;
   }, deadline);
 }
-export function retainCaptureError(primary, next) {
-  if (!primary) return next;
-  if (next?.cleanupError && !primary.cleanupError)
-    primary.cleanupError = next.cleanupError;
-  return primary;
-}
 export async function cleanupCapture(record, steps) {
   if (steps.length > 4) throw new Error("cleanup-bound");
   let failure;
@@ -206,18 +281,13 @@ export async function cleanupCapture(record, steps) {
   return failure;
 }
 export async function click(cdp, selector, deadline, record) {
+  const evaluate = boundedEvaluate(cdp, deadline);
   await captureStep(record, "control-click", () =>
-    waitForState(
-      () =>
-        cdp.evaluate(
-          clickExpression(selector),
-          Math.min(deadline, Date.now() + 5000),
-        ),
-      deadline,
-    ),
+    waitForState(() => evaluate(clickExpression(selector)), deadline),
   );
 }
 export async function stableLayout(cdp, deadline, OBSERVATION) {
+  const evaluate = boundedEvaluate(cdp, deadline);
   await cdp.evaluate(
     "(async()=>{await document.fonts.ready;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true})()",
     Math.min(deadline, Date.now() + 10000),
@@ -225,10 +295,7 @@ export async function stableLayout(cdp, deadline, OBSERVATION) {
   let prior = null,
     consecutive = 0;
   await waitForState(async () => {
-    const observation = await cdp.evaluate(
-      OBSERVATION,
-      Math.min(deadline, Date.now() + 5000),
-    );
+    const observation = await evaluate(OBSERVATION);
     const signature = JSON.stringify([
       observation.css,
       observation.elements.map(({ kind, x, y, width, height }) => ({

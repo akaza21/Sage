@@ -436,7 +436,7 @@ test("a Turn settling between readiness and Cancel is blocked without a click", 
   assert.equal(timing.steps.at(-1).state, "completed");
 });
 
-test("every acceptance-matrix pair keeps the same admission at all three widths", () => {
+test("every acceptance-matrix pair preserves capability admission at reachable widths", () => {
   const matrix = readFileSync(
     new URL(
       "../docs/work-items/CODEX-PARITY/acceptance-matrix.md",
@@ -467,6 +467,13 @@ test("every acceptance-matrix pair keeps the same admission at all three widths"
           "--width",
           String(width),
         ];
+        if (width === 480) {
+          assert.throws(
+            () => parseArgs(args),
+            /width-480-blocked-by-product-minimum-720-owner-decision-required/u,
+          );
+          continue;
+        }
         const responsiveWidth = {
           "responsive-wide": 1888,
           "responsive-720": 720,

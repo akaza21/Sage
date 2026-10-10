@@ -3,6 +3,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { openOwnedCapture } from "./capture-native-chat-lifecycle.mjs";
 import {
+  boundedEvaluate,
+  retainCaptureError,
+} from "./capture-native-chat-shared.mjs";
+import {
   stagingPaths,
   safeDestination,
   persistCapture,
@@ -20,14 +24,7 @@ import {
   observationFor,
   AGENT_MODE,
   HARNESS,
-  IDLE_CAPTURE_STATES,
   namedState,
-  openExpression,
-  isDisclosure,
-  isLiveTurnAction,
-  scopeToTurn,
-  SETTLED_TURN_STATES,
-  actionsFor,
 } from "./capture-native-chat-dom.mjs";
 import {
   requirePlain,
@@ -50,17 +47,11 @@ import {
   buildCheckout,
 } from "./capture-native-chat-source.mjs";
 import {
-  click,
+  driveCaptureChat,
   stableLayout,
-  clickReadyTurn,
   captureTiming,
   captureStep,
-  submitTurn,
   cleanupCapture,
-  prepareCaptureChat,
-  waitForComposerIdle,
-  scrollCaptureTranscript,
-  retainCaptureError,
 } from "./capture-native-chat-drive.mjs";
 export { prepareCaptureChat } from "./capture-native-chat-drive.mjs";
 export {
@@ -135,10 +126,7 @@ export async function capture(options) {
         );
         ({ cdp, nativeBounds, webviewVersion } = ownedConnection);
         const OBSERVATION = observationFor(HARNESS[options.harness].binding);
-        const clickCapture = (selector) =>
-          click(cdp, selector, deadline, timing.record);
-        const evaluate = (expression) =>
-          cdp.evaluate(expression, Math.min(deadline, Date.now() + 5000));
+        const evaluate = boundedEvaluate(cdp, deadline);
         await waitForState(() => evaluate(AGENT_MODE), deadline);
         await waitForState(
           () =>
@@ -155,83 +143,12 @@ export async function capture(options) {
           options.height,
           observation.dpr,
         );
-        const captureChat = await prepareCaptureChat(
+        const captureChat = await driveCaptureChat(
           cdp,
-          options.harness,
+          options,
           deadline,
           timing.record,
         );
-        let submittedTurnId;
-        const submit = async () => {
-          submittedTurnId = await submitTurn(
-            evaluate,
-            OBSERVATION,
-            clickCapture,
-            HARNESS[options.harness].binding,
-            deadline,
-            timing.record,
-          );
-        };
-        if (options.state.startsWith("approval-")) {
-          await submit();
-          await waitForState(
-            async () => (await evaluate(OBSERVATION)).state === "completed",
-            deadline,
-          );
-          await clickCapture('button[aria-label="Composer options"]');
-          await clickCapture('button[aria-label="Permission mode"]');
-          await clickCapture('[role="option"][data-option-id="ask"]');
-          await clickCapture('button[aria-label="Composer options"]');
-        }
-        if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
-        if (options.state === "jump-to-latest")
-          await scrollCaptureTranscript(
-            evaluate,
-            OBSERVATION,
-            submittedTurnId,
-            HARNESS[options.harness].binding,
-            deadline,
-          );
-        if (options.state === "model-menu")
-          await waitForComposerIdle(
-            evaluate,
-            OBSERVATION,
-            submittedTurnId,
-            HARNESS[options.harness].binding,
-            deadline,
-            timing.record,
-          );
-        for (const action of actionsFor(options.state, options.harness)) {
-          let latest = await evaluate(OBSERVATION);
-          if (isLiveTurnAction(action)) {
-            await clickReadyTurn(
-              evaluate,
-              OBSERVATION,
-              scopeToTurn(action, submittedTurnId),
-              submittedTurnId,
-              HARNESS[options.harness].binding,
-              deadline,
-              timing.record,
-            );
-            continue;
-          }
-          timing.record("action-start", latest);
-          if (!isDisclosure(action)) {
-            await clickCapture(scopeToTurn(action, latest.turnId));
-            timing.record("action-clicked", latest);
-            continue;
-          }
-          await waitForState(async () => {
-            latest = await evaluate(OBSERVATION);
-            return SETTLED_TURN_STATES.includes(latest.state);
-          }, deadline);
-          const selector = scopeToTurn(action, latest.turnId);
-          await waitForState(
-            () => evaluate(openExpression(selector)),
-            deadline,
-          );
-          timing.record("disclosure-opened", latest);
-        }
         await waitForState(async () => {
           observation = await evaluate(OBSERVATION);
           return Object.values(

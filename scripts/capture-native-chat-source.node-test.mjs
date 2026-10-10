@@ -251,7 +251,7 @@ test("cleanup revalidation failures retain filesystem diagnostics without removi
 });
 test("later profile cleanup diagnostics survive earlier teardown and capture blockers", async () => {
   const { retainCaptureError } =
-    await import("./capture-native-chat-drive.mjs");
+    await import("./capture-native-chat-shared.mjs");
   const timing = captureTiming();
   const teardown = new Error("native-tool-blocked");
   const cleanupError = {
@@ -731,7 +731,7 @@ const captureArgs = [
   "--state",
   "turn-completed",
   "--width",
-  "480",
+  "720",
 ];
 test("staging is ignored and run identifiers cannot escape its directory", () => {
   const files = stagingPaths(workspace, run, parseArgs(captureArgs));
@@ -741,7 +741,7 @@ test("staging is ignored and run identifiers cannot escape its directory", () =>
   );
   assert.equal(
     files.png,
-    path.join(files.directory, "turn-completed-claude-480.png"),
+    path.join(files.directory, "turn-completed-claude-720.png"),
   );
   assert.match(
     readFileSync(new URL("../.gitignore", import.meta.url), "utf8"),
@@ -797,9 +797,9 @@ function stagedPair(root, mutate = () => {}) {
     webviewVersion: "130.0.1.0",
     dpr: 1,
     dimensions: {
-      outer: { width: 496, height: 1039 },
-      client: { width: 480, height: 1000 },
-      css: { width: 480, height: 1000 },
+      outer: { width: 736, height: 1039 },
+      client: { width: 720, height: 1000 },
+      css: { width: 720, height: 1000 },
     },
     predicates: { namedState: true, binding: true },
     elements: [],
@@ -811,7 +811,7 @@ function stagedPair(root, mutate = () => {}) {
   const png = Buffer.alloc(24);
   Buffer.from("89504e470d0a1a0a", "hex").copy(png);
   png.write("IHDR", 12);
-  png.writeUInt32BE(480, 16);
+  png.writeUInt32BE(720, 16);
   png.writeUInt32BE(1000, 20);
   mutate(probe);
   writeFileSync(files.png, png);
@@ -855,7 +855,7 @@ test("promotion rejects blocked, private, mismatched and oversized pairs before 
         },
       ]),
     (probe) => (probe.caseId = "claude-tool-running"),
-    (probe) => (probe.dimensions.client.width = 720),
+    (probe) => (probe.dimensions.client.width = 1888),
     (probe) => (probe.extra = "x".repeat(65537)),
   ]) {
     const root = mkdtempSync(path.join(process.cwd(), ".nc1-promote-test-"));

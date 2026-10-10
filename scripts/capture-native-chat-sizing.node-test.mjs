@@ -21,7 +21,13 @@ test("responsive state admission requires its reference width", () => {
         "--width",
         String(width),
       ];
-      if (width === expected) assert.equal(parseArgs(args).width, expected);
+      if (width === 480)
+        assert.throws(
+          () => parseArgs(args),
+          /width-480-blocked-by-product-minimum-720-owner-decision-required/u,
+        );
+      else if (width === expected)
+        assert.equal(parseArgs(args).width, expected);
       else assert.throws(() => parseArgs(args), /responsive-width-mismatch/u);
     }
 });

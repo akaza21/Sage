@@ -1,4 +1,8 @@
 import path from "node:path";
+import {
+  IDENTIFIER,
+  retainCaptureError,
+} from "./capture-native-chat-shared.mjs";
 import { HARNESS } from "./capture-native-chat-dom.mjs";
 import {
   nativeCases,
@@ -20,7 +24,6 @@ export function requireNativeCase(harness, state) {
   if (!CASE_IDS.has(harness + "-" + state)) fail("unsupported-state");
 }
 const SHA = /^[a-f0-9]{64}$/u;
-const IDENTIFIER = /^[a-zA-Z0-9_-]{1,128}$/u;
 function fail(code) {
   throw new Error(code);
 }
@@ -77,6 +80,8 @@ export function parseArgs(args) {
     !["1888", "720", "480"].includes(values["--width"])
   )
     fail("arguments");
+  if (width === 480)
+    fail("width-480-blocked-by-product-minimum-720-owner-decision-required");
   requireNativeCase(harness, state);
   const responsiveWidth = {
     "responsive-wide": 1888,
@@ -254,11 +259,6 @@ export function selectOwnedTarget(targets, port) {
     fail("cdp-target");
   return target;
 }
-export function admitTarget(targets, port) {
-  const target = selectOwnedTarget(targets, port);
-  if (!target) fail("cdp-target");
-  return target;
-}
 /**
  * Polls until exactly one owned page target appears. An unreachable or empty
  * listing waits; ambiguous or malformed owned targets and the deadline fail closed.
@@ -338,9 +338,7 @@ export async function withOwnedCapture(run, close, stop) {
     try {
       await cleanup();
     } catch (error) {
-      failure ??= error;
-      if (error.cleanupError && !failure.cleanupError)
-        failure.cleanupError = error.cleanupError;
+      failure = retainCaptureError(failure, error);
     }
   }
   if (failure) throw failure;

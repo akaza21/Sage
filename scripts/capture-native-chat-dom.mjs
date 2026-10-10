@@ -1,3 +1,4 @@
+import { IDENTIFIER } from "./capture-native-chat-shared.mjs";
 import {
   paneSelector,
   ownedPaneNodes,
@@ -153,7 +154,7 @@ export function liveTurnReady(observation, turnId, bindingId) {
   );
 }
 export function liveActionExpression(observation, selector, turnId, bindingId) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(turnId)) throw new Error("turn-identity");
+  if (!IDENTIFIER.test(turnId)) throw new Error("turn-identity");
   return `(async()=>{
     const latest=await ${observation};
     if(latest.turnId!==${JSON.stringify(turnId)} || latest.bindingId!==${JSON.stringify(bindingId)})return 'turn-identity-drift';
@@ -313,7 +314,7 @@ const LAST_TURN = ".acp-turn:last-of-type ";
  */
 export function scopeToTurn(selector, turnId) {
   if (!selector.startsWith(LAST_TURN)) return selector;
-  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(turnId)) throw new Error("turn-identity");
+  if (!IDENTIFIER.test(turnId)) throw new Error("turn-identity");
   return (
     '.acp-turn[data-turn-id="' +
     turnId +
