@@ -335,9 +335,7 @@ export function AcpChatPresentation({
           Changed-file summaries show retained records only.
         </p>
       ) : null}
-      {page.turns.length === 0 ? (
-        <p className="acp-empty">No turns in this chat yet.</p>
-      ) : page.turns.length > 40 ? (
+      {page.turns.length > 40 ? (
         <VirtualTurnList
           key={`${page.projectId}:${page.chatId}`}
           turns={page.turns}

@@ -15,6 +15,8 @@ import {
   type OpenResourceTarget,
 } from "./acp";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
+import { ChatHome } from "./ChatHome";
+import { composerWorkspaceName } from "./composerChrome";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import {
   AcpAnnouncementRegions,
@@ -28,6 +30,7 @@ export function ChatTranscript({
   endRef,
   onScroll,
   projectTransitioning,
+  project = null,
   useNativeAcp,
   page,
   focused,
@@ -35,6 +38,7 @@ export function ChatTranscript({
   retentionIncomplete,
   onOpenResource,
   hasEarlier,
+  historyLoading = false,
   loadingEarlier,
   historyError,
   onLoadEarlier,
@@ -49,6 +53,7 @@ export function ChatTranscript({
   endRef: RefObject<HTMLDivElement | null>;
   onScroll: () => void;
   projectTransitioning: boolean;
+  project?: { id: string; name: string } | null;
   useNativeAcp: boolean;
   page: AcpChatPage | null;
   focused: boolean;
@@ -64,6 +69,7 @@ export function ChatTranscript({
     },
   ) => void;
   hasEarlier: boolean;
+  historyLoading?: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
   onLoadEarlier: () => void;
@@ -107,14 +113,43 @@ export function ChatTranscript({
   }, []);
   const retryAction =
     useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined;
+  const projectName = composerWorkspaceName(project);
+  const showHome = Boolean(
+    useNativeAcp &&
+    page?.projectId === project?.id &&
+    page?.turns.length === 0 &&
+    projectName &&
+    !projectTransitioning &&
+    !historyLoading &&
+    !loadingEarlier &&
+    !historyError &&
+    !hasEarlier &&
+    page.nextCursor === null &&
+    !retentionIncomplete,
+  );
+  const historyNotice = historyError ? (
+    <div className="composer__notice" role="alert">
+      Chat history could not be loaded: {historyError}
+    </div>
+  ) : (
+    <div className="composer__notice" role="status">
+      Loading chat history…
+    </div>
+  );
   return (
     <>
-      <div ref={transcriptRef} className="message-list" onScroll={onScroll}>
+      <div
+        ref={transcriptRef}
+        className={`message-list${showHome ? " message-list--home" : ""}`}
+        onScroll={onScroll}
+      >
         <div ref={contentRef} className="message-list__content">
           {projectTransitioning ? (
             <div className="composer__notice" role="status">
               Loading the authoritative project…
             </div>
+          ) : useNativeAcp && !page ? (
+            historyNotice
           ) : useNativeAcp && page ? (
             <AcpChatProjection
               page={page}
@@ -130,6 +165,16 @@ export function ChatTranscript({
               onRetry={retryAction}
               feedback={feedback}
               onFeedbackQueued={forgetCopyFeedback}
+              emptyState={
+                showHome ? (
+                  <ChatHome projectName={projectName!} />
+                ) : !hasEarlier &&
+                  page.nextCursor === null &&
+                  !retentionIncomplete &&
+                  (historyError || historyLoading) ? (
+                  historyNotice
+                ) : undefined
+              }
             />
           ) : (
             <ChatLegacyTranscript

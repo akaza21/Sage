@@ -45,6 +45,31 @@ afterEach(() => {
 });
 
 describe("useAcpChatHistory", () => {
+  it("reports bootstrap loading separately from earlier-history loading", () => {
+    const { result } = renderHook(() => useAcpChatHistory());
+    expect(result.current.historyLoading).toBe(false);
+    let intent: ReturnType<typeof useAcpProjectionStore.getState>["activeLoad"];
+    act(() => {
+      intent = useAcpProjectionStore.getState().beginPageLoad(null);
+    });
+    expect(result.current.historyLoading).toBe(true);
+    expect(result.current.loadingEarlier).toBe(false);
+    act(() => {
+      useAcpProjectionStore.getState().completePageLoad(intent!, page);
+    });
+    expect(result.current.historyLoading).toBe(false);
+    act(() => {
+      intent = useAcpProjectionStore.getState().beginPageLoad(page.nextCursor);
+    });
+    expect(result.current.historyLoading).toBe(true);
+    expect(result.current.loadingEarlier).toBe(true);
+    act(() => {
+      useAcpProjectionStore.getState().failPageLoad(intent!, "Unavailable");
+    });
+    expect(result.current.historyLoading).toBe(false);
+    expect(result.current.historyError).toBe("Unavailable");
+  });
+
   it("loads only the user-selected bounded continuation cursor", async () => {
     const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
       ...page,
@@ -52,7 +77,7 @@ describe("useAcpChatHistory", () => {
     });
     const { result } = renderHook(() => useAcpChatHistory());
 
-    act(() => result.current.loadEarlier());
+    act(() => result.current.onLoadEarlier());
     await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     expect(load).toHaveBeenCalledWith(
       {

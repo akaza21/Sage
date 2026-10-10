@@ -21,6 +21,7 @@ import { useWorkbenchStore } from "./store";
 import { useAcpProjectionStore } from "./acpProjectionStore";
 import {
   acpProjectionStoreFor,
+  pinAcpProjectionIds,
   releaseAcpProjectionStore,
 } from "./acpProjectionRegistry";
 
@@ -2180,7 +2181,13 @@ describe("workbench resource and project navigation", () => {
   it("blocks project switching while an ACP turn is running", async () => {
     const switchNative = vi.spyOn(projectPort, "switchProject");
     useAcpProjectionStore.setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat:a",
+      } as never,
       page: {
+        projectId: "project-a",
         currentSessionId: "session-a",
         turns: [{ sessionId: "session-a", state: "running" }],
       } as unknown as AcpChatPage,
@@ -2198,7 +2205,13 @@ describe("workbench resource and project navigation", () => {
     const switchNative = vi.spyOn(projectPort, "switchProject");
     const background = acpProjectionStoreFor("chat-background");
     background.setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-background",
+      } as never,
       page: {
+        projectId: "project-a",
         currentSessionId: "session-background",
         turns: [{ sessionId: "session-background", state: "running" }],
       } as unknown as AcpChatPage,
@@ -2215,7 +2228,13 @@ describe("workbench resource and project navigation", () => {
     const switchNative = vi.spyOn(projectPort, "switchProject");
     const background = acpProjectionStoreFor("chat-background");
     background.setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-background",
+      } as never,
       page: {
+        projectId: "project-a",
         currentSessionId: "session-background",
         turns: [{ sessionId: "session-background", state: "running" }],
       } as unknown as AcpChatPage,
@@ -4327,6 +4346,75 @@ describe("workbench resource and project navigation", () => {
       }
     },
   );
+
+  it("blocks project switching while an unfocused visible Chat runs and permits it after settlement", async () => {
+    const store = acpProjectionStoreFor("chat:a");
+    pinAcpProjectionIds(["chat:a", "chat:b"]);
+    const scope = {
+      projectId: "project-a",
+      projectGeneration: "0",
+      chatId: "chat:a",
+    } as const;
+    const page = {
+      projectId: "project-a",
+      chatId: "chat:a",
+      title: "Running Chat",
+      projectionRevision: "1",
+      currentSessionId: "session-a",
+      sessions: [{ id: "session-a" }],
+      turns: [
+        {
+          id: "turn-a",
+          sessionId: "session-a",
+          runtimeEpoch: "1",
+          ordinal: 0,
+          state: "running",
+          revision: "1",
+          createdAt: 1,
+          updatedAt: 1,
+          terminalAt: null,
+          items: [],
+          activities: [],
+        },
+      ],
+      nextCursor: null,
+    } as unknown as AcpChatPage;
+    store.getState().activateScope(scope as never);
+    store.getState().applyAuthoritativePage(scope as never, page);
+    useWorkbenchStore.setState({
+      tabs: [chatTab, chatTabB],
+      activeTabId: chatTabB.id,
+    });
+    const switchProject = vi
+      .spyOn(projectPort, "switchProject")
+      .mockResolvedValue({
+        committed: true,
+        transitionEpoch: 1,
+        snapshot: snapshotB(),
+        recoveryError: null,
+      });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource("", "root-b"),
+      entries: [],
+      truncated: false,
+    });
+    try {
+      await useWorkbenchStore.getState().switchProject("project-b");
+      expect(switchProject).not.toHaveBeenCalled();
+      expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+      store.getState().applyAuthoritativePage(scope as never, {
+        ...page,
+        projectionRevision: "2" as never,
+        turns: [{ ...page.turns[0], state: "completed", terminalAt: 2 }],
+      });
+      await useWorkbenchStore.getState().switchProject("project-b");
+      expect(switchProject).toHaveBeenCalledOnce();
+      expect(useWorkbenchStore.getState().project?.id).toBe("project-b");
+    } finally {
+      releaseAcpProjectionStore("chat:a");
+      pinAcpProjectionIds([]);
+    }
+  });
 
   it("prevents harness ABA completions and waits for pending prompt before switch", async () => {
     const firstOld = deferred<ModelOption[]>();

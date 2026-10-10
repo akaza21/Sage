@@ -1379,7 +1379,39 @@ describe("AcpChatProjection", () => {
     );
   });
 
-  it("turn_edit_summary_shows_bounded_addition_deletion_chips", async () => {
+  it.each([
+    [null, null, null],
+    [null, 0, "-0"],
+    [0, null, "+0"],
+    [0, 0, "+0-0"],
+    [2, 1, "+4-2"],
+  ] as const)(
+    "shows only fully known totals for additions %s and deletions %s",
+    async (additions, deletions, expected) => {
+      const edited = page("completed");
+      edited.turns[0].items = [
+        editItem("first", 1, "root-one", "first", {}, additions, deletions),
+        editItem("second", 2, "root-two", "second", {}, additions, deletions),
+      ];
+      await renderProjection(<AcpChatProjection page={edited} active />);
+      const summary = screen.getByRole("region", {
+        name: "Files edited in turn 1",
+      });
+      const totals = within(summary).queryByLabelText("Line changes");
+      if (expected === null) expect(totals).toBeNull();
+      else expect(totals?.textContent).toBe(expected);
+      if (additions !== null)
+        expect(
+          totals?.querySelector(".acp-file-changes__additions"),
+        ).toHaveTextContent(`+${additions * 2}`);
+      if (deletions !== null)
+        expect(
+          totals?.querySelector(".acp-file-changes__deletions"),
+        ).toHaveTextContent(`-${deletions * 2}`);
+    },
+  );
+
+  it("keeps per-file counts but hides totals when another file has unknown counts", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     edited.turns[0].items = [
@@ -1406,8 +1438,9 @@ describe("AcpChatProjection", () => {
     );
     expect(within(summary).getAllByText("main.ts")).toHaveLength(2);
     expect(summary.querySelector(".file-kind-icon--typescript")).not.toBeNull();
-    expect(within(summary).getAllByText("+2")).toHaveLength(2);
-    expect(within(summary).getAllByText("-1")).toHaveLength(2);
+    expect(within(summary).queryByLabelText("Line changes")).toBeNull();
+    expect(within(summary).getAllByText("+2")).toHaveLength(1);
+    expect(within(summary).getAllByText("-1")).toHaveLength(1);
     expect(within(summary).getAllByText("—")).toHaveLength(2);
     expect(
       within(summary).getByRole("button", { name: "Mark reviewed" }),

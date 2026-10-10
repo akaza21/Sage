@@ -1,4 +1,4 @@
-import { Folder, Plus, Settings, ShieldCheck } from "../../ui/leanIcons";
+import { Plus, Settings, ShieldCheck } from "../../ui/leanIcons";
 
 import {
   useLayoutEffect,
@@ -34,6 +34,7 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import {
@@ -93,9 +94,7 @@ export function ChatHarnessControls({
   modeControlRef: externalModeControlRef,
 }: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
-  const switchProject = useWorkbenchStore((state) => state.switchProject);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -138,10 +137,6 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
-  const projectCandidates = useMemo(
-    () => projects.map((project) => ({ id: project.id, label: project.name })),
-    [projects],
-  );
   const selectedSessionConfig =
     sessionHarnessId === selectedHarnessId && sessionModelId === selectedModelId
       ? sessionConfig
@@ -304,34 +299,10 @@ export function ChatHarnessControls({
             onSetSessionConfigOption={onSetSessionConfigOption}
           />
           {projectName ? (
-            projectCandidates.length > 0 ? (
-              <label className="select-control select-control--chip project-scope">
-                <Folder
-                  className="project-scope__icon"
-                  size={14}
-                  aria-hidden="true"
-                />
-                <SearchablePicker
-                  ariaLabel="Project"
-                  candidates={projectCandidates}
-                  disabled={projectTransitioning || turnBusy}
-                  onSelect={(id) => void switchProject(id)}
-                  selectedId={projectId}
-                />
-              </label>
-            ) : (
-              <span
-                className="project-scope"
-                title="No other projects available"
-              >
-                <Folder
-                  className="project-scope__icon"
-                  size={14}
-                  aria-hidden="true"
-                />
-                <span>{projectName}</span>
-              </span>
-            )
+            <ProjectScopeChip
+              projectName={projectName}
+              disabled={projectTransitioning || turnBusy}
+            />
           ) : null}
           {hasModes ? (
             <label

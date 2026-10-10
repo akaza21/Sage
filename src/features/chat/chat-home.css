@@ -1,0 +1,83 @@
+.message-list--home {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-3);
+}
+
+.message-list--home > .message-list__content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+}
+
+.chat-home {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+}
+
+.chat-home > svg {
+  color: var(--color-text-muted);
+}
+
+.chat-home h2 {
+  margin: var(--space-6) 0 0;
+  color: var(--color-text-primary);
+  font-size: calc(var(--type-size-chat-title) * 1.2);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+  overflow-wrap: anywhere;
+}
+
+.chat-home .project-scope {
+  display: inline-flex;
+  max-width: min(100%, 12rem);
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+  color: inherit;
+  background: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  font: inherit;
+  vertical-align: bottom;
+}
+
+.chat-home .project-scope__icon,
+.chat-home .searchable-picker__chevron {
+  display: none;
+}
+
+.chat-home .project-scope:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.chat-home .searchable-picker__trigger {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+  color: inherit;
+  background: none;
+  font: inherit;
+  line-height: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: var(--space-1);
+}
+
+@media (forced-colors: active) {
+  .chat-home .project-scope:focus-within {
+    outline-color: Highlight;
+  }
+
+  .chat-home > svg {
+    color: CanvasText;
+  }
+
+  .chat-home .searchable-picker__trigger {
+    color: LinkText;
+  }
+}

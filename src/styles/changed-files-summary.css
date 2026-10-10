@@ -97,14 +97,14 @@
 
 .edit-summary__totals span:first-child,
 .edit-file__counts span:first-child,
-.acp-file-changes__totals span:first-child,
+.acp-file-changes__additions,
 .acp-file-changes__counts span:first-child {
   color: var(--color-diff-add);
 }
 
 .edit-summary__totals span:last-child,
 .edit-file__counts span:last-child,
-.acp-file-changes__totals span:last-child,
+.acp-file-changes__deletions,
 .acp-file-changes__counts span:last-child {
   color: var(--color-diff-delete);
 }

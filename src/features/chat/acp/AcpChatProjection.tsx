@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import type { AcpChatPage } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
@@ -29,6 +29,7 @@ type AcpChatProjectionProps = {
   onRetry?: () => void;
   feedback?: Announcement | null;
   onFeedbackQueued?: (id: string) => void;
+  emptyState?: ReactNode;
 };
 
 const loadAcpChatPresentation = () =>
@@ -50,6 +51,7 @@ export function AcpChatProjection({
   onRetry,
   feedback,
   onFeedbackQueued,
+  emptyState,
 }: AcpChatProjectionProps) {
   useEffect(() => {
     if (!active || !focused) return;
@@ -76,23 +78,27 @@ export function AcpChatProjection({
         />
       ) : null}
       <h2 className="sr-only">{page.title}</h2>
-      <LazyModuleBoundary
-        label="Chat history"
-        load={loadAcpChatPresentation}
-        render={(AcpChatPresentation) => (
-          <AcpChatPresentation
-            page={page}
-            onOpenResource={onOpenResource}
-            hasEarlier={hasEarlier}
-            loadingEarlier={loadingEarlier}
-            historyError={historyError}
-            onLoadEarlier={onLoadEarlier}
-            projectRoots={projectRoots}
-            retentionIncomplete={retentionIncomplete}
-            onRetry={onRetry}
-          />
-        )}
-      />
+      {page.turns.length === 0 && emptyState ? (
+        emptyState
+      ) : (
+        <LazyModuleBoundary
+          label="Chat history"
+          load={loadAcpChatPresentation}
+          render={(AcpChatPresentation) => (
+            <AcpChatPresentation
+              page={page}
+              onOpenResource={onOpenResource}
+              hasEarlier={hasEarlier}
+              loadingEarlier={loadingEarlier}
+              historyError={historyError}
+              onLoadEarlier={onLoadEarlier}
+              projectRoots={projectRoots}
+              retentionIncomplete={retentionIncomplete}
+              onRetry={onRetry}
+            />
+          )}
+        />
+      )}
     </section>
   );
 }

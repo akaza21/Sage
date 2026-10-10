@@ -85,8 +85,6 @@ export function ChatSurface({
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
-  const composerDescriptionId = `${composerFieldId}-description`;
-  const composerDisabledReasonId = `${composerFieldId}-disabled-reason`;
   const focused = chatId == null || focusedChatId === chatId;
   const {
     selectedHarness,
@@ -313,16 +311,14 @@ export function ChatSurface({
         endRef={endRef}
         onScroll={updateFollowEnd}
         projectTransitioning={projectTransitioning}
+        project={project}
         useNativeAcp={useNativeAcp}
         page={acpPage}
         focused={focused}
         projectRoots={project?.roots ?? []}
         retentionIncomplete={acpRetentionIncomplete}
         onOpenResource={openResource}
-        hasEarlier={acpHistory.hasEarlier}
-        loadingEarlier={acpHistory.loadingEarlier}
-        historyError={acpHistory.historyError}
-        onLoadEarlier={acpHistory.loadEarlier}
+        {...acpHistory}
         messages={messages}
         developmentSimulator={selectedHarness?.source === "development"}
         onRetry={
@@ -339,8 +335,8 @@ export function ChatSurface({
         fieldId={composerFieldId}
         dictationScope={chatId ?? activeTabId ?? ""}
         sessionId={acpPage?.currentSessionId ?? null}
-        descriptionId={composerDescriptionId}
-        disabledReasonId={composerDisabledReasonId}
+        descriptionId={`${composerFieldId}-description`}
+        disabledReasonId={`${composerFieldId}-disabled-reason`}
         text={composerText}
         attachedContext={attachedContext}
         imagePreviews={imagePreviews}

@@ -4,6 +4,35 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Chat surface stylesheet seam", () => {
+  it("defines token-based and forced-color focus boundaries for the home project chip", async () => {
+    const css = await readFile(
+      resolve("src/features/chat/chat-home.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.chat-home \.project-scope:focus-within\s*\{[^}]*outline:\s*var\(--focus-ring\);[^}]*outline-offset:\s*var\(--focus-ring-offset\)/s,
+    );
+    expect(css).toMatch(
+      /@media \(forced-colors: active\)[\s\S]*\.project-scope:focus-within\s*\{[^}]*outline-color:\s*Highlight/,
+    );
+  });
+
+  it("colors independently known changed-file totals by meaning rather than sibling position", async () => {
+    const css = await readFile(
+      resolve("src/styles/changed-files-summary.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.acp-file-changes__additions[^}]*color:\s*var\(--color-diff-add\)/s,
+    );
+    expect(css).toMatch(
+      /\.acp-file-changes__deletions[^}]*color:\s*var\(--color-diff-delete\)/s,
+    );
+    expect(css).not.toMatch(
+      /\.acp-file-changes__totals span:(first|last)-child/,
+    );
+  });
+
   it("loads primary Chat rules from a focused stylesheet, not the shell stylesheet", async () => {
     const [entry, shellCss, surfaceCss, changedFilesCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),

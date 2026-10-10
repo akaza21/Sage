@@ -56,9 +56,10 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   }, [boundChatId]);
 
   return {
+    historyLoading: activeLoad !== null,
     hasEarlier: Boolean(page?.nextCursor && scope),
     loadingEarlier: activeLoad?.cursor !== null && activeLoad !== null,
     historyError: error,
-    loadEarlier,
+    onLoadEarlier: loadEarlier,
   };
 }

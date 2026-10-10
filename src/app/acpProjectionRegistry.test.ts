@@ -1,19 +1,72 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   MAX_VISIBLE_ACP_PROJECTION_SLOTS,
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
+  hasActiveAcpTurn,
+  occupiedAcpProjectionSlotCount,
   pinAcpProjectionIds,
   releaseAcpProjectionStore,
+  subscribeAcpTurnActivity,
 } from "./acpProjectionRegistry";
 import { useAcpProjectionStore } from "./acpProjectionStore";
 
 afterEach(() => {
+  useAcpProjectionStore.getState().clear();
   clearAcpProjectionRegistry();
 });
 
 describe("ACP projection registry", () => {
+  it("counts only current-project visible turns and drops released slots without allocating another", () => {
+    const live = acpProjectionStoreFor("chat-a");
+    live.setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "7",
+        chatId: "chat-a",
+      },
+      page: {
+        projectId: "project-a",
+        currentSessionId: "session-a",
+        turns: [{ sessionId: "session-a", state: "running" }],
+      },
+    } as never);
+    expect(hasActiveAcpTurn("project-a", 7)).toBe(false);
+    pinAcpProjectionIds(["chat-a"]);
+    expect(hasActiveAcpTurn("project-a", 7)).toBe(true);
+    expect(hasActiveAcpTurn("project-b", 7)).toBe(false);
+    expect(hasActiveAcpTurn("project-a", 8)).toBe(false);
+    expect(hasActiveAcpTurn(null, 7)).toBe(false);
+    releaseAcpProjectionStore("chat-a");
+    expect(hasActiveAcpTurn("project-a", 7)).toBe(false);
+    expect(occupiedAcpProjectionSlotCount()).toBe(0);
+  });
+
+  it("notifies store and coalesced membership changes and unsubscribes evicted slots and observers", async () => {
+    await Promise.resolve();
+    const notify = vi.fn();
+    const unsubscribe = subscribeAcpTurnActivity(notify);
+    const first = acpProjectionStoreFor("chat-a");
+    acpProjectionStoreFor("chat-b");
+    pinAcpProjectionIds(["chat-a", "chat-b"]);
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(1);
+    first.setState({ error: "Unavailable" });
+    expect(notify).toHaveBeenCalledTimes(2);
+    pinAcpProjectionIds(["chat-b", "chat-c"]);
+    acpProjectionStoreFor("chat-c");
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(3);
+    first.setState({ error: null });
+    expect(notify).toHaveBeenCalledTimes(3);
+    unsubscribe();
+    releaseAcpProjectionStore("chat-b");
+    useAcpProjectionStore.setState({ error: "Unavailable" });
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps the unbound store on the singleton and isolates two visible chats", () => {
     expect(acpProjectionStoreFor()).toBe(useAcpProjectionStore);
     const first = acpProjectionStoreFor("chat-a");

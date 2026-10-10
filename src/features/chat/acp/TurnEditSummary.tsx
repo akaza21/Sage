@@ -79,14 +79,18 @@ export function TurnEditSummary({
     summary.omittedCount > 0 ||
     summary.sourceTruncated ||
     summary.rejectedUnsafeOrStale;
-  const additions = summary.changes.reduce(
+  const additions = summary.changes.reduce<number | null>(
     (total, change) =>
-      Math.min(MAX_FILE_CHANGE_LINES, total + (change.additions ?? 0)),
+      total === null || change.additions === null
+        ? null
+        : Math.min(MAX_FILE_CHANGE_LINES, total + change.additions),
     0,
   );
-  const deletions = summary.changes.reduce(
+  const deletions = summary.changes.reduce<number | null>(
     (total, change) =>
-      Math.min(MAX_FILE_CHANGE_LINES, total + (change.deletions ?? 0)),
+      total === null || change.deletions === null
+        ? null
+        : Math.min(MAX_FILE_CHANGE_LINES, total + change.deletions),
     0,
   );
   const hasInteractiveChanges = summary.changes.some(
@@ -118,6 +122,17 @@ export function TurnEditSummary({
     ? `Showing ${summary.changes.length} changed ${noun}`
     : `${summary.changes.length} ${noun} changed`;
   const canCollapse = hasInteractiveChanges;
+  const totals =
+    summary.changes.length > 0 && (additions !== null || deletions !== null) ? (
+      <span className="acp-file-changes__totals" aria-label="Line changes">
+        {additions !== null ? (
+          <span className="acp-file-changes__additions">+{additions}</span>
+        ) : null}
+        {deletions !== null ? (
+          <span className="acp-file-changes__deletions">-{deletions}</span>
+        ) : null}
+      </span>
+    ) : null;
 
   return (
     <section
@@ -140,19 +155,13 @@ export function TurnEditSummary({
           {dispositionError ? (
             <span className="acp-file-changes__error">Needs attention</span>
           ) : null}
-          <span className="acp-file-changes__totals" aria-label="Line changes">
-            <span>+{additions}</span>
-            <span>-{deletions}</span>
-          </span>
+          {totals}
         </button>
       ) : (
         <header className="acp-file-changes__header">
           <Files size={16} aria-hidden="true" />
           <strong>{fileLabel}</strong>
-          <span className="acp-file-changes__totals" aria-label="Line changes">
-            <span>+{additions}</span>
-            <span>-{deletions}</span>
-          </span>
+          {totals}
         </header>
       )}
       {(!canCollapse || expanded) && summary.changes.length > 0 ? (
