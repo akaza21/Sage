@@ -82,7 +82,10 @@ for (const width of [1888, 720, 480]) {
       await installTurn(page, true);
       for (const [index, pane] of (await panes.all()).entries()) {
         await expect(
-          pane.getByRole("status", { name: "Cancelled by you" }),
+          pane
+            .locator(".acp-turn")
+            .last()
+            .getByRole("status", { name: "Cancelled by you" }),
         ).toBeVisible();
         const answer = pane.locator(".acp-message--assistant").last();
         const before = bounds[index];
@@ -102,7 +105,10 @@ for (const width of [1888, 720, 480]) {
         expect(header!.x).toBeCloseTo(after!.x, 0);
         expect(header!.width).toBeCloseTo(after!.width, 0);
         await expect(
-          pane.getByRole("status", { name: "Cancelled by you" }),
+          pane
+            .locator(".acp-turn")
+            .last()
+            .getByRole("status", { name: "Cancelled by you" }),
         ).toHaveCount(1);
         await expect(
           pane.getByText("Interrupted", { exact: true }),
