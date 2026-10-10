@@ -336,7 +336,9 @@ test("CP-28 forced colors keep Canvas code panels, highlighted pressed controls 
 }) => {
   await page.emulateMedia({ forcedColors: "active" });
   await page.setViewportSize({ width: 720, height: 1096 });
-  await openScenario(page, "rich", "agent");
+  // agent-single's first turn has activity, so its Worked chevron renders;
+  // the rich fixture's activity-free turn has no Worked row since slice 4.
+  await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await installAnswers(page, "```python\nprint('retained')\n```");
   const code = page.getByRole("region", { name: "Python code" });
