@@ -116,7 +116,7 @@ export async function expectTurnState(
   });
   await expect(turn).toBeVisible();
   await expect(turn).toHaveAttribute("data-turn-state", state);
-  await expect(turn.locator(".acp-turn__state")).toHaveText(
+  await expect(turn.locator("[data-turn-status]")).toHaveText(
     turnStateLabels[state],
   );
   if (
