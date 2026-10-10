@@ -271,9 +271,9 @@ export function composerOptionLabel(
   option: AcpConfigOption | undefined,
 ): string | null {
   return option?.type === "select"
-    ? (flattenChoices(option).find(
+    ? flattenChoices(option).find(
         (choice) => choice.value === option.currentValue,
-      )?.name ?? option.currentValue)
+      )?.name || option.currentValue
     : null;
 }
 

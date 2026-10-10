@@ -44,8 +44,8 @@ pub(crate) struct CodexRuntime {
     browser_failure_warning_logged: bool,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     selected_model_id: Option<crate::acp::intent::ModelId>,
+    reported_model_id: Option<crate::acp::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
-    session_is_resume: bool,
     selected_effort: Option<crate::acp::contract::RequiredText<512>>,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
@@ -174,6 +174,7 @@ impl CodexRuntime {
             } => (
                 {
                     self.snapshots.clear();
+                    self.reported_model_id = current_model.clone();
                     if let Some(model) = current_model {
                         if self.selected_model_id.as_ref() != Some(&model) {
                             self.selected_model = None;
@@ -183,8 +184,8 @@ impl CodexRuntime {
                     }
                     if current_effort.is_some() {
                         self.selected_effort = current_effort;
-                        self.refresh_model_config();
                     }
+                    self.refresh_model_config();
                     AdapterEvent::SessionReady {
                         id: identity(id),
                         loaded: false,

@@ -60,7 +60,6 @@ pub(super) fn parse_models(
                 .get("isDefault")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
-            default_effort,
             supported_efforts,
         });
     }

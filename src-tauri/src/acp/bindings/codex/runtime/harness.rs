@@ -126,7 +126,7 @@ impl HarnessAdapter for CodexRuntime {
                 Ok(egress)
             }
             AdapterCommand::NewSession { native_root, model } => {
-                self.reset_session_model(model.clone(), false);
+                self.reset_session_model(model.clone());
                 let config = self
                     .mcp
                     .codex_config()
@@ -145,7 +145,7 @@ impl HarnessAdapter for CodexRuntime {
                 native_root,
                 model,
             } => {
-                self.reset_session_model(model.clone(), true);
+                self.reset_session_model(model.clone());
                 let config = self
                     .mcp
                     .codex_config()
@@ -163,7 +163,7 @@ impl HarnessAdapter for CodexRuntime {
             AdapterCommand::LoadSession {
                 external_session_id,
             } => {
-                self.reset_session_model(None, true);
+                self.reset_session_model(None);
                 self.request(|adapter, id| adapter.read(id, &external_session_id))
             }
             AdapterCommand::CloseSession => self.request(CodexAdapter::close),

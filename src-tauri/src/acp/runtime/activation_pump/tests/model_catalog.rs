@@ -267,7 +267,7 @@ fn invalid_optional_thread_model_and_effort_do_not_fail_start_or_resume_activati
                             &NoResources(17),
                         )
                         .unwrap();
-                    assert_eq!(pump.adapter.session_config().is_some(), !resume);
+                    assert!(pump.adapter.session_config().is_none());
                     let idle = pump.try_into_idle_parts().ok().expect("activated session");
                     assert_eq!(
                         idle.session().external_session_id.as_str(),

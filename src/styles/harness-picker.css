@@ -45,16 +45,6 @@
   white-space: nowrap;
 }
 
-.composer__harness .searchable-picker__trigger-label small,
-.composer__harness-menu .searchable-picker__option-copy small {
-  overflow: hidden;
-  color: var(--composer-muted-text);
-  font-size: 10px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer__harness .searchable-picker__chevron {
   width: 12px;
   height: 12px;
@@ -69,7 +59,6 @@
   backdrop-filter: none;
 }
 
-.composer__harness-menu .searchable-picker__input,
 .composer__harness-menu .searchable-picker__current,
 .composer__harness-menu .searchable-picker__section-label {
   position: absolute;
@@ -82,15 +71,21 @@
 }
 
 .composer__harness-menu .searchable-picker__option {
-  min-height: 48px;
+  min-height: 32px;
   grid-template-columns: 20px minmax(0, 1fr) 16px;
   gap: 8px;
   padding: 4px 8px;
   border-radius: var(--radius-md);
 }
 
+.composer__harness-menu > [role="listbox"] {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
 .composer__harness-menu .searchable-picker__option:hover,
-.composer__harness-menu .searchable-picker__option[data-active="true"] {
+.composer__harness-menu .searchable-picker__option:focus-visible {
   background: var(--composer-control-hover);
   box-shadow: var(--glass-highlight);
 }
@@ -106,4 +101,28 @@
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+@media (forced-colors: active) {
+  .composer__harness-menu.menu-popover {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .composer__harness-menu
+    .searchable-picker__option:is(
+      :hover,
+      :focus-visible,
+      [aria-selected="true"]
+    ) {
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  .composer__harness-menu .searchable-picker__selected-check {
+    color: inherit;
+  }
 }

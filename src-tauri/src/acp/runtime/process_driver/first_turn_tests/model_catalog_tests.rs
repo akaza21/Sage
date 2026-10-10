@@ -70,7 +70,7 @@ fn ready_adapter(mut adapter: CodexRuntime, external_session: &ExternalId) -> Co
     adapter
         .ingest(
             &frame(json!({"id":request_id(&start),"result":{
-                "thread":{"id":external_session.as_str()}
+                "thread":{"id":external_session.as_str()},"model":"selected","reasoningEffort":"high"
             }})),
             &Mapper,
         )
@@ -182,8 +182,14 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             if selected_on_last_page {
                 let config = serde_json::to_value(adapter.session_config().unwrap()).unwrap();
                 assert_eq!(config["configOptions"][0]["currentValue"], "high");
+                assert_eq!(
+                    config["confirmedModel"],
+                    json!({"id":"selected","name":"Selected"})
+                );
             } else {
-                assert!(adapter.session_config().is_none());
+                let config = serde_json::to_value(adapter.session_config().unwrap()).unwrap();
+                assert_eq!(config["configOptions"], json!([]));
+                assert_eq!(config["confirmedModel"], json!({"id":"selected"}));
             }
             drop(context);
             drop(fixture.sessions);

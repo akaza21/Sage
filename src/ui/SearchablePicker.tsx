@@ -129,19 +129,23 @@ export function SearchablePicker({
   }, [disabled, draft, open]);
 
   useLayoutEffect(() => {
-    if (!open || disabled) return;
+    if (!open || disabled || !searchable) return;
     inputRef.current?.focus();
-  }, [disabled, open]);
+  }, [disabled, open, searchable]);
   useLayoutEffect(() => {
     if (!active) return;
     optionRefs.current.get(active.id)?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
 
-  const close = useCallback((reason?: MenuDismissReason) => {
-    setOpen(false);
-    setActiveId(null);
-    if (reason === "escape") triggerRef.current?.focus();
-  }, []);
+  const close = useCallback(
+    (reason?: MenuDismissReason) => {
+      setOpen(false);
+      setActiveId(null);
+      if (reason === "escape" || (!searchable && reason === "tab"))
+        triggerRef.current?.focus();
+    },
+    [searchable],
+  );
   useLayoutEffect(() => {
     if (!disabled) return;
     queueMicrotask(() => close());
@@ -239,6 +243,14 @@ export function SearchablePicker({
         data-selected-id={selectedId ?? ""}
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
+        onKeyDown={(event) => {
+          if (searchable || !open) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            close("escape");
+          } else if (event.key === "Tab") close("tab");
+        }}
       >
         {selected?.logo || selected?.icon ? (
           <img
@@ -268,7 +280,13 @@ export function SearchablePicker({
         ]
           .filter(Boolean)
           .join(" ")}
-        focusStrategy="none"
+        focusStrategy={searchable ? "none" : "roving"}
+        focusKey={
+          searchable
+            ? undefined
+            : selectable.map((candidate) => candidate.id).join("\0")
+        }
+        initialFocus="selected"
         id={`${id}-popover`}
         matchTriggerWidth
         gap={popoverGap}
@@ -278,24 +296,24 @@ export function SearchablePicker({
         role="none"
         triggerRef={triggerRef}
       >
-        <input
-          ref={inputRef}
-          className="searchable-picker__input"
-          role="combobox"
-          aria-label={ariaLabel}
-          aria-activedescendant={active ? optionId(id, active.id) : undefined}
-          aria-autocomplete="list"
-          readOnly={!searchable}
-          aria-controls={`${id}-listbox`}
-          aria-expanded={open && !disabled}
-          value={draft}
-          onChange={(event) => {
-            if (!searchable) return;
-            setDraft(event.target.value);
-            setActiveId(null);
-          }}
-          onKeyDown={onKeyDown}
-        />
+        {searchable ? (
+          <input
+            ref={inputRef}
+            className="searchable-picker__input"
+            role="combobox"
+            aria-label={ariaLabel}
+            aria-activedescendant={active ? optionId(id, active.id) : undefined}
+            aria-autocomplete="list"
+            aria-controls={`${id}-listbox`}
+            aria-expanded={open && !disabled}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setActiveId(null);
+            }}
+            onKeyDown={onKeyDown}
+          />
+        ) : null}
         {selected ? (
           <p className="searchable-picker__current">
             Current: {selected.label}
@@ -324,7 +342,7 @@ export function SearchablePicker({
               active={candidate.id === active?.id}
               candidate={candidate}
               id={optionId(id, candidate.id)}
-              onActivate={setActiveId}
+              onActivate={searchable ? setActiveId : undefined}
               onOptionElement={setOptionElement}
               onRender={onOptionRender}
               onSelect={selectCandidate}

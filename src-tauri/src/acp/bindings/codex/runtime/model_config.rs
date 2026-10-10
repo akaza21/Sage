@@ -22,8 +22,9 @@ impl CodexRuntime {
         super::support::one(AdapterEvent::IgnoredLate)
     }
 
-    pub(super) fn reset_session_model(&mut self, model: Option<ModelId>, resume: bool) {
+    pub(super) fn reset_session_model(&mut self, model: Option<ModelId>) {
         self.selected_model_id = model;
+        self.reported_model_id = None;
         self.selected_model = None;
         self.session_config = None;
         self.selected_effort = None;
@@ -33,19 +34,36 @@ impl CodexRuntime {
         self.model_catalog_bytes = 0;
         self.next_model_cursor = None;
         self.model_pages_seen = 0;
-        self.session_is_resume = resume;
     }
 
     pub(super) fn refresh_model_config(&mut self) {
-        let Some(model) = self.selected_model.as_ref() else {
-            return;
+        let model = self
+            .selected_model
+            .as_ref()
+            .filter(|model| self.reported_model_id.as_ref() == Some(&model.id));
+        let effort = self.selected_effort.as_ref();
+        let config = model
+            .zip(effort)
+            .and_then(|(model, effort)| config_for_model(model, effort.as_str()));
+        let confirmed_model =
+            self.reported_model_id
+                .as_ref()
+                .map(|id| crate::acp::session_config::ConfirmedModel {
+                    id: id.clone(),
+                    name: model.map(|model| model.name.clone()),
+                });
+        self.session_config = if config.is_some() || confirmed_model.is_some() {
+            let mut candidate = crate::acp::session_config::SessionConfig {
+                confirmed_model,
+                ..config.unwrap_or_default()
+            };
+            if candidate.validate().is_err() {
+                candidate.config_options = Default::default();
+            }
+            Some(candidate)
+        } else {
+            None
         };
-        let effort = self.selected_effort.as_ref().or_else(|| {
-            (!self.session_is_resume)
-                .then_some(model.default_effort.as_ref())
-                .flatten()
-        });
-        self.session_config = effort.and_then(|effort| config_for_model(model, effort.as_str()));
     }
 
     pub(super) fn apply_effort(&mut self, effort: crate::acp::contract::RequiredText<512>) {
@@ -127,7 +145,7 @@ impl CodexRuntime {
             .find(|model| {
                 self.selected_model_id
                     .as_ref()
-                    .map_or(model.is_default, |id| id.as_str() == model.id.as_str())
+                    .is_some_and(|id| id.as_str() == model.id.as_str())
             })
             .cloned();
         let Ok(models) = super::support::model_values(models) else {

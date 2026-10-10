@@ -24,6 +24,7 @@ use crate::project_registry::ProjectRootAuthority;
 use crate::{error::AppError, persistence::Database, state::AppState};
 
 mod browser_mcp_tests;
+mod model_identity;
 
 struct Mapper;
 
@@ -183,6 +184,14 @@ fn initialize(runtime: &mut CodexRuntime) {
 }
 
 fn ready(runtime: &mut CodexRuntime) {
+    ready_with_reported_config(runtime, None, None);
+}
+
+fn ready_with_reported_config(
+    runtime: &mut CodexRuntime,
+    model: Option<&str>,
+    effort: Option<&str>,
+) {
     initialize(runtime);
     let egress = runtime
         .command(AdapterCommand::NewSession {
@@ -193,7 +202,7 @@ fn ready(runtime: &mut CodexRuntime) {
     let id = request_id(&egress);
     runtime
         .ingest(
-            &frame(json!({"id":id,"result":{"thread":{"id":"thread-1"}}})),
+            &frame(json!({"id":id,"result":{"thread":{"id":"thread-1"},"model":model,"reasoningEffort":effort}})),
             &Mapper,
         )
         .expect("session response");
@@ -202,7 +211,7 @@ fn ready(runtime: &mut CodexRuntime) {
 #[test]
 fn bound_turn_applies_catalog_pages_even_before_prompt_dispatch() {
     let mut runtime = fixture_runtime();
-    ready(&mut runtime);
+    ready_with_reported_config(&mut runtime, Some("selected"), Some("high"));
     let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
     runtime.finish_model_config_hydration();
     let batch = runtime
@@ -295,7 +304,7 @@ fn codex_model_list_exposes_supported_thinking_levels() {
         .unwrap();
     let ready = runtime
         .ingest(
-            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"},"model":"gpt-6-astra","reasoningEffort":"medium"}})),
             &Mapper,
         )
         .unwrap();
@@ -333,7 +342,7 @@ fn codex_model_without_efforts_hides_thinking_config() {
         .unwrap();
     runtime
         .ingest(
-            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"},"model":"gpt-6-astra"}})),
             &Mapper,
         )
         .unwrap();
@@ -347,13 +356,18 @@ fn codex_model_without_efforts_hides_thinking_config() {
             &Mapper,
         )
         .unwrap();
-    assert!(runtime.session_config().is_none());
+    let config = runtime.session_config().unwrap();
+    assert!(config.config_options.as_slice().is_empty());
+    assert_eq!(
+        config.confirmed_model.unwrap().name.unwrap().as_str(),
+        "GPT-6 Astra"
+    );
 }
 
 #[test]
 fn model_efforts_accept_the_exact_collection_limit() {
     let mut runtime = fixture_runtime();
-    ready(&mut runtime);
+    ready_with_reported_config(&mut runtime, Some("model"), Some("effort-0"));
     let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
     let efforts: Vec<_> = (0..32)
         .map(|index| {
@@ -483,7 +497,7 @@ fn resumed_codex_thread_uses_reported_effort_not_catalog_default() {
     runtime
         .ingest(
             &frame(json!({"id":request_id(&resume),"result":{
-                "thread":{"id":"thread-1"},"reasoningEffort":"high"
+                "thread":{"id":"thread-1"},"model":"gpt-6-astra","reasoningEffort":"high"
             }})),
             &Mapper,
         )
@@ -522,7 +536,7 @@ fn resumed_codex_thread_without_reported_effort_hides_thinking_config() {
     runtime
         .ingest(
             &frame(json!({"id":request_id(&resume),"result":{
-                "thread":{"id":"thread-1"}
+                "thread":{"id":"thread-1"},"model":"gpt-6-astra"
             }})),
             &Mapper,
         )
@@ -541,13 +555,18 @@ fn resumed_codex_thread_without_reported_effort_hides_thinking_config() {
             &Mapper,
         )
         .unwrap();
-    assert!(runtime.session_config().is_none());
+    let config = runtime.session_config().unwrap();
+    assert!(config.config_options.as_slice().is_empty());
+    assert_eq!(
+        config.confirmed_model.unwrap().name.unwrap().as_str(),
+        "GPT-6 Astra"
+    );
 }
 
 #[test]
 fn starting_resume_clears_model_page_effort_until_current_effort_is_known() {
     let mut runtime = fixture_runtime();
-    initialize(&mut runtime);
+    ready_with_reported_config(&mut runtime, Some("gpt-6-astra"), Some("medium"));
     let list = runtime
         .command(AdapterCommand::ModelPage { cursor: None })
         .unwrap();
@@ -623,7 +642,7 @@ fn session_effort_survives_thread_started_before_or_after_response() {
             "thread":{"id":"thread-1"}
         }}));
         let response = frame(json!({"id":request_id(&request),"result":{
-            "thread":{"id":"thread-1"},"reasoningEffort":"high"
+            "thread":{"id":"thread-1"},"model":"gpt-6-astra","reasoningEffort":"high"
         }}));
         if started_first {
             let notification = runtime.ingest(&started, &Mapper).unwrap();
@@ -676,7 +695,7 @@ fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
         session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
     };
     let mut runtime = fixture_runtime();
-    ready(&mut runtime);
+    ready_with_reported_config(&mut runtime, Some("model"), Some("medium"));
     let effort = "e".repeat(512);
     let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
     runtime
@@ -751,7 +770,7 @@ fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
         .unwrap();
     let ready = runtime
         .ingest(
-            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"}}})),
+            &frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"},"model":"gpt-6-astra","reasoningEffort":"medium"}})),
             &Mapper,
         )
         .unwrap();

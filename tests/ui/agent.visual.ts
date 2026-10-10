@@ -409,9 +409,8 @@ test.describe("ED02 picker visual states", () => {
     );
     const trigger = page.getByRole("button", { name: "Harness" });
     await trigger.click();
-    const input = page.getByRole("combobox", { name: "Harness" });
     const listbox = page.getByRole("listbox", { name: "Harness" });
-    await expect(input).toBeFocused();
+    await expect(listbox.getByRole("option").first()).toBeFocused();
     await expect(
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
@@ -419,7 +418,9 @@ test.describe("ED02 picker visual states", () => {
       name: /Unavailable Codex.*Sage did not admit this harness and will not start it\./,
     });
     await expect(unavailable).toHaveAttribute("aria-disabled", "true");
-    await expect(input).toHaveAttribute("readonly", "");
+    await expect(page.getByRole("combobox", { name: "Harness" })).toHaveCount(
+      0,
+    );
     await expect(unavailable).toBeDisabled();
     await expect(listbox.getByRole("option")).toHaveCount(2);
     await expect(
@@ -441,23 +442,21 @@ test.describe("ED02 picker visual states", () => {
     await releasePickerHarnessReadiness(page);
     await expect(modelTrigger).toBeEnabled();
     await modelTrigger.click();
-    const modelInput = page.getByRole("combobox", { name: "Search models" });
-    const modelListbox = page.getByRole("grid", {
-      name: "Models",
+    const modelListbox = page.getByRole("listbox", {
+      name: "Select model",
       exact: true,
     });
-    await expect(modelListbox.getByRole("row")).toHaveCount(128);
+    await expect(modelListbox.getByRole("option")).toHaveCount(128);
     await expect(
-      modelListbox.getByRole("gridcell", {
-        name: "Fresh advertised model 1 — Codex",
+      modelListbox.getByRole("option", {
+        name: "Fresh advertised model 1",
         exact: true,
       }),
     ).toBeVisible();
     await expect(modelListbox.locator('[aria-selected="true"]')).toHaveCount(0);
     await expect(
-      modelListbox.getByRole("gridcell", { name: /Old advertised model/ }),
+      modelListbox.getByRole("option", { name: /Old advertised model/ }),
     ).toHaveCount(0);
-    await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(modelTrigger).toHaveText("Fresh advertised model 2");
@@ -466,7 +465,14 @@ test.describe("ED02 picker visual states", () => {
       "1",
     );
     await modelTrigger.click();
-    await expectOpenPickerContained(page, modelInput, modelListbox);
+    await expectOpenPickerContained(
+      page,
+      modelListbox.getByRole("option", {
+        name: "Fresh advertised model 2",
+        exact: true,
+      }),
+      modelListbox,
+    );
     await settleTranscriptAtEnd(page);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "agent-picker-harness-model");
@@ -580,8 +586,11 @@ test.describe("ED02 picker visual states", () => {
       "GPT-5",
     );
     await harnessTrigger.click();
-    const input = page.getByRole("combobox", { name: "Harness" });
     const listbox = page.getByRole("listbox", { name: "Harness" });
+    const input = listbox.getByRole("option", {
+      name: "Codex — test only",
+      exact: true,
+    });
     await expectOpenPickerContained(page, input, listbox);
     await expect(
       listbox.getByRole("option", { name: "Codex — test only", exact: true }),
@@ -593,8 +602,8 @@ test.describe("ED02 picker visual states", () => {
     await modelTrigger.click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Search models" }),
-      page.getByRole("grid", { name: "Models", exact: true }),
+      page.getByRole("option", { name: "GPT-5", exact: true }),
+      page.getByRole("listbox", { name: "Select model", exact: true }),
     );
     await expectNoViewportOverflow(page);
     await page.keyboard.press("Escape");
@@ -1542,15 +1551,18 @@ test.describe("Wave 2 200% zoom state", () => {
 
     await openScenario(page, "agent-composer-narrow", "agent");
     await page.getByRole("button", { name: "Harness" }).click();
-    const harnessInput = page.getByRole("combobox", { name: "Harness" });
     const harnessListbox = page.getByRole("listbox", { name: "Harness" });
+    const harnessInput = harnessListbox.getByRole("option", {
+      name: "Codex — test only",
+      exact: true,
+    });
     await expectOpenPickerContained(page, harnessInput, harnessListbox);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Model" }).click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Search models" }),
-      page.getByRole("grid", { name: "Models" }),
+      page.getByRole("option", { name: "GPT-5", exact: true }),
+      page.getByRole("listbox", { name: "Select model" }),
     );
     await expectNoViewportOverflow(page);
 

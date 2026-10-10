@@ -182,8 +182,7 @@
   flex: 0 0 auto;
 }
 
-.composer__options,
-.composer__model-menu {
+.composer__options {
   position: absolute;
   z-index: 20;
   bottom: calc(100% + 10px);
@@ -194,12 +193,6 @@
 
 .composer__options {
   left: 0;
-}
-
-.composer__model-menu {
-  right: 0;
-  width: min(320px, calc(100vw - 32px));
-  max-width: min(320px, calc(100vw - 32px));
 }
 
 .composer__options .select-control,

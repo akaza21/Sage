@@ -10,11 +10,7 @@ import {
 
 import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import type { HarnessDefinition, ModelOption } from "../../domain/harness";
-import {
-  cachedHarnessModels,
-  harnessModelIdentity,
-} from "../../app/harnessModelCache";
+import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { harnessIconKind } from "./composerChrome";
 import { harnessAvailability } from "./harnessAvailability";
@@ -23,11 +19,6 @@ import { useAcpChatProjection } from "./acp";
 
 export function harnessPickerCandidates(
   harnesses: readonly HarnessDefinition[],
-  selectedHarnessId: string | null,
-  selectedModelId: string | null,
-  models: readonly ModelOption[],
-  modelLabel: string,
-  effortLabel: string | null,
 ): SearchablePickerOption[] {
   return [...harnesses]
     .sort(
@@ -38,42 +29,18 @@ export function harnessPickerCandidates(
     .map((harness) => {
       const icon = harnessIconKind(harness.name);
       const availability = harnessAvailability(harness);
-      const name = harness.name;
-      const catalog =
-        harness.id === selectedHarnessId
-          ? models
-          : (cachedHarnessModels(harnessModelIdentity(harness)) ?? []);
-      const current =
-        catalog.find(
-          (model) =>
-            model.id ===
-            (harness.id === selectedHarnessId ? selectedModelId : null),
-        ) ??
-        catalog.find((model) => model.isDefault) ??
-        catalog[0];
-      const detail =
-        harness.id === selectedHarnessId && modelLabel !== "Model"
-          ? `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-          : (current?.name ?? "Default model");
       const status = harness.versionChecking
         ? "version checking…"
         : harness.source === "development"
           ? "test only"
           : availability.label;
-      const statusLine = ` — ${status}`;
-      const showStatus =
-        harness.installState !== "available" ||
-        harness.versionChecking ||
-        harness.characterisation === "uncharacterised" ||
-        harness.source === "development";
       return {
         id: harness.id,
         icon,
         logo: `/harness-${icon ?? "generic"}.svg`,
-        label: name,
+        label: harness.name,
         triggerLabel: harness.name,
-        secondaryLabel: showStatus ? statusLine : detail,
-        accessibleLabel: `${name}${statusLine}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
+        accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
         disabledReason: availability.disabledReason,
       };
     });
@@ -87,30 +54,24 @@ export function useComposerPopovers(disabled = false) {
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
   const optionsPanel = useRef<HTMLDivElement>(null);
-  const modelPanel = useRef<HTMLDivElement>(null);
-  const trigger = active === "options" ? optionsTrigger : modelTrigger;
-  const panel = active === "options" ? optionsPanel : modelPanel;
 
   useEffect(() => {
     if (disabled) queueMicrotask(() => setActive(null));
   }, [disabled]);
 
   useLayoutEffect(() => {
-    if (!active) return;
-    const first =
-      active === "model"
-        ? panel.current?.querySelector<HTMLInputElement>("input")
-        : panel.current?.querySelector<HTMLButtonElement>(
-            "button:not(:disabled)",
-          );
-    (first ?? panel.current)?.focus();
-  }, [active, panel]);
+    if (active !== "options") return;
+    const first = optionsPanel.current?.querySelector<HTMLButtonElement>(
+      "button:not(:disabled)",
+    );
+    (first ?? optionsPanel.current)?.focus();
+  }, [active]);
 
   useEffect(() => {
-    if (!active) return;
+    if (active !== "options") return;
     const dismiss = () => {
       setActive(null);
-      trigger.current?.focus();
+      optionsTrigger.current?.focus();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -121,7 +82,10 @@ export function useComposerPopovers(disabled = false) {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (panel.current?.contains(target) || trigger.current?.contains(target))
+      if (
+        optionsPanel.current?.contains(target) ||
+        optionsTrigger.current?.contains(target)
+      )
         return;
       if (target.closest('[role="listbox"], [role="combobox"]')) return;
       dismiss();
@@ -132,16 +96,16 @@ export function useComposerPopovers(disabled = false) {
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [active, panel, trigger]);
+  }, [active]);
 
   return {
     active,
     modelId,
-    modelPanel,
     modelTrigger,
     optionsId,
     optionsPanel,
     optionsTrigger,
+    dismiss: () => setActive(null),
     toggle: (kind: "options" | "model") => {
       if (!disabled) setActive((current) => (current === kind ? null : kind));
     },

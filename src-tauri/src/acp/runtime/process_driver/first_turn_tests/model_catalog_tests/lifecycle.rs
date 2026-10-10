@@ -96,7 +96,15 @@ async fn run_catalog_page_crossing_turn(
         writes.lock().unwrap()[1]["id"].as_u64().unwrap()
     };
     let retained_config = channel.live_snapshot(&fixture.owner);
-    assert_eq!(retained_config.is_some(), !cold_prompt && failure.is_some());
+    assert_eq!(retained_config.is_some(), !cold_prompt);
+    if let Some(overlay) = &retained_config {
+        let config = serde_json::to_value(&overlay.config).unwrap();
+        assert_eq!(config["confirmedModel"]["id"], "selected");
+        assert_eq!(
+            config["configOptions"].as_array().unwrap().len(),
+            usize::from(failure.is_some())
+        );
+    }
     let error = invalid_page.map_or_else(
         || json!({"id":page_id,"error":{"code":-32601,"message":"Method not found"}}),
         |result| json!({"id":page_id,"result":result}),
@@ -289,7 +297,12 @@ async fn run_catalog_page_crossing_turn(
         let request = writes.lock().unwrap().last().unwrap().clone();
         assert_eq!(request["method"], "model/list");
         assert_eq!(request["params"]["cursor"], "third");
-        assert!(channel.live_snapshot(&fixture.owner).is_none());
+        let overlay = channel.live_snapshot(&fixture.owner).unwrap();
+        assert_eq!(
+            overlay.config.confirmed_model.unwrap().id.as_str(),
+            "selected"
+        );
+        assert!(overlay.config.config_options.as_slice().is_empty());
         let mut bytes = serde_json::to_vec(&json!({"id":request["id"],"result":{
             "data":[{"id":"selected","displayName":"Selected","isDefault":false,
             "defaultReasoningEffort":"high","supportedReasoningEfforts":[
@@ -339,9 +352,10 @@ async fn run_catalog_page_crossing_turn(
             .expect("late catalog effort control");
         let config = serde_json::to_value(overlay.config).unwrap();
         assert_eq!(
-            config["configOptions"][0]["currentValue"],
-            if deferred { "high" } else { "medium" }
+            config["confirmedModel"],
+            json!({"id":"selected","name":"Selected"})
         );
+        assert_eq!(config["configOptions"][0]["currentValue"], "high");
         if !deferred {
             assert_eq!(
                 config["configOptions"][0]["options"]

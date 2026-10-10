@@ -1405,7 +1405,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("checkbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
-    expect(screen.getByRole("gridcell", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("shows an unsupported config option as a read-only chip with no settable control", () => {
@@ -1447,7 +1447,7 @@ describe("ChatSurface ACP resource integration", () => {
       screen.queryByRole("checkbox", { name: "Session thinking budget" }),
     ).toBeNull();
     openComposerModel();
-    expect(screen.getByRole("gridcell", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
   it("lets a prompt-capable harness without a model catalog use its own default", () => {
@@ -2017,12 +2017,27 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(5);
-    expect(options[0]).toHaveTextContent("Simulator — test only");
-    expect(options[1]).toHaveTextContent("Codex — not installed");
+    expect(options[0]).toHaveTextContent(/^Simulator$/);
+    expect(options[0]).toHaveAccessibleName("Simulator — test only");
+    expect(options[1]).toHaveAccessibleName(
+      "Codex — not installed. Harness is not installed.",
+    );
     expect(options[1]).toBeDisabled();
-    expect(options[2]).toHaveTextContent("Pi — not installed");
-    expect(options[3]).toHaveTextContent("Claude Code — not installed");
-    expect(options[4]).toHaveTextContent("Oh My Pi — not installed");
+    expect(options[2]).toHaveAccessibleName(
+      "Pi — not installed. Harness is not installed.",
+    );
+    expect(options[3]).toHaveAccessibleName(
+      "Claude Code — not installed. Harness is not installed.",
+    );
+    expect(options[4]).toHaveAccessibleName(
+      "Oh My Pi — not installed. Harness is not installed.",
+    );
+    expect(
+      options.slice(1).every((option) => option.hasAttribute("disabled")),
+    ).toBe(true);
+    expect(
+      options.every((option) => option.querySelector("small") === null),
+    ).toBe(true);
   });
 
   it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
@@ -2070,10 +2085,16 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(3);
-    expect(options[0]).toHaveTextContent("Simulator — test only");
-    expect(options[1]).toHaveTextContent("Codex — installed but not drivable");
+    expect(options[0]).toHaveTextContent(/^Simulator$/);
+    expect(options[0]).toHaveAccessibleName("Simulator — test only");
+    expect(options[1]).toHaveAccessibleName(
+      "Codex — installed but not drivable. Sage did not admit this harness and will not start it.",
+    );
     expect(options[1]).toBeDisabled();
-    expect(options[2]).toHaveTextContent("Pi — not installed");
+    expect(options[2]).toHaveAccessibleName(
+      "Pi — not installed. Harness is not installed.",
+    );
+    expect(options[2]).toBeDisabled();
   });
 
   it("keeps the available development fallback visible when the selected harness is absent", () => {
@@ -2112,8 +2133,12 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(harness);
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent("Simulator — test only");
-    expect(options[1]).toHaveTextContent("Pi — not installed");
+    expect(options[0]).toHaveTextContent(/^Simulator$/);
+    expect(options[0]).toHaveAccessibleName("Simulator — test only");
+    expect(options[1]).toHaveAccessibleName(
+      "Pi — not installed. Harness is not installed.",
+    );
+    expect(options[1]).toBeDisabled();
   });
 
   it("marks the development simulator as test-only without policy claims", () => {
@@ -3104,19 +3129,24 @@ describe("ChatSurface ACP resource integration", () => {
     const model = screen.getByRole("button", { name: "Model" });
     await waitFor(() => expect(model).toBeEnabled());
     fireEvent.click(model);
-    const grid = screen.getByRole("grid", { name: "Models" });
-    expect(screen.queryByRole("gridcell", { name: /old model/i })).toBeNull();
-    expect(within(grid).getAllByRole("row")).toHaveLength(128);
+    const list = screen.getByRole("listbox", { name: "Select model" });
+    expect(screen.queryByRole("option", { name: /old model/i })).toBeNull();
+    expect(within(list).getAllByRole("option")).toHaveLength(128);
     expect(
-      within(grid).getByRole("gridcell", {
-        name: /Fresh advertised model 1 — Codex/,
+      within(list).getByRole("option", {
+        name: "Fresh advertised model 1",
       }),
     ).toHaveAttribute("aria-selected", "true");
-    const input = screen.getByRole("combobox", { name: "Search models" });
-    expect(input).toHaveAttribute("aria-controls", grid.id);
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
+    const first = within(list).getByRole("option", {
+      name: "Fresh advertised model 1",
+    });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    const second = within(list).getByRole("option", {
+      name: "Fresh advertised model 2",
+    });
+    expect(second).toHaveFocus();
+    fireEvent.click(second);
     expect(selectModel).toHaveBeenCalledExactlyOnceWith("fresh-model-2");
   });
 

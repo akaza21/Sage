@@ -58,7 +58,7 @@ fn invalid_catalog_discard_requires_exact_pending_read_only_response() {
 
 pub(super) fn runtime_waiting_for_effort_page(partial: bool) -> (CodexRuntime, u64) {
     let mut runtime = fixture_runtime();
-    ready(&mut runtime);
+    ready_with_reported_config(&mut runtime, Some("model"), Some("high"));
     let list = runtime.model_config_hydration().unwrap().unwrap();
     let list_id = request_id(&list);
     runtime

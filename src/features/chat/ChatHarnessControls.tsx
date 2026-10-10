@@ -101,12 +101,12 @@ export function ChatHarnessControls({
   const {
     active,
     modelId,
-    modelPanel,
     modelTrigger,
     optionsId,
     optionsPanel,
     optionsTrigger,
     toggle,
+    dismiss,
   } = useComposerPopovers(turnBusy || projectTransitioning);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
@@ -160,19 +160,18 @@ export function ChatHarnessControls({
     selectedModelId,
     modelOption,
     models,
+    selectedSessionConfig?.confirmedModel,
   );
   const effortLabel = composerOptionLabel(effortOption);
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({
         id: choice.value,
         name: choice.name || choice.value,
-        contextWindow: models.find((model) => model.id === choice.value)
-          ?.contextWindow,
       }))
     : models;
   const currentModelId = hasSessionModel
     ? modelOption.currentValue
-    : selectedModelId;
+    : (selectedSessionConfig?.confirmedModel?.id ?? selectedModelId);
   const contextWindow = formatContextWindow(
     models.find((model) => model.id === currentModelId)?.contextWindow,
   );
@@ -182,17 +181,10 @@ export function ChatHarnessControls({
     } else {
       onSelectModel(modelId);
     }
-    toggle("model");
+    dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(
-    harnesses,
-    selectedHarnessId,
-    selectedModelId,
-    models,
-    modelLabel,
-    effortLabel,
-  );
+  const harnessCandidates = harnessPickerCandidates(harnesses);
   const internalModeControlRef = useRef<HTMLLabelElement>(null);
   const modeControlRef = externalModeControlRef ?? internalModeControlRef;
   const modeOptions = selectedSessionConfig?.modes?.availableModes ?? [];
@@ -265,15 +257,14 @@ export function ChatHarnessControls({
       </label>
       <ComposerModelControls
         triggerRef={modelTrigger}
-        panelRef={modelPanel}
         panelId={modelId}
         open={active === "model"}
         onToggle={() => toggle("model")}
+        onDismiss={dismiss}
         choices={modelChoices}
         selectedId={currentModelId}
         modelLabel={modelLabel}
-        harnessId={selectedHarnessId ?? ""}
-        harnessName={selectedHarness?.name ?? "Harness"}
+        effortLabel={modelLabel === "Model" ? null : effortLabel}
         contextWindow={contextWindow}
         effortOption={effortOption}
         disabled={turnBusy || projectTransitioning || !canPrompt}

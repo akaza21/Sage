@@ -22,6 +22,65 @@ const overlay = () => ({
 });
 
 describe("session config boundary", () => {
+  it("charges confirmed identity against the 128-entry overlay limit", () => {
+    const configOptions = Array.from({ length: 128 }, (_, index) => ({
+      id: `flag-${index}`,
+      name: "Flag",
+      type: "boolean",
+      currentValue: false,
+    }));
+    expect(
+      decodeSessionConfig({ ...overlay(), modes: null, configOptions }),
+    ).not.toBeNull();
+    expect(
+      decodeSessionConfig({
+        ...overlay(),
+        modes: null,
+        configOptions,
+        confirmedModel: { id: "actual" },
+      }),
+    ).toBeNull();
+    expect(
+      decodeSessionConfig({
+        ...overlay(),
+        modes: null,
+        configOptions: configOptions.slice(0, 127),
+        confirmedModel: { id: "actual" },
+      }),
+    ).not.toBeNull();
+  });
+
+  it("keeps only bounded confirmed model identity, never selection options or opaque metadata", () => {
+    const decoded = decodeSessionConfig({
+      ...overlay(),
+      confirmedModel: {
+        id: "actual",
+        name: "Actual model",
+        opaque: { secret: true },
+      },
+    });
+    expect(decoded?.confirmedModel).toEqual({
+      id: "actual",
+      name: "Actual model",
+    });
+    expect(decoded?.configOptions).toEqual([select]);
+    expect(
+      decodeSessionConfig({ ...overlay(), confirmedModel: { id: "actual" } })
+        ?.confirmedModel,
+    ).toEqual({ id: "actual" });
+  });
+
+  it.each([
+    null,
+    { id: "" },
+    { id: "x".repeat(513) },
+    { id: "actual", name: "" },
+    { id: "actual", name: "x".repeat(513) },
+    { id: "actual", name: 1 },
+  ])("rejects invalid confirmed model identity %j", (confirmedModel) => {
+    expect(decodeSessionConfig({ ...overlay(), confirmedModel })).toBeNull();
+  });
+
   it("retains v1 modes and thought_level without conflating them", () => {
     expect(decodeSessionConfig(overlay())).toEqual(overlay());
   });

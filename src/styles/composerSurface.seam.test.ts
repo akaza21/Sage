@@ -20,6 +20,45 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("uses reference-width model menus with compact options, bounded scrolling and system forced colors", async () => {
+    const css = await readFile(
+      resolve("src/styles/composer-model-picker.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.composer__model-menu\.menu-popover\s*\{[^}]*width:\s*min\(232px, calc\(100vw - 32px\)\);[^}]*max-height:\s*min\(288px, calc\(100vh - 16px\)\);/s,
+    );
+    expect(css).toMatch(
+      /\.composer-model-picker__list\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s,
+    );
+    expect(css).toMatch(
+      /\.composer-model-picker \.searchable-picker__option\s*\{[^}]*min-height:\s*var\(--control-height-compact\);/s,
+    );
+    expect(css).not.toMatch(/favorites|__favorite|__header input/);
+    expect(css.slice(css.indexOf("@media (forced-colors: active)"))).toMatch(
+      /background:\s*Canvas;/,
+    );
+    expect(css.slice(css.indexOf("@media (forced-colors: active)"))).toMatch(
+      /background:\s*Highlight;/,
+    );
+  });
+  it("gives single-line harness rows bounded scrolling and visible keyboard focus", async () => {
+    const css = await readFile(
+      resolve("src/styles/harness-picker.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.composer__harness-menu > \[role="listbox"\]\s*\{[^}]*min-height:\s*0;[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s,
+    );
+    expect(css).toMatch(
+      /\.composer__harness-menu \.searchable-picker__option\s*\{[^}]*min-height:\s*32px;/s,
+    );
+    expect(css).not.toMatch(/\.searchable-picker__option\[data-active/);
+    expect(css).toMatch(
+      /\.composer__harness-menu \.searchable-picker__option:focus-visible\s*\{[^}]*background:\s*var\(--composer-control-hover\);/s,
+    );
+  });
+
   it("truncates the model label within its own shrinkable box instead of clipping the trigger's leading edge", async () => {
     const css = await readFile(
       resolve("src/styles/composer-model-picker.css"),
@@ -120,7 +159,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__controls\s*\{[^}]*flex-wrap:\s*nowrap;/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer__options,\s*\.composer__model-menu\s*\{[^}]*position:\s*absolute;/s,
+      /\.composer__options\s*\{[^}]*position:\s*absolute;/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto;/s,

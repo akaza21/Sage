@@ -50,6 +50,105 @@ function Harness({
 }
 
 describe("SearchablePicker", () => {
+  it("does not leave a pointer-active row behind keyboard focus in a non-searchable list", () => {
+    render(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={options}
+        searchable={false}
+        selectedId="one"
+        onSelect={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    const first = screen.getAllByRole("option")[0];
+    const second = screen.getAllByRole("option")[1];
+    fireEvent.mouseMove(first);
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(second).toHaveFocus();
+    expect(first).not.toHaveAttribute("data-active");
+  });
+
+  it("focuses a newly available harness option when discovery completes with its list open", () => {
+    const onSelect = vi.fn();
+    const view = render(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={[
+          {
+            id: "one",
+            label: "First harness",
+            disabledReason: "Detecting harnesses",
+          },
+        ]}
+        searchable={false}
+        selectedId="one"
+        state="loading"
+        onSelect={onSelect}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Harness" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(trigger).toHaveFocus();
+    view.rerender(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={[
+          { id: "one", label: "First harness" },
+          { id: "two", label: "Second harness" },
+        ]}
+        searchable={false}
+        selectedId="one"
+        onSelect={onSelect}
+      />,
+    );
+    const first = screen.getByRole("option", { name: "First harness" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "s" });
+    const second = screen.getByRole("option", { name: "Second harness" });
+    expect(second).toHaveFocus();
+    fireEvent.click(second);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("two");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("returns Tab from non-searchable options and dismisses an all-disabled list from its trigger", () => {
+    const view = render(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={options}
+        searchable={false}
+        selectedId="one"
+        onSelect={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Harness" });
+    fireEvent.click(trigger);
+    const first = screen.getByRole("option", {
+      name: "Root A — Repository root",
+    });
+    expect(first).toHaveFocus();
+    expect(fireEvent.keyDown(first, { key: "Tab" })).toBe(true);
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    view.rerender(
+      <SearchablePicker
+        ariaLabel="Harness"
+        candidates={[options[2]]}
+        searchable={false}
+        selectedId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    fireEvent.click(trigger);
+    expect(screen.getByRole("listbox")).toBeVisible();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
   it("keeps its editable combobox focused while a sibling listbox owns active-descendant options", () => {
     render(<Harness />);
     const trigger = screen.getByRole("button", { name: "Select repository" });

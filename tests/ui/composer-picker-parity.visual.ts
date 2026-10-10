@@ -3,6 +3,69 @@ import { expect, test } from "@playwright/test";
 import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
+for (const forcedColors of ["none", "active"] as const) {
+  test(`records harness pointer focus and blur and preserves keyboard focus (${forcedColors})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await openScenario(page, "agent-picker-harness-model", "agent");
+    await page
+      .locator(".agent-task-header")
+      .first()
+      .click({ position: { x: 8, y: 8 } });
+    const composer = page.locator("form.composer").first();
+    const harness = composer.getByRole("button", { name: "Harness" });
+    const focusState = () =>
+      harness.evaluate((element) => {
+        const active = document.activeElement;
+        const style = getComputedStyle(element);
+        const composerStyle = getComputedStyle(element.closest("form")!);
+        return {
+          activeElement: active?.tagName,
+          activeLabel: active?.getAttribute("aria-label"),
+          focusVisible: element.matches(":focus-visible"),
+          outline: style.outline,
+          shadow: style.boxShadow,
+          composerOutline: composerStyle.outline,
+          composerBorder: composerStyle.borderColor,
+          composerShadow: composerStyle.boxShadow,
+        };
+      });
+    const resting = await focusState();
+    await harness.click();
+    await page
+      .getByRole("option", { name: "Codex — test only", exact: true })
+      .click();
+    await expect(harness).toBeFocused();
+    const pointerSelected = await focusState();
+    await page
+      .locator(".agent-task-header")
+      .first()
+      .click({ position: { x: 8, y: 8 } });
+    await expect(harness).not.toBeFocused();
+    const blurred = await focusState();
+    await test.info().attach("harness-focus-diagnostics", {
+      body: JSON.stringify({ resting, pointerSelected, blurred }, null, 2),
+      contentType: "application/json",
+    });
+    await harness.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("option", { name: "Codex — test only", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(harness).toBeFocused();
+    await expect
+      .poll(() =>
+        harness.evaluate((element) => ({
+          focusVisible: element.matches(":focus-visible"),
+          outline: getComputedStyle(element).outlineStyle,
+        })),
+      )
+      .toEqual({ focusVisible: true, outline: "solid" });
+  });
+}
+
 test("composer and harness picker match the owner's 96-DPI geometry", async ({
   page,
 }) => {
@@ -35,8 +98,15 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   await expect(row).toHaveAccessibleName("Codex — test only");
   const rowBox = await row.boundingBox();
   expect(rowBox).not.toBeNull();
-  expect(rowBox!.height).toBeGreaterThanOrEqual(48);
-  expect(rowBox!.height).toBeLessThanOrEqual(52);
+  expect(rowBox!.height).toBeGreaterThanOrEqual(32);
+  expect(rowBox!.height).toBeLessThanOrEqual(36);
+  const finalRowBox = await listbox.getByRole("option").last().boundingBox();
+  const listBox = await listbox.boundingBox();
+  expect(finalRowBox).not.toBeNull();
+  expect(listBox).not.toBeNull();
+  expect(finalRowBox!.y + finalRowBox!.height).toBeLessThanOrEqual(
+    listBox!.y + listBox!.height,
+  );
 
   await row.click();
   await expect(listbox).toHaveCount(0);
@@ -46,23 +116,41 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   await expect(model).toBeEnabled();
   await expect(model).toHaveText("Model");
   await model.click();
-  const modelCard = page.getByRole("dialog", { name: "Model picker" });
+  const modelCard = page.getByRole("listbox", {
+    name: "Select model",
+    exact: true,
+  });
+  await expect(modelCard.getByRole("option").first()).toBeFocused();
+  await expect(modelCard.getByRole("combobox")).toHaveCount(0);
+  await expect(modelCard.getByRole("option")).toHaveCount(128);
   await expect(
-    modelCard.getByRole("combobox", { name: "Search models" }),
-  ).toBeFocused();
-  const models = modelCard.getByRole("grid", { name: "Models", exact: true });
-  await expect(models.getByRole("row")).toHaveCount(128);
-  await expect(
-    models.getByRole("gridcell", {
-      name: "Fresh advertised model 1 — Codex",
+    modelCard.getByRole("option", {
+      name: "Fresh advertised model 1",
       exact: true,
     }),
   ).toBeVisible();
-  await expect(models.locator('[aria-selected="true"]')).toHaveCount(0);
+  await expect(modelCard.locator('[aria-selected="true"]')).toHaveCount(0);
   const modelBox = await modelCard.boundingBox();
   expect(modelBox).not.toBeNull();
-  expect(modelBox!.width).toBeGreaterThanOrEqual(316);
-  expect(modelBox!.width).toBeLessThanOrEqual(324);
+  expect(modelBox!.width).toBeGreaterThanOrEqual(228);
+  expect(modelBox!.width).toBeLessThanOrEqual(236);
+  expect(modelBox!.height).toBeLessThanOrEqual(288);
+  await page.keyboard.press("End");
+  const lastModel = modelCard.getByRole("option", {
+    name: "Fresh advertised model 128",
+    exact: true,
+  });
+  await expect(lastModel).toBeFocused();
+  const lastBox = await lastModel.boundingBox();
+  const scrollBox = await modelCard
+    .locator(".composer-model-picker__list")
+    .boundingBox();
+  expect(lastBox).not.toBeNull();
+  expect(scrollBox).not.toBeNull();
+  expect(lastBox!.y).toBeGreaterThanOrEqual(scrollBox!.y);
+  expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(
+    scrollBox!.y + scrollBox!.height,
+  );
 });
 
 test("known context and Goal fit the reference composer without invented native data", async ({

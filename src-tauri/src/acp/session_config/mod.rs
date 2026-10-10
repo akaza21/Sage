@@ -70,6 +70,15 @@ pub(crate) struct SessionConfig {
     pub modes: Option<Modes>,
     #[serde(default)]
     pub config_options: ConfigOptions,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmed_model: Option<ConfirmedModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ConfirmedModel {
+    pub id: RequiredText<512>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<RequiredText<512>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -163,6 +172,7 @@ impl SessionConfig {
         }
         unique(self.config_options.as_slice().iter().map(|v| v.id.as_str()))?;
         let mut entries = self.config_options.as_slice().len()
+            + usize::from(self.confirmed_model.is_some())
             + self
                 .modes
                 .as_ref()

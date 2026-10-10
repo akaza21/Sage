@@ -1,4 +1,37 @@
 use super::*;
+#[test]
+fn confirmed_model_is_bounded_binding_metadata_not_a_selectable_acp_extension() {
+    let supplied = json!({"configOptions":[],"confirmedModel":{"id":"actual","name":"Actual"}});
+    assert!(
+        SessionConfig::from_wire(&supplied, true)
+            .unwrap()
+            .confirmed_model
+            .is_none()
+    );
+    let mut config = SessionConfig::default();
+    config.confirmed_model = Some(ConfirmedModel {
+        id: RequiredText::new("modelId", "actual").unwrap(),
+        name: Some(RequiredText::new("modelName", "Actual").unwrap()),
+    });
+    assert!(config.validate().is_ok());
+    assert!(
+        config
+            .validate_value(
+                "model",
+                &ConfigValue::Select {
+                    value: ConfigId::new("value", "actual").unwrap()
+                }
+            )
+            .is_err()
+    );
+    assert!(serde_json::from_value::<ConfirmedModel>(json!({"id":"x".repeat(513)})).is_err());
+    let options: Vec<_> = (0..128).map(|index| json!({"id":format!("flag-{index}"),"name":"Flag","type":"boolean","currentValue":false})).collect();
+    config.config_options = SessionConfig::from_wire(&json!({"configOptions":options}), true)
+        .unwrap()
+        .config_options;
+    assert!(config.validate().is_err());
+}
+
 use serde_json::json;
 
 fn owner(epoch: u64) -> crate::acp::scheduler::RuntimeOwner {

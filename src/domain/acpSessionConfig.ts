@@ -43,6 +43,7 @@ export interface AcpSessionConfig {
   runtimeEpoch: string;
   configRevision: string;
   removed?: boolean;
+  confirmedModel?: { id: string; name?: string };
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
 }
@@ -188,13 +189,43 @@ export function decodeSessionConfig(v: unknown): AcpSessionConfig | null {
   if (configOptions.some((o) => o === null)) return null;
   const options = configOptions as AcpConfigOption[];
   if (!unique(options.map((o) => o.id))) return null;
-  if (removed && (decodedModes !== null || options.length > 0)) return null;
-  let entries = options.length + (decodedModes?.availableModes.length ?? 0);
+  const confirmedModel = v.confirmedModel;
+  if (
+    confirmedModel !== undefined &&
+    (!object(confirmedModel) ||
+      !text(confirmedModel.id, 512) ||
+      (confirmedModel.name !== undefined && !text(confirmedModel.name, 512)))
+  )
+    return null;
+  if (
+    removed &&
+    (decodedModes !== null ||
+      options.length > 0 ||
+      confirmedModel !== undefined)
+  )
+    return null;
+  let entries =
+    options.length +
+    (decodedModes?.availableModes.length ?? 0) +
+    Number(confirmedModel !== undefined);
   for (const o of options)
     if (o.type === "select")
       for (const c of o.options)
         entries += "group" in c ? 1 + c.options.length : 1;
-  const payload = { modes: decodedModes, configOptions: options };
+  const payload = {
+    modes: decodedModes,
+    configOptions: options,
+    ...(confirmedModel === undefined
+      ? {}
+      : {
+          confirmedModel: {
+            id: confirmedModel.id as string,
+            ...(confirmedModel.name === undefined
+              ? {}
+              : { name: confirmedModel.name as string }),
+          },
+        }),
+  };
   if (entries > 128 || utf8ByteLength(JSON.stringify(payload)) > 131072)
     return null;
   return {

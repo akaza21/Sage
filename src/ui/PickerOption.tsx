@@ -5,45 +5,49 @@ import type { SearchablePickerOption } from "./SearchablePicker";
 export const PickerOption = memo(function PickerOption({
   active,
   candidate,
+  disabled = false,
   id,
   onSelect,
   onActivate,
   onOptionElement,
   onRender,
   selected,
+  showSelectedCheck = false,
 }: {
   active: boolean;
   candidate: SearchablePickerOption;
+  disabled?: boolean;
   id: string;
-  onActivate: (id: string) => void;
-  onOptionElement: (id: string, element: HTMLButtonElement | null) => void;
+  onActivate?: (id: string) => void;
+  onOptionElement?: (id: string, element: HTMLButtonElement | null) => void;
   onRender?: (id: string) => void;
   onSelect: (id: string) => void;
   selected: boolean;
+  showSelectedCheck?: boolean;
 }) {
   onRender?.(candidate.id);
-  const disabled = Boolean(candidate.disabledReason);
+  const unavailable = disabled || Boolean(candidate.disabledReason);
   const logo =
     candidate.logo ??
     (candidate.icon ? `/harness-${candidate.icon}.svg` : null);
   return (
     <button
-      ref={(element) => onOptionElement(candidate.id, element)}
+      ref={(element) => onOptionElement?.(candidate.id, element)}
       id={id}
       type="button"
       role="option"
       aria-label={candidate.accessibleLabel}
       title={candidate.disabledReason}
       className="searchable-picker__option menu-item"
-      aria-disabled={disabled || undefined}
-      aria-describedby={disabled ? `${id}-reason` : undefined}
+      aria-disabled={unavailable || undefined}
+      aria-describedby={candidate.disabledReason ? `${id}-reason` : undefined}
       aria-selected={selected}
       data-option-id={candidate.id}
       data-active={active || undefined}
-      disabled={disabled}
+      disabled={unavailable}
       tabIndex={-1}
-      onMouseMove={() => !disabled && onActivate(candidate.id)}
-      onClick={() => !disabled && onSelect(candidate.id)}
+      onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
+      onClick={() => !unavailable && onSelect(candidate.id)}
     >
       {logo ? (
         <img
@@ -59,7 +63,7 @@ export const PickerOption = memo(function PickerOption({
           <small>{candidate.secondaryLabel}</small>
         ) : null}
       </span>
-      {selected && logo ? (
+      {selected && (logo || showSelectedCheck) ? (
         <Check
           className="searchable-picker__selected-check"
           size={14}

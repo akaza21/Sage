@@ -1,6 +1,9 @@
 import { useState } from "react";
 
-import type { AcpConfigOption } from "../../domain/acpSessionConfig";
+import type {
+  AcpConfigOption,
+  AcpSessionConfig,
+} from "../../domain/acpSessionConfig";
 import { composerOptionLabel } from "./composerChrome";
 
 export function useConfirmedModelLabel(
@@ -8,6 +11,7 @@ export function useConfirmedModelLabel(
   selectedModelId: string | null,
   modelOption: AcpConfigOption | undefined,
   models: readonly { id: string; name: string }[],
+  sessionModel: AcpSessionConfig["confirmedModel"],
 ): string {
   const [confirmed, setConfirmed] = useState<{
     scope: string;
@@ -18,11 +22,14 @@ export function useConfirmedModelLabel(
   const modelId =
     modelOption?.type === "select"
       ? modelOption.currentValue
-      : (previous?.modelId ?? selectedModelId);
+      : (sessionModel?.id ?? previous?.modelId ?? selectedModelId);
   const label =
     composerOptionLabel(modelOption) ??
+    sessionModel?.name ??
     models.find((model) => model.id === modelId)?.name ??
-    (previous?.modelId === modelId ? previous.label : null);
+    (previous?.modelId === modelId ? previous.label : null) ??
+    sessionModel?.id ??
+    null;
   if (
     confirmed?.scope !== scope ||
     confirmed.modelId !== modelId ||
