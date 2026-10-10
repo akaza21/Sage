@@ -19,7 +19,9 @@ impl PiRuntime {
                             == Some("get_available_thinking_levels")
                 })
         });
-        let outputs = match self.translator.ingest(frame.as_bytes()) {
+        let outputs = match crate::acp::bindings::pi::decode::decode_record(frame.as_bytes())
+            .and_then(|record| self.ingest_record(record))
+        {
             Ok(outputs) => outputs,
             Err(error) => {
                 if matches!(error, AdapterError::ConfigMutationRejected) {

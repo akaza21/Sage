@@ -272,6 +272,16 @@ impl Fixture {
         &self,
         adapter: A,
     ) -> AdapterPump<A, SqliteAdapterBatchJournal, Mapper> {
+        let capabilities =
+            serde_json::to_string(&adapter.capabilities().expect("ready capabilities"))
+                .expect("serialize capabilities");
+        self.database
+            .connection()
+            .execute(
+                "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
+                rusqlite::params![capabilities, owner().session_id.as_str()],
+            )
+            .expect("seed negotiated capabilities");
         let intent = self.intent(0);
         AdapterPump::new(
             adapter,

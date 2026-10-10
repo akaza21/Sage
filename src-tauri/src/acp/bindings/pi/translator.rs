@@ -234,7 +234,14 @@ impl PiTranslator {
     }
 
     pub fn ingest(&mut self, record: &[u8]) -> Result<Vec<AdapterOutput>, AdapterError> {
-        match decode_record(record)? {
+        self.ingest_record(decode_record(record)?)
+    }
+
+    pub(super) fn ingest_record(
+        &mut self,
+        record: Record,
+    ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        match record {
             Record::Response(response) => self.ingest_response(response),
             Record::Event { kind, value } => self.ingest_event(&kind, &value),
         }

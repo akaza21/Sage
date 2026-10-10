@@ -4,6 +4,7 @@ mod config;
 mod content_free;
 mod continuation;
 mod dialog_boundaries;
+mod dialog_replays;
 mod dialogs;
 mod discovery;
 mod fixture;

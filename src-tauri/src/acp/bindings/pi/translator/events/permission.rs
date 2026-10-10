@@ -9,6 +9,13 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|turn| turn.authority_denied && turn.terminal.is_none())
+        {
+            return Ok(vec![AdapterOutput::LateIgnored]);
+        }
         let method = value
             .get("method")
             .and_then(Value::as_str)

@@ -10,15 +10,44 @@ use crate::acp::{
 };
 
 use super::super::{DenyStage, PiRuntime};
+use crate::acp::bindings::pi::{AdapterError, AdapterOutput, decode::Record};
 
 const DIALOG_NOTICES_PER_TURN: u8 = 8;
 
 impl PiRuntime {
+    pub(in crate::acp::bindings::pi::runtime) fn ingest_record(
+        &mut self,
+        record: Record,
+    ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        if let Record::Event { kind, value } = &record
+            && kind == "extension_ui_request"
+            && matches!(
+                value.get("method").and_then(serde_json::Value::as_str),
+                Some("confirm" | "select" | "input" | "editor")
+            )
+            && value
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|id| self.dialog_cancelled(id))
+        {
+            return Ok(vec![AdapterOutput::DuplicateIgnored]);
+        }
+        self.translator.ingest_record(record)
+    }
+
+    fn dialog_cancelled(&self, id: &str) -> bool {
+        self.cancelled_dialogs.contains_key(id)
+            || self
+                .recent_cancelled_dialogs
+                .iter()
+                .any(|recent| recent == id)
+    }
+
     pub(super) fn cancel_dialog(
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self.cancelled_dialogs.contains_key(&id) || self.recent_cancelled_dialogs.contains(&id) {
+        if self.dialog_cancelled(&id) {
             return Ok((Some(AdapterEvent::IgnoredDuplicate), None));
         }
         if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
