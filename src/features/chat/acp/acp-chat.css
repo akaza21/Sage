@@ -374,8 +374,12 @@
   cursor: pointer;
 }
 
-.acp-code-block__header
-  button:is(:hover, :focus-visible, [aria-pressed="true"], [data-copy-status]) {
+.acp-code-block__header button:is(:hover, :focus-visible) {
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+.acp-code-block__header button:is([aria-pressed="true"], [data-copy-status]) {
   color: var(--color-text-primary);
   background: var(--color-surface-active);
 }
@@ -442,5 +446,12 @@
 
   .acp-code-block__wrap-icon {
     forced-color-adjust: none;
+    color: ButtonText;
+  }
+
+  .acp-code-block__header
+    button:is(:hover, :focus-visible, [aria-pressed="true"], [data-copy-status])
+    .acp-code-block__wrap-icon {
+    color: HighlightText;
   }
 }
