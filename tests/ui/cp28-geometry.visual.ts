@@ -10,12 +10,17 @@ test.use({ deviceScaleFactor: 1 });
 async function installAnswers(page: Page, text: string, queued = false) {
   await page.evaluate(
     async ({ text, queued }) => {
-      const [{ acpProjectionStoreFor }, { useWorkbenchStore }, ids] =
-        await Promise.all([
-          import("/src/app/acpProjectionRegistry.ts"),
-          import("/src/app/store.ts"),
-          import("/tests/ui/fixtures/visualFixtureIds.ts"),
-        ]);
+      const [
+        { acpProjectionStoreFor },
+        { useWorkbenchStore },
+        ids,
+        { buildVisualScenario },
+      ] = await Promise.all([
+        import("/src/app/acpProjectionRegistry.ts"),
+        import("/src/app/store.ts"),
+        import("/tests/ui/fixtures/visualFixtureIds.ts"),
+        import("/tests/ui/fixtures/visualScenarioShell.ts"),
+      ]);
       for (const projection of document.querySelectorAll<HTMLElement>(
         ".acp-chat-projection[data-chat-id]",
       )) {
@@ -25,9 +30,19 @@ async function installAnswers(page: Page, text: string, queued = false) {
         const current = structuredClone(store.getState().page);
         if (!current) throw new Error("Chat projection is not settled");
         const turn = current.turns[0];
-        const answer = turn.items.find(
-          (item) => item.kind === "text" && item.payload.role === "assistant",
-        );
+        const findAnswer = (items: typeof turn.items) =>
+          items.find(
+            (item) => item.kind === "text" && item.payload.role === "assistant",
+          );
+        // agent-dual's second Chat is mid-turn with no answer yet; give it
+        // the rich fixture's completed answer so every pane is measured.
+        let answer = findAnswer(turn.items);
+        if (!answer) {
+          answer = findAnswer(
+            buildVisualScenario("rich").pages[0].turns[0].items,
+          );
+          if (answer) turn.items.push(answer);
+        }
         if (!answer || answer.kind !== "text")
           throw new Error("Expected an answer");
         answer.payload.text = text;
