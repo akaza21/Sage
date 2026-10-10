@@ -372,12 +372,16 @@ export const createProjectSlice: StateCreator<
 
     switchProject: (projectId) => {
       const state = get();
+      const activeChatId =
+        state.tabs.find(
+          (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+        )?.id ?? null;
       if (
         state.sending ||
         Object.values(state.chatUiById).some(
           (chat) => chat.sending || chat.modeChanging,
         ) ||
-        hasActiveAcpTurn(state.project?.id ?? null, state.projectGeneration)
+        hasActiveAcpTurn(activeChatId)
       )
         return Promise.resolve();
       return runSwitchProject(projectId, {

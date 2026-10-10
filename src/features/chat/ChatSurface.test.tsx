@@ -271,6 +271,57 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it.each(["primary", "focused"] as const)(
+    "explains the existing %s turn guard when the empty home's project action is refused",
+    (owner) => {
+      const live = projection();
+      hooks.page = {
+        ...live,
+        chatId: "chat-b" as never,
+        currentSessionId: null,
+        sessions: [],
+        turns: [],
+      };
+      const switchProject = vi.fn();
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "A", roots: [] },
+        projects: [
+          { id: "project-a", name: "A", rootCount: 0, lastOpenedAt: 1 },
+          { id: "project-b", name: "B", rootCount: 0, lastOpenedAt: 1 },
+        ],
+        activeTabId: "chat-a",
+        tabs: ["chat-a", "chat-b"].map((id, position) => ({
+          id,
+          kind: "chat",
+          title: id,
+          position,
+          pinned: false,
+          dirty: false,
+        })),
+        switchProject,
+      });
+      const active =
+        owner === "primary"
+          ? useAcpProjectionStore
+          : acpProjectionStoreFor("chat-a");
+      active.setState({ page: live });
+      acpProjectionStoreFor("chat-b").setState({ page: hooks.page });
+      try {
+        render(<ChatSurface chatId="chat-b" />);
+        fireEvent.click(screen.getByRole("button", { name: "Project" }));
+        const picker = screen.getByRole("combobox", { name: "Project" });
+        fireEvent.keyDown(picker, { key: "End" });
+        fireEvent.keyDown(picker, { key: "Enter" });
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Finish the active turn before switching projects.",
+        );
+        expect(switchProject).not.toHaveBeenCalled();
+      } finally {
+        active.getState().clear();
+      }
+    },
+  );
+
   it.each([
     ["unsupported", /not available for this binding/i],
     ["unavailable", /native goal unavailable/i],

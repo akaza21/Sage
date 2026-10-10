@@ -1,10 +1,7 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
-import {
-  hasActiveAcpTurn,
-  subscribeAcpTurnActivity,
-} from "../../app/acpProjectionRegistry";
+import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 
@@ -18,12 +15,6 @@ export function ProjectScopeChip({
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const turnBusy = useSyncExternalStore(subscribeAcpTurnActivity, () =>
-    hasActiveAcpTurn(projectId, projectGeneration),
-  );
   const switchBlocked = useWorkbenchStore(
     (state) =>
       state.projectTransitioning ||
@@ -56,9 +47,22 @@ export function ProjectScopeChip({
         <SearchablePicker
           ariaLabel="Project"
           candidates={candidates}
-          disabled={disabled || switchBlocked || turnBusy}
+          disabled={disabled || switchBlocked}
           emptyLabel={projectName}
-          onSelect={(id) => void switchProject(id)}
+          onSelect={(id) => {
+            const state = useWorkbenchStore.getState();
+            const activeChatId =
+              state.tabs.find(
+                (tab) => tab.id === state.activeTabId && tab.kind === "chat",
+              )?.id ?? null;
+            if (id !== state.project?.id && hasActiveAcpTurn(activeChatId)) {
+              useWorkbenchStore.setState({
+                error: "Finish the active turn before switching projects.",
+              });
+              return;
+            }
+            void switchProject(id);
+          }}
           selectedId={projectId}
         />
       ) : (

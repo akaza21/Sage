@@ -333,49 +333,44 @@ it.each([
   },
 );
 
-it.each(["primary", "focused", "unfocused"] as const)(
-  "blocks an empty second pane's project action until the %s chat's active turn settles",
-  (owner) => {
-    useWorkbenchStore.setState({
-      project: { id: "project-1", name: "Sage", roots: [] },
-      projectGeneration: 1,
-      projects: [
-        { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
-      ],
-      activeTabId: owner === "unfocused" ? "chat-2" : "chat-1",
-      tabs: [
-        { id: "chat-1", kind: "chat" },
-        { id: "chat-2", kind: "chat" },
-      ] as never,
-    });
-    const store =
-      owner === "primary"
-        ? useAcpProjectionStore
-        : acpProjectionStoreFor("chat-1");
-    pinAcpProjectionIds(["chat-1", "chat-2"]);
-    const live = page("running");
-    const scope = {
-      projectId: live.projectId,
-      chatId: live.chatId,
-      projectGeneration: "1" as never,
-    };
-    store.getState().activateScope(scope);
-    store.getState().applyAuthoritativePage(scope, live);
-    render(
-      <ChatTranscript
-        {...transcriptProps()}
-        page={{ ...emptyPage(), chatId: "chat-2" as never }}
-        focused={false}
-      />,
-    );
-    const chip = screen.getByRole("button", { name: "Project" });
-    expect(chip).toBeDisabled();
-    act(() =>
-      store.getState().applyAuthoritativePage(scope, {
-        ...page("completed"),
-        projectionRevision: "13" as never,
-      }),
-    );
-    expect(chip).toBeEnabled();
-  },
-);
+it("allows the home project action with an idle Chat focused while an unfocused visible Chat runs", () => {
+  const switchProject = vi.fn();
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Sage", roots: [] },
+    projectGeneration: 1,
+    projects: [
+      { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
+      { id: "project-2", name: "Other", rootCount: 0, lastOpenedAt: 1 },
+    ],
+    switchProject,
+    activeTabId: "chat-2",
+    tabs: [
+      { id: "chat-1", kind: "chat" },
+      { id: "chat-2", kind: "chat" },
+    ] as never,
+  });
+  const store = acpProjectionStoreFor("chat-1");
+  pinAcpProjectionIds(["chat-1", "chat-2"]);
+  const live = page("running");
+  const scope = {
+    projectId: live.projectId,
+    chatId: live.chatId,
+    projectGeneration: "1" as never,
+  };
+  store.getState().activateScope(scope);
+  store.getState().applyAuthoritativePage(scope, live);
+  render(
+    <ChatTranscript
+      {...transcriptProps()}
+      page={{ ...emptyPage(), chatId: "chat-2" as never }}
+      focused
+    />,
+  );
+  const chip = screen.getByRole("button", { name: "Project" });
+  expect(chip).toBeEnabled();
+  fireEvent.click(chip);
+  const picker = screen.getByRole("combobox", { name: "Project" });
+  fireEvent.keyDown(picker, { key: "End" });
+  fireEvent.keyDown(picker, { key: "Enter" });
+  expect(switchProject).toHaveBeenCalledExactlyOnceWith("project-2");
+});
