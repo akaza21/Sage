@@ -37,8 +37,16 @@ impl Drop for JournalShutdown {
 fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reopen() {
     runtime().block_on(async {
         let root = TempRoot::new();
-        let path = root.0.join("history.sqlite");
-        let database = sign_in_tests::migrated_database_at_path(&path);
+        let path = root.0.join("sage.db");
+        let fixture = sign_in_tests::migrated_database();
+        {
+            let source = fixture.connection();
+            let mut copy = rusqlite::Connection::open(&path).unwrap();
+            rusqlite::backup::Backup::new(&source, &mut copy).unwrap()
+                .run_to_completion(256, std::time::Duration::ZERO, None).unwrap();
+        }
+        drop(fixture);
+        let database = Database::open(&path).unwrap();
         let mut codex = CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session("one"));
         let init = codex.command(AdapterCommand::Initialize).unwrap();
         codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();

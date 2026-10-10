@@ -153,15 +153,7 @@ pub(super) fn migrated_database() -> Database {
 }
 
 fn migrated_database_with_turn_state(turn_state: &str) -> Database {
-    migrated_database_with_path(std::path::Path::new(":memory:"), turn_state)
-}
-
-pub(super) fn migrated_database_at_path(path: &std::path::Path) -> Database {
-    migrated_database_with_path(path, "running")
-}
-
-fn migrated_database_with_path(path: &std::path::Path, turn_state: &str) -> Database {
-    let database = Database::open(path).unwrap();
+    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection.execute_batch(&format!(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Sign in',1,1,1);
