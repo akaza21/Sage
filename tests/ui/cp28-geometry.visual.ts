@@ -220,8 +220,10 @@ test("CP-28 answer Copy has a visible keyboard tooltip and announces feedback", 
     .getByRole("button", { name: "Copy", exact: true });
   await page.keyboard.press("Tab");
   await copy.focus();
+  // The accessible name flips to "Copied", so pin the same button node.
+  const button = await copy.elementHandle();
   const tooltip = () =>
-    copy.evaluate((element) => {
+    button!.evaluate((element) => {
       const style = getComputedStyle(element, "::after");
       return {
         content: style.content,
