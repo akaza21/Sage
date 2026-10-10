@@ -207,29 +207,15 @@ impl Fixture {
                  INSERT INTO chats VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);",
                 )
                 .unwrap();
-            connection.execute(
-                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at)
-                 VALUES('session-pi-91','project-pump-pi','chat-pump-pi',0,'pi',?1,?2,'{}','active','hot',0,0)",
-                rusqlite::params!["07".repeat(32), external_session_id.as_str()],
-            ).unwrap();
-            connection.execute_batch(
-                "INSERT INTO chat_session_heads VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0);
-             INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at) VALUES('project-pump-pi','chat-pump-pi','session-pi-91',91,'running',0);
-             INSERT INTO acp_project_usage VALUES('project-pump-pi',1,1,0,0,0,0,0);
-             INSERT INTO acp_session_usage VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0,0,0,0,0,0);
-             UPDATE acp_store_usage SET chat_count=1,session_count=1;"
-            ).unwrap();
         }
         let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-        let fixture = Self {
+        Self {
             database,
             observed: Arc::new(Mutex::new(Vec::new())),
             external_session_id,
             handle,
             task: Some(runner.spawn()),
-        };
-        fixture.add_turn(0);
-        fixture
+        }
     }
 
     pub(super) fn add_turn(&self, ordinal: u64) {
@@ -275,13 +261,22 @@ impl Fixture {
         let capabilities =
             serde_json::to_string(&adapter.capabilities().expect("ready capabilities"))
                 .expect("serialize capabilities");
-        self.database
-            .connection()
-            .execute(
-                "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
-                rusqlite::params![capabilities, owner().session_id.as_str()],
-            )
-            .expect("seed negotiated capabilities");
+        {
+            let connection = self.database.connection();
+            connection.execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at)
+                 VALUES('session-pi-91','project-pump-pi','chat-pump-pi',0,'pi',?1,?2,?3,'active','hot',0,0)",
+                rusqlite::params!["07".repeat(32), self.external_session_id.as_str(), capabilities],
+            ).expect("seed session with negotiated capabilities");
+            connection.execute_batch(
+                "INSERT INTO chat_session_heads VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0);
+             INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at) VALUES('project-pump-pi','chat-pump-pi','session-pi-91',91,'running',0);
+             INSERT INTO acp_project_usage VALUES('project-pump-pi',1,1,0,0,0,0,0);
+             INSERT INTO acp_session_usage VALUES('project-pump-pi','chat-pump-pi','session-pi-91',0,0,0,0,0,0,0);
+             UPDATE acp_store_usage SET chat_count=1,session_count=1;"
+            ).unwrap();
+        }
+        self.add_turn(0);
         let intent = self.intent(0);
         AdapterPump::new(
             adapter,

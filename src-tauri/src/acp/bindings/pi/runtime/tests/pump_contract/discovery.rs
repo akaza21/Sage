@@ -1,5 +1,34 @@
 use super::*;
 
+#[tokio::test]
+async fn pi_pump_seeds_negotiated_capabilities_at_session_creation() {
+    let ready = ready_adapter();
+    let activated = activated_adapter();
+    assert_ne!(ready.capabilities(), activated.capabilities());
+    for adapter in [ready, activated] {
+        let capabilities = adapter.capabilities().unwrap();
+        let fixture =
+            Fixture::with_external_session_id(adapter.inner.external_session.clone().unwrap());
+        let mut pump = fixture.pump(adapter);
+        let stored: String = fixture
+            .database
+            .connection()
+            .query_row(
+                "SELECT capabilities_json FROM agent_sessions WHERE id=?1",
+                [owner().session_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<CapabilitySnapshotV1>(&stored).unwrap(),
+            capabilities
+        );
+        start(&mut pump).await;
+        settle(&mut pump).await;
+        fixture.finish().await;
+    }
+}
+
 pub(super) async fn state_read(pump: &mut Pump, provider: &str, model: &str) -> Capture {
     let mut transport = Capture::default();
     pump.flush_one(&mut transport).unwrap();
