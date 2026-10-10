@@ -57,7 +57,7 @@ impl Drop for CloseOnDrop {
 fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
-    let database = migrated_database();
+    let database = migrated_database(&runtime);
     let session_intent = session_intent();
 
     tokio::runtime::Runtime::new()
@@ -267,7 +267,9 @@ fn session_intent() -> SessionPumpIntent {
     }
 }
 
-fn migrated_database() -> Database {
+fn migrated_database(runtime: &ClaudeRuntime) -> Database {
+    let capabilities = serde_json::to_string(&runtime.capabilities().expect("ready capabilities"))
+        .expect("serialize capabilities");
     let database = Database::open(std::path::Path::new(":memory:")).expect("database");
     let connection = database.connection();
     connection
@@ -275,7 +277,7 @@ fn migrated_database() -> Database {
             "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Two turns',1,1,1);
              INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/fixture/root','c:/fixture/root',0);
              INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-one','project-one',0,'Two turns',0,1,1);
-             INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('{SAGE_SESSION}','project-one','chat-one',0,'claude-agent-acp','{digest}','{SESSION}','{{}}','active','hot',0,0,0,1,1);
+             INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('{SAGE_SESSION}','project-one','chat-one',0,'claude-agent-acp','{digest}','{SESSION}','{capabilities}','active','hot',0,0,0,1,1);
              INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project-one','chat-one','{SAGE_SESSION}',0,1);
              INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-one','chat-one','{SAGE_SESSION}',3,'running','{artifact}',1);
              INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-one','project-one','chat-one','{SAGE_SESSION}',3,0,'intent-one','sending','completeBytes',0,1,1);
