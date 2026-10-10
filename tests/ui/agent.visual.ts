@@ -5,6 +5,7 @@ import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
   expectNoViewportOverflow,
   openScenario,
+  settleChatProjections,
   settleTranscriptAtEnd,
   settleTranscriptAtStart,
   takeCanonicalScreenshot,
@@ -777,6 +778,7 @@ test.describe("V6 Composer context meter", () => {
       "agent-composer-context-unknown",
       "agent",
     );
+    await settleChatProjections(page);
     const unknownContext = page.getByLabel("Composer context", { exact: true });
     await expect(
       page.getByRole("textbox", { name: "Message agent" }),
@@ -796,6 +798,7 @@ test.describe("V6 Composer context meter", () => {
       "agent-composer-context-known",
       "agent",
     );
+    await settleChatProjections(page);
     const knownContext = page.getByLabel("Composer context", { exact: true });
     const knownProgress = knownContext.getByRole("progressbar", {
       name: "6,000 used / 272,000 total tokens",
@@ -849,6 +852,7 @@ test.describe("V6 Composer context meter", () => {
       "agent-composer-context-over-capacity",
       "agent",
     );
+    await settleChatProjections(page);
     const overCapacityContext = page.getByLabel("Composer context", {
       exact: true,
     });
