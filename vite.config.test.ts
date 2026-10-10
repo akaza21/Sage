@@ -101,6 +101,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/ProjectChatNavigation.tsx",
   "src/workbench/ProjectChatRailGlyph.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
+  "src/workbench/useSubagentPaneExpansion.ts",
 ].sort();
 
 const CODEMIRROR_LANGUAGE_PARSER_ALLOWLIST = {
