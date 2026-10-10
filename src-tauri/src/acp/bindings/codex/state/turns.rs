@@ -151,6 +151,7 @@ impl CodexAdapter {
             CorrelationMatch::Pending(client_message_id) => {
                 self.active_turn_client_message_id = Some(client_message_id);
                 self.active_item_terminals.clear();
+                self.active_unretried_error_fingerprints.clear();
                 self.active_terminal_id_bytes = 0;
                 self.active_turn_id = Some(id.clone());
                 Ok((
@@ -193,6 +194,7 @@ impl CodexAdapter {
                 }
                 self.active_turn_client_message_id = Some(client_message_id);
                 self.active_item_terminals.clear();
+                self.active_unretried_error_fingerprints.clear();
                 self.active_terminal_id_bytes = 0;
                 self.active_turn_id = Some(turn_id);
                 (

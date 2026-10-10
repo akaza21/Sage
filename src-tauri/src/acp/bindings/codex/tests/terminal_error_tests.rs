@@ -32,6 +32,51 @@ fn error_notification(message: &str, will_retry: bool) -> Vec<u8> {
 }
 
 #[test]
+fn full_unretried_error_ledger_keeps_accepting_errors_and_preserves_completion() {
+    for recorded_terminal_error in [true, false] {
+        let mut adapter = running_adapter();
+        for index in 0..crate::acp::limits::LIMITS.wire.items_per_turn {
+            let message = format!("Fatal cause {index}");
+            assert!(matches!(
+                adapter.ingest(&error_notification(&message, false), &Mapper).unwrap(),
+                IngressDisposition::Events(events)
+                    if matches!(events.as_slice(), [IncomingEvent::Error(_)])
+            ));
+        }
+        assert!(matches!(
+            adapter.ingest(&error_notification("Overflow fatal cause", false), &Mapper).unwrap(),
+            IngressDisposition::Events(events)
+                if matches!(events.as_slice(), [IncomingEvent::Error(_)])
+        ));
+        let message = if recorded_terminal_error {
+            "Fatal cause 0"
+        } else {
+            "Overflow fatal cause"
+        };
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&completion(json!({"message":message})), &Mapper)
+            .unwrap()
+        else {
+            panic!()
+        };
+        if recorded_terminal_error {
+            assert!(matches!(
+                events.as_slice(),
+                [IncomingEvent::Turn {
+                    state: TurnState::Failed,
+                    ..
+                }]
+            ));
+        } else {
+            assert!(matches!(events.as_slice(), [
+                IncomingEvent::Error(NormalizedPayload::Error { message, retryable: false, .. }),
+                IncomingEvent::Turn { state: TurnState::Failed, .. }
+            ] if message.as_str() == "Overflow fatal cause"));
+        }
+    }
+}
+
+#[test]
 fn unretried_error_notification_suppresses_the_matching_terminal_error() {
     let mut adapter = running_adapter();
     let message = "Failed with sk-private at C:\\private\\file.txt";

@@ -27,7 +27,7 @@ impl CodexAdapter {
             return Ok(());
         }
         if fingerprints.len() >= LIMITS.wire.items_per_turn as usize {
-            return Err(AdapterError::TerminalLedgerFull);
+            return Ok(());
         }
         fingerprints.push(fingerprint);
         Ok(())
