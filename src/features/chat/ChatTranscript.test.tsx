@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../../domain/acp";
@@ -18,18 +25,19 @@ afterEach(() => {
 async function renderTranscript(
   acpPage: AcpChatPage | null,
   messages: readonly ChatMessage[] = [],
+  useNativeAcp = true,
 ) {
   const onRetry = vi.fn();
-  const transcript = (page: AcpChatPage | null) => (
+  const transcript = (page: AcpChatPage | null, focused = true) => (
     <ChatTranscript
       transcriptRef={{ current: null }}
       contentRef={{ current: null }}
       endRef={{ current: null }}
       onScroll={vi.fn()}
       projectTransitioning={false}
-      useNativeAcp
+      useNativeAcp={useNativeAcp}
       page={page}
-      focused
+      focused={focused}
       projectRoots={[]}
       retentionIncomplete={false}
       onOpenResource={vi.fn()}
@@ -49,6 +57,10 @@ async function renderTranscript(
   return {
     ...result,
     onRetry,
+    async setFocused(focused: boolean) {
+      result.rerender(transcript(acpPage, focused));
+      await settleLazyModules();
+    },
     async rerenderTranscript(next: AcpChatPage) {
       result.rerender(transcript(next));
       await settleLazyModules();
@@ -70,6 +82,105 @@ function retryPage() {
 }
 
 describe("ChatTranscript answer actions", () => {
+  it.each([true, false])(
+    "does not replay prior copy feedback when a Chat regains focus (ACP: %s)",
+    async (native) => {
+      vi.stubGlobal("navigator", {
+        clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+      });
+      const { container, setFocused } = await renderTranscript(
+        native ? retryPage() : null,
+        native
+          ? []
+          : [{ role: "assistant", text: "Legacy answer" } as ChatMessage],
+        native,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      await waitFor(() =>
+        expect(
+          container.querySelector('[data-acp-announcement="polite"]'),
+        ).toHaveTextContent("Copied"),
+      );
+      await setFocused(false);
+      await setFocused(true);
+      await act(
+        async () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      expect(
+        container.querySelector('[data-acp-announcement="polite"]'),
+      ).toBeEmptyDOMElement();
+    },
+  );
+
+  it("does not defer a copy announcement until refocus when the clipboard finishes in an unfocused Chat", async () => {
+    let completeCopy!: () => void;
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: () =>
+          new Promise<void>((resolve) => {
+            completeCopy = resolve;
+          }),
+      },
+    });
+    const { container, setFocused } = await renderTranscript(retryPage());
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await setFocused(false);
+    await act(async () => completeCopy());
+    await setFocused(true);
+    await act(
+      async () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(
+      container.querySelector('[data-acp-announcement="polite"]'),
+    ).toBeEmptyDOMElement();
+  });
+  it.each([false, true])(
+    "announces answer copy feedback in the existing polite region (failed: %s)",
+    async (failed) => {
+      const writeText = failed
+        ? vi.fn().mockRejectedValue(new Error("Clipboard denied"))
+        : vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      const { container } = await renderTranscript(retryPage());
+      const polite = container.querySelector(
+        '[data-acp-announcement="polite"]',
+      );
+      expect(polite).toHaveAttribute("aria-live", "polite");
+      expect(polite).toBeEmptyDOMElement();
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      await waitFor(() =>
+        expect(polite).toHaveTextContent(failed ? "Copy failed" : "Copied"),
+      );
+      expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(
+        1,
+      );
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(
+        textItem().payload.text,
+      );
+      const names: string[] = [];
+      const observer = new MutationObserver(() => {
+        const name = polite!.getAttribute("aria-label");
+        if (name) names.push(name);
+      });
+      observer.observe(polite!, {
+        attributes: true,
+        attributeFilter: ["aria-label"],
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: failed ? "Copy" : "Copied" }),
+      );
+      await waitFor(() =>
+        expect(names).toContain(failed ? "Copy failed" : "Copied"),
+      );
+      observer.disconnect();
+    },
+  );
   it.each(["", " \n\t "])(
     "copies the settled answer before trailing blank assistant text %j",
     async (text) => {

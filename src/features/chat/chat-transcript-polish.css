@@ -172,19 +172,13 @@
   display: none;
 }
 
-.chat-transcript-work > summary::after {
+.chat-transcript-work__chevron {
   display: block;
-  width: 0;
-  height: 0;
   flex-shrink: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
-  content: "";
   transition: transform var(--motion-duration-fast) ease;
 }
 
-.chat-transcript-work[open] > summary::after {
+.chat-transcript-work[open] > summary > .chat-transcript-work__chevron {
   transform: rotate(90deg);
 }
 
@@ -276,6 +270,7 @@
 }
 
 .chat-transcript-actions > button {
+  position: relative;
   display: inline-flex;
   min-height: 28px;
   align-items: center;
@@ -302,6 +297,22 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+.chat-transcript-actions > button:focus-visible::after {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  white-space: nowrap;
+  pointer-events: none;
+  content: attr(aria-label);
+}
+
 @media (max-width: 640px) {
   .message-list__content {
     width: 100%;
@@ -321,7 +332,7 @@
   }
 
   .chat-transcript-work > summary,
-  .chat-transcript-work > summary::after,
+  .chat-transcript-work__chevron,
   .chat-transcript-work__groups .acp-tool-rollup__chevron {
     transition: none;
   }

@@ -126,6 +126,7 @@ export function ChatCodeBlock({
             type="button"
             aria-label="Copy code"
             title="Copy code"
+            data-copy-status={status || undefined}
             onClick={async () => {
               setCopyState({ identity, status: "" });
               let status = "Copied";

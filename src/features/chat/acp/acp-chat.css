@@ -375,9 +375,9 @@
 }
 
 .acp-code-block__header
-  button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  button:is(:hover, :focus-visible, [aria-pressed="true"], [data-copy-status]) {
   color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+  background: var(--color-surface-active);
 }
 
 .acp-code-block pre {
@@ -426,5 +426,21 @@
 
   .acp-code-block {
     border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .acp-code-block__header
+    button:is(
+      :hover,
+      :focus-visible,
+      [aria-pressed="true"],
+      [data-copy-status]
+    ) {
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .acp-code-block__wrap-icon {
+    forced-color-adjust: none;
   }
 }

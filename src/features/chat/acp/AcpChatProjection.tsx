@@ -4,7 +4,10 @@ import type { AcpChatPage } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import type { ProjectRootSummary } from "../../../domain/workbench";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
-import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
+import {
+  AcpAnnouncementRegions,
+  type Announcement,
+} from "./AcpAnnouncementRegions";
 import { dispatchBrowseFromAcpPage } from "./dispatchBrowse";
 import "./acp-activity-cards.css";
 import "./acp-activity-details.css";
@@ -24,6 +27,8 @@ type AcpChatProjectionProps = {
   projectRoots?: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete?: boolean;
   onRetry?: () => void;
+  feedback?: Announcement | null;
+  onFeedbackQueued?: (id: string) => void;
 };
 
 const loadAcpChatPresentation = () =>
@@ -43,6 +48,8 @@ export function AcpChatProjection({
   projectRoots = [],
   retentionIncomplete = false,
   onRetry,
+  feedback,
+  onFeedbackQueued,
 }: AcpChatProjectionProps) {
   useEffect(() => {
     if (!active || !focused) return;
@@ -61,7 +68,13 @@ export function AcpChatProjection({
       data-current-session-id={page.currentSessionId ?? ""}
       data-expected-resource-root-id={canonicalRootId}
     >
-      {focused ? <AcpAnnouncementRegions page={page} /> : null}
+      {focused ? (
+        <AcpAnnouncementRegions
+          page={page}
+          feedback={feedback}
+          onFeedbackQueued={onFeedbackQueued}
+        />
+      ) : null}
       <h2 className="sr-only">{page.title}</h2>
       <LazyModuleBoundary
         label="Chat history"

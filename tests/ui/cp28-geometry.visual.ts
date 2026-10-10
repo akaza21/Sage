@@ -167,18 +167,29 @@ test("CP-28 Worked chevron persists without hover and toggles with the keyboard;
   const disclosure = pane.locator("details.chat-transcript-work").first();
   const summary = disclosure.locator(":scope > summary");
   await page.mouse.move(0, 0);
-  const indicator = await summary.evaluate((element) => {
-    const style = getComputedStyle(element, "::after");
+  const chevron = summary.locator("svg.chat-transcript-work__chevron");
+  await expect(chevron).toBeVisible();
+  await expect(chevron).toHaveAttribute("aria-hidden", "true");
+  const indicator = await chevron.evaluate((element) => {
+    const style = getComputedStyle(element);
     return {
       display: style.display,
       opacity: style.opacity,
-      border: style.borderLeftWidth,
+      fill: style.fill,
+      stroke: style.stroke,
+      color: style.color,
+      transform: style.transform,
     };
   });
-  expect(indicator).toEqual({ display: "block", opacity: "1", border: "5px" });
+  expect(indicator.display).toBe("block");
+  expect(indicator.opacity).toBe("1");
+  expect(indicator.fill).toBe("none");
+  expect(indicator.stroke).toBe(indicator.color);
+  expect(indicator.transform).toBe("none");
   await summary.focus();
   await page.keyboard.press("Enter");
   await expect(disclosure).toHaveAttribute("open", "");
+  await expect(chevron).toHaveCSS("transform", "matrix(0, 1, -1, 0, 0, 0)");
   await page.keyboard.press("Space");
   await expect(disclosure).not.toHaveAttribute("open");
   const dates = pane.locator(".chat-transcript-day");
@@ -188,6 +199,47 @@ test("CP-28 Worked chevron persists without hover and toggles with the keyboard;
   const prompt = await pane.locator(".acp-message--user").first().boundingBox();
   expect(date && prompt).toBeTruthy();
   expect(date!.y + date!.height).toBeLessThanOrEqual(prompt!.y);
+});
+
+test("CP-28 answer Copy has a visible keyboard tooltip and announces feedback", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 1096 });
+  await openScenario(page, "rich", "agent");
+  await settleChatProjections(page);
+  await installAnswers(page, "Copy this answer.");
+  await settleTranscriptAtEnd(page);
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => undefined },
+    }),
+  );
+  const copy = page
+    .locator(".chat-transcript-actions")
+    .getByRole("button", { name: "Copy", exact: true });
+  await page.keyboard.press("Tab");
+  await copy.focus();
+  const tooltip = () =>
+    copy.evaluate((element) => {
+      const style = getComputedStyle(element, "::after");
+      return {
+        content: style.content,
+        display: style.display,
+        background: style.backgroundColor,
+      };
+    });
+  await expect
+    .poll(tooltip)
+    .toMatchObject({ content: '"Copy"', display: "block" });
+  expect((await tooltip()).background).not.toBe("rgba(0, 0, 0, 0)");
+  await page.keyboard.press("Enter");
+  await expect(page.locator('[data-acp-announcement="polite"]')).toHaveText(
+    "Copied",
+  );
+  await expect
+    .poll(tooltip)
+    .toMatchObject({ content: '"Copied"', display: "block" });
 });
 
 test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, and native numbering is preserved", async ({
@@ -250,9 +302,34 @@ test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, 
     for (const line of lines)
       expect(line.x).toBeCloseTo(geometry.lists[0][0].x, 0);
   }
+  for (const start of [1, 9, 10, 100]) {
+    await installAnswers(page, `Prose edge.\n\n${start}. ${listItem}`);
+    const marker = await markdown.evaluate((element) => {
+      const item = element.querySelector("ol li")!;
+      const markerStyle = getComputedStyle(item, "::marker");
+      const measurement = document.createElement("span");
+      measurement.textContent = `${element.querySelector("ol")!.start}.\u00a0`;
+      measurement.style.cssText =
+        "position: absolute; visibility: hidden; white-space: pre;";
+      measurement.style.font = markerStyle.font;
+      measurement.style.fontVariantNumeric = markerStyle.fontVariantNumeric;
+      item.append(measurement);
+      const markerWidth = measurement.getBoundingClientRect().width;
+      measurement.remove();
+      return {
+        x: item.getBoundingClientRect().left - markerWidth,
+        width: markerWidth,
+        proseLeft: element.querySelector("p")!.getBoundingClientRect().left,
+      };
+    });
+    expect(marker.width).toBeGreaterThan(0);
+    expect(marker.x, `native marker for ${start}`).toBeGreaterThanOrEqual(
+      marker.proseLeft,
+    );
+  }
 });
 
-test("CP-28 code panels retain a visible boundary and Worked indicator in forced colors", async ({
+test("CP-28 forced colors keep Canvas code panels, highlighted pressed controls and a stroked keyboard chevron", async ({
   page,
 }) => {
   await page.emulateMedia({ forcedColors: "active" });
@@ -266,10 +343,55 @@ test("CP-28 code panels retain a visible boundary and Worked indicator in forced
   expect(
     await code.evaluate((element) => getComputedStyle(element).borderTopWidth),
   ).toBe("1px");
-  expect(
-    await page
-      .locator(".chat-transcript-work > summary")
-      .first()
-      .evaluate((element) => getComputedStyle(element, "::after").display),
-  ).toBe("block");
+  const colors = await code.evaluate((element) => {
+    const canvas = document.createElement("span");
+    canvas.style.backgroundColor = "Canvas";
+    element.append(canvas);
+    const expected = getComputedStyle(canvas).backgroundColor;
+    canvas.remove();
+    return {
+      panel: getComputedStyle(element).backgroundColor,
+      canvas: expected,
+    };
+  });
+  expect(colors.panel).toBe(colors.canvas);
+  const wrap = code.getByRole("button", { name: "Wrap code" });
+  await wrap.focus();
+  await page.keyboard.press("Enter");
+  await expect(wrap).toHaveAttribute("aria-pressed", "true");
+  await wrap.evaluate((element) => element.blur());
+  await page.mouse.move(0, 0);
+  const actionColors = await wrap.evaluate((element) => {
+    const swatch = document.createElement("span");
+    swatch.style.backgroundColor = "Highlight";
+    swatch.style.color = "HighlightText";
+    element.append(swatch);
+    const expected = getComputedStyle(swatch);
+    const actual = getComputedStyle(element);
+    const colors = {
+      actualBackground: actual.backgroundColor,
+      expectedBackground: expected.backgroundColor,
+      actualColor: actual.color,
+      expectedColor: expected.color,
+    };
+    swatch.remove();
+    return colors;
+  });
+  expect(actionColors.actualBackground).toBe(actionColors.expectedBackground);
+  expect(actionColors.actualColor).toBe(actionColors.expectedColor);
+  const chevron = page.locator(".chat-transcript-work__chevron").first();
+  await expect(chevron).toBeVisible();
+  await expect(chevron).toHaveAttribute("fill", "none");
+  await expect(chevron).toHaveAttribute("stroke", "currentColor");
+  await expect(chevron.locator("path")).toHaveAttribute("d", "m9 18 6-6-6-6");
+  const glyph = await chevron.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { fill: style.fill, stroke: style.stroke, color: style.color };
+  });
+  expect(glyph.fill).toBe("none");
+  expect(glyph.stroke).toBe(glyph.color);
+  const summary = chevron.locator("..");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(chevron).toHaveCSS("transform", "matrix(0, 1, -1, 0, 0, 0)");
 });

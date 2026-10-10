@@ -35,14 +35,14 @@ afterEach(() => {
 });
 
 describe("CP-28 transcript style contracts", () => {
-  it("does not recenter split composers over the shared transcript-column offset", () => {
+  it("declares no auto-margin override for split composers", () => {
     const split = readFileSync("src/styles/agent-chat-panes.css", "utf8");
     expect(split).not.toMatch(
       /\.agent-chat-panes--split \.composer\s*\{[^}]*margin-(?:left|right):\s*auto;/su,
     );
   });
 
-  it("shares the Chat reading measure and pane-local gutters with the composer without a narrow cap", () => {
+  it("declares a 660px reading-measure token and matching composer width/offset expressions", () => {
     const surface = declaration("src/styles/chat-surface.css", ".chat-surface");
     expect(surface.getPropertyValue("--reading-measure")).toBe("660px");
     expect(surface.getPropertyValue("--chat-column-gutter")).toBe(
@@ -87,9 +87,7 @@ describe("CP-28 transcript style contracts", () => {
       ".acp-markdown :is(ul, ol)",
     );
     expect(compact(list.paddingInlineStart)).toBe(
-      compact(
-        "max(var(--space-4), calc(var(--chat-list-marker-width) + 0.5ch))",
-      ),
+      compact("max(var(--space-4), calc(var(--chat-list-marker-width) + 1ch))"),
     );
     const item = declaration(
       "src/features/chat/acp/chat-markdown.css",
@@ -136,12 +134,13 @@ describe("CP-28 transcript style contracts", () => {
       "(forced-colors: active)",
     );
     expect(forced.border).toBe("1px solid canvastext");
+    expect(forced.background.toLowerCase()).toBe("canvas");
   });
 
-  it("configures a persistent Worked disclosure indicator without requiring hover", () => {
+  it("declares the Worked SVG as a nonshrinking block outside interaction selectors", () => {
     const indicator = declaration(
       "src/features/chat/chat-transcript-polish.css",
-      ".chat-transcript-work > summary::after",
+      ".chat-transcript-work__chevron",
     );
     expect(indicator.display).toBe("block");
     expect(indicator.getPropertyValue("flex-shrink")).toBe("0");

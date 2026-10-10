@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Chat transcript polish stylesheet seam", () => {
-  it("reserves main's completed-turn trailing gap explicitly for every turn state", async () => {
+  it("declares the turn trailing grid track and footer width/offset expressions without state selectors", async () => {
     const [transcriptCss, acpCss] = await Promise.all([
       readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),
       readFile(resolve("src/features/chat/acp/acp-chat.css"), "utf8"),
@@ -24,7 +24,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("centers assistant text, work rows, and diff cards on one reading measure", async () => {
+  it("declares shared reading-measure widths and auto margins for messages, work rows and diff cards", async () => {
     const [transcriptCss, diffCss] = await Promise.all([
       readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),
       readFile(resolve("src/styles/changed-files-summary.css"), "utf8"),
@@ -44,7 +44,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("keeps activity rows muted, Worked chevrons persistent and tool chevrons interaction-only", async () => {
+  it("declares muted activity tokens, a persistent Worked SVG and interaction selectors for tool chevrons", async () => {
     const transcriptCss = await readFile(
       resolve("src/features/chat/chat-transcript-polish.css"),
       "utf8",
@@ -70,7 +70,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
     expect(transcriptCss).not.toMatch(/\.chat-transcript-work__heading::after/);
     expect(transcriptCss).toMatch(
-      /\.chat-transcript-work > summary::after\s*\{[^}]*display:\s*block;/s,
+      /\.chat-transcript-work__chevron\s*\{[^}]*display:\s*block;/s,
     );
     expect(transcriptCss).not.toMatch(
       /\.chat-transcript-work > summary:hover::after/,
@@ -80,7 +80,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("uses a plain assistant turn and a compact right-aligned user bubble", async () => {
+  it("declares borderless assistant messages and capped pill-shaped user bubbles", async () => {
     const [css, tokens] = await Promise.all([
       readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),
       readFile(resolve("src/styles/global.css"), "utf8"),
@@ -95,7 +95,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     expect(tokens).toMatch(/--agent-shell-user-bubble:\s*#2f2f2f;/);
   });
 
-  it("keeps live turn chrome and expanded tool detail unboxed", async () => {
+  it("declares hidden turn decorations and borderless tool/browser detail", async () => {
     const css = await readFile(
       resolve("src/features/chat/chat-transcript-polish.css"),
       "utf8",

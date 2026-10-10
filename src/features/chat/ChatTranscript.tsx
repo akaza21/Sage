@@ -1,4 +1,10 @@
-import type { RefObject } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import type { AcpChatPage } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
@@ -10,6 +16,10 @@ import {
 } from "./acp";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import {
+  AcpAnnouncementRegions,
+  type Announcement,
+} from "./acp/AcpAnnouncementRegions";
 import "./chat-transcript-polish.css";
 
 export function ChatTranscript({
@@ -63,6 +73,38 @@ export function ChatTranscript({
   showJumpToLatest: boolean;
   onJumpToLatest: () => void;
 }) {
+  const copySequence = useRef(0);
+  const focusedRef = useRef(focused);
+  useLayoutEffect(() => {
+    focusedRef.current = focused;
+  }, [focused]);
+  const [copyFeedback, setCopyFeedback] = useState<{
+    scope: string;
+    announcement: Announcement;
+  } | null>(null);
+  const scope =
+    useNativeAcp && page
+      ? JSON.stringify([
+          page.projectId,
+          page.chatId,
+          page.currentSessionId,
+          page.turns.at(-1)?.id,
+        ])
+      : (messages.at(-1)?.text ?? "");
+  const feedback =
+    copyFeedback?.scope === scope ? copyFeedback.announcement : null;
+  const announceCopy = (text: string) => {
+    if (!focusedRef.current) return;
+    setCopyFeedback({
+      scope,
+      announcement: { id: `answer-copy:${++copySequence.current}`, text },
+    });
+  };
+  const forgetCopyFeedback = useCallback((id: string) => {
+    setCopyFeedback((current) =>
+      current?.announcement.id === id ? null : current,
+    );
+  }, []);
   const retryAction =
     useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined;
   return (
@@ -86,6 +128,8 @@ export function ChatTranscript({
               historyError={historyError}
               onLoadEarlier={onLoadEarlier}
               onRetry={retryAction}
+              feedback={feedback}
+              onFeedbackQueued={forgetCopyFeedback}
             />
           ) : (
             <ChatLegacyTranscript
@@ -94,13 +138,22 @@ export function ChatTranscript({
             />
           )}
           <ChatTranscriptFooter
+            key={scope}
             useNativeAcp={useNativeAcp}
             page={useNativeAcp ? page : null}
             messages={messages}
             onRetry={
               page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
             }
+            onCopyFeedback={announceCopy}
           />
+          {focused && (!useNativeAcp || !page) ? (
+            <AcpAnnouncementRegions
+              page={null}
+              feedback={feedback}
+              onFeedbackQueued={forgetCopyFeedback}
+            />
+          ) : null}
         </div>
         <div ref={endRef} />
       </div>

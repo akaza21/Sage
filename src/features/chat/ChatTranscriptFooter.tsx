@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Copy, RotateCcw, Check } from "../../ui/leanIcons";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Copy, RotateCcw, Check, ChevronRight } from "../../ui/leanIcons";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
@@ -70,7 +70,14 @@ export function ChatTranscriptTurnSummary({
           !getPermissionStatus(item).terminal,
       )}
     >
-      <summary>{duration ?? "Worked"}</summary>
+      <summary>
+        {duration ?? "Worked"}
+        <ChevronRight
+          size={12}
+          className="chat-transcript-work__chevron"
+          aria-hidden="true"
+        />
+      </summary>
       {groups}
     </details>
   );
@@ -81,13 +88,24 @@ export function ChatTranscriptFooter({
   page,
   messages,
   onRetry,
+  onCopyFeedback,
 }: {
   useNativeAcp: boolean;
   page: AcpChatPage | null;
   messages: readonly ChatMessage[];
   onRetry?: () => void;
+  onCopyFeedback?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | undefined>(undefined);
+  const copyRequest = useRef(0);
+  useEffect(
+    () => () => {
+      copyRequest.current++;
+      window.clearTimeout(copyTimer.current);
+    },
+    [],
+  );
   const CopyIcon = copied ? Check : Copy;
   const acpAssistant = lastAssistantItem(page);
   const legacyAssistant = page
@@ -110,13 +128,19 @@ export function ChatTranscriptFooter({
   if (!hasText && !retryAction) return null;
 
   async function copyAnswer() {
+    const request = ++copyRequest.current;
+    window.clearTimeout(copyTimer.current);
+    let succeeded = true;
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1_200);
     } catch {
-      setCopied(false);
+      succeeded = false;
     }
+    if (request !== copyRequest.current) return;
+    setCopied(succeeded);
+    onCopyFeedback?.(succeeded ? "Copied" : "Copy failed");
+    if (succeeded)
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1_200);
   }
 
   return (

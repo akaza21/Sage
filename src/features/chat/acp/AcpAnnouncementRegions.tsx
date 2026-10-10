@@ -14,7 +14,7 @@ import {
   toolStateLabels,
 } from "./statusSemantics";
 
-interface Announcement {
+export interface Announcement {
   id: string;
   text: string;
 }
@@ -209,7 +209,15 @@ function resetDrain(drain: AnnouncementDrain) {
   drain.region = null;
 }
 
-export function AcpAnnouncementRegions({ page }: { page: AcpChatPage }) {
+export function AcpAnnouncementRegions({
+  page,
+  feedback,
+  onFeedbackQueued,
+}: {
+  page: AcpChatPage | null;
+  feedback?: Announcement | null;
+  onFeedbackQueued?: (id: string) => void;
+}) {
   const previousRef = useRef<AcpChatPage | null>(null);
   const politeRef = useRef<HTMLDivElement>(null);
   const assertiveRef = useRef<HTMLDivElement>(null);
@@ -221,14 +229,17 @@ export function AcpAnnouncementRegions({ page }: { page: AcpChatPage }) {
     previousRef.current = page;
     if (
       previous &&
-      (previous.projectId !== page.projectId || previous.chatId !== page.chatId)
+      (!page ||
+        previous.projectId !== page.projectId ||
+        previous.chatId !== page.chatId)
     ) {
       resetDrain(politeDrainRef.current);
       resetDrain(assertiveDrainRef.current);
     }
-    const announcements = previous
-      ? deriveAnnouncements(previous, page)
-      : { assertive: [], polite: [] };
+    const announcements =
+      previous && page
+        ? deriveAnnouncements(previous, page)
+        : { assertive: [], polite: [] };
     enqueueAnnouncements(
       politeDrainRef.current,
       politeRef.current,
@@ -240,6 +251,15 @@ export function AcpAnnouncementRegions({ page }: { page: AcpChatPage }) {
       announcements.assertive,
     );
   }, [page]);
+
+  useLayoutEffect(() => {
+    if (feedback) {
+      enqueueAnnouncements(politeDrainRef.current, politeRef.current, [
+        feedback,
+      ]);
+      onFeedbackQueued?.(feedback.id);
+    }
+  }, [feedback, onFeedbackQueued]);
 
   useLayoutEffect(() => {
     const politeDrain = politeDrainRef.current;

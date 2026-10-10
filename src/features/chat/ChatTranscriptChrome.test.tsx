@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,14 +11,56 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { AcpChatPresentation } from "./acp/AcpChatPresentation";
 import { settleLazyModules } from "../../test/settleLazyModules";
-import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import {
+  ChatTranscriptFooter,
+  ChatTranscriptTurnSummary,
+} from "./ChatTranscriptFooter";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("CP-28 answer chrome", () => {
+  it("does not schedule copy feedback after the footer unmounts", async () => {
+    vi.useFakeTimers();
+    let completeCopy!: () => void;
+    const feedback = vi.fn();
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: () =>
+          new Promise<void>((resolve) => {
+            completeCopy = resolve;
+          }),
+      },
+    });
+    const { unmount } = render(
+      <ChatTranscriptFooter
+        useNativeAcp
+        page={page("completed")}
+        messages={[]}
+        onCopyFeedback={feedback}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    unmount();
+    await act(async () => completeCopy());
+    expect(feedback).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("renders a decorative stroked chevron in the Worked disclosure", () => {
+    const { container } = render(
+      <ChatTranscriptTurnSummary
+        turn={page("completed").turns[0]}
+        hasActivities
+      />,
+    );
+    const chevron = container.querySelector("summary svg");
+    expect(chevron).toHaveAttribute("aria-hidden", "true");
+    expect(chevron).toHaveAttribute("fill", "none");
+    expect(chevron).toHaveAttribute("stroke", "currentColor");
+  });
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE])(
     "omits a first-group date for invalid timestamp %s",
     (createdAt) => {
@@ -93,7 +136,7 @@ describe("CP-28 answer chrome", () => {
     },
   );
 
-  it("keeps Copy and Retry icon-only with accessible names, tooltips and copy feedback", async () => {
+  it("keeps Copy and Retry icon-only with accessible names, title hints and copy icon feedback", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     const onRetry = vi.fn();

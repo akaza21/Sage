@@ -1,11 +1,4 @@
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { Fragment, memo, useCallback, useMemo } from "react";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type {
@@ -19,7 +12,8 @@ import type {
 } from "../../../domain/workbench";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { dayTimeLabel } from "../chatTimestamp";
+import { TurnDaySeparator } from "./AcpTurnDates";
+import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import { TurnEditSummary } from "./TurnEditSummary";
 import { HarnessActivity } from "./HarnessActivity";
@@ -45,28 +39,6 @@ export type AcpChatPresentationProps = {
   retentionIncomplete: boolean;
   onRetry?: () => void;
 };
-
-function turnDayTimestamp(turn: TurnProjection): number | null {
-  const prompt = turn.items.find(
-    (item) => item.kind === "text" && item.payload.role === "user",
-  );
-  const timestamp = prompt?.createdAt ?? turn.createdAt;
-  return Number.isFinite(timestamp) &&
-    timestamp > 0 &&
-    !Number.isNaN(new Date(timestamp).getTime())
-    ? timestamp
-    : null;
-}
-
-function sameCalendarDay(left: number, right: number): boolean {
-  const leftDate = new Date(left);
-  const rightDate = new Date(right);
-  return (
-    leftDate.getFullYear() === rightDate.getFullYear() &&
-    leftDate.getMonth() === rightDate.getMonth() &&
-    leftDate.getDate() === rightDate.getDate()
-  );
-}
 
 const Turn = memo(
   function Turn({
@@ -312,30 +284,8 @@ export function AcpChatPresentation({
   retentionIncomplete,
   onRetry,
 }: AcpChatPresentationProps) {
-  const [renderedAt, setRenderedAt] = useState(() => Date.now());
-  useEffect(() => {
-    const midnight = new Date(renderedAt);
-    midnight.setHours(24, 0, 0, 0);
-    const timer = window.setTimeout(
-      () => setRenderedAt(Date.now()),
-      Math.max(1, midnight.getTime() - Date.now()),
-    );
-    return () => window.clearTimeout(timer);
-  }, [renderedAt]);
   const countIncomplete = page.nextCursor !== null || retentionIncomplete;
-  const dayTimestamps = useMemo(() => {
-    const timestamps: (number | null)[] = [];
-    let prior: number | null = null;
-    for (const turn of page.turns) {
-      const timestamp = turnDayTimestamp(turn);
-      const showDay =
-        timestamp !== null &&
-        (prior === null || !sameCalendarDay(timestamp, prior));
-      timestamps.push(showDay ? timestamp : null);
-      if (timestamp !== null) prior = timestamp;
-    }
-    return timestamps;
-  }, [page.turns]);
+  const dayTimestamps = useTurnDayTimestamps(page.turns);
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
@@ -343,13 +293,7 @@ export function AcpChatPresentation({
     const timestamp = dayTimestamps[index];
     return (
       <Fragment key={turn.id}>
-        {timestamp !== null ? (
-          <div className="chat-transcript-day" role="separator">
-            <time dateTime={new Date(timestamp).toISOString()}>
-              {dayTimeLabel(timestamp)}
-            </time>
-          </div>
-        ) : null}
+        <TurnDaySeparator timestamp={timestamp} />
         <Turn
           page={page}
           turn={turn}

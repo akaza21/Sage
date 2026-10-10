@@ -33,7 +33,7 @@
 .acp-markdown :is(ul, ol) {
   padding-inline-start: max(
     var(--space-4),
-    calc(var(--chat-list-marker-width) + 0.5ch)
+    calc(var(--chat-list-marker-width) + 1ch)
   );
 }
 

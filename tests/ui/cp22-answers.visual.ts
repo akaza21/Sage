@@ -40,6 +40,16 @@ async function expectFilledCodePanel(code: Locator) {
   expect(panel.borders).toEqual(["0px", "0px", "0px", "0px"]);
 }
 
+async function expectDistinctActionFill(button: Locator) {
+  const colors = await button.evaluate((element) => ({
+    action: getComputedStyle(element).backgroundColor,
+    panel: getComputedStyle(element.closest(".acp-code-block")!)
+      .backgroundColor,
+  }));
+  expect(colors.action).not.toBe("rgba(0, 0, 0, 0)");
+  expect(colors.action).not.toBe(colors.panel);
+}
+
 async function installAnswer(page: Page, text: string, streaming = false) {
   await settleChatProjections(page);
   await page.evaluate(
@@ -147,9 +157,18 @@ for (const width of [1888, 560, 480]) {
     ).toBe(true);
     await expect(code).toHaveScreenshot(`cp22-unlabelled-${width}.png`);
     const wrap = code.getByRole("button", { name: "Wrap code" });
-    await wrap.focus();
+    await wrap.hover();
+    await expectDistinctActionFill(wrap);
+    await code.getByRole("button", { name: "Copy code" }).focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(wrap).toBeFocused();
+    await page.mouse.move(0, 0);
+    await expectDistinctActionFill(wrap);
     await page.keyboard.press("Enter");
     await expect(wrap).toHaveAttribute("aria-pressed", "true");
+    await wrap.evaluate((element) => element.blur());
+    await expectDistinctActionFill(wrap);
+    await wrap.focus();
     expect(
       await code
         .locator("pre")
@@ -165,6 +184,10 @@ for (const width of [1888, 560, 480]) {
     );
     await code.getByRole("button", { name: "Copy code" }).click();
     await expect(code.getByRole("status")).toHaveText("Copied");
+    await page.mouse.move(0, 0);
+    await expectDistinctActionFill(
+      code.getByRole("button", { name: "Copy code" }),
+    );
     await expect(code).toHaveScreenshot(`cp22-copied-${width}.png`);
     await page.evaluate(() =>
       Object.defineProperty(navigator, "clipboard", {
@@ -178,6 +201,13 @@ for (const width of [1888, 560, 480]) {
     );
     await code.getByRole("button", { name: "Copy code" }).click();
     await expect(code.getByRole("status")).toHaveText("Copy failed");
+    await page.mouse.move(0, 0);
+    await code
+      .getByRole("button", { name: "Copy code" })
+      .evaluate((element) => element.blur());
+    await expectDistinctActionFill(
+      code.getByRole("button", { name: "Copy code" }),
+    );
     await expect(code).toHaveScreenshot(`cp22-copy-failed-${width}.png`);
   });
 
