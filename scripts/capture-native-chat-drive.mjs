@@ -60,10 +60,16 @@ export async function prepareCaptureChat(
       record,
     );
   await click(cdp, 'button[aria-label="New task"]', deadline, record);
-  await waitForState(
-    async () => freshEmptyChat(previous, await observe()),
-    deadline,
-  );
+  let captureChat;
+  await waitForState(async () => {
+    const observation = await observe();
+    if (!freshEmptyChat(previous, observation)) return false;
+    captureChat = {
+      chatId: observation.chatId,
+      projectId: observation.projectId,
+    };
+    return true;
+  }, deadline);
   if (
     !(await cdp.evaluate(
       archivePreviousChatExpression(previous.chatId),
@@ -96,6 +102,7 @@ export async function prepareCaptureChat(
     deadline,
   );
   record("harness-selected", await observe());
+  return captureChat;
 }
 export async function submitTurn(
   evaluate,

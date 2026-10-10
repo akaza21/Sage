@@ -39,6 +39,7 @@ import {
   observationFor,
   actionsFor,
   HARNESS,
+  IDLE_CAPTURE_STATES,
   clickExpression,
 } from "./capture-native-chat-dom.mjs";
 import { prepareCaptureChat } from "./capture-native-chat.mjs";
@@ -110,10 +111,48 @@ function captureChatBoundary(width, harness, created = {}) {
 for (const width of [1888, 720])
   test(`fresh capture archives only the disposable welcome chat at ${width}`, async () => {
     const boundary = captureChatBoundary(width, "claude");
-    await prepareCaptureChat(boundary.cdp, "claude", Date.now() + 1000);
+    const captureChat = await prepareCaptureChat(
+      boundary.cdp,
+      "claude",
+      Date.now() + 1000,
+    );
+    assert.deepEqual(captureChat, {
+      chatId: "capture-chat",
+      projectId: "project",
+    });
     assert.deepEqual(boundary.archived, ["welcome-chat"]);
     assert.equal(boundary.observation.chatId, "capture-chat");
   });
+
+for (const harness of ["codex", "claude", "pi"])
+  for (const state of IDLE_CAPTURE_STATES)
+    test(`${harness}/${state} capture predicates reject chat or pane ownership drift`, () => {
+      const captureChat = { chatId: "capture-chat", projectId: "project" };
+      const observation = {
+        ...captureChat,
+        projectionLoaded: true,
+        singlePane: true,
+        selected: HARNESS[harness].id,
+        bindingId: HARNESS[harness].binding,
+        state: "none",
+        turnCount: 0,
+        controls: { stop: false, send: true },
+        visible: { harnessMenu: true, addMenu: true },
+      };
+      const accepted = (sample) =>
+        Object.values(
+          namedState({ harness, state }, sample, captureChat),
+        ).every(Boolean);
+      assert.equal(accepted(observation), true);
+      for (const drift of [
+        { chatId: "another-empty-chat" },
+        { projectId: "another-project" },
+        { projectionLoaded: false },
+        { singlePane: false },
+        { singlePane: undefined },
+      ])
+        assert.equal(accepted({ ...observation, ...drift }), false);
+    });
 
 for (const [reason, unhydrated] of Object.entries({
   chat: { chatId: null },

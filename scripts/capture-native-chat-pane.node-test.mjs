@@ -88,6 +88,7 @@ for (const panes of [1, 2]) {
         .replace("await import('/src/app/agentChatOwner.ts')", "owner");
       const observation = await window.eval(expression);
       assert.equal(observation.chatId, "fresh");
+      assert.equal(observation.singlePane, panes === 1);
       assert.equal(observation.selected, "pi");
       assert.equal(observation.visible.error, false);
     } finally {

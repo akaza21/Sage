@@ -19,7 +19,6 @@ import {
 import {
   observationFor,
   AGENT_MODE,
-  IMAGE_ATTACHMENT,
   HARNESS,
   IDLE_CAPTURE_STATES,
   namedState,
@@ -156,7 +155,12 @@ export async function capture(options) {
           options.height,
           observation.dpr,
         );
-        await prepareCaptureChat(cdp, options.harness, deadline, timing.record);
+        const captureChat = await prepareCaptureChat(
+          cdp,
+          options.harness,
+          deadline,
+          timing.record,
+        );
         let submittedTurnId;
         const submit = async () => {
           submittedTurnId = await submitTurn(
@@ -188,13 +192,6 @@ export async function capture(options) {
             HARNESS[options.harness].binding,
             deadline,
           );
-        if (options.state === "attachment-chip") {
-          await waitForState(
-            async () => (await evaluate(OBSERVATION)).state === "completed",
-            deadline,
-          );
-          await waitForState(() => evaluate(IMAGE_ATTACHMENT), deadline);
-        }
         if (options.state === "model-menu")
           await waitForComposerIdle(
             evaluate,
@@ -237,13 +234,18 @@ export async function capture(options) {
         }
         await waitForState(async () => {
           observation = await evaluate(OBSERVATION);
-          const predicates = namedState(options, observation);
-          return (
-            predicates.binding && predicates.selected && predicates.namedState
-          );
+          return Object.values(
+            namedState(options, observation, captureChat),
+          ).every(Boolean);
         }, deadline);
         await stableLayout(cdp, deadline, OBSERVATION);
         observation = await evaluate(OBSERVATION);
+        if (
+          !Object.values(namedState(options, observation, captureChat)).every(
+            Boolean,
+          )
+        )
+          throw new Error("capture-state-drift");
         timing.record("layout-stable", observation);
         validateDimensions(
           { ...nativeBounds, css: observation.css },
@@ -266,7 +268,7 @@ export async function capture(options) {
           webviewVersion,
           dpr: observation.dpr,
           dimensions: { ...nativeBounds, css: observation.css },
-          predicates: namedState(options, observation),
+          predicates: namedState(options, observation, captureChat),
           elements: observation.elements,
           controls: observation.controls,
           overflow: observation.overflow,
@@ -285,7 +287,7 @@ export async function capture(options) {
           final.dpr !== 1 ||
           final.css.width !== observation.css.width ||
           final.css.height !== observation.css.height ||
-          !Object.values(namedState(options, final)).every(Boolean)
+          !Object.values(namedState(options, final, captureChat)).every(Boolean)
         )
           throw new Error("capture-state-drift");
         timing.record("capture-verified", final);
