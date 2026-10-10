@@ -52,9 +52,10 @@ impl CodexRuntime {
                     id: id.clone(),
                     name: model.map(|model| model.name.clone()),
                 });
-        self.session_config = if config.is_some() || confirmed_model.is_some() {
+        self.session_config = if config.is_some() || confirmed_model.is_some() || effort.is_some() {
             let mut candidate = crate::acp::session_config::SessionConfig {
                 confirmed_model,
+                confirmed_effort: effort.cloned(),
                 ..config.unwrap_or_default()
             };
             if candidate.validate().is_err() {

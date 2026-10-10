@@ -1,5 +1,42 @@
 use super::*;
 #[test]
+fn confirmed_effort_is_bounded_binding_metadata_without_selectable_authority() {
+    let mut config =
+        SessionConfig::from_wire(&json!({"configOptions":[],"confirmedEffort":"high"}), true)
+            .unwrap();
+    assert!(config.confirmed_effort.is_none());
+    config.confirmed_effort = Some(RequiredText::new("reasoningEffort", "high").unwrap());
+    assert!(config.validate().is_ok());
+    assert!(
+        config
+            .validate_value(
+                "effort",
+                &ConfigValue::Select {
+                    value: ConfigId::new("value", "high").unwrap()
+                }
+            )
+            .is_err()
+    );
+    assert!(
+        serde_json::from_value::<SessionConfig>(json!({
+            "confirmedEffort":"x".repeat(513)
+        }))
+        .is_err()
+    );
+    let options: Vec<_> = (0..128)
+        .map(|index| {
+            json!({
+                "id":format!("flag-{index}"),"name":"Flag","type":"boolean","currentValue":false
+            })
+        })
+        .collect();
+    config.config_options = SessionConfig::from_wire(&json!({"configOptions":options}), true)
+        .unwrap()
+        .config_options;
+    assert!(config.validate().is_err());
+}
+
+#[test]
 fn confirmed_model_is_bounded_binding_metadata_not_a_selectable_acp_extension() {
     let supplied = json!({"configOptions":[],"confirmedModel":{"id":"actual","name":"Actual"}});
     assert!(

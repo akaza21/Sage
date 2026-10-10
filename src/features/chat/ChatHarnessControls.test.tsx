@@ -107,6 +107,68 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it("shows confirmed effort after catalog failure without inventing effort choices", () => {
+    useWorkbenchStore.setState({ selectedHarnessId: "codex", models: [] });
+    const sessionConfig = decodeSessionConfig({
+      sageAgentSessionId: "session-1",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      configOptions: [],
+      confirmedModel: { id: "actual" },
+      confirmedEffort: "high",
+    });
+    renderControls({
+      selectedHarnessId: "codex",
+      sessionHarnessId: "codex",
+      sessionConfig,
+    });
+    const trigger = screen.getByRole("button", { name: "Model" });
+    expect(trigger).toHaveTextContent(/^actual High$/);
+    expect(trigger).toHaveAccessibleDescription("actual High");
+    expect(trigger).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+  });
+
+  it("does not confirm a requested catalog model until the harness reports identity", () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: [
+        { id: "requested", name: "Requested model" },
+        { id: "actual", name: "Actual model" },
+      ],
+    });
+    const selection = {
+      selectedHarnessId: "codex",
+      sessionHarnessId: "codex",
+      selectedModelId: "requested",
+      sessionModelId: "requested",
+    };
+    const view = renderControls(selection);
+    const trigger = screen.getByRole("button", { name: "Model" });
+    expect(trigger).toHaveTextContent(/^Model$/);
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole("option", { name: "Requested model" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("option", { name: "Requested model" }));
+    expect(trigger).toHaveTextContent(/^Model$/);
+    view.rerenderControls({
+      ...selection,
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-1",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        configOptions: [],
+        confirmedModel: { id: "actual" },
+      }),
+    });
+    expect(trigger).toHaveTextContent(/^Actual model$/);
+    view.rerenderControls({ ...selection, selectedModelId: "actual" });
+    expect(trigger).toHaveTextContent(/^Model$/);
+  });
+
   it("retains the matching catalog name while id-only session identity survives catalog removal", () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
@@ -1059,7 +1121,7 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      "Codex 6",
+      /^Model$/,
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
     expect(screen.getByRole("option", { name: /Codex 6/ })).toBeVisible();
@@ -1114,7 +1176,7 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      "New Model",
+      /^Model$/,
     );
     expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
       "Old Model",

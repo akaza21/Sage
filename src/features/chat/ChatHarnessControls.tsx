@@ -157,12 +157,16 @@ export function ChatHarnessControls({
       selectedModelId,
       sessionModelId,
     ]),
-    selectedModelId,
     modelOption,
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  const effortLabel = composerOptionLabel(effortOption);
+  const confirmedEffort = selectedSessionConfig?.confirmedEffort;
+  const effortLabel =
+    composerOptionLabel(effortOption) ??
+    (confirmedEffort
+      ? confirmedEffort[0].toLocaleUpperCase() + confirmedEffort.slice(1)
+      : null);
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({
         id: choice.value,

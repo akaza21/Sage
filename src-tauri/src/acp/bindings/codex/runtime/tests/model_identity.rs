@@ -52,11 +52,73 @@ fn oversized_combined_config_preserves_identity_through_native_config_channel() 
             snapshot["confirmedModel"],
             json!({"id":"actual","name":name})
         );
+        assert_eq!(snapshot["confirmedEffort"], "effort-0");
         assert_eq!(
             snapshot["configOptions"].as_array().unwrap().len(),
             option_count
         );
         assert_eq!(snapshot["configRevision"], "2");
+    }
+}
+
+#[test]
+fn confirmed_effort_survives_failed_or_unusable_catalog_hydration() {
+    for response in [
+        json!({"error":{"code":-32603,"message":"catalog unavailable"}}),
+        json!({"result":{"data":[{"id":"actual"}],"nextCursor":null}}),
+        json!({"result":{"data":[],"nextCursor":null}}),
+        json!({"result":{"data":[{
+            "id":"actual","displayName":"Actual",
+            "supportedReasoningEfforts":[{"reasoningEffort":"low","description":"Quick"}]
+        }],"nextCursor":null}}),
+    ] {
+        let mut runtime = fixture_runtime();
+        initialize(&mut runtime);
+        let start = runtime
+            .command(AdapterCommand::NewSession {
+                native_root: r"C:\repo".into(),
+                model: None,
+            })
+            .unwrap();
+        runtime
+            .ingest(
+                &frame(json!({"id":request_id(&start),"result":{
+                    "thread":{"id":"thread-1"},"model":"actual","reasoningEffort":"high"
+                }})),
+                &Mapper,
+            )
+            .unwrap();
+        let before = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert_eq!(before["confirmedEffort"], "high");
+        let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+        let mut response = response;
+        response["id"] = json!(list_id);
+        runtime.ingest(&frame(response), &Mapper).unwrap();
+        let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert_eq!(config["confirmedEffort"], "high");
+        assert_eq!(config["configOptions"], json!([]));
+        assert!(
+            runtime
+                .configure(&crate::acp::session_config::ConfigIntent {
+                    owner: crate::acp::scheduler::RuntimeOwner {
+                        project_id: SageProjectId::parse("project-model-effort").unwrap(),
+                        chat_id: crate::acp::contract::SageChatId::parse("chat-model-effort")
+                            .unwrap(),
+                        session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
+                        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                    },
+                    expected_config_revision: crate::acp::session_config::ConfigRevision::first(),
+                    mutation: crate::acp::session_config::ConfigMutation::Option {
+                        config_id: crate::acp::session_config::ConfigId::new("id", "effort")
+                            .unwrap(),
+                        value: crate::acp::session_config::ConfigValue::Select {
+                            value: crate::acp::session_config::ConfigId::new("value", "high")
+                                .unwrap(),
+                        },
+                    },
+                })
+                .is_err()
+        );
     }
 }
 
@@ -180,6 +242,7 @@ fn missing_reported_effort_never_becomes_catalog_default_effort() {
             json!({"id":"actual","name":"Actual model"})
         );
         assert_eq!(config["configOptions"], json!([]));
+        assert!(config.get("confirmedEffort").is_none());
         let prompt = runtime
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "continue").unwrap(),
@@ -219,7 +282,9 @@ fn requested_model_without_reported_identity_is_not_confirmed_by_the_catalog() {
                 &Mapper,
             )
             .unwrap();
-        assert!(runtime.session_config().is_none());
+        let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert!(config.get("confirmedModel").is_none());
+        assert_eq!(config["confirmedEffort"], "high");
         let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
         runtime
             .ingest(
@@ -232,6 +297,9 @@ fn requested_model_without_reported_identity_is_not_confirmed_by_the_catalog() {
                 &Mapper,
             )
             .unwrap();
-        assert!(runtime.session_config().is_none());
+        let config = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert!(config.get("confirmedModel").is_none());
+        assert_eq!(config["confirmedEffort"], "high");
+        assert_eq!(config["configOptions"], json!([]));
     }
 }

@@ -8,7 +8,6 @@ import { composerOptionLabel } from "./composerChrome";
 
 export function useConfirmedModelLabel(
   scope: string,
-  selectedModelId: string | null,
   modelOption: AcpConfigOption | undefined,
   models: readonly { id: string; name: string }[],
   sessionModel: AcpSessionConfig["confirmedModel"],
@@ -22,7 +21,7 @@ export function useConfirmedModelLabel(
   const modelId =
     modelOption?.type === "select"
       ? modelOption.currentValue
-      : (sessionModel?.id ?? previous?.modelId ?? selectedModelId);
+      : (sessionModel?.id ?? previous?.modelId ?? null);
   const label =
     composerOptionLabel(modelOption) ??
     sessionModel?.name ??

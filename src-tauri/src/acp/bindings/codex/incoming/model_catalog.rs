@@ -25,7 +25,8 @@ pub(super) fn parse_models(
             .get("defaultReasoningEffort")
             .and_then(Value::as_str)
             .map(|value| {
-                RequiredText::new("defaultReasoningEffort", value.to_owned()).map_err(content)
+                RequiredText::<512>::new("defaultReasoningEffort", value.to_owned())
+                    .map_err(content)
             })
             .transpose()?;
         let supported_efforts = model

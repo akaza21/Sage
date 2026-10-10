@@ -22,6 +22,30 @@ const overlay = () => ({
 });
 
 describe("session config boundary", () => {
+  it("admits bounded confirmed effort without advertising selectable options", () => {
+    const config = {
+      ...overlay(),
+      modes: null,
+      configOptions: [],
+      confirmedEffort: "high",
+    };
+    expect(decodeSessionConfig(config)).toMatchObject({
+      confirmedEffort: "high",
+      configOptions: [],
+    });
+    for (const confirmedEffort of ["", "x".repeat(513), "\0", 1, null]) {
+      expect(decodeSessionConfig({ ...config, confirmedEffort })).toBeNull();
+    }
+    expect(decodeSessionConfig({ ...config, removed: true })).toBeNull();
+    const configOptions = Array.from({ length: 128 }, (_, index) => ({
+      id: `flag-${index}`,
+      name: "Flag",
+      type: "boolean",
+      currentValue: false,
+    }));
+    expect(decodeSessionConfig({ ...config, configOptions })).toBeNull();
+  });
+
   it("charges confirmed identity against the 128-entry overlay limit", () => {
     const configOptions = Array.from({ length: 128 }, (_, index) => ({
       id: `flag-${index}`,

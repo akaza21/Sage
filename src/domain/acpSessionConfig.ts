@@ -44,6 +44,7 @@ export interface AcpSessionConfig {
   configRevision: string;
   removed?: boolean;
   confirmedModel?: { id: string; name?: string };
+  confirmedEffort?: string;
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
 }
@@ -190,6 +191,8 @@ export function decodeSessionConfig(v: unknown): AcpSessionConfig | null {
   const options = configOptions as AcpConfigOption[];
   if (!unique(options.map((o) => o.id))) return null;
   const confirmedModel = v.confirmedModel;
+  const confirmedEffort = v.confirmedEffort;
+  if (confirmedEffort !== undefined && !text(confirmedEffort, 512)) return null;
   if (
     confirmedModel !== undefined &&
     (!object(confirmedModel) ||
@@ -201,13 +204,15 @@ export function decodeSessionConfig(v: unknown): AcpSessionConfig | null {
     removed &&
     (decodedModes !== null ||
       options.length > 0 ||
-      confirmedModel !== undefined)
+      confirmedModel !== undefined ||
+      confirmedEffort !== undefined)
   )
     return null;
   let entries =
     options.length +
     (decodedModes?.availableModes.length ?? 0) +
-    Number(confirmedModel !== undefined);
+    Number(confirmedModel !== undefined) +
+    Number(confirmedEffort !== undefined);
   for (const o of options)
     if (o.type === "select")
       for (const c of o.options)
@@ -215,6 +220,7 @@ export function decodeSessionConfig(v: unknown): AcpSessionConfig | null {
   const payload = {
     modes: decodedModes,
     configOptions: options,
+    ...(confirmedEffort === undefined ? {} : { confirmedEffort }),
     ...(confirmedModel === undefined
       ? {}
       : {
