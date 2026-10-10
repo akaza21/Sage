@@ -44,6 +44,16 @@ async function expectCapWorkerReachable(
 ) {
   const group = capSubagentGroup(page, turn);
   await expect(group).toBeAttached();
+  // Completed Turns fold their work under "Worked for"; the grouped
+  // Subagent row is only presented once that disclosure is open.
+  const work = page
+    .locator(`[data-turn-id="turn-${turn}"]`)
+    .locator("details.chat-transcript-work");
+  await expect(work).toHaveCount(1);
+  await expect(work).not.toHaveAttribute("open", "");
+  await work.locator(":scope > summary").click();
+  await expect(work).toHaveAttribute("open", "");
+  await expect(group).toBeVisible();
   await expect(group.getByRole("status")).toHaveText(
     `Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working`,
   );
@@ -70,6 +80,8 @@ async function expectCapWorkerReachable(
     });
   await group.click();
   await expect(worker).not.toBeAttached();
+  await work.locator(":scope > summary").click();
+  await expect(work).not.toHaveAttribute("open", "");
 }
 
 test("long Chat preserves the visible Turn when earlier Turns arrive", async ({
