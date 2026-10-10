@@ -303,7 +303,11 @@ export function TurnActivityItem({
             ? "Context automatically compacted"
             : item.lifecycle === "started" || item.lifecycle === "streaming"
               ? "Compacting context…"
-              : "Context compaction interrupted"}
+              : item.lifecycle === "failed"
+                ? "Context compaction failed"
+                : item.lifecycle === "cancelled"
+                  ? "Context compaction cancelled"
+                  : "Context compaction interrupted"}
         </p>
       );
     case "error":

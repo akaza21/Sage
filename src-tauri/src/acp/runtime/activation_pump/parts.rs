@@ -174,6 +174,17 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
                 _ => return Err(AdapterPumpError::Frame),
             }
         }
+        if catalog.is_none()
+            && egress
+                .iter()
+                .all(|value| value.token().cancelled_permission_request().is_some())
+        {
+            return crate::acp::runtime::adapter_pump::write_idle_cancellations(
+                &mut self.adapter,
+                egress,
+                transport,
+            );
+        }
         if egress.len() > 1
             || egress
                 .iter()

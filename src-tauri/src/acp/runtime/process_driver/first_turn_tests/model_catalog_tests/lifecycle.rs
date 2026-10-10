@@ -275,7 +275,7 @@ async fn run_catalog_page_crossing_turn(
         for bytes in chunk.chunks(8_192) {
             reusable
                 .completed
-                .accept_idle_stdout_chunk(bytes, fixture.now_millis + 4)
+                .accept_idle_stdout_chunk(bytes, fixture.now_millis + 4, &mut reusable.transport)
                 .await
                 .unwrap();
         }
@@ -299,7 +299,7 @@ async fn run_catalog_page_crossing_turn(
         bytes.push(b'\n');
         reusable
             .completed
-            .accept_idle_stdout_chunk(&bytes, fixture.now_millis + 5)
+            .accept_idle_stdout_chunk(&bytes, fixture.now_millis + 5, &mut reusable.transport)
             .await
             .unwrap();
         assert_eq!(writes.lock().unwrap().len(), written + 1);
@@ -315,7 +315,7 @@ async fn run_catalog_page_crossing_turn(
         bytes.push(b'\n');
         reusable
             .completed
-            .accept_idle_stdout_chunk(&bytes, fixture.now_millis + 6)
+            .accept_idle_stdout_chunk(&bytes, fixture.now_millis + 6, &mut reusable.transport)
             .await
             .unwrap();
         for _ in 0..2 {

@@ -3,9 +3,12 @@ use super::*;
 mod config;
 mod content_free;
 mod continuation;
+mod dialog_boundaries;
+mod dialogs;
 mod discovery;
 mod fixture;
 mod journey;
+mod lifecycle_history;
 mod refresh_capacity;
 mod review_nits;
 
@@ -106,7 +109,7 @@ async fn exercise(row: Row, state: State) {
             .try_into_completed_parts()
             .unwrap_or_else(|_| panic!("idle handoff"));
         for value in row_frames(row) {
-            idle.accept_idle_stdout_chunk(&line(value), 10)
+            idle.accept_idle_stdout_chunk(&line(value), 10, &mut Capture::default())
                 .await
                 .unwrap();
         }

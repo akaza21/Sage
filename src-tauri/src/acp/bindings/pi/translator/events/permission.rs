@@ -1,4 +1,4 @@
-use super::super::{PendingUiRequest, PiTranslator};
+use super::super::{EventPhase, PendingUiRequest, PiTranslator};
 use crate::acp::bindings::pi::{
     AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
 };
@@ -9,7 +9,6 @@ impl PiTranslator {
         &mut self,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        self.live_turn_any_phase()?;
         let method = value
             .get("method")
             .and_then(Value::as_str)
@@ -18,14 +17,34 @@ impl PiTranslator {
             method,
             "notify" | "setStatus" | "setWidget" | "setTitle" | "set_editor_text"
         ) {
-            return Ok(vec![AdapterOutput::Absorbed]);
+            let live = self
+                .active
+                .as_ref()
+                .is_some_and(|turn| turn.terminal.is_none() && !turn.authority_denied);
+            return Ok(vec![if live {
+                AdapterOutput::Absorbed
+            } else {
+                AdapterOutput::LateIgnored
+            }]);
         }
-        self.live_turn()?;
         if !matches!(method, "confirm" | "select" | "input" | "editor") {
+            if self
+                .active
+                .as_ref()
+                .is_none_or(|turn| turn.terminal.is_some() || turn.authority_denied)
+            {
+                return Ok(vec![AdapterOutput::LateIgnored]);
+            }
+            self.live_turn()?;
             return self.unknown_event("extension_ui_request");
         }
         let id = external_id(value.get("id"))?.ok_or(AdapterError::Malformed)?;
-        if matches!(method, "input" | "editor") {
+        let running = self.active.as_ref().is_some_and(|turn| {
+            turn.event_phase == EventPhase::AgentRunning
+                && turn.terminal.is_none()
+                && !turn.authority_denied
+        });
+        if !running || matches!(method, "input" | "editor") {
             return Ok(vec![AdapterOutput::DialogCancelled { external_id: id }]);
         }
         let options = if method == "select" {

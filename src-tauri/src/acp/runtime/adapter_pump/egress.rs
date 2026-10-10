@@ -10,6 +10,33 @@ pub(super) fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> 
     .map_err(|_| AdapterPumpError::Backpressure)
 }
 
+pub(crate) fn write_idle_cancellations(
+    adapter: &mut impl HarnessAdapter,
+    egress: Vec<AdapterEgress>,
+    transport: &mut impl EgressTransport,
+) -> Result<(), AdapterPumpError> {
+    if egress
+        .iter()
+        .any(|value| value.token().cancelled_permission_request().is_none())
+    {
+        return Err(AdapterPumpError::Frame);
+    }
+    for value in egress {
+        adapter
+            .commit_mandatory_egress(value.token())
+            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        adapter
+            .resolve_egress(value.token().clone(), EgressResolution::Queued)
+            .map_err(|_| AdapterPumpError::TeardownRequired)?;
+        let resolution = EgressResolution::from(transport.write(value.frame()));
+        let result = adapter.resolve_egress(value.into_token(), resolution);
+        if resolution != EgressResolution::Written || result.is_err() {
+            return Err(AdapterPumpError::TeardownRequired);
+        }
+    }
+    Ok(())
+}
+
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     pub(crate) fn queue_command(
         &mut self,

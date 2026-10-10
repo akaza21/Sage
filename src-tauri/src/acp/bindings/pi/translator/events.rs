@@ -24,6 +24,9 @@ impl PiTranslator {
         ) {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
+        if kind == "extension_ui_request" {
+            return self.extension_request(value);
+        }
         if self.active.is_none() {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
@@ -128,7 +131,6 @@ impl PiTranslator {
                 });
                 Ok(output)
             }
-            "extension_ui_request" => self.extension_request(value),
             _ => self.unknown_event(kind),
         }
     }

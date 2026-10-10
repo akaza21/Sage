@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use crate::acp::{
     bindings::adapter::{
@@ -51,6 +51,7 @@ pub(super) struct TurnIntent {
     text_snapshot: Option<String>,
     text_redacted_tail: bool,
     compaction_id: Option<ExternalId>,
+    dialog_notices: u8,
     thought_id: Option<ExternalId>,
     thought_snapshot: Option<String>,
     thought_redacted_tail: bool,
@@ -81,6 +82,7 @@ pub(crate) struct PiRuntime {
     pub(super) active_turn: Option<TurnIntent>,
     pub(super) deny: Option<DenyIntent>,
     cancelled_dialogs: BTreeMap<String, DenyStage>,
+    recent_cancelled_dialogs: VecDeque<String>,
     staged_initialize: Option<Outbound>,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
@@ -153,6 +155,7 @@ impl PiRuntime {
             active_turn: None,
             deny: None,
             cancelled_dialogs: BTreeMap::new(),
+            recent_cancelled_dialogs: VecDeque::new(),
             staged_initialize: None,
             reservations: BTreeMap::new(),
             next_egress: 0,
@@ -244,6 +247,7 @@ impl HarnessAdapter for PiRuntime {
                     text_snapshot: None,
                     text_redacted_tail: false,
                     compaction_id: None,
+                    dialog_notices: 0,
                     thought_id: None,
                     thought_snapshot: None,
                     thought_redacted_tail: false,

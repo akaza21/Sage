@@ -6,6 +6,18 @@ type UnknownProjectionItem = Extract<AcpItem, { kind: "unsupported" }>;
 
 export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
   const descriptionId = useId();
+  if (item.lifecycle === "cancelled") {
+    return (
+      <p
+        className="acp-unknown acp-lifecycle-notice"
+        data-activity-kind="unknown"
+        data-activity-state="cancelled"
+        role="status"
+      >
+        {item.payload.summary}
+      </p>
+    );
+  }
   return (
     <article
       className="acp-activity-card acp-activity-card--unknown acp-unknown"
@@ -19,7 +31,7 @@ export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
         This harness activity is not supported by Sage
       </span>
       <header>
-        <strong>Unsupported activity</strong>
+        <strong>{item.payload.summary || "Unsupported activity"}</strong>
         <span
           className="acp-state"
           role="status"
@@ -31,7 +43,6 @@ export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
       </header>
       <details className="acp-details">
         <summary>Activity details</summary>
-        <p>{item.payload.summary}</p>
         <span className="acp-unknown__category">{item.payload.category}</span>
         {item.payload.truncated ? <span>Summary truncated</span> : null}
       </details>

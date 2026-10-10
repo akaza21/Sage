@@ -17,6 +17,7 @@ mod compaction;
 mod config;
 mod config_reply;
 mod delivery;
+mod dialog;
 mod errors;
 mod identity;
 mod image;
@@ -135,6 +136,7 @@ impl PiRuntime {
                 )
                 .map_err(|_| AdapterRuntimeError::Operation)?;
                 self.external_session = Some(external.clone());
+                self.recent_cancelled_dialogs.clear();
                 self.available_thinking.clear();
                 (
                     Some(AdapterEvent::SessionReady {
@@ -350,13 +352,7 @@ impl PiRuntime {
             AdapterOutput::AuthorityBlocked { external_id, tool } => {
                 self.block_authority(external_id, tool, resources)?
             }
-            AdapterOutput::DialogCancelled { external_id } => (
-                Some(unsupported(
-                    "pi_dialog_cancelled",
-                    "Pi extension dialog was cancelled: this dialog is not supported",
-                )),
-                Some(self.cancel_dialog(external_id)?),
-            ),
+            AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
             AdapterOutput::Image { .. } => (Some(self.image_event()?), None),
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {

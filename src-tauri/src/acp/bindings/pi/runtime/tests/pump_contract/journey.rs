@@ -32,7 +32,7 @@ async fn pi_pump_idle_model_and_thinking_changes_preserve_two_sqlite_turns() {
         let mut transport = Capture::default();
         idle.write_session_config(&mut transport, &config::intent(id, value))
             .unwrap();
-        idle.accept_idle_stdout_chunk(&reply(&transport.0[0], data), 30)
+        idle.accept_idle_stdout_chunk(&reply(&transport.0[0], data), 30, &mut Capture::default())
             .await
             .unwrap();
         assert!(!idle.config_pending());

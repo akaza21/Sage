@@ -18,6 +18,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         &mut self,
         chunk: &[u8],
         now_millis: i64,
+        transport: &mut impl super::EgressTransport,
     ) -> Result<(), AdapterPumpError> {
         if self.adapter.child_read_pending() {
             self.idle_decoder.enable_recoverable_oversize();
@@ -47,7 +48,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 match batch {
                     Ok(batch) => {
                         let (events, egress) = batch.into_parts();
-                        if !egress.is_empty() {
+                        if egress
+                            .iter()
+                            .any(|value| value.token().cancelled_permission_request().is_none())
+                        {
                             return Err(AdapterPumpError::Frame);
                         }
                         for event in events {
@@ -122,6 +126,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                 _ => return Err(AdapterPumpError::Frame),
                             }
                         }
+                        super::write_idle_cancellations(&mut self.adapter, egress, transport)?;
                     }
                     Err(error) if let Some(refusal) = NonfatalRefusal::from_adapter(&error) => {
                         nonfatal_refusal = Some(refusal.into());

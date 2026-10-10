@@ -51,15 +51,18 @@ it("renders context compaction as a compact shared notice", () => {
   expect(screen.queryByRole("button", { name: /tool/i })).toBeNull();
 });
 
-it("does not claim a Pi compaction finished until the end arrives", () => {
-  const started = item("compactionNotice", {});
-  started.lifecycle = "started";
-  const { rerender } = render(<TurnActivityItem item={started} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Compacting context…");
-  rerender(<TurnActivityItem item={{ ...started, lifecycle: "cancelled" }} />);
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Context compaction interrupted",
+it.each([
+  ["started", "Compacting context…"],
+  ["streaming", "Compacting context…"],
+  ["completed", "Context automatically compacted"],
+  ["failed", "Context compaction failed"],
+  ["cancelled", "Context compaction cancelled"],
+  ["unsupported", "Context compaction interrupted"],
+] as const)("renders shared %s compaction copy", (lifecycle, copy) => {
+  render(
+    <TurnActivityItem item={{ ...item("compactionNotice", {}), lifecycle }} />,
   );
+  expect(screen.getByRole("status").textContent).toBe(copy);
 });
 
 describe("TurnActivityItem", () => {

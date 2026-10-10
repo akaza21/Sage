@@ -88,7 +88,9 @@ pub(super) async fn exercise(state: State) {
             .try_into_completed_parts()
             .unwrap_or_else(|_| panic!("idle handoff"));
         for bytes in replies {
-            idle.accept_idle_stdout_chunk(&bytes, 30).await.unwrap();
+            idle.accept_idle_stdout_chunk(&bytes, 30, &mut Capture::default())
+                .await
+                .unwrap();
         }
         for (id, value, data) in [
             ("pi.thinking", "off", Value::Null),
@@ -101,9 +103,13 @@ pub(super) async fn exercise(state: State) {
             let mut transport = Capture::default();
             idle.write_session_config(&mut transport, &intent(id, value))
                 .unwrap();
-            idle.accept_idle_stdout_chunk(&reply(&transport.0[0], data), 31)
-                .await
-                .unwrap();
+            idle.accept_idle_stdout_chunk(
+                &reply(&transport.0[0], data),
+                31,
+                &mut Capture::default(),
+            )
+            .await
+            .unwrap();
             assert!(!idle.config_pending());
         }
     } else {
@@ -170,9 +176,13 @@ async fn pi_pump_idle_thinking_discovery_failures_keep_session_alive() {
         let mut transport = Capture::default();
         idle.write_session_config(&mut transport, &intent("pi.thinking", "off"))
             .unwrap();
-        idle.accept_idle_stdout_chunk(&reply(&transport.0[0], Value::Null), 32)
-            .await
-            .unwrap();
+        idle.accept_idle_stdout_chunk(
+            &reply(&transport.0[0], Value::Null),
+            32,
+            &mut Capture::default(),
+        )
+        .await
+        .unwrap();
         assert!(!idle.config_pending());
         fixture.finish().await;
     }

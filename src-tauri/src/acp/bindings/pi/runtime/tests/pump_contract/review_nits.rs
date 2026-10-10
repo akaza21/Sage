@@ -23,9 +23,10 @@ async fn pi_pump_unsupported_dialogs_cancel_and_settle() {
             "id":format!("dialog-{method}"),"cancelled":true})]
         );
         let events = fixture.observed.lock().unwrap().clone();
-        assert!(matches!(events.as_slice(), [AdapterEvent::Unsupported(
-            NormalizedPayload::Unsupported { external_kind, summary }
-        )] if external_kind.as_str() == "pi_dialog_cancelled"
+        assert!(matches!(events.as_slice(), [AdapterEvent::Item {
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Cancelled,
+            payload: NormalizedPayload::Unsupported { external_kind, summary }, ..
+        }] if external_kind.as_str() == "pi_dialog_cancelled"
             && summary.as_str() == "Pi extension dialog was cancelled: this dialog is not supported"));
     }
     assert_eq!(fixture.item_count(), 3);

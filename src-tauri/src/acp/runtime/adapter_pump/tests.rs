@@ -1406,12 +1406,19 @@ fn idle_config_rejection_drains_following_frame_and_stays_aligned() {
         shared.0.lock().unwrap().ingest_error = Some(AdapterRuntimeError::ConfigMutationRejected);
 
         assert!(matches!(
-            parts.accept_idle_stdout_chunk(b"{}\n{}\n", 2).await,
+            parts
+                .accept_idle_stdout_chunk(b"{}\n{}\n", 2, &mut CaptureTransport(Vec::new()))
+                .await,
             Err(AdapterPumpError::Refused(NonfatalRefusal::ConfigMutation))
         ));
         assert!(parts.idle_frame_aligned());
 
-        assert!(parts.accept_idle_stdout_chunk(b"{}\n", 3).await.is_ok());
+        assert!(
+            parts
+                .accept_idle_stdout_chunk(b"{}\n", 3, &mut CaptureTransport(Vec::new()))
+                .await
+                .is_ok()
+        );
         assert!(parts.idle_frame_aligned());
     });
 }
@@ -2235,6 +2242,9 @@ mod child_store_tests;
 
 #[path = "completion_tests.rs"]
 mod completion_tests;
+
+#[path = "idle_egress_tests.rs"]
+mod idle_egress_tests;
 
 #[path = "sign_in_tests.rs"]
 mod sign_in_tests;

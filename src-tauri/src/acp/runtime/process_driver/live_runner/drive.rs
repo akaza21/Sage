@@ -183,7 +183,11 @@ where
                 Ok(Some(ControlMessage::StdoutChunk(chunk))) => {
                     match parts
                         .completed
-                        .accept_idle_stdout_chunk(&chunk, context.clock.now_millis())
+                        .accept_idle_stdout_chunk(
+                            &chunk,
+                            context.clock.now_millis(),
+                            &mut parts.transport,
+                        )
                         .await
                     {
                         Ok(()) => (

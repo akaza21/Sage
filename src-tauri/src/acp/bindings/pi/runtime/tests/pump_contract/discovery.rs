@@ -43,9 +43,13 @@ async fn discovered_option(adapter: ObservedPi) {
     idle.write_session_config(&mut transport, &config::intent("pi.thinking", "max"))
         .unwrap();
     assert_eq!(transport.0[0]["type"], "set_thinking_level");
-    idle.accept_idle_stdout_chunk(&reply(&transport.0[0], Value::Null), 32)
-        .await
-        .unwrap();
+    idle.accept_idle_stdout_chunk(
+        &reply(&transport.0[0], Value::Null),
+        32,
+        &mut Capture::default(),
+    )
+    .await
+    .unwrap();
     assert!(!idle.config_pending());
     fixture.add_turn(1);
     let mut pump = idle
@@ -94,6 +98,7 @@ async fn pi_pump_model_refresh_retries_levels_after_fast_settlement() {
             json!({"provider":"anthropic","id":"claude"}),
         ),
         22,
+        &mut Capture::default(),
     )
     .await
     .unwrap();
@@ -135,9 +140,13 @@ async fn pi_pump_model_refresh_retries_levels_after_fast_settlement() {
     let mut transport = Capture::default();
     idle.write_session_config(&mut transport, &config::intent("pi.thinking", "max"))
         .unwrap();
-    idle.accept_idle_stdout_chunk(&reply(&transport.0[0], Value::Null), 34)
-        .await
-        .unwrap();
+    idle.accept_idle_stdout_chunk(
+        &reply(&transport.0[0], Value::Null),
+        34,
+        &mut Capture::default(),
+    )
+    .await
+    .unwrap();
     assert!(!idle.config_pending());
     fixture.add_turn(3);
     let mut pump = idle
@@ -213,13 +222,18 @@ async fn pi_pump_closed_discovery_does_not_block_idle_config() {
     idle.accept_idle_stdout_chunk(
         &reply(&transport.0[0], json!({"provider":"openai","id":"gpt"})),
         32,
+        &mut Capture::default(),
     )
     .await
     .unwrap();
     fixture.observed.lock().unwrap().clear();
-    idle.accept_idle_stdout_chunk(&reply(&read.0[1], json!({"levels":["off","high"]})), 33)
-        .await
-        .unwrap();
+    idle.accept_idle_stdout_chunk(
+        &reply(&read.0[1], json!({"levels":["off","high"]})),
+        33,
+        &mut Capture::default(),
+    )
+    .await
+    .unwrap();
     let events = fixture.observed.lock().unwrap().clone();
     assert!(matches!(events.as_slice(), [AdapterEvent::IgnoredLate]));
     assert!(!idle.config_pending());

@@ -67,13 +67,13 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert!(pump.push_stdout_chunk(parent_done.as_bytes(), 14).await.unwrap());
         let mut idle = pump.try_into_completed_parts().ok().expect("terminal handoff");
         let late_child = concat!(r#"{"method":"item/completed","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"late-command","type":"commandExecution","status":"completed","command":"rg late","aggregatedOutput":"late","exitCode":0}}}"#, "\n");
-        idle.accept_idle_stdout_chunk(late_child.as_bytes(), 15).await.unwrap();
+        idle.accept_idle_stdout_chunk(late_child.as_bytes(), 15, &mut CaptureTransport(Vec::new())).await.unwrap();
         let child_agent = concat!(r#"{"method":"item/started","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"item-1","type":"agentMessage","text":"Live answer"}}}"#, "\n");
-        idle.accept_idle_stdout_chunk(child_agent.as_bytes(), 16).await.unwrap();
+        idle.accept_idle_stdout_chunk(child_agent.as_bytes(), 16, &mut CaptureTransport(Vec::new())).await.unwrap();
         let child_user = concat!(r#"{"method":"item/completed","params":{"threadId":"child-native","turnId":"native-turn-1","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"Inspect this"}]}}}"#, "\n");
-        idle.accept_idle_stdout_chunk(child_user.as_bytes(), 17).await.unwrap();
+        idle.accept_idle_stdout_chunk(child_user.as_bytes(), 17, &mut CaptureTransport(Vec::new())).await.unwrap();
         let child_done = concat!(r#"{"method":"turn/completed","params":{"threadId":"child-native","turn":{"id":"native-turn-1","status":"completed"}}}"#, "\n");
-        idle.accept_idle_stdout_chunk(child_done.as_bytes(), 18).await.unwrap();
+        idle.accept_idle_stdout_chunk(child_done.as_bytes(), 18, &mut CaptureTransport(Vec::new())).await.unwrap();
         drop(idle);
         handle.close_when_drained();
         task.await.unwrap();
