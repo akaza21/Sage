@@ -1,9 +1,10 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import {
   attributedSubagentKey,
   useSubagentPaneStore,
 } from "../../../app/subagentPaneStore";
+import { ChevronDown } from "../../../ui/leanIcons";
 import {
   collaborationRows,
   MAX_SUBAGENT_GROUP_ITEMS,
@@ -29,6 +30,91 @@ function avatarColor(key: string): number {
   return Math.abs(hash % 3);
 }
 
+type SubagentRowEntry = SubagentEntry & {
+  source?: CollaborationProjectionItem;
+};
+
+function SubagentRow({
+  agents,
+  state,
+}: {
+  agents: SubagentRowEntry[];
+  state: SubagentRowState;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const text = subagentSummary(
+    agents.map((agent) => agent.label),
+    state,
+  );
+  const source = agents.length === 1 ? agents[0].source : undefined;
+  const grouped = agents.length > 1 && agents.some((agent) => agent.source);
+  const Row = grouped ? "summary" : source ? "button" : "div";
+  const row = (
+    <Row
+      className="acp-subagent-row"
+      aria-label={grouped ? `${text}. Show Subagents` : undefined}
+      {...(source
+        ? {
+            type: "button" as const,
+            "aria-label": `${text}. Open Subagent`,
+            onClick: () =>
+              useSubagentPaneStore.getState().show({
+                owner: {
+                  projectId: source.projectId,
+                  chatId: source.chatId,
+                  sessionId: source.sessionId,
+                },
+                itemId: source.id,
+                agentKey: agents[0].key,
+              }),
+          }
+        : {})}
+    >
+      <span className="acp-subagent-row__glyphs" aria-hidden="true">
+        {agents.slice(0, 3).map((agent) => (
+          <span
+            key={agent.key}
+            className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
+          >
+            {state === "finished" ? "●" : "✦"}
+          </span>
+        ))}
+      </span>
+      <span
+        role="status"
+        aria-label={text}
+        className={state === "started working" ? "acp-live-shimmer" : undefined}
+      >
+        {text}
+      </span>
+      {grouped ? (
+        <ChevronDown
+          className="acp-tool-rollup__chevron"
+          aria-hidden="true"
+          size={14}
+        />
+      ) : null}
+    </Row>
+  );
+  return grouped ? (
+    <details
+      className="acp-tool-rollup"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      {row}
+      {expanded ? (
+        <div className="acp-tool-rollup__items">
+          {agents.map((agent) => (
+            <SubagentRow key={agent.key} agents={[agent]} state={state} />
+          ))}
+        </div>
+      ) : null}
+    </details>
+  ) : (
+    row
+  );
+}
+
 export function CollaborationItem({
   item,
   items = [item],
@@ -38,16 +124,19 @@ export function CollaborationItem({
 }) {
   const descriptionId = useId();
   const status = collaborationStateLabels[item.lifecycle];
-  const rows = new Map<SubagentRowState, Map<string, SubagentEntry>>();
+  const rows = new Map<SubagentRowState, Map<string, SubagentRowEntry>>();
   for (const member of items.slice(0, MAX_SUBAGENT_GROUP_ITEMS)) {
     for (const row of collaborationRows(member)) {
       const entries = rows.get(row.state) ?? new Map();
       for (const entry of row.entries) {
-        if (
-          (entry.label || !entries.has(entry.key)) &&
-          entries.size < MAX_SUBAGENT_GROUP_ITEMS
-        )
-          entries.set(entry.key, entry);
+        const previous = entries.get(entry.key);
+        if (!previous && entries.size >= MAX_SUBAGENT_GROUP_ITEMS) continue;
+        entries.set(entry.key, {
+          ...(entry.label || !previous ? entry : previous),
+          source:
+            previous?.source ??
+            (attributedSubagentKey(member, [entry.key]) ? member : undefined),
+        });
       }
       rows.set(row.state, entries);
     }
@@ -55,63 +144,13 @@ export function CollaborationItem({
   if (rows.size > 0) {
     return (
       <>
-        {[...rows].map(([state, entries]) => {
-          const agents = [...entries.values()];
-          const text = subagentSummary(
-            agents.map((agent) => agent.label),
-            state,
-          );
-          const source =
-            agents.length === 1
-              ? items.find((member) =>
-                  attributedSubagentKey(member, [agents[0].key]),
-                )
-              : undefined;
-          const agentKey = source ? agents[0].key : null;
-          const Row = agentKey ? "button" : "div";
-          return (
-            <Row
-              key={state}
-              className="acp-subagent-row"
-              {...(source && agentKey
-                ? {
-                    type: "button" as const,
-                    "aria-label": `${text}. Open Subagent`,
-                    onClick: () =>
-                      useSubagentPaneStore.getState().show({
-                        owner: {
-                          projectId: source.projectId,
-                          chatId: source.chatId,
-                          sessionId: source.sessionId,
-                        },
-                        itemId: source.id,
-                        agentKey,
-                      }),
-                  }
-                : {})}
-            >
-              <span className="acp-subagent-row__glyphs" aria-hidden="true">
-                {agents.slice(0, 3).map((agent) => (
-                  <span
-                    key={agent.key}
-                    className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
-                  >
-                    {state === "finished" ? "●" : "✦"}
-                  </span>
-                ))}
-              </span>
-              <span
-                role="status"
-                aria-label={text}
-                className={
-                  state === "started working" ? "acp-live-shimmer" : undefined
-                }
-              >
-                {text}
-              </span>
-            </Row>
-          );
-        })}
+        {[...rows].map(([state, entries]) => (
+          <SubagentRow
+            key={state}
+            agents={[...entries.values()]}
+            state={state}
+          />
+        ))}
       </>
     );
   }
