@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
 import { CollaborationItem } from "./CollaborationItem";
 import { PrimaryActivities } from "./PrimaryActivities";
+import * as subagentActivity from "./subagentActivity";
 
 type Collaboration = Extract<AcpItem, { kind: "collaboration" }>;
 
@@ -60,6 +61,63 @@ afterEach(() => {
 });
 
 describe("Subagent activity rows", () => {
+  it("does not rebuild 300 unchanged members on streaming ticks but updates revised membership", () => {
+    const summary = vi.spyOn(subagentActivity, "subagentSummary");
+    const members = Array.from({ length: 300 }, (_, index) =>
+      child(`child-${index}`, `Reviewer ${index}`),
+    );
+    const renderItem = (item: AcpItem) =>
+      item.kind === "text" ? <p key={item.id}>{item.payload.text}</p> : null;
+    const stream = (text: string) =>
+      ({
+        ...members[0],
+        id: "reply",
+        kind: "text",
+        payload: { role: "assistant", text },
+      }) as unknown as AcpItem;
+    const content = (items: Collaboration[], text: string) => (
+      <PrimaryActivities
+        items={[...items, stream(text)]}
+        interactive
+        renderItem={renderItem}
+      />
+    );
+    const view = render(content(members, "First tick"));
+    expect(summary).toHaveBeenCalledOnce();
+    summary.mockClear();
+    const unchanged = structuredClone(members);
+    view.rerender(content(unchanged, "Next tick"));
+    expect(screen.getByText("Next tick")).toBeVisible();
+    expect(summary).not.toHaveBeenCalled();
+
+    const revised = structuredClone(unchanged);
+    revised[1].revision = "2" as Collaboration["revision"];
+    revised[1].payload.receiverLabels = ["Builder"];
+    view.rerender(content(revised, "Next tick"));
+    expect(
+      screen.getByText("Reviewer 0, Builder and 298 more started working"),
+    ).toBeVisible();
+    expect(summary).toHaveBeenCalledOnce();
+    summary.mockClear();
+
+    revised[1] = {
+      ...child("replacement", "Replacement"),
+      revision: "2" as Collaboration["revision"],
+    };
+    view.rerender(content(revised, "Next tick"));
+    expect(
+      screen.getByText("Reviewer 0, Replacement and 298 more started working"),
+    ).toBeVisible();
+    expect(summary).toHaveBeenCalledOnce();
+    summary.mockClear();
+
+    view.rerender(content(revised.slice(0, -1), "Next tick"));
+    expect(
+      screen.getByText("Reviewer 0, Replacement and 297 more started working"),
+    ).toBeVisible();
+    expect(summary).toHaveBeenCalledOnce();
+  });
+
   it("keeps both adjacent verified children individually openable from their group", () => {
     activities([child("a", "Reviewer"), child("b", "Builder")]);
     const summary = screen

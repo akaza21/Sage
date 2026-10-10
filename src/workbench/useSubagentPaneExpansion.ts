@@ -12,18 +12,10 @@ export function useSubagentPaneExpansion({
   target: SubagentPaneTarget | null;
   onExpandedChange?: (expanded: boolean) => void;
 }) {
-  const previousSelection = useRef<{
-    target: SubagentPaneTarget | null;
-    selected: boolean;
-  }>({ target: null, selected: false });
+  const previousTarget = useRef<SubagentPaneTarget | null>(null);
   useEffect(() => {
-    const previous = previousSelection.current;
-    previousSelection.current = { target, selected };
-    if (
-      selected &&
-      !expanded &&
-      (!previous.selected || previous.target !== target)
-    )
-      onExpandedChange?.(true);
+    const previous = previousTarget.current;
+    previousTarget.current = target;
+    if (selected && !expanded && previous !== target) onExpandedChange?.(true);
   }, [expanded, onExpandedChange, selected, target]);
 }

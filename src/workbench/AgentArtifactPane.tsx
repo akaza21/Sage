@@ -127,7 +127,7 @@ export function AgentArtifactPane({
   useSubagentPaneExpansion({
     expanded,
     selected: subagentSelected,
-    target: selectedSubagent,
+    target: subagentOpen,
     onExpandedChange,
   });
   const artifacts = useMemo(

@@ -147,7 +147,7 @@ export const useSubagentPaneStore = create<SubagentPaneStore>((set) => ({
       !target.agentKey
     )
       return;
-    set({ open: target, selected: true });
+    set({ open: { ...target }, selected: true });
   },
   select: (selected) => set({ selected }),
   clear: () => set({ open: null, selected: false }),

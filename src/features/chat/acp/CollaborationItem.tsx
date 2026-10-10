@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { memo, useId, useState } from "react";
 
 import {
   attributedSubagentKey,
@@ -7,7 +7,6 @@ import {
 import { ChevronDown } from "../../../ui/leanIcons";
 import {
   collaborationRows,
-  MAX_SUBAGENT_GROUP_ITEMS,
   subagentSummary,
   type CollaborationProjectionItem,
   type SubagentEntry,
@@ -115,7 +114,7 @@ function SubagentRow({
   );
 }
 
-export function CollaborationItem({
+function CollaborationItemContent({
   item,
   items = [item],
 }: {
@@ -124,13 +123,15 @@ export function CollaborationItem({
 }) {
   const descriptionId = useId();
   const status = collaborationStateLabels[item.lifecycle];
+  const participants = item.payload.receiverLabels.filter((label) =>
+    label.trim(),
+  );
   const rows = new Map<SubagentRowState, Map<string, SubagentRowEntry>>();
-  for (const member of items.slice(0, MAX_SUBAGENT_GROUP_ITEMS)) {
+  for (const member of items) {
     for (const row of collaborationRows(member)) {
       const entries = rows.get(row.state) ?? new Map();
       for (const entry of row.entries) {
         const previous = entries.get(entry.key);
-        if (!previous && entries.size >= MAX_SUBAGENT_GROUP_ITEMS) continue;
         entries.set(entry.key, {
           ...(entry.label || !previous ? entry : previous),
           source:
@@ -185,11 +186,29 @@ export function CollaborationItem({
         </span>
       </header>
       <p>{item.payload.summary}</p>
-      {item.payload.receiverLabels.length > 0 ? (
+      {participants.length > 0 ? (
         <p className="acp-collaboration__receivers">
-          Participants: {item.payload.receiverLabels.join(", ")}
+          Participants: {participants.join(", ")}
         </p>
       ) : null}
     </article>
   );
 }
+
+export const CollaborationItem = memo(
+  CollaborationItemContent,
+  (left, right) => {
+    const leftItems = left.items ?? [left.item];
+    const rightItems = right.items ?? [right.item];
+    return (
+      left.item.id === right.item.id &&
+      left.item.revision === right.item.revision &&
+      leftItems.length === rightItems.length &&
+      leftItems.every(
+        (item, index) =>
+          item.id === rightItems[index].id &&
+          item.revision === rightItems[index].revision,
+      )
+    );
+  },
+);

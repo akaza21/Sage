@@ -15,6 +15,33 @@ import { CollaborationItem } from "./CollaborationItem";
 afterEach(cleanup);
 
 describe("CollaborationItem", () => {
+  it.each([
+    { labels: ["", ""], participants: null },
+    { labels: ["", "Bob"], participants: "Participants: Bob" },
+    { labels: ["  ", "Bob", ""], participants: "Participants: Bob" },
+  ])(
+    "omits blank fallback participants from $labels",
+    ({ labels, participants }) => {
+      const item = {
+        kind: "collaboration",
+        lifecycle: "completed",
+        payload: {
+          activityId: null,
+          label: "wait",
+          summary: "Waiting for children",
+          receiverLabels: labels,
+          operation: "wait",
+          agentKeys: ["unknown", "known"],
+          agentStates: [],
+        },
+      } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+      render(<CollaborationItem item={item} />);
+      if (participants)
+        expect(screen.getByText(participants)).toBeInTheDocument();
+      else expect(screen.queryByText(/Participants:/)).toBeNull();
+    },
+  );
+
   it("opens an owner-scoped Subagent tab from a verified row", () => {
     useSubagentPaneStore.getState().clear();
     const item = safeItem({
