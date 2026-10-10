@@ -4,6 +4,26 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Chat transcript polish stylesheet seam", () => {
+  it("reserves main's completed-turn trailing gap explicitly for every turn state", async () => {
+    const [transcriptCss, acpCss] = await Promise.all([
+      readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),
+      readFile(resolve("src/features/chat/acp/acp-chat.css"), "utf8"),
+    ]);
+
+    expect(transcriptCss).toMatch(
+      /\.message-list__content \.acp-turn\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 0;/s,
+    );
+    expect(acpCss).toMatch(
+      /\.acp-turn\s*\{[^}]*column-gap:\s*var\(--space-3\);/s,
+    );
+    expect(transcriptCss).toMatch(
+      /\.message-list__content \.acp-turn > \.acp-turn__header,\s*\.message-list__content \.acp-turn > \.acp-turn__items\s*\{[^}]*grid-column:\s*1;/s,
+    );
+    expect(transcriptCss).toMatch(
+      /\.message-list__content:has\(> \.acp-chat-projection\) > \.chat-transcript-actions\s*\{[^}]*width:\s*min\(calc\(100% - var\(--space-3\)\), var\(--reading-measure\)\);[^}]*margin-inline-start:\s*max\(\s*0px,\s*calc\(\(100% - var\(--space-3\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
+    );
+  });
+
   it("centers assistant text, work rows, and diff cards on one reading measure", async () => {
     const [transcriptCss, diffCss] = await Promise.all([
       readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),

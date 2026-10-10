@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
+import { TurnHeader } from "./TurnHeader";
 
 afterEach(cleanup);
 
@@ -97,6 +98,54 @@ function observeNames(region: HTMLElement) {
 }
 
 describe("AcpAnnouncementRegions", () => {
+  it.each([
+    ["interrupted", "cancelledByUser", "Cancelled by you"],
+    ["cancelled", "cancelledByUser", "Cancelled by you"],
+    ["interrupted", undefined, "Interrupted"],
+    ["cancelled", undefined, "Cancelled"],
+    ["completed", undefined, "Completed"],
+    ["failed", "timeout", "Failed"],
+  ] as const)(
+    "announces the rendered header label once for %s with reason %s",
+    async (state, kind, label) => {
+      const initial = page("1", "running");
+      const settled = page("2", state);
+      settled.turns[0].terminalReason = kind ? { kind } : undefined;
+      const { container, rerender } = render(
+        <>
+          <TurnHeader turn={initial.turns[0]} />
+          <AcpAnnouncementRegions page={initial} />
+        </>,
+      );
+      const observation = observeNames(regions(container).polite);
+      const content = (
+        <>
+          <TurnHeader turn={settled.turns[0]} />
+          <AcpAnnouncementRegions page={settled} />
+        </>
+      );
+      rerender(content);
+      expect(container.querySelector("[data-turn-status]")).toHaveTextContent(
+        label,
+      );
+      expect(
+        container.querySelector("[data-turn-status]"),
+      ).toHaveAccessibleName(label);
+      await waitFor(() =>
+        expect(regions(container).polite).toHaveAccessibleName(label),
+      );
+      expect(regions(container).polite).toHaveTextContent(label);
+      rerender(
+        <>
+          <TurnHeader turn={settled.turns[0]} />
+          <AcpAnnouncementRegions page={{ ...settled }} />
+        </>,
+      );
+      expect(observation.names).toEqual([label]);
+      observation.stop();
+    },
+  );
+
   it("keeps the first page and an identical rerender silent", () => {
     const first = page("1", "completed", [tool("completed"), permission(true)]);
     const { container, rerender } = render(

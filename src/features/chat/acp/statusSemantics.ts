@@ -4,6 +4,7 @@ import type {
   ToolState,
   TurnState,
   TurnTerminalReason,
+  TurnProjection,
 } from "../../../domain/acp";
 
 export const terminalItemLifecycles: ReadonlySet<ItemLifecycle> = new Set([
@@ -46,6 +47,13 @@ export const turnTerminalReasonLabels: Record<TurnTerminalReason, string> = {
   timeout: "Timed out",
   other: "Reason unavailable",
 };
+
+export function getTurnStatusLabel(turn: TurnProjection): string {
+  return (turn.state === "interrupted" || turn.state === "cancelled") &&
+    turn.terminalReason?.kind === "cancelledByUser"
+    ? turnTerminalReasonLabels.cancelledByUser
+    : turnStateLabels[turn.state];
+}
 
 export const terminalToolStates: ReadonlySet<ToolState> = new Set([
   "completed",

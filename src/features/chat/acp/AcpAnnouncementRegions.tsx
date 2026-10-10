@@ -8,10 +8,10 @@ import {
 import type { AcpChatPage, AcpItem } from "../../../domain/acp";
 import {
   getPermissionStatus,
+  getTurnStatusLabel,
   terminalToolStates,
   terminalTurnStates,
   toolStateLabels,
-  turnStateLabels,
 } from "./statusSemantics";
 
 interface Announcement {
@@ -91,7 +91,7 @@ function deriveAnnouncements(
       ) {
         polite.push({
           id: `turn:${turn.id}:${turn.state}`,
-          text: turnStateLabels[turn.state],
+          text: getTurnStatusLabel(turn),
         });
       }
       for (const item of turn.items) {
