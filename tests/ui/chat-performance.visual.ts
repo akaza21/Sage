@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import type { SubagentPaneTarget } from "../../src/app/subagentPaneStore";
 
 declare global {
   interface Window {
@@ -22,8 +24,52 @@ declare global {
       visibleAnchor: () => { id: string; top: number } | null;
       prepend: (count: number) => void;
       distanceFromEnd: () => number;
+      openedSubagent: () => SubagentPaneTarget | null;
     };
   }
+}
+
+function capSubagentGroup(page: Page, turn: number) {
+  return page
+    .locator(`[data-turn-id="turn-${turn}"]`)
+    .locator(
+      `summary[aria-label="Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working. Show Subagents"]`,
+    );
+}
+
+async function expectCapWorkerReachable(
+  page: Page,
+  turn: number,
+  ordinal: number,
+) {
+  const group = capSubagentGroup(page, turn);
+  await expect(group).toBeAttached();
+  await expect(group.getByRole("status")).toHaveText(
+    `Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working`,
+  );
+  await group.click();
+  const worker = page
+    .locator(`[data-turn-id="turn-${turn}"]`)
+    .getByRole("button", {
+      name: `Worker ${turn}-${ordinal} started working. Open Subagent`,
+      exact: true,
+    });
+  await expect(worker).toBeVisible();
+  await expect(worker).toBeEnabled();
+  await worker.click();
+  await expect
+    .poll(() => page.evaluate(() => window.chatPerf.openedSubagent()))
+    .toEqual({
+      owner: {
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+      },
+      itemId: `item-${turn}-${ordinal}`,
+      agentKey: `worker-${turn}-${ordinal}`,
+    });
+  await group.click();
+  await expect(worker).not.toBeAttached();
 }
 
 test("long Chat preserves the visible Turn when earlier Turns arrive", async ({
@@ -103,9 +149,7 @@ for (const mode of ["cap", "stress"] as const) {
       mode,
     );
     if (mode === "cap")
-      await expect(
-        page.getByText("Worker 100-10 started working"),
-      ).toBeAttached();
+      await expect(capSubagentGroup(page, 100)).toBeAttached();
     await page.waitForTimeout(200);
     const stream = await page.evaluate(() => window.chatPerf.stream(30));
     const ordered = [...stream.durations].sort((left, right) => left - right);
@@ -126,10 +170,10 @@ for (const mode of ["cap", "stress"] as const) {
       expect(p95).toBeLessThanOrEqual(50);
       expect(stream.heapBytes).toBeLessThanOrEqual(60_000_000);
     }
+    if (mode === "cap") await expectCapWorkerReachable(page, 100, 10);
     await page.evaluate(() => window.chatPerf.scrollToTop());
     await expect(page.locator('[data-turn-id="turn-1"]')).toBeVisible();
-    if (mode === "cap")
-      await expect(page.getByText("Worker 1-8 started working")).toBeAttached();
+    if (mode === "cap") await expectCapWorkerReachable(page, 1, 8);
     expect(await page.locator(".acp-turn").count()).toBeLessThanOrEqual(40);
   });
 }

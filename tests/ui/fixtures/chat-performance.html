@@ -15,6 +15,7 @@
       import { flushSync } from "react-dom";
       import { AcpChatPresentation } from "/src/features/chat/acp/AcpChatPresentation.tsx";
       import { useFollowEnd } from "/src/features/chat/useFollowEnd.ts";
+      import { useSubagentPaneStore } from "/src/app/subagentPaneStore.ts";
       import "/src/styles/global.css";
       import "/src/styles/chat-surface.css";
       import "/src/features/chat/chat-transcript-polish.css";
@@ -69,7 +70,7 @@
       const subagent = (turn, ordinal) =>
         item(turn, ordinal, "collaboration", {
           activityId: null,
-          label: "spawnAgent",
+          label: `Worker ${turn}-${ordinal}`,
           summary: "",
           receiverLabels: [`Worker ${turn}-${ordinal}`],
           operation: "started",
@@ -188,6 +189,7 @@
           ),
         );
       window.chatPerf = {
+        openedSubagent: () => useSubagentPaneStore.getState().open,
         mount(mode) {
           current = makePage(mode);
           commits = [];
