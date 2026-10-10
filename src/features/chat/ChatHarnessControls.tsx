@@ -35,6 +35,7 @@ import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { composerOptionLabel } from "./composerChrome";
+import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -45,6 +46,7 @@ interface Props {
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
+  modelLabelScope: string;
   sessionHarnessId: string | null;
   sessionModelId: string | null;
   selectedHarnessId: string | null;
@@ -71,6 +73,7 @@ export function ChatHarnessControls({
   imageControl,
   availableBinding,
   canPrompt,
+  modelLabelScope,
   sessionHarnessId,
   sessionModelId,
   selectedHarnessId,
@@ -151,10 +154,18 @@ export function ChatHarnessControls({
     (option) => (option.category ?? option.id).toLocaleLowerCase() === "effort",
   );
   const hasSessionModel = modelOption?.type === "select";
-  const modelLabel =
-    composerOptionLabel(modelOption) ??
-    models.find((model) => model.id === selectedModelId)?.name ??
-    "Model";
+  const modelLabel = useConfirmedModelLabel(
+    JSON.stringify([
+      projectId,
+      modelLabelScope,
+      selectedHarnessId,
+      selectedModelId,
+      sessionModelId,
+    ]),
+    selectedModelId,
+    modelOption,
+    models,
+  );
   const effortLabel = composerOptionLabel(effortOption);
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({

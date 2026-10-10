@@ -46,7 +46,8 @@ export const ItemView = memo(
         const partial =
           item.payload.role === "assistant" &&
           (turnState === "interrupted" || turnState === "cancelled") &&
-          item.lifecycle !== "completed";
+          item.lifecycle !== "completed" &&
+          item.payload.text.trim().length > 0;
         return (
           <article
             className={`acp-message acp-message--${item.payload.role}`}
@@ -87,10 +88,7 @@ export const ItemView = memo(
               }
             />
             {partial ? (
-              <p className="acp-message__partial">
-                {turnState === "cancelled" ? "Cancelled" : "Interrupted"} ·
-                partial answer
-              </p>
+              <p className="acp-message__partial">Partial answer retained</p>
             ) : null}
           </article>
         );

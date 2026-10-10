@@ -12,6 +12,7 @@ use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 mod file_change_sequence_tests;
+mod terminal_error_tests;
 
 struct Mapper;
 

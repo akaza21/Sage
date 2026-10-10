@@ -104,7 +104,10 @@ describe("turn terminal reason", () => {
       "Sign in by running claude auth login.",
     );
     expect(remediation).toHaveAttribute("data-turn-reason-remediation", "");
-    expect(failure.querySelector("[data-turn-reason-message]")).toBeNull();
+    expect(within(failure).getByText("Not signed in")).toHaveAttribute(
+      "data-turn-reason-message",
+      "",
+    );
   });
 
   it("keeps a message and a remediation as two separate blocks", async () => {

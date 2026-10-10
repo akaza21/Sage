@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../../domain/acp";
+import type { ChatMessage } from "../../domain/chat";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import * as acpTurnState from "./acp/acpTurnState";
@@ -10,9 +11,13 @@ import { ChatTranscript } from "./ChatTranscript";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
-async function renderTranscript(acpPage: AcpChatPage) {
+async function renderTranscript(
+  acpPage: AcpChatPage,
+  messages: readonly ChatMessage[] = [],
+) {
   const onRetry = vi.fn();
   const result = render(
     <ChatTranscript
@@ -31,7 +36,7 @@ async function renderTranscript(acpPage: AcpChatPage) {
       loadingEarlier={false}
       historyError={null}
       onLoadEarlier={vi.fn()}
-      messages={[]}
+      messages={messages}
       developmentSimulator={false}
       onRetry={onRetry}
       showJumpToLatest={false}
@@ -54,6 +59,110 @@ function retryPage() {
   ];
   return next;
 }
+
+describe("ChatTranscript answer actions", () => {
+  it.each(["", " \n\t "])(
+    "offers no answer actions for blank settled assistant text %j",
+    async (text) => {
+      const next = page("completed");
+      next.turns[0].items = [
+        { ...textItem(), payload: { role: "assistant", text } },
+      ];
+      const { container } = await renderTranscript(next);
+      expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+    },
+  );
+  it.each([
+    "queued",
+    "sending",
+    "running",
+    "waitingModel",
+    "waitingTool",
+    "waitingApproval",
+    "waitingUser",
+    "cancelling",
+  ] as const)("hides answer actions beneath a %s turn", async (state) => {
+    const next = retryPage();
+    next.turns[0].state = state;
+    const { container } = await renderTranscript(next);
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+  });
+
+  it.each(["running", "waitingApproval", "cancelling"] as const)(
+    "does not place a prior answer's actions beneath a %s turn",
+    async (state) => {
+      const next = retryPage();
+      next.turns = [
+        ...next.turns,
+        {
+          ...page(state).turns[0],
+          id: "latest-turn" as never,
+          ordinal: 2,
+          items: [],
+        },
+      ];
+      await renderTranscript(next);
+      expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    },
+  );
+
+  it.each(["completed", "cancelled", "interrupted", "failed"] as const)(
+    "copies only the latest %s turn's answer",
+    async (state) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      const next = retryPage();
+      const latest = page(state).turns[0];
+      latest.id = "latest-turn" as never;
+      latest.ordinal = 2;
+      latest.items = [
+        {
+          ...textItem(),
+          payload: {
+            role: "assistant",
+            text: "Latest partial or final answer",
+          },
+        },
+      ];
+      next.turns = [...next.turns, latest];
+      await renderTranscript(next);
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(
+        "Latest partial or final answer",
+      );
+    },
+  );
+
+  it.each(["empty page", "empty latest answer", "prompt only"] as const)(
+    "does not copy prior or legacy text with an ACP %s",
+    async (scenario) => {
+      const next = retryPage();
+      if (scenario === "empty page") next.turns = [];
+      else {
+        const latest = page("completed").turns[0];
+        latest.id = "latest-turn" as never;
+        latest.ordinal = 2;
+        latest.items =
+          scenario === "prompt only"
+            ? [{ ...textItem(), payload: { role: "user", text: "No answer" } }]
+            : [];
+        next.turns = [...next.turns, latest];
+      }
+      await renderTranscript(next, [
+        {
+          id: "legacy",
+          role: "assistant",
+          text: "Unrelated legacy answer",
+          createdAt: 1,
+        } as ChatMessage,
+      ]);
+      expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    },
+  );
+});
 
 describe("ChatTranscript Retry", () => {
   it.each(["completed", "failed"] as const)(

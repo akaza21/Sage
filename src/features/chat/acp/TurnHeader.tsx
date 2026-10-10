@@ -3,22 +3,28 @@ import { turnStateLabels, turnTerminalReasonLabels } from "./statusSemantics";
 
 export function TurnHeader({ turn }: { turn: TurnProjection }) {
   const reason = turn.terminalReason;
+  const stopped = turn.state === "interrupted" || turn.state === "cancelled";
+  const userStopped = stopped && reason?.kind === "cancelledByUser";
+  const label = userStopped
+    ? turnTerminalReasonLabels.cancelledByUser
+    : turnStateLabels[turn.state];
   const message = reason?.message;
   const remediation = reason?.remediation;
   return (
     <header className="acp-turn__header">
       <span
-        className="acp-state acp-turn__state"
+        className={stopped ? "acp-turn__reason" : "acp-state acp-turn__state"}
         role="status"
-        aria-label={turnStateLabels[turn.state]}
+        aria-label={label}
         aria-live="off"
         aria-atomic="true"
         data-turn-status={turn.id}
+        data-turn-reason={userStopped ? reason.kind : undefined}
         tabIndex={-1}
       >
-        {turnStateLabels[turn.state]}
+        {label}
       </span>
-      {reason ? (
+      {reason && !userStopped ? (
         <span className="acp-turn__reason" data-turn-reason={reason.kind}>
           {turnTerminalReasonLabels[reason.kind]}
         </span>

@@ -2062,9 +2062,9 @@ describe("AcpChatProjection", () => {
         "partial",
       );
       expect(
-        screen.getByText(state === "cancelled" ? "Cancelled" : "Interrupted"),
+        screen.getByRole("status", { name: "Cancelled by you" }),
       ).toBeVisible();
-      expect(screen.getByText(/· partial answer/)).toBeVisible();
+      expect(screen.getByText("Partial answer retained")).toBeVisible();
       expect(screen.queryByText("Completed")).toBeNull();
     },
   );
@@ -2082,7 +2082,7 @@ describe("AcpChatProjection", () => {
     expect(
       screen.getByText("Completed answer").closest(".acp-message"),
     ).not.toHaveAttribute("data-answer-state");
-    expect(screen.queryByText(/partial answer/)).toBeNull();
+    expect(screen.queryByText("Partial answer retained")).toBeNull();
   });
 
   it("shows a failed turn's message and the existing retry action together", async () => {

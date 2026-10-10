@@ -30,6 +30,7 @@ function renderControls(overrides: Record<string, unknown> = {}) {
       availableBinding
       canPrompt
       discoveryPhase="ready"
+      modelLabelScope="project/chat/session-1"
       sessionHarnessId={null}
       sessionModelId={null}
       selectedHarnessId={null}
@@ -78,6 +79,210 @@ afterEach(() => {
 function openOptions() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
 }
+
+function confirmedModelConfig() {
+  return decodeSessionConfig({
+    sageAgentSessionId: "session-1",
+    runtimeEpoch: "1",
+    configRevision: "1",
+    modes: null,
+    configOptions: [
+      {
+        id: "model",
+        name: "Model",
+        type: "select",
+        currentValue: "session-model",
+        options: [{ value: "session-model", name: "Confirmed session model" }],
+      },
+      {
+        id: "effort",
+        name: "Effort",
+        type: "select",
+        currentValue: "high",
+        options: [{ value: "high", name: "High" }],
+      },
+    ],
+  });
+}
+
+describe("last confirmed model label", () => {
+  const selection = {
+    selectedHarnessId: "harness-a",
+    sessionHarnessId: "harness-a",
+    selectedModelId: "launch-model",
+    sessionModelId: "launch-model",
+    modelLabelScope: "project/chat/session-1",
+  };
+
+  it.each(["null", "removed"] as const)(
+    "keeps a session-selected label after Stop and %s config without restoring options",
+    (removal) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "harness-a",
+        models: [],
+      });
+      const sessionConfig = confirmedModelConfig();
+      if (!sessionConfig) throw new Error("Config did not decode");
+      const view = renderControls({
+        ...selection,
+        turnBusy: true,
+        sessionConfig,
+      });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        "Confirmed session model",
+      );
+      expect(
+        screen.getByRole("button", { name: "Thinking level" }),
+      ).toBeDisabled();
+      view.rerenderControls({
+        ...selection,
+        sessionHarnessId: null,
+        turnBusy: false,
+        sessionConfig:
+          removal === "null"
+            ? null
+            : { ...sessionConfig, removed: true, configOptions: [] },
+      });
+      const chip = screen.getByRole("button", { name: "Model" });
+      expect(chip).toHaveTextContent("Confirmed session model");
+      expect(chip).toBeDisabled();
+      fireEvent.click(chip);
+      expect(screen.queryByRole("dialog", { name: "Model picker" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Thinking level" }),
+      ).toBeNull();
+    },
+  );
+
+  it.each([
+    { modelLabelScope: "project/other-chat/session-1" },
+    { modelLabelScope: "project/chat/session-2" },
+    { modelLabelScope: "other-project/chat/session-1" },
+    { selectedHarnessId: "harness-b", sessionHarnessId: "harness-b" },
+    { selectedModelId: "other-selection" },
+    { sessionModelId: "other-session-selection" },
+  ])(
+    "invalidates a confirmed label on ownership or selection change %j",
+    (change) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "harness-a",
+        models: [],
+      });
+      const view = renderControls({
+        ...selection,
+        sessionConfig: confirmedModelConfig(),
+      });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        "Confirmed session model",
+      );
+      view.rerenderControls({ ...selection, ...change, sessionConfig: null });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        /^Model$/,
+      );
+      view.rerenderControls({ ...selection, sessionConfig: null });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        /^Model$/,
+      );
+    },
+  );
+
+  it("prefers current config and the confirmed model's catalog name over cached or launch labels", () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "harness-a",
+      models: [{ id: "launch-model", name: "Launch model" }],
+    });
+    const sessionConfig = confirmedModelConfig();
+    if (!sessionConfig) throw new Error("Config did not decode");
+    const view = renderControls({ ...selection, sessionConfig });
+    view.rerenderControls({ ...selection, sessionConfig: null });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      "Confirmed session model",
+    );
+    useWorkbenchStore.setState({
+      models: [{ id: "session-model", name: "Updated catalog label" }],
+    });
+    view.rerenderControls({ ...selection, sessionConfig: null });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      "Updated catalog label",
+    );
+    view.rerenderControls({
+      ...selection,
+      sessionConfig: {
+        ...sessionConfig,
+        configOptions: [
+          {
+            ...sessionConfig.configOptions[0],
+            type: "select",
+            currentValue: "new-model",
+            options: [{ value: "new-model", name: "New confirmed model" }],
+          },
+        ],
+      },
+    });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      "New confirmed model",
+    );
+  });
+
+  it("invalidates the label when the authoritative Project changes with the same Chat/session scope", () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "harness-a",
+      models: [],
+      project: { id: "project-one", name: "One", roots: [] },
+    });
+    const view = renderControls({
+      ...selection,
+      sessionConfig: confirmedModelConfig(),
+    });
+    useWorkbenchStore.setState({
+      project: { id: "project-two", name: "Two", roots: [] },
+    });
+    view.rerenderControls({ ...selection, sessionConfig: null });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Model$/,
+    );
+  });
+
+  it("keeps two side-by-side pane labels isolated when one config expires or changes owner", () => {
+    useWorkbenchStore.setState({ selectedHarnessId: "harness-a", models: [] });
+    const config = confirmedModelConfig();
+    if (!config) throw new Error("Config did not decode");
+    const first = renderControls({ ...selection, sessionConfig: config });
+    const second = renderControls({
+      ...selection,
+      modelLabelScope: "project/chat-two/session-two",
+      sessionConfig: {
+        ...config,
+        sageAgentSessionId: "session-two",
+        configOptions: [
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            currentValue: "other-model",
+            options: [{ value: "other-model", name: "Other pane model" }],
+          },
+        ],
+      },
+    });
+    first.rerenderControls({ ...selection, sessionConfig: null });
+    expect(
+      screen
+        .getAllByRole("button", { name: "Model" })
+        .map((chip) => chip.textContent),
+    ).toEqual(["Confirmed session model", "Other pane model"]);
+    second.rerenderControls({
+      ...selection,
+      modelLabelScope: "project/chat-three/session-three",
+      sessionConfig: null,
+    });
+    expect(
+      screen
+        .getAllByRole("button", { name: "Model" })
+        .map((chip) => chip.textContent),
+    ).toEqual(["Confirmed session model", "Model"]);
+  });
+});
 
 describe("composer permission mode picker", () => {
   it("keeps project choices reachable from the plus menu", () => {

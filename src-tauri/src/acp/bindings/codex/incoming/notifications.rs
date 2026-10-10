@@ -314,6 +314,22 @@ fn turn_completed(
         "failed" => TurnState::Failed,
         _ => return Err(IngressError::Malformed),
     };
+    let terminal_error = if state == TurnState::Failed {
+        turn.get("error")
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                let error = value.as_object().ok_or(IngressError::Malformed)?;
+                let message = text(
+                    error,
+                    "message",
+                    crate::acp::limits::LIMITS.wire.error_bytes as usize,
+                )?;
+                error_payload("codex", message, false)
+            })
+            .transpose()?
+    } else {
+        None
+    };
     match adapter
         .accept_turn_terminal(external, state)
         .map_err(identity)?
@@ -323,7 +339,12 @@ fn turn_completed(
             let id = adapter
                 .scoped_in_turn(ExternalKind::Turn, external, external)
                 .map_err(identity)?;
-            Ok(IncomingEvent::Turn { id, state }.into())
+            let mut events = Vec::with_capacity(2);
+            if let Some(payload) = terminal_error {
+                events.push(IncomingEvent::Error(payload));
+            }
+            events.push(IncomingEvent::Turn { id, state });
+            Ok(IngressDisposition::Events(events))
         }
         TerminalUpdate::NoOp => Ok(IngressDisposition::DuplicateTerminal),
         TerminalUpdate::Conflict => Err(IngressError::TerminalConflict),

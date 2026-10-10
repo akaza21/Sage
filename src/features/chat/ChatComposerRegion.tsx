@@ -33,6 +33,7 @@ export function ChatComposerRegion({
   composerRef,
   fieldId,
   dictationScope,
+  sessionId = null,
   descriptionId,
   disabledReasonId,
   text,
@@ -86,6 +87,7 @@ export function ChatComposerRegion({
   composerRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   dictationScope: string;
+  sessionId?: string | null;
   descriptionId: string;
   disabledReasonId: string;
   text: string;
@@ -281,6 +283,7 @@ export function ChatComposerRegion({
       ) : null}
       <div className="composer__toolbar">
         <ChatHarnessControls
+          modelLabelScope={JSON.stringify([dictationScope, sessionId])}
           imageControl={
             <ComposerImageButton
               available={imageInputAvailable}

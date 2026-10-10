@@ -45,8 +45,11 @@
 }
 
 .message-list__content .acp-turn > .acp-turn__header {
+  grid-column: 1;
+  width: min(100%, var(--reading-measure));
+  margin-inline: auto;
   min-height: 0;
-  margin: 0;
+  margin-block: 0;
 }
 
 .message-list__content .acp-turn > .acp-turn__items {

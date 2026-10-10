@@ -13,13 +13,12 @@ import {
 function lastAssistantItem(
   page: AcpChatPage | null,
 ): Extract<AcpItem, { kind: "text" }> | null {
-  if (!page) return null;
-  for (let turn = page.turns.length - 1; turn >= 0; turn--)
-    for (let index = page.turns[turn].items.length - 1; index >= 0; index--) {
-      const item = page.turns[turn].items[index];
-      if (item.kind === "text" && item.payload.role === "assistant")
-        return item;
-    }
+  const turn = page?.turns.at(-1);
+  if (!turn || !terminalTurnStates.has(turn.state)) return null;
+  for (let index = turn.items.length - 1; index >= 0; index--) {
+    const item = turn.items[index];
+    if (item.kind === "text" && item.payload.role === "assistant") return item;
+  }
   return null;
 }
 
@@ -77,13 +76,15 @@ export function ChatTranscriptFooter({
   const [copied, setCopied] = useState(false);
   const CopyIcon = copied ? Check : Copy;
   const acpAssistant = lastAssistantItem(page);
-  const legacyAssistant = [...messages]
-    .reverse()
-    .find((message) => message.role === "assistant");
-  const text = acpAssistant?.payload.text ?? legacyAssistant?.text ?? "";
-  const timestamp = acpAssistant?.createdAt ?? legacyAssistant?.createdAt;
+  const legacyAssistant = page
+    ? undefined
+    : [...messages].reverse().find((message) => message.role === "assistant");
+  const text = page
+    ? (acpAssistant?.payload.text ?? "")
+    : (legacyAssistant?.text ?? "");
+  const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
 
-  if (!text) return null;
+  if (!text.trim()) return null;
 
   async function copyAnswer() {
     try {
