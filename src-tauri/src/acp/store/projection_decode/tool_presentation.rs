@@ -77,6 +77,7 @@ pub(super) fn presentation(
         ToolCategory::Subagent => ToolPresentation::Subagent {
             label,
             activity_id: None,
+            task_lifecycle: execution.task_lifecycle,
         },
         ToolCategory::Other => ToolPresentation::Other {
             label,

@@ -348,11 +348,16 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
     }
     case "subagent": {
       const activityId = safeNullableIdentifier(value.activityId);
-      return activityId === undefined
+      return activityId === undefined ||
+        (value.taskLifecycle !== undefined &&
+          typeof value.taskLifecycle !== "boolean")
         ? null
         : {
             kind: "subagent",
             label,
+            ...(value.taskLifecycle === undefined
+              ? {}
+              : { taskLifecycle: value.taskLifecycle }),
             activityId: activityId as Extract<
               ToolPresentation,
               { kind: "subagent" }

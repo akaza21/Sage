@@ -87,6 +87,64 @@ fn a_seen_safe_agent_path_names_a_later_grouped_completion() {
     );
 }
 #[test]
+fn subagent_labels_retain_300_identities_and_evict_only_at_301() {
+    let mut labels = SubagentLabels::default();
+    for index in 0..300 {
+        let activity = item(json!({
+            "type": "subAgentActivity", "id": format!("activity-{index}"),
+            "agentThreadId": format!("child-{index}"), "agentPath": format!("Reviewer {index}"),
+            "kind": "started"
+        }));
+        let (mut payload, _, _) =
+            normalize_item(&activity, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .unwrap();
+        labels.apply(&mut payload);
+    }
+    for (expected, extra) in [("Reviewer 0", false), ("", true)] {
+        if extra {
+            let activity = item(json!({"type": "subAgentActivity", "id": "activity-300",
+                "agentThreadId": "child-300", "agentPath": "Reviewer 300", "kind": "started"}));
+            let (mut payload, _, _) =
+                normalize_item(&activity, ItemLifecycle::Completed, &UnusedMapper)
+                    .unwrap()
+                    .unwrap();
+            labels.apply(&mut payload);
+        }
+        let wait = item(
+            json!({"type": "collabAgentToolCall", "id": "wait-1", "tool": "wait",
+            "receiverThreadIds": ["child-0", "unnamed"],
+            "agentsStates": {"child-0": {"status": "completed"}, "unnamed": {"status": "completed"}}}),
+        );
+        let (mut payload, _, _) = normalize_item(&wait, ItemLifecycle::Completed, &UnusedMapper)
+            .unwrap()
+            .unwrap();
+        labels.apply(&mut payload);
+        assert!(
+            matches!(payload, NormalizedPayload::Collaboration { receiver_labels, .. }
+            if receiver_labels.as_slice().iter().map(SafeText::as_str).collect::<Vec<_>>() == vec![expected, ""])
+        );
+    }
+}
+
+#[test]
+fn a_later_unlabelled_child_activity_retains_its_supplied_identity() {
+    let mut labels = SubagentLabels::default();
+    for (path, kind) in [(Some("Reviewer"), "started"), (None, "interrupted")] {
+        let activity = item(json!({"type": "subAgentActivity", "id": kind,
+            "agentThreadId": "child-1", "agentPath": path, "kind": kind}));
+        let (mut payload, _, _) =
+            normalize_item(&activity, ItemLifecycle::Completed, &UnusedMapper)
+                .unwrap()
+                .unwrap();
+        labels.apply(&mut payload);
+        assert!(
+            matches!(payload, NormalizedPayload::Collaboration { label, .. } if label.as_str() == "Reviewer")
+        );
+    }
+}
+
+#[test]
 fn codex_spawn_preserves_the_verified_operation_and_receivers() {
     let spawn = item(json!({
         "type": "collabAgentToolCall",
@@ -106,6 +164,19 @@ fn codex_spawn_preserves_the_verified_operation_and_receivers() {
                 && operation.as_str() == "spawnAgent"
                 && agent_keys.as_slice()[0].as_str() == "child-1"
                 && agent_states.as_slice()[0].1.as_str() == "running")
+    );
+}
+
+#[test]
+fn completed_child_activity_preserves_its_emitted_operation() {
+    let activity = item(json!({"type": "subAgentActivity", "id": "done-1",
+        "agentThreadId": "child-1", "agentPath": "Reviewer", "kind": "completed"}));
+    let (payload, _, _) = normalize_item(&activity, ItemLifecycle::Completed, &UnusedMapper)
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(payload, NormalizedPayload::Collaboration { operation: Some(operation), .. }
+        if operation.as_str() == "completed")
     );
 }
 

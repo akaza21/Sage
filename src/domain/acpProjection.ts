@@ -99,6 +99,7 @@ export type ToolPresentation =
       kind: "subagent";
       label: string;
       activityId: SageActivityId | null;
+      taskLifecycle?: boolean;
     }
   | {
       kind: "other";

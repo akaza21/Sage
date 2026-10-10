@@ -4,7 +4,7 @@ use crate::acp::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         COMMAND_RESOURCE_LIMIT, ExternalId, FileChangeFacts, FileChangeOperation,
-        NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution,
+        NormalizedPayload, SafeResourceLocation, ToolCategory,
     },
     lifecycle::ItemLifecycle,
     limits::LIMITS,
@@ -30,7 +30,6 @@ use super::{
 pub(super) const FILE_CHANGE_SUMMARY: &str = "File change reported over ACP";
 pub(super) const POST_TERMINAL_TOOL_MUTATION: &str =
     "ACP harness mutated a settled tool call after it reached a terminal state";
-const OUTPUT_TAIL_BYTES: usize = 16_384;
 
 impl StandardAcpTranslator {
     pub(super) fn tool_call(
@@ -104,7 +103,8 @@ impl StandardAcpTranslator {
         self.tool_labels
             .insert(id.as_str().to_owned(), label.clone());
         self.record_diffs(id.as_str(), std::mem::take(&mut outcome.observed));
-        let execution = tool_execution(
+        let execution = self.tool_execution(
+            category,
             outcome
                 .terminal_output
                 .as_deref()
@@ -235,7 +235,8 @@ impl StandardAcpTranslator {
         if let Some(input) = input_summary {
             self.set_command_input(id.as_str(), input);
         }
-        let execution = tool_execution(
+        let execution = self.tool_execution(
+            category,
             outcome
                 .terminal_output
                 .as_deref()
@@ -388,20 +389,4 @@ fn output_payload(
         ToolCategory::Fetch => Ok(CommandPatch::locations_only(locations)),
         _ => content_update_payload(update, locations),
     }
-}
-
-pub(super) fn tool_execution(output: Option<&str>) -> Result<ToolExecution, TranslationError> {
-    let Some(output) = output.filter(|value| !value.is_empty()) else {
-        return Ok(ToolExecution::default());
-    };
-    let mut start = output.len().saturating_sub(OUTPUT_TAIL_BYTES);
-    while !output.is_char_boundary(start) {
-        start = start.saturating_add(1);
-    }
-    Ok(ToolExecution {
-        cwd: None,
-        exit_code: None,
-        output_tail: Some(SafeText::new("toolOutputTail", &output[start..])?),
-        output_truncated: start != 0,
-    })
 }

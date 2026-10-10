@@ -1,5 +1,10 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
+import {
+  collaborationRun,
+  subagentToolSummary,
+  type CollaborationProjectionItem,
+} from "./subagentActivity";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -13,7 +18,12 @@ export type ToolRollup = {
 };
 
 export type PrimaryActivityItem =
-  { kind: "item"; item: AcpItem } | { kind: "toolRollup"; rollup: ToolRollup };
+  | { kind: "item"; item: AcpItem }
+  | { kind: "toolRollup"; rollup: ToolRollup }
+  | {
+      kind: "collaborationRollup";
+      items: readonly CollaborationProjectionItem[];
+    };
 
 function isToolItem(item: AcpItem): item is ToolProjectionItem {
   return item.kind === "toolCall";
@@ -132,7 +142,13 @@ export function toolRollupLabel(
       }
       return `MCP activity · ${countLabel(items.length, "tool")}`;
     case "subagent":
-      return `Subagent activity · ${countLabel(items.length, "item")}`;
+      return items.every(
+        (item) =>
+          item.payload.presentation.kind === "subagent" &&
+          item.payload.presentation.taskLifecycle === true,
+      )
+        ? subagentToolSummary(items)
+        : `Subagent activity · ${countLabel(items.length, "item")}`;
     case "other":
       if (
         items.length === 1 &&
@@ -319,6 +335,12 @@ export function groupPrimaryActivities(
   let cursor = 0;
   while (cursor < items.length) {
     const item = items[cursor];
+    const collaborators = collaborationRun(items, cursor);
+    if (collaborators) {
+      grouped.push({ kind: "collaborationRollup", items: collaborators });
+      cursor += collaborators.length;
+      continue;
+    }
     if (!item || !isToolItem(item)) {
       if (item) grouped.push({ kind: "item", item });
       cursor += 1;
@@ -339,7 +361,11 @@ export function groupPrimaryActivities(
         !(
           (canJoinMixed(item) && canJoinMixed(candidate)) ||
           (candidate.payload.presentation.kind === toolKind &&
-            commandActivity(candidate) === activity)
+            commandActivity(candidate) === activity &&
+            (item.payload.presentation.kind !== "subagent" ||
+              (candidate.payload.presentation.kind === "subagent" &&
+                candidate.payload.presentation.taskLifecycle ===
+                  item.payload.presentation.taskLifecycle)))
         )
       )
         break;

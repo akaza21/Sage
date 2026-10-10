@@ -18,6 +18,7 @@ use crate::{
 use super::tests::{Mapper, frame, initialize, request_id};
 
 mod command_summary_tests;
+mod task_lifecycle_tests;
 
 #[derive(Default)]
 struct Sink {

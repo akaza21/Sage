@@ -26,11 +26,15 @@ impl SubagentLabels {
             if let Some((_, existing)) = self.entries.iter_mut().find(|(entry, _)| entry == key) {
                 *existing = label.clone();
             } else {
-                if self.entries.len() == 32 {
+                if self.entries.len() == 300 {
                     self.entries.remove(0);
                 }
                 self.entries.push((key.clone(), label.clone()));
             }
+        } else if let Some(key) = agent_key.as_ref()
+            && let Some((_, existing)) = self.entries.iter().find(|(entry, _)| entry == key)
+        {
+            *label = existing.clone();
         }
         if agent_keys.as_slice().is_empty() {
             return;
@@ -39,13 +43,17 @@ impl SubagentLabels {
             .as_slice()
             .iter()
             .map(|key| {
-                self.entries
-                    .iter()
-                    .find(|(entry, _)| entry == key)
-                    .map(|(_, label)| label.clone())
+                SafeText::new(
+                    "receiverLabel",
+                    self.entries
+                        .iter()
+                        .find(|(entry, _)| entry == key)
+                        .map(|(_, label)| label.as_str())
+                        .unwrap_or(""),
+                )
             })
-            .collect::<Option<Vec<_>>>();
-        if let Some(labels) = labels
+            .collect::<Result<Vec<_>, _>>();
+        if let Ok(labels) = labels
             && let Ok(bounded) = BoundedVec::new("receiverLabels", labels)
         {
             *receiver_labels = bounded;

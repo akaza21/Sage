@@ -194,6 +194,8 @@ pub struct ToolExecution {
     pub exit_code: Option<i32>,
     pub output_tail: Option<SafeText<16384>>,
     pub output_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_lifecycle: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

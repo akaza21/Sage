@@ -4,6 +4,7 @@ import type { AcpItem } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
 import { groupPrimaryActivities } from "./toolActivityRollup";
+import { CollaborationItem } from "./CollaborationItem";
 
 export function PrimaryActivities({
   items,
@@ -26,6 +27,12 @@ export function PrimaryActivities({
             rollup={activity.rollup}
             interactive={interactive}
             onOpenResource={onOpenResource}
+          />
+        ) : activity.kind === "collaborationRollup" ? (
+          <CollaborationItem
+            key={activity.items[0].id}
+            item={activity.items[0]}
+            items={activity.items}
           />
         ) : (
           renderItem(activity.item)

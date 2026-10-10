@@ -118,6 +118,8 @@ pub enum ToolPresentation {
     Subagent {
         label: SafeText<512>,
         activity_id: Option<SageActivityId>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        task_lifecycle: Option<bool>,
     },
     Other {
         label: SafeText<512>,

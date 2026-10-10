@@ -40,6 +40,7 @@ import { AgentArtifactHeader } from "./AgentArtifactHeader";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
+import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
 import {
   useHarnessBrowseOwner,
@@ -123,6 +124,12 @@ export function AgentArtifactPane({
     latestSubagentForPage(focusedPageValid ? focusedPage : null);
   const subagentAvailable = subagentTarget !== null;
   const subagentSelected = selectedSubagent !== null && subagentSelectedState;
+  useSubagentPaneExpansion({
+    expanded,
+    selected: subagentSelected,
+    target: selectedSubagent,
+    onExpandedChange,
+  });
   const artifacts = useMemo(
     () =>
       orderedTabs(tabs).filter((tab) =>
@@ -223,16 +230,8 @@ export function AgentArtifactPane({
         ...(previewOpen
           ? [`preview:${agentArtifactOwnerKey(focusedOwner)}:${browseRevision}`]
           : []),
-        ...(subagentAvailable ? [`subagent:${subagentTarget?.itemId}`] : []),
       ]),
-    [
-      artifacts,
-      browseRevision,
-      focusedOwner,
-      previewOpen,
-      subagentAvailable,
-      subagentTarget,
-    ],
+    [artifacts, browseRevision, focusedOwner, previewOpen],
   );
 
   useEffect(() => {
@@ -242,10 +241,6 @@ export function AgentArtifactPane({
     availableResourceKeys.current = resourceKeys;
     if (!expanded && added) onExpandedChange?.(true);
   }, [expanded, onExpandedChange, resourceKeys]);
-
-  useEffect(() => {
-    if (subagentSelected && !expanded) onExpandedChange?.(true);
-  }, [expanded, onExpandedChange, subagentSelected]);
 
   useLayoutEffect(() => {
     if (expanded && !previousExpanded.current && focusOnExpand) {

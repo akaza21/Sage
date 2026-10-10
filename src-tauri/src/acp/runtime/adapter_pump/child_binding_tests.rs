@@ -5,6 +5,9 @@ use crate::acp::{
     store::DatabaseAcpStore,
 };
 
+#[path = "child_binding_tests/subagent_identity_tests.rs"]
+mod subagent_identity_tests;
+
 #[test]
 fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutation() {
     runtime().block_on(async {

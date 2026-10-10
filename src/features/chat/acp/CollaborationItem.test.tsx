@@ -121,7 +121,27 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("Subagent stopped")).toBeInTheDocument();
+    expect(screen.getByText("Code review stopped")).toBeInTheDocument();
+  });
+
+  it("shows an emitted completed child activity by its supplied name", () => {
+    const item = {
+      kind: "collaboration",
+      lifecycle: "completed",
+      payload: {
+        activityId: null,
+        label: "Reviewer",
+        summary: "",
+        receiverLabels: [],
+        operation: "completed",
+        agentKey: "child-1",
+        agentKeys: [],
+        agentStates: [],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    render(<CollaborationItem item={item} />);
+    expect(screen.getByText("Reviewer finished")).toBeVisible();
+    expect(screen.queryByText(/started working/)).toBeNull();
   });
 
   it("groups verified completions with available display names", () => {

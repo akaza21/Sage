@@ -376,6 +376,7 @@ fn merged_execution(update: ToolExecution, call: ToolExecution) -> ToolExecution
         exit_code: update.exit_code.or(call.exit_code),
         output_tail: update.output_tail.or(call.output_tail),
         output_truncated: update.output_truncated || call.output_truncated,
+        task_lifecycle: update.task_lifecycle.or(call.task_lifecycle),
     }
 }
 

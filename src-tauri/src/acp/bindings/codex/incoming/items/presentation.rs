@@ -197,6 +197,7 @@ pub(super) fn collaboration(item: &Map<String, Value>) -> Result<ItemNormalizati
                 | "started"
                 | "interacted"
                 | "interrupted"
+                | "completed"
         )
     });
     let agent_key = if is_call {

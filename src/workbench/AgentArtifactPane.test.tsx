@@ -233,6 +233,120 @@ afterEach(() => {
 });
 
 describe("Agent artifact file chips", () => {
+  it("keeps an explicitly selected child collapsed after dismissal until another explicit open", () => {
+    const onExpandedChange = vi.fn();
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "selected-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as AcpItem;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing focused scope");
+    store.getState().applyAuthoritativePage(scope, {
+      ...base,
+      turns: [{ ...base.turns[0], items: [child] }],
+    });
+    const target = {
+      owner: focusedOwner,
+      itemId: child.id,
+      agentKey: "child-a",
+    };
+    useSubagentPaneStore.getState().show(target);
+    const view = render(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    view.rerender(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    act(() =>
+      store.getState().applyAuthoritativePage(scope, {
+        ...base,
+        turns: [
+          {
+            ...base.turns[0],
+            items: [child, { ...child, id: "passive-new" } as AcpItem],
+          },
+        ],
+      }),
+    );
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
+    act(() => useSubagentPaneStore.getState().show({ ...target }));
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+  it("keeps passive child arrivals collapsed and expands only for explicit selection", async () => {
+    const onExpandedChange = vi.fn();
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "passive-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as AcpItem;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing focused scope");
+    store.getState().applyAuthoritativePage(scope, {
+      ...base,
+      turns: [{ ...base.turns[0], items: [] }],
+    });
+    const view = render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    act(() => {
+      store.getState().applyAuthoritativePage(scope, {
+        ...base,
+        turns: [{ ...base.turns[0], items: [child] }],
+      });
+    });
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Reviewer" })).toBeNull();
+    act(() => {
+      useSubagentPaneStore.getState().show({
+        owner: focusedOwner,
+        itemId: child.id,
+        agentKey: "child-a",
+      });
+    });
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    view.rerender(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    expect(screen.getByRole("tab", { name: "Subagents" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer" }),
+    ).toBeVisible();
+  });
   it("does not expose Subagents for conflicting child identities", () => {
     const base = pageWithEdit();
     const child = {

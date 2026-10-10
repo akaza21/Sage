@@ -61,7 +61,12 @@ function tool(
                   resultSummary: null,
                 }
               : kind === "subagent"
-                ? { kind, label: "Subagent activity", activityId: null }
+                ? {
+                    kind,
+                    label: "Subagent activity",
+                    activityId: null,
+                    taskLifecycle: true,
+                  }
                 : kind === "fetch"
                   ? { kind, label: "Web activity", url: null, summary: null }
                   : kind === "switchMode"
@@ -122,6 +127,86 @@ const unavailableFile: SafeResourceLocation = {
 };
 
 describe("ToolActivityRollup", () => {
+  it("leaves generic subagent tool wording unchanged without a binding-supplied Task lifecycle", () => {
+    const generic = tool("generic", "subagent");
+    generic.payload.presentation = {
+      kind: "subagent",
+      label: "Subagent activity",
+      activityId: null,
+    };
+    const task = tool("task", "subagent");
+    task.payload.presentation = {
+      kind: "subagent",
+      label: "Reviewer",
+      activityId: null,
+      taskLifecycle: true,
+    } as ToolItem["payload"]["presentation"];
+    expect(toolRollupLabel("subagent", [generic])).toBe(
+      "Subagent activity · 1 item",
+    );
+    expect(groupPrimaryActivities([task, generic])).toHaveLength(2);
+  });
+  it("summarizes all 64 admitted Task tools including a failure in the final slot", () => {
+    const items = Array.from({ length: 65 }, (_, index) =>
+      tool(`task-${index}`, "subagent"),
+    );
+    items[63].toolState = "failed";
+    const groups = groupPrimaryActivities(items);
+    expect(groups).toHaveLength(2);
+    const first = groups[0];
+    if (first.kind !== "toolRollup") throw new Error("Expected Task rollup");
+    expect(first.rollup.items).toHaveLength(64);
+    expect(toolRollupLabel("subagent", first.rollup.items)).toBe(
+      "63 subagents finished · Subagent failed",
+    );
+  });
+  it("uses supplied Task labels and each tool's state without claiming child reads", async () => {
+    const completed = tool("task-a", "subagent");
+    completed.payload.presentation.label = "Review accessibility";
+    const working = tool("task-b", "subagent");
+    working.payload.presentation.label = "Check build";
+    working.toolState = "inProgress";
+    working.terminalAt = null;
+    render(
+      <ToolActivityRollup
+        interactive
+        rollup={{
+          kind: "subagent",
+          commandActivity: "ordinary",
+          items: [completed, working],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Review accessibility finished · Check build started working",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Open Subagent/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /Subagent/ })).toBeNull();
+    fireEvent.click(
+      screen.getByText(
+        "Review accessibility finished · Check build started working",
+      ),
+    );
+    expect(await screen.findByText("Review accessibility")).toBeVisible();
+    expect(screen.getByText("Check build")).toBeVisible();
+  });
+
+  it("does not call pending, rejected, cancelled or failed Task tools started or finished", () => {
+    for (const [state, wording] of [
+      ["pending", "pending"],
+      ["waitingForApproval", "waiting for approval"],
+      ["declined", "declined"],
+      ["cancelled", "stopped"],
+      ["failed", "failed"],
+    ] as const) {
+      const task = tool("task", "subagent");
+      task.payload.presentation.label = "Reviewer";
+      task.toolState = state;
+      expect(toolRollupLabel("subagent", [task])).toBe(`Reviewer ${wording}`);
+    }
+  });
   it("groups adjacent completed tools in order and bounds a group", () => {
     const items = [
       tool("file-1", "read"),
@@ -348,7 +433,9 @@ describe("ToolActivityRollup", () => {
       grouped.map((row) =>
         row.kind === "item"
           ? row.item.id
-          : row.rollup.items.map((item) => item.id),
+          : row.kind === "toolRollup"
+            ? row.rollup.items.map((item) => item.id)
+            : row.items.map((item) => item.id),
       ),
     ).toEqual([["one", "two"], "prose", ["three"]]);
     const first = grouped[0];

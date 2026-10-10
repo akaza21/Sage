@@ -177,7 +177,9 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
     );
   });
   const pane = page.locator(".agent-chat-pane");
-  await expect(pane.getByText("Reviewer started working")).toBeVisible();
+  await expect(
+    pane.getByText("Reviewer, Builder and Tester started working"),
+  ).toBeVisible();
   await expect(pane.getByText("Builder and Tester finished")).toBeVisible();
   await expect(pane.locator(".acp-subagent-row__glyph")).toHaveCount(5);
   await expect(pane.locator(".chat-transcript-work__groups")).toHaveScreenshot(

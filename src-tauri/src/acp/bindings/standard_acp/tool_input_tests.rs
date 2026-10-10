@@ -43,6 +43,78 @@ fn input(events: &[AdapterEvent]) -> Option<&str> {
 }
 
 #[test]
+fn only_curated_task_tools_carry_lifecycle_wording_through_completion() {
+    for (harness, expected) in [
+        ("claude-code", Some(true)),
+        ("opencode", None),
+        ("gemini-cli", None),
+        ("cursor-agent", None),
+    ] {
+        let mut translator = translator(harness);
+        for update_value in [
+            json!({"sessionUpdate":"tool_call","toolCallId":"task-1","kind":"other",
+                "title":"Review accessibility","status":"in_progress","_meta":{"toolName":"Task"}}),
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"task-1","status":"completed"}),
+        ] {
+            let events = update(&mut translator, update_value);
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event, AdapterEvent::Item {
+                payload: NormalizedPayload::ToolCall { label, execution, .. }, ..
+            } if label.as_str() == "Review accessibility" && execution.task_lifecycle == expected)),
+                "{harness}"
+            );
+        }
+    }
+}
+
+#[test]
+fn task_permission_relabel_and_settlement_preserve_only_curated_lifecycle_metadata() {
+    for (harness, expected) in [("claude-code", Some(true)), ("opencode", None)] {
+        for cancelled in [false, true] {
+            let mut translator = translator(harness);
+            update(
+                &mut translator,
+                json!({"sessionUpdate":"tool_call","toolCallId":"task-1",
+                "kind":"other","status":"pending","_meta":{"toolName":"Task"}}),
+            );
+            let events = translator
+                .translate_permission_request_value(json!({
+                    "jsonrpc":"2.0","id":7,"method":"session/request_permission",
+                    "params":{"sessionId":"session-1","toolCall":{"toolCallId":"task-1",
+                        "title":"Review accessibility"},"options":[
+                        {"optionId":"allow-once","name":"Allow","kind":"allow_once"},
+                        {"optionId":"reject-once","name":"Reject","kind":"reject_once"}]}
+                }))
+                .unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event, AdapterEvent::Item {
+                external_key, tool_state: Some(crate::acp::lifecycle::ToolState::WaitingForApproval),
+                payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Subagent, label, execution, .. }, ..
+            } if external_key.as_str() == "task-1" && label.as_str() == "Review accessibility" && execution.task_lifecycle == expected))
+            );
+            let settled = if cancelled {
+                translator.permission_cancel_committed("7").unwrap()
+            } else {
+                translator.permission_decline_committed("7").unwrap()
+            };
+            let state = if cancelled {
+                crate::acp::lifecycle::ToolState::Cancelled
+            } else {
+                crate::acp::lifecycle::ToolState::Declined
+            };
+            assert!(matches!(settled, AdapterEvent::Item {
+                external_key, tool_state: Some(actual),
+                payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Subagent, label, execution, .. }, ..
+            } if external_key.as_str() == "task-1" && actual == state && label.as_str() == "Review accessibility" && execution.task_lifecycle == expected));
+        }
+    }
+}
+
+#[test]
 fn claude_execute_input_is_sanitized_and_retained_without_permission() {
     let events = update(
         &mut translator("claude-code"),

@@ -4,9 +4,14 @@ import {
   attributedSubagentKey,
   useSubagentPaneStore,
 } from "../../../app/subagentPaneStore";
-import type { AcpItem } from "../../../domain/acp";
-
-type CollaborationProjectionItem = Extract<AcpItem, { kind: "collaboration" }>;
+import {
+  collaborationRows,
+  MAX_SUBAGENT_GROUP_ITEMS,
+  subagentSummary,
+  type CollaborationProjectionItem,
+  type SubagentEntry,
+  type SubagentRowState,
+} from "./subagentActivity";
 
 const collaborationStateLabels = {
   started: "Observed",
@@ -26,130 +31,88 @@ function avatarColor(key: string): number {
 
 export function CollaborationItem({
   item,
+  items = [item],
 }: {
   item: CollaborationProjectionItem;
+  items?: readonly CollaborationProjectionItem[];
 }) {
   const descriptionId = useId();
   const status = collaborationStateLabels[item.lifecycle];
-  const { operation, agentStates = [], agentKeys = [] } = item.payload;
-  const finished = agentStates.filter(([, state]) => state === "completed");
-  const working = agentStates.filter(
-    ([, state]) => state === "running" || state === "pendingInit",
-  );
-  const failed = agentStates.filter(
-    ([, state]) => state === "errored" || state === "notFound",
-  );
-  const stopped = agentStates.filter(
-    ([, state]) => state === "shutdown" || state === "interrupted",
-  );
-  const isStarted =
-    (operation === "started" && Boolean(item.payload.agentKey)) ||
-    (operation === "spawnAgent" && working.length > 0);
-  const isFinished = finished.length > 0;
-  const isInterruptedActivity =
-    operation === "interrupted" && Boolean(item.payload.agentKey);
-  if (
-    isStarted ||
-    isFinished ||
-    failed.length > 0 ||
-    stopped.length > 0 ||
-    isInterruptedActivity
-  ) {
-    const count = isFinished
-      ? finished.length
-      : failed.length > 0
-        ? failed.length
-        : stopped.length > 0 || isInterruptedActivity
-          ? stopped.length || 1
-          : operation === "started"
-            ? 1
-            : working.length;
-    const agentLabel =
-      count === 1 && item.payload.receiverLabels.length === 1
-        ? item.payload.receiverLabels[0]
-        : operation === "started"
-          ? item.payload.label
-          : "Subagent";
-    const names =
-      isFinished && item.payload.receiverLabels.length === agentKeys.length
-        ? finished.map(
-            ([key]) => item.payload.receiverLabels[agentKeys.indexOf(key)],
-          )
-        : [];
-    const named = names.length === count && names.every(Boolean);
-    const namedList =
-      count === 1
-        ? names[0]
-        : `${names.slice(0, -1).join(", ")} and ${names[count - 1]}`;
-    const text = isFinished
-      ? named
-        ? `${namedList} finished`
-        : count === 1
-          ? "Subagent finished"
-          : `${count} subagents finished`
-      : failed.length > 0
-        ? count === 1
-          ? "Subagent failed to start"
-          : `${count} subagents failed to start`
-        : stopped.length > 0 || isInterruptedActivity
-          ? count === 1
-            ? "Subagent stopped"
-            : `${count} subagents stopped`
-          : count === 1
-            ? `${agentLabel} started working`
-            : `${count} subagents started working`;
-    const owner = {
-      projectId: item.projectId,
-      chatId: item.chatId,
-      sessionId: item.sessionId,
-    };
-    const visibleKeys = isFinished
-      ? finished.map(([key]) => key)
-      : failed.length > 0
-        ? failed.map(([key]) => key)
-        : stopped.length > 0
-          ? stopped.map(([key]) => key)
-          : isInterruptedActivity
-            ? [item.payload.agentKey]
-            : operation === "started"
-              ? [item.payload.agentKey]
-              : working.map(([key]) => key);
-    const agentKey = attributedSubagentKey(item, visibleKeys);
-    const Row = agentKey ? "button" : "div";
+  const rows = new Map<SubagentRowState, Map<string, SubagentEntry>>();
+  for (const member of items.slice(0, MAX_SUBAGENT_GROUP_ITEMS)) {
+    for (const row of collaborationRows(member)) {
+      const entries = rows.get(row.state) ?? new Map();
+      for (const entry of row.entries) {
+        if (
+          (entry.label || !entries.has(entry.key)) &&
+          entries.size < MAX_SUBAGENT_GROUP_ITEMS
+        )
+          entries.set(entry.key, entry);
+      }
+      rows.set(row.state, entries);
+    }
+  }
+  if (rows.size > 0) {
     return (
-      <Row
-        className="acp-subagent-row"
-        {...(agentKey
-          ? {
-              type: "button" as const,
-              "aria-label": `${text}. Open Subagent`,
-              onClick: () =>
-                useSubagentPaneStore.getState().show({
-                  owner,
-                  itemId: item.id,
-                  agentKey,
-                }),
-            }
-          : {})}
-      >
-        <span className="acp-subagent-row__glyphs" aria-hidden="true">
-          {Array.from({ length: Math.min(count, 3) }, (_, index) => (
-            <span
-              key={index}
-              className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(visibleKeys[index] ?? item.payload.agentKey ?? item.id ?? "subagent")}`}
+      <>
+        {[...rows].map(([state, entries]) => {
+          const agents = [...entries.values()];
+          const text = subagentSummary(
+            agents.map((agent) => agent.label),
+            state,
+          );
+          const source =
+            agents.length === 1
+              ? items.find((member) =>
+                  attributedSubagentKey(member, [agents[0].key]),
+                )
+              : undefined;
+          const agentKey = source ? agents[0].key : null;
+          const Row = agentKey ? "button" : "div";
+          return (
+            <Row
+              key={state}
+              className="acp-subagent-row"
+              {...(source && agentKey
+                ? {
+                    type: "button" as const,
+                    "aria-label": `${text}. Open Subagent`,
+                    onClick: () =>
+                      useSubagentPaneStore.getState().show({
+                        owner: {
+                          projectId: source.projectId,
+                          chatId: source.chatId,
+                          sessionId: source.sessionId,
+                        },
+                        itemId: source.id,
+                        agentKey,
+                      }),
+                  }
+                : {})}
             >
-              {isFinished ? "●" : "✦"}
-            </span>
-          ))}
-        </span>
-        <span
-          role="status"
-          aria-label={text}
-          className={isStarted ? "acp-live-shimmer" : undefined}
-        >
-          {text}
-        </span>
-      </Row>
+              <span className="acp-subagent-row__glyphs" aria-hidden="true">
+                {agents.slice(0, 3).map((agent) => (
+                  <span
+                    key={agent.key}
+                    className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
+                  >
+                    {state === "finished" ? "●" : "✦"}
+                  </span>
+                ))}
+              </span>
+              <span
+                role="status"
+                aria-label={text}
+                className={
+                  state === "started working" ? "acp-live-shimmer" : undefined
+                }
+              >
+                {text}
+              </span>
+            </Row>
+          );
+        })}
+      </>
     );
   }
   return (
