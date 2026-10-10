@@ -293,6 +293,7 @@ export function TurnActivityItem({
     case "plan":
       return <PlanActivity item={item} workingItems={workingItems} />;
     case "compactionNotice":
+      if (item.lifecycle === "unsupported") return null;
       return (
         <p
           className="acp-compaction-notice"
@@ -305,9 +306,7 @@ export function TurnActivityItem({
               ? "Compacting context…"
               : item.lifecycle === "failed"
                 ? "Context compaction failed"
-                : item.lifecycle === "cancelled"
-                  ? "Context compaction cancelled"
-                  : "Context compaction interrupted"}
+                : "Context compaction cancelled"}
         </p>
       );
     case "error":

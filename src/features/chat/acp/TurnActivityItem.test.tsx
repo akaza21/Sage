@@ -57,12 +57,23 @@ it.each([
   ["completed", "Context automatically compacted"],
   ["failed", "Context compaction failed"],
   ["cancelled", "Context compaction cancelled"],
-  ["unsupported", "Context compaction interrupted"],
 ] as const)("renders shared %s compaction copy", (lifecycle, copy) => {
   render(
     <TurnActivityItem item={{ ...item("compactionNotice", {}), lifecycle }} />,
   );
   expect(screen.getByRole("status").textContent).toBe(copy);
+});
+
+it("does not invent compaction outcome copy for an unsupported lifecycle", () => {
+  const { container } = render(
+    <TurnActivityItem
+      item={{ ...item("compactionNotice", {}), lifecycle: "unsupported" }}
+    />,
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(
+    container.querySelector('[data-activity-kind="compactionNotice"]'),
+  ).toBeNull();
 });
 
 describe("TurnActivityItem", () => {

@@ -29,7 +29,7 @@ describe("UnknownItem", () => {
     expect(screen.getByText(item.payload.category)).not.toBeVisible();
   });
 
-  it.each(["pi_dialog_cancelled", "extension_cancelled"])(
+  it.each(["pi_dialog_cancelled"])(
     "shows a cancelled activity's human-readable summary instead of %s",
     (category) => {
       const item = {
@@ -52,6 +52,44 @@ describe("UnknownItem", () => {
       ).toHaveClass("acp-lifecycle-notice");
     },
   );
+
+  it.each([
+    "claude.future",
+    "opencode.future",
+    "omp.future",
+    "extension_cancelled",
+  ])("preserves main's unsupported card for non-Pi category %s", (category) => {
+    for (const lifecycle of ["unsupported", "cancelled"] as const) {
+      const item = {
+        kind: "unsupported",
+        lifecycle,
+        payload: {
+          category,
+          summary: "A truncated unsupported activity summary.",
+          truncated: true,
+        },
+      } as Extract<AcpItem, { kind: "unsupported" }>;
+      const { container, unmount } = render(<UnknownItem item={item} />);
+      expect(container.querySelector("header strong")?.textContent).toBe(
+        "Unsupported activity",
+      );
+      expect(container.querySelector("header")).not.toHaveTextContent(
+        item.payload.summary,
+      );
+      expect(container.querySelector("details p")?.textContent).toBe(
+        item.payload.summary,
+      );
+      expect(screen.getByText(item.payload.summary)).not.toBeVisible();
+      expect(screen.getByText(category)).not.toBeVisible();
+      expect(screen.getByText("Summary truncated")).not.toBeVisible();
+      expect(screen.getByRole("status").textContent).toBe("Unsupported");
+      expect(container.querySelector("article")).toHaveAttribute(
+        "data-activity-state",
+        "unsupported",
+      );
+      unmount();
+    }
+  });
 
   it("renders only the normalized bounded fallback", () => {
     const item = {

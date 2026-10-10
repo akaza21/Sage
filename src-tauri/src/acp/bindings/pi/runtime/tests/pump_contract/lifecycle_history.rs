@@ -1,5 +1,9 @@
 use super::*;
-use crate::acp::{lifecycle::ItemLifecycle, projection::ItemContent, store::load_chat_page};
+use crate::acp::{
+    lifecycle::{ItemLifecycle, TurnState},
+    projection::ItemContent,
+    store::load_chat_page,
+};
 
 struct TempRoot(std::path::PathBuf);
 impl TempRoot {
@@ -12,6 +16,63 @@ impl TempRoot {
 impl Drop for TempRoot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[tokio::test]
+async fn unfinished_compaction_preserves_failed_and_cancelled_outcomes_after_reopen() {
+    for (stop_reason, turn_state, lifecycle) in [
+        ("stop", TurnState::Completed, ItemLifecycle::Cancelled),
+        ("error", TurnState::Failed, ItemLifecycle::Failed),
+        ("aborted", TurnState::Interrupted, ItemLifecycle::Cancelled),
+    ] {
+        let root = TempRoot::new();
+        let path = root.0.join("sage.db");
+        let fixture = Fixture::new();
+        let mut pump = fixture.pump(ready_adapter());
+        start(&mut pump).await;
+        pump.push_stdout_chunk(&line(json!({"type":"compaction_start"})), 3)
+            .await
+            .unwrap();
+        pump.push_stdout_chunk(
+            &line(json!({"type":"agent_end", "messages":[{
+                "role":"assistant", "stopReason":stop_reason
+            }]})),
+            20,
+        )
+        .await
+        .unwrap();
+        pump.push_stdout_chunk(&line(json!({"type":"agent_settled"})), 21)
+            .await
+            .unwrap();
+        assert!(pump.completed_turn_ready());
+        {
+            let source = fixture.database.connection();
+            let mut copy = rusqlite::Connection::open(&path).unwrap();
+            rusqlite::backup::Backup::new(&source, &mut copy)
+                .unwrap()
+                .run_to_completion(256, std::time::Duration::ZERO, None)
+                .unwrap();
+        }
+        let reopened = crate::persistence::Database::open(&path).unwrap();
+        for database in [&fixture.database, &reopened] {
+            let connection = database.connection();
+            let page =
+                load_chat_page(&connection, owner().project_id, owner().chat_id, None).unwrap();
+            assert_eq!(page.turns.as_slice().len(), 1);
+            let turn = &page.turns.as_slice()[0];
+            assert_eq!(turn.state, turn_state);
+            let compactions = turn
+                .items
+                .as_slice()
+                .iter()
+                .filter(|item| matches!(item.content, ItemContent::CompactionNotice {}))
+                .collect::<Vec<_>>();
+            assert_eq!(compactions.len(), 1);
+            assert_eq!(compactions[0].lifecycle, lifecycle);
+        }
+        drop(reopened);
+        fixture.finish().await;
     }
 }
 

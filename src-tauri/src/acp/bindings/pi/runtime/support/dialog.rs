@@ -47,9 +47,6 @@ impl PiRuntime {
         &mut self,
         id: String,
     ) -> Result<(Option<AdapterEvent>, Option<AdapterEgress>), AdapterRuntimeError> {
-        if self.dialog_cancelled(&id) {
-            return Ok((Some(AdapterEvent::IgnoredDuplicate), None));
-        }
         if self.cancelled_dialogs.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
             self.poison();
             return Err(AdapterRuntimeError::MandatoryDenyTeardown);

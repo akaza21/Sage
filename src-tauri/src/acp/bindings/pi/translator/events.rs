@@ -195,7 +195,12 @@ impl PiTranslator {
                 }
                 if turn.compaction_active {
                     turn.compaction_active = false;
-                    events.push(AdapterOutput::CompactionInterrupted);
+                    events.push(match incoming {
+                        TerminalOutcome::Failed => AdapterOutput::CompactionFailed,
+                        TerminalOutcome::Completed | TerminalOutcome::Interrupted => {
+                            AdapterOutput::CompactionInterrupted
+                        }
+                    });
                 }
                 events.push(AdapterOutput::TurnTerminal {
                     turn_key: turn.turn_key.clone(),
