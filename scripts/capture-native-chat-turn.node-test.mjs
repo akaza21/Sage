@@ -4,8 +4,13 @@ import vm from "node:vm";
 import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as dom from "./capture-native-chat-dom.mjs";
+import { paneSelector } from "./capture-native-chat-pane.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
-import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
+import {
+  nativeCases,
+  truthfulAbsentStates,
+  nativeCaptureProductGaps,
+} from "./acp-native-cases.mjs";
 
 const ready = {
   turnId: "new-turn",
@@ -14,6 +19,34 @@ const ready = {
   controls: { stop: true },
   assistantRendered: true,
 };
+
+test("jump capture waits for owned completion and overflowing rendered transcript", async () => {
+  const { scrollCaptureTranscript } =
+    await import("./capture-native-chat-drive.mjs");
+  const { SCROLL_TO_START } = await import("./capture-native-chat-pane.mjs");
+  let observations = 0;
+  let scrolls = 0;
+  await scrollCaptureTranscript(
+    async (expression) => {
+      if (expression === "observation()") {
+        observations++;
+        return {
+          ...ready,
+          state: observations === 1 ? "running" : "completed",
+          visible: { jump: scrolls >= 2 },
+        };
+      }
+      assert.equal(expression, SCROLL_TO_START);
+      scrolls++;
+      return scrolls >= 2;
+    },
+    "observation()",
+    "new-turn",
+    "codex-app-server",
+    Date.now() + 1000,
+  );
+  assert.equal(scrolls, 2);
+});
 
 test("Cancel waits through queued/start/text races and writes bounded step timestamps", async () => {
   const { clickReadyTurn, captureTiming } =
@@ -348,7 +381,8 @@ test("approval click revalidates live readiness and negotiated enabled controls"
     "codex-app-server",
   );
   const document = {
-    querySelectorAll: (selector) => (selector === action ? [control] : []),
+    querySelectorAll: (selector) =>
+      selector === paneSelector(action) ? [control] : [],
   };
   assert.equal(await vm.runInNewContext(expression, { document }), false);
   control.disabled = false;
@@ -418,6 +452,12 @@ test("every acceptance-matrix pair keeps the same admission at all three widths"
     const state = columns[1].trim().slice(1, -1);
     for (const [index, harness] of ["codex", "claude", "pi"].entries()) {
       const absent = columns[index + 2].trim().startsWith("truthful-absent");
+      const gap = columns[index + 2].trim().startsWith("gap:");
+      assert.equal(
+        gap,
+        nativeCaptureProductGaps[harness].includes(state),
+        `${harness}/${state}`,
+      );
       for (const width of [1888, 720, 480]) {
         const args = [
           "--harness",
@@ -427,7 +467,18 @@ test("every acceptance-matrix pair keeps the same admission at all three widths"
           "--width",
           String(width),
         ];
-        if (absent) {
+        const responsiveWidth = {
+          "responsive-wide": 1888,
+          "responsive-720": 720,
+          "responsive-480": 480,
+        }[state];
+        if (responsiveWidth && width !== responsiveWidth) {
+          assert.throws(() => parseArgs(args), /responsive-width-mismatch/u);
+          continue;
+        }
+        if (gap) {
+          assert.throws(() => parseArgs(args), /product-gap-state/u);
+        } else if (absent) {
           assert.equal(ids.has(`${harness}-${state}`), false);
           assert.throws(
             () => parseArgs(args),

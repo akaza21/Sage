@@ -1,5 +1,10 @@
 import { waitForState } from "./capture-native-chat-contract.mjs";
 import {
+  archivePreviousChatExpression,
+  SINGLE_CAPTURE_PANE,
+  SCROLL_TO_START,
+} from "./capture-native-chat-pane.mjs";
+import {
   observationFor,
   HARNESS,
   freshEmptyChat,
@@ -59,6 +64,18 @@ export async function prepareCaptureChat(
     async () => freshEmptyChat(previous, await observe()),
     deadline,
   );
+  if (
+    !(await cdp.evaluate(
+      archivePreviousChatExpression(previous.chatId),
+      Math.min(deadline, Date.now() + 5000),
+    ))
+  )
+    throw new Error("capture-chat-archive-failed");
+  await waitForState(
+    () =>
+      cdp.evaluate(SINGLE_CAPTURE_PANE, Math.min(deadline, Date.now() + 5000)),
+    deadline,
+  );
   record("fresh-chat-ready", await observe());
   if (compact)
     await click(
@@ -93,7 +110,7 @@ export async function submitTurn(
   await waitForState(
     () =>
       evaluate(
-        '(()=>{const input=document.querySelector(\'textarea[aria-label="Message agent"]\');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,"Inspect the fixed synthetic native replay example.");input.dispatchEvent(new Event("input",{bubbles:true}));return true})()',
+        '(()=>{const input=document.querySelector(\'.agent-chat-pane--focused textarea[aria-label="Message agent"]\');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,"Inspect the fixed synthetic native replay example.");input.dispatchEvent(new Event("input",{bubbles:true}));return true})()',
       ),
     deadline,
   );
@@ -135,6 +152,22 @@ export async function waitForComposerIdle(
   }, deadline);
   record("composer-idle-ready", latest);
   return latest;
+}
+export async function scrollCaptureTranscript(
+  evaluate,
+  observationExpression,
+  turnId,
+  bindingId,
+  deadline,
+) {
+  await waitForState(async () => {
+    const latest = await evaluate(observationExpression);
+    if (latest.turnId !== turnId || latest.bindingId !== bindingId)
+      throw new Error("turn-identity-drift");
+    if (latest.state !== "completed") return false;
+    if (!(await evaluate(SCROLL_TO_START))) return false;
+    return (await evaluate(observationExpression)).visible.jump === true;
+  }, deadline);
 }
 export function retainCaptureError(primary, next) {
   if (!primary) return next;

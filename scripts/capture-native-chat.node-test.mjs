@@ -12,6 +12,10 @@ import {
 import { ensurePlainDirectory } from "./capture-native-chat-process.mjs";
 import { captureTiming } from "./capture-native-chat-drive.mjs";
 import {
+  archivePreviousChatExpression,
+  SINGLE_CAPTURE_PANE,
+} from "./capture-native-chat-pane.mjs";
+import {
   parseArgs,
   evidencePaths,
   validateProbe,
@@ -53,6 +57,8 @@ function captureChatBoundary(width, harness, created = {}) {
     toolStates: [],
   };
   const clicks = [];
+  const archived = [];
+  let paneCount = 1;
   const selectors = [
     'button[aria-label="Open projects and chats"]',
     'button[aria-label="New task"]',
@@ -62,6 +68,12 @@ function captureChatBoundary(width, harness, created = {}) {
   ];
   const cdp = {
     async evaluate(expression) {
+      if (expression === archivePreviousChatExpression("welcome-chat")) {
+        archived.push("welcome-chat");
+        paneCount = 1;
+        return true;
+      }
+      if (expression === SINGLE_CAPTURE_PANE) return paneCount === 1;
       if (expression === observationFor(HARNESS[harness].binding))
         return { ...observation };
       if (
@@ -74,7 +86,8 @@ function captureChatBoundary(width, harness, created = {}) {
       );
       assert.ok(selector, expression);
       clicks.push(selector);
-      if (selector === selectors[1])
+      if (selector === selectors[1]) {
+        paneCount = width === 1888 ? 2 : 1;
         Object.assign(
           observation,
           {
@@ -84,14 +97,23 @@ function captureChatBoundary(width, harness, created = {}) {
           },
           created,
         );
+      }
       if (selector === selectors[4]) observation.selected = HARNESS[harness].id;
       return true;
     },
   };
   const expectedClicks =
     width < 760 ? selectors : [selectors[1], selectors[3], selectors[4]];
-  return { cdp, clicks, observation, expectedClicks };
+  return { cdp, clicks, archived, observation, expectedClicks };
 }
+
+for (const width of [1888, 720])
+  test(`fresh capture archives only the disposable welcome chat at ${width}`, async () => {
+    const boundary = captureChatBoundary(width, "claude");
+    await prepareCaptureChat(boundary.cdp, "claude", Date.now() + 1000);
+    assert.deepEqual(boundary.archived, ["welcome-chat"]);
+    assert.equal(boundary.observation.chatId, "capture-chat");
+  });
 
 for (const [reason, unhydrated] of Object.entries({
   chat: { chatId: null },
@@ -131,6 +153,29 @@ const args = [
   "--width",
   "480",
 ];
+test("native admission rejects product gaps instead of waiting for inert controls", () => {
+  for (const [harness, state] of [
+    ["codex", "model-menu"],
+    ["codex", "attachment-chip"],
+    ["claude", "attachment-chip"],
+  ])
+    assert.throws(
+      () =>
+        parseArgs(["--harness", harness, "--state", state, "--width", "720"]),
+      /product-gap-state/u,
+    );
+  assert.equal(
+    parseArgs([
+      "--harness",
+      "claude",
+      "--state",
+      "model-menu",
+      "--width",
+      "720",
+    ]).state,
+    "model-menu",
+  );
+});
 for (const width of [1888, 720, 480])
   for (const harness of ["codex", "claude", "pi"]) {
     test(`${harness} at ${width} captures a hydrated empty new chat in the same project`, async () => {
@@ -380,6 +425,23 @@ test("named states do not mistake settled compaction or allowed approvals", () =
     false,
   );
 });
+test("app exit remains the primary capture error when teardown also fails", async () => {
+  const exit = Object.assign(new Error("owned-app-exited"), {
+    appExit: { code: 101, signal: null, reason: "harness-transport-contract" },
+  });
+  await assert.rejects(
+    withOwnedCapture(
+      async () => {
+        throw exit;
+      },
+      async () => {
+        throw new Error("native-tool-blocked");
+      },
+      async () => {},
+    ),
+    (error) => error === exit,
+  );
+});
 
 test("only rendered rectangles inside the viewport can prove visible state", () => {
   const viewport = { width: 480, height: 1000 };
@@ -523,7 +585,7 @@ test("disclosure opening is idempotent and refuses ambiguous or non-details targ
   assert.equal(run([summary]), true);
   assert.equal(run([summary]), true);
   assert.equal(clicks, 1);
-  assert.equal(run([summary, summary]), false);
+  assert.equal(run([summary, { ...summary }]), false);
   assert.equal(run([{ ...summary, parentElement: { tagName: "DIV" } }]), false);
   assert.equal(run([]), false);
   assert.equal(
@@ -599,6 +661,10 @@ test("hydrated empty chats bind to the selected harness, not a retained welcome 
     };
     const expression = observationFor(selected.binding)
       .replace("await import('/src/app/store.ts')", "workbench")
+      .replace(
+        "await import('/src/app/agentChatOwner.ts')",
+        "({pinnedAgentChatOwner:()=>workbench.useWorkbenchStore.getState().activeTabId})",
+      )
       .replace("await import('/src/app/acpProjectionRegistry.ts')", "registry");
     const observe = new Function(
       "workbench",
@@ -614,7 +680,21 @@ test("hydrated empty chats bind to the selected harness, not a retained welcome 
       { acpProjectionStoreFor: () => ({ getState: () => ({ page }) }) },
       {
         querySelector: () => ({ getAttribute: () => selected.id }),
-        querySelectorAll: () => [],
+        querySelectorAll: (selector) =>
+          selector.endsWith('button[aria-label="Harness"]')
+            ? [
+                {
+                  getAttribute: () => selected.id,
+                  getClientRects: () => [],
+                  getBoundingClientRect: () => ({
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 0,
+                  }),
+                },
+              ]
+            : [],
         documentElement: { scrollWidth: 720 },
       },
       1,

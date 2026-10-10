@@ -3,6 +3,22 @@ use serde_json::json;
 use std::io::Cursor;
 
 #[test]
+fn replay_resource_paths_resolve_existing_files_in_the_capture_project() {
+    let root = std::env::temp_dir().join(format!("sage-replay-path-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("src/example.ts"), b"export const example = 1;\n").unwrap();
+    let canonical = root.canonicalize().unwrap();
+    let value = super::acp::substitute_root("$ROOT/src/example.ts", &canonical).unwrap();
+    assert_eq!(
+        std::path::Path::new(&value).canonicalize().unwrap(),
+        root.join("src/example.ts").canonicalize().unwrap()
+    );
+    #[cfg(windows)]
+    assert!(!value.contains('/'));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn acp_replay_preserves_prompt_id_across_config_and_cancel() {
     let mut state = WireState::new();
     let mut output = Vec::new();

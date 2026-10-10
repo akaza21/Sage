@@ -32,6 +32,17 @@ fn fixture_registry_isolated_and_native_activation_revalidates_without_consuming
     };
     assert!(BindingRegistry::default().route("pi-rpc").is_err());
     let registry = BindingRegistry::desktop_pi_fixture(selection.clone()).unwrap();
+    let catalog = crate::harnesses::HarnessCatalog::with_registry(std::sync::Arc::new(registry));
+    catalog.apply_presence(Vec::new());
+    let definitions = catalog.definitions();
+    let pi = definitions
+        .iter()
+        .find(|definition| definition.id == "pi")
+        .unwrap();
+    assert_eq!(pi.install_state, "available");
+    assert_eq!(pi.binding_id.as_deref(), Some("pi-rpc"));
+    pi.validate_transport_contract().unwrap();
+    let registry = catalog.binding_registry();
     for binding in ["codex-app-server", "claude-agent-acp", "opencode-acp"] {
         assert!(
             !registry

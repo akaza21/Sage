@@ -11,6 +11,19 @@ import {
 } from "./capture-native-chat-dom.mjs";
 import { piIdleConfigJourney } from "./acp-native-pi-cases.mjs";
 
+test("Pi curated catalogue derives transport from the same registry that admits its fixture", () => {
+  const source = readFileSync(
+    new URL("../src-tauri/src/harnesses.rs", import.meta.url),
+    "utf8",
+  );
+  const metadata = source.slice(
+    source.indexOf('"pi",\n                "Pi",'),
+    source.indexOf('"gemini-cli",\n                "Gemini CLI",'),
+  );
+  assert.match(metadata, /self\.registered_protocol\("pi"\)/u);
+  assert.doesNotMatch(metadata, /CuratedProtocol::acp\(None\)/u);
+});
+
 test("Pi snapshots retain streamed blocks and terminal messages match their final partial", () => {
   const cases = [
     ...nativeCases().filter(({ id }) => id.startsWith("pi-")),

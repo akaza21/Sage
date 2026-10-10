@@ -19,7 +19,7 @@ export const answer = (state) => {
     return "```mermaid\nflowchart LR\n  Binding --> Pump\n  Pump --> SQLite\n```";
   if (state === "jump-to-latest")
     return Array.from(
-      { length: 16 },
+      { length: 32 },
       (_, index) =>
         "### Synthetic section " +
         (index + 1) +

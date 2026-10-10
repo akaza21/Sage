@@ -158,13 +158,9 @@ pub(super) fn substitute(
     }
     Ok(match value {
         Value::String(text) => {
-            let root = std::env::current_dir()
-                .map_err(|_| FixtureError::Io)?
-                .to_str()
-                .ok_or(FixtureError::InvalidArguments)?
-                .to_owned();
+            let root = std::env::current_dir().map_err(|_| FixtureError::Io)?;
             Value::String(
-                text.replace("$ROOT", &root)
+                substitute_root(&text, &root)?
                     .replace("$SESSION", SESSION)
                     .replace(
                         "$TURN",
@@ -186,4 +182,21 @@ pub(super) fn substitute(
         ),
         other => other,
     })
+}
+
+pub(super) fn substitute_root(text: &str, root: &std::path::Path) -> Result<String, FixtureError> {
+    if let Some(suffix) = text.strip_prefix("$ROOT/") {
+        let mut target = root.to_path_buf();
+        for component in suffix.split('/') {
+            target.push(component);
+        }
+        return target
+            .to_str()
+            .map(str::to_owned)
+            .ok_or(FixtureError::InvalidArguments);
+    }
+    Ok(text.replace(
+        "$ROOT",
+        root.to_str().ok_or(FixtureError::InvalidArguments)?,
+    ))
 }

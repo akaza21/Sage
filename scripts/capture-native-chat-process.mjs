@@ -140,7 +140,7 @@ export function launchOwned(build, fixture, roots, options, port) {
   const child = spawn(build.path, [], {
     cwd: roots.project,
     env: environment,
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
   child.on("error", () => {});

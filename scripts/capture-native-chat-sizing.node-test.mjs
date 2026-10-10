@@ -3,7 +3,28 @@ import test from "node:test";
 import {
   validateDimensions,
   validatePng,
+  parseArgs,
 } from "./capture-native-chat-contract.mjs";
+
+test("responsive state admission requires its reference width", () => {
+  for (const [state, expected] of [
+    ["responsive-wide", 1888],
+    ["responsive-720", 720],
+    ["responsive-480", 480],
+  ])
+    for (const width of [1888, 720, 480]) {
+      const args = [
+        "--harness",
+        "claude",
+        "--state",
+        state,
+        "--width",
+        String(width),
+      ];
+      if (width === expected) assert.equal(parseArgs(args).width, expected);
+      else assert.throws(() => parseArgs(args), /responsive-width-mismatch/u);
+    }
+});
 
 for (const [width, height] of [
   [1888, 1096],

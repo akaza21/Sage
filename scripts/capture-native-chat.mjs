@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
+import { openOwnedCapture } from "./capture-native-chat-lifecycle.mjs";
 import {
   stagingPaths,
   safeDestination,
@@ -13,7 +13,6 @@ import {
   validateProbe,
   validateDimensions,
   validatePng,
-  discoverOwnedPage,
   waitForState,
   withOwnedCapture,
 } from "./capture-native-chat-contract.mjs";
@@ -32,7 +31,6 @@ import {
   actionsFor,
 } from "./capture-native-chat-dom.mjs";
 import {
-  runTool,
   requirePlain,
   ensurePlainDirectory,
   executableIdentity,
@@ -62,6 +60,7 @@ import {
   cleanupCapture,
   prepareCaptureChat,
   waitForComposerIdle,
+  scrollCaptureTranscript,
   retainCaptureError,
 } from "./capture-native-chat-drive.mjs";
 export { prepareCaptureChat } from "./capture-native-chat-drive.mjs";
@@ -84,6 +83,7 @@ export async function capture(options) {
   requirePlain(directory, true);
   for (const file of Object.values(output)) safeDestination(file);
   let child,
+    ownedConnection,
     viteChild,
     cdp,
     roots,
@@ -126,33 +126,15 @@ export async function capture(options) {
     timing.record("app-launched");
     captured = await withOwnedCapture(
       async () => {
-        const target = await discoverOwnedPage(port, deadline, child);
-        timing.record("cdp-target-ready");
-        nativeBounds = JSON.parse(
-          await runTool("powershell.exe", [
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            path.join(workspace, "scripts", "capture-native-chat-window.ps1"),
-            "-ProcessId",
-            String(child.pid),
-            "-Width",
-            String(options.width),
-            "-Port",
-            String(port),
-          ]),
-        );
-        webviewVersion = nativeBounds.webviewVersion;
-        nativeBounds = {
-          outer: nativeBounds.outer,
-          client: nativeBounds.client,
-        };
-        cdp = await connectCdp({
-          target,
+        ownedConnection = await openOwnedCapture(
+          child,
+          port,
           deadline,
-          openDeadline: Date.now() + 10000,
-          WebSocketImpl: globalThis.WebSocket,
-        });
+          options,
+          workspace,
+          timing.record,
+        );
+        ({ cdp, nativeBounds, webviewVersion } = ownedConnection);
         const OBSERVATION = observationFor(HARNESS[options.harness].binding);
         const clickCapture = (selector) =>
           click(cdp, selector, deadline, timing.record);
@@ -162,7 +144,7 @@ export async function capture(options) {
         await waitForState(
           () =>
             evaluate(
-              "Boolean(document.querySelector('button[aria-label=\"Harness\"]'))",
+              "Boolean(document.querySelector('.agent-chat-pane--focused button[aria-label=\"Harness\"]'))",
             ),
           deadline,
         );
@@ -199,8 +181,12 @@ export async function capture(options) {
         }
         if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
         if (options.state === "jump-to-latest")
-          await evaluate(
-            '(()=>{const transcript=document.querySelector(".message-list");if(!transcript)return false;transcript.scrollTop=0;transcript.dispatchEvent(new Event("scroll"));return true})()',
+          await scrollCaptureTranscript(
+            evaluate,
+            OBSERVATION,
+            submittedTurnId,
+            HARNESS[options.harness].binding,
+            deadline,
           );
         if (options.state === "attachment-chip") {
           await waitForState(
@@ -317,6 +303,7 @@ export async function capture(options) {
         if (!captureError) cdp = undefined;
       },
       async () => {
+        ownedConnection?.dispose();
         await captureStep(timing.record, "app-stop", () => stopOwned(child));
         child = undefined;
         await captureStep(timing.record, "roots-cleanup", () =>

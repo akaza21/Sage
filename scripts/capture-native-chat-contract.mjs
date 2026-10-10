@@ -1,6 +1,10 @@
 import path from "node:path";
 import { HARNESS } from "./capture-native-chat-dom.mjs";
-import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
+import {
+  nativeCases,
+  truthfulAbsentStates,
+  nativeCaptureProductGaps,
+} from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 
 export const STATES = new Set([
@@ -11,6 +15,8 @@ const CASE_IDS = new Set(nativeCases().map(({ id }) => id));
 export function requireNativeCase(harness, state) {
   if (truthfulAbsentStates[harness]?.includes(state))
     fail("truthful-absent-state");
+  if (nativeCaptureProductGaps[harness]?.includes(state))
+    fail("product-gap-state");
   if (!CASE_IDS.has(harness + "-" + state)) fail("unsupported-state");
 }
 const SHA = /^[a-f0-9]{64}$/u;
@@ -72,6 +78,13 @@ export function parseArgs(args) {
   )
     fail("arguments");
   requireNativeCase(harness, state);
+  const responsiveWidth = {
+    "responsive-wide": 1888,
+    "responsive-720": 720,
+    "responsive-480": 480,
+  }[state];
+  if (responsiveWidth && responsiveWidth !== width)
+    fail("responsive-width-mismatch");
   return {
     harness,
     state,
@@ -315,15 +328,23 @@ export async function waitForState(predicate, deadline) {
   fail("state-timeout");
 }
 export async function withOwnedCapture(run, close, stop) {
+  let result, failure;
   try {
-    return await run();
-  } finally {
+    result = await run();
+  } catch (error) {
+    failure = error;
+  }
+  for (const cleanup of [close, stop]) {
     try {
-      await close();
-    } finally {
-      await stop();
+      await cleanup();
+    } catch (error) {
+      failure ??= error;
+      if (error.cleanupError && !failure.cleanupError)
+        failure.cleanupError = error.cleanupError;
     }
   }
+  if (failure) throw failure;
+  return result;
 }
 
 export async function readBoundedBytes(response, maximum = 65536) {

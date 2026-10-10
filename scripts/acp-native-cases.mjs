@@ -92,6 +92,11 @@ export const truthfulAbsentStates = Object.freeze({
     "context-meter",
   ]),
 });
+export const nativeCaptureProductGaps = Object.freeze({
+  codex: Object.freeze(["model-menu", "attachment-chip"]),
+  claude: Object.freeze(["attachment-chip"]),
+  pi: Object.freeze([]),
+});
 export function nativeCases() {
   return [
     ...piNativeCases(),

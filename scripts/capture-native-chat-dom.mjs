@@ -1,4 +1,5 @@
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
+import { paneSelector, ownedPaneNodes } from "./capture-native-chat-pane.mjs";
 export const IDLE_CAPTURE_STATES = Object.freeze([
   "new-chat",
   "composer-idle",
@@ -61,7 +62,7 @@ export function assistantTextRendered(turnId, document, visible) {
       ).some((text) => visible(text) && text.textContent.trim().length > 0),
     );
 }
-export const IMAGE_ATTACHMENT = String.raw`(()=>{const input=document.querySelector('input[aria-label="Choose images"]');if(!input || input.disabled)return false;const transfer=new DataTransfer();transfer.items.add(new File([Uint8Array.from(atob(${JSON.stringify(NATIVE_IMAGE_BASE64)}),character=>character.charCodeAt(0))],"synthetic-replay.png",{type:"image/png"}));input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));return true})()`;
+export const IMAGE_ATTACHMENT = String.raw`(()=>{const input=document.querySelector('.agent-chat-pane--focused input[aria-label="Choose images"]');if(!input || input.disabled)return false;const transfer=new DataTransfer();transfer.items.add(new File([Uint8Array.from(atob(${JSON.stringify(NATIVE_IMAGE_BASE64)}),character=>character.charCodeAt(0))],"synthetic-replay.png",{type:"image/png"}));input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));return true})()`;
 
 /** Selects the title-bar Agent window mode; true only once it is checked. */
 export const AGENT_MODE = String.raw`(()=>{const inputs=document.querySelectorAll('input[name="workbench-window-mode"][value="agent"]');if(inputs.length!==1 || inputs[0].disabled)return false;if(!inputs[0].checked)inputs[0].click();return inputs[0].checked})()`;
@@ -75,12 +76,18 @@ export function observationFor(binding) {
   const expectedBinding=${JSON.stringify(binding)};
   const {useWorkbenchStore}=await import('/src/app/store.ts');
   const {acpProjectionStoreFor}=await import('/src/app/acpProjectionRegistry.ts');
-  const store=useWorkbenchStore.getState(), page=acpProjectionStoreFor(store.activeTabId).getState().page;
-  const chatId=store.tabs.find(tab=>tab.id===store.activeTabId && tab.kind==='chat')?.id ?? null, projectId=store.project?.id ?? null;
+  const {pinnedAgentChatOwner}=await import('/src/app/agentChatOwner.ts');
+  const store=useWorkbenchStore.getState(), ownerId=pinnedAgentChatOwner() ?? store.activeTabId;
+  const page=acpProjectionStoreFor(ownerId).getState().page;
+  const chatId=store.tabs.find(tab=>tab.id===ownerId && tab.kind==='chat')?.id ?? null, projectId=store.project?.id ?? null;
+  const paneSelector=${paneSelector.toString()};
+  const ownedPaneNodes=${ownedPaneNodes.toString()};
+  const queryAll=selector=>ownedPaneNodes(document,selector,chatId);
+  const query=selector=>queryAll(selector)[0];
   const projectionLoaded=Boolean(page && page.chatId===chatId && page.projectId===projectId);
   const turns=page?.turns ?? [];
   if(turns.length>64)throw Error('projection-bound');
-  const selected=document.querySelector('button[aria-label="Harness"]')?.getAttribute('data-selected-id');
+  const selected=query('button[aria-label="Harness"]')?.getAttribute('data-selected-id');
   const harness=store.harnesses?.find(harness=>harness.id===selected);
   const sessionOf=turn=>page?.sessions?.find(session=>session.id===turn?.sessionId);
   const owned=turns.filter(turn=>sessionOf(turn)?.bindingId===expectedBinding);
@@ -88,10 +95,10 @@ export function observationFor(binding) {
   const visibleRectangle=${visibleRectangle.toString()};
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
-  const has=selector=>Array.from(document.querySelectorAll(selector)).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'.tab[data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]',attachment:'.composer__attachment'};
+  const has=selector=>queryAll(selector).some(visible);
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]',attachment:'.composer__attachment'};
   const elements=[]; let charged=0;
-  for(const [kind,selector] of Object.entries(selectors))for(const element of document.querySelectorAll(selector)){
+  for(const [kind,selector] of Object.entries(selectors))for(const element of queryAll(selector)){
     if(elements.length>=64)throw Error('probe-elements');
     const raw=(element.innerText ?? '').trim(); charged+=raw.length;
     if(raw.length>16384 || charged>65536)throw Error('probe-text-bound');
@@ -100,8 +107,8 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !document.querySelector('button[aria-label="Model"]')?.disabled,effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
-  const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,document,visible);
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),attachment:has('.composer__attachment'),meter:has('.composer__context [role="progressbar"]')};
+  const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   return {chatId,projectId,projectionLoaded,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
@@ -276,19 +283,11 @@ export function namedState(options, observation) {
   return predicates;
 }
 export function clickExpression(selector) {
-  return (
-    "(()=>{const elements=[...document.querySelectorAll(" +
-    JSON.stringify(selector) +
-    ")];if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()"
-  );
+  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
 }
 /** Opens the single matching disclosure summary; idempotent, true once open. */
 export function openExpression(selector) {
-  return (
-    "(()=>{const elements=[...document.querySelectorAll(" +
-    JSON.stringify(selector) +
-    ")];const details=elements[0]?.parentElement;if(elements.length!==1 || details?.tagName!=='DETAILS')return false;if(!details.open){elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click()}return details.open})()"
-  );
+  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});const details=elements[0]?.parentElement;if(elements.length!==1 || details?.tagName!=='DETAILS')return false;if(!details.open){elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click()}return details.open})()`;
 }
 export function isDisclosure(selector) {
   return selector.endsWith("> summary");

@@ -37,6 +37,67 @@ import {
 
 const workspace = path.resolve("synthetic-checkout");
 const source = "a".repeat(40);
+test("app exit waits for trailing stderr before freezing its safe reason", async () => {
+  const { watchOwnedApp } = await import("./capture-native-chat-lifecycle.mjs");
+  const candidate = child();
+  const monitor = watchOwnedApp(candidate);
+  try {
+    const pending = monitor
+      .run(() => new Promise(() => {}))
+      .catch((error) => error);
+    candidate.exitCode = 101;
+    candidate.emit("exit", 101, null);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    candidate.stderr.emit(
+      "data",
+      "curated harness metadata must satisfy its transport contract",
+    );
+    candidate.emit("close", 101, null);
+    assert.equal((await pending).appExit.reason, "harness-transport-contract");
+  } finally {
+    monitor.dispose();
+  }
+});
+test("owned app output overflow blocks a successful in-flight native operation", async () => {
+  const { watchOwnedApp } = await import("./capture-native-chat-lifecycle.mjs");
+  const candidate = child();
+  const monitor = watchOwnedApp(candidate);
+  try {
+    await assert.rejects(
+      monitor.run(async () => {
+        candidate.stdout.emit("data", Buffer.alloc(65537));
+        return true;
+      }),
+      /owned-app-output-bound/u,
+    );
+  } finally {
+    monitor.dispose();
+  }
+});
+test("app exit after CDP discovery supersedes tool failure with bounded private-safe diagnostics", async () => {
+  const { watchOwnedApp } = await import("./capture-native-chat-lifecycle.mjs");
+  const candidate = child();
+  const monitor = watchOwnedApp(candidate);
+  const pending = monitor.run(() => new Promise(() => {}));
+  candidate.stderr.emit(
+    "data",
+    "private-sentinel C:\\Users\\private\\sage.rs\ncurated harness metadata must satisfy its transport contract: an available ACP harness requires a binding ID\n",
+  );
+  candidate.exitCode = 101;
+  candidate.emit("exit", 101, null);
+  const failure = await pending.catch((error) => error);
+  assert.equal(failure.message, "owned-app-exited");
+  assert.deepEqual(failure.appExit, {
+    code: 101,
+    signal: null,
+    reason: "harness-transport-contract",
+  });
+  assert.equal(JSON.stringify(failure.appExit).includes("private"), false);
+  assert.equal(monitor.failure().appExit.reason, "harness-transport-contract");
+  assert.equal(candidate.listenerCount("exit"), 0);
+  monitor.dispose();
+  assert.equal(candidate.stderr.listenerCount("data"), 0);
+});
 test("profile cleanup retries Windows locks after a partially removed root", async () => {
   const root = mkdtempSync(path.join(process.cwd(), ".nc1-cleanup-test-"));
   try {

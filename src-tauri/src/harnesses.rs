@@ -205,7 +205,7 @@ impl HarnessCatalog {
                 "Discovers the local RPC CLI; a compatible binding is required before launch.",
                 self.install_state("pi").as_str(),
                 "builtIn",
-                CuratedProtocol::acp(None),
+                self.registered_protocol("pi"),
             ),
             definition(
                 "gemini-cli",

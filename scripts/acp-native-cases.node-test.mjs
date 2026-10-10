@@ -4,6 +4,19 @@ import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { answer } from "./acp-native-case-events.mjs";
+test("jump fixture has a bounded transcript tall enough for every reference viewport", () => {
+  const transcript = answer("jump-to-latest");
+  assert.equal(transcript.match(/### Synthetic section /gu).length, 32);
+  assert.ok(Buffer.byteLength(transcript) < 8192);
+});
+test("fixture resource substitution joins root-relative path components natively", () => {
+  const source = readFileSync(
+    new URL("../src-tauri/src/acp/fixture/wire_acp.rs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /strip_prefix\("\$ROOT\/"\)/u);
+  assert.match(source, /suffix\.split\('\/'\)/u);
+});
 test("stopped, failed and running fixtures never claim replay completion", () => {
   for (const state of [
     "turn-stopped",

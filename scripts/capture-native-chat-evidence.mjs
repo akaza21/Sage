@@ -94,6 +94,7 @@ export function persistCapture(
   };
   if (nativeBounds) blocked.nativeBounds = nativeBounds;
   if (error.cleanupError) blocked.cleanupError = error.cleanupError;
+  if (error.appExit) blocked.appExit = error.appExit;
   assertPrivacy(blocked);
   write(output.probe, JSON.stringify(blocked, null, 2) + "\n");
   return { ...blocked, run };
