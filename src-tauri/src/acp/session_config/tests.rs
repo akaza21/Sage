@@ -45,11 +45,13 @@ fn confirmed_model_is_bounded_binding_metadata_not_a_selectable_acp_extension() 
             .confirmed_model
             .is_none()
     );
-    let mut config = SessionConfig::default();
-    config.confirmed_model = Some(ConfirmedModel {
-        id: RequiredText::new("modelId", "actual").unwrap(),
-        name: Some(RequiredText::new("modelName", "Actual").unwrap()),
-    });
+    let mut config = SessionConfig {
+        confirmed_model: Some(ConfirmedModel {
+            id: RequiredText::new("modelId", "actual").unwrap(),
+            name: Some(RequiredText::new("modelName", "Actual").unwrap()),
+        }),
+        ..Default::default()
+    };
     assert!(config.validate().is_ok());
     assert!(
         config
