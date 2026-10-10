@@ -319,6 +319,9 @@ impl CodexAdapter {
             state,
             item_terminals: std::mem::take(&mut self.active_item_terminals),
             terminal_id_bytes: std::mem::take(&mut self.active_terminal_id_bytes),
+            unretried_error_fingerprints: std::mem::take(
+                &mut self.active_unretried_error_fingerprints,
+            ),
         });
         self.active_turn_id = None;
         Ok(TerminalUpdate::Apply)

@@ -90,7 +90,6 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
         let reopened = Database::open(&path).unwrap();
         assert_failed_history(&reopened);
         drop(reopened);
-        std::fs::remove_dir_all(&root.0).unwrap();
     });
 }
 

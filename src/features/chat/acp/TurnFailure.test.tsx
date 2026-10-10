@@ -9,10 +9,37 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { page } from "./acpProjection.fixture";
 import { TurnFailure } from "./TurnFailure";
+import { TurnHeader } from "./TurnHeader";
 
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it.each([
+    ["authRequired", "Not signed in"],
+    ["harnessExited", "Harness exited"],
+    ["protocolError", "Protocol error"],
+    ["refusedVersion", "Version refused"],
+    ["timeout", "Timed out"],
+    ["other", "Reason unavailable"],
+  ] as const)(
+    "states a message-free %s failure cause only once in the turn",
+    (kind, label) => {
+      const turn = page("failed", { kind }).turns[0];
+      render(
+        <>
+          <TurnHeader turn={turn} />
+          <TurnFailure turn={turn} />
+        </>,
+      );
+      expect(screen.getAllByText(label)).toHaveLength(1);
+      expect(
+        within(screen.getByRole("group", { name: "Turn failed" })).getByText(
+          label,
+        ),
+      ).toBeVisible();
+    },
+  );
+
   it("shows the failure message, remediation and existing retry action", () => {
     const onRetry = vi.fn();
     render(

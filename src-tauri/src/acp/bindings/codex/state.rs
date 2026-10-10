@@ -9,6 +9,7 @@ mod permission_resolution;
 mod permissions;
 mod provisional;
 mod session;
+mod turn_errors;
 mod turn_prompt;
 mod turn_starts;
 mod turns;
@@ -68,6 +69,7 @@ struct TurnTombstone {
     state: TurnState,
     item_terminals: Vec<ItemTerminal>,
     terminal_id_bytes: usize,
+    unretried_error_fingerprints: Vec<[u8; 32]>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +154,7 @@ pub(crate) struct CodexAdapter {
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
+    active_unretried_error_fingerprints: Vec<[u8; 32]>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
     subagent_labels: SubagentLabels,

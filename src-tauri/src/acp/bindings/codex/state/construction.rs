@@ -49,6 +49,7 @@ impl CodexAdapter {
             active_turn_client_message_id: None,
             active_item_terminals: Vec::new(),
             active_terminal_id_bytes: 0,
+            active_unretried_error_fingerprints: Vec::new(),
             previous_turn: None,
             command_item_snapshots: CommandItemSnapshots::default(),
             subagent_labels: SubagentLabels::default(),

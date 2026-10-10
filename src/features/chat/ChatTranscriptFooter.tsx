@@ -65,10 +65,12 @@ export function ChatTranscriptTurnSummary({
 }
 
 export function ChatTranscriptFooter({
+  useNativeAcp,
   page,
   messages,
   onRetry,
 }: {
+  useNativeAcp: boolean;
   page: AcpChatPage | null;
   messages: readonly ChatMessage[];
   onRetry?: () => void;
@@ -85,10 +87,13 @@ export function ChatTranscriptFooter({
   const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
   const hasText = !!text.trim();
   const latestTurn = page?.turns.at(-1);
-  const retryAction =
-    !page || (latestTurn && terminalTurnStates.has(latestTurn.state))
-      ? onRetry
-      : undefined;
+  const retryAction = (
+    page
+      ? latestTurn && terminalTurnStates.has(latestTurn.state)
+      : !useNativeAcp && hasText
+  )
+    ? onRetry
+    : undefined;
 
   if (!hasText && !retryAction) return null;
 

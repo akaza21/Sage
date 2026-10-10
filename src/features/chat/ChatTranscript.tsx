@@ -94,6 +94,7 @@ export function ChatTranscript({
             />
           )}
           <ChatTranscriptFooter
+            useNativeAcp={useNativeAcp}
             page={useNativeAcp ? page : null}
             messages={messages}
             onRetry={

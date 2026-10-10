@@ -49,13 +49,16 @@ describe("turn terminal reason", () => {
       expect(turnTerminalReasonLabels[kind].length).toBeGreaterThan(0);
   });
 
-  it("renders the reason beside the failed status chip", async () => {
+  it("keeps the failed status chip separate from the single failure cause", async () => {
     await renderTurn("failed", { kind: "harnessExited" });
 
     const chip = within(header()).getByRole("status");
     expect(chip).toHaveTextContent("Failed");
-    const reason = within(header()).getByText("Harness exited");
-    expect(reason).toHaveAttribute("data-turn-reason", "harnessExited");
+    expect(header().querySelector("[data-turn-reason]")).toBeNull();
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    const reason = within(failure).getByText("Harness exited");
+    expect(screen.getAllByText("Harness exited")).toHaveLength(1);
+    expect(reason).toHaveAttribute("data-turn-reason-message", "");
     expect(chip.compareDocumentPosition(reason)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
@@ -83,7 +86,7 @@ describe("turn terminal reason", () => {
       message: "Unsupported sessionUpdate variant",
     });
 
-    expect(within(header()).getByText("Protocol error")).toBeTruthy();
+    expect(header().querySelector("[data-turn-reason]")).toBeNull();
     const failure = screen.getByRole("group", { name: "Turn failed" });
     const detail = within(failure).getByText(
       "Unsupported sessionUpdate variant",
@@ -98,7 +101,8 @@ describe("turn terminal reason", () => {
       remediation: "Sign in by running claude auth login.",
     });
 
-    expect(within(header()).getByText("Not signed in")).toBeTruthy();
+    expect(header().querySelector("[data-turn-reason]")).toBeNull();
+    expect(screen.getAllByText("Not signed in")).toHaveLength(1);
     const failure = screen.getByRole("group", { name: "Turn failed" });
     const remediation = within(failure).getByText(
       "Sign in by running claude auth login.",
@@ -134,6 +138,12 @@ describe("turn terminal reason", () => {
 
     expect(header().querySelector("[data-turn-reason-message]")).toBeNull();
     expect(header().querySelector("[data-turn-reason-remediation]")).toBeNull();
-    expect(within(header()).getByText("Timed out")).toBeTruthy();
+    expect(header().querySelector("[data-turn-reason]")).toBeNull();
+    expect(screen.getAllByText("Timed out")).toHaveLength(1);
+    expect(
+      within(screen.getByRole("group", { name: "Turn failed" })).getByText(
+        "Timed out",
+      ),
+    ).toBeVisible();
   });
 });

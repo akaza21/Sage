@@ -7,6 +7,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
+import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 
 afterEach(() => {
   cleanup();
@@ -15,11 +16,11 @@ afterEach(() => {
 });
 
 async function renderTranscript(
-  acpPage: AcpChatPage,
+  acpPage: AcpChatPage | null,
   messages: readonly ChatMessage[] = [],
 ) {
   const onRetry = vi.fn();
-  const transcript = (page: AcpChatPage) => (
+  const transcript = (page: AcpChatPage | null) => (
     <ChatTranscript
       transcriptRef={{ current: null }}
       contentRef={{ current: null }}
@@ -182,6 +183,58 @@ describe("ChatTranscript answer actions", () => {
 });
 
 describe("ChatTranscript Retry", () => {
+  it("offers no Retry in a native ACP chat whose page has not loaded", async () => {
+    await renderTranscript(null);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+  });
+
+  it.each(["", "Legacy answer"])(
+    "does not offer native footer Retry without a loaded ACP page (legacy text: %j)",
+    (text) => {
+      render(
+        <ChatTranscriptFooter
+          useNativeAcp
+          page={null}
+          messages={[{ role: "assistant", text } as ChatMessage]}
+          onRetry={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    },
+  );
+
+  it.each(["", " \n\t "])(
+    "does not offer legacy footer Retry without answer text %j",
+    (text) => {
+      render(
+        <ChatTranscriptFooter
+          useNativeAcp={false}
+          page={null}
+          messages={[{ role: "assistant", text } as ChatMessage]}
+          onRetry={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    },
+  );
+
+  it("keeps legacy footer Retry available with answer text", () => {
+    const onRetry = vi.fn();
+    render(
+      <ChatTranscriptFooter
+        useNativeAcp={false}
+        page={null}
+        messages={[{ role: "assistant", text: "Legacy answer" } as ChatMessage]}
+        onRetry={onRetry}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["cancelled", true],
     ["interrupted", true],

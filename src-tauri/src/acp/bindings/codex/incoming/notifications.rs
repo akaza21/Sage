@@ -239,7 +239,7 @@ pub(super) fn notification<M: ResourceMapper>(
             .into())
         }
         "error" => {
-            expect_thread_and_turn(adapter, params)?;
+            let turn = expect_thread_and_turn(adapter, params)?;
             let will_retry = params
                 .get("willRetry")
                 .and_then(Value::as_bool)
@@ -253,7 +253,13 @@ pub(super) fn notification<M: ResourceMapper>(
                 "message",
                 crate::acp::limits::LIMITS.wire.error_bytes as usize,
             )?;
-            Ok(IncomingEvent::Error(error_payload("codex", message, will_retry)?).into())
+            let payload = error_payload("codex", message, will_retry)?;
+            if !will_retry {
+                adapter
+                    .remember_unretried_error(turn, message)
+                    .map_err(identity)?;
+            }
+            Ok(IncomingEvent::Error(payload).into())
         }
         other => {
             record_unprojected(other);
@@ -324,9 +330,13 @@ fn turn_completed(
                     "message",
                     crate::acp::limits::LIMITS.wire.error_bytes as usize,
                 )?;
-                error_payload("codex", message, false)
+                let payload = error_payload("codex", message, false)?;
+                Ok::<_, IngressError>(
+                    (!adapter.has_unretried_error(external, message)).then_some(payload),
+                )
             })
             .transpose()?
+            .flatten()
     } else {
         None
     };

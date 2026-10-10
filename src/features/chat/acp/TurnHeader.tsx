@@ -24,7 +24,7 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
       >
         {label}
       </span>
-      {reason && !userStopped ? (
+      {reason && !userStopped && turn.state !== "failed" ? (
         <span className="acp-turn__reason" data-turn-reason={reason.kind}>
           {turnTerminalReasonLabels[reason.kind]}
         </span>
