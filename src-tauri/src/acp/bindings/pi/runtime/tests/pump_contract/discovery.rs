@@ -5,7 +5,7 @@ async fn pi_pump_seeds_negotiated_capabilities_at_session_creation() {
     let ready = ready_adapter();
     let activated = activated_adapter();
     assert_ne!(ready.capabilities(), activated.capabilities());
-    for adapter in [ready, activated] {
+    for (adapter, discovery_pending) in [(ready, false), (activated, true)] {
         let capabilities = adapter.capabilities().unwrap();
         let fixture =
             Fixture::with_external_session_id(adapter.inner.external_session.clone().unwrap());
@@ -24,6 +24,18 @@ async fn pi_pump_seeds_negotiated_capabilities_at_session_creation() {
             capabilities
         );
         start(&mut pump).await;
+        if discovery_pending {
+            let transport = state_read(&mut pump, "openai", "gpt").await;
+            pump.push_stdout_chunk(
+                &reply(&transport.0[1], json!({"levels":["off","high"]})),
+                31,
+            )
+            .await
+            .unwrap();
+        }
+        let mut drained = Capture::default();
+        pump.flush_one(&mut drained).unwrap();
+        assert!(drained.0.is_empty());
         settle(&mut pump).await;
         fixture.finish().await;
     }
