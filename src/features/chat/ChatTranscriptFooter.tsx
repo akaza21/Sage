@@ -17,7 +17,12 @@ function lastAssistantItem(
   if (!turn || !terminalTurnStates.has(turn.state)) return null;
   for (let index = turn.items.length - 1; index >= 0; index--) {
     const item = turn.items[index];
-    if (item.kind === "text" && item.payload.role === "assistant") return item;
+    if (
+      item.kind === "text" &&
+      item.payload.role === "assistant" &&
+      item.payload.text.trim()
+    )
+      return item;
   }
   return null;
 }

@@ -22,6 +22,8 @@ const MAX_ITEM_SCAN_BYTES: usize = 32 * 1024 * 1024;
 const MAX_CHAT_SEARCH_DURATION: Duration = Duration::from_millis(250);
 const MAX_SAFE_JAVASCRIPT_INTEGER: u64 = 9_007_199_254_740_991;
 
+mod legacy_welcome;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectChatSearchRequest {
@@ -290,6 +292,7 @@ fn load_primary_text_matches(
     started: Instant,
     deadline: Duration,
 ) -> AppResult<()> {
+    let excluded_turns = legacy_welcome::excluded_turns(connection, chats, started, deadline)?;
     let by_id = chats
         .iter()
         .enumerate()
@@ -299,10 +302,11 @@ fn load_primary_text_matches(
         "SELECT i.chat_id,i.payload_json,i.payload_bytes,i.payload_digest
          FROM items i JOIN chats c ON c.project_id=i.project_id AND c.id=i.chat_id
          WHERE i.project_id=?1 AND i.origin='primary' AND i.kind='text'
+           AND i.turn_id NOT IN (SELECT value FROM json_each(?2))
          ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC,
                   i.created_at DESC,i.ordinal DESC,i.id ASC",
     )?;
-    let mut rows = statement.query([project_id])?;
+    let mut rows = statement.query(params![project_id, excluded_turns])?;
     while let Some(row) = map_deadline(rows.next(), started, deadline)? {
         let chat_id: String = row.get(0)?;
         let payload: String = row.get(1)?;

@@ -10,6 +10,8 @@ use crate::{
 
 const MAX_CHATS_PER_PROJECT: i64 = 64;
 
+mod legacy_welcome;
+
 impl Database {
     pub(crate) fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
         validate_chat_identifier("Project ID", &request.project_id)?;
@@ -59,7 +61,9 @@ impl Database {
             params![request.project_id, request.chat_id],
             |row| row.get(0),
         )?;
-        if sessions > 0 {
+        let welcome =
+            crate::session_events::legacy_welcome::turn_id(&transaction, &request.chat_id)?;
+        if sessions > 0 && (sessions != 1 || welcome.is_none()) {
             return Err(AppError::InvalidRequest(
                 "Chat with an agent session cannot move yet".into(),
             ));
@@ -89,6 +93,9 @@ impl Database {
             |row| row.get(0),
         )?;
         transaction.execute_batch("PRAGMA defer_foreign_keys = ON")?;
+        if let Some(turn) = welcome {
+            legacy_welcome::move_in(&transaction, request, &turn)?;
+        }
         transaction.execute(
             "UPDATE chats SET project_id=?2, ordinal=?3, updated_at=?4 WHERE project_id=?1 AND id=?5",
             params![

@@ -71,6 +71,29 @@ function retryPage() {
 
 describe("ChatTranscript answer actions", () => {
   it.each(["", " \n\t "])(
+    "copies the settled answer before trailing blank assistant text %j",
+    async (text) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      const next = page("completed");
+      next.turns[0].items = [
+        {
+          ...textItem(),
+          payload: { role: "assistant", text: "The real answer" },
+        },
+        {
+          ...textItem(),
+          id: "blank-progress" as never,
+          payload: { role: "assistant", text },
+        },
+      ];
+      await renderTranscript(next);
+      expect(screen.getByText("The real answer")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      expect(writeText).toHaveBeenCalledExactlyOnceWith("The real answer");
+    },
+  );
+  it.each(["", " \n\t "])(
     "offers no answer actions for blank settled assistant text %j",
     async (text) => {
       const next = page("completed");

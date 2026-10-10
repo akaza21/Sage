@@ -31,13 +31,12 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     let database = Database::open(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
-    let history = database
-        .append_simulator_turn(
-            initial.active_tab_id.as_deref().unwrap(),
-            "chat beside browser",
-            "preserved chat answer",
-        )
-        .unwrap();
+    let history = seed_closed_simulator_history(
+        &database,
+        initial.active_tab_id.as_deref().unwrap(),
+        "chat beside browser",
+        "preserved chat answer",
+    );
     let mut tabs = initial.tabs;
     tabs.push(crate::domain::WorkbenchTab {
         id: "browser-1".into(),
@@ -69,12 +68,49 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     assert!(snapshot.tabs.iter().any(|tab| {
         tab.kind == "browser" && tab.id == "browser-1" && tab.status.as_deref() == Some("closed")
     }));
-    assert_eq!(snapshot.session_id, Some(history.session_id));
+    assert_eq!(snapshot.session_id, None);
     assert_eq!(snapshot.messages.len(), 2);
+    assert_eq!(snapshot.messages[0].session_id, history);
     assert_eq!(snapshot.messages[0].text, "chat beside browser");
     assert_eq!(snapshot.messages[1].text, "preserved chat answer");
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
+}
+
+fn seed_closed_simulator_history(
+    database: &Database,
+    chat_id: &str,
+    prompt: &str,
+    answer: &str,
+) -> String {
+    let history = database
+        .append_simulator_turn(chat_id, prompt, answer)
+        .unwrap();
+    let mut connection = database.write_connection().unwrap();
+    let transaction = connection.transaction().unwrap();
+    transaction
+        .execute(
+            "DELETE FROM chat_session_heads WHERE session_id=?1",
+            [&history.session_id],
+        )
+        .unwrap();
+    let now = now_millis();
+    transaction
+        .execute(
+            "UPDATE agent_sessions SET state='closing',revision=revision+1,updated_at=?2
+             WHERE id=?1 AND state='ready'",
+            params![history.session_id, now],
+        )
+        .unwrap();
+    transaction
+        .execute(
+            "UPDATE agent_sessions SET state='closed',revision=revision+1,updated_at=?2,terminal_at=?2
+             WHERE id=?1 AND state='closing'",
+            params![history.session_id, now],
+        )
+        .unwrap();
+    transaction.commit().unwrap();
+    history.session_id
 }
 
 fn insert_empty_chat(database: &Database, project_id: &str, chat_id: &str, ordinal: i64) {
@@ -208,6 +244,12 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
         .unwrap()
         .active_tab_id
         .unwrap();
+    let history = seed_closed_simulator_history(
+        &database,
+        &chat_id,
+        "simulator history beside Codex",
+        "preserved simulator answer",
+    );
     let connection = database.connection();
     let payload = r#"{"kind":"text","payload":{"text":"normalized ACP"}}"#;
     let payload_digest = format!("{:x}", Sha256::digest(payload.as_bytes()));
@@ -312,7 +354,10 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
     assert_eq!(snapshot.session_id.as_deref(), Some("codex-session"));
     assert_eq!(snapshot.selected_harness_id.as_deref(), Some("codex"));
     assert_eq!(snapshot.selected_model_id.as_deref(), Some("codex-model"));
-    assert!(snapshot.messages.is_empty());
+    assert_eq!(snapshot.messages.len(), 2);
+    assert_eq!(snapshot.messages[0].session_id, history);
+    assert_eq!(snapshot.messages[0].text, "simulator history beside Codex");
+    assert_eq!(snapshot.messages[1].text, "preserved simulator answer");
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
 }
@@ -333,9 +378,8 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
         .into_iter()
         .find(|tab| tab.id == chat_id)
         .unwrap();
-    let history = database
-        .append_simulator_turn(&chat_id, "persisted prompt", "persisted answer")
-        .unwrap();
+    let history =
+        seed_closed_simulator_history(&database, &chat_id, "persisted prompt", "persisted answer");
     database
         .persist_project_layout(&ProjectLayoutRequest {
             project_id: project.id.clone(),
@@ -400,8 +444,9 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     let reattached = Database::open(&path).unwrap();
     let restored = reattached.bootstrap_snapshot().unwrap();
     assert_eq!(restored.active_tab_id.as_deref(), Some(chat_id.as_str()));
-    assert_eq!(restored.session_id, Some(history.session_id));
+    assert_eq!(restored.session_id, None);
     assert_eq!(restored.messages.len(), 2);
+    assert_eq!(restored.messages[0].session_id, history);
     assert_eq!(restored.messages[0].text, "persisted prompt");
     assert_eq!(restored.messages[1].text, "persisted answer");
     let durable_final: (i64, i64, i64) = reattached

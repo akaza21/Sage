@@ -1,6 +1,9 @@
 pub(crate) mod legacy_welcome;
 mod store;
 
+#[cfg(test)]
+pub(crate) use store::seed_legacy_welcome;
+
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 

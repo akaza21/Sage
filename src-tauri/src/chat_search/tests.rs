@@ -24,6 +24,70 @@ fn request(project_id: &str, query: &str) -> ProjectChatSearchRequest {
 }
 
 #[test]
+fn search_excludes_only_proven_legacy_welcome_text_and_keeps_real_answers() {
+    for fact_kind in ["simulatorTurnCommitted", "observedTurn"] {
+        let (database, project_id, root) = database_with_project();
+        let chat_id = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
+        {
+            let mut connection = database.write_connection().unwrap();
+            let transaction = connection.transaction().unwrap();
+            let now: i64 = transaction
+                .query_row(
+                    "SELECT created_at FROM chats WHERE id=?1",
+                    [&chat_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            crate::session_events::seed_legacy_welcome(
+                &transaction,
+                &project_id,
+                &chat_id,
+                &Uuid::new_v4().to_string(),
+                now,
+                r#"{"role":"assistant","text":"ready to choose a harness"}"#,
+                fact_kind,
+            )
+            .unwrap();
+            transaction.commit().unwrap();
+        }
+        for query in ["ready", "harness"] {
+            let results = search_project_chats(&database, &request(&project_id, query))
+                .unwrap()
+                .results;
+            if fact_kind == "simulatorTurnCommitted" {
+                assert!(results.is_empty());
+            } else {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].chat_id, chat_id);
+                assert_eq!(
+                    results[0].snippet.as_deref(),
+                    Some("ready to choose a harness")
+                );
+            }
+        }
+        database
+            .append_simulator_turn(&chat_id, "Real prompt", "Real answer: ready harness")
+            .unwrap();
+        for query in ["ready", "harness"] {
+            let results = search_project_chats(&database, &request(&project_id, query))
+                .unwrap()
+                .results;
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].chat_id, chat_id);
+            assert_eq!(
+                results[0].snippet.as_deref(),
+                Some("Real answer: ready harness")
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn literal_search_finds_attached_and_archived_primary_text_without_tool_payloads() {
     let (database, project_id, root) = database_with_project();
     let snapshot = database.bootstrap_snapshot().unwrap();
