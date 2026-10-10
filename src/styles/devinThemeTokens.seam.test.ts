@@ -105,6 +105,11 @@ describe("Devin-dark theme tokens", () => {
         selector: ".acp-message--user",
       },
       {
+        path: "features/chat/acp/acp-chat.css",
+        selector:
+          '.acp-code-block__header button:is([aria-pressed="true"], [data-copy-status])',
+      },
+      {
         path: "features/files/explorer-surface.css",
         selector: ".tree__row--selected",
       },
