@@ -76,9 +76,78 @@ it("replaces the established empty transcript with the real project home without
   expect(container.querySelector(".chat-transcript-actions")).toBeNull();
 });
 
+it("places the project picker outside a plain home subheading below the chat title", () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Sage", roots: [] },
+    projects: [
+      { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
+      { id: "project-2", name: "Other", rootCount: 0, lastOpenedAt: 1 },
+    ],
+  });
+  render(<ChatTranscript {...transcriptProps()} />);
+  const home = screen.getByRole("region", { name: "New chat" });
+  const heading = within(home).getByRole("heading", {
+    name: "What should we work on in Sage?",
+  });
+  expect(heading.children).toHaveLength(0);
+  expect(heading.tagName).toBe("H3");
+  expect(
+    screen.getByRole("heading", { name: emptyPage().title, level: 2 }),
+  ).toBeInTheDocument();
+  const picker = within(home).getByRole("button", { name: "Project" });
+  expect(picker.closest("h1, h2, h3, h4, h5, h6")).toBeNull();
+  fireEvent.click(picker);
+  expect(screen.getByRole("combobox", { name: "Project" })).toBeVisible();
+});
+
+it.each(["", "   ", "bad\u0000name", "bad\u007fname"])(
+  "shows a generic home for an established empty chat with project name %j",
+  (name) => {
+    render(
+      <ChatTranscript
+        {...transcriptProps()}
+        project={{ id: "project-1", name }}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Project" })).toBeNull();
+  },
+);
+
 it.each([
-  ["initial history load", { page: null }],
-  ["empty projection refresh", { historyLoading: true }],
+  ["no project", null],
+  ["unresolved chat", { id: "project-1", name: "Sage" }],
+] as const)(
+  "falls through without a history notice when there is %s and no load or error",
+  (_scenario, project) => {
+    render(
+      <ChatTranscript
+        {...transcriptProps()}
+        project={project}
+        page={null}
+        messages={[
+          {
+            id: "message-1",
+            sessionId: "session-1",
+            sequence: 1,
+            role: "assistant",
+            text: "Existing conversation",
+            createdAt: 1,
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText("Loading chat history…")).toBeNull();
+    expect(screen.getByText("Existing conversation")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+  },
+);
+
+it.each([
+  ["initial history load", { page: null, historyLoading: true }],
   ["earlier history load", { loadingEarlier: true }],
   ["history failure", { historyError: "History unavailable" }],
   ["unloaded history", { hasEarlier: true }],
@@ -102,7 +171,7 @@ it.each([
 );
 
 it.each(["running", "completed", "cancelled", "failed"] as const)(
-  "switches from home to %s history and back only after empty history settles",
+  "switches from home to %s history and keeps the settled empty home during refresh",
   async (state) => {
     const props = transcriptProps();
     const { rerender } = render(<ChatTranscript {...props} />);
@@ -112,7 +181,8 @@ it.each(["running", "completed", "cancelled", "failed"] as const)(
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
     expect(screen.getByText("Normalized answer")).toBeVisible();
     rerender(<ChatTranscript {...props} historyLoading />);
-    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+    expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
+    expect(screen.queryByText("Loading chat history…")).toBeNull();
     rerender(<ChatTranscript {...props} />);
     expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
   },
@@ -271,9 +341,10 @@ it("keeps first-turn announcements continuous through an empty history refresh",
   const props = transcriptProps();
   const { container, rerender } = render(<ChatTranscript {...props} />);
   const region = container.querySelector('[data-acp-announcement="polite"]')!;
+  const home = screen.getByRole("region", { name: "New chat" });
   rerender(<ChatTranscript {...props} historyLoading />);
-  expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-  expect(screen.getByText("Loading chat history…")).toBeVisible();
+  expect(screen.getByRole("region", { name: "New chat" })).toBe(home);
+  expect(screen.queryByText("Loading chat history…")).toBeNull();
   rerender(
     <ChatTranscript
       {...props}

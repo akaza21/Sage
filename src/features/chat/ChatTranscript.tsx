@@ -118,9 +118,7 @@ export function ChatTranscript({
     useNativeAcp &&
     page?.projectId === project?.id &&
     page?.turns.length === 0 &&
-    projectName &&
     !projectTransitioning &&
-    !historyLoading &&
     !loadingEarlier &&
     !historyError &&
     !hasEarlier &&
@@ -148,7 +146,7 @@ export function ChatTranscript({
             <div className="composer__notice" role="status">
               Loading the authoritative project…
             </div>
-          ) : useNativeAcp && !page ? (
+          ) : useNativeAcp && !page && (historyLoading || historyError) ? (
             historyNotice
           ) : useNativeAcp && page ? (
             <AcpChatProjection
@@ -167,11 +165,11 @@ export function ChatTranscript({
               onFeedbackQueued={forgetCopyFeedback}
               emptyState={
                 showHome ? (
-                  <ChatHome projectName={projectName!} />
+                  <ChatHome projectName={projectName} />
                 ) : !hasEarlier &&
                   page.nextCursor === null &&
                   !retentionIncomplete &&
-                  (historyError || historyLoading) ? (
+                  historyError ? (
                   historyNotice
                 ) : undefined
               }

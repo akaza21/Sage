@@ -21,7 +21,7 @@
   color: var(--color-text-muted);
 }
 
-.chat-home h2 {
+.chat-home h3 {
   margin: var(--space-6) 0 0;
   color: var(--color-text-primary);
   font-size: calc(var(--type-size-chat-title) * 1.2);
@@ -33,6 +33,7 @@
 .chat-home .project-scope {
   display: inline-flex;
   max-width: min(100%, 12rem);
+  margin-top: var(--space-3);
   height: auto;
   padding: 0;
   border: 0;
