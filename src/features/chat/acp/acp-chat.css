@@ -1,3 +1,5 @@
+@import "./chat-markdown.css";
+
 .acp-chat-projection {
   display: grid;
   width: 100%;
@@ -287,42 +289,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.acp-markdown {
-  font-size: var(--font-size-md);
-  line-height: var(--line-height-relaxed);
-}
-
-.acp-markdown > :first-child {
-  margin-top: 0;
-}
-
-.acp-markdown > :last-child {
-  margin-bottom: 0;
-}
-
-.acp-markdown p,
-.acp-markdown blockquote,
-.acp-markdown ul,
-.acp-markdown ol {
-  margin: var(--space-2) 0 0;
-}
-
-.acp-markdown :is(h1, h2, h3, h4, h5, h6) {
-  margin: var(--space-4) 0 var(--space-2);
-  line-height: var(--line-height-tight);
-  font-size: var(--font-size-lg);
-}
-
-.acp-markdown blockquote {
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--color-border-strong);
-  color: var(--color-text-secondary);
-}
-
-.acp-markdown :is(ul, ol) {
-  padding-left: var(--space-6);
-}
-
 :is(.acp-markdown, .file-markdown-preview) :not(pre) > code {
   padding: 2px 4px;
   border-radius: var(--radius-sm);
@@ -354,9 +320,9 @@
 .acp-code-block {
   margin: var(--space-3) 0;
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--color-panel);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-hover);
 }
 
 .acp-code-block__header {
@@ -454,8 +420,11 @@
     background: CanvasText;
   }
 
-  .acp-message--user,
-  .acp-code-block {
+  .acp-message--user {
     border-color: CanvasText;
+  }
+
+  .acp-code-block {
+    border: 1px solid CanvasText;
   }
 }

@@ -323,17 +323,27 @@ export function AcpChatPresentation({
     return () => window.clearTimeout(timer);
   }, [renderedAt]);
   const countIncomplete = page.nextCursor !== null || retentionIncomplete;
+  const dayTimestamps = useMemo(() => {
+    const timestamps: (number | null)[] = [];
+    let prior: number | null = null;
+    for (const turn of page.turns) {
+      const timestamp = turnDayTimestamp(turn);
+      const showDay =
+        timestamp !== null &&
+        (prior === null || !sameCalendarDay(timestamp, prior));
+      timestamps.push(showDay ? timestamp : null);
+      if (timestamp !== null) prior = timestamp;
+    }
+    return timestamps;
+  }, [page.turns]);
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
   const renderTurn = (turn: TurnProjection, index: number) => {
-    const timestamp = turnDayTimestamp(turn);
-    const prior = index > 0 ? turnDayTimestamp(page.turns[index - 1]) : null;
-    const showDay =
-      timestamp !== null && !sameCalendarDay(timestamp, prior ?? renderedAt);
+    const timestamp = dayTimestamps[index];
     return (
       <Fragment key={turn.id}>
-        {showDay ? (
+        {timestamp !== null ? (
           <div className="chat-transcript-day" role="separator">
             <time dateTime={new Date(timestamp).toISOString()}>
               {dayTimeLabel(timestamp)}

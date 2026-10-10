@@ -1,4 +1,7 @@
 .chat-surface {
+  --reading-measure: 660px;
+  --chat-column-gutter: var(--space-4);
+  --chat-column-trailing: calc(var(--scrollbar-size) + var(--space-3));
   position: relative;
   display: grid;
   width: 100%;
@@ -81,7 +84,7 @@
 
 .message-list {
   min-height: 0;
-  padding: var(--space-3) var(--space-4) var(--space-6);
+  padding: var(--space-3) var(--chat-column-gutter) var(--space-6);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;

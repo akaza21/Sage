@@ -1,0 +1,60 @@
+.acp-markdown {
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-relaxed);
+}
+
+.acp-markdown > :first-child {
+  margin-top: 0;
+}
+
+.acp-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.acp-markdown p,
+.acp-markdown blockquote,
+.acp-markdown ul,
+.acp-markdown ol {
+  margin: var(--space-2) 0 0;
+}
+
+.acp-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--space-4) 0 var(--space-2);
+  line-height: var(--line-height-tight);
+  font-size: var(--font-size-lg);
+}
+
+.acp-markdown blockquote {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+}
+
+.acp-markdown :is(ul, ol) {
+  padding-inline-start: max(
+    var(--space-4),
+    calc(var(--chat-list-marker-width) + 0.5ch)
+  );
+}
+
+.acp-markdown li {
+  padding-inline-start: var(--space-2);
+}
+
+.acp-markdown li::marker {
+  font-variant-numeric: tabular-nums;
+}
+
+.acp-markdown .markdown-table :is(th, td) {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-relaxed);
+}
+
+.acp-markdown .markdown-table th {
+  font-weight: var(--font-weight-semibold);
+}
+
+.acp-markdown .markdown-table :is(th, td):first-child {
+  padding-inline-start: 0;
+}

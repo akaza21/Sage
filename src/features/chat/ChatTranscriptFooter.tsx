@@ -130,15 +130,23 @@ export function ChatTranscriptFooter({
       ) : null}
       <div className="chat-transcript-actions" aria-label="Message actions">
         {hasText ? (
-          <button type="button" onClick={() => void copyAnswer()}>
+          <button
+            type="button"
+            aria-label={copied ? "Copied" : "Copy"}
+            title={copied ? "Copied" : "Copy"}
+            onClick={() => void copyAnswer()}
+          >
             <CopyIcon size={14} aria-hidden="true" />
-            {copied ? "Copied" : "Copy"}
           </button>
         ) : null}
         {retryAction ? (
-          <button type="button" onClick={retryAction}>
+          <button
+            type="button"
+            aria-label="Retry"
+            title="Retry"
+            onClick={retryAction}
+          >
             <RotateCcw size={14} aria-hidden="true" />
-            Retry
           </button>
         ) : null}
       </div>

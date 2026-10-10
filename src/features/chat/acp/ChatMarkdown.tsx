@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
@@ -23,6 +23,20 @@ export function ChatMarkdown({
   fileReferenceOwner?: AgentArtifactOwner;
 }) {
   const document = useMemo(() => renderMarkdownPreview(text), [text]);
+  const listMarkerWidth = useMemo(
+    () =>
+      document.blocks.reduce(
+        (digits, block) =>
+          block.kind === "list" && block.ordered
+            ? Math.max(
+                digits,
+                String((block.start ?? 1) + block.items.length - 1).length,
+              )
+            : digits,
+        1,
+      ),
+    [document],
+  );
   const ownerKey = fileReferenceOwner
     ? JSON.stringify([
         fileReferenceOwner.projectId,
@@ -111,7 +125,12 @@ export function ChatMarkdown({
     );
   };
   return (
-    <div className="acp-markdown">
+    <div
+      className="acp-markdown"
+      style={
+        { "--chat-list-marker-width": `${listMarkerWidth}ch` } as CSSProperties
+      }
+    >
       <MarkdownBlocks
         document={document}
         renderLink={renderLink}

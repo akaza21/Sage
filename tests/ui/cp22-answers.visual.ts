@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -13,6 +13,32 @@ import {
 } from "./fixtures/cp22Answers";
 
 test.use({ deviceScaleFactor: 1 });
+
+async function expectFilledCodePanel(code: Locator) {
+  const panel = await code.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const swatch = document.createElement("span");
+    swatch.style.color = "var(--color-surface-hover)";
+    element.append(swatch);
+    const fill = getComputedStyle(swatch).color;
+    swatch.remove();
+    return {
+      fill,
+      background: style.backgroundColor,
+      radius: style.borderTopLeftRadius,
+      radiusToken: style.getPropertyValue("--radius-xl").trim(),
+      borders: [
+        style.borderTopWidth,
+        style.borderRightWidth,
+        style.borderBottomWidth,
+        style.borderLeftWidth,
+      ],
+    };
+  });
+  expect(panel.background).toBe(panel.fill);
+  expect(panel.radius).toBe(panel.radiusToken);
+  expect(panel.borders).toEqual(["0px", "0px", "0px", "0px"]);
+}
 
 async function installAnswer(page: Page, text: string, streaming = false) {
   await settleChatProjections(page);
@@ -89,6 +115,7 @@ for (const width of [1888, 560, 480]) {
     await installAnswer(page, pythonAnswer);
     const code = page.getByRole("region", { name: "Python code" });
     await code.scrollIntoViewIfNeeded();
+    await expectFilledCodePanel(code);
     await expect(code.locator("code span").first()).toBeVisible();
     await settleTranscriptAtEnd(page);
     await assertContained(page);
@@ -109,6 +136,7 @@ for (const width of [1888, 560, 480]) {
     await installAnswer(page, unlabelledAnswer);
     const code = page.getByRole("region", { name: "Code block" });
     await code.hover();
+    await expectFilledCodePanel(code);
     await expect(
       code.locator("header > span:not(.acp-code-block__actions)"),
     ).toHaveCount(0);

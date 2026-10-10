@@ -1,9 +1,19 @@
 .composer {
   position: relative;
   container-type: inline-size;
-  width: min(664px, calc(100% - 32px));
-  max-width: 664px;
-  margin: 0 auto;
+  width: min(
+    var(--reading-measure),
+    calc(
+      100% - var(--chat-column-gutter) - var(--chat-column-gutter) -
+        var(--chat-column-trailing)
+    )
+  );
+  max-width: var(--reading-measure);
+  margin: 0;
+  margin-inline-start: max(
+    var(--chat-column-gutter),
+    calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
+  );
   overflow: visible;
   border: 1px solid var(--composer-border);
   border-radius: var(--radius-xl);
@@ -312,12 +322,6 @@
   white-space: nowrap;
 }
 
-@media (max-width: 820px) {
-  .composer {
-    width: min(466px, calc(100% - 24px));
-  }
-}
-
 @media (max-width: 520px) {
   .composer__controls > .select-control {
     max-width: none;
@@ -330,10 +334,6 @@
 }
 
 @media (max-height: 360px) {
-  .composer {
-    margin: 0 var(--space-3);
-  }
-
   .composer textarea {
     min-height: 40px;
     max-height: 56px;

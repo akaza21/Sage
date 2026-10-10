@@ -1,11 +1,10 @@
 .message-list__content {
-  --reading-measure: 660px;
   width: min(100%, 740px);
   margin-inline: auto;
 }
 
 .message-list__content .acp-turn__items {
-  width: min(100%, 660px);
+  width: min(100%, var(--reading-measure));
   margin-inline: auto;
 }
 
@@ -174,19 +173,15 @@
 }
 
 .chat-transcript-work > summary::after {
-  display: none;
+  display: block;
   width: 0;
   height: 0;
+  flex-shrink: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 5px solid currentColor;
   content: "";
   transition: transform var(--motion-duration-fast) ease;
-}
-
-.chat-transcript-work > summary:hover::after,
-.chat-transcript-work > summary:focus-visible::after {
-  display: block;
 }
 
 .chat-transcript-work[open] > summary::after {

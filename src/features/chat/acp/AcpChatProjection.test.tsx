@@ -481,9 +481,13 @@ describe("AcpChatProjection", () => {
           retentionIncomplete={false}
         />,
       );
-      expect(container.querySelector(".chat-transcript-day")).toBeNull();
+      expect(container.querySelector(".chat-transcript-day")).toHaveTextContent(
+        /^Today /,
+      );
       act(() => vi.advanceTimersByTime(2_000));
-      expect(container.querySelector(".chat-transcript-day")).not.toBeNull();
+      expect(container.querySelector(".chat-transcript-day")).toHaveTextContent(
+        /^Yesterday /,
+      );
       unmount();
     } finally {
       vi.useRealTimers();

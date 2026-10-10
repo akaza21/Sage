@@ -34,7 +34,7 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.message-list__content \.acp-message\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
     expect(transcriptCss).toMatch(
-      /\.message-list__content \.acp-turn__items\s*\{[^}]*width:\s*min\(100%, 660px\);[^}]*margin-inline:\s*auto;/s,
+      /\.message-list__content \.acp-turn__items\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
     expect(transcriptCss).toMatch(
       /\.message-list__content \.acp-turn__items > \.chat-transcript-work\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
@@ -44,7 +44,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("keeps activity rows muted and reveals inline disclosure chevrons on interaction", async () => {
+  it("keeps activity rows muted, Worked chevrons persistent and tool chevrons interaction-only", async () => {
     const transcriptCss = await readFile(
       resolve("src/features/chat/chat-transcript-polish.css"),
       "utf8",
@@ -70,10 +70,10 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
     expect(transcriptCss).not.toMatch(/\.chat-transcript-work__heading::after/);
     expect(transcriptCss).toMatch(
-      /\.chat-transcript-work > summary::after\s*\{[^}]*display:\s*none;/s,
+      /\.chat-transcript-work > summary::after\s*\{[^}]*display:\s*block;/s,
     );
-    expect(transcriptCss).toMatch(
-      /\.chat-transcript-work > summary:hover::after,[\s\S]*\.chat-transcript-work > summary:focus-visible::after\s*\{[^}]*display:\s*block;/s,
+    expect(transcriptCss).not.toMatch(
+      /\.chat-transcript-work > summary:hover::after/,
     );
     expect(transcriptCss).not.toMatch(
       /\.chat-transcript-work > summary::before/,
