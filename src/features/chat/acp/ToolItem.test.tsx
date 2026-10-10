@@ -14,6 +14,7 @@ import {
 } from "../../preview/harnessBrowse";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
+import { toolCommandLine } from "./toolActivityRollup";
 
 afterEach(() => {
   cleanup();
@@ -420,9 +421,47 @@ describe("ToolItem", () => {
     expect(screen.queryByLabelText("Command output")).toBeNull();
   });
 
+  it("prefers a nonblank native summary and otherwise uses retained command input", () => {
+    const item = commandItem(null);
+    if (item.payload.presentation.kind !== "execute")
+      throw new Error("Expected execute presentation");
+    item.payload.inputSummary = "npm run check";
+    item.payload.presentation.summary = "npm run lint";
+    expect(toolCommandLine(item)).toBe("npm run lint");
+    item.payload.presentation.summary = " \t ";
+    expect(toolCommandLine(item)).toBe("npm run check");
+    item.payload.inputSummary = "Run command";
+    expect(toolCommandLine(item)).toBe("Run command");
+    item.payload.inputSummary = null;
+    expect(toolCommandLine(item)).toBeNull();
+  });
+
+  it("normalizes command text to one line and truncates without splitting a surrogate pair", () => {
+    const item = commandItem(null);
+    item.payload.inputSummary = " npm\nrun\tcheck ";
+    expect(toolCommandLine(item)).toBe("npm run check");
+    item.payload.inputSummary = "x".repeat(510) + "\u{1f680}".repeat(1_000);
+    expect(toolCommandLine(item)).toBe("x".repeat(510) + "\u2026");
+    expect(toolCommandLine(item)!.length).toBeLessThanOrEqual(512);
+  });
+
+  it("does not invent command text for non-command presentations", () => {
+    expect(
+      toolCommandLine(
+        tool({
+          kind: "other",
+          label: "Unknown tool",
+          summary: null,
+          rawKind: null,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("preserves literal quoted spaces in the expanded retained command", () => {
     const item = commandItem(null);
     item.payload.inputSummary = "printf 'two  spaces'";
+    expect(toolCommandLine(item)).toBe("printf 'two  spaces'");
     render(<ToolItem item={item} />);
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "printf 'two  spaces'",

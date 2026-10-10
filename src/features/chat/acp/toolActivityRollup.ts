@@ -150,6 +150,17 @@ function commandRollupLabel(
   activity: ToolRollup["commandActivity"],
 ): string {
   const state = toolRollupState(items);
+  const stateCount = items.filter((item) => item.toolState === state).length;
+  if (stateCount < items.length) {
+    const stateLabel =
+      state === "inProgress"
+        ? "running"
+        : state === "waitingForApproval"
+          ? "awaiting approval"
+          : toolStateLabels[state].toLowerCase();
+    const noun = activity === "declaredTest" ? "test command" : "command";
+    return `${countLabel(items.length, noun)} \u00b7 ${stateCount} ${stateLabel}`;
+  }
   const action =
     state === "completed"
       ? "Ran"

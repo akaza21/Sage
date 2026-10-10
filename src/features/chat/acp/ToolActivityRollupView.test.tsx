@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
@@ -257,9 +259,194 @@ describe("ToolActivityRollup", () => {
     );
   });
 
-  it("uses call counts for ordinary commands", () => {
-    expect(toolRollupLabel("execute", [tool("command", "execute")])).toBe(
-      "Ran 1 command",
+  it.each([
+    [1, "Ran 1 command"],
+    [2, "Ran 2 commands"],
+    [3, "Ran 3 commands"],
+  ])("counts %s ordinary commands", (count, expected) => {
+    expect(
+      toolRollupLabel(
+        "execute",
+        Array.from({ length: count }, (_, index) =>
+          tool(`command-${index}`, "execute"),
+        ),
+      ),
+    ).toBe(expected);
+  });
+
+  it("preserves read and edit verbs while counting mixed command calls", () => {
+    expect(
+      toolRollupLabel("mixed", [
+        tool("read", "read"),
+        tool("edit", "edit"),
+        tool("command", "execute"),
+      ]),
+    ).toBe("Read files, edited files, ran 1 command");
+    expect(
+      toolRollupLabel("mixed", [
+        tool("read", "read"),
+        tool("command-1", "execute"),
+        tool("command-2", "execute"),
+      ]),
+    ).toBe("Read files, ran 2 commands");
+  });
+
+  it.each([
+    ["completed", "Ran", "Ran tests"],
+    ["inProgress", "Running", "Running tests"],
+    ["pending", "Pending", "Test commands pending"],
+    [
+      "waitingForApproval",
+      "Awaiting approval \u00b7",
+      "Test commands awaiting approval",
+    ],
+    ["failed", "Failed", "Test commands failed"],
+    ["cancelled", "Cancelled", "Test commands cancelled"],
+    ["declined", "Declined", "Test commands declined"],
+  ] as const)(
+    "preserves uniform %s command states and declared-test classification",
+    (toolState, ordinary, declared) => {
+      const items = [
+        { ...tool("command-1", "execute"), toolState },
+        { ...tool("command-2", "execute"), toolState },
+      ];
+      expect(toolRollupLabel("execute", items)).toBe(`${ordinary} 2 commands`);
+      expect(toolRollupLabel("execute", items, "declaredTest")).toBe(
+        `${declared} \u00b7 2 commands`,
+      );
+      expect(toolRollupLabel("execute", [items[0]], "declaredTest")).toBe(
+        `${declared} \u00b7 1 command`,
+      );
+    },
+  );
+
+  it("keeps empty activity and input-less unknown tools out of command groups", () => {
+    expect(groupPrimaryActivities([])).toEqual([]);
+    expect(groupPrimaryActivities([tool("other", "other")])).toMatchObject([
+      { kind: "toolRollup", rollup: { kind: "other" } },
+    ]);
+  });
+
+  it("keeps chronological command groups separate across prose and expands in order", () => {
+    const prose = {
+      ...tool("prose", "think"),
+      kind: "text" as const,
+      toolState: null,
+      payload: { role: "assistant" as const, text: "Next step" },
+    };
+    const grouped = groupPrimaryActivities([
+      tool("one", "execute"),
+      tool("two", "execute"),
+      prose,
+      tool("three", "execute"),
+    ]);
+    expect(
+      grouped.map((row) =>
+        row.kind === "item"
+          ? row.item.id
+          : row.rollup.items.map((item) => item.id),
+      ),
+    ).toEqual([["one", "two"], "prose", ["three"]]);
+    const first = grouped[0];
+    if (first.kind !== "toolRollup")
+      throw new Error("Expected a command rollup");
+    render(<ToolActivityRollup rollup={first.rollup} interactive />);
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    row.open = true;
+    fireEvent(row, new Event("toggle"));
+    expect(
+      [...row.querySelectorAll("[data-acp-item-id]")].map((card) =>
+        card.getAttribute("data-acp-item-id"),
+      ),
+    ).toEqual(["one", "two"]);
+  });
+
+  it("caps 65 command calls in groups of 64 and one", () => {
+    const grouped = groupPrimaryActivities(
+      Array.from({ length: 65 }, (_, index) =>
+        tool(`command-${index}`, "execute"),
+      ),
+    );
+    expect(grouped).toMatchObject([
+      {
+        kind: "toolRollup",
+        rollup: {
+          items: Array.from({ length: 64 }, (_, index) => ({
+            id: `command-${index}`,
+          })),
+        },
+      },
+      { kind: "toolRollup", rollup: { items: [{ id: "command-64" }] } },
+    ]);
+    const first = grouped[0];
+    if (first.kind !== "toolRollup")
+      throw new Error("Expected a command rollup");
+    expect(first.rollup.items).toHaveLength(64);
+    expect(toolRollupLabel("execute", first.rollup.items)).toBe(
+      "Ran 64 commands",
+    );
+  });
+
+  it("keeps collapsed summary copy muted and regular with shrinkable single-line labels", () => {
+    const cards = readFileSync(
+      resolve("src/features/chat/acp/acp-activity-cards.css"),
+      "utf8",
+    );
+    const details = readFileSync(
+      resolve("src/features/chat/acp/acp-activity-details.css"),
+      "utf8",
+    );
+    expect(cards).toMatch(
+      /\.acp-activity-card > summary > span\.acp-tool-rollup__summary-copy\s*\{[^}]*color:\s*var\(--color-text-muted\);[^}]*font-weight:\s*var\(--font-weight-regular\);/s,
+    );
+    expect(details).toMatch(
+      /\.acp-tool-rollup__label\s*\{[^}]*flex:\s*0 1 auto;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
+    );
+  });
+
+  describe.each([
+    ["ordinary", "2 commands"],
+    ["declaredTest", "2 test commands"],
+  ] as const)("mixed-state %s commands", (commandActivity, count) => {
+    it.each([
+      ["failed", "1 failed"],
+      ["cancelled", "1 cancelled"],
+      ["declined", "1 declined"],
+      ["inProgress", "1 running"],
+      ["pending", "1 pending"],
+      ["waitingForApproval", "1 awaiting approval"],
+    ] as const)(
+      "does not apply %s to the completed command",
+      (toolState, stateCount) => {
+        const completed = tool("completed", "execute");
+        const unsettled = { ...tool("unsettled", "execute"), toolState };
+        const { rerender } = render(
+          <ToolActivityRollup
+            rollup={{
+              kind: "execute",
+              commandActivity,
+              items: [completed, unsettled],
+            }}
+            interactive
+          />,
+        );
+        expect(
+          document.querySelector(".acp-tool-rollup__label")?.textContent,
+        ).toBe(count + " \u00b7 " + stateCount);
+        rerender(
+          <ToolActivityRollup
+            rollup={{
+              kind: "execute",
+              commandActivity,
+              items: [unsettled, completed],
+            }}
+            interactive
+          />,
+        );
+        expect(
+          document.querySelector(".acp-tool-rollup__label")?.textContent,
+        ).toBe(count + " \u00b7 " + stateCount);
+      },
     );
   });
 
@@ -366,7 +553,7 @@ describe("ToolActivityRollup", () => {
         presentation: { ...base.payload.presentation, label: "npm run check" },
       },
     };
-    render(
+    const { rerender } = render(
       <ToolActivityRollup
         rollup={{
           kind: "execute",
@@ -384,6 +571,40 @@ describe("ToolActivityRollup", () => {
     fireEvent(row, new Event("toggle"));
     expect(screen.getByRole("group", { name: "npm run check" })).toBeVisible();
     expect(screen.queryByLabelText("Command line")).toBeNull();
+    rerender(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [{ ...command, toolState: "completed" }],
+        }}
+        interactive
+      />,
+    );
+    expect(row.querySelector("summary")).toHaveTextContent("Ran npm run check");
+    expect(screen.queryByLabelText("Command line")).toBeNull();
+  });
+
+  it("preserves literal quoted spaces in a collapsed retained command", () => {
+    const base = tool("quoted-command", "execute");
+    const command = {
+      ...base,
+      toolState: "inProgress" as const,
+      payload: { ...base.payload, inputSummary: "printf 'two  spaces'" },
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [command],
+        }}
+        interactive
+      />,
+    );
+    expect(document.querySelector(".acp-tool-rollup__label")?.textContent).toBe(
+      "Running printf 'two  spaces'",
+    );
   });
 
   it("shows one live command row with its command before expansion", () => {
@@ -583,6 +804,25 @@ describe("ToolActivityRollup", () => {
     expect(toolRollupState([cancelled, tool("completed", "execute")])).toBe(
       "cancelled",
     );
+    expect(toolRollupState([failed, active])).toBe("failed");
+    expect(toolRollupLabel("execute", [failed, active])).toBe(
+      "2 commands \u00b7 1 failed",
+    );
+    for (const unsettled of [failed, active, declined, cancelled]) {
+      const grouped = groupPrimaryActivities([
+        unsettled,
+        tool("completed", "execute"),
+      ]);
+      expect(grouped).toMatchObject([
+        {
+          kind: "toolRollup",
+          rollup: {
+            kind: "execute",
+            items: [{ id: unsettled.id }, { id: "completed" }],
+          },
+        },
+      ]);
+    }
 
     const declared = {
       ...tool("declared", "execute"),
