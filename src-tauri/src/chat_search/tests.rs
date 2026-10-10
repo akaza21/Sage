@@ -173,6 +173,14 @@ fn utf8_query_accepts_exact_limit_and_rejects_one_byte_more() {
 #[test]
 fn result_and_scan_limits_are_truthful_and_fail_closed() {
     let (database, project_id, root) = database_with_project();
+    let chat_id = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    database
+        .append_simulator_turn(&chat_id, "scan fixture prompt", "scan fixture answer")
+        .unwrap();
     {
         let connection = database.connection();
         connection

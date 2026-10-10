@@ -957,6 +957,10 @@ fn codex_discovery_cleanup_deadline_requests_teardown_without_waiting_for_worker
 fn page_read_uses_native_generation_and_projects_v5_history() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, chat, root) = state_with_project();
+        let history = state
+            .database
+            .append_simulator_turn(&chat, "page projection prompt", "page projection answer")
+            .unwrap();
         let page = get_acp_chat_page_inner(
             &state,
             GetAcpChatPageRequest {
@@ -969,13 +973,24 @@ fn page_read_uses_native_generation_and_projects_v5_history() {
         .await
         .unwrap();
         assert_eq!(page.turns.as_slice().len(), 1);
-        assert_eq!(page.turns.as_slice()[0].items.as_slice().len(), 1);
+        assert_eq!(
+            page.turns.as_slice()[0].session_id.as_str(),
+            history.session_id
+        );
+        assert_eq!(page.turns.as_slice()[0].items.as_slice().len(), 2);
         assert!(matches!(
             &page.turns.as_slice()[0].items.as_slice()[0].content,
             ItemContent::Text {
+                role: TextRole::User,
+                text
+            } if text.as_str() == "page projection prompt"
+        ));
+        assert!(matches!(
+            &page.turns.as_slice()[0].items.as_slice()[1].content,
+            ItemContent::Text {
                 role: TextRole::Assistant,
-                ..
-            }
+                text
+            } if text.as_str() == "page projection answer"
         ));
         drop(state);
         fs::remove_dir_all(root).unwrap();
