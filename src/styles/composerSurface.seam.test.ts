@@ -20,6 +20,21 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("truncates the model label within its own shrinkable box instead of clipping the trigger's leading edge", async () => {
+    const css = await readFile(
+      resolve("src/styles/composer-model-picker.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.composer__model-label\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-align:\s*left;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(css).toMatch(
+      /\.composer__model-group \.composer__model-trigger\s*\{[^}]*justify-content:\s*flex-start;/s,
+    );
+    expect(css).toMatch(
+      /\.composer__model-trigger > svg\s*\{[^}]*width:\s*var\(--icon-size-md\);[^}]*height:\s*var\(--icon-size-md\);[^}]*flex:\s*0 0 auto;/s,
+    );
+  });
   it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {
     const css = await readFile(
       resolve("src/styles/harness-picker.css"),

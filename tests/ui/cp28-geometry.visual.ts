@@ -91,6 +91,49 @@ async function installAnswers(page: Page, text: string, queued = false) {
   );
 }
 
+async function expectComposerControlsContained(pane: Locator) {
+  const composer = pane.locator(".composer");
+  const paneBox = await pane.boundingBox();
+  const composerBox = await composer.boundingBox();
+  expect(paneBox && composerBox).toBeTruthy();
+  expect(composerBox!.x).toBeGreaterThanOrEqual(paneBox!.x);
+  expect(composerBox!.x + composerBox!.width).toBeLessThanOrEqual(
+    paneBox!.x + paneBox!.width,
+  );
+  for (const control of [
+    composer.getByRole("button", { name: "Harness", exact: true }),
+    composer.getByRole("button", { name: "Model", exact: true }),
+    composer.locator(".send-button"),
+  ]) {
+    await expect(control).toBeVisible();
+    const controlBox = await control.boundingBox();
+    expect(controlBox).toBeTruthy();
+    expect(controlBox!.x).toBeGreaterThanOrEqual(composerBox!.x);
+    expect(controlBox!.x + controlBox!.width).toBeLessThanOrEqual(
+      composerBox!.x + composerBox!.width,
+    );
+  }
+  expect(
+    await composer
+      .locator(".composer__toolbar")
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+}
+
+async function expectModelLeadingEdgeContained(model: Locator) {
+  const labelEdges = await model.evaluate((element) => {
+    const label = element.firstChild;
+    if (!label) throw new Error("Model trigger has no label");
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    return {
+      labelLeft: range.getBoundingClientRect().left,
+      triggerLeft: element.getBoundingClientRect().left,
+    };
+  });
+  expect(labelEdges.labelLeft).toBeGreaterThanOrEqual(labelEdges.triggerLeft);
+}
+
 async function expectColumnAlignment(pane: Locator) {
   const answer = await pane
     .locator(".acp-message--assistant")
@@ -105,6 +148,62 @@ async function expectColumnAlignment(pane: Locator) {
       (element) => element.scrollWidth <= element.clientWidth + 1,
     ),
   ).toBe(true);
+  await expectComposerControlsContained(pane);
+}
+
+for (const paneWidth of [360, 384]) {
+  test(`CP-28 composer model label keeps its leading edge and toolbar controls inside a ${paneWidth}px resource Chat pane`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(page, "file", "agent");
+    await settleChatProjections(page);
+    await expect(
+      page.getByRole("complementary", { name: "Agent artifacts" }),
+    ).toBeVisible();
+    await page.addStyleTag({
+      content: `.agent-chat-panes { grid-template-columns: ${paneWidth}px; }`,
+    });
+    const pane = page.locator(".agent-chat-pane").first();
+    const paneBox = await pane.boundingBox();
+    expect(paneBox).toBeTruthy();
+    expect(paneBox!.width).toBeCloseTo(paneWidth, 0);
+    const composer = pane.locator(".composer");
+    const model = composer.getByRole("button", { name: "Model", exact: true });
+    await expect(model).toContainText("GPT-5");
+    await expect(model.locator("svg")).toHaveCSS("width", "16px");
+    await expect(model.locator("svg")).toHaveCSS("height", "16px");
+    await expectModelLeadingEdgeContained(model);
+    await expectComposerControlsContained(pane);
+    await expect(model.locator(".composer__model-label")).toBeVisible();
+    await expect(model.locator(".composer__model-label")).toHaveCSS(
+      "min-width",
+      "0px",
+    );
+    await expect(model.locator(".composer__model-label")).toHaveCSS(
+      "overflow",
+      "hidden",
+    );
+    await expect(model.locator(".composer__model-label")).toHaveCSS(
+      "text-overflow",
+      "ellipsis",
+    );
+    await expect(model.locator(".composer__model-label")).toHaveCSS(
+      "text-align",
+      "left",
+    );
+    const label = model.locator(".composer__model-label");
+    await label.evaluate((element) => {
+      element.textContent = "GPT-5 with an extended reasoning model name";
+    });
+    expect(
+      await label.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(true);
+    await expectModelLeadingEdgeContained(model);
+    await expectComposerControlsContained(pane);
+  });
 }
 
 for (const width of [1888, 720, 480]) {

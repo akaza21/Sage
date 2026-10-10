@@ -64,7 +64,7 @@ export function ComposerModelControls({
           disabled={disabled || choices.length === 0}
           onClick={onToggle}
         >
-          {modelLabel}
+          <span className="composer__model-label">{modelLabel}</span>
           <ChevronDown size={12} aria-hidden="true" />
         </button>
         {effortOption?.type === "select" ? (

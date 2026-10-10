@@ -8,12 +8,26 @@
 
 .composer__model-group .composer__model-trigger {
   max-width: 148px;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 4px;
   padding: 0 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer__model-label {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__model-trigger > svg {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  flex: 0 0 auto;
 }
 
 .composer__effort-picker .searchable-picker__trigger {
