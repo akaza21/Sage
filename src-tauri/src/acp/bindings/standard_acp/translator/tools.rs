@@ -18,6 +18,7 @@ use super::decode::{
     transition_tool,
 };
 use super::diff_records::{DiffObservation, FrameState};
+use super::tool_input::command_input_patch;
 use super::tool_snapshots::{
     CommandPatch, command_update_payload, content_update_payload, path_locations,
 };
@@ -86,7 +87,9 @@ impl StandardAcpTranslator {
         self.store_command_snapshot(id.as_str(), retained);
         let label = self.resolve_tool_label(id.as_str(), update, category)?;
         let (output_summary, _) = self.command_snapshot(id.as_str());
-        let input_summary = browse_tool_summary("toolInput", update);
+        let input_summary = command_input_patch(self.profile, category, update)
+            .flatten()
+            .or_else(|| browse_tool_summary("toolInput", update));
         if let Some(summary) = input_summary.as_ref() {
             self.tool_inputs
                 .insert(id.as_str().to_owned(), summary.clone());
@@ -153,6 +156,10 @@ impl StandardAcpTranslator {
         let command = category == ToolCategory::Execute;
         let protocol_locations = path_locations(category, update, resources)?;
         let patch = output_payload(category, update, protocol_locations.clone())?;
+        let input_summary = command_input_patch(self.profile, category, update);
+        let input_changed = input_summary
+            .as_ref()
+            .is_some_and(|input| self.tool_inputs.get(id.as_str()) != input.as_ref());
         let frame = FrameState {
             settling: next.is_terminal(),
             late: current.is_terminal(),
@@ -190,6 +197,7 @@ impl StandardAcpTranslator {
                 }
             }
             let mutating = !patch.retains_output(&self.command_snapshot(id.as_str()))
+                || input_changed
                 || protocol_locations.is_some()
                 || outcome.terminal_output.is_some()
                 || update.get("title").is_some();
@@ -207,6 +215,7 @@ impl StandardAcpTranslator {
             return Ok(vec![AdapterEvent::IgnoredDuplicate]);
         }
         if next == current
+            && !input_changed
             && patch.retains_output(&self.command_snapshot(id.as_str()))
             && protocol_locations.is_none()
             && outcome.events.is_empty()
@@ -223,6 +232,9 @@ impl StandardAcpTranslator {
         let locations = merged.1.clone();
         let (retained_output, retained_locations) =
             self.admit_snapshot(id.as_str(), merged, command)?;
+        if let Some(input) = input_summary {
+            self.set_command_input(id.as_str(), input);
+        }
         let execution = tool_execution(
             outcome
                 .terminal_output

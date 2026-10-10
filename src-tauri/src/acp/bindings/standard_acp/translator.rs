@@ -26,6 +26,7 @@ mod error;
 mod images;
 mod permissions;
 mod terminal;
+mod tool_input;
 mod tool_snapshots;
 mod tools;
 

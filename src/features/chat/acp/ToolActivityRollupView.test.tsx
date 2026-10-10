@@ -239,7 +239,7 @@ describe("ToolActivityRollup", () => {
       />,
     );
     expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Edited files, ran commands",
+      "Edited files, ran 1 command",
     );
 
     rerender(
@@ -253,17 +253,140 @@ describe("ToolActivityRollup", () => {
       />,
     );
     expect(document.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Read files, ran commands",
+      "Read files, ran 1 command",
     );
   });
 
   it("uses call counts for ordinary commands", () => {
     expect(toolRollupLabel("execute", [tool("command", "execute")])).toBe(
-      "Ran commands",
+      "Ran 1 command",
     );
   });
 
-  it("shows one muted live command row with its command before expansion", () => {
+  it.each([
+    ["inProgress", "Running"],
+    ["completed", "Ran"],
+    ["pending", "Pending"],
+    ["waitingForApproval", "Awaiting approval \u00b7"],
+    ["failed", "Failed"],
+    ["cancelled", "Cancelled"],
+    ["declined", "Declined"],
+  ] as const)(
+    "shows native input in one collapsed %s row and the same expanded command",
+    (toolState, action) => {
+      const base = tool("native-command", "execute");
+      const command: ToolItem = {
+        ...base,
+        toolState,
+        lifecycle:
+          toolState === "pending"
+            ? "started"
+            : toolState === "inProgress" || toolState === "waitingForApproval"
+              ? "streaming"
+              : toolState === "failed"
+                ? "failed"
+                : toolState === "completed"
+                  ? "completed"
+                  : "cancelled",
+        terminalAt:
+          toolState === "pending" ||
+          toolState === "inProgress" ||
+          toolState === "waitingForApproval"
+            ? null
+            : 1,
+        payload: { ...base.payload, inputSummary: "npm run check" },
+      };
+      render(
+        <ToolActivityRollup
+          rollup={{
+            kind: "execute",
+            commandActivity: "ordinary",
+            items: [command],
+          }}
+          interactive
+        />,
+      );
+      const row =
+        document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+      const summary = row.querySelector("summary")!;
+      expect(row).not.toHaveAttribute("open");
+      expect(row).toHaveAttribute("data-activity-state", toolState);
+      expect(
+        summary.querySelector(".acp-tool-rollup__label"),
+      ).toHaveTextContent(`${action} npm run check`);
+      if (toolState !== "completed" && toolState !== "inProgress") {
+        expect(summary.querySelector(".acp-live-shimmer")).toBeNull();
+        expect(summary.querySelector(".acp-state")).toHaveTextContent(
+          toolState === "pending"
+            ? "Pending"
+            : toolState === "waitingForApproval"
+              ? "Waiting for approval"
+              : action,
+        );
+      }
+      expect(screen.queryByLabelText("Command line")).toBeNull();
+      row.open = true;
+      fireEvent(row, new Event("toggle"));
+      expect(screen.getByLabelText("Command line")).toHaveTextContent(
+        "npm run check",
+      );
+    },
+  );
+
+  it("refreshes a mounted collapsed row when its input arrives later", () => {
+    const command = {
+      ...tool("late-command", "execute"),
+      toolState: "inProgress" as const,
+    };
+    const rollup = {
+      kind: "execute" as const,
+      commandActivity: "ordinary" as const,
+      items: [command],
+    };
+    const { rerender } = render(
+      <ToolActivityRollup rollup={rollup} interactive />,
+    );
+    const row = document.querySelector(".acp-tool-rollup");
+    expect(row).toHaveTextContent("Running command");
+    command.payload.inputSummary = "npm run lint";
+    rerender(<ToolActivityRollup rollup={rollup} interactive />);
+    expect(document.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
+    expect(document.querySelector(".acp-tool-rollup")).toBe(row);
+    expect(row).toHaveTextContent("Running npm run lint");
+    expect(row).not.toHaveAttribute("open");
+  });
+
+  it("shows Codex-shaped input that equals its label without duplicating the expanded command", () => {
+    const base = tool("codex-command", "execute");
+    const command = {
+      ...base,
+      toolState: "inProgress" as const,
+      payload: {
+        inputSummary: "npm run check",
+        presentation: { ...base.payload.presentation, label: "npm run check" },
+      },
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [command],
+        }}
+        interactive
+      />,
+    );
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    expect(row.querySelector("summary")).toHaveTextContent(
+      "Running npm run check",
+    );
+    row.open = true;
+    fireEvent(row, new Event("toggle"));
+    expect(screen.getByRole("group", { name: "npm run check" })).toBeVisible();
+    expect(screen.queryByLabelText("Command line")).toBeNull();
+  });
+
+  it("shows one live command row with its command before expansion", () => {
     const command: ToolItem = {
       ...tool("live-command", "execute"),
       lifecycle: "streaming",
@@ -310,7 +433,7 @@ describe("ToolActivityRollup", () => {
     expect(row).toHaveAttribute("open");
   });
 
-  it("shows a live edit as one muted shimmering row without a status chip", () => {
+  it("shows a live edit as one shimmering row without a status chip", () => {
     const edit: ToolItem = {
       ...tool("live-edit", "edit", [mainFile]),
       lifecycle: "streaming",
@@ -362,7 +485,7 @@ describe("ToolActivityRollup", () => {
       },
     ]);
     expect(toolRollupLabel("execute", [test], "declaredTest")).toBe(
-      "Ran tests",
+      "Ran tests · 1 command",
     );
   });
 
@@ -396,7 +519,7 @@ describe("ToolActivityRollup", () => {
       />,
     );
 
-    expect(screen.getByText("Ran tests")).toBeVisible();
+    expect(screen.getByText("Test commands failed · 1 command")).toBeVisible();
     expect(screen.getByText("Failed")).toBeVisible();
   });
 
@@ -521,7 +644,7 @@ describe("ToolActivityRollup", () => {
     const disclosure =
       document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(disclosure).not.toHaveAttribute("open");
-    expect(screen.getByText("Ran commands")).toBeVisible();
+    expect(screen.getByText("Ran 2 commands")).toBeVisible();
     expect(screen.queryByText("npm run build")).toBeNull();
     if (!disclosure) throw new Error("Expected the tool rollup disclosure");
 
@@ -557,7 +680,7 @@ describe("ToolActivityRollup", () => {
       />,
     );
 
-    expect(screen.getByText("Ran commands")).toBeVisible();
+    expect(screen.getByText("Ran 1 command")).toBeVisible();
     expect(
       document.querySelector('[data-activity-icon="execute"]'),
     ).toBeVisible();
@@ -579,7 +702,7 @@ describe("ToolActivityRollup", () => {
         },
       ]),
     ).toBeNull();
-    expect(toolRollupLeadDetail("Ran commands", [])).toBeNull();
+    expect(toolRollupLeadDetail("Ran 1 command", [])).toBeNull();
     expect(
       toolRollupLeadDetail("Command activity", [tool("command", "execute")]),
     ).toBeNull();
@@ -692,6 +815,11 @@ describe("ToolActivityRollup", () => {
     expect(
       screen.getAllByRole("group", { name: "read activity" }),
     ).toHaveLength(2);
+    expect(
+      [...disclosure.querySelectorAll("[data-acp-item-id]")].map((card) =>
+        card.getAttribute("data-acp-item-id"),
+      ),
+    ).toEqual(["file-1", "file-2"]);
     expect(disclosure.querySelector("summary .acp-state")).toHaveTextContent(
       "Completed",
     );

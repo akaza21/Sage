@@ -364,7 +364,7 @@ test.describe("Tool activity rollup summary containment", () => {
     const rollup = page.locator(".acp-tool-rollup");
     await revealWorkedContent(rollup);
     const label = rollup.locator(".acp-tool-rollup__label");
-    await expect(label).toHaveText("Ran commands");
+    await expect(label).toHaveText("Ran 2 commands");
     await expect(
       rollup.locator('[data-activity-icon="execute"]'),
     ).toBeVisible();

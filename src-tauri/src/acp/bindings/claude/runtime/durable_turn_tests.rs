@@ -17,6 +17,8 @@ use crate::{
 
 use super::tests::{Mapper, frame, initialize, request_id};
 
+mod command_summary_tests;
+
 #[derive(Default)]
 struct Sink {
     last_request_id: Option<u64>,

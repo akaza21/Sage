@@ -408,6 +408,27 @@ describe("ToolItem", () => {
     };
   }
 
+  it("bounds and ellipsizes retained input when the native command summary is null", () => {
+    const item = commandItem(null);
+    item.payload.inputSummary = "npm run check " + "x".repeat(1_000);
+    render(<ToolItem item={item} />);
+    const line = screen.getByLabelText("Command line");
+    expect(line.textContent).toBe(
+      "npm run check " + "x".repeat(497) + "\u2026",
+    );
+    expect(line.textContent).toHaveLength(512);
+    expect(screen.queryByLabelText("Command output")).toBeNull();
+  });
+
+  it("preserves literal quoted spaces in the expanded retained command", () => {
+    const item = commandItem(null);
+    item.payload.inputSummary = "printf 'two  spaces'";
+    render(<ToolItem item={item} />);
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "printf 'two  spaces'",
+    );
+  });
+
   it("uses one generic card for unknown tools and typed safe summaries", () => {
     const { rerender } = render(
       <ToolItem

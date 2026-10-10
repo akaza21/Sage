@@ -23,6 +23,8 @@ mod permission_summary_tests;
 mod real_binary_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tool_input_tests;
 
 pub(crate) use admission::{
     AdmittedStandardAcpBinding, StandardAcpAdmissionError, StandardAcpArtifact,

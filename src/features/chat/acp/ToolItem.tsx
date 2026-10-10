@@ -25,7 +25,7 @@ import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
-import { toolDurationLabel } from "./toolActivityRollup";
+import { toolCommandLine, toolDurationLabel } from "./toolActivityRollup";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -189,17 +189,10 @@ function Presentation({
     }
     case "execute": {
       const output = outputSummary;
-      const commandPayload = item.payload;
-      const candidateLine =
-        presentation.summary ??
-        ("inputSummary" in commandPayload ? commandPayload.inputSummary : null);
-      const commandLine =
-        candidateLine && candidateLine.trim() === presentation.label.trim()
-          ? null
-          : candidateLine;
+      const commandLine = toolCommandLine(item);
       return (
         <>
-          {commandLine ? (
+          {commandLine && commandLine !== presentation.label.trim() ? (
             <pre
               className="acp-tool-command acp-tool-command--line"
               aria-label="Command line"

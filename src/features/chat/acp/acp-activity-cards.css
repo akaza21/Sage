@@ -112,6 +112,11 @@
   text-align: right;
 }
 
+.acp-activity-card > summary > span.acp-tool-rollup__summary-copy {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
 .acp-activity-card[data-activity-state="inProgress"]
   > :is(header, summary)
   .acp-state {

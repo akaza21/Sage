@@ -404,14 +404,14 @@ describe("AcpChatProjection", () => {
     ).toBeTruthy();
     expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
     expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
-    expect(within(turn!).getAllByText("Ran tests")).toHaveLength(1);
+    expect(within(turn!).getAllByText("Ran tests · npm test")).toHaveLength(1);
     expect(work).not.toHaveAttribute("open");
     expect(rollup).not.toBeNull();
     expect(rollup).not.toHaveAttribute("open");
 
     fireEvent.click(work!.querySelector("summary")!);
     expect(work).toHaveAttribute("open");
-    expect(within(work!).getByText("Ran tests")).toBeVisible();
+    expect(within(work!).getByText("Ran tests · npm test")).toBeVisible();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
     expect(
@@ -556,7 +556,7 @@ describe("AcpChatProjection", () => {
       [...work!.querySelectorAll(".acp-tool-rollup__label")].map(
         (label) => label.textContent,
       ),
-    ).toEqual(["Ran commands, read a file"]);
+    ).toEqual(["Ran 1 command, read a file"]);
     const rollup =
       container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(rollup).not.toBeNull();
@@ -632,7 +632,7 @@ describe("AcpChatProjection", () => {
       [...work!.querySelectorAll(".acp-tool-rollup__label")].map((row) =>
         row.textContent?.trim(),
       ),
-    ).toEqual(["Edited a file, read files, ran commands"]);
+    ).toEqual(["Edited a file, read files, ran 1 command"]);
   });
 
   it("interleaves running assistant prose and activity rows in transcript order", async () => {
@@ -691,9 +691,9 @@ describe("AcpChatProjection", () => {
       ].map((row) => row.textContent?.trim()),
     ).toEqual([
       "First progress note",
-      "Ran commands",
+      "Ran gh --version",
       "Second progress note",
-      "Ran commands",
+      "Ran gh --version",
     ]);
   });
 
@@ -746,9 +746,9 @@ describe("AcpChatProjection", () => {
         (row) => row.textContent?.trim(),
       ),
     ).toEqual([
-      "Ran commands",
+      "Ran gh --version",
       "TOOL_RETRYRetry availableRetrying command",
-      "Ran commands",
+      "Ran gh --version",
     ]);
   });
 
@@ -799,7 +799,7 @@ describe("AcpChatProjection", () => {
       "Progress note",
     );
     expect(work?.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Ran commands",
+      "Ran gh --version",
     );
     expect(work).not.toHaveTextContent("Final answer");
     expect(

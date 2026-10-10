@@ -1,5 +1,5 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { terminalToolStates, toolStateLabels } from "./statusSemantics";
+import { toolStateLabels } from "./statusSemantics";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -87,7 +87,7 @@ function mixedToolLabel(items: readonly ToolProjectionItem[]): string {
           ? `edited ${file}`
           : kind === "read"
             ? `read ${file}`
-            : "ran commands";
+            : `ran ${countLabel(matching.length, "command")}`;
       return index === 0 ? phrase[0].toUpperCase() + phrase.slice(1) : phrase;
     })
     .join(", ");
@@ -98,25 +98,13 @@ export function toolRollupLabel(
   items: readonly ToolProjectionItem[],
   commandActivity: ToolRollup["commandActivity"] = "ordinary",
 ): string {
+  if (kind === "execute") return commandRollupLabel(items, commandActivity);
   const live = items.some((item) => item.toolState === "inProgress");
   if (live && kind === "edit") return "Editing files";
   if (live && kind === "think") return "Thinking";
-  if (live && kind === "execute" && items.length > 1) return "Running commands";
-  if (
-    kind === "execute" &&
-    items.length === 1 &&
-    items[0]?.toolState === "inProgress"
-  ) {
-    const presentation = items[0].payload.presentation;
-    const command =
-      presentation.kind === "execute" ? presentation.summary?.trim() : null;
-    return command ? `Running ${command}` : "Running command";
-  }
   switch (kind) {
     case "mixed":
       return mixedToolLabel(items);
-    case "execute":
-      return commandActivity === "declaredTest" ? "Ran tests" : "Ran commands";
     case "read":
       return resourceRollupLabel("Read", items);
     case "edit":
@@ -155,6 +143,50 @@ export function toolRollupLabel(
       }
       return `Tool activity · ${countLabel(items.length, "item")}`;
   }
+}
+
+function commandRollupLabel(
+  items: readonly ToolProjectionItem[],
+  activity: ToolRollup["commandActivity"],
+): string {
+  const state = toolRollupState(items);
+  const action =
+    state === "completed"
+      ? "Ran"
+      : state === "inProgress"
+        ? "Running"
+        : toolStateLabels[state];
+  const command = items.length === 1 ? toolCommandLine(items[0]) : null;
+  const count = countLabel(items.length, "command");
+  if (activity === "declaredTest") {
+    const label =
+      state === "completed" || state === "inProgress"
+        ? `${action} tests`
+        : state === "waitingForApproval"
+          ? "Test commands awaiting approval"
+          : `Test commands ${action.toLowerCase()}`;
+    return `${label} \u00b7 ${command || count}`;
+  }
+  const label =
+    state === "waitingForApproval" ? "Awaiting approval \u00b7" : action;
+  return `${label} ${command || (state === "inProgress" && items.length === 1 ? "command" : count)}`;
+}
+
+export function toolCommandLine(item: ToolProjectionItem): string | null {
+  const { presentation, inputSummary } = item.payload;
+  if (presentation.kind !== "execute") return null;
+  const candidate = presentation.summary?.trim() || inputSummary?.trim();
+  if (!candidate) return null;
+  const command = candidate
+    .slice(0, 512)
+    .replace(/[\r\n\t\u2028\u2029]/g, " ")
+    .trim();
+  return candidate.length <= 512
+    ? command
+    : `${command
+        .slice(0, 511)
+        .replace(/[\uD800-\uDBFF]$/, "")
+        .trimEnd()}\u2026`;
 }
 
 function canJoinMixed(item: ToolProjectionItem): boolean {
@@ -202,8 +234,11 @@ export function toolRollupState(
   if (items.some((item) => item.toolState === "failed")) return "failed";
   if (items.some((item) => item.toolState === "declined")) return "declined";
   if (items.some((item) => item.toolState === "cancelled")) return "cancelled";
-  if (items.some((item) => !terminalToolStates.has(item.toolState)))
+  if (items.some((item) => item.toolState === "inProgress"))
     return "inProgress";
+  if (items.some((item) => item.toolState === "waitingForApproval"))
+    return "waitingForApproval";
+  if (items.some((item) => item.toolState === "pending")) return "pending";
   return "completed";
 }
 
