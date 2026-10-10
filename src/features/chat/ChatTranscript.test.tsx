@@ -19,7 +19,7 @@ async function renderTranscript(
   messages: readonly ChatMessage[] = [],
 ) {
   const onRetry = vi.fn();
-  const result = render(
+  const transcript = (page: AcpChatPage) => (
     <ChatTranscript
       transcriptRef={{ current: null }}
       contentRef={{ current: null }}
@@ -27,7 +27,7 @@ async function renderTranscript(
       onScroll={vi.fn()}
       projectTransitioning={false}
       useNativeAcp
-      page={acpPage}
+      page={page}
       focused
       projectRoots={[]}
       retentionIncomplete={false}
@@ -41,10 +41,18 @@ async function renderTranscript(
       onRetry={onRetry}
       showJumpToLatest={false}
       onJumpToLatest={vi.fn()}
-    />,
+    />
   );
+  const result = render(transcript(acpPage));
   await settleLazyModules();
-  return { ...result, onRetry };
+  return {
+    ...result,
+    onRetry,
+    async rerenderTranscript(next: AcpChatPage) {
+      result.rerender(transcript(next));
+      await settleLazyModules();
+    },
+  };
 }
 
 function retryPage() {
@@ -90,7 +98,16 @@ describe("ChatTranscript answer actions", () => {
     expect(container.querySelector(".chat-transcript-actions")).toBeNull();
   });
 
-  it.each(["running", "waitingApproval", "cancelling"] as const)(
+  it.each([
+    "queued",
+    "sending",
+    "running",
+    "waitingModel",
+    "waitingTool",
+    "waitingApproval",
+    "waitingUser",
+    "cancelling",
+  ] as const)(
     "does not place a prior answer's actions beneath a %s turn",
     async (state) => {
       const next = retryPage();
@@ -100,7 +117,7 @@ describe("ChatTranscript answer actions", () => {
           ...page(state).turns[0],
           id: "latest-turn" as never,
           ordinal: 2,
-          items: [],
+          items: retryPage().turns[0].items.slice(0, 1),
         },
       ];
       await renderTranscript(next);
@@ -165,7 +182,52 @@ describe("ChatTranscript answer actions", () => {
 });
 
 describe("ChatTranscript Retry", () => {
-  it.each(["completed", "failed"] as const)(
+  it.each([
+    ["cancelled", true],
+    ["interrupted", true],
+    ["cancelled", false],
+    ["interrupted", false],
+  ] as const)(
+    "offers Retry after stopping before the first answer token (%s, prior answer: %s)",
+    async (state, hasPriorAnswer) => {
+      const initial = retryPage();
+      if (!hasPriorAnswer) initial.turns = [];
+      const { onRetry, rerenderTranscript } = await renderTranscript(initial);
+      expect(screen.queryByRole("button", { name: "Copy" }) !== null).toBe(
+        hasPriorAnswer,
+      );
+      const latest = retryPage().turns[0];
+      latest.id = "latest-turn" as never;
+      latest.ordinal = hasPriorAnswer ? 2 : 1;
+      latest.items = latest.items.slice(0, 1);
+      for (const nextState of ["running", "cancelling", state] as const) {
+        await rerenderTranscript({
+          ...initial,
+          turns: [
+            ...initial.turns,
+            {
+              ...latest,
+              state: nextState,
+              terminalAt: nextState === state ? 3 : null,
+              ...(nextState === state
+                ? { terminalReason: { kind: "cancelledByUser" as const } }
+                : {}),
+            },
+          ],
+        });
+        expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+        if (nextState !== state)
+          expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      }
+      const retry = screen.getByRole("button", { name: "Retry" });
+      expect(retry).toBeVisible();
+      expect(retry.closest(".chat-transcript-actions")).not.toBeNull();
+      fireEvent.click(retry);
+      expect(onRetry).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["completed", "cancelled", "interrupted", "failed"] as const)(
     "derives Retry eligibility once for a %s turn",
     async (state) => {
       const latestRetryPrompt = vi.spyOn(acpTurnState, "latestRetryPrompt");
@@ -184,6 +246,12 @@ describe("ChatTranscript Retry", () => {
     ["failed", "no session"],
     ["failed", "historical session"],
     ["failed", "no prompt"],
+    ["cancelled", "no session"],
+    ["cancelled", "historical session"],
+    ["cancelled", "no prompt"],
+    ["interrupted", "no session"],
+    ["interrupted", "historical session"],
+    ["interrupted", "no prompt"],
   ] as const)(
     "omits Retry on a %s turn with %s even when a callback is supplied",
     async (state, scenario) => {

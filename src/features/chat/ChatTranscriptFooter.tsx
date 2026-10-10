@@ -83,8 +83,14 @@ export function ChatTranscriptFooter({
     ? (acpAssistant?.payload.text ?? "")
     : (legacyAssistant?.text ?? "");
   const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
+  const hasText = !!text.trim();
+  const latestTurn = page?.turns.at(-1);
+  const retryAction =
+    !page || (latestTurn && terminalTurnStates.has(latestTurn.state))
+      ? onRetry
+      : undefined;
 
-  if (!text.trim()) return null;
+  if (!hasText && !retryAction) return null;
 
   async function copyAnswer() {
     try {
@@ -105,20 +111,20 @@ export function ChatTranscriptFooter({
           </time>
         </div>
       ) : null}
-      {text ? (
-        <div className="chat-transcript-actions" aria-label="Message actions">
+      <div className="chat-transcript-actions" aria-label="Message actions">
+        {hasText ? (
           <button type="button" onClick={() => void copyAnswer()}>
             <CopyIcon size={14} aria-hidden="true" />
             {copied ? "Copied" : "Copy"}
           </button>
-          {onRetry ? (
-            <button type="button" onClick={onRetry}>
-              <RotateCcw size={14} aria-hidden="true" />
-              Retry
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
+        {retryAction ? (
+          <button type="button" onClick={retryAction}>
+            <RotateCcw size={14} aria-hidden="true" />
+            Retry
+          </button>
+        ) : null}
+      </div>
     </>
   );
 }
