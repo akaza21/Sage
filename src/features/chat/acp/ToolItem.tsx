@@ -25,7 +25,7 @@ import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
-import { toolCommandLine, toolDurationLabel } from "./toolActivityRollup";
+import { toolDurationLabel } from "./toolActivityRollup";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -103,6 +103,13 @@ function ResourceLocations({
       ))}
     </ul>
   );
+}
+
+function commandLabelText(value: string): string {
+  return value
+    .trim()
+    .replace(/^`+|`+$/g, "")
+    .trim();
 }
 
 function Presentation({
@@ -189,10 +196,16 @@ function Presentation({
     }
     case "execute": {
       const output = outputSummary;
-      const commandLine = toolCommandLine(item);
+      const commandLine = item.payload.inputSummary?.trim()
+        ? item.payload.inputSummary
+        : presentation.summary?.trim() || null;
+      const repeatsLabel =
+        commandLine &&
+        !/[\r\n\u2028\u2029]/.test(commandLine) &&
+        commandLabelText(commandLine) === commandLabelText(presentation.label);
       return (
         <>
-          {commandLine && commandLine !== presentation.label.trim() ? (
+          {commandLine && !repeatsLabel ? (
             <pre
               className="acp-tool-command acp-tool-command--line"
               aria-label="Command line"

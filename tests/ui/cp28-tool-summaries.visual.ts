@@ -30,6 +30,14 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
   });
   expect(typography.fontWeight).toBe("400");
   expect(typography.color).toBe(typography.muted);
+  const summaryTypography = await row
+    .locator(".acp-tool-rollup__summary-copy")
+    .evaluate((node) => {
+      const style = getComputedStyle(node);
+      return { color: style.color, fontWeight: style.fontWeight };
+    });
+  expect(summaryTypography.fontWeight).toBe("400");
+  expect(summaryTypography.color).toBe(typography.muted);
 });
 
 for (const layout of [
@@ -104,6 +112,7 @@ for (const layout of [
           textLength: label.textContent?.length,
           whiteSpace: style.whiteSpace,
           overflow: style.textOverflow,
+          flexShrink: style.flexShrink,
           height: label.getBoundingClientRect().height,
           lineHeight: Number.parseFloat(style.lineHeight),
           ellipsized: label.scrollWidth > label.clientWidth,
@@ -116,6 +125,7 @@ for (const layout of [
       expect(geometry.textLength).toBeLessThanOrEqual(520);
       expect(geometry.whiteSpace).toBe("nowrap");
       expect(geometry.overflow).toBe("ellipsis");
+      expect(geometry.flexShrink).toBe("1");
       expect(geometry.ellipsized).toBe(true);
       expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight + 1);
       expect(geometry.rowOverflow).toBeLessThanOrEqual(1);
@@ -123,7 +133,9 @@ for (const layout of [
       await row.locator("summary").click();
       const line = row.getByLabel("Command line");
       await expect(line).toBeVisible();
-      expect((await line.textContent())?.length).toBeLessThanOrEqual(512);
+      expect(await line.textContent()).toBe(
+        "npm run check -- " + "very-long-argument ".repeat(100),
+      );
     }
     await expectNoViewportOverflow(page);
   });

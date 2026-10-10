@@ -85,7 +85,10 @@ export function ToolActivityRollup({
               {duration}
             </span>
           ) : null}
-          {live ? null : <span className="acp-state">{stateLabel}</span>}
+          {live ||
+          (rollup.kind === "execute" && state !== "completed") ? null : (
+            <span className="acp-state">{stateLabel}</span>
+          )}
           <ChevronDown
             className="acp-tool-rollup__chevron"
             aria-hidden="true"

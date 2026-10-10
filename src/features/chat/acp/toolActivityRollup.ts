@@ -1,5 +1,5 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { toolStateLabels } from "./statusSemantics";
+import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -152,14 +152,28 @@ function commandRollupLabel(
   const state = toolRollupState(items);
   const stateCount = items.filter((item) => item.toolState === state).length;
   if (stateCount < items.length) {
-    const stateLabel =
-      state === "inProgress"
-        ? "running"
-        : state === "waitingForApproval"
-          ? "awaiting approval"
-          : toolStateLabels[state].toLowerCase();
+    const stateCounts = (
+      [
+        "inProgress",
+        "failed",
+        "declined",
+        "cancelled",
+        "waitingForApproval",
+        "pending",
+      ] as const
+    ).flatMap((toolState) => {
+      const count = items.filter((item) => item.toolState === toolState).length;
+      if (count === 0) return [];
+      const label =
+        toolState === "inProgress"
+          ? "running"
+          : toolState === "waitingForApproval"
+            ? "awaiting approval"
+            : toolStateLabels[toolState].toLowerCase();
+      return [`${count} ${label}`];
+    });
     const noun = activity === "declaredTest" ? "test command" : "command";
-    return `${countLabel(items.length, noun)} \u00b7 ${stateCount} ${stateLabel}`;
+    return `${countLabel(items.length, noun)} \u00b7 ${stateCounts.join(", ")}`;
   }
   const action =
     state === "completed"
@@ -170,12 +184,15 @@ function commandRollupLabel(
   const command = items.length === 1 ? toolCommandLine(items[0]) : null;
   const count = countLabel(items.length, "command");
   if (activity === "declaredTest") {
+    const testCommand = items.length === 1 ? "Test command" : "Test commands";
     const label =
       state === "completed" || state === "inProgress"
-        ? `${action} tests`
+        ? state === "inProgress" && items.length === 1
+          ? "Running test command"
+          : `${action} tests`
         : state === "waitingForApproval"
-          ? "Test commands awaiting approval"
-          : `Test commands ${action.toLowerCase()}`;
+          ? `${testCommand} awaiting approval`
+          : `${testCommand} ${action.toLowerCase()}`;
     return `${label} \u00b7 ${command || count}`;
   }
   const label =
@@ -242,10 +259,18 @@ export function toolRollupLeadDetail(
 export function toolRollupState(
   items: readonly ToolProjectionItem[],
 ): ToolProjectionItem["toolState"] {
+  const commands = items.every(
+    (item) => item.payload.presentation.kind === "execute",
+  );
+  const running = items.some((item) => item.toolState === "inProgress");
+  if (commands && running) return "inProgress";
   if (items.some((item) => item.toolState === "failed")) return "failed";
   if (items.some((item) => item.toolState === "declined")) return "declined";
   if (items.some((item) => item.toolState === "cancelled")) return "cancelled";
-  if (items.some((item) => item.toolState === "inProgress"))
+  if (
+    running ||
+    (!commands && items.some((item) => !terminalToolStates.has(item.toolState)))
+  )
     return "inProgress";
   if (items.some((item) => item.toolState === "waitingForApproval"))
     return "waitingForApproval";

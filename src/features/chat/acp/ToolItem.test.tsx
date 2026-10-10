@@ -364,6 +364,7 @@ describe("ToolItem", () => {
       resources: [],
       activity: "ordinary",
     });
+    echoed.payload.inputSummary = null;
     const { rerender } = render(<ToolItem item={echoed} />);
     expect(screen.queryByLabelText("Command line")).toBeNull();
     expect(screen.getAllByText("npm run check")).toHaveLength(1);
@@ -379,6 +380,7 @@ describe("ToolItem", () => {
       resources: [],
       activity: "ordinary",
     });
+    distinct.payload.inputSummary = null;
     rerender(<ToolItem item={distinct} />);
     expect(screen.getByLabelText("Command line")).toHaveTextContent(
       "npm run check -- --watch",
@@ -409,16 +411,54 @@ describe("ToolItem", () => {
     };
   }
 
-  it("bounds and ellipsizes retained input when the native command summary is null", () => {
+  it("preserves the full bounded retained heredoc when the native command summary is null", () => {
     const item = commandItem(null);
-    item.payload.inputSummary = "npm run check " + "x".repeat(1_000);
+    const prefix = "cat <<'EOF'\n";
+    const suffix = "\nEOF";
+    item.payload.inputSummary =
+      prefix + "x".repeat(65_536 - prefix.length - suffix.length) + suffix;
     render(<ToolItem item={item} />);
     const line = screen.getByLabelText("Command line");
-    expect(line.textContent).toBe(
-      "npm run check " + "x".repeat(497) + "\u2026",
-    );
-    expect(line.textContent).toHaveLength(512);
+    expect(line.textContent).toBe(item.payload.inputSummary);
+    expect(line.textContent).toHaveLength(65_536);
     expect(screen.queryByLabelText("Command output")).toBeNull();
+  });
+
+  it("shows full retained multiline input even when a shorter presentation summary exists", () => {
+    const item = commandItem(null);
+    if (item.payload.presentation.kind !== "execute")
+      throw new Error("Expected execute presentation");
+    item.payload.inputSummary = "cat <<'EOF'\nfull retained body\nEOF";
+    item.payload.presentation.summary = "cat <<'EOF'";
+    render(<ToolItem item={item} />);
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "cat <<'EOF'\nfull retained body\nEOF",
+    );
+  });
+
+  it.each(["`npm run check`", "  ` npm run check `  ", "``npm run check``"])(
+    "does not repeat retained command input under a backticked title %s",
+    (label) => {
+      const item = commandItem(null);
+      item.payload.presentation.label = label;
+      item.payload.inputSummary = "npm run check";
+      render(<ToolItem item={item} />);
+      expect(screen.getByRole("group")).toBeVisible();
+      expect(document.querySelector(".acp-tool-card strong")?.textContent).toBe(
+        label,
+      );
+      expect(screen.queryByLabelText("Command line")).toBeNull();
+    },
+  );
+
+  it("keeps the multiline command pre even when its title repeats the retained input", () => {
+    const item = commandItem(null);
+    item.payload.inputSummary = "cat <<'EOF'\nbody\nEOF";
+    item.payload.presentation.label = item.payload.inputSummary;
+    render(<ToolItem item={item} />);
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "cat <<'EOF'\nbody\nEOF",
+    );
   });
 
   it("prefers a nonblank native summary and otherwise uses retained command input", () => {

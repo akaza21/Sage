@@ -1,6 +1,4 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
@@ -292,20 +290,26 @@ describe("ToolActivityRollup", () => {
   });
 
   it.each([
-    ["completed", "Ran", "Ran tests"],
-    ["inProgress", "Running", "Running tests"],
-    ["pending", "Pending", "Test commands pending"],
+    ["completed", "Ran", "Ran tests", "Ran tests"],
+    ["inProgress", "Running", "Running tests", "Running test command"],
+    ["pending", "Pending", "Test commands pending", "Test command pending"],
     [
       "waitingForApproval",
       "Awaiting approval \u00b7",
       "Test commands awaiting approval",
+      "Test command awaiting approval",
     ],
-    ["failed", "Failed", "Test commands failed"],
-    ["cancelled", "Cancelled", "Test commands cancelled"],
-    ["declined", "Declined", "Test commands declined"],
+    ["failed", "Failed", "Test commands failed", "Test command failed"],
+    [
+      "cancelled",
+      "Cancelled",
+      "Test commands cancelled",
+      "Test command cancelled",
+    ],
+    ["declined", "Declined", "Test commands declined", "Test command declined"],
   ] as const)(
     "preserves uniform %s command states and declared-test classification",
-    (toolState, ordinary, declared) => {
+    (toolState, ordinary, declared, declaredSingleton) => {
       const items = [
         { ...tool("command-1", "execute"), toolState },
         { ...tool("command-2", "execute"), toolState },
@@ -315,7 +319,7 @@ describe("ToolActivityRollup", () => {
         `${declared} \u00b7 2 commands`,
       );
       expect(toolRollupLabel("execute", [items[0]], "declaredTest")).toBe(
-        `${declared} \u00b7 1 command`,
+        `${declaredSingleton} \u00b7 1 command`,
       );
     },
   );
@@ -384,23 +388,6 @@ describe("ToolActivityRollup", () => {
     expect(first.rollup.items).toHaveLength(64);
     expect(toolRollupLabel("execute", first.rollup.items)).toBe(
       "Ran 64 commands",
-    );
-  });
-
-  it("keeps collapsed summary copy muted and regular with shrinkable single-line labels", () => {
-    const cards = readFileSync(
-      resolve("src/features/chat/acp/acp-activity-cards.css"),
-      "utf8",
-    );
-    const details = readFileSync(
-      resolve("src/features/chat/acp/acp-activity-details.css"),
-      "utf8",
-    );
-    expect(cards).toMatch(
-      /\.acp-activity-card > summary > span\.acp-tool-rollup__summary-copy\s*\{[^}]*color:\s*var\(--color-text-muted\);[^}]*font-weight:\s*var\(--font-weight-regular\);/s,
-    );
-    expect(details).toMatch(
-      /\.acp-tool-rollup__label\s*\{[^}]*flex:\s*0 1 auto;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
     );
   });
 
@@ -503,13 +490,7 @@ describe("ToolActivityRollup", () => {
       ).toHaveTextContent(`${action} npm run check`);
       if (toolState !== "completed" && toolState !== "inProgress") {
         expect(summary.querySelector(".acp-live-shimmer")).toBeNull();
-        expect(summary.querySelector(".acp-state")).toHaveTextContent(
-          toolState === "pending"
-            ? "Pending"
-            : toolState === "waitingForApproval"
-              ? "Waiting for approval"
-              : action,
-        );
+        expect(summary.querySelector(".acp-state")).toBeNull();
       }
       expect(screen.queryByLabelText("Command line")).toBeNull();
       row.open = true;
@@ -541,6 +522,36 @@ describe("ToolActivityRollup", () => {
     expect(document.querySelector(".acp-tool-rollup")).toBe(row);
     expect(row).toHaveTextContent("Running npm run lint");
     expect(row).not.toHaveAttribute("open");
+  });
+
+  it("ellipsizes only the collapsed heredoc and keeps its full retained input on expansion", () => {
+    const base = tool("heredoc", "execute");
+    const inputSummary = "cat <<'EOF'\n" + "x".repeat(1_000) + "\nEOF";
+    const command = {
+      ...base,
+      toolState: "inProgress" as const,
+      payload: { ...base.payload, inputSummary },
+    };
+    render(
+      <ToolActivityRollup
+        rollup={{
+          kind: "execute",
+          commandActivity: "ordinary",
+          items: [command],
+        }}
+        interactive
+      />,
+    );
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    const label = row.querySelector(".acp-tool-rollup__label")!;
+    expect(label.textContent?.length).toBeLessThanOrEqual(520);
+    expect(label.textContent).not.toContain("\n");
+    expect(label.textContent).toMatch(/\u2026$/);
+    row.open = true;
+    fireEvent(row, new Event("toggle"));
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      inputSummary,
+    );
   });
 
   it("shows Codex-shaped input that equals its label without duplicating the expanded command", () => {
@@ -679,6 +690,113 @@ describe("ToolActivityRollup", () => {
     ).not.toBeNull();
   });
 
+  it.each([
+    ["ordinary", "3 commands \u00b7 2 running, 1 failed"],
+    ["declaredTest", "3 test commands \u00b7 2 running, 1 failed"],
+  ] as const)(
+    "keeps live work visible alongside a failed %s command",
+    (commandActivity, expected) => {
+      const items = [
+        {
+          ...tool("failed", "execute"),
+          toolState: "failed" as const,
+          lifecycle: "failed" as const,
+        },
+        {
+          ...tool("running-one", "execute"),
+          toolState: "inProgress" as const,
+          lifecycle: "streaming" as const,
+          terminalAt: null,
+        },
+        {
+          ...tool("running-two", "execute"),
+          toolState: "inProgress" as const,
+          lifecycle: "streaming" as const,
+          terminalAt: null,
+        },
+      ];
+      for (const item of items) {
+        if (item.payload.presentation.kind === "execute")
+          item.payload.presentation.activity = commandActivity;
+      }
+      const rollup = { kind: "execute" as const, commandActivity, items };
+      const { rerender } = render(
+        <ToolActivityRollup rollup={rollup} interactive />,
+      );
+      const row =
+        document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+      expect(row).toHaveAttribute("data-activity-state", "inProgress");
+      expect(row.querySelector(".acp-tool-rollup__label")?.textContent).toBe(
+        expected,
+      );
+      expect(row.querySelector(".acp-tool-rollup__label")).toHaveClass(
+        "acp-live-shimmer",
+      );
+      expect(row.querySelector("summary .acp-state")).toBeNull();
+      rerender(
+        <ToolActivityRollup
+          rollup={{ ...rollup, items: [...items].reverse() }}
+          interactive
+        />,
+      );
+      expect(row).toHaveAttribute("data-activity-state", "inProgress");
+      expect(row.querySelector(".acp-tool-rollup__label")?.textContent).toBe(
+        expected,
+      );
+      expect(row.querySelector(".acp-tool-rollup__label")).toHaveClass(
+        "acp-live-shimmer",
+      );
+    },
+  );
+
+  describe.each(["pending", "waitingForApproval"] as const)(
+    "non-command %s rollups",
+    (toolState) => {
+      it.each([
+        "read",
+        "edit",
+        "delete",
+        "move",
+        "search",
+        "fetch",
+        "think",
+        "switchMode",
+        "mcp",
+        "subagent",
+        "other",
+      ] as const)("preserves main's in-progress rendering for %s", (kind) => {
+        const item = {
+          ...tool("unsettled", kind),
+          toolState,
+          terminalAt: null,
+        };
+        render(
+          <ToolActivityRollup
+            rollup={{ kind, commandActivity: "ordinary", items: [item] }}
+            interactive
+          />,
+        );
+        const row = document.querySelector(".acp-tool-rollup")!;
+        expect(row).toHaveAttribute("data-activity-state", "inProgress");
+        expect(row.querySelector(".acp-tool-rollup__label")).toHaveClass(
+          "acp-live-shimmer",
+        );
+        expect(row.querySelector("summary .acp-state")).toBeNull();
+        expect(
+          row.querySelectorAll(".acp-tool-rollup__summary-copy svg"),
+        ).toHaveLength(1);
+      });
+    },
+  );
+
+  it("preserves main's failure precedence for non-command rollups", () => {
+    const items = [
+      { ...tool("failed", "read"), toolState: "failed" as const },
+      { ...tool("pending", "read"), toolState: "pending" as const },
+    ];
+    expect(toolRollupState(items)).toBe("failed");
+  });
+
   it("rolls up a declared test singleton without a pass count", () => {
     const test = {
       ...tool("test", "execute"),
@@ -740,8 +858,8 @@ describe("ToolActivityRollup", () => {
       />,
     );
 
-    expect(screen.getByText("Test commands failed · 1 command")).toBeVisible();
-    expect(screen.getByText("Failed")).toBeVisible();
+    expect(screen.getByText("Test command failed · 1 command")).toBeVisible();
+    expect(screen.queryByText("Failed")).toBeNull();
   });
 
   it("keeps declared tests separate from ordinary command groups", () => {
@@ -804,9 +922,9 @@ describe("ToolActivityRollup", () => {
     expect(toolRollupState([cancelled, tool("completed", "execute")])).toBe(
       "cancelled",
     );
-    expect(toolRollupState([failed, active])).toBe("failed");
+    expect(toolRollupState([failed, active])).toBe("inProgress");
     expect(toolRollupLabel("execute", [failed, active])).toBe(
-      "2 commands \u00b7 1 failed",
+      "2 commands \u00b7 1 running, 1 failed",
     );
     for (const unsettled of [failed, active, declined, cancelled]) {
       const grouped = groupPrimaryActivities([

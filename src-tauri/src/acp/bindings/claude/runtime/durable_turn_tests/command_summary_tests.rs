@@ -48,7 +48,7 @@ fn command_fact(
 }
 
 #[test]
-fn claude_command_input_trace_reaches_live_and_settled_history_through_the_shared_pump() {
+fn claude_command_input_trace_reaches_in_progress_and_completed_sqlite_history() {
     for late_input in [false, true] {
         let mut runtime = ClaudeRuntime::fixture();
         ready(&mut runtime);
