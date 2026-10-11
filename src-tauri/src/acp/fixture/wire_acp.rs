@@ -108,7 +108,11 @@ pub(super) fn emit(
             json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":SESSION,"update":substitute(step["update"].clone(), state, 0)?}})
         }
         "acpPermission" => {
-            json!({"jsonrpc":"2.0","id":"fixture-permission-1","method":"session/request_permission","params":{"sessionId":SESSION,"toolCall":substitute(step["toolCall"].clone(), state, 0)?,"options":[{"kind":"allow_once","optionId":"fixture-allow-once","name":"Allow once"},{"kind":"allow_always","optionId":"fixture-allow-always","name":"Allow always"},{"kind":"reject_once","optionId":"fixture-reject","name":"Decline"}]}})
+            let mut frame = json!({"jsonrpc":"2.0","id":"fixture-permission-1","method":"session/request_permission","params":{"sessionId":SESSION,"toolCall":substitute(step["toolCall"].clone(), state, 0)?,"options":[{"kind":"allow_once","optionId":"fixture-allow-once","name":"Allow once"},{"kind":"allow_always","optionId":"fixture-allow-always","name":"Allow always"},{"kind":"reject_once","optionId":"fixture-reject","name":"Decline"}]}});
+            if let Some(meta) = step.get("_meta") {
+                frame["params"]["_meta"] = substitute(meta.clone(), state, 0)?;
+            }
+            frame
         }
         "acpCompleted" | "acpCancelled" | "acpError" => {
             let id = state

@@ -127,10 +127,52 @@ fn approval_wire_projects_nonempty_setup_and_correlates_permission_only_to_secon
         assert_eq!(frames[setup]["result"]["stopReason"], "end_turn");
         if !pending {
             assert_eq!(frames[terminal]["result"]["stopReason"], "end_turn");
+            let completion = &frames[terminal - 1]["params"]["update"];
+            let (output, fence) = if expected_state == ToolState::Failed {
+                (
+                    "Synthetic approval declined; no command was executed.",
+                    "```",
+                )
+            } else {
+                (
+                    "Synthetic tool finished; no command was executed.",
+                    "```console",
+                )
+            };
+            assert_eq!(completion["rawOutput"], output);
+            assert_eq!(
+                completion["content"],
+                json!([{"type":"content","content":{
+                    "type":"text","text":format!("{fence}\n{output}\n```")
+                }}])
+            );
+            assert_eq!(
+                completion["_meta"],
+                json!({"claudeCode":{"toolName":"Bash"}})
+            );
         }
         assert_eq!(
             frames[permission]["params"]["toolCall"]["rawInput"]["command"],
             COMMAND
+        );
+        assert_eq!(frames[permission]["params"]["toolCall"]["title"], "Bash");
+        assert_eq!(frames[permission]["params"]["toolCall"]["name"], "Bash");
+        assert_eq!(
+            frames[permission]["params"]["toolCall"]["status"],
+            "pending"
+        );
+        assert_eq!(
+            frames[permission]["params"]["toolCall"]["content"],
+            json!([])
+        );
+        assert!(
+            frames[permission]["params"]["toolCall"]
+                .get("_meta")
+                .is_none()
+        );
+        assert_eq!(
+            frames[permission]["params"]["_meta"],
+            json!({"permission":{"version":1,"title":"Bash"}})
         );
         let file = ExistingFile::new();
         let mut projection = translator();
@@ -209,7 +251,7 @@ fn approval_wire_projects_nonempty_setup_and_correlates_permission_only_to_secon
 }
 
 #[test]
-fn claude_bash_wire_retains_projected_command_and_truthfully_exposes_unprojected_console_output() {
+fn claude_bash_wire_projects_command_lifecycle_without_fabricated_file_pairs_or_diffs() {
     let frames = replay_native(
         "claude-tool-expanded",
         &requests(&[json!({"id":4,"method":"session/close"})]),
@@ -225,19 +267,21 @@ fn claude_bash_wire_retains_projected_command_and_truthfully_exposes_unprojected
             .translate_notification_value(frame, &file)
             .unwrap()
         {
+            assert!(!matches!(
+                event,
+                AdapterEvent::FilePair { .. }
+                    | AdapterEvent::Item {
+                        payload: NormalizedPayload::FileChangeDiff { .. },
+                        ..
+                    }
+            ));
             if let AdapterEvent::Item {
                 tool_state: Some(state),
-                payload:
-                    NormalizedPayload::ToolCall {
-                        input_summary,
-                        output_summary,
-                        ..
-                    },
+                payload: NormalizedPayload::ToolCall { input_summary, .. },
                 ..
             } = event
             {
                 assert_eq!(input_summary.unwrap().as_str(), COMMAND);
-                assert_eq!(output_summary, None);
                 states.push(state);
             }
         }
@@ -261,23 +305,37 @@ fn live_claude_edit_projects_openable_resource_without_a_completed_pair() {
             json!({"id":4,"method":"session/close"}),
         ]),
     );
-    let mut frame = frames
-        .into_iter()
-        .find(|frame| frame["method"] == "session/update")
-        .unwrap();
     let file = ExistingFile::new();
-    frame["params"]["update"]["locations"][0]["path"] = json!(file.path());
-    frame["params"]["update"]["content"][0]["path"] = json!(file.path());
-    let events = translator()
-        .translate_notification_value(frame, &file)
-        .unwrap();
-    assert!(events.iter().any(|event| matches!(
-        event,
-        AdapterEvent::Item {
-            tool_state: Some(ToolState::InProgress),
-            ..
+    let mut projection = translator();
+    let mut events = Vec::new();
+    for mut frame in frames
+        .into_iter()
+        .filter(|frame| frame["method"] == "session/update")
+    {
+        if let Some(path) = frame.pointer_mut("/params/update/locations/0/path") {
+            *path = json!(file.path());
         }
-    )));
+        if let Some(path) = frame.pointer_mut("/params/update/content/0/path") {
+            *path = json!(file.path());
+        }
+        events.extend(
+            projection
+                .translate_notification_value(frame, &file)
+                .unwrap(),
+        );
+    }
+    let states: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            AdapterEvent::Item {
+                tool_state: Some(state),
+                payload: NormalizedPayload::ToolCall { .. },
+                ..
+            } => Some(*state),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(states, [ToolState::Pending, ToolState::InProgress]);
     assert!(events.iter().any(|event| matches!(event,
         AdapterEvent::Item { lifecycle: ItemLifecycle::Streaming,
             payload: NormalizedPayload::FileChangeDiff { resource: SafeResourceLocation::Resource { resource }, pair_available: false, additions: Some(1), deletions: Some(1), .. }, .. }
@@ -307,8 +365,12 @@ fn completed_claude_edit_projects_the_existing_file_and_exact_retained_pair() {
         .into_iter()
         .filter(|frame| frame["method"] == "session/update")
     {
-        frame["params"]["update"]["locations"][0]["path"] = json!(file.path());
-        frame["params"]["update"]["content"][0]["path"] = json!(file.path());
+        if let Some(path) = frame.pointer_mut("/params/update/locations/0/path") {
+            *path = json!(file.path());
+        }
+        if let Some(path) = frame.pointer_mut("/params/update/content/0/path") {
+            *path = json!(file.path());
+        }
         events.extend(
             projection
                 .translate_notification_value(frame, &file)
@@ -336,7 +398,7 @@ fn completed_claude_edit_projects_the_existing_file_and_exact_retained_pair() {
 }
 
 #[test]
-fn codex_live_file_wire_does_not_fabricate_a_projected_completed_diff() {
+fn codex_live_file_wire_allows_live_projection_without_fabricated_completed_pair_or_diff() {
     let frames = replay_native(
         "codex-file-edit-live",
         &client_requests(&[
@@ -357,15 +419,24 @@ fn codex_live_file_wire_does_not_fabricate_a_projected_completed_diff() {
     let mut item = frame["params"]["item"].clone();
     item["changes"][0]["path"] = json!(file.path());
     assert_eq!(item["status"], "inProgress");
-    assert_eq!(
+    if let Some((payload, state, terminal)) =
         crate::acp::bindings::codex::normalize_transcript_item(
             item.as_object().unwrap(),
             ItemLifecycle::Started,
-            &file
+            &file,
         )
-        .unwrap(),
-        None
-    );
+        .unwrap()
+    {
+        assert!(!terminal.is_some_and(|lifecycle| lifecycle.is_terminal()));
+        assert_ne!(state, Some(ToolState::Completed));
+        assert!(!matches!(
+            payload,
+            NormalizedPayload::FileChangeDiff {
+                pair_available: true,
+                ..
+            }
+        ));
+    }
     assert!(
         !frames
             .iter()

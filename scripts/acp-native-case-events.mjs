@@ -36,6 +36,15 @@ export const answer = (state) => {
 export function events(harness, state) {
   const frames = [];
   const acp = (update) => frames.push(emit("acpUpdate", { update }));
+  const progress = (toolCallId, toolName) =>
+    acp({
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      status: "in_progress",
+      _meta: {
+        claudeCode: { toolName, toolResponse: { elapsedTimeSeconds: 1 } },
+      },
+    });
   const codex = (method, params) =>
     frames.push(emit("codexNative", { method, params }));
   const text = (value, thought = false) =>
@@ -65,7 +74,7 @@ export function events(harness, state) {
         toolCallId: id,
         kind,
         title,
-        status: command ? "pending" : "in_progress",
+        status: "pending",
         ...(command
           ? {
               rawInput: { command: title },
@@ -75,12 +84,7 @@ export function events(harness, state) {
           : {}),
         ...extra,
       });
-      if (command)
-        acp({
-          sessionUpdate: "tool_call_update",
-          toolCallId: id,
-          status: "in_progress",
-        });
+      if (command) progress(id, "Bash");
       if (finished)
         acp({
           sessionUpdate: "tool_call_update",
@@ -160,7 +164,8 @@ export function events(harness, state) {
         toolCallId: "fixture-edit",
         kind: "edit",
         title: "Update synthetic example",
-        status: "in_progress",
+        status: "pending",
+        _meta: { claudeCode: { toolName: "Edit" } },
         locations,
         content: [
           {
@@ -171,6 +176,7 @@ export function events(harness, state) {
           },
         ],
       });
+      progress("fixture-edit", "Edit");
       if (state !== "file-edit-live")
         acp({
           sessionUpdate: "tool_call_update",
@@ -267,30 +273,50 @@ export function events(harness, state) {
     const command = commandFor(state, 1);
     const toolCall = {
       toolCallId: "fixture-tool-1",
+      name: "Bash",
       kind: "execute",
-      title: command,
+      title: "Bash",
+      status: "pending",
       rawInput: { command },
-      _meta: { claudeCode: { toolName: "Bash" } },
+      content: [],
     };
     acp({
       sessionUpdate: "tool_call",
+      toolCallId: toolCall.toolCallId,
+      kind: "execute",
+      title: command,
       status: "pending",
+      rawInput: toolCall.rawInput,
       content: [],
-      ...toolCall,
+      _meta: { claudeCode: { toolName: "Bash" } },
     });
-    frames.push(emit("acpPermission", { toolCall }));
+    frames.push(
+      emit("acpPermission", {
+        toolCall,
+        _meta: { permission: { version: 1, title: toolCall.title } },
+      }),
+    );
     frames.push(wait("acpPermissionDecision"));
-    if (state !== "approval-declined")
-      acp({
-        sessionUpdate: "tool_call_update",
-        toolCallId: toolCall.toolCallId,
-        status: "in_progress",
-      });
+    if (state !== "approval-declined") progress(toolCall.toolCallId, "Bash");
+    const declined = state === "approval-declined";
+    const output = declined
+      ? "Synthetic approval declined; no command was executed."
+      : commandOutput;
     acp({
       sessionUpdate: "tool_call_update",
       toolCallId: "fixture-tool-1",
-      kind: "execute",
-      status: state === "approval-declined" ? "failed" : "completed",
+      status: declined ? "failed" : "completed",
+      _meta: { claudeCode: { toolName: "Bash" } },
+      rawOutput: output,
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "text",
+            text: `${declined ? "```" : "```console"}\n${output}\n\`\`\``,
+          },
+        },
+      ],
     });
   } else if (state === "context-meter") {
     const usage = {

@@ -6,6 +6,37 @@ import { tmpdir } from "node:os";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { freshRoots } from "./capture-native-chat-process.mjs";
 
+test("Claude approval witnesses match 0.76.0 Bash permission presentation", () => {
+  for (const state of [
+    "approval-pending",
+    "approval-approved",
+    "approval-declined",
+  ]) {
+    const { steps } = nativeCases().find(({ id }) => id === `claude-${state}`);
+    const permission = steps.find(({ shape }) => shape === "acpPermission");
+    assert.deepEqual(permission.toolCall, {
+      toolCallId: "fixture-tool-1",
+      name: "Bash",
+      status: "pending",
+      rawInput: {
+        command: String.raw`printf '%s\n' 'Inspect synthetic example 1'`,
+      },
+      title: "Bash",
+      kind: "execute",
+      content: [],
+    });
+    assert.deepEqual(permission._meta, {
+      permission: { version: 1, title: "Bash" },
+    });
+    const opening = steps.find(
+      ({ update }) => update?.sessionUpdate === "tool_call",
+    ).update;
+    assert.equal(opening.title, permission.toolCall.rawInput.command);
+    assert.equal(opening.status, "pending");
+    assert.deepEqual(opening._meta, { claudeCode: { toolName: "Bash" } });
+  }
+});
+
 test("Claude command witnesses carry Bash input and adapter console output on one tool identity", () => {
   for (const state of [
     "tool-running",
@@ -45,6 +76,12 @@ test("Claude command witnesses carry Bash input and adapter console output on on
           step.update.toolCallId === update.toolCallId,
       );
       assert.equal(updates[0].update.status, "in_progress");
+      assert.deepEqual(updates[0].update._meta, {
+        claudeCode: {
+          toolName: "Bash",
+          toolResponse: { elapsedTimeSeconds: 1 },
+        },
+      });
       if (state.endsWith("running")) {
         assert.equal(updates.length, 1);
         assert.equal(updates[0].update.rawOutput, undefined);
@@ -67,6 +104,47 @@ test("Claude command witnesses carry Bash input and adapter console output on on
         assert.equal(updates[1].update.rawInput, undefined);
       }
     }
+  }
+});
+test("Claude approval decisions retain real Bash progress and success or error output shapes", () => {
+  for (const state of ["approval-approved", "approval-declined"]) {
+    const { steps } = nativeCases().find(({ id }) => id === `claude-${state}`);
+    const updates = steps.filter(
+      ({ update }) => update?.sessionUpdate === "tool_call_update",
+    );
+    const declined = state === "approval-declined";
+    assert.equal(updates.length, declined ? 1 : 2);
+    if (!declined)
+      assert.deepEqual(updates[0].update, {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "fixture-tool-1",
+        status: "in_progress",
+        _meta: {
+          claudeCode: {
+            toolName: "Bash",
+            toolResponse: { elapsedTimeSeconds: 1 },
+          },
+        },
+      });
+    const output = declined
+      ? "Synthetic approval declined; no command was executed."
+      : "Synthetic tool finished; no command was executed.";
+    assert.deepEqual(updates.at(-1).update, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "fixture-tool-1",
+      status: declined ? "failed" : "completed",
+      _meta: { claudeCode: { toolName: "Bash" } },
+      rawOutput: output,
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "text",
+            text: `${declined ? "```" : "```console"}\n${output}\n\`\`\``,
+          },
+        },
+      ],
+    });
   }
 });
 test("Codex model and effort menu witnesses negotiate a terminal model page before Goal and prompt", () => {
@@ -162,7 +240,23 @@ test("live file witnesses start an edit and wait for cancellation without comple
         }
       } else {
         assert.equal(edits[0].update.sessionUpdate, "tool_call");
-        assert.equal(edits[0].update.status, "in_progress");
+        assert.equal(edits[0].update.status, "pending");
+        const progress = steps.find(
+          ({ update }) =>
+            update?.toolCallId === "fixture-edit" &&
+            update.status === "in_progress",
+        );
+        assert.deepEqual(progress?.update, {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "fixture-edit",
+          status: "in_progress",
+          _meta: {
+            claudeCode: {
+              toolName: "Edit",
+              toolResponse: { elapsedTimeSeconds: 1 },
+            },
+          },
+        });
         assert.deepEqual(edits[0].update.content, [
           {
             type: "diff",
