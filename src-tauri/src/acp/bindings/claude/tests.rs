@@ -1181,6 +1181,51 @@ fn read_tool_markup_content_text_survives_translation_verbatim() {
 }
 
 #[test]
+fn read_markup_and_code_survive_while_command_and_console_secrets_are_redacted() {
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+    translator.begin_prompt("read-prompt").unwrap();
+    translator
+        .translate_notification(&encoded(&read_tool_probe_start()), &FixtureResources)
+        .unwrap();
+    let source = "<script>alert(1)</script>\n<div>ordinary markup</div>\nfn main() { println!(\"</div>\"); }";
+    let read = translator
+        .translate_notification(&encoded(&read_tool_probe(source)), &FixtureResources)
+        .unwrap();
+    assert_eq!(tool_output_summary(&read).as_deref(), Some(source));
+
+    let started = translator
+        .translate_notification(
+            &encoded(&json!({
+                "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+                    "sessionUpdate":"tool_call", "toolCallId":"command-text", "kind":"execute",
+                    "status":"in_progress", "rawInput":{"command":"echo --token 'private value' --password \"another secret\""}
+                }}
+            })),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert!(matches!(started.as_slice(), [AdapterEvent::Item {
+        payload: NormalizedPayload::ToolCall { input_summary: Some(input), .. }, ..
+    }] if input.as_str() == "echo --token [redacted] --password [redacted]"));
+    let completed = translator
+        .translate_notification(
+            &encoded(&json!({
+                "method":"session/update", "params":{"sessionId":"claude-session-1", "update":{
+                    "sessionUpdate":"tool_call_update", "toolCallId":"command-text", "status":"completed",
+                    "content":[{"type":"content","content":{"type":"text",
+                        "text":"```console\nok --token 'private value' --password \"another secret\"\n```"}}]
+                }}
+            })),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert_eq!(
+        tool_output_summary(&completed).as_deref(),
+        Some("ok --token [redacted] --password [redacted]")
+    );
+}
+
+#[test]
 fn file_tool_locations_reject_over_cap_and_malformed_entries() {
     fn update(locations: Value) -> Value {
         json!({

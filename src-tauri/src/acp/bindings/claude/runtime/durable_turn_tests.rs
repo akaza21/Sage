@@ -269,13 +269,9 @@ fn session_intent() -> SessionPumpIntent {
 }
 
 fn migrated_database(runtime: &ClaudeRuntime) -> Database {
-    migrated_database_at(runtime, std::path::Path::new(":memory:"))
-}
-
-fn migrated_database_at(runtime: &ClaudeRuntime, path: &std::path::Path) -> Database {
     let capabilities = serde_json::to_string(&runtime.capabilities().expect("ready capabilities"))
         .expect("serialize capabilities");
-    let database = Database::open(path).expect("database");
+    let database = Database::open(std::path::Path::new(":memory:")).expect("database");
     let connection = database.connection();
     connection
         .execute_batch(&format!(

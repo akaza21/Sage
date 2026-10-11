@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+#[path = "sanitize/prose.rs"]
+mod prose;
+pub(crate) use prose::sanitized_content_output;
+
 use crate::acp::{
     bindings::command_summary::redaction::redact,
     contract::{ContractError, SafeText},

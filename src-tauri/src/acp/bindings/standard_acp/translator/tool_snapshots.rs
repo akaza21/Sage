@@ -7,7 +7,7 @@ use crate::acp::{
     limits::LIMITS,
 };
 
-use super::super::sanitize::{normalized_text, sanitized_command_output};
+use super::super::sanitize::{sanitized_command_output, sanitized_content_output};
 use super::super::surface::ToolCallContentKind;
 use super::{ResourceMapper, StandardAcpTranslator, TranslationError};
 
@@ -175,14 +175,20 @@ pub(super) fn command_update_payload(
             locations,
         });
     }
-    output_patch(update, locations, command_block_text, true)
+    output_patch(update, locations, command_block_text, retained_output, true)
 }
 
 pub(super) fn content_update_payload(
     update: &Map<String, Value>,
     locations: Option<BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>>,
 ) -> Result<CommandPatch, TranslationError> {
-    output_patch(update, locations, content_block_text, false)
+    output_patch(
+        update,
+        locations,
+        content_block_text,
+        retained_content,
+        false,
+    )
 }
 
 fn command_block_text(entry: &Value) -> Option<&str> {
@@ -212,6 +218,7 @@ fn output_patch(
     update: &Map<String, Value>,
     locations: Option<BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>>,
     text_of: fn(&Value) -> Option<&str>,
+    retain: fn(&str) -> Result<SafeText<65536>, TranslationError>,
     preserve_empty: bool,
 ) -> Result<CommandPatch, TranslationError> {
     let output = match update.get("content") {
@@ -224,7 +231,7 @@ fn output_patch(
                 join_command_output_blocks(blocks).ok_or(TranslationError::MalformedFrame)?;
             Some(
                 (emitted && (preserve_empty || !joined.is_empty()))
-                    .then(|| retained_output(&joined))
+                    .then(|| retain(&joined))
                     .transpose()?,
             )
         }
@@ -238,7 +245,15 @@ fn retained_output(output: &str) -> Result<SafeText<65536>, TranslationError> {
     let text = retain_command_output(&sanitized)
         .and_then(|retained| retained.display_text())
         .ok_or(TranslationError::MalformedFrame)?;
-    normalized_text::<65536>("toolOutput", &text).map_err(Into::into)
+    SafeText::new("toolOutput", text).map_err(Into::into)
+}
+
+fn retained_content(output: &str) -> Result<SafeText<65536>, TranslationError> {
+    let sanitized = sanitized_content_output(output)?;
+    let text = retain_command_output(&sanitized)
+        .and_then(|retained| retained.display_text())
+        .ok_or(TranslationError::MalformedFrame)?;
+    SafeText::new("toolOutput", text).map_err(Into::into)
 }
 
 #[cfg(test)]

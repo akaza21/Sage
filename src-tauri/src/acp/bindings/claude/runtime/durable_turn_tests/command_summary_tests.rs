@@ -60,10 +60,20 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 std::env::temp_dir().join(format!("sage-command-{}", uuid::Uuid::new_v4())),
             );
             std::fs::create_dir(&directory.0).unwrap();
-            let path = directory.0.join("history.sqlite");
+            let path = directory.0.join("sage.db");
             let mut runtime = ClaudeRuntime::fixture();
             ready(&mut runtime);
-            let database = migrated_database_at(&runtime, &path);
+            let fixture = migrated_database(&runtime);
+            {
+                let source = fixture.connection();
+                let mut copy = rusqlite::Connection::open(&path).unwrap();
+                rusqlite::backup::Backup::new(&source, &mut copy)
+                    .unwrap()
+                    .run_to_completion(256, std::time::Duration::ZERO, None)
+                    .unwrap();
+            }
+            drop(fixture);
+            let database = Database::open(&path).unwrap();
             let command = format!("echo {} --token 'private value'", "x".repeat(1_000));
             let retained = format!("echo {} --token [redacted]", "x".repeat(1_000));
             let expected_capabilities = runtime.capabilities().expect("ready capabilities");
