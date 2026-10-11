@@ -115,6 +115,43 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it("places a dialog in the shared viewport overlay, preserves native tab stops, and returns Escape focus", () => {
+    function DialogHarness() {
+      const trigger = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button ref={trigger} onClick={() => setOpen(true)}>
+            Options
+          </button>
+          <MenuPopover
+            id="dialog"
+            role="dialog"
+            ariaLabel="Options dialog"
+            open={open}
+            triggerRef={trigger}
+            onDismiss={() => setOpen(false)}
+          >
+            <button>First option</button>
+            <button>Second option</button>
+          </MenuPopover>
+        </div>
+      );
+    }
+    render(<DialogHarness />);
+    const trigger = screen.getByRole("button", { name: "Options" });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Options dialog" });
+    expect(dialog.parentElement).toBe(document.body);
+    expect(screen.getByRole("button", { name: "First option" })).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Second option" }),
+    ).not.toHaveAttribute("tabindex", "-1");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Options dialog" })).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
   it("leaves focus and keyboard ownership to an opt-in neutral popup", () => {
     function NeutralHarness() {
       const triggerRef = useRef<HTMLButtonElement>(null);
@@ -290,6 +327,9 @@ describe("MenuPopover", () => {
     expect(popup.closest("dialog")).not.toBeNull();
     expect(observed).toHaveLength(2);
     expect(disconnected[0]).toBe(true);
-    expect(observed[1]).toEqual([popup]);
+    expect(observed[1]).toEqual([
+      popup,
+      screen.getByRole("button", { name: "Target" }),
+    ]);
   });
 });

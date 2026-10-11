@@ -20,7 +20,7 @@ const VIEWPORT_GUTTER = 8;
 const POPOVER_GAP = 4;
 
 type InitialFocus = "first" | "last" | "selected";
-type PopoverRole = "menu" | "listbox" | "none";
+type PopoverRole = "menu" | "listbox" | "dialog" | "none";
 type FocusStrategy = "none" | "roving";
 type PortalTarget = "closest-dialog" | "document";
 export type MenuDismissReason = "escape" | "outside" | "tab";
@@ -141,6 +141,7 @@ export function MenuPopover({
         ? null
         : new ResizeObserver(updatePosition);
     resizeObserver?.observe(popover);
+    resizeObserver?.observe(trigger);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     return () => {
@@ -154,8 +155,9 @@ export function MenuPopover({
     if (!open) return;
     const nextRoot =
       portalTarget === "closest-dialog"
-        ? (triggerRef.current?.closest<HTMLDialogElement>("dialog") ??
-          document.body)
+        ? (triggerRef.current?.closest<HTMLElement>(
+            'dialog, [role="dialog"]',
+          ) ?? document.body)
         : document.body;
     setPortalRoot((current) => (current === nextRoot ? current : nextRoot));
   }, [open, portalTarget, triggerRef]);
@@ -171,6 +173,20 @@ export function MenuPopover({
     if (!open || focusStrategy === "none") return;
     const popover = popoverRef.current;
     if (!popover) return;
+    if (role === "dialog") {
+      const focusDialog = () => {
+        if (popover.isConnected && !popover.hidden) {
+          (
+            popover.querySelector<HTMLElement>(
+              "button:not(:disabled), input:not(:disabled)",
+            ) ?? popover
+          ).focus();
+        }
+      };
+      focusDialog();
+      queueMicrotask(focusDialog);
+      return;
+    }
     const items = enabledMenuItems(popover);
     const next =
       initialFocus === "last"
@@ -184,7 +200,7 @@ export function MenuPopover({
         activateMenuItem(popover, next);
       }
     });
-  }, [focusKey, focusStrategy, initialFocus, open]);
+  }, [focusKey, focusStrategy, initialFocus, open, role]);
 
   useEffect(() => {
     if (!open) return;
@@ -227,6 +243,7 @@ export function MenuPopover({
       return;
     }
     if (event.key === "Tab") {
+      if (role === "dialog") return;
       if (trapFocus && items.length > 0) {
         event.preventDefault();
         const current = Math.max(
@@ -242,6 +259,7 @@ export function MenuPopover({
       }
       return;
     }
+    if (role === "dialog") return;
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
       if (items.length === 0) return;
       event.preventDefault();
@@ -292,6 +310,7 @@ export function MenuPopover({
       id={id}
       className={["menu-popover", className].filter(Boolean).join(" ")}
       role={role === "none" ? undefined : role}
+      tabIndex={role === "dialog" ? -1 : undefined}
       aria-label={role === "none" ? undefined : ariaLabel}
       hidden={!open}
       style={position}

@@ -23,6 +23,7 @@ import "./styles/chat-surface.css";
 import "./styles/changed-files-summary.css";
 import "./styles/agent-chat-panes.css";
 import "./styles/composer-surface.css";
+import "./styles/chat-container-controls.css";
 import "./styles/composer-model-picker.css";
 import "./styles/composer-image.css";
 import "./styles/problems-outline-surfaces.css";

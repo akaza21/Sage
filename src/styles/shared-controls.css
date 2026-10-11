@@ -94,6 +94,10 @@
   display: none;
 }
 
+.menu-popover[role="dialog"] {
+  animation: none;
+}
+
 .menu-item {
   display: flex;
   width: 100%;

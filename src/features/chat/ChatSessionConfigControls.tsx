@@ -113,6 +113,7 @@ function SessionConfigControl({
         />
       ) : (
         <SearchablePicker
+          portalTarget="closest-dialog"
           ariaLabel={controlLabel}
           candidates={flattenChoices(option).map((choice) => ({
             id: choice.value,

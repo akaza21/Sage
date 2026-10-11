@@ -1,5 +1,6 @@
 .composer {
   position: relative;
+  container-name: composer;
   container-type: inline-size;
   width: min(
     var(--reading-measure),
@@ -183,16 +184,9 @@
 }
 
 .composer__options {
-  position: absolute;
-  z-index: 20;
-  bottom: calc(100% + 10px);
   display: flex;
   flex-direction: column;
   overflow: auto;
-}
-
-.composer__options {
-  left: 0;
 }
 
 .composer__options .select-control,

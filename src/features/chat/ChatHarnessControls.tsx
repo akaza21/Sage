@@ -31,6 +31,7 @@ import {
   sessionConfigControls,
 } from "../../domain/acpSessionConfigControls";
 import { SearchablePicker } from "../../ui/SearchablePicker";
+import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
@@ -103,8 +104,7 @@ export function ChatHarnessControls({
     modelId,
     modelTrigger,
     optionsId,
-    optionsPanel,
-    optionsTrigger,
+    optionsTrigger: optionsTriggerRef,
     toggle,
     dismiss,
   } = useComposerPopovers(turnBusy || projectTransitioning);
@@ -219,7 +219,6 @@ export function ChatHarnessControls({
   return (
     <div className="composer__controls">
       <button
-        ref={optionsTrigger}
         className="composer__plus"
         type="button"
         aria-label="Composer options"
@@ -227,24 +226,42 @@ export function ChatHarnessControls({
         aria-haspopup="dialog"
         aria-expanded={active === "options"}
         disabled={turnBusy || projectTransitioning}
-        onClick={() => toggle("options")}
+        onClick={(event) => {
+          optionsTriggerRef.current = event.currentTarget;
+          toggle("options");
+        }}
       >
         <Plus size={16} aria-hidden="true" />
       </button>
       {imageControl}
       {availableBinding ? (
-        <span
-          className={`composer__access-label${effectiveAccessMode === "workspaceWrite" ? " composer__access-label--write" : ""}`}
+        <button
+          type="button"
+          className={`composer__control-trigger composer__access-label${effectiveAccessMode === "workspaceWrite" ? " composer__access-label--write" : ""}`}
+          aria-label="Access options"
+          aria-description={sessionAccessModeCopy(effectiveAccessMode).label}
+          title={sessionAccessModeCopy(effectiveAccessMode).label}
+          aria-haspopup="dialog"
+          aria-controls={optionsId}
+          aria-expanded={active === "options"}
+          disabled={turnBusy || projectTransitioning}
+          onClick={(event) => {
+            optionsTriggerRef.current = event.currentTarget;
+            toggle("options");
+          }}
         >
           <ShieldCheck size={13} aria-hidden="true" />
-          {effectiveAccessMode === "workspaceWrite"
-            ? "Full access"
-            : sessionAccessModeCopy(effectiveAccessMode).label}
-        </span>
+          <span className="composer__access-text">
+            {effectiveAccessMode === "workspaceWrite"
+              ? "Full access"
+              : sessionAccessModeCopy(effectiveAccessMode).label}
+          </span>
+        </button>
       ) : null}
       <label className="composer__control-trigger composer__harness">
         <SearchablePicker
           ariaLabel="Harness"
+          triggerIcon={<Settings size={16} aria-hidden="true" />}
           candidates={harnessCandidates}
           popoverClassName="composer__popover composer__harness-menu"
           popoverGap={8}
@@ -276,13 +293,15 @@ export function ChatHarnessControls({
         onSetOption={onSetSessionConfigOption}
       />
       {active === "options" ? (
-        <div
-          ref={optionsPanel}
+        <MenuPopover
           id={optionsId}
           role="dialog"
-          tabIndex={-1}
           className="composer__popover composer__options"
-          aria-label="Composer options menu"
+          ariaLabel="Composer options menu"
+          open
+          triggerRef={optionsTriggerRef}
+          onDismiss={dismiss}
+          gap={8}
         >
           <ChatSessionConfigControls
             sessionConfig={selectedSessionConfig}
@@ -310,6 +329,7 @@ export function ChatHarnessControls({
               />
               <SearchablePicker
                 ariaLabel="Session mode"
+                portalTarget="closest-dialog"
                 candidates={modeCandidates}
                 disabled={turnBusy || projectTransitioning || modePending}
                 onSelect={(modeId) => void onSetSessionMode(modeId)}
@@ -336,6 +356,7 @@ export function ChatHarnessControls({
               />
               <SearchablePicker
                 ariaLabel="Permission mode"
+                portalTarget="closest-dialog"
                 candidates={accessModeCandidates}
                 disabled={!accessModeReady || turnBusy || projectTransitioning}
                 footer={SESSION_ACCESS_MODE_SCOPE}
@@ -351,7 +372,7 @@ export function ChatHarnessControls({
               ) : null}
             </label>
           ) : null}
-        </div>
+        </MenuPopover>
       ) : null}
     </div>
   );

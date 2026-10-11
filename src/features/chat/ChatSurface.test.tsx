@@ -1256,7 +1256,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(
       screen.getByLabelText("More options for queued message: Try again"),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Retry when ready" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Retry when ready" }));
     await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText("Try again")).toBeNull());
   });

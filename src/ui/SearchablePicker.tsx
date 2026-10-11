@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
 import { ChevronDown } from "./leanIcons";
@@ -47,6 +48,7 @@ export function SearchablePicker({
   popoverClassName,
   popoverGap,
   triggerClassName,
+  triggerIcon,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -66,6 +68,7 @@ export function SearchablePicker({
   popoverClassName?: string;
   popoverGap?: number;
   triggerClassName?: string;
+  triggerIcon?: ReactNode;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -234,6 +237,8 @@ export function SearchablePicker({
           .filter(Boolean)
           .join(" ")}
         aria-label={ariaLabel}
+        aria-description={selected?.triggerLabel ?? selected?.label}
+        title={stateTitle ?? selected?.triggerLabel ?? selected?.label}
         aria-expanded={open && !disabled}
         aria-haspopup="listbox"
         aria-controls={`${id}-listbox`}
@@ -255,7 +260,9 @@ export function SearchablePicker({
             alt=""
             aria-hidden="true"
           />
-        ) : null}
+        ) : (
+          triggerIcon
+        )}
         <span className="searchable-picker__trigger-label">
           {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
         </span>

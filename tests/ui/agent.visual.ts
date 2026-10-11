@@ -1162,9 +1162,13 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       exact: true,
     });
     await optionsTrigger.click();
-    const options = narrowPane.getByRole("dialog", {
-      name: "Composer options menu",
-    });
+    const panelId = await optionsTrigger.getAttribute("aria-controls");
+    const options = page.locator(`[id="${panelId}"]`);
+    await expect(options).toHaveAttribute("role", "dialog");
+    await expect(options).toHaveAttribute(
+      "aria-label",
+      "Composer options menu",
+    );
     await expect(
       options.getByRole("button", { name: "Session mode" }),
     ).toHaveText("Review changes");
@@ -1175,6 +1179,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       page.getByRole("combobox", { name: "Session mode" }),
     ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(
+      options.getByRole("button", { name: "Session mode" }),
+    ).toBeFocused();
+    await expect(options).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(options).toHaveCount(0);
     await expect(optionsTrigger).toBeFocused();

@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from "react";
-import { ChevronDown } from "../../ui/leanIcons";
+import { ChevronDown, Settings } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type {
@@ -78,6 +78,11 @@ export function ComposerModelControls({
           onPointerDown={(event) => event.currentTarget.blur()}
           onClick={onToggle}
         >
+          <Settings
+            className="composer__model-icon"
+            size={16}
+            aria-hidden="true"
+          />
           <span className="composer__model-label">{modelLabel}</span>
           {effortLabel ? (
             <span className="composer__model-effort"> {effortLabel}</span>

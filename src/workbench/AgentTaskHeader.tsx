@@ -1,6 +1,13 @@
 import { FileText, Globe2, ListFilter, Check, X } from "../ui/leanIcons";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useStore } from "zustand";
 
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
@@ -13,6 +20,7 @@ import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { agentChatMoveDestinations } from "./agentChatRail";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import { MenuPopover } from "../ui/MenuPopover";
 import { projectTaskResources } from "./agentArtifactTabPresentation";
 import "./agent-subagent-summary.css";
 
@@ -46,7 +54,7 @@ export function AgentTaskHeader({
   const [showAllSources, setShowAllSources] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const resourcesPanelRef = useRef<HTMLDivElement | null>(null);
+  const resourcesId = useId();
   const page = useStore(
     acpProjectionStoreFor(tab?.id ?? null),
     (state) => state.page,
@@ -59,21 +67,6 @@ export function AgentTaskHeader({
   useEffect(() => {
     if (renaming) inputRef.current?.focus();
   }, [renaming]);
-
-  useEffect(() => {
-    if (!resourcesOpen) return;
-    resourcesPanelRef.current?.focus();
-    const closeOutside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !resourcesPanelRef.current?.contains(event.target) &&
-        !resourcesTriggerRef.current?.contains(event.target)
-      )
-        setResourcesOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    return () => document.removeEventListener("pointerdown", closeOutside);
-  }, [resourcesOpen]);
 
   if (!tab || !project) return null;
   const currentTab = tab;
@@ -193,6 +186,8 @@ export function AgentTaskHeader({
           ref={resourcesTriggerRef}
           type="button"
           aria-label="Show chat resources"
+          aria-controls={resourcesId}
+          aria-haspopup="dialog"
           aria-expanded={resourcesOpen}
           title="Outputs, Subagents, and Sources"
           onClick={() => setResourcesOpen((open) => !open)}
@@ -200,19 +195,14 @@ export function AgentTaskHeader({
           <ListFilter size={16} aria-hidden="true" />
         </button>
         {resourcesOpen ? (
-          <div
-            ref={resourcesPanelRef}
+          <MenuPopover
+            id={resourcesId}
             className="agent-task-header__resource-panel"
             role="dialog"
-            aria-label="Chat resources"
-            tabIndex={-1}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                setResourcesOpen(false);
-                resourcesTriggerRef.current?.focus();
-              }
-            }}
+            ariaLabel="Chat resources"
+            open
+            triggerRef={resourcesTriggerRef}
+            onDismiss={() => setResourcesOpen(false)}
           >
             <section aria-label="Outputs">
               <strong>Outputs</strong>
@@ -349,7 +339,7 @@ export function AgentTaskHeader({
                 {showAllSources ? "Show less" : "View all"}
               </button>
             ) : null}
-          </div>
+          </MenuPopover>
         ) : null}
       </div>
     </header>

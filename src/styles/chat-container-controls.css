@@ -1,0 +1,118 @@
+.composer__model-icon {
+  display: none;
+}
+
+.composer__access-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer__access-label > svg {
+  flex: none;
+}
+
+@container composer (max-width: 520px) {
+  .composer .composer__access-text,
+  .composer .composer__capacity {
+    display: none;
+  }
+
+  .composer .composer__access-label {
+    width: 28px;
+    flex: none;
+  }
+}
+
+@container composer (max-width: 400px) {
+  .composer .composer__harness .searchable-picker__trigger-label,
+  .composer .composer__model-label,
+  .composer .composer__model-effort {
+    display: none;
+  }
+
+  .composer__model-icon {
+    display: block;
+  }
+
+  .composer__controls .composer__harness.composer__control-trigger {
+    flex: 0 0 40px;
+  }
+
+  .composer__controls .composer__harness .searchable-picker__trigger {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .composer .composer__harness .searchable-picker__chevron,
+  .composer__model-trigger > svg:last-child {
+    display: none;
+  }
+
+  .composer__controls .composer__model-group .composer__model-trigger {
+    width: 28px;
+    flex: none;
+    justify-content: center;
+  }
+
+  .composer .composer__controls {
+    flex-wrap: wrap;
+  }
+
+  .composer .composer__model-group {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .composer__effort-picker {
+    max-width: min(80px, 100%);
+  }
+}
+
+@container composer (max-width: 280px) {
+  .composer .chat-goal-strip__row {
+    height: auto;
+    flex-wrap: wrap;
+    min-height: 32px;
+    padding-block: var(--space-1);
+  }
+
+  .composer .chat-goal-strip__objective {
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .composer .composer__toolbar {
+    grid-template-areas: "controls controls controls" "mic meter send";
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: var(--space-1);
+  }
+
+  .composer .composer__mic {
+    justify-self: end;
+  }
+
+  .composer .composer__queued-text {
+    flex-basis: calc(100% - 40px);
+  }
+}
+
+@container chat-center (max-width: 400px) {
+  .agent-chat-center .agent-task-header {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .agent-chat-center .agent-task-header__breadcrumb {
+    flex-basis: 100%;
+  }
+
+  .agent-chat-center .agent-task-header__harness-status,
+  .agent-chat-center .agent-task-header__rename [role="alert"] {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}

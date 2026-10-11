@@ -1018,6 +1018,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Composer options",
       "Choose images",
       "Add images",
+      "Access options",
       "Harness",
       "Model",
       "Start dictation",
@@ -1026,9 +1027,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(composer(page).locator(".composer__access-label")).toHaveText(
       "Read-only",
     );
-    await expect(
-      composer(page).getByRole("dialog", { name: "Composer options menu" }),
-    ).toHaveCount(0);
+    const options = composer(page).getByRole("button", {
+      name: "Composer options",
+      exact: true,
+    });
+    await expect(options).toHaveAttribute("aria-controls", /\S+/);
+    const optionsId = await options.getAttribute("aria-controls");
+    await expect(page.locator(`[id="${optionsId}"]`)).toHaveCount(0);
   });
 
   test("orders toolbar actions, harness and model with send trailing", async ({
@@ -1041,6 +1046,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(await composerControlOrder(page)).toEqual([
       "Composer options",
       "Add images",
+      "Access options",
       "Harness",
       "Model",
       "Start dictation",

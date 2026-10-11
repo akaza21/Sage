@@ -117,19 +117,3 @@
     box-shadow: none;
   }
 }
-
-@container (max-width: 520px) {
-  .composer__controls .composer__access-label {
-    display: none;
-  }
-
-  .composer__controls .composer__harness {
-    flex-basis: 112px;
-  }
-}
-
-@container (max-width: 400px) {
-  .composer__capacity {
-    display: none;
-  }
-}

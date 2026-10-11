@@ -1,4 +1,6 @@
 import { MoreHorizontal, X } from "../../ui/leanIcons";
+import { useId, useRef, useState } from "react";
+import { MenuPopover } from "../../ui/MenuPopover";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
 
@@ -17,6 +19,10 @@ export function ComposerQueuedPrompts({
   onRetry?: (id: string) => void;
   onSteer?: (id: string) => void;
 }) {
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelId = useId();
+  const selected = prompts?.find((prompt) => prompt.id === menuId);
   if (!prompts?.length) return null;
   return (
     <div className="composer__queued" aria-label="Queued messages">
@@ -66,25 +72,50 @@ export function ComposerQueuedPrompts({
           >
             <X size={16} aria-hidden="true" />
           </button>
-          <details className="composer__queued-options">
-            <summary
-              aria-label={`More options for queued message: ${prompt.text}`}
-            >
-              <MoreHorizontal size={16} aria-hidden="true" />
-            </summary>
-            <button
-              type="button"
-              onClick={() =>
-                prompt.status === "blocked"
-                  ? onRetry?.(prompt.id)
-                  : onDelete?.(prompt.id)
-              }
-            >
-              {prompt.status === "blocked" ? "Retry when ready" : "Delete"}
-            </button>
-          </details>
+          <button
+            type="button"
+            aria-label={`More options for queued message: ${prompt.text}`}
+            aria-haspopup="menu"
+            aria-controls={panelId}
+            aria-expanded={menuId === prompt.id}
+            disabled={
+              disabled ||
+              prompt.status === "saving" ||
+              prompt.status === "deleting"
+            }
+            onClick={(event) => {
+              triggerRef.current = event.currentTarget;
+              setMenuId((current) =>
+                current === prompt.id ? null : prompt.id,
+              );
+            }}
+          >
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </button>
         </div>
       ))}
+      <MenuPopover
+        id={panelId}
+        ariaLabel="Queued message options"
+        open={Boolean(selected) && !disabled}
+        triggerRef={triggerRef}
+        onDismiss={() => setMenuId(null)}
+      >
+        <button
+          className="menu-item"
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            if (!selected) return;
+            if (selected.status === "blocked") onRetry?.(selected.id);
+            else onDelete?.(selected.id);
+            setMenuId(null);
+            triggerRef.current?.focus();
+          }}
+        >
+          {selected?.status === "blocked" ? "Retry when ready" : "Delete"}
+        </button>
+      </MenuPopover>
     </div>
   );
 }

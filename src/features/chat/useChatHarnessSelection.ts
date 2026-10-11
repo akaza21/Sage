@@ -53,57 +53,16 @@ export function useComposerPopovers(disabled = false) {
   const modelId = useId();
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
-  const optionsPanel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (disabled) queueMicrotask(() => setActive(null));
   }, [disabled]);
-
-  useLayoutEffect(() => {
-    if (active !== "options") return;
-    const first = optionsPanel.current?.querySelector<HTMLButtonElement>(
-      "button:not(:disabled)",
-    );
-    (first ?? optionsPanel.current)?.focus();
-  }, [active]);
-
-  useEffect(() => {
-    if (active !== "options") return;
-    const dismiss = () => {
-      setActive(null);
-      optionsTrigger.current?.focus();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      dismiss();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (
-        optionsPanel.current?.contains(target) ||
-        optionsTrigger.current?.contains(target)
-      )
-        return;
-      if (target.closest('[role="listbox"], [role="combobox"]')) return;
-      dismiss();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-      document.removeEventListener("pointerdown", onPointerDown, true);
-    };
-  }, [active]);
 
   return {
     active,
     modelId,
     modelTrigger,
     optionsId,
-    optionsPanel,
     optionsTrigger,
     dismiss: () => setActive(null),
     toggle: (kind: "options" | "model") => {

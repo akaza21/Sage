@@ -3,6 +3,8 @@
   --chat-column-gutter: var(--space-4);
   --chat-column-trailing: calc(var(--scrollbar-size) + var(--space-3));
   position: relative;
+  container-name: chat;
+  container-type: inline-size;
   display: grid;
   width: 100%;
   min-width: 0;
@@ -306,6 +308,7 @@
 .composer__access-label {
   display: inline-flex;
   min-width: 0;
+  flex: 0 1 auto;
   max-width: 142px;
   align-items: center;
   gap: 4px;
@@ -338,6 +341,7 @@
 }
 
 .composer__plus:focus-visible,
+.composer__access-label:focus-visible,
 .composer__model-trigger:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);

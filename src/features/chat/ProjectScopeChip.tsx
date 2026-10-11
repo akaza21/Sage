@@ -45,6 +45,7 @@ export function ProjectScopeChip({
       <Folder className="project-scope__icon" size={14} aria-hidden="true" />
       {candidates.length > 0 ? (
         <SearchablePicker
+          portalTarget="closest-dialog"
           ariaLabel="Project"
           candidates={candidates}
           disabled={disabled || switchBlocked}

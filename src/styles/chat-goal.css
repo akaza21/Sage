@@ -117,12 +117,16 @@
   margin: 0;
   padding: 4px 12px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .chat-goal-strip__details {
+  max-height: min(200px, 25vh);
+  overflow: auto;
   padding: 8px 12px;
   border-bottom: 1px solid var(--composer-border);
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .chat-goal-strip__details p {

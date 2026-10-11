@@ -162,15 +162,16 @@ describe("Composer surface stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.select-control\b/m);
   });
 
-  it("keeps the compact controls on one line and places choices in popovers", async () => {
+  it("keeps the full-width controls on one line and leaves options positioning to the shared popover", async () => {
     const surfaceCss = await composerRules();
 
     expect(surfaceCss).toMatch(
       /\.composer__controls\s*\{[^}]*flex-wrap:\s*nowrap;/s,
     );
-    expect(surfaceCss).toMatch(
-      /\.composer__options\s*\{[^}]*position:\s*absolute;/s,
+    expect(surfaceCss).not.toMatch(
+      /\.composer__options\s*\{[^}]*(position|top|right|bottom|left):/s,
     );
+    expect(surfaceCss).toMatch(/\.menu-popover\s*\{[^}]*position:\s*fixed;/s);
     expect(surfaceCss).toMatch(
       /\.composer__toolbar\s*\{[^}]*grid-template-areas:\s*"controls\s+mic\s+meter\s+send";[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto;/s,
     );

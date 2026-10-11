@@ -618,7 +618,7 @@ describe("composer permission mode picker", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Permission mode" }),
     );
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
       screen.queryByRole("dialog", { name: "Composer options menu" }),
     ).toBeNull();
@@ -666,11 +666,21 @@ describe("composer permission mode picker", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("closes the parent dialog when a nested picker receives Escape", () => {
+  it("closes the nested picker before its parent dialog on successive Escape presses", () => {
     renderControls();
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    expect(
+      screen.queryByRole("listbox", { name: "Permission mode" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("dialog", { name: "Composer options menu" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Permission mode" }),
+    ).toHaveFocus();
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
       screen.queryByRole("dialog", { name: "Composer options menu" }),
@@ -681,7 +691,12 @@ describe("composer permission mode picker", () => {
   it("shows effective read-only access when ask is unsupported", () => {
     useSessionAccessModeStore.setState({ mode: "ask" });
     renderControls({ permissionRequests: false });
-    expect(screen.getByText("Read-only")).toHaveClass("composer__access-label");
+    expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
+      "composer__access-label",
+    );
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Read-only");
     expect(screen.queryByText("Ask each time")).toBeNull();
   });
 
@@ -717,7 +732,10 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Thinking level" }),
     ).toHaveTextContent("High");
-    expect(screen.getByText("Full access")).toHaveClass(
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Full access");
+    expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
       "composer__access-label--write",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));

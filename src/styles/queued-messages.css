@@ -1,10 +1,7 @@
 .composer__queued {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--space-1));
-  left: 0;
   display: grid;
-  max-height: min(320px, 40vh);
+  max-height: min(160px, 24vh);
+  padding: var(--space-1);
   gap: var(--space-1);
   overflow-y: auto;
   scrollbar-width: thin;
@@ -15,6 +12,7 @@
   min-width: 0;
   min-height: 40px;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--composer-border);
@@ -58,19 +56,20 @@
 
 .composer__queued-text {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .composer__queued-state {
+  min-width: 0;
+  max-width: 100%;
   color: var(--color-text-muted);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-.composer__queued-row button,
-.composer__queued-options summary {
+.composer__queued-row button {
   display: grid;
   width: 28px;
   height: 28px;
@@ -87,28 +86,4 @@
   width: auto;
   padding: 0 var(--space-2);
   color: var(--color-text-primary);
-}
-
-.composer__queued-options {
-  position: relative;
-}
-
-.composer__queued-options summary {
-  list-style: none;
-}
-
-.composer__queued-options summary::-webkit-details-marker {
-  display: none;
-}
-
-.composer__queued-options > button {
-  position: absolute;
-  z-index: 4;
-  right: 0;
-  bottom: 100%;
-  width: max-content;
-  min-width: 120px;
-  padding: var(--space-2);
-  border: 1px solid var(--composer-border);
-  background: var(--color-plane-raised);
 }
