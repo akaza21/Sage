@@ -53,7 +53,18 @@ fn command_fact(
 
 #[test]
 fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reopen() {
-    for output in ["ok --token private-value", "ok --token 'private value'"] {
+    for (output, expected_output) in [
+        ("ok --token private-value", "ok --token [redacted]"),
+        ("ok --token 'private value'", "ok --token [redacted]"),
+        ("ok password: hunter2", "ok password: [redacted]"),
+        (r#"ok "api_key": "abc123""#, r#"ok "api_key": [redacted]"#),
+        (r#"curl -H "X-Api-Key: abc123""#, "curl -H [redacted]"),
+        ("curl -d @/home/alice/secret.json", "curl -d [redacted]"),
+        (
+            "cc -L/home/alice/lib -I/home/alice/inc",
+            "cc [redacted] [redacted]",
+        ),
+    ] {
         for (late_input, raw_output) in [(false, false), (false, true), (true, false), (true, true)]
         {
             let directory = HistoryDirectory(
@@ -120,8 +131,9 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 bounded("late input", pump.push_stdout_chunk(&bytes, 11)).await.unwrap();
                 assert_eq!(command_fact(&database, &expected_capabilities), (ToolState::InProgress, Some(retained.clone()), None));
             }
+            let console_output = if raw_output { "console fallback must not win" } else { output };
             let mut completed = json!({"sessionUpdate": "tool_call_update", "toolCallId": "command-1", "status": "completed",
-                "content": [{"type":"content","content":{"type":"text","text":format!("```console\n{output}\n```")}}]});
+                "content": [{"type":"content","content":{"type":"text","text":format!("```console\n{console_output}\n```")}}]});
             if raw_output {
                 completed["rawOutput"] = json!(output);
             }
@@ -141,7 +153,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 (
                     ToolState::Completed,
                     Some(retained.clone()),
-                    Some("ok --token [redacted]".to_owned())
+                    Some(expected_output.to_owned())
                 )
             );
             drop(database);
@@ -151,7 +163,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 (
                     ToolState::Completed,
                     Some(retained),
-                    Some("ok --token [redacted]".to_owned())
+                    Some(expected_output.to_owned())
                 )
             );
         }

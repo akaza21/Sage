@@ -1,7 +1,5 @@
-use super::{is_sensitive_prose_flag, is_sensitive_prose_token};
+use super::secrets::{REDACTED, SecretContext, append, is_authorization_header};
 use crate::acp::contract::ContractError;
-
-const REDACTED: &str = "[redacted]";
 
 pub(crate) fn redact(
     field: &'static str,
@@ -11,17 +9,30 @@ pub(crate) fn redact(
 ) -> Result<String, ContractError> {
     let mut output = String::new();
     let mut secrets = SecretContext::default();
+    let mut value = ShellValueContext::default();
     for token in input.split_inclusive(char::is_whitespace) {
         let body = token.trim_end_matches(char::is_whitespace);
         let whitespace = &token[body.len()..];
         let path = contains_absolute_path(body, reject_paths);
-        let continued = secrets.in_value();
+        let continued = value.in_value();
+        let literal_value = continued || secrets.next_value();
         if path && reject_paths {
             return Err(ContractError::ForbiddenContent {
                 field: "permissionCommand",
             });
         }
-        let replacement = if secrets.redact(body, whitespace, path) {
+        let redacted = secrets.redact(body, whitespace, continued) || path;
+        if !redacted && secrets.next_value() && body.starts_with('`') {
+            value.markdown_wrapper = true;
+        }
+        if redacted || (secrets.next_value() && body.starts_with(['\'', '"'])) {
+            value.track_value(body, path, literal_value);
+        }
+        if value.escaped && !whitespace.is_empty() {
+            value.escaped = false;
+            value.continued_value = true;
+        }
+        let replacement = if redacted || value.in_value() {
             REDACTED
         } else {
             body
@@ -29,7 +40,7 @@ pub(crate) fn redact(
         if !continued {
             append(&mut output, replacement, maximum, field)?;
         }
-        if !secrets.in_value() {
+        if !value.in_value() {
             append(&mut output, whitespace, maximum, field)?;
         }
     }
@@ -37,69 +48,25 @@ pub(crate) fn redact(
 }
 
 #[derive(Default)]
-struct SecretContext {
-    next_value: bool,
-    authorization_line: bool,
+struct ShellValueContext {
+    markdown_wrapper: bool,
     quote: Option<char>,
     escaped: bool,
     continued_value: bool,
     substitution_depth: usize,
 }
 
-impl SecretContext {
+impl ShellValueContext {
     fn in_value(&self) -> bool {
         self.quote.is_some() || self.continued_value || self.substitution_depth > 0
     }
 
-    fn redact(&mut self, body: &str, whitespace: &str, path: bool) -> bool {
-        if self.next_value && body == "<" {
-            return false;
-        }
-        let was_authorization_line = self.authorization_line;
-        let structural_flag = self.next_value
-            && !self.in_value()
-            && !body.starts_with(['\'', '"', '`'])
-            && is_sensitive_prose_flag(body);
-        let literal_value = self.in_value() || self.next_value;
-        let redacted = !body.is_empty()
-            && (self.authorization_line
-                || self.next_value
-                || self.in_value()
-                || (is_authorization_header(body)
-                    && !body.eq_ignore_ascii_case("authorization:")
-                    && !body.eq_ignore_ascii_case("proxy-authorization:"))
-                || is_sensitive_prose_token(body)
-                || path);
-        if !body.is_empty() {
-            self.continued_value = false;
-            if redacted {
-                self.track_value(body, path, literal_value);
-            }
-            self.next_value = structural_flag
-                || (!literal_value
-                    && (is_bearer_marker(body)
-                        || is_sensitive_prose_flag(body)
-                        || body
-                            .split_once('=')
-                            .is_some_and(|(_, value)| is_bearer_marker(value))));
-            if !literal_value && is_authorization_header(body) {
-                self.authorization_line = true;
-            }
-        }
-        if self.escaped && !whitespace.is_empty() {
-            self.escaped = false;
-            self.continued_value = true;
-        }
-        if whitespace.contains(['\n', '\r']) {
-            self.authorization_line = false;
-            if was_authorization_line || is_authorization_header(body) {
-                self.next_value = false;
-            }
-        }
-        redacted
-    }
-
     fn track_value(&mut self, body: &str, path: bool, literal_value: bool) {
+        if body.is_empty() {
+            return;
+        }
+        self.continued_value = false;
+        let markdown_wrapper = std::mem::take(&mut self.markdown_wrapper);
         let body = if literal_value || body.starts_with(['\'', '"']) {
             body
         } else {
@@ -118,8 +85,15 @@ impl SecretContext {
                     .unwrap_or(body)
             }
         };
+        let body = if markdown_wrapper && self.quote.is_none() && !body.starts_with('`') {
+            body.strip_suffix('`')
+                .filter(|body| !body.contains('`'))
+                .unwrap_or(body)
+        } else {
+            body
+        };
         let mut previous = None;
-        for character in body.chars() {
+        for (index, character) in body.char_indices() {
             if self.escaped {
                 self.escaped = false;
             } else if let Some(open) = self.quote {
@@ -128,10 +102,12 @@ impl SecretContext {
                 } else if open != '\'' && (character == '\\' || (character == '`' && open != '`')) {
                     self.escaped = true;
                 }
+            } else if character == '\\'
+                || (character == '`' && index > 0 && index + 1 == body.len())
+            {
+                self.escaped = true;
             } else if matches!(character, '\'' | '"' | '`') {
                 self.quote = Some(character);
-            } else if matches!(character, '\\' | '`') {
-                self.escaped = true;
             } else if character == '(' && (previous == Some('$') || self.substitution_depth > 0) {
                 self.substitution_depth += 1;
             } else if character == ')' && self.substitution_depth > 0 {
@@ -142,47 +118,6 @@ impl SecretContext {
     }
 }
 
-fn is_authorization_header(body: &str) -> bool {
-    let header = body.trim_matches(|ch: char| matches!(ch, '"' | '\'' | '`'));
-    let header = header.to_ascii_lowercase();
-    header.contains("authorization:")
-}
-
-fn is_bearer_marker(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    });
-    trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("bearer:")
-}
-
-fn append(
-    output: &mut String,
-    value: &str,
-    maximum: usize,
-    field: &'static str,
-) -> Result<(), ContractError> {
-    let invalid_length = || ContractError::InvalidLength {
-        field,
-        minimum: 0,
-        maximum,
-    };
-    let next = output
-        .len()
-        .checked_add(value.len())
-        .ok_or_else(invalid_length)?;
-    if next > maximum {
-        return Err(invalid_length());
-    }
-    output
-        .try_reserve(value.len())
-        .map_err(|_| invalid_length())?;
-    output.push_str(value);
-    Ok(())
-}
-
 pub(super) fn contains_absolute_path(value: &str, strict: bool) -> bool {
     if value.to_ascii_lowercase().contains("file://") {
         return true;
@@ -190,25 +125,7 @@ pub(super) fn contains_absolute_path(value: &str, strict: bool) -> bool {
     let bytes = value.as_bytes();
     bytes.iter().enumerate().any(|(index, _)| {
         let previous = (index > 0).then(|| bytes[index - 1]);
-        let boundary = previous.is_none_or(|byte| {
-            matches!(
-                byte,
-                b'"' | b'\''
-                    | b'`'
-                    | b'('
-                    | b'['
-                    | b'{'
-                    | b'<'
-                    | b'>'
-                    | b'|'
-                    | b';'
-                    | b'&'
-                    | b'='
-                    | b','
-                    | b':'
-                    | b'\\'
-            )
-        });
+        let boundary = is_path_boundary(bytes, index);
         let rest = &bytes[index..];
         boundary
             && (rest.starts_with(b"\\\\")
@@ -220,6 +137,35 @@ pub(super) fn contains_absolute_path(value: &str, strict: bool) -> bool {
                     && rest[1] == b':'
                     && matches!(rest[2], b'\\' | b'/')))
     })
+}
+
+pub(crate) fn is_path_boundary(value: &[u8], index: usize) -> bool {
+    let previous = index.checked_sub(1).map(|index| value[index]);
+    let prefix = &value[..index];
+    let prefix = match prefix.first() {
+        Some(b'"' | b'\'' | b'`') => &prefix[1..],
+        _ => prefix,
+    };
+    previous.is_none_or(|byte| {
+        matches!(
+            byte,
+            b'"' | b'\''
+                | b'`'
+                | b'('
+                | b'['
+                | b'{'
+                | b'<'
+                | b'>'
+                | b'|'
+                | b';'
+                | b'&'
+                | b'='
+                | b','
+                | b':'
+                | b'\\'
+                | b'@'
+        )
+    }) || (prefix.len() == 2 && prefix[0] == b'-' && prefix[1].is_ascii_alphabetic())
 }
 
 fn starts_posix_path(value: &[u8], strict: bool) -> bool {

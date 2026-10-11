@@ -1,11 +1,12 @@
 use super::neutralized;
 use crate::acp::{
-    bindings::command_summary::{is_sensitive_prose_flag, is_sensitive_prose_token},
+    bindings::command_summary::{
+        redaction::is_path_boundary,
+        secrets::{REDACTED, SecretContext, append},
+    },
     contract::ContractError,
     limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };
-
-const REDACTED: &str = "[redacted]";
 
 pub(crate) fn sanitized_content_output(input: &str) -> Result<String, ContractError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;
@@ -23,103 +24,36 @@ pub(crate) fn sanitized_content_output(input: &str) -> Result<String, ContractEr
         });
     }
 
+    let input = neutralized(input, false);
+    redact_prose("toolOutput", &input, maximum_output)
+}
+
+pub(super) fn redact_prose(
+    field: &'static str,
+    input: &str,
+    maximum_output: usize,
+) -> Result<String, ContractError> {
     let mut output = String::new();
     let mut secrets = SecretContext::default();
-    let input = neutralized(input, false);
     for token in input.split_inclusive(char::is_whitespace) {
         let (body, whitespace) = split_trailing_whitespace(token);
         if body.is_empty() {
-            secrets.redact(body, whitespace);
-            append_command_output(&mut output, whitespace, maximum_output)?;
+            secrets.redact(body, whitespace, false);
+            append(&mut output, whitespace, maximum_output, field)?;
             continue;
         }
-        let replacement = if secrets.redact(body, whitespace) {
+        let replacement = if secrets.redact(body, whitespace, false)
+            || is_absolute_native_path(body)
+            || contains_command_absolute_path(body)
+        {
             REDACTED
         } else {
             body
         };
-        append_command_output(&mut output, replacement, maximum_output)?;
-        append_command_output(&mut output, whitespace, maximum_output)?;
+        append(&mut output, replacement, maximum_output, field)?;
+        append(&mut output, whitespace, maximum_output, field)?;
     }
     Ok(output)
-}
-
-#[derive(Default)]
-struct SecretContext {
-    next_value: bool,
-    authorization_line: bool,
-}
-
-impl SecretContext {
-    fn redact(&mut self, body: &str, whitespace: &str) -> bool {
-        let was_authorization_line = self.authorization_line;
-        let redacted = !body.is_empty()
-            && (self.authorization_line
-                || self.next_value
-                || is_secret(body)
-                || is_absolute_native_path(body)
-                || contains_command_absolute_path(body));
-        if !body.is_empty() {
-            self.next_value = is_bearer_marker(body) || is_sensitive_prose_flag(body);
-            if is_authorization_header(body) {
-                self.authorization_line = true;
-            }
-        }
-        if whitespace.contains(['\n', '\r']) {
-            self.authorization_line = false;
-            if was_authorization_line || is_authorization_header(body) {
-                self.next_value = false;
-            }
-        }
-        redacted
-    }
-}
-
-fn is_authorization_header(body: &str) -> bool {
-    let header = body.trim_matches(|ch: char| matches!(ch, '"' | '\'' | '`'));
-    let header = header.to_ascii_lowercase();
-    header.starts_with("authorization:") || header.starts_with("proxy-authorization:")
-}
-
-fn is_bearer_marker(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    });
-    trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("bearer:")
-}
-
-fn append_command_output(
-    output: &mut String,
-    value: &str,
-    maximum: usize,
-) -> Result<(), ContractError> {
-    let next = output
-        .len()
-        .checked_add(value.len())
-        .ok_or(ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        })?;
-    if next > maximum {
-        return Err(ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        });
-    }
-    output
-        .try_reserve(value.len())
-        .map_err(|_| ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        })?;
-    output.push_str(value);
-    Ok(())
 }
 
 fn contains_command_absolute_path(value: &str) -> bool {
@@ -130,12 +64,7 @@ fn contains_command_absolute_path(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.iter().enumerate().any(|(index, _)| {
         let previous = (index > 0).then(|| bytes[index - 1]);
-        let boundary = previous.is_none_or(|byte| {
-            matches!(
-                byte,
-                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';' | b':'
-            )
-        });
+        let boundary = is_path_boundary(bytes, index);
         let rest = &bytes[index..];
         boundary
             && (rest.starts_with(b"\\\\")
@@ -151,7 +80,9 @@ fn contains_command_absolute_path(value: &str) -> bool {
 fn starts_posix_path(value: &[u8]) -> bool {
     value.first() == Some(&b'/')
         && value.get(1).is_some_and(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'~')
+            !byte.is_ascii()
+                || byte.is_ascii_alphanumeric()
+                || matches!(byte, b'.' | b'_' | b'-' | b'~')
         })
 }
 
@@ -161,10 +92,6 @@ fn split_trailing_whitespace(value: &str) -> (&str, &str) {
         .find_map(|(index, character)| character.is_whitespace().then_some(index))
         .unwrap_or(value.len());
     value.split_at(split)
-}
-
-fn is_secret(value: &str) -> bool {
-    is_sensitive_prose_token(value)
 }
 
 fn is_absolute_native_path(value: &str) -> bool {

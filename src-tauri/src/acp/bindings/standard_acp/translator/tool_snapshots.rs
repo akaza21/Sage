@@ -241,16 +241,15 @@ fn output_patch(
 }
 
 fn retained_output(output: &str) -> Result<SafeText<65536>, TranslationError> {
-    let sanitized = sanitized_command_output(output)?;
-    let text = retain_command_output(&sanitized)
-        .and_then(|retained| retained.display_text())
-        .ok_or(TranslationError::MalformedFrame)?;
-    SafeText::new("toolOutput", text).map_err(Into::into)
+    retained_sanitized_output(&sanitized_command_output(output)?)
 }
 
 fn retained_content(output: &str) -> Result<SafeText<65536>, TranslationError> {
-    let sanitized = sanitized_content_output(output)?;
-    let text = retain_command_output(&sanitized)
+    retained_sanitized_output(&sanitized_content_output(output)?)
+}
+
+fn retained_sanitized_output(sanitized: &str) -> Result<SafeText<65536>, TranslationError> {
+    let text = retain_command_output(sanitized)
         .and_then(|retained| retained.display_text())
         .ok_or(TranslationError::MalformedFrame)?;
     SafeText::new("toolOutput", text).map_err(Into::into)

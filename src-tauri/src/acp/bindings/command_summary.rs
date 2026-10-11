@@ -7,6 +7,9 @@ use crate::acp::contract::SafeText;
 #[path = "command_summary/redaction.rs"]
 pub(crate) mod redaction;
 
+#[path = "command_summary/secrets.rs"]
+pub(crate) mod secrets;
+
 const MAX_COMMAND_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
