@@ -257,22 +257,20 @@
 }
 
 .acp-mermaid {
+  max-width: 100%;
   margin: var(--space-3) 0 0;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--color-panel);
   overflow: auto;
 }
 
 .acp-mermaid svg {
   display: block;
-  min-width: 320px;
+  max-width: none;
+  margin: 0 auto;
   color: var(--color-text-primary);
 }
 
 .acp-mermaid text {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   fill: currentColor;
   paint-order: stroke;
   stroke: var(--color-panel);
@@ -285,7 +283,7 @@
 }
 
 .acp-mermaid :is(rect, polygon) {
-  fill: var(--surface-raised);
+  fill: none;
   stroke: currentColor;
 }
 
@@ -306,7 +304,7 @@
 .acp-mermaid__copy {
   padding: 0;
   border: 0;
-  color: var(--color-accent);
+  color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
 }
@@ -321,6 +319,18 @@
 }
 
 @media (forced-colors: active) {
+  .acp-mermaid svg {
+    color: CanvasText;
+  }
+
+  .acp-mermaid text {
+    stroke: Canvas;
+  }
+
+  .acp-mermaid :is(rect, polygon, path, line) {
+    stroke: CanvasText;
+  }
+
   .acp-permission,
   .acp-image,
   .acp-resource-action,

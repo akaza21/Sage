@@ -14,7 +14,11 @@ export function MermaidFigure({ source }: { source: string }) {
   } | null>(null);
   const status = copyState?.identity === identity ? copyState.status : "";
   return (
-    <figure className="acp-mermaid">
+    <figure
+      className="acp-mermaid"
+      tabIndex={diagram.ok ? 0 : undefined}
+      aria-label="Diagram"
+    >
       {diagram.ok ? (
         diagram.kind === "flowchart" ? (
           <MermaidSvg diagram={diagram} />
@@ -51,11 +55,13 @@ export function MermaidFigure({ source }: { source: string }) {
 }
 
 function DiagramSvg({
+  left = 0,
   width,
   height,
   label,
   children,
 }: {
+  left?: number;
   width: number;
   height: number;
   label: string;
@@ -65,8 +71,8 @@ function DiagramSvg({
     <svg
       role="img"
       aria-label={`Mermaid ${label}`}
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      viewBox={`${left} 0 ${width} ${height}`}
+      width={width}
       height={height}
     >
       {children}
@@ -81,11 +87,55 @@ function MermaidSvg({
 }) {
   const placed = layout(diagram);
   const marker = useId();
-  const width = Math.max(...placed.map((node) => node.x + 300));
-  const height = Math.max(...placed.map((node) => node.y + 80));
   const byId = new Map(placed.map((node) => [node.id, node]));
+  const edges = diagram.edges.map((edge) => {
+    const from = byId.get(edge.from)!;
+    const to = byId.get(edge.to)!;
+    const horizontal = diagram.direction === "LR";
+    const returning = horizontal ? to.x <= from.x : to.y <= from.y;
+    const lateral = horizontal !== returning;
+    const startX = from.x + (lateral ? 240 : 120);
+    const startY = from.y + (lateral ? 32 : 64);
+    const endX = to.x + (lateral ? (returning ? 240 : 0) : 120);
+    const endY = to.y + (lateral ? 32 : returning ? 64 : 0);
+    const rail = horizontal
+      ? Math.max(from.y, to.y) + 76
+      : Math.max(from.x, to.x) + 280;
+    const route = returning
+      ? horizontal
+        ? `L${startX} ${rail}L${endX} ${rail}`
+        : `L${rail} ${startY}L${rail} ${endY}`
+      : "";
+    return {
+      label: edge.label,
+      path: `M${startX} ${startY}${route}L${endX} ${endY}`,
+      x: returning && !horizontal ? rail : (startX + endX) / 2,
+      y: returning && horizontal ? rail : (startY + endY) / 2 - 4,
+    };
+  });
+  const labelledEdges = edges.filter((edge) => edge.label);
+  const bounds = [
+    ...placed.map((node) => ({
+      x: node.x + 120,
+      half: Math.max(0, ...node.lines.map((line) => line.length)) * 7,
+    })),
+    ...labelledEdges.map((edge) => ({
+      x: edge.x,
+      half: edge.label.length * 7,
+    })),
+  ];
+  const left = Math.min(0, ...bounds.map((bound) => bound.x - bound.half - 8));
+  const width =
+    Math.max(
+      ...placed.map((node) => node.x + 300),
+      ...bounds.map((bound) => bound.x + bound.half + 8),
+    ) - left;
+  const height = Math.max(
+    ...placed.map((node) => node.y + 80),
+    ...labelledEdges.map((edge) => edge.y + 8),
+  );
   return (
-    <DiagramSvg label="diagram" width={width} height={height}>
+    <DiagramSvg label="diagram" left={left} width={width} height={height}>
       <defs>
         <marker
           id={marker}
@@ -99,41 +149,16 @@ function MermaidSvg({
           <path d="M0 0L10 5L0 10" />
         </marker>
       </defs>
-      {diagram.edges.map((edge, index) => {
-        const from = byId.get(edge.from)!;
-        const to = byId.get(edge.to)!;
-        const horizontal = diagram.direction === "LR";
-        const returning = horizontal ? to.x <= from.x : to.y <= from.y;
-        const lateral = horizontal !== returning;
-        const startX = from.x + (lateral ? 240 : 120);
-        const startY = from.y + (lateral ? 32 : 64);
-        const endX = to.x + (lateral ? (returning ? 240 : 0) : 120);
-        const endY = to.y + (lateral ? 32 : returning ? 64 : 0);
-        const rail = horizontal
-          ? Math.max(from.y, to.y) + 76
-          : Math.max(from.x, to.x) + 280;
-        const route = returning
-          ? horizontal
-            ? `L${startX} ${rail}L${endX} ${rail}`
-            : `L${rail} ${startY}L${rail} ${endY}`
-          : "";
-        return (
-          <g key={index}>
-            <path
-              d={`M${startX} ${startY}${route}L${endX} ${endY}`}
-              markerEnd={`url(#${marker})`}
-            />
-            {edge.label ? (
-              <text
-                x={returning && !horizontal ? rail : (startX + endX) / 2}
-                y={returning && horizontal ? rail : (startY + endY) / 2 - 4}
-              >
-                {edge.label}
-              </text>
-            ) : null}
-          </g>
-        );
-      })}
+      {edges.map((edge, index) => (
+        <g key={index}>
+          <path d={edge.path} markerEnd={`url(#${marker})`} />
+          {edge.label ? (
+            <text x={edge.x} y={edge.y}>
+              {edge.label}
+            </text>
+          ) : null}
+        </g>
+      ))}
       {placed.map((node) => (
         <g key={node.id} transform={`translate(${node.x} ${node.y})`}>
           {node.shape === "diamond" ? (
@@ -184,15 +209,28 @@ function LaneSvg({
     : sequence
       ? diagram.messages
       : diagram.transitions;
-  const column = klass ? 150 : 120;
+  const labels = [
+    ...nodes.flatMap((node) => [node.id, ...(node.members ?? [])]),
+    ...edges.map((edge) => edge.label),
+  ];
+  const column = Math.max(
+    klass ? 150 : 120,
+    ...labels.map((label) => label.length * 14 + 48),
+  );
+  const rowStart = klass
+    ? 72 + Math.max(...nodes.map((node) => node.members?.length ?? 0)) * 16
+    : 56;
   const width = Math.max(nodes.length * column, 160);
   const height =
-    (sequence ? 56 : 72) + Math.max(edges.length, sequence ? 0 : 1) * 36;
+    (klass ? rowStart : sequence ? 56 : 72) +
+    Math.max(edges.length, sequence ? 0 : 1) * 36;
   return (
     <DiagramSvg label={`${diagram.kind} diagram`} width={width} height={height}>
       {nodes.map((node, index) => {
         const center = index * column + column / 2;
-        const size = klass ? 126 : sequence ? 80 : 88;
+        const size = klass
+          ? column - 24
+          : Math.max(sequence ? 80 : 88, node.id.length * 14 + 24);
         return (
           <g key={node.id}>
             {node.terminal ? (
@@ -203,7 +241,7 @@ function LaneSvg({
                   x={center - size / 2}
                   y={8}
                   width={size}
-                  height={klass ? 36 + (node.members?.length ?? 0) * 14 : 28}
+                  height={klass ? 36 + (node.members?.length ?? 0) * 16 : 28}
                   rx={sequence || klass ? 6 : 14}
                 />
                 <text x={center} y={klass ? 24 : 26}>
@@ -214,10 +252,9 @@ function LaneSvg({
             {node.members?.map((member, memberIndex) => (
               <text
                 key={memberIndex}
-                x={center - 55}
-                y={42 + memberIndex * 14}
+                x={center - size / 2 + 12}
+                y={42 + memberIndex * 16}
                 textAnchor="start"
-                fontSize="10"
               >
                 {member}
               </text>
@@ -240,7 +277,7 @@ function LaneSvg({
           column / 2;
         const end =
           nodes.findIndex((node) => node.id === edge.to) * column + column / 2;
-        const row = (klass ? 72 : 56) + index * (klass ? 28 : 36);
+        const row = rowStart + index * 36;
         return (
           <g key={index}>
             <line
@@ -253,11 +290,7 @@ function LaneSvg({
               }
             />
             {edge.label ? (
-              <text
-                x={(start + end) / 2}
-                y={row - 6}
-                fontSize={klass ? 10 : 11}
-              >
+              <text x={(start + end) / 2} y={row - 6}>
                 {edge.label}
               </text>
             ) : null}

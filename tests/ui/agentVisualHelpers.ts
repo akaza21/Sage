@@ -155,6 +155,7 @@ export async function expectAgentImageContained(page: Page) {
       ),
     )
     .toBe(true);
+  await image.evaluate((node) => (node as HTMLImageElement).decode());
   expect(
     await image.evaluate((node) => {
       const element = node as HTMLImageElement;

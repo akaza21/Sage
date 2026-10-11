@@ -45,6 +45,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
   "capture-native-chat-pane.node-test.mjs",
+  "capture-native-chat-rich-content.node-test.mjs",
   "capture-native-chat-source.node-test.mjs",
   "capture-native-chat-sizing.node-test.mjs",
   "capture-native-chat-turn.node-test.mjs",
@@ -419,6 +420,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat-pane.node-test.mjs",
     reason:
       "Portable single/two-pane DOM capture ownership checks using the existing jsdom dev dependency; no native capability or subprocess.",
+  },
+  {
+    file: "capture-native-chat-rich-content.node-test.mjs",
+    reason:
+      "Portable owned-turn rich-content readiness checks using existing jsdom; no native app, browser automation or subprocess.",
   },
   {
     file: "capture-native-chat-sizing.node-test.mjs",

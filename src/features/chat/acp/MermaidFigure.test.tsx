@@ -6,6 +6,65 @@ import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures
 afterEach(cleanup);
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it("reserves unclipped canvas space for an admitted 64-character wide edge label", () => {
+    render(<MermaidFigure source={`graph TD\nA -->|${"W".repeat(64)}| B`} />);
+    const svg = screen.getByRole("img");
+    const [left, , width] = svg.getAttribute("viewBox")!.split(" ").map(Number);
+    expect(width).toBeGreaterThan(900);
+    expect(left).toBeLessThan(-300);
+    expect(left + width).toBeGreaterThan(590);
+    expect(svg).toHaveAttribute("width", String(width));
+  });
+  it.each(["", "unsupported diagram"])(
+    "keeps rejected source %j available for exact copying",
+    async (source) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+      render(<MermaidFigure source={source} />);
+      expect(screen.queryByRole("img")).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy diagram source" }),
+      );
+      expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+      expect(writeText).toHaveBeenCalledWith(source);
+    },
+  );
+  it("reserves body-text room for a long class member and keeps relationships below the member rows", () => {
+    const { container } = render(
+      <MermaidFigure
+        source={`classDiagram\nExample : +${"W".repeat(63)}\nExample : +second\nExample --> Other`}
+      />,
+    );
+    expect(
+      Number(screen.getByRole("img").getAttribute("width")),
+    ).toBeGreaterThan(1800);
+    expect(
+      Number(container.querySelector("rect")!.getAttribute("width")),
+    ).toBeGreaterThan(900);
+    const member = screen.getByText(`+${"W".repeat(63)}`);
+    expect(Number(member.getAttribute("x"))).toBeLessThan(30);
+    expect(
+      Number(container.querySelector("line")!.getAttribute("y1")),
+    ).toBeGreaterThan(84);
+  });
+  it("keeps a wide flowchart at intrinsic size rather than shrinking its labels", () => {
+    render(
+      <MermaidFigure
+        source={"flowchart LR\nBinding --> Pump\nPump --> SQLite"}
+      />,
+    );
+    expect(
+      screen.getByRole("img", { name: "Mermaid diagram" }),
+    ).toHaveAttribute("width", "920");
+    expect(screen.getByRole("img")).toHaveAttribute("height", "100");
+    expect(screen.getByRole("img").closest("figure")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+  });
   it("reports rejected diagram copying truthfully", async () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,

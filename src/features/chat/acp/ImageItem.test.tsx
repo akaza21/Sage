@@ -26,7 +26,7 @@ function item(dataUrl = `data:image/png;base64,${png}`, id = "image-one") {
 }
 
 describe("ImageItem", () => {
-  it("renders an image decoded from a reloaded SQLite chat projection", () => {
+  it("renders a reloaded desktop image projection and resets an open viewer on remount", () => {
     const reloaded = safeItem(
       JSON.parse(
         JSON.stringify({
@@ -60,12 +60,17 @@ describe("ImageItem", () => {
     expect(
       screen.getByRole("img", { name: "Image provided by the agent" }),
     ).toHaveAttribute("src", `data:image/png;base64,${png}`);
+    fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     unmount();
     render(<ImageItem item={reloaded} />);
     expect(
       screen.getByRole("button", { name: "Open image viewer" }),
     ).toBeVisible();
     expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
+    for (const image of screen.getAllByRole("img"))
+      expect(image).toHaveAttribute("src", `data:image/png;base64,${png}`);
   });
 
   it("opens only the admitted data URL in an in-Sage dialog and restores focus", async () => {

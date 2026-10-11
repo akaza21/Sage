@@ -20,6 +20,54 @@ const ready = {
   assistantRendered: true,
 };
 
+test("answer-code capture rejects a visible plain panel until coloured tokens render", () => {
+  const observation = {
+    ...ready,
+    state: "completed",
+    visible: { code: true },
+    controls: { stop: false },
+  };
+  const options = { harness: "codex", state: "answer-code" };
+  assert.equal(dom.namedState(options, observation).namedState, false);
+  assert.equal(
+    dom.namedState(options, { ...observation, codeHighlighted: false })
+      .namedState,
+    false,
+  );
+  assert.equal(
+    dom.namedState(options, { ...observation, codeHighlighted: true })
+      .namedState,
+    true,
+  );
+});
+
+test("answer-image capture rejects an unloaded or invisible witness", () => {
+  const observation = {
+    ...ready,
+    state: "completed",
+    visible: { image: true },
+    controls: { stop: false },
+  };
+  const options = { harness: "claude", state: "answer-image" };
+  assert.equal(dom.namedState(options, observation).namedState, false);
+  assert.equal(
+    dom.namedState(options, { ...observation, imageLoaded: false }).namedState,
+    false,
+  );
+  assert.equal(
+    dom.namedState(options, { ...observation, imageLoaded: true }).namedState,
+    true,
+  );
+  assert.equal(
+    dom.namedState(options, {
+      ...observation,
+      imageLoaded: true,
+      visible: { image: false },
+    }).namedState,
+    false,
+  );
+});
+
 test("jump capture waits for owned completion and overflowing rendered transcript", async () => {
   const { scrollCaptureTranscript } =
     await import("./capture-native-chat-drive.mjs");

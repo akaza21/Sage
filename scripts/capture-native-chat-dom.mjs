@@ -1,4 +1,5 @@
 import { IDENTIFIER } from "./capture-native-chat-shared.mjs";
+import { richContentReadiness } from "./capture-native-chat-rich-content.mjs";
 import {
   paneSelector,
   ownedPaneNodes,
@@ -112,7 +113,8 @@ export function observationFor(binding) {
   }
   const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
-  return {chatId,projectId,projectionLoaded,singlePane,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  const richContent=(${richContentReadiness.toString()})(queryAll('.acp-turn').find(element=>element.dataset.turnId===turn?.id),visible,element=>getComputedStyle(element));
+  return {chatId,projectId,projectionLoaded,singlePane,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,...richContent,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
 
@@ -273,9 +275,10 @@ export function namedState(options, observation, captureChat) {
           observation.turnCount >= 2 &&
           observation.failedTurns >= 1,
     "answer-table-lists": terminal && view.table,
-    "answer-code": terminal && view.code,
+    "answer-code":
+      terminal && view.code && observation.codeHighlighted === true,
     "answer-mermaid": terminal && view.mermaid,
-    "answer-image": terminal && view.image,
+    "answer-image": terminal && view.image && observation.imageLoaded === true,
     "composer-idle": !observation.controls.stop && observation.controls.send,
     "composer-stop": live && observation.controls.stop,
     "harness-menu": view.harnessMenu,

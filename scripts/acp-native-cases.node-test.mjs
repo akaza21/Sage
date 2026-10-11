@@ -1,9 +1,57 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { crc32, inflateSync } from "node:zlib";
 import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { answer } from "./acp-native-case-events.mjs";
+test("native image wire payloads decode to an opaque, visible 320x180 synthetic PNG", () => {
+  for (const harness of ["codex", "claude"]) {
+    const entry = nativeCases().find(
+      ({ id }) => id === `${harness}-answer-image`,
+    );
+    const frame = entry.steps.find((step) =>
+      harness === "codex"
+        ? step.params?.item?.type === "imageGeneration"
+        : step.update?.content?.type === "image",
+    );
+    const encoded =
+      harness === "codex"
+        ? frame.params.item.result.slice("data:image/png;base64,".length)
+        : frame.update.content.data;
+    const png = Buffer.from(encoded, "base64");
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(png.readUInt32BE(16), 320);
+    assert.equal(png.readUInt32BE(20), 180);
+    assert.equal(png[24], 8);
+    assert.equal(png[25], 6);
+    const compressed = [];
+    let offset = 8;
+    while (offset < png.length) {
+      const length = png.readUInt32BE(offset);
+      const chunk = png.subarray(offset + 4, offset + 8 + length);
+      assert.equal(crc32(chunk), png.readUInt32BE(offset + 8 + length));
+      if (chunk.subarray(0, 4).toString() === "IDAT")
+        compressed.push(chunk.subarray(4));
+      offset += length + 12;
+    }
+    assert.equal(offset, png.length);
+    const pixels = inflateSync(Buffer.concat(compressed));
+    assert.equal(pixels.length, 180 * (320 * 4 + 1));
+    const colors = new Set();
+    for (let row = 0; row < 180; row++) {
+      const start = row * (320 * 4 + 1);
+      assert.equal(pixels[start], 0);
+      for (let column = 0; column < 320; column++) {
+        const pixel = start + 1 + column * 4;
+        assert.equal(pixels[pixel + 3], 255);
+        colors.add(pixels.subarray(pixel, pixel + 3).toString("hex"));
+      }
+    }
+    assert.ok(colors.size >= 3);
+    assert.ok(png.length < 8192);
+  }
+});
 test("jump fixture has a bounded transcript tall enough for every reference viewport", () => {
   const transcript = answer("jump-to-latest");
   assert.equal(transcript.match(/### Synthetic section /gu).length, 32);
