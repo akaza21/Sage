@@ -152,6 +152,10 @@ pub(super) fn emit_response(
             "platformOs": "windows"
         }),
         "thread" => json!({"thread":{"id": THREAD_ID}}),
+        "effortThread" => json!({
+            "thread":{"id": THREAD_ID},
+            "model":"fixture-model-fast","reasoningEffort":"high"
+        }),
         "models" | "effortModels" => {
             let mut catalog = json!({"data":[{
             "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",

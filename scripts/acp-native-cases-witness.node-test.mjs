@@ -72,6 +72,10 @@ test("Claude command witnesses carry Bash input and adapter console output on on
 test("Codex model and effort menu witnesses negotiate a terminal model page before Goal and prompt", () => {
   for (const state of ["model-menu", "effort-menu"]) {
     const { steps } = nativeCases().find(({ id }) => id === `codex-${state}`);
+    assert.deepEqual(steps.slice(2, 4), [
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadEffortResult" },
+    ]);
     assert.deepEqual(steps.slice(4, 9), [
       { op: "awaitClient", kind: "codexModelList" },
       { op: "emitKnownFrame", shape: "codexModelListEffortResult" },

@@ -112,7 +112,11 @@ export function nativeCases() {
                 wait("codexInitialize"),
                 emit("codexInitializeResult0146"),
                 wait("codexStart"),
-                emit("codexThreadResult"),
+                emit(
+                  ["effort-menu", "model-menu"].includes(state)
+                    ? "codexThreadEffortResult"
+                    : "codexThreadResult",
+                ),
                 ...(["effort-menu", "model-menu"].includes(state)
                   ? [
                       wait("codexModelList"),

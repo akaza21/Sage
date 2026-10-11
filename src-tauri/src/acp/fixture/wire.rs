@@ -206,6 +206,7 @@ fn emit_known(
             return codex::emit_response("initialize0146", state, output);
         }
         "codexThreadResult" => return codex::emit_response("thread", state, output),
+        "codexThreadEffortResult" => return codex::emit_response("effortThread", state, output),
         "codexModelListResult" => return codex::emit_response("models", state, output),
         "codexModelListEffortResult" => return codex::emit_response("effortModels", state, output),
         "codexGoalMethodNotFound" => {

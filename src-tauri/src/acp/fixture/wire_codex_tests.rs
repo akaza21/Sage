@@ -25,7 +25,7 @@ fn codex_model_list_returns_one_correlated_terminal_catalog_page() {
 }
 
 #[test]
-fn codex_menu_catalog_projects_two_models_with_complete_default_and_offered_efforts() {
+fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     let mut state = WireState::new();
     let mut input = Cursor::new(concat!(
         r#"{"id":71,"method":"model/list","params":{"cursor":null}}"#,
@@ -76,6 +76,24 @@ fn codex_menu_catalog_projects_two_models_with_complete_default_and_offered_effo
         bindings::codex::{CodexAdapter, IncomingEvent, IngressDisposition, parse_packet_metadata},
         contract::{RuntimeEpoch, SageAgentSessionId},
     };
+    for case_id in ["codex-model-menu", "codex-effort-menu"] {
+        let frames = capture::replay_native_before(
+            case_id,
+            concat!(
+                r#"{"id":1,"method":"initialize"}"#,
+                "\n",
+                r#"{"id":72,"method":"thread/start","params":{}}"#,
+                "\n",
+                r#"{"id":71,"method":"model/list","params":{"cursor":null}}"#,
+                "\n"
+            ),
+            "codexGoalGet",
+        );
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[1]["id"], 72);
+        assert_eq!(frames[1]["result"]["model"], "fixture-model-fast");
+        assert_eq!(frames[1]["result"]["reasoningEffort"], "high");
+    }
     let packet = parse_packet_metadata(include_bytes!(
         "../../../testdata/acp/codex/candidate-windows.json"
     ))

@@ -32,6 +32,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "ade0006a-package-tree-set.node-test.mjs",
   "ade0006a-package-tree.node-test.mjs",
   "acp-native-cases.node-test.mjs",
+  "acp-native-cases-witness.node-test.mjs",
   "acp-native-pi.node-test.mjs",
   "app-smoke-server.node-test.mjs",
   "beta0001-acceptance-contract.node-test.mjs",
@@ -393,6 +394,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "acp-native-cases.node-test.mjs",
     reason:
       "Portable checks of the bounded native fixture case catalogue and its privacy limits; no native capability required.",
+  },
+  {
+    file: "acp-native-cases-witness.node-test.mjs",
+    reason:
+      "Portable NC-2 wire-sequence, tool-content, model-negotiation and generated-catalogue fidelity checks using bounded temporary files; no native app or subprocess launch.",
   },
   {
     file: "acp-native-pi.node-test.mjs",
