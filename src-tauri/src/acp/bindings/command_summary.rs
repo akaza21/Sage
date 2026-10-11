@@ -43,10 +43,9 @@ pub(crate) fn sanitize_command_summary(
         .collect();
 
     let tokens = shell_tokens(&neutral).map_err(|_| CommandSummaryError::Hidden)?;
-    if tokens
-        .iter()
-        .any(|token| redaction::contains_absolute_path(&token.cooked, true))
-    {
+    if tokens.iter().any(|token| {
+        redaction::absolute_path(&token.cooked, redaction::PathMode::Permission).is_some()
+    }) {
         return Err(CommandSummaryError::Hidden);
     }
     let redacted = redaction::redact("permissionCommand", &neutral, MAX_COMMAND_BYTES, true)
@@ -222,19 +221,11 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
 }
 
 fn sensitive_header(lower: &str) -> bool {
-    [
-        "authorization",
-        "proxy-authorization",
-        "cookie",
-        "x-api-key",
-        "x-auth-token",
-    ]
-    .iter()
-    .any(|name| {
-        lower
-            .find(name)
-            .is_some_and(|index| lower[index + name.len()..].trim_start().starts_with(':'))
-    })
+    let lower = lower.strip_prefix("-h").unwrap_or(lower);
+    lower
+        .trim_start_matches(['\'', '"', '`', '{'])
+        .split_once(':')
+        .is_some_and(|(name, _)| sensitive_header_name(name.trim_end_matches(['\'', '"', '`'])))
 }
 
 fn sensitive_header_name(lower: &str) -> bool {
@@ -252,24 +243,45 @@ fn sensitive_flag(flag: &str) -> bool {
 }
 
 fn sensitive_key(key: &str) -> bool {
-    let upper = key.to_ascii_uppercase();
-    if matches!(upper.trim_start_matches('-'), "P" | "PASS" | "PW") {
-        return true;
+    let key = key.trim_matches(['-', '\'', '"', '`', '{', '}']);
+    let key = key.strip_prefix("$env:").unwrap_or(key);
+    let bytes = key.as_bytes();
+    let mut start = 0;
+    for index in 0..=bytes.len() {
+        let separator = bytes
+            .get(index)
+            .is_some_and(|byte| matches!(byte, b'_' | b'-' | b'.'));
+        let camel = index > start
+            && bytes.get(index).is_some_and(u8::is_ascii_uppercase)
+            && (bytes[index - 1].is_ascii_lowercase()
+                || bytes.get(index + 1).is_some_and(u8::is_ascii_lowercase));
+        if index == bytes.len() || separator || camel {
+            if [
+                "p",
+                "pass",
+                "pw",
+                "key",
+                "apikey",
+                "token",
+                "secret",
+                "password",
+                "passwd",
+                "pwd",
+                "auth",
+                "authorization",
+                "credential",
+                "credentials",
+                "cookie",
+            ]
+            .iter()
+            .any(|part| key[start..index].eq_ignore_ascii_case(part))
+            {
+                return true;
+            }
+            start = index + usize::from(separator);
+        }
     }
-    [
-        "KEY",
-        "TOKEN",
-        "SECRET",
-        "PASSWORD",
-        "PASSWD",
-        "PWD",
-        "AUTH",
-        "CREDENTIAL",
-        "COOKIE",
-        "SESSION",
-    ]
-    .iter()
-    .any(|part| upper.contains(part))
+    false
 }
 
 fn is_hidden_format(ch: char) -> bool {

@@ -1,7 +1,7 @@
 use super::neutralized;
 use crate::acp::{
     bindings::command_summary::{
-        redaction::is_path_boundary,
+        redaction::{PathContext, PathMode},
         secrets::{REDACTED, SecretContext, append},
     },
     contract::ContractError,
@@ -35,55 +35,87 @@ pub(super) fn redact_prose(
 ) -> Result<String, ContractError> {
     let mut output = String::new();
     let mut secrets = SecretContext::default();
+    let mut value = QuotedValue::default();
+    let mut paths = PathContext::default();
     for token in input.split_inclusive(char::is_whitespace) {
-        let (body, whitespace) = split_trailing_whitespace(token);
-        if body.is_empty() {
-            secrets.redact(body, whitespace, false);
-            append(&mut output, whitespace, maximum_output, field)?;
-            continue;
+        let (mut body, whitespace) = split_trailing_whitespace(token);
+        while !body.is_empty() {
+            let continued = value.quote.is_some();
+            let opening = if continued {
+                None
+            } else {
+                secrets.quoted_value_start(body)
+            };
+            let quoted = continued || opening.is_some();
+            let suffix = if quoted {
+                value.suffix(body, opening)
+            } else {
+                ""
+            };
+            let prefix = &body[..body.len() - suffix.len()];
+            let secret = secrets.redact(prefix, "", continued);
+            let path = paths.redact(prefix, "", PathMode::Prose);
+            if !continued {
+                let replacement = if secret || path || quoted {
+                    REDACTED
+                } else {
+                    prefix
+                };
+                append(&mut output, replacement, maximum_output, field)?;
+            }
+            if quoted && value.quote.is_none() {
+                secrets.finish_value();
+            }
+            body = suffix.trim_start_matches([',', ';']);
+            append(
+                &mut output,
+                &suffix[..suffix.len() - body.len()],
+                maximum_output,
+                field,
+            )?;
         }
-        let replacement = if secrets.redact(body, whitespace, false)
-            || is_absolute_native_path(body)
-            || contains_command_absolute_path(body)
-        {
-            REDACTED
-        } else {
-            body
-        };
-        append(&mut output, replacement, maximum_output, field)?;
-        append(&mut output, whitespace, maximum_output, field)?;
+        secrets.redact("", whitespace, false);
+        paths.redact("", whitespace, PathMode::Prose);
+        if !whitespace.is_empty() {
+            value.escaped = false;
+        }
+        if value.quote.is_some() && whitespace.contains(['\n', '\r']) {
+            secrets.finish_value();
+            value = QuotedValue::default();
+        }
+        if value.quote.is_none() {
+            append(&mut output, whitespace, maximum_output, field)?;
+        }
     }
     Ok(output)
 }
 
-fn contains_command_absolute_path(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("file:///") || lower.contains("file://\\\\") {
-        return true;
-    }
-    let bytes = value.as_bytes();
-    bytes.iter().enumerate().any(|(index, _)| {
-        let previous = (index > 0).then(|| bytes[index - 1]);
-        let boundary = is_path_boundary(bytes, index);
-        let rest = &bytes[index..];
-        boundary
-            && (rest.starts_with(b"\\\\")
-                || (starts_posix_path(rest)
-                    && (previous != Some(b'<') || rest[1..].contains(&b'/')))
-                || (rest.len() >= 3
-                    && rest[0].is_ascii_alphabetic()
-                    && rest[1] == b':'
-                    && matches!(rest[2], b'\\' | b'/')))
-    })
+#[derive(Default)]
+struct QuotedValue {
+    quote: Option<char>,
+    escaped: bool,
 }
 
-fn starts_posix_path(value: &[u8]) -> bool {
-    value.first() == Some(&b'/')
-        && value.get(1).is_some_and(|byte| {
-            !byte.is_ascii()
-                || byte.is_ascii_alphanumeric()
-                || matches!(byte, b'.' | b'_' | b'-' | b'~')
-        })
+impl QuotedValue {
+    fn suffix<'a>(&mut self, body: &'a str, opening: Option<usize>) -> &'a str {
+        let value = if let Some(opening) = opening {
+            self.quote = Some(char::from(body.as_bytes()[opening]));
+            &body[opening + 1..]
+        } else {
+            body
+        };
+        for (index, character) in value.char_indices() {
+            if self.escaped {
+                self.escaped = false;
+            } else if Some(character) == self.quote {
+                self.quote = None;
+                return &value[index + character.len_utf8()..];
+            } else if character == '\\' && self.quote != Some('\'') {
+                self.escaped = true;
+            }
+        }
+        ""
+    }
 }
 
 fn split_trailing_whitespace(value: &str) -> (&str, &str) {
@@ -92,24 +124,4 @@ fn split_trailing_whitespace(value: &str) -> (&str, &str) {
         .find_map(|(index, character)| character.is_whitespace().then_some(index))
         .unwrap_or(value.len());
     value.split_at(split)
-}
-
-fn is_absolute_native_path(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | ':'
-        )
-    });
-    starts_posix_path(trimmed.as_bytes())
-        || trimmed.starts_with("\\\\")
-        || (trimmed.as_bytes().get(1) == Some(&b':')
-            && trimmed
-                .as_bytes()
-                .get(2)
-                .is_some_and(|separator| matches!(separator, b'\\' | b'/'))
-            && trimmed
-                .as_bytes()
-                .first()
-                .is_some_and(u8::is_ascii_alphabetic))
 }

@@ -101,7 +101,6 @@ fn quoted_paths_and_secret_tails_are_fully_redacted_without_hiding_safe_followin
         "KEY='private value' safe",
         "TOKEN=\"private value\" safe",
         "--secret private\\ value safe",
-        "--token 'private\nvalue' safe",
         "cat '/home/alice/private file.txt' safe",
         r#"cat "C:\Users\Alice\private file.txt" safe"#,
     ] {

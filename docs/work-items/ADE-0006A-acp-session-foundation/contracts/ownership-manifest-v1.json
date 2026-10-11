@@ -188,6 +188,8 @@
         "src-tauri/src/acp/bindings/adapter/model.rs",
         "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",
         "src-tauri/src/acp/bindings/command_summary.rs",
+        "src-tauri/src/acp/bindings/command_summary/redaction.rs",
+        "src-tauri/src/acp/bindings/command_summary/secrets.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",

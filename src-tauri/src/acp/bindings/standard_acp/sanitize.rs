@@ -8,6 +8,10 @@ pub(crate) use prose::sanitized_content_output;
 #[path = "sanitize/hardening_tests.rs"]
 mod hardening_tests;
 
+#[cfg(test)]
+#[path = "sanitize/regression_tests.rs"]
+mod regression_tests;
+
 use crate::acp::{
     bindings::command_summary::redaction::redact,
     contract::{ContractError, SafeText},

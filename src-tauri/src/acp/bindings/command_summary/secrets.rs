@@ -15,6 +15,24 @@ impl SecretContext {
         self.next_value
     }
 
+    pub(crate) fn quoted_value_start(&self, body: &str) -> Option<usize> {
+        if (self.next_value || self.authorization_line) && body.starts_with(['\'', '"']) {
+            return Some(0);
+        }
+        let offset = if body.starts_with("$env:") { 5 } else { 0 };
+        let separator = body[offset..].find(['=', ':'])? + offset;
+        if !(self.next_value || self.authorization_line || sensitive_key(&body[..separator])) {
+            return None;
+        }
+        body[separator + 1..]
+            .starts_with(['\'', '"'])
+            .then_some(separator + 1)
+    }
+
+    pub(crate) fn finish_value(&mut self) {
+        *self = Self::default();
+    }
+
     pub(crate) fn redact(&mut self, body: &str, whitespace: &str, continued: bool) -> bool {
         let separator = self.next_value && !continued && matches!(body, "<" | ":" | "=");
         let was_authorization_line = self.authorization_line;
@@ -69,7 +87,16 @@ impl SecretContext {
 }
 
 pub(super) fn is_authorization_header(body: &str) -> bool {
-    body.to_ascii_lowercase().contains("authorization:")
+    let body = body
+        .strip_prefix("-H")
+        .or_else(|| body.strip_prefix("-h"))
+        .unwrap_or(body);
+    body.trim_start_matches(['\'', '"', '`'])
+        .split_once(':')
+        .is_some_and(|(name, _)| {
+            name.eq_ignore_ascii_case("authorization")
+                || name.eq_ignore_ascii_case("proxy-authorization")
+        })
 }
 
 fn is_bearer_marker(value: &str) -> bool {
