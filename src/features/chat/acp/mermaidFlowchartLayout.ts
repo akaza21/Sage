@@ -84,6 +84,9 @@ export function layoutFlowchart(
   }
   const horizontal = diagram.direction === "LR";
   const sized = diagram.nodes.map(sizeNode);
+  const siblingSize = Math.max(
+    ...sized.map((node) => (horizontal ? node.height : node.width)),
+  );
   const layerSizes = new Map<number, number>();
   for (const node of sized) {
     const depth = layer.get(node.id) ?? 0;
@@ -107,14 +110,12 @@ export function layoutFlowchart(
   return sized.map((node) => {
     const depth = layer.get(node.id) ?? 0;
     const siblingOffset = siblings.get(depth) ?? 20;
-    siblings.set(
-      depth,
-      siblingOffset + (horizontal ? node.height + 40 : node.width + 80),
-    );
+    siblings.set(depth, siblingOffset + siblingSize + (horizontal ? 40 : 80));
+    const inset = (siblingSize - (horizontal ? node.height : node.width)) / 2;
     return {
       ...node,
-      x: horizontal ? offsets.get(depth)! : siblingOffset,
-      y: horizontal ? siblingOffset : offsets.get(depth)!,
+      x: horizontal ? offsets.get(depth)! : siblingOffset + inset,
+      y: horizontal ? siblingOffset + inset : offsets.get(depth)!,
     };
   });
 }
