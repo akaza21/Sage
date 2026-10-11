@@ -28,7 +28,6 @@ export interface SearchablePickerOption {
   disabledReason?: string;
   icon?: "claude" | "codex" | "opencode";
   logo?: string;
-  secondaryLabel?: string;
 }
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
@@ -48,7 +47,6 @@ export function SearchablePicker({
   popoverClassName,
   popoverGap,
   triggerClassName,
-  showTriggerSecondary = true,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -68,7 +66,6 @@ export function SearchablePicker({
   popoverClassName?: string;
   popoverGap?: number;
   triggerClassName?: string;
-  showTriggerSecondary?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -261,9 +258,6 @@ export function SearchablePicker({
         ) : null}
         <span className="searchable-picker__trigger-label">
           {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
-          {showTriggerSecondary && selected?.secondaryLabel ? (
-            <small>{selected.secondaryLabel}</small>
-          ) : null}
         </span>
         <ChevronDown
           className="searchable-picker__chevron"

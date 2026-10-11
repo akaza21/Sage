@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
+import "./app/retiredComposerStorage";
 import "./styles/global.css";
 import "./styles/shared-controls.css";
 import "./styles/editor-activity-bar.css";

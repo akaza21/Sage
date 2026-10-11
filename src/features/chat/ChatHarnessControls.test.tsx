@@ -543,6 +543,9 @@ describe("composer permission mode picker", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Showing first 200 models",
     );
+    expect(
+      screen.getByRole("listbox", { name: "Select model" }),
+    ).not.toContainElement(screen.getByRole("status"));
   });
 
   it("dismisses the model list on Tab, restores its trigger and leaves default handling enabled", () => {
@@ -1029,7 +1032,13 @@ describe("composer permission mode picker", () => {
     const list = screen.getByRole("listbox", { name: "Select model" });
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
     expect(trigger).toHaveAttribute("aria-controls", list.id);
-    expect(screen.getByText("Select model")).toBeVisible();
+    const title = screen.getByText("Select model");
+    expect(title).toBeVisible();
+    expect(list).not.toContainElement(title);
+    expect(list).toHaveAttribute("aria-labelledby", title.id);
+    expect(list).not.toHaveAttribute("aria-label");
+    expect(list.closest(".menu-popover")).not.toHaveAttribute("aria-label");
+    expect(Array.from(list.children)).toEqual(screen.getAllByRole("option"));
     expect(
       screen.queryByRole("combobox", { name: "Search models" }),
     ).toBeNull();
@@ -1042,7 +1051,8 @@ describe("composer permission mode picker", () => {
       astra.querySelector(".searchable-picker__selected-check"),
     ).not.toBeNull();
     expect(luna).toHaveAttribute("aria-selected", "false");
-    expect(luna.querySelector("small")).toBeNull();
+    expect(astra.textContent).toBe("Astra");
+    expect(luna.textContent).toBe("Luna");
     expect(astra).toHaveFocus();
     fireEvent.keyDown(astra, { key: "l" });
     expect(luna).toHaveFocus();
@@ -1076,9 +1086,11 @@ describe("composer permission mode picker", () => {
     );
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("listbox", { name: "Select model" })).toHaveClass(
-      "composer__popover",
-    );
+    expect(
+      screen
+        .getByRole("listbox", { name: "Select model" })
+        .closest(".menu-popover"),
+    ).toHaveClass("composer__popover");
   });
 
   it("does not show a previous harness session model after selection changes", () => {

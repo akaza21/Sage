@@ -111,12 +111,13 @@ export function ComposerModelControls({
           .slice(0, MAX_VISIBLE_MODELS)
           .map((model) => model.id)
           .join("\0")}
-        id={panelId}
-        role="listbox"
+        id={`${panelId}-popover`}
+        role="none"
         className="composer__popover composer__model-menu composer-model-picker"
         ariaLabel="Select model"
       >
         <ChatModelPicker
+          listboxId={panelId}
           models={choices}
           selectedId={selectedId}
           disabled={disabled || pending}

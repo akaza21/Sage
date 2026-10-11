@@ -4,7 +4,7 @@ import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 for (const forcedColors of ["none", "active"] as const) {
-  test(`records harness pointer focus and blur and preserves keyboard focus (${forcedColors})`, async ({
+  test(`asserts no harness pointer or blur focus ring and preserves keyboard focus (${forcedColors})`, async ({
     page,
   }) => {
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
@@ -25,6 +25,8 @@ for (const forcedColors of ["none", "active"] as const) {
           activeLabel: active?.getAttribute("aria-label"),
           focusVisible: element.matches(":focus-visible"),
           outline: style.outline,
+          outlineStyle: style.outlineStyle,
+          outlineWidth: style.outlineWidth,
           shadow: style.boxShadow,
           composerOutline: composerStyle.outline,
           composerBorder: composerStyle.borderColor,
@@ -38,12 +40,24 @@ for (const forcedColors of ["none", "active"] as const) {
       .click();
     await expect(harness).toBeFocused();
     const pointerSelected = await focusState();
+    expect(pointerSelected).toMatchObject({
+      focusVisible: false,
+      outlineStyle: "none",
+      outlineWidth: "0px",
+      shadow: "none",
+    });
     await page
       .locator(".agent-task-header")
       .first()
       .click({ position: { x: 8, y: 8 } });
     await expect(harness).not.toBeFocused();
     const blurred = await focusState();
+    expect(blurred).toMatchObject({
+      focusVisible: false,
+      outlineStyle: "none",
+      outlineWidth: "0px",
+      shadow: "none",
+    });
     await test.info().attach("harness-focus-diagnostics", {
       body: JSON.stringify({ resting, pointerSelected, blurred }, null, 2),
       contentType: "application/json",
@@ -130,7 +144,9 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
     }),
   ).toBeVisible();
   await expect(modelCard.locator('[aria-selected="true"]')).toHaveCount(0);
-  const modelBox = await modelCard.boundingBox();
+  const modelBox = await modelCard
+    .locator("xpath=ancestor::div[contains(@class, 'menu-popover')][1]")
+    .boundingBox();
   expect(modelBox).not.toBeNull();
   expect(modelBox!.width).toBeGreaterThanOrEqual(228);
   expect(modelBox!.width).toBeLessThanOrEqual(236);
@@ -142,9 +158,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   });
   await expect(lastModel).toBeFocused();
   const lastBox = await lastModel.boundingBox();
-  const scrollBox = await modelCard
-    .locator(".composer-model-picker__list")
-    .boundingBox();
+  const scrollBox = await modelCard.boundingBox();
   expect(lastBox).not.toBeNull();
   expect(scrollBox).not.toBeNull();
   expect(lastBox!.y).toBeGreaterThanOrEqual(scrollBox!.y);

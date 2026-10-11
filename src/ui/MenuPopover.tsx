@@ -292,7 +292,7 @@ export function MenuPopover({
       id={id}
       className={["menu-popover", className].filter(Boolean).join(" ")}
       role={role === "none" ? undefined : role}
-      aria-label={ariaLabel}
+      aria-label={role === "none" ? undefined : ariaLabel}
       hidden={!open}
       style={position}
       onKeyDown={moveFocus}

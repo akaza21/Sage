@@ -8,11 +8,13 @@ export interface ComposerModelChoice {
 export const MAX_VISIBLE_MODELS = 200;
 
 export function ChatModelPicker({
+  listboxId,
   models,
   selectedId,
   disabled,
   onSelect,
 }: {
+  listboxId: string;
   models: readonly ComposerModelChoice[];
   selectedId: string | null;
   disabled: boolean;
@@ -21,8 +23,15 @@ export function ChatModelPicker({
   const id = useId();
   return (
     <>
-      <p className="composer-model-picker__title">Select model</p>
-      <div className="composer-model-picker__list">
+      <p id={`${id}-title`} className="composer-model-picker__title">
+        Select model
+      </p>
+      <div
+        id={listboxId}
+        className="composer-model-picker__list"
+        role="listbox"
+        aria-labelledby={`${id}-title`}
+      >
         {models.slice(0, MAX_VISIBLE_MODELS).map((model) => (
           <PickerOption
             key={model.id}
