@@ -4,6 +4,30 @@
   margin-top: var(--space-2);
 }
 
+.acp-tool-running {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.acp-tool-card__header > .acp-tool-running {
+  grid-column: 4;
+}
+
+.acp-tool-running > svg {
+  flex: 0 0 auto;
+  animation: acp-tool-spin 1s linear infinite;
+}
+
+@keyframes acp-tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .acp-activity-card.acp-activity-card--tool-rollup {
   padding: 0;
   border: 0;
@@ -148,9 +172,8 @@
 }
 
 .acp-tool-command--line {
-  margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-subtle);
+  max-height: 14rem;
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
   word-break: break-word;
@@ -189,6 +212,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .acp-tool-running > svg,
+  .acp-live-shimmer {
+    animation: none;
+  }
+
+  .acp-live-shimmer {
+    background: none;
+    color: var(--color-text-muted);
+  }
+
   .acp-tool-rollup > summary,
   .acp-tool-rollup__chevron {
     transition: none;
@@ -196,7 +229,9 @@
 }
 
 @media (forced-colors: active) {
+  .acp-tool-running,
   .acp-live-shimmer {
+    background: none;
     color: CanvasText;
   }
 }

@@ -101,6 +101,11 @@ fn is_stripped_format(character: char) -> bool {
 pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;
     let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);
+    if input.contains('\0') {
+        return Err(ContractError::ForbiddenContent {
+            field: "toolOutput",
+        });
+    }
     if input.len() > maximum_input {
         return Err(ContractError::InvalidLength {
             field: "toolOutput",
@@ -111,6 +116,7 @@ pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractEr
 
     let mut output = String::new();
     let mut secrets = SecretContext::default();
+    let input = neutralized(input, false);
     for token in input.split_inclusive(char::is_whitespace) {
         let (body, whitespace) = split_trailing_whitespace(token);
         if body.is_empty() {

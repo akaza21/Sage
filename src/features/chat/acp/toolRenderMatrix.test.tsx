@@ -188,9 +188,7 @@ describe("tool render matrix", () => {
       const card = container.querySelector(".acp-tool-card");
 
       expect(card).toHaveAttribute("data-activity-state", "inProgress");
-      expect(card?.querySelector(".acp-state")).toHaveTextContent(
-        "In progress",
-      );
+      expect(screen.getByRole("status", { name: "Running" })).toBeVisible();
       expect(card?.querySelector(".acp-tool-card__duration")).toBeNull();
     },
   );

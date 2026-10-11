@@ -9,7 +9,7 @@ use crate::acp::{
 fn command_fact(
     database: &Database,
     expected_capabilities: &CapabilitySnapshotV1,
-) -> (ToolState, Option<String>) {
+) -> (ToolState, Option<String>, Option<String>) {
     let page = load_chat_page(
         &database.connection(),
         SageProjectId::parse("project-one").unwrap(),
@@ -30,6 +30,7 @@ fn command_fact(
     let ItemContent::ToolCall {
         presentation,
         input_summary,
+        output_summary,
         ..
     } = &item.content
     else {
@@ -44,15 +45,25 @@ fn command_fact(
         input_summary
             .as_ref()
             .map(|input| input.as_str().to_owned()),
+        output_summary
+            .as_ref()
+            .map(|output| output.as_str().to_owned()),
     )
 }
 
 #[test]
-fn claude_command_input_trace_reaches_in_progress_and_completed_sqlite_history() {
-    for late_input in [false, true] {
+fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reopen() {
+    for (late_input, raw_output) in [(false, false), (false, true), (true, false), (true, true)] {
+        let directory = HistoryDirectory(
+            std::env::temp_dir().join(format!("sage-command-{}", uuid::Uuid::new_v4())),
+        );
+        std::fs::create_dir(&directory.0).unwrap();
+        let path = directory.0.join("history.sqlite");
         let mut runtime = ClaudeRuntime::fixture();
         ready(&mut runtime);
-        let database = migrated_database(&runtime);
+        let database = migrated_database_at(&runtime, &path);
+        let command = format!("echo {} --token 'private value'", "x".repeat(1_000));
+        let retained = format!("echo {} --token [redacted]", "x".repeat(1_000));
         let expected_capabilities = runtime.capabilities().expect("ready capabilities");
         let initial_page = load_chat_page(
             &database.connection(),
@@ -81,25 +92,29 @@ fn claude_command_input_trace_reaches_in_progress_and_completed_sqlite_history()
             let mut started = json!({"sessionUpdate": "tool_call", "toolCallId": "command-1",
                 "kind": "execute", "status": "in_progress", "title": "Run command"});
             if !late_input {
-                started["rawInput"] = json!({"command": "echo\n--token 'private value'"});
+                started["rawInput"] = json!({"command": command});
             }
             let mut bytes = serde_json::to_vec(&json!({"jsonrpc": "2.0", "method": "session/update",
                 "params": {"sessionId": SESSION, "update": started}})).unwrap();
             bytes.push(b'\n');
             bounded("tool start", pump.push_stdout_chunk(&bytes, 10)).await.unwrap();
             assert_eq!(command_fact(&database, &expected_capabilities), (ToolState::InProgress,
-                (!late_input).then(|| "echo --token [redacted]".to_owned())));
+                (!late_input).then(|| retained.clone()), None));
             if late_input {
                 let mut bytes = serde_json::to_vec(&json!({"jsonrpc": "2.0", "method": "session/update",
                     "params": {"sessionId": SESSION, "update": {"sessionUpdate": "tool_call_update",
-                        "toolCallId": "command-1", "rawInput": {"command": "echo\n--token 'private value'"}}}})).unwrap();
+                        "toolCallId": "command-1", "rawInput": {"command": command}}}})).unwrap();
                 bytes.push(b'\n');
                 bounded("late input", pump.push_stdout_chunk(&bytes, 11)).await.unwrap();
-                assert_eq!(command_fact(&database, &expected_capabilities), (ToolState::InProgress, Some("echo --token [redacted]".to_owned())));
+                assert_eq!(command_fact(&database, &expected_capabilities), (ToolState::InProgress, Some(retained.clone()), None));
+            }
+            let mut completed = json!({"sessionUpdate": "tool_call_update", "toolCallId": "command-1", "status": "completed",
+                "content": [{"type":"content","content":{"type":"text","text":"```console\nok --token private-value\n```"}}]});
+            if raw_output {
+                completed["rawOutput"] = json!("ok --token private-value");
             }
             for (offset, frame) in [
-                json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": SESSION,
-                    "update": {"sessionUpdate": "tool_call_update", "toolCallId": "command-1", "status": "completed"}}}),
+                json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": SESSION, "update": completed}}),
                 json!({"jsonrpc": "2.0", "id": request, "result": {"stopReason": "end_turn"}}),
             ].into_iter().enumerate() {
                 let mut bytes = serde_json::to_vec(&frame).unwrap();
@@ -113,8 +128,27 @@ fn claude_command_input_trace_reaches_in_progress_and_completed_sqlite_history()
             command_fact(&database, &expected_capabilities),
             (
                 ToolState::Completed,
-                Some("echo --token [redacted]".to_owned())
+                Some(retained.clone()),
+                Some("ok --token [redacted]".to_owned())
             )
         );
+        drop(database);
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(
+            command_fact(&reopened, &expected_capabilities),
+            (
+                ToolState::Completed,
+                Some(retained),
+                Some("ok --token [redacted]".to_owned())
+            )
+        );
+    }
+}
+
+struct HistoryDirectory(std::path::PathBuf);
+
+impl Drop for HistoryDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }

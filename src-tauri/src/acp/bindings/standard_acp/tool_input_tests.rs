@@ -241,7 +241,7 @@ fn an_explicit_invalid_command_field_clears_stale_input_but_an_absent_field_reta
 }
 
 #[test]
-fn long_multibyte_command_input_is_ellipsized_within_512_bytes() {
+fn long_multibyte_command_input_is_retained_without_ellipsizing() {
     let events = update(
         &mut translator("claude-code"),
         json!({
@@ -250,8 +250,63 @@ fn long_multibyte_command_input_is_ellipsized_within_512_bytes() {
         }),
     );
     let command = input(&events).unwrap();
-    assert!(command.len() <= 512);
-    assert_eq!(command, format!("echo {}\u{2026}", "\u{1f680}".repeat(126)));
+    assert_eq!(command, format!("echo {}", "\u{1f680}".repeat(1_000)));
+}
+
+#[test]
+fn command_detail_retains_the_exact_bound_and_redacts_secrets_after_the_old_row_limit() {
+    for command in [
+        "x".repeat(65_536),
+        format!("echo {} --token sk-hidden", "x".repeat(1_000)),
+    ] {
+        let events = update(
+            &mut translator("claude-code"),
+            json!({
+                "sessionUpdate": "tool_call", "toolCallId": "tool-1", "kind": "execute",
+                "rawInput": {"command": command}
+            }),
+        );
+        let expected = command.replace("sk-hidden", "[redacted]");
+        assert_eq!(input(&events), Some(expected.as_str()));
+    }
+}
+
+#[test]
+fn claude_command_output_projects_raw_or_console_content_once_and_retains_it_at_settlement() {
+    for output_fields in [
+        json!({"rawOutput": "ok --token sk-hidden", "content": [{"type":"content","content":{"type":"text","text":"```console\nok --token sk-hidden\n```"}}]}),
+        json!({"content": [{"type":"content","content":{"type":"text","text":"```console\nok --token sk-hidden\n```"}}]}),
+        json!({"content": [{"type":"text","text":"ok --token sk-hidden"}]}),
+    ] {
+        let mut translator = translator("claude-code");
+        let mut frame = json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","status":"in_progress"});
+        frame
+            .as_object_mut()
+            .unwrap()
+            .extend(output_fields.as_object().unwrap().clone());
+        let started = update(&mut translator, frame);
+        let completed = update(
+            &mut translator,
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"command","status":"completed"}),
+        );
+        for events in [started, completed] {
+            let outputs: Vec<_> = events
+                .iter()
+                .filter_map(|event| match event {
+                    AdapterEvent::Item {
+                        payload:
+                            NormalizedPayload::ToolCall {
+                                output_summary: Some(output),
+                                ..
+                            },
+                        ..
+                    } => Some(output.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(outputs, ["ok --token [redacted]"]);
+        }
+    }
 }
 
 #[test]
@@ -270,5 +325,161 @@ fn non_execute_claude_and_other_standard_profiles_leave_command_input_absent() {
             }),
         );
         assert_eq!(input(&events), None, "{harness} {kind}");
+    }
+}
+
+#[test]
+fn emitted_empty_command_output_is_distinct_from_missing_or_unrecognized_output() {
+    for (fields, expected) in [
+        (json!({}), None),
+        (json!({"rawOutput": {"output":"unsupported"}}), None),
+        (json!({"content":[]}), None),
+        (json!({"rawOutput":""}), Some("")),
+        (
+            json!({"content":[{"type":"content","content":{"type":"text","text":""}}]}),
+            Some(""),
+        ),
+    ] {
+        let mut frame = json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","status":"completed"});
+        frame
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        let events = update(&mut translator("claude-code"), frame);
+        let outputs: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::ToolCall { output_summary, .. },
+                    ..
+                } => Some(output_summary.as_ref().map(|output| output.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(outputs, [expected]);
+    }
+}
+
+#[test]
+fn console_blocks_are_redacted_together_and_raw_output_retention_stays_bounded() {
+    for (fields, expected) in [
+        (
+            json!({"content":[{"type":"content","content":{"type":"text","text":"```console\nBearer \n```"}},
+            {"type":"text","text":"private-value"}]}),
+            "Bearer [redacted]".to_owned(),
+        ),
+        (
+            json!({"rawOutput":"x".repeat(70_000)}),
+            format!(
+                "[output truncated] {}",
+                "x".repeat(65_536 - "[output truncated] ".len())
+            ),
+        ),
+    ] {
+        let mut frame = json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","status":"failed"});
+        frame
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        let events = update(&mut translator("claude-code"), frame);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, AdapterEvent::Item {
+            payload: NormalizedPayload::ToolCall { output_summary: Some(output), .. }, ..
+        } if output.as_str() == expected))
+        );
+    }
+}
+
+#[test]
+fn raw_output_control_marker_is_redacted_before_retention_discards_its_context() {
+    let events = update(
+        &mut translator("claude-code"),
+        json!({
+            "sessionUpdate":"tool_call", "toolCallId":"command", "kind":"execute", "status":"completed",
+            "rawOutput": format!("Bearer\u{1}{}private-value", " ".repeat(70_000))
+        }),
+    );
+    let output = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload:
+                    NormalizedPayload::ToolCall {
+                        output_summary: Some(output),
+                        ..
+                    },
+                ..
+            } => Some(output.as_str()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(output.len(), 65_536);
+    assert!(output.starts_with("[output truncated] "));
+    assert!(output.ends_with("[redacted]"));
+    assert!(!output.contains("private-value"));
+}
+
+#[test]
+fn raw_and_console_output_reject_nul_before_retention_discards_the_bearer_marker() {
+    let output = format!("Bearer\u{0}{}private-value", " ".repeat(70_000));
+    for fields in [
+        json!({"rawOutput": output}),
+        json!({"content":[{"type":"content","content":{"type":"text","text":format!("```console\n{output}\n```")}}]}),
+    ] {
+        let mut frame = json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","status":"completed"});
+        frame
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        let result = translator("claude-code").translate_notification_value(
+            json!({
+                "method":"session/update", "params":{"sessionId":"session-1", "update": frame}
+            }),
+            &NoResources,
+        );
+        assert!(matches!(
+            result,
+            Err(super::translator::TranslationError::Contract(
+                crate::acp::contract::ContractError::ForbiddenContent {
+                    field: "toolOutput"
+                }
+            ))
+        ));
+    }
+}
+
+#[test]
+fn direct_fenced_command_output_and_empty_read_output_keep_their_existing_semantics() {
+    for (kind, content, expected) in [
+        (
+            "execute",
+            json!([{"type":"text","text":"```console\nexample\n```"}]),
+            Some("```console\nexample\n```"),
+        ),
+        (
+            "read",
+            json!([{"type":"content","content":{"type":"text","text":""}}]),
+            None,
+        ),
+    ] {
+        let events = update(
+            &mut translator("opencode"),
+            json!({
+                "sessionUpdate":"tool_call", "toolCallId":"tool", "kind":kind, "status":"completed", "content":content
+            }),
+        );
+        let outputs: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::ToolCall { output_summary, .. },
+                    ..
+                } => Some(output_summary.as_ref().map(|output| output.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(outputs, [expected]);
     }
 }

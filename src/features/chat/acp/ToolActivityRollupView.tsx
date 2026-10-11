@@ -15,6 +15,7 @@ import {
 
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
+import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import {
   toolRollupLabel,
   toolRollupDurationLabel,
@@ -59,6 +60,7 @@ export function ToolActivityRollup({
   const stateLabel = toolRollupStateLabel(state);
   const duration = toolRollupDurationLabel(rollup.items);
   const live = state === "inProgress";
+  const running = rollup.items.some((item) => item.toolState === "inProgress");
   return (
     <details
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
@@ -79,6 +81,7 @@ export function ToolActivityRollup({
           </span>
         </span>
         <span className="acp-tool-rollup__meta">
+          {running ? <ToolRunningIndicator /> : null}
           {duration ? (
             <span className="acp-tool-rollup__duration">
               <Clock3 aria-hidden="true" size={12} />

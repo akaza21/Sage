@@ -16,7 +16,7 @@ pub(super) fn command_input_patch(
     }
     let field = profile.command_input_field?;
     let command = update.get("rawInput")?.as_object()?.get(field)?;
-    Some(command.as_str().and_then(bounded_command_summary))
+    Some(command.as_str().and_then(sanitized_command_input))
 }
 
 impl StandardAcpTranslator {
@@ -28,18 +28,11 @@ impl StandardAcpTranslator {
     }
 }
 
-fn bounded_command_summary(command: &str) -> Option<SafeText<65536>> {
+fn sanitized_command_input(command: &str) -> Option<SafeText<65536>> {
     let shown = sanitize_command_summary(command).ok()?;
     let text = shown.as_str().trim();
     if text.is_empty() {
         return None;
     }
-    if text.len() <= 512 {
-        return SafeText::new("toolInput", text).ok();
-    }
-    let mut end = 509;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    SafeText::new("toolInput", format!("{}\u{2026}", text[..end].trim_end())).ok()
+    SafeText::new("toolInput", text).ok()
 }

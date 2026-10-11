@@ -141,7 +141,7 @@ for (const layout of [
       const line = row.getByLabel("Command line");
       await expect(line).toBeVisible();
       expect(await line.textContent()).toBe(
-        "npm run check -- " + "very-long-argument ".repeat(100),
+        "$ npm run check -- " + "very-long-argument ".repeat(100),
       );
     }
     await expectNoViewportOverflow(page);

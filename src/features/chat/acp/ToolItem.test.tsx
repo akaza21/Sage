@@ -200,13 +200,21 @@ describe("ToolItem", () => {
     ).toBeVisible();
   });
 
-  it("keeps harness truncation text verbatim while identifying retained output as Sage chrome", () => {
+  it("keeps harness truncation text verbatim inside keyboard-focusable Shell detail", () => {
     const output =
       "[output truncated] retained tail\n\tindented line\n\nfinal line\n";
     render(<ToolItem item={commandItem(output)} />);
 
-    expect(screen.getByText("Retained command output")).toBeVisible();
+    expect(screen.getByText("Shell")).toBeVisible();
     expect(screen.getByLabelText("Command output").textContent).toBe(output);
+    expect(screen.getByLabelText("Command output")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(screen.getByLabelText("Command line")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
   });
 
   it("shows command output and its safe File action in one card", () => {
@@ -310,7 +318,9 @@ describe("ToolItem", () => {
     expect(
       screen.getByRole("group", { name: "Run command" }),
     ).not.toHaveAttribute("aria-describedby");
-    expect(screen.queryByLabelText("Command output")).toBeNull();
+    expect(screen.getByLabelText("Command output")).toHaveTextContent(
+      "No output",
+    );
   });
 
   it("adopts a terminal state and duration on one card when a call updates in place", () => {
@@ -352,7 +362,7 @@ describe("ToolItem", () => {
     ).toHaveTextContent("3s");
   });
 
-  it("omits the command line when it only repeats the tool label", () => {
+  it("shows Shell and a prompted command even when the command repeats the row label", () => {
     const echoed = tool({
       kind: "execute",
       cwd: null,
@@ -366,7 +376,10 @@ describe("ToolItem", () => {
     });
     echoed.payload.inputSummary = null;
     const { rerender } = render(<ToolItem item={echoed} />);
-    expect(screen.queryByLabelText("Command line")).toBeNull();
+    expect(screen.getByText("Shell")).toBeVisible();
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "$ npm run check",
+    );
     expect(screen.getAllByText("npm run check")).toHaveLength(1);
 
     const distinct = tool({
@@ -383,7 +396,7 @@ describe("ToolItem", () => {
     distinct.payload.inputSummary = null;
     rerender(<ToolItem item={distinct} />);
     expect(screen.getByLabelText("Command line")).toHaveTextContent(
-      "npm run check -- --watch",
+      "$ npm run check -- --watch",
     );
   });
 
@@ -411,6 +424,35 @@ describe("ToolItem", () => {
     };
   }
 
+  it("shows no Shell or command when only a generic tool label was emitted", () => {
+    const item = commandItem(null);
+    item.payload.inputSummary = null;
+    render(<ToolItem item={item} />);
+    expect(screen.queryByText("Shell")).toBeNull();
+    expect(screen.queryByLabelText("Command line")).toBeNull();
+    expect(screen.queryByText("No output")).toBeNull();
+  });
+
+  it("keeps command output descriptions scoped to their pane even for equal tool ids", () => {
+    render(
+      <>
+        <ToolItem item={commandItem("left output")} />
+        <ToolItem item={commandItem("right output")} />
+      </>,
+    );
+    const cards = screen.getAllByRole("group", { name: "Run command" });
+    const descriptions = cards.map((card) =>
+      card.getAttribute("aria-describedby"),
+    );
+    expect(descriptions[0]).not.toBe(descriptions[1]);
+    expect(document.getElementById(descriptions[0]!)?.textContent).toBe(
+      "left output",
+    );
+    expect(document.getElementById(descriptions[1]!)?.textContent).toBe(
+      "right output",
+    );
+  });
+
   it("preserves the full bounded retained heredoc when the native command summary is null", () => {
     const item = commandItem(null);
     const prefix = "cat <<'EOF'\n";
@@ -419,8 +461,8 @@ describe("ToolItem", () => {
       prefix + "x".repeat(65_536 - prefix.length - suffix.length) + suffix;
     render(<ToolItem item={item} />);
     const line = screen.getByLabelText("Command line");
-    expect(line.textContent).toBe(item.payload.inputSummary);
-    expect(line.textContent).toHaveLength(65_536);
+    expect(line.textContent).toBe(`$ ${item.payload.inputSummary}`);
+    expect(line.textContent).toHaveLength(65_538);
     expect(screen.queryByLabelText("Command output")).toBeNull();
   });
 
@@ -432,12 +474,12 @@ describe("ToolItem", () => {
     item.payload.presentation.summary = "cat <<'EOF'";
     render(<ToolItem item={item} />);
     expect(screen.getByLabelText("Command line").textContent).toBe(
-      "cat <<'EOF'\nfull retained body\nEOF",
+      "$ cat <<'EOF'\nfull retained body\nEOF",
     );
   });
 
   it.each(["`npm run check`", "  ` npm run check `  ", "``npm run check``"])(
-    "does not repeat retained command input under a backticked title %s",
+    "shows the retained command inside Shell under a backticked title %s",
     (label) => {
       const item = commandItem(null);
       item.payload.presentation.label = label;
@@ -447,7 +489,9 @@ describe("ToolItem", () => {
       expect(document.querySelector(".acp-tool-card strong")?.textContent).toBe(
         label,
       );
-      expect(screen.queryByLabelText("Command line")).toBeNull();
+      expect(screen.getByLabelText("Command line").textContent).toBe(
+        "$ npm run check",
+      );
     },
   );
 
@@ -457,7 +501,7 @@ describe("ToolItem", () => {
     item.payload.presentation.label = item.payload.inputSummary;
     render(<ToolItem item={item} />);
     expect(screen.getByLabelText("Command line").textContent).toBe(
-      "cat <<'EOF'\nbody\nEOF",
+      "$ cat <<'EOF'\nbody\nEOF",
     );
   });
 
@@ -504,7 +548,7 @@ describe("ToolItem", () => {
     expect(toolCommandLine(item)).toBe("printf 'two  spaces'");
     render(<ToolItem item={item} />);
     expect(screen.getByLabelText("Command line").textContent).toBe(
-      "printf 'two  spaces'",
+      "$ printf 'two  spaces'",
     );
   });
 
@@ -525,7 +569,9 @@ describe("ToolItem", () => {
         description: "Bounded retained input",
       }),
     ).toHaveTextContent("Normalized fallback");
-    expect(screen.getByRole("status")).toHaveTextContent("In progress");
+    expect(screen.getByRole("status", { name: "Running" })).toHaveTextContent(
+      "Running",
+    );
 
     rerender(
       <ToolItem

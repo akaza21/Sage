@@ -831,7 +831,7 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
   });
 
-  test("shows a compact live activity row without a status chip", async ({
+  test("shows a compact live activity row with an accessible running indicator", async ({
     page,
   }) => {
     await openScenario(page, "agent-activity-family", "agent");
@@ -844,6 +844,12 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       /acp-live-shimmer/,
     );
     await expect(liveRow.locator("summary .acp-state")).toHaveCount(0);
+    const running = liveRow.getByRole("status", { name: "Running" });
+    await expect(running).toBeVisible();
+    const spinner = running.locator("svg");
+    expect(
+      await spinner.evaluate((node) => getComputedStyle(node).animationName),
+    ).toBe("acp-tool-spin");
     await expect(
       liveRow.locator("summary .acp-tool-rollup__chevron"),
     ).toBeVisible();
@@ -862,6 +868,15 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     expect(
       await label.evaluate((node) => getComputedStyle(node).animationDuration),
     ).toBe("0s");
+    expect(
+      await spinner.evaluate((node) => getComputedStyle(node).animationName),
+    ).toBe("none");
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).backgroundImage),
+    ).toBe("none");
+    expect(
+      await label.evaluate((node) => getComputedStyle(node).color),
+    ).not.toBe("rgba(0, 0, 0, 0)");
     await page.emulateMedia({ forcedColors: "active" });
     expect(
       await label.evaluate((node) => getComputedStyle(node).color),

@@ -1,8 +1,16 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import type { TurnProjection } from "../../../domain/acp";
 import {
   groupPrimaryActivities,
   toolRollupLabel,
@@ -127,6 +135,108 @@ const unavailableFile: SafeResourceLocation = {
 };
 
 describe("ToolActivityRollup", () => {
+  it("opens Shell through both Worked disclosures and retains the nested choice on reopen", () => {
+    const command = tool("shell", "execute");
+    command.payload.inputSummary = "npm run check";
+    const turn: TurnProjection = {
+      id: command.turnId,
+      sessionId: command.sessionId,
+      runtimeEpoch: command.runtimeEpoch,
+      ordinal: 1,
+      revision: command.revision,
+      state: "completed",
+      createdAt: 1,
+      updatedAt: 1001,
+      terminalAt: 1001,
+      items: [command],
+      activities: [],
+      browserOperations: [],
+      browserOperationsCollapsed: 0,
+    };
+    render(
+      <ChatTranscriptTurnSummary turn={turn} hasActivities>
+        <ToolActivityRollup
+          rollup={{
+            kind: "execute",
+            commandActivity: "ordinary",
+            items: [command],
+          }}
+          interactive={false}
+        />
+      </ChatTranscriptTurnSummary>,
+    );
+    const worked = document.querySelector<HTMLDetailsElement>(
+      ".chat-transcript-work",
+    )!;
+    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    expect(worked.open).toBe(false);
+    expect(row.open).toBe(false);
+    expect(screen.queryByText("Shell")).toBeNull();
+    fireEvent.click(worked.querySelector("summary")!);
+    expect(worked.open).toBe(true);
+    expect(row.open).toBe(false);
+    expect(row.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
+    fireEvent.click(row.querySelector("summary")!);
+    fireEvent(row, new Event("toggle"));
+    expect(screen.getByText("Shell")).toBeVisible();
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "$ npm run check",
+    );
+    fireEvent.click(worked.querySelector("summary")!);
+    expect(screen.getByText("Shell")).not.toBeVisible();
+    fireEvent.click(worked.querySelector("summary")!);
+    expect(row.open).toBe(true);
+    expect(screen.getByText("Shell")).toBeVisible();
+    fireEvent.click(row.querySelector("summary")!);
+    fireEvent(row, new Event("toggle"));
+    expect(screen.queryByText("Shell")).toBeNull();
+  });
+
+  it.each(["execute", "read", "edit", "search", "other"] as const)(
+    "names a visible running indicator on a live %s row and removes it at settlement",
+    (kind) => {
+      const item = {
+        ...tool("live", kind),
+        toolState: "inProgress" as const,
+        terminalAt: null,
+      };
+      const rollup = {
+        kind,
+        commandActivity: "ordinary" as const,
+        items: [item],
+      };
+      const { rerender } = render(
+        <ToolActivityRollup rollup={rollup} interactive />,
+      );
+      const row =
+        document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+      expect(
+        within(row.querySelector("summary")!).getByRole("status", {
+          name: "Running",
+        }),
+      ).toBeVisible();
+      row.open = true;
+      fireEvent(row, new Event("toggle"));
+      expect(
+        within(
+          screen.getByRole("group", { name: item.payload.presentation.label }),
+        ).getByRole("status", { name: "Running" }),
+      ).toBeVisible();
+      for (const state of ["completed", "failed", "cancelled"] as const) {
+        rerender(
+          <ToolActivityRollup
+            rollup={{
+              ...rollup,
+              items: [{ ...item, toolState: state, terminalAt: 1001 }],
+            }}
+            interactive
+          />,
+        );
+        expect(screen.queryByRole("status", { name: "Running" })).toBeNull();
+      }
+    },
+  );
+
   it("leaves generic subagent tool wording unchanged without a binding-supplied Task lifecycle", () => {
     const generic = tool("generic", "subagent");
     generic.payload.presentation = {
@@ -637,11 +747,11 @@ describe("ToolActivityRollup", () => {
     row.open = true;
     fireEvent(row, new Event("toggle"));
     expect(screen.getByLabelText("Command line").textContent).toBe(
-      inputSummary,
+      `$ ${inputSummary}`,
     );
   });
 
-  it("shows Codex-shaped input that equals its label without duplicating the expanded command", () => {
+  it("shows Codex-shaped input that equals its label inside expanded Shell detail", () => {
     const base = tool("codex-command", "execute");
     const command = {
       ...base,
@@ -668,7 +778,9 @@ describe("ToolActivityRollup", () => {
     row.open = true;
     fireEvent(row, new Event("toggle"));
     expect(screen.getByRole("group", { name: "npm run check" })).toBeVisible();
-    expect(screen.queryByLabelText("Command line")).toBeNull();
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "$ npm run check",
+    );
     rerender(
       <ToolActivityRollup
         rollup={{
@@ -680,7 +792,9 @@ describe("ToolActivityRollup", () => {
       />,
     );
     expect(row.querySelector("summary")).toHaveTextContent("Ran npm run check");
-    expect(screen.queryByLabelText("Command line")).toBeNull();
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "$ npm run check",
+    );
   });
 
   it("preserves literal quoted spaces in a collapsed retained command", () => {
@@ -869,6 +983,7 @@ describe("ToolActivityRollup", () => {
           "acp-live-shimmer",
         );
         expect(row.querySelector("summary .acp-state")).toBeNull();
+        expect(screen.queryByRole("status", { name: "Running" })).toBeNull();
         expect(
           row.querySelectorAll(".acp-tool-rollup__summary-copy svg"),
         ).toHaveLength(1);
@@ -1096,7 +1211,9 @@ describe("ToolActivityRollup", () => {
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
 
-    expect(screen.getByText("npm run build")).toBeVisible();
+    expect(screen.getByLabelText("Command line").textContent).toBe(
+      "$ npm run build",
+    );
   });
 
   it("uses concise activity labels with semantic icons", () => {
