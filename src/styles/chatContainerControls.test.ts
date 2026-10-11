@@ -33,6 +33,27 @@ async function containerDisplay(selector: string, width: number) {
 }
 
 describe("Chat container control breakpoints", () => {
+  it.each([
+    ["composer__plus", "src/styles/chat-surface.css"],
+    ["composer__context-usage", "src/styles/composer-context.css"],
+    ["composer__attachment-remove", "src/styles/composer-surface.css"],
+  ])("reserves at least a 24x24 hit target for %s", async (className, path) => {
+    const style = document.createElement("style");
+    style.textContent = await readFile(path, "utf8");
+    const control = document.createElement("button");
+    control.className = className;
+    document.head.append(style);
+    document.body.append(control);
+    try {
+      const computed = getComputedStyle(control);
+      expect(Number.parseFloat(computed.width)).toBeGreaterThanOrEqual(24);
+      expect(Number.parseFloat(computed.height)).toBeGreaterThanOrEqual(24);
+    } finally {
+      control.remove();
+      style.remove();
+    }
+  });
+
   it("reflows goal and header chrome with their chat container, not the window", async () => {
     const css = await readFile(
       "src/styles/chat-container-controls.css",

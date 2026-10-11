@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { useId, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +15,7 @@ const INITIAL_INNER_HEIGHT = window.innerHeight;
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   Object.defineProperty(window, "innerHeight", {
     configurable: true,
     value: INITIAL_INNER_HEIGHT,
@@ -115,6 +122,54 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it("follows an unchanged-size trigger when its pane resizes and stops observing on close", () => {
+    let anchor = new DOMRect(100, 100, 100, 28);
+    const observers: {
+      callback: ResizeObserverCallback;
+      targets: Set<Element>;
+    }[] = [];
+    class ResizeObserverStub {
+      targets = new Set<Element>();
+      constructor(callback: ResizeObserverCallback) {
+        observers.push({ callback, targets: this.targets });
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        return this.getAttribute("role") === "menu"
+          ? new DOMRect(0, 0, 160, 40)
+          : anchor;
+      },
+    );
+    render(
+      <section aria-label="Chat pane">
+        <MenuHarness />
+      </section>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    const menu = screen.getByRole("menu", { name: "Actions" });
+    expect(menu).toHaveStyle({ left: "40px", top: "132px" });
+    const pane = screen.getByRole("region", { name: "Chat pane" });
+    anchor = new DOMRect(400, 200, 100, 28);
+    act(() => {
+      for (const observer of observers) {
+        if (observer.targets.has(pane))
+          observer.callback([], {} as ResizeObserver);
+      }
+    });
+    expect(menu).toHaveStyle({ left: "340px", top: "232px" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Actions" })).toBeNull();
+    expect(observers.every(({ targets }) => targets.size === 0)).toBe(true);
+  });
+
   it("places a dialog in the shared viewport overlay, preserves native tab stops, and returns Escape focus", () => {
     function DialogHarness() {
       const trigger = useRef<HTMLButtonElement>(null);
@@ -330,6 +385,10 @@ describe("MenuPopover", () => {
     expect(observed[1]).toEqual([
       popup,
       screen.getByRole("button", { name: "Target" }),
+      popup.closest("dialog"),
+      popup.closest("dialog")?.parentElement,
+      document.body,
+      document.documentElement,
     ]);
   });
 });

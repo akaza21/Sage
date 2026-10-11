@@ -61,8 +61,8 @@ async function expectControls(
     expect(boundary).not.toBeNull();
     const box = await control.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThan(0);
-    expect(box!.height).toBeGreaterThan(0);
+    expect(box!.width).toBeGreaterThanOrEqual(24);
+    expect(box!.height).toBeGreaterThanOrEqual(24);
     expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, boundary!.x));
     expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, boundary!.y));
     expect(box!.x + box!.width).toBeLessThanOrEqual(
@@ -142,6 +142,25 @@ async function expectSiblings(owner: Locator) {
   }
 }
 
+async function expectComposerControls(
+  composer: Locator,
+  viewport: { width: number; height: number },
+) {
+  const remove = composer.locator(".composer__attachment-remove");
+  await expect(remove).toHaveCount(2);
+  await expect(
+    composer.getByRole("button", { name: /^Remove Page/ }),
+  ).toBeEnabled();
+  await expect(
+    composer.getByRole("button", { name: /^Remove Image/ }),
+  ).toBeEnabled();
+  await expectControls(
+    composer,
+    composer.locator('button, [tabindex="0"]'),
+    viewport,
+  );
+}
+
 async function expectOverlay(
   panel: Locator,
   viewport: { width: number; height: number },
@@ -195,55 +214,56 @@ for (const profile of profiles) {
           const header = page.locator(".agent-task-header");
           await expectControls(header, header.locator("button"), viewport);
           await expectSiblings(header);
-          if (two && viewport.width === 1888) {
-            await page
-              .getByRole("separator", { name: "Resize chat panes" })
-              .focus();
-            await page.keyboard.press("Home");
-            await expect(
-              page.getByRole("separator", { name: "Resize chat panes" }),
-            ).toHaveAttribute("aria-valuenow", "30");
-          }
-          for (const pane of await panes.all()) {
-            const composer = pane.locator("form.composer");
-            await expectControls(
-              composer,
-              composer.locator(
-                ".composer__toolbar button, .composer__context-usage, .composer__queued-row button, .chat-goal-strip__icon",
-              ),
-              viewport,
-            );
-            await expect(
-              composer.getByRole("button", { name: "Harness", exact: true }),
-            ).toBeVisible();
-            await expect(
-              composer.getByRole("button", { name: "Model", exact: true }),
-            ).toBeVisible();
-            await expect(
-              composer.getByRole("button", {
-                name: "Access options",
-                exact: true,
-              }),
-            ).toBeVisible();
-            await expect(composer.getByRole("progressbar")).toHaveCount(
-              profile.context ? 1 : 0,
-            );
-            await expect(composer.locator(".chat-goal-strip")).toHaveCount(
-              profile.goal ? 1 : 0,
-            );
-            await expectSiblings(composer.locator(".composer__queued-row"));
-            if (profile.goal)
-              await expectSiblings(composer.locator(".chat-goal-strip__row"));
-            const queue = composer.getByRole("button", {
-              name: /^More options for queued message:/,
-            });
-            await queue.click();
-            await expectOverlay(
-              page.getByRole("menu", { name: "Queued message options" }),
-              viewport,
-            );
-            await page.keyboard.press("Escape");
-            await expect(queue).toBeFocused();
+          for (const split of two && viewport.width === 1888
+            ? [null, "Home", "End"]
+            : [null]) {
+            if (split) {
+              await page
+                .getByRole("separator", { name: "Resize chat panes" })
+                .focus();
+              await page.keyboard.press(split);
+              await expect(
+                page.getByRole("separator", { name: "Resize chat panes" }),
+              ).toHaveAttribute(
+                "aria-valuenow",
+                split === "Home" ? "30" : "70",
+              );
+            }
+            for (const pane of await panes.all()) {
+              const composer = pane.locator("form.composer");
+              await expectComposerControls(composer, viewport);
+              await expect(
+                composer.getByRole("button", { name: "Harness", exact: true }),
+              ).toBeVisible();
+              await expect(
+                composer.getByRole("button", { name: "Model", exact: true }),
+              ).toBeVisible();
+              await expect(
+                composer.getByRole("button", {
+                  name: "Access options",
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(composer.getByRole("progressbar")).toHaveCount(
+                profile.context ? 1 : 0,
+              );
+              await expect(composer.locator(".chat-goal-strip")).toHaveCount(
+                profile.goal ? 1 : 0,
+              );
+              await expectSiblings(composer.locator(".composer__queued-row"));
+              if (profile.goal)
+                await expectSiblings(composer.locator(".chat-goal-strip__row"));
+              const queue = composer.getByRole("button", {
+                name: /^More options for queued message:/,
+              });
+              await queue.click();
+              await expectOverlay(
+                page.getByRole("menu", { name: "Queued message options" }),
+                viewport,
+              );
+              await page.keyboard.press("Escape");
+              await expect(queue).toBeFocused();
+            }
           }
           await header
             .getByRole("button", { name: "Show chat resources" })
@@ -272,6 +292,97 @@ for (const profile of profiles) {
       }
     }
   }
+}
+
+for (const profile of profiles) {
+  for (const two of [false, true]) {
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`${profile.name} ready compact controls at every viewport and split, ${two ? "two selected" : "single"}, ${forcedColors}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(viewports[2]);
+        await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+        await prepare(page, profile, two, false);
+        for (const viewport of viewports) {
+          await page.setViewportSize(viewport);
+          const panes = page.locator(".agent-chat-pane");
+          await expect(panes).toHaveCount(
+            two && viewport.width === 1888 ? 2 : 1,
+          );
+          for (const split of two && viewport.width === 1888
+            ? [null, "Home", "End"]
+            : [null]) {
+            if (split) {
+              const splitter = page.getByRole("separator", {
+                name: "Resize chat panes",
+              });
+              await splitter.focus();
+              await page.keyboard.press(split);
+              await expect(splitter).toHaveAttribute(
+                "aria-valuenow",
+                split === "Home" ? "30" : "70",
+              );
+            }
+            for (const pane of await panes.all()) {
+              await expectComposerControls(
+                pane.locator("form.composer"),
+                viewport,
+              );
+            }
+          }
+        }
+      });
+    }
+  }
+}
+
+for (const forcedColors of ["none", "active"] as const) {
+  test(`options follow the anchor after Tab to the splitter and Home/End (${forcedColors})`, async ({
+    page,
+  }) => {
+    const viewport = viewports[2];
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await prepare(page, profiles[0], true, false);
+    const trigger = page.locator("form.composer").nth(1).getByRole("button", {
+      name: "Composer options",
+      exact: true,
+    });
+    const splitter = page.getByRole("separator", { name: "Resize chat panes" });
+    await trigger.click();
+    const panel = page.getByRole("dialog", { name: "Composer options menu" });
+    await expect(panel).toBeVisible();
+    const initialAnchor = await trigger.boundingBox();
+    for (let step = 0; step < 60; step++) {
+      if (
+        await splitter.evaluate((element) => element === document.activeElement)
+      )
+        break;
+      await page.keyboard.press("Tab");
+    }
+    await expect(splitter).toBeFocused();
+    for (const key of ["Home", "End"]) {
+      await page.keyboard.press(key);
+      await expect(splitter).toHaveAttribute(
+        "aria-valuenow",
+        key === "Home" ? "30" : "70",
+      );
+      await expect(panel).toBeVisible();
+      await expect
+        .poll(async () => {
+          const anchor = await trigger.boundingBox();
+          const surface = await panel.boundingBox();
+          return surface!.x + surface!.width - (anchor!.x + anchor!.width);
+        })
+        .toBeCloseTo(0, 0);
+      const anchor = await trigger.boundingBox();
+      expect(anchor!.width).toBe(initialAnchor!.width);
+      expect(anchor!.height).toBe(initialAnchor!.height);
+      expect(anchor!.x).not.toBe(initialAnchor!.x);
+      await expectOverlay(panel, viewport);
+      await expect(splitter).toBeFocused();
+    }
+  });
 }
 
 for (const profile of profiles) {

@@ -141,7 +141,13 @@ export function MenuPopover({
         ? null
         : new ResizeObserver(updatePosition);
     resizeObserver?.observe(popover);
-    resizeObserver?.observe(trigger);
+    for (
+      let ancestor: HTMLElement | null = trigger;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      resizeObserver?.observe(ancestor);
+    }
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     return () => {

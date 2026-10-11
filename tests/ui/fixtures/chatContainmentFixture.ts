@@ -48,6 +48,25 @@ export function installChatContainmentFixture(
         {
           ...store.chatUiById[tab.id],
           composerText: "Draft survives resizing",
+          attachedContext: [
+            {
+              kind: "browserPage" as const,
+              tabId: "browser-1",
+              url: "https://example.test/",
+              title: longTitle,
+              text: "Bounded attached page",
+            },
+            {
+              kind: "image" as const,
+              artifactId: "11111111-1111-4111-8111-111111111111",
+              mediaType: "image/png" as const,
+              width: 1,
+              height: 1,
+              byteLength: 68,
+              sha256: "a".repeat(64),
+              label: "long-attached-image-name-".repeat(3) + ".png",
+            },
+          ],
           queuedPrompts: live
             ? [
                 {
