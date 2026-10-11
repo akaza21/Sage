@@ -2947,6 +2947,43 @@ describe("ChatSurface ACP resource integration", () => {
     ).not.toHaveFocus();
   });
 
+  it.each(["diagram", "button", "pane"] as const)(
+    "respects deliberate %s focus when activating a background Chat after completion",
+    (target) => {
+      pinAgentChatOwner("chat-foreground");
+      const renderPane = () => (
+        <section
+          aria-label="Background pane"
+          tabIndex={0}
+          onFocus={() => pinAgentChatOwner("chat-background")}
+        >
+          <ChatSurface
+            chatId="chat-background"
+            paneHeader={
+              <>
+                <figure aria-label="Overflowing diagram" tabIndex={0} />
+                <button type="button">Diagram action</button>
+              </>
+            }
+          />
+        </section>
+      );
+      const { rerender } = render(renderPane());
+      setTurnState("completed");
+      rerender(renderPane());
+      const composer = screen.getByRole("textbox", { name: "Message agent" });
+      expect(composer).not.toHaveFocus();
+      const deliberateTarget =
+        target === "diagram"
+          ? screen.getByRole("figure", { name: "Overflowing diagram" })
+          : target === "button"
+            ? screen.getByRole("button", { name: "Diagram action" })
+            : screen.getByRole("region", { name: "Background pane" });
+      act(() => deliberateTarget.focus());
+      expect(target === "pane" ? composer : deliberateTarget).toHaveFocus();
+    },
+  );
+
   it("exposes the authoritative session close as a semantic control", () => {
     setTurnState("completed");
     hooks.page = {

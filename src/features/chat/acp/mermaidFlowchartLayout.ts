@@ -13,9 +13,9 @@ function sizeNode(node: MermaidNode) {
   const characters = Array.from(node.label);
   const width = Math.min(
     MAX_NODE_WIDTH,
-    Math.max(240, (characters.length * BODY_GLYPH_WIDTH + 32) * shapeScale),
+    Math.max(240, characters.length * BODY_GLYPH_WIDTH * shapeScale + 32),
   );
-  const columns = Math.floor((width / shapeScale - 32) / BODY_GLYPH_WIDTH);
+  const columns = Math.floor((width - 32) / shapeScale / BODY_GLYPH_WIDTH);
   const lines: string[] = [];
   let remaining = characters;
   while (remaining.length > columns) {
@@ -29,10 +29,19 @@ function sizeNode(node: MermaidNode) {
   return {
     ...node,
     lines,
-    width,
+    width:
+      node.shape === "diamond"
+        ? Math.max(
+            240,
+            Math.max(...lines.map((line) => Array.from(line).length)) *
+              BODY_GLYPH_WIDTH *
+              shapeScale +
+              32,
+          )
+        : width,
     height: Math.max(
       64,
-      (lines.length * FLOWCHART_LABEL_LINE_HEIGHT + 24) * shapeScale,
+      lines.length * FLOWCHART_LABEL_LINE_HEIGHT * shapeScale + 24,
     ),
   };
 }

@@ -48,24 +48,29 @@ export function MermaidFigure({ source }: { source: string }) {
   } | null>(null);
   const status = copyState?.identity === identity ? copyState.status : "";
   return (
-    <figure
-      className="acp-mermaid"
-      ref={figureRef}
-      tabIndex={diagram.ok && overflowing ? 0 : undefined}
-      aria-label={`${accessible.name} (figure ${figureId})`}
-    >
-      {diagram.ok ? (
-        diagram.kind === "flowchart" ? (
-          <MermaidSvg diagram={diagram} description={accessible.description} />
+    <div>
+      <figure
+        className="acp-mermaid"
+        ref={figureRef}
+        tabIndex={diagram.ok && overflowing ? 0 : undefined}
+        aria-label={`${accessible.name} (figure ${figureId})`}
+      >
+        {diagram.ok ? (
+          diagram.kind === "flowchart" ? (
+            <MermaidSvg
+              diagram={diagram}
+              description={accessible.description}
+            />
+          ) : (
+            <LaneSvg diagram={diagram} description={accessible.description} />
+          )
         ) : (
-          <LaneSvg diagram={diagram} description={accessible.description} />
-        )
-      ) : (
-        <p className="acp-mermaid__fallback">
-          Diagram source is kept for copy; this mermaid subset could not be
-          drawn.
-        </p>
-      )}
+          <p className="acp-mermaid__fallback">
+            Diagram source is kept for copy; this mermaid subset could not be
+            drawn.
+          </p>
+        )}
+      </figure>
       <button
         type="button"
         className="acp-mermaid__copy"
@@ -85,7 +90,7 @@ export function MermaidFigure({ source }: { source: string }) {
         Copy diagram source
       </button>
       <span role="status">{status}</span>
-    </figure>
+    </div>
   );
 }
 

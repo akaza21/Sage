@@ -15,6 +15,42 @@ afterEach(() => {
 });
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it.each([
+    ["OK", 64, 240],
+    ["Token and password valid?", 128, 300],
+  ] as const)(
+    "fits the wrapped decision '%s' in a compact diamond with central label anchors",
+    (label, maximumHeight, maximumWidth) => {
+      const { container } = render(
+        <MermaidFigure
+          source={`graph TD\nDecision{${label}}\nText[${label}]`}
+        />,
+      );
+      const diamond = container.querySelector("polygon")!;
+      const points = diamond
+        .getAttribute("points")!
+        .split(" ")
+        .map((point) => point.split(",").map(Number));
+      const width = Math.max(...points.map((point) => point[0]));
+      const height = Math.max(...points.map((point) => point[1]));
+      const rectangle = container.querySelector("rect")!;
+      expect(width).toBeLessThanOrEqual(
+        Number(rectangle.getAttribute("width")),
+      );
+      expect(width).toBeLessThanOrEqual(maximumWidth);
+      expect(height).toBeLessThanOrEqual(maximumHeight);
+      const text = diamond.parentElement!.querySelector("text")!;
+      const lines = [...text.querySelectorAll("tspan")];
+      expect(lines.map((line) => line.textContent).join(" ")).toBe(label);
+      let baseline = Number(text.getAttribute("y"));
+      for (const line of lines) {
+        baseline += Number(line.getAttribute("dy"));
+        expect(Number(line.getAttribute("x"))).toBe(width / 2);
+        expect(baseline).toBeGreaterThan(height / 4);
+        expect(baseline).toBeLessThan((height * 3) / 4);
+      }
+    },
+  );
   it.each(
     ["TD", "LR"].flatMap((direction) =>
       [28, 64].flatMap((length) =>
@@ -273,6 +309,24 @@ describe("bounded Mermaid flowchart rendering", () => {
     );
     expect(await screen.findByRole("status")).toHaveTextContent("Copy failed");
   });
+  it("keeps exact-source copying and its status outside the diagram scroller", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<MermaidFigure source={resetFlowchart} />);
+    const figure = screen.getByRole("figure");
+    const copy = screen.getByRole("button", { name: "Copy diagram source" });
+    expect(figure).not.toContainElement(copy);
+    expect(figure.parentElement).toContainElement(copy);
+    fireEvent.click(copy);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Copied");
+    expect(figure).not.toContainElement(status);
+    expect(figure.parentElement).toContainElement(status);
+    expect(writeText).toHaveBeenCalledWith(resetFlowchart);
+  });
   it.each([
     ["sequenceDiagram", "Alice->>Bob: message"],
     ["stateDiagram-v2", "Ready --> Done: transition"],
@@ -321,7 +375,6 @@ describe("bounded Mermaid flowchart rendering", () => {
   it("wraps six-node labels, points arrows at boundaries and routes the return branch", () => {
     const { container } = render(<MermaidFigure source={resetFlowchart} />);
     const diagram = screen.getByRole("img", { name: "Mermaid diagram" });
-    expect(diagram).toHaveAttribute("height", "716");
     expect(container.querySelectorAll("path[marker-end]")).toHaveLength(6);
     expect(container.querySelector("marker")).not.toBeNull();
     expect(container.querySelectorAll("tspan").length).toBeGreaterThan(6);
@@ -332,14 +385,33 @@ describe("bounded Mermaid flowchart rendering", () => {
     const positions = [...container.querySelectorAll("g[transform]")].map(
       (node) => node.getAttribute("transform")!.match(/\d+/g)!.map(Number),
     );
+    const decision = container
+      .querySelector("polygon")!
+      .getAttribute("points")!
+      .split(" ")
+      .map((point) => point.split(",").map(Number));
+    const decisionWidth = Math.max(...decision.map((point) => point[0]));
+    const decisionHeight = Math.max(...decision.map((point) => point[1]));
+    const firstWidth = Number(
+      container.querySelector("rect")!.getAttribute("width"),
+    );
+    const lastNode = [...container.querySelectorAll("g[transform]")].at(-1)!;
+    expect(Number(diagram.getAttribute("height"))).toBeGreaterThan(
+      positions.at(-1)![1] +
+        Number(lastNode.querySelector("rect")!.getAttribute("height")),
+    );
     const path = paths[5].getAttribute("d")!;
     expect(path).toMatch(
-      new RegExp(`^M${positions[4][0] + 320} ${positions[4][1] + 72}L`),
+      new RegExp(
+        `^M${positions[4][0] + decisionWidth} ${positions[4][1] + decisionHeight / 2}L`,
+      ),
     );
     expect(path).toMatch(
-      new RegExp(`L${positions[0][0] + 320} ${positions[0][1] + 32}$`),
+      new RegExp(
+        `L${positions[0][0] + firstWidth} ${positions[0][1] + Number(container.querySelector("rect")!.getAttribute("height")) / 2}$`,
+      ),
     );
-    const connectorX = String(positions[0][0] + 160);
+    const connectorX = String(positions[0][0] + firstWidth / 2);
     expect(
       path.match(/\d+ \d+/g)!.map((point) => point.split(" ")[0]),
     ).not.toContain(connectorX);

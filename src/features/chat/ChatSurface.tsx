@@ -225,15 +225,19 @@ export function ChatSurface({
       !actionBusy &&
       !projectTransitioning
     ) {
+      const surface = surfaceRef.current;
+      const activeElement = document.activeElement;
+      const preserveFocus =
+        activeElement !== surface && surface?.contains(activeElement);
       const composer = composerRef.current;
       const statuses =
-        surfaceRef.current?.querySelectorAll<HTMLElement>("[data-turn-status]");
+        surface?.querySelectorAll<HTMLElement>("[data-turn-status]");
       const terminalStatus = [...(statuses ?? [])].find(
         (status) => status.dataset.turnStatus === terminalFocusTurnId.current,
       );
       const target = composer && !composer.disabled ? composer : terminalStatus;
-      target?.focus();
-      if (target) terminalFocusTurnId.current = null;
+      if (!preserveFocus) target?.focus();
+      if (target || preserveFocus) terminalFocusTurnId.current = null;
     }
   }, [
     acpPage,
