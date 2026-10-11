@@ -9,6 +9,56 @@ test("jump fixture has a bounded transcript tall enough for every reference view
   assert.equal(transcript.match(/### Synthetic section /gu).length, 32);
   assert.ok(Buffer.byteLength(transcript) < 8192);
 });
+test("Claude approvals follow a populated setup turn and settle the intended second prompt", () => {
+  for (const state of [
+    "approval-pending",
+    "approval-approved",
+    "approval-declined",
+  ]) {
+    const { steps } = nativeCases().find(({ id }) => id === `claude-${state}`);
+    const prompts = steps.flatMap((step, index) =>
+      step.kind === "acpPrompt" ? [index] : [],
+    );
+    assert.equal(prompts.length, 2);
+    assert.deepEqual(steps.slice(prompts[0] + 1, prompts[1]), [
+      {
+        op: "emitKnownFrame",
+        shape: "acpUpdate",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: "Synthetic approval setup completed. No tool was run.",
+          },
+        },
+      },
+      { op: "emitKnownFrame", shape: "acpCompleted" },
+    ]);
+    const permission = steps.findIndex(
+      ({ shape }) => shape === "acpPermission",
+    );
+    const decision = steps.findIndex(
+      ({ kind }) => kind === "acpPermissionDecision",
+    );
+    assert.ok(permission > prompts[1]);
+    assert.equal(decision, permission + 1);
+    const toolStates = steps
+      .slice(prompts[1] + 1, decision)
+      .flatMap((step) => (step.update?.toolCallId ? [step.update.status] : []));
+    assert.deepEqual(toolStates, ["pending"]);
+    assert.equal(
+      steps.filter(({ shape }) => shape === "acpCompleted").length,
+      2,
+    );
+    const afterDecision = steps
+      .slice(decision + 1)
+      .flatMap((step) => (step.update?.toolCallId ? [step.update.status] : []));
+    assert.deepEqual(
+      afterDecision,
+      state === "approval-declined" ? ["failed"] : ["in_progress", "completed"],
+    );
+  }
+});
 test("fixture resource substitution joins root-relative path components natively", () => {
   const source = readFileSync(
     new URL("../src-tauri/src/acp/fixture/wire_acp.rs", import.meta.url),
@@ -173,8 +223,8 @@ test("catalogue carries admitted wire evidence and finite continuations", () => 
   const codexEdit = frames("codex-file-edit-live").find(
     (step) => step.params?.item?.type === "fileChange",
   );
-  assert.equal(codexEdit.method, "item/completed");
-  assert.equal(codexEdit.params.item.status, "completed");
+  assert.equal(codexEdit.method, "item/started");
+  assert.equal(codexEdit.params.item.status, "inProgress");
   assert.match(codexEdit.params.item.changes[0].diff, /@@ -1/u);
   const claudeEdit = frames("claude-file-edit-live").find(
     (step) => step.update?.kind === "edit",

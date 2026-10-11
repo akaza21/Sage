@@ -2,6 +2,9 @@ use super::*;
 use serde_json::json;
 use std::io::Cursor;
 
+#[path = "wire_native_projection_tests.rs"]
+mod native_projection;
+
 #[test]
 fn replay_resource_paths_resolve_existing_files_in_the_capture_project() {
     let root = std::env::temp_dir().join(format!("sage-replay-path-{}", uuid::Uuid::new_v4()));

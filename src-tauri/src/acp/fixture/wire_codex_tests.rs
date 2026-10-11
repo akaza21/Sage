@@ -25,7 +25,7 @@ fn codex_model_list_returns_one_correlated_terminal_catalog_page() {
 }
 
 #[test]
-fn codex_effort_catalog_returns_pinned_model_fields_and_three_offered_efforts() {
+fn codex_menu_catalog_projects_two_models_with_complete_default_and_offered_efforts() {
     let mut state = WireState::new();
     let mut input = Cursor::new(concat!(
         r#"{"id":71,"method":"model/list","params":{"cursor":null}}"#,
@@ -40,6 +40,14 @@ fn codex_effort_catalog_returns_pinned_model_fields_and_three_offered_efforts() 
     }
     let reply: Value = serde_json::from_slice(&output).unwrap();
     let model = &reply["result"]["data"][0];
+    assert_eq!(reply["result"]["data"].as_array().unwrap().len(), 2);
+    let alternate = &reply["result"]["data"][1];
+    assert_eq!(alternate["id"], "fixture-model-fast");
+    assert_eq!(alternate["model"], "fixture-model-fast");
+    assert_eq!(alternate["displayName"], "Synthetic replay fast");
+    assert_eq!(alternate["isDefault"], false);
+    assert_eq!(alternate["hidden"], false);
+    assert_eq!(alternate["defaultReasoningEffort"], "low");
     assert_eq!(reply["id"], 71);
     assert_eq!(reply["result"]["nextCursor"], Value::Null);
     assert_eq!(model["defaultReasoningEffort"], "medium");
@@ -49,6 +57,7 @@ fn codex_effort_catalog_returns_pinned_model_fields_and_three_offered_efforts() 
     .unwrap();
     for field in evidence["modelRequired"].as_array().unwrap() {
         assert!(model.get(field.as_str().unwrap()).is_some());
+        assert!(alternate.get(field.as_str().unwrap()).is_some());
     }
     assert_eq!(
         model["supportedReasoningEfforts"],
@@ -58,7 +67,94 @@ fn codex_effort_catalog_returns_pinned_model_fields_and_three_offered_efforts() 
             {"reasoningEffort":"high","description":"Thorough synthetic replay"}
         ])
     );
+    assert_eq!(
+        alternate["supportedReasoningEfforts"],
+        model["supportedReasoningEfforts"]
+    );
     assert!(output.len() < 1_024);
+    use crate::acp::{
+        bindings::codex::{CodexAdapter, IncomingEvent, IngressDisposition, parse_packet_metadata},
+        contract::{RuntimeEpoch, SageAgentSessionId},
+    };
+    let packet = parse_packet_metadata(include_bytes!(
+        "../../../testdata/acp/codex/candidate-windows.json"
+    ))
+    .unwrap();
+    let mut adapter = CodexAdapter::from_metadata_packet(
+        &packet,
+        [7; 32],
+        RuntimeEpoch::new(1).unwrap(),
+        SageAgentSessionId::parse("menu-session").unwrap(),
+    );
+    let resources = NoCodexResources;
+    adapter.initialize(1).unwrap();
+    adapter
+        .ingest(
+            &serde_json::to_vec(&json!({"id":1,"result":{
+                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
+                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "platformFamily":"windows","platformOs":"windows"
+            }}))
+            .unwrap(),
+            &resources,
+        )
+        .unwrap();
+    adapter.models(71, None).unwrap();
+    let IngressDisposition::Events(events) = adapter.ingest(&output, &resources).unwrap() else {
+        panic!("expected projected models");
+    };
+    let [
+        IncomingEvent::Models {
+            models,
+            next_cursor,
+        },
+    ] = events.as_slice()
+    else {
+        panic!("expected one catalog page");
+    };
+    assert_eq!(next_cursor, &None);
+    assert_eq!(models.len(), 2);
+    for (model, id, name, default, effort) in [
+        (
+            &models[0],
+            "fixture-model",
+            "Synthetic replay",
+            true,
+            "medium",
+        ),
+        (
+            &models[1],
+            "fixture-model-fast",
+            "Synthetic replay fast",
+            false,
+            "low",
+        ),
+    ] {
+        assert_eq!(model.id.as_str(), id);
+        assert_eq!(model.name.as_str(), name);
+        assert_eq!(model.is_default, default);
+        assert_eq!(model.default_effort.as_ref().unwrap().as_str(), effort);
+        assert_eq!(
+            model
+                .supported_efforts
+                .iter()
+                .map(|effort| effort.id.as_str())
+                .collect::<Vec<_>>(),
+            ["low", "medium", "high"]
+        );
+    }
+}
+
+struct NoCodexResources;
+
+impl crate::acp::bindings::codex::ResourceMapper for NoCodexResources {
+    fn map_existing(
+        &self,
+        _: &str,
+    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
+    {
+        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
+    }
 }
 
 #[test]

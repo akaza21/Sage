@@ -165,6 +165,13 @@ pub(super) fn emit_response(
                     {"reasoningEffort":"medium","description":"Balanced synthetic replay"},
                     {"reasoningEffort":"high","description":"Thorough synthetic replay"}
                 ]);
+                let mut alternate = catalog["data"][0].clone();
+                alternate["id"] = json!("fixture-model-fast");
+                alternate["model"] = json!("fixture-model-fast");
+                alternate["displayName"] = json!("Synthetic replay fast");
+                alternate["isDefault"] = json!(false);
+                alternate["defaultReasoningEffort"] = json!("low");
+                catalog["data"].as_array_mut().unwrap().push(alternate);
             }
             catalog
         }

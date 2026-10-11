@@ -133,7 +133,19 @@ export function nativeCases() {
                 wait("acpPrompt"),
               ];
         if (state.startsWith("approval-"))
-          steps.push(emit("acpCompleted"), wait("acpPrompt"));
+          steps.push(
+            emit("acpUpdate", {
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: {
+                  type: "text",
+                  text: "Synthetic approval setup completed. No tool was run.",
+                },
+              },
+            }),
+            emit("acpCompleted"),
+            wait("acpPrompt"),
+          );
         steps.push(...events(harness, state));
         if (liveStates.has(state) || state === "turn-stopped")
           steps.push(

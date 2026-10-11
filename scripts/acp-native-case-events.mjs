@@ -10,6 +10,11 @@ export const wait = (kind) => ({ op: "awaitClient", kind });
 const ROOT = "$ROOT/src/example.ts";
 const longLabel =
   "Inspect the bounded synthetic workspace and compare deterministic native replay presentation without executing commands";
+const commandOutput = "Synthetic tool finished; no command was executed.";
+const commandFor = (state, index) =>
+  state.startsWith("git")
+    ? "git status --short"
+    : `printf '%s\\n' '${state === "tool-long-label" ? longLabel : "Inspect synthetic example " + index}'`;
 export const answer = (state) => {
   if (state === "answer-table-lists")
     return "## Replay summary\n\n| State | Result |\n| --- | --- |\n| Native binding | Verified replay |\n| Storage | Durable projection |\n\n- Fixed synthetic input\n- Bounded protocol events\n\n1. Inspect\n2. Compare";
@@ -54,26 +59,48 @@ export function events(harness, state) {
   const tool = (index, kind, title, finished, extra = {}) => {
     const id = "fixture-tool-" + index;
     if (harness === "claude") {
+      const command = kind === "execute";
       acp({
         sessionUpdate: "tool_call",
         toolCallId: id,
         kind,
         title,
-        status: "in_progress",
+        status: command ? "pending" : "in_progress",
+        ...(command
+          ? {
+              rawInput: { command: title },
+              content: [],
+              _meta: { claudeCode: { toolName: "Bash" } },
+            }
+          : {}),
         ...extra,
       });
+      if (command)
+        acp({
+          sessionUpdate: "tool_call_update",
+          toolCallId: id,
+          status: "in_progress",
+        });
       if (finished)
         acp({
           sessionUpdate: "tool_call_update",
           toolCallId: id,
           kind,
           status: "completed",
+          ...(command
+            ? {
+                rawOutput: commandOutput,
+                _meta: { claudeCode: { toolName: "Bash" } },
+              }
+            : {}),
           content: [
             {
               type: "content",
               content: {
                 type: "text",
-                text: "Synthetic tool finished; no command was executed.",
+                text: command
+                  ? `\`\`\`console\n${commandOutput}\n\`\`\``
+                  : commandOutput,
               },
             },
           ],
@@ -116,11 +143,13 @@ export function events(harness, state) {
       tool(
         index,
         "execute",
-        state === "tool-long-label"
-          ? longLabel
-          : state.startsWith("git")
-            ? "git status --short (synthetic observation)"
-            : "Inspect synthetic example " + index,
+        harness === "claude"
+          ? commandFor(state, index)
+          : state === "tool-long-label"
+            ? longLabel
+            : state.startsWith("git")
+              ? "git status --short (synthetic observation)"
+              : "Inspect synthetic example " + index,
         finished,
       );
   } else if (/^(file|files)/u.test(state)) {
@@ -162,7 +191,7 @@ export function events(harness, state) {
       const item = {
         type: "fileChange",
         id: "fixture-edit",
-        status: "completed",
+        status: "inProgress",
         changes: [
           {
             path: ROOT,
@@ -171,9 +200,9 @@ export function events(harness, state) {
           },
         ],
       };
-      codex("item/completed", {
-        item,
-      });
+      codex("item/started", { item });
+      if (state !== "file-edit-live")
+        codex("item/completed", { item: { ...item, status: "completed" } });
     }
   } else if (state.startsWith("subagents") || state === "child-opened") {
     if (harness === "claude") {
@@ -235,9 +264,28 @@ export function events(harness, state) {
       item: { type: "contextCompaction", id: "fixture-compaction" },
     });
   } else if (state.startsWith("approval")) {
-    tool(1, "execute", "Inspect synthetic example", false);
-    frames.push(emit("acpPermission"));
+    const command = commandFor(state, 1);
+    const toolCall = {
+      toolCallId: "fixture-tool-1",
+      kind: "execute",
+      title: command,
+      rawInput: { command },
+      _meta: { claudeCode: { toolName: "Bash" } },
+    };
+    acp({
+      sessionUpdate: "tool_call",
+      status: "pending",
+      content: [],
+      ...toolCall,
+    });
+    frames.push(emit("acpPermission", { toolCall }));
     frames.push(wait("acpPermissionDecision"));
+    if (state !== "approval-declined")
+      acp({
+        sessionUpdate: "tool_call_update",
+        toolCallId: toolCall.toolCallId,
+        status: "in_progress",
+      });
     acp({
       sessionUpdate: "tool_call_update",
       toolCallId: "fixture-tool-1",
