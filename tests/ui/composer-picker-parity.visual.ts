@@ -27,6 +27,10 @@ for (const forcedColors of ["none", "active"] as const) {
           outline: style.outline,
           outlineStyle: style.outlineStyle,
           outlineWidth: style.outlineWidth,
+          // Chromium reports the initial `medium` (3px) width even when
+          // outline-style is none; CSS UI 4 computes that width as zero.
+          paintedOutlineWidth:
+            style.outlineStyle === "none" ? "0px" : style.outlineWidth,
           shadow: style.boxShadow,
           composerOutline: composerStyle.outline,
           composerBorder: composerStyle.borderColor,
@@ -43,7 +47,7 @@ for (const forcedColors of ["none", "active"] as const) {
     expect(pointerSelected).toMatchObject({
       focusVisible: false,
       outlineStyle: "none",
-      outlineWidth: "0px",
+      paintedOutlineWidth: "0px",
       shadow: "none",
     });
     await page
@@ -55,7 +59,7 @@ for (const forcedColors of ["none", "active"] as const) {
     expect(blurred).toMatchObject({
       focusVisible: false,
       outlineStyle: "none",
-      outlineWidth: "0px",
+      paintedOutlineWidth: "0px",
       shadow: "none",
     });
     await test.info().attach("harness-focus-diagnostics", {

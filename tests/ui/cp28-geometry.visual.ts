@@ -170,7 +170,7 @@ for (const paneWidth of [360, 384]) {
     expect(paneBox!.width).toBeCloseTo(paneWidth, 0);
     const composer = pane.locator(".composer");
     const model = composer.getByRole("button", { name: "Model", exact: true });
-    await expect(model).toContainText("GPT-5");
+    await expect(model).toHaveText("Model");
     await expect(model.locator("svg")).toHaveCSS("width", "16px");
     await expect(model.locator("svg")).toHaveCSS("height", "16px");
     await expectModelLeadingEdgeContained(model);

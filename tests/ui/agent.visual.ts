@@ -459,20 +459,19 @@ test.describe("ED02 picker visual states", () => {
     ).toHaveCount(0);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await expect(modelTrigger).toHaveText("Fresh advertised model 2");
+    await expect(modelTrigger).toHaveText("Model");
     await expect(page.locator("html")).toHaveAttribute(
       "data-visual-model-selection-count",
       "1",
     );
     await modelTrigger.click();
-    await expectOpenPickerContained(
-      page,
-      modelListbox.getByRole("option", {
-        name: "Fresh advertised model 2",
-        exact: true,
-      }),
-      modelListbox,
-    );
+    const selectedModel = modelListbox.getByRole("option", {
+      name: "Fresh advertised model 2",
+      exact: true,
+    });
+    await expect(selectedModel).toHaveAttribute("aria-selected", "true");
+    await expect(modelListbox.locator('[aria-selected="true"]')).toHaveCount(1);
+    await expectOpenPickerContained(page, selectedModel, modelListbox);
     await settleTranscriptAtEnd(page);
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(workbench, "agent-picker-harness-model");
@@ -583,7 +582,7 @@ test.describe("ED02 picker visual states", () => {
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
       "Model",
-      "GPT-5",
+      "Model",
     );
     await harnessTrigger.click();
     const listbox = page.getByRole("listbox", { name: "Harness" });

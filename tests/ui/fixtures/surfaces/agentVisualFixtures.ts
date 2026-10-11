@@ -7,7 +7,7 @@ import type {
   SageTurnId,
 } from "../../../../src/domain/acp";
 
-import { FIXED_NOW, ROOT_ID } from "../visualFixtureIds";
+import { FIXED_NOW, MODEL_ID, ROOT_ID } from "../visualFixtureIds";
 import type { ItemInput } from "../visualFixtureIds";
 import { itemIdentity } from "../visualFixtureIds";
 import {
@@ -103,6 +103,7 @@ function sessionModePage(chatIdValue: string, title: string) {
       sageAgentSessionId: "visual-session",
       runtimeEpoch: "7",
       configRevision: "1",
+      confirmedModel: { id: MODEL_ID },
       modes: {
         currentModeId: "review",
         availableModes: [
