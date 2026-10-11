@@ -90,11 +90,16 @@ for (const forcedColors of ["none", "active"] as const) {
   }) => {
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
     await openScenario(page, "agent-picker-harness-model", "agent");
+    const composer = page.locator("form.composer").first();
+    // The readiness fixture is armed only once a Harness is selected.
+    await composer.getByRole("button", { name: "Harness" }).click();
+    await page
+      .getByRole("option", { name: "Codex — test only", exact: true })
+      .click();
+    const model = composer.getByRole("button", { name: "Model", exact: true });
+    await expect(model).toBeDisabled();
     await releasePickerHarnessReadiness(page);
-    const model = page
-      .locator("form.composer")
-      .first()
-      .getByRole("button", { name: "Model", exact: true });
+    await expect(model).toBeEnabled();
     await model.click();
     await page
       .getByRole("option", { name: "Fresh advertised model 2", exact: true })
