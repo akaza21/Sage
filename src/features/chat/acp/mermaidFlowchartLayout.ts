@@ -1,4 +1,8 @@
-import type { MermaidDiagram, MermaidNode } from "./mermaidDiagram";
+import type {
+  MermaidDiagram,
+  MermaidDirection,
+  MermaidNode,
+} from "./mermaidDiagram";
 
 const BODY_GLYPH_WIDTH = 14;
 export const FLOWCHART_LABEL_LINE_HEIGHT = 16;
@@ -31,6 +35,26 @@ function sizeNode(node: MermaidNode) {
       (lines.length * FLOWCHART_LABEL_LINE_HEIGHT + 24) * shapeScale,
     ),
   };
+}
+
+export function flowchartReturnRail(
+  nodes: ReturnType<typeof layoutFlowchart>,
+  from: ReturnType<typeof layoutFlowchart>[number],
+  to: ReturnType<typeof layoutFlowchart>[number],
+  direction: MermaidDirection,
+) {
+  const horizontal = direction === "LR";
+  const axis = horizontal ? "x" : "y";
+  const first = Math.min(from[axis], to[axis]);
+  const last = Math.max(from[axis], to[axis]);
+  const extent = nodes.reduce((maximum, node) => {
+    if (node[axis] < first || node[axis] > last) return maximum;
+    return Math.max(
+      maximum,
+      horizontal ? node.y + node.height : node.x + node.width,
+    );
+  }, 0);
+  return extent + (horizontal ? 12 : 40);
 }
 
 export function layoutFlowchart(

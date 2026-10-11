@@ -1,4 +1,11 @@
-import { useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   parseMermaidSource,
   type MermaidDiagram,
@@ -6,11 +13,34 @@ import {
 } from "./mermaidDiagram";
 import {
   FLOWCHART_LABEL_LINE_HEIGHT,
+  flowchartReturnRail,
   layoutFlowchart,
 } from "./mermaidFlowchartLayout";
+import {
+  MERMAID_RELATION_LABELS,
+  mermaidAccessibility,
+} from "./mermaidAccessibility";
 
 export function MermaidFigure({ source }: { source: string }) {
+  const figureId = useId();
   const diagram = parseMermaidSource(source);
+  const accessible = mermaidAccessibility(diagram, source);
+  const figureRef = useRef<HTMLElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const figure = figureRef.current;
+    if (!figure || !diagram.ok) return;
+    const measure = () =>
+      setOverflowing(
+        figure.scrollWidth > figure.clientWidth ||
+          figure.scrollHeight > figure.clientHeight,
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(figure);
+    return () => observer.disconnect();
+  }, [source, diagram.ok]);
   const identity = useMemo(() => ({ source }), [source]);
   const [copyState, setCopyState] = useState<{
     identity: typeof identity;
@@ -20,14 +50,15 @@ export function MermaidFigure({ source }: { source: string }) {
   return (
     <figure
       className="acp-mermaid"
-      tabIndex={diagram.ok ? 0 : undefined}
-      aria-label="Diagram"
+      ref={figureRef}
+      tabIndex={diagram.ok && overflowing ? 0 : undefined}
+      aria-label={`${accessible.name} (figure ${figureId})`}
     >
       {diagram.ok ? (
         diagram.kind === "flowchart" ? (
-          <MermaidSvg diagram={diagram} />
+          <MermaidSvg diagram={diagram} description={accessible.description} />
         ) : (
-          <LaneSvg diagram={diagram} />
+          <LaneSvg diagram={diagram} description={accessible.description} />
         )
       ) : (
         <p className="acp-mermaid__fallback">
@@ -63,22 +94,27 @@ function DiagramSvg({
   width,
   height,
   label,
+  description,
   children,
 }: {
   left?: number;
   width: number;
   height: number;
   label: string;
+  description: string;
   children: ReactNode;
 }) {
+  const descriptionId = useId();
   return (
     <svg
       role="img"
       aria-label={`Mermaid ${label}`}
+      aria-describedby={descriptionId}
       viewBox={`${left} 0 ${width} ${height}`}
       width={width}
       height={height}
     >
+      <desc id={descriptionId}>{description}</desc>
       {children}
     </svg>
   );
@@ -86,8 +122,10 @@ function DiagramSvg({
 
 function MermaidSvg({
   diagram,
+  description,
 }: {
   diagram: Extract<MermaidDiagram, { ok: true }>;
+  description: string;
 }) {
   const placed = layoutFlowchart(diagram);
   const marker = useId();
@@ -102,9 +140,9 @@ function MermaidSvg({
     const startY = from.y + (lateral ? from.height / 2 : from.height);
     const endX = to.x + (lateral ? (returning ? to.width : 0) : to.width / 2);
     const endY = to.y + (lateral ? to.height / 2 : returning ? to.height : 0);
-    const rail = horizontal
-      ? Math.max(from.y + from.height, to.y + to.height) + 12
-      : Math.max(from.x + from.width, to.x + to.width) + 40;
+    const rail = returning
+      ? flowchartReturnRail(placed, from, to, diagram.direction)
+      : 0;
     const route = returning
       ? horizontal
         ? `L${startX} ${rail}L${endX} ${rail}`
@@ -133,7 +171,13 @@ function MermaidSvg({
     ...labelledEdges.map((edge) => edge.y + 8),
   );
   return (
-    <DiagramSvg label="diagram" left={left} width={width} height={height}>
+    <DiagramSvg
+      label="diagram"
+      left={left}
+      width={width}
+      height={height}
+      description={description}
+    >
       <defs>
         <marker
           id={marker}
@@ -196,8 +240,10 @@ function MermaidSvg({
 
 function LaneSvg({
   diagram,
+  description,
 }: {
   diagram: Extract<MermaidSource, { kind: "sequence" | "class" | "state" }>;
+  description: string;
 }) {
   const klass = diagram.kind === "class";
   const sequence = diagram.kind === "sequence";
@@ -209,12 +255,7 @@ function LaneSvg({
   const edges = klass
     ? diagram.relations.map((relation) => ({
         ...relation,
-        label: {
-          inheritance: "extends",
-          composition: "owns",
-          aggregation: "has",
-          association: "",
-        }[relation.kind],
+        label: MERMAID_RELATION_LABELS[relation.kind],
         dashed: relation.kind === "aggregation",
       }))
     : sequence
@@ -236,7 +277,12 @@ function LaneSvg({
     (klass ? rowStart : sequence ? 56 : 72) +
     Math.max(edges.length, sequence ? 0 : 1) * 36;
   return (
-    <DiagramSvg label={`${diagram.kind} diagram`} width={width} height={height}>
+    <DiagramSvg
+      label={`${diagram.kind} diagram`}
+      width={width}
+      height={height}
+      description={description}
+    >
       {nodes.map((node, index) => {
         const center = index * column + column / 2;
         const size = klass

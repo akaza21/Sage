@@ -6,6 +6,7 @@ import {
 import { flowchartSource } from "./fixtures/cp22Answers";
 
 const diagrams = [
+  ["short flowchart", "flowchart TD\nA --> B"],
   ["wide flowchart", "flowchart LR\nBinding --> Pump\nPump --> SQLite"],
   ["ref 55 flowchart", flowchartSource],
   ["long flowchart edge", `graph TD\nA -->|${"W".repeat(64)}| B`],
@@ -68,6 +69,87 @@ async function installDiagrams(page: Page, source: string) {
 test.use({ deviceScaleFactor: 1 });
 
 for (const width of [480, 720, 1888]) {
+  for (const [direction, label] of [
+    ["TD", "A much longer label here ok"],
+    ["LR", "W".repeat(64)],
+  ]) {
+    for (const sibling of [false, true]) {
+      test(`CP-31 ${direction} narrow-wide-narrow return clears every spanned node (sibling=${sibling}) at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 1096 });
+        await openScenario(page, "agent-single", "agent");
+        await installDiagrams(
+          page,
+          `flowchart ${direction}\nA[Go] --> B[${label}]\nB --> C[Done]\n${sibling ? `A --> D[${label}]\n` : ""}C -->|retry| A`,
+        );
+        const figure = page.getByRole("figure", { name: /^Diagram:/u });
+        const image = figure.getByRole("img");
+        await expect(image).toBeVisible();
+        await expect(figure).toHaveAccessibleName(
+          new RegExp(`^Diagram: Go, ${label}`, "u"),
+        );
+        await expect(image).toHaveAccessibleDescription(
+          `Nodes: Go; ${label}; Done${sibling ? `; ${label}` : ""}. Connections: Go to ${label}; ${label} to Done${sibling ? `; Go to ${label}` : ""}; Done to Go: retry.`,
+        );
+        await page.evaluate(() => document.fonts.ready);
+        const geometry = await image.evaluate((element) => {
+          const svg = element as SVGSVGElement;
+          const points = [...svg.querySelectorAll("path[marker-end]")]
+            .at(-1)!
+            .getAttribute("d")!
+            .match(/[ML][\d.]+ [\d.]+/gu)!
+            .map((point) => {
+              const [left, top] = point.slice(1).split(" ").map(Number);
+              return new DOMPoint(left, top).matrixTransform(
+                svg.getScreenCTM()!,
+              );
+            });
+          const svgBox = svg.getBoundingClientRect();
+          return {
+            rail: points
+              .slice(1, 3)
+              .map((point) => ({ left: point.x, top: point.y })),
+            nodes: [...svg.querySelectorAll("g[transform]")].map((node) => {
+              const box = node.getBoundingClientRect();
+              return {
+                right: box.right,
+                bottom: box.bottom,
+                width: box.width,
+                height: box.height,
+              };
+            }),
+            right: svgBox.right,
+            bottom: svgBox.bottom,
+          };
+        });
+        expect(geometry.nodes).toHaveLength(sibling ? 4 : 3);
+        const dimension = direction === "TD" ? "width" : "height";
+        expect(geometry.nodes[1][dimension]).toBeGreaterThan(
+          geometry.nodes[0][dimension],
+        );
+        expect(geometry.nodes[1][dimension]).toBeGreaterThan(
+          geometry.nodes[2][dimension],
+        );
+        expect(geometry.rail).toHaveLength(2);
+        const [start, end] = geometry.rail;
+        if (direction === "TD") {
+          expect(start.left).toBeCloseTo(end.left);
+          for (const node of geometry.nodes)
+            expect(start.left).toBeGreaterThan(node.right);
+          expect(start.left).toBeLessThan(geometry.right);
+        } else {
+          expect(start.top).toBeCloseTo(end.top);
+          for (const node of geometry.nodes)
+            expect(start.top).toBeGreaterThan(node.bottom);
+          expect(start.top).toBeLessThan(geometry.bottom);
+        }
+      });
+    }
+  }
+}
+
+for (const width of [480, 720, 1888]) {
   for (const direction of ["TD", "LR"]) {
     for (const length of [28, 64]) {
       for (const [shape, open, close] of [
@@ -85,7 +167,7 @@ for (const width of [480, 720, 1888]) {
             page,
             `graph ${direction}\nStart --> Left${open}${label}${close}\nStart --> Right${open}${label}${close}\nRight --> End`,
           );
-          const figure = page.getByRole("figure", { name: "Diagram" });
+          const figure = page.getByRole("figure", { name: /^Diagram:/u });
           await expect(figure.getByRole("img")).toBeVisible();
           await page.evaluate(() => document.fonts.ready);
           const metrics = await figure.evaluate((element) => {
@@ -162,6 +244,11 @@ for (const width of [480, 720, 1888]) {
             metrics.intrinsicWidth > metrics.clientWidth,
           );
           expect(metrics.paneContained).toBe(true);
+          if (metrics.hasLocalOverflow) {
+            await expect(figure).toHaveAttribute("tabindex", "0");
+          } else {
+            await expect(figure).not.toHaveAttribute("tabindex");
+          }
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth,
@@ -186,10 +273,16 @@ for (const width of [720, 1888]) {
         await expect(panes).toHaveCount(
           scenario === "agent-dual" && width === 1888 ? 2 : 1,
         );
+        const figures = page.getByRole("figure", { name: /^Diagram:/u });
+        await expect(figures).toHaveCount(await panes.count());
+        const names = await figures.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("aria-label")),
+        );
+        expect(new Set(names).size).toBe(names.length);
         for (const forcedColors of ["none", "active"] as const) {
           await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
           for (const pane of await panes.all()) {
-            const figure = pane.getByRole("figure", { name: "Diagram" });
+            const figure = pane.getByRole("figure", { name: /^Diagram:/u });
             await expect(figure.getByRole("img")).toBeVisible();
             const metrics = await figure.evaluate((element) => {
               const svg = element.querySelector("svg")!;
@@ -247,6 +340,7 @@ for (const width of [720, 1888]) {
             expect(metrics.padding).toBe("0px");
             for (const fill of metrics.nodeFills) expect(fill).toBe("none");
             if (metrics.hasLocalOverflow) {
+              await expect(figure).toHaveAttribute("tabindex", "0");
               await figure.evaluate((element) => {
                 element.scrollLeft = 0;
               });
@@ -255,6 +349,8 @@ for (const width of [720, 1888]) {
               await expect
                 .poll(() => figure.evaluate((element) => element.scrollLeft))
                 .toBeGreaterThan(0);
+            } else {
+              await expect(figure).not.toHaveAttribute("tabindex");
             }
           }
         }
