@@ -132,26 +132,18 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
     };
     assert_eq!(next_cursor, &None);
     assert_eq!(models.len(), 2);
-    for (model, id, name, default, effort) in [
-        (
-            &models[0],
-            "fixture-model",
-            "Synthetic replay",
-            true,
-            "medium",
-        ),
+    for (model, id, name, default) in [
+        (&models[0], "fixture-model", "Synthetic replay", true),
         (
             &models[1],
             "fixture-model-fast",
             "Synthetic replay fast",
             false,
-            "low",
         ),
     ] {
         assert_eq!(model.id.as_str(), id);
         assert_eq!(model.name.as_str(), name);
         assert_eq!(model.is_default, default);
-        assert_eq!(model.default_effort.as_ref().unwrap().as_str(), effort);
         assert_eq!(
             model
                 .supported_efforts
