@@ -2,7 +2,7 @@
 // Real-app smoke: render Sage in a headless, isolated browser and walk the
 // main surfaces, capturing screenshots and console errors.
 //
-//   node scripts/app-smoke.mjs            start Vite itself on 127.0.0.1:1431
+//   node scripts/app-smoke.mjs            start Vite on SAGE_UI_PORT (default 1431)
 //   node scripts/app-smoke.mjs --url=URL  drive an already-running server
 //   --strict                               fail on any console error, not only page errors
 //
@@ -17,6 +17,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
+import { resolveUiPort } from "./lib/ui-test-port.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -26,7 +27,10 @@ const args = process.argv.slice(2);
 const flag = (name) =>
   args.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const strict = args.includes("--strict");
-const port = Number(flag("port") ?? 1431);
+const port = resolveUiPort({
+  ...process.env,
+  SAGE_UI_PORT: flag("port") ?? process.env.SAGE_UI_PORT,
+});
 let url = flag("url");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");

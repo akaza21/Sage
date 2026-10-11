@@ -1,4 +1,8 @@
 import { defineConfig } from "@playwright/test";
+import { resolveUiPort } from "./scripts/lib/ui-test-port.mjs";
+
+const port = resolveUiPort();
+const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests/ui",
@@ -21,7 +25,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
   outputDir: "output/playwright",
   use: {
-    baseURL: "http://127.0.0.1:1431",
+    baseURL,
     browserName: "chromium",
     colorScheme: "dark",
     locale: "en-US",
@@ -32,8 +36,8 @@ export default defineConfig({
   },
   projects: [{ name: "chromium" }],
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 1431 --strictPort",
-    url: "http://127.0.0.1:1431",
+    command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,
     stdout: "pipe",

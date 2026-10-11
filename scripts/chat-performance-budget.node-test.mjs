@@ -4,9 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { resolveUiPort } from "./lib/ui-test-port.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("CP-24 retained Chat envelope stays within browser performance budgets", () => {
+  const port = resolveUiPort();
   const cli = path.join(root, "node_modules", "@playwright", "test", "cli.js");
   const result = spawnSync(
     process.execPath,
@@ -21,6 +24,7 @@ test("CP-24 retained Chat envelope stays within browser performance budgets", ()
     ],
     {
       cwd: root,
+      env: { ...process.env, SAGE_UI_PORT: String(port) },
       encoding: "utf8",
       timeout: 120_000,
       maxBuffer: 4 * 1024 * 1024,

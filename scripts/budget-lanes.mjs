@@ -66,6 +66,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
+  "ui-test-port.node-test.mjs",
   "validate-performance-budgets.node-test.mjs",
   "verify-web-bundle.node-test.mjs",
   "workbench-transport-parity.node-test.mjs",
@@ -373,6 +374,11 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
 // split itself (not a migration successor): the discovered file count may
 // grow only through entries recorded here.
 export const LANE_JUSTIFICATIONS = Object.freeze([
+  {
+    file: "ui-test-port.node-test.mjs",
+    reason:
+      "Portable VS-2 checks of shared UI test port resolution and validation; no Vite, browser, or subprocess launch.",
+  },
   {
     file: "chat-performance-budget.node-test.mjs",
     reason:
