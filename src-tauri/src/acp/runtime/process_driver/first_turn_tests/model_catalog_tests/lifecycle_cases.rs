@@ -55,6 +55,27 @@ fn catalog_error_after_turn_preserves_empty_or_partial_catalog_and_live_session(
 }
 
 #[test]
+fn catalog_errors_without_confirmed_session_metadata_never_publish_config() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for cold_prompt in [true, false] {
+        for failure in [
+            CatalogFailure::BeforePrompt,
+            CatalogFailure::DuringTurn,
+            CatalogFailure::AfterTurn,
+        ] {
+            runtime.block_on(run_catalog_page_crossing_turn(
+                cold_prompt,
+                failure == CatalogFailure::DuringTurn,
+                Some(failure),
+                false,
+                None,
+                false,
+            ));
+        }
+    }
+}
+
+#[test]
 fn invalid_catalog_page_idle_preserves_partial_catalog_and_stops_paging() {
     rejected_catalog_pages(Some(CatalogFailure::BeforePrompt), false);
 }
@@ -115,6 +136,7 @@ fn rejected_catalog_pages(failure: Option<CatalogFailure>, during_turn: bool) {
             failure,
             false,
             Some(result),
+            true,
         ));
     }
 }

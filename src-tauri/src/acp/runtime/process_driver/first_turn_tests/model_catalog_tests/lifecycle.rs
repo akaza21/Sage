@@ -18,6 +18,7 @@ fn catalog_page_crossing_turn(
             failure,
             deferred,
             None,
+            true,
         ));
 }
 
@@ -27,21 +28,33 @@ async fn run_catalog_page_crossing_turn(
     failure: Option<CatalogFailure>,
     deferred: bool,
     invalid_page: Option<Value>,
+    confirmed_config: bool,
 ) {
     let fixture = prepare_first_turn_fixture().await;
-    let adapter = ready_adapter(
-        CodexRuntime::fixture_with_identity(
+    let channel = Arc::new(crate::acp::session_config::ConfigChannel::default());
+    channel.reserve(fixture.owner.clone());
+    let mut adapter =
+        crate::acp::bindings::runtime::NativeRuntime::new(CodexRuntime::fixture_with_identity(
             Platform::WindowsX86_64,
             [0x11; 32],
             fixture.started.session_id.clone(),
-        ),
-        &fixture.external_session,
-    );
-    let channel = Arc::new(crate::acp::session_config::ConfigChannel::default());
-    channel.reserve(fixture.owner.clone());
-    channel.publish(&fixture.owner);
-    let mut adapter = crate::acp::bindings::runtime::NativeRuntime::new(adapter);
+        ));
     adapter.attach_config(fixture.owner.clone(), Arc::clone(&channel));
+    let adapter = ready_adapter(adapter, &fixture.external_session, confirmed_config);
+    assert!(channel.live_snapshot(&fixture.owner).is_none());
+    channel.publish(&fixture.owner);
+    let initial_config = channel.live_snapshot(&fixture.owner);
+    assert_eq!(initial_config.is_some(), confirmed_config);
+    if let Some(overlay) = &initial_config {
+        assert_eq!(overlay.config_revision.get(), 1);
+        assert_eq!(
+            serde_json::to_value(&overlay.config).unwrap(),
+            json!({
+                "modes":null,"configOptions":[],
+                "confirmedModel":{"id":"selected"},"confirmedEffort":"high"
+            })
+        );
+    }
     let writes = Arc::new(Mutex::new(Vec::new()));
     let mailbox = Arc::new(DriverMailbox::new().unwrap());
     let mut completed = CompletedActivationDriverParts {
@@ -96,15 +109,20 @@ async fn run_catalog_page_crossing_turn(
         writes.lock().unwrap()[1]["id"].as_u64().unwrap()
     };
     let retained_config = channel.live_snapshot(&fixture.owner);
-    assert_eq!(retained_config.is_some(), !cold_prompt);
+    assert_eq!(retained_config.is_some(), confirmed_config);
+    if cold_prompt {
+        assert_eq!(retained_config, initial_config);
+    }
     if let Some(overlay) = &retained_config {
         let config = serde_json::to_value(&overlay.config).unwrap();
         assert_eq!(config["confirmedModel"]["id"], "selected");
+        assert_eq!(config["confirmedEffort"], "high");
         assert_eq!(
             config["configOptions"].as_array().unwrap().len(),
-            usize::from(failure.is_some())
+            usize::from(!cold_prompt && failure.is_some())
         );
     }
+    let _ = channel.take_notice();
     let error = invalid_page.map_or_else(
         || json!({"id":page_id,"error":{"code":-32601,"message":"Method not found"}}),
         |result| json!({"id":page_id,"result":result}),
@@ -120,6 +138,7 @@ async fn run_catalog_page_crossing_turn(
             usize::from(!cold_prompt)
         );
         assert_eq!(channel.live_snapshot(&fixture.owner), retained_config);
+        assert!(channel.take_notice().is_none());
     }
     let context = FirstTurnWorkerContext {
         owner: fixture.owner.clone(),
@@ -201,6 +220,11 @@ async fn run_catalog_page_crossing_turn(
     let driver = &mut active.turn.driver;
     let written = writes.lock().unwrap().len();
     let prompt_request = writes.lock().unwrap().last().unwrap().clone();
+    if confirmed_config {
+        assert_eq!(prompt_request["params"]["effort"], "high");
+    } else {
+        assert!(prompt_request["params"].get("effort").is_none());
+    }
     assert_eq!(prompt_request["method"], "turn/start");
     let prompt_id = prompt_request["id"].as_u64().unwrap();
     let external_turn_id = "fast-turn";
@@ -346,6 +370,7 @@ async fn run_catalog_page_crossing_turn(
             .hydrate_model_config(&mut reusable.transport);
         assert_eq!(writes.lock().unwrap().len(), written);
         assert_eq!(channel.live_snapshot(&fixture.owner), retained_config);
+        assert!(channel.take_notice().is_none());
     } else {
         let overlay = channel
             .live_snapshot(&fixture.owner)

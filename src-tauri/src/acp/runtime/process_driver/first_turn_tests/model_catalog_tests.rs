@@ -46,10 +46,15 @@ fn ready_runtime(external_session: &ExternalId) -> CodexRuntime {
     ready_adapter(
         CodexRuntime::fixture(Platform::WindowsX86_64),
         external_session,
+        true,
     )
 }
 
-fn ready_adapter(mut adapter: CodexRuntime, external_session: &ExternalId) -> CodexRuntime {
+fn ready_adapter<Adapter: HarnessAdapter>(
+    mut adapter: Adapter,
+    external_session: &ExternalId,
+    confirmed_config: bool,
+) -> Adapter {
     let initialize = adapter.command(AdapterCommand::Initialize).unwrap();
     adapter
         .ingest(
@@ -67,11 +72,14 @@ fn ready_adapter(mut adapter: CodexRuntime, external_session: &ExternalId) -> Co
             model: Some(RequiredText::new("model", "selected").unwrap()),
         })
         .unwrap();
+    let mut result = json!({"thread":{"id":external_session.as_str()}});
+    if confirmed_config {
+        result["model"] = json!("selected");
+        result["reasoningEffort"] = json!("high");
+    }
     adapter
         .ingest(
-            &frame(json!({"id":request_id(&start),"result":{
-                "thread":{"id":external_session.as_str()},"model":"selected","reasoningEffort":"high"
-            }})),
+            &frame(json!({"id":request_id(&start),"result":result})),
             &Mapper,
         )
         .unwrap();
