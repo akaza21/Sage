@@ -5,6 +5,7 @@ import { App } from "./app/App";
 import "./app/retiredComposerStorage";
 import "./styles/global.css";
 import "./styles/shared-controls.css";
+import "./styles/popover-containment.css";
 import "./styles/editor-activity-bar.css";
 import "./features/files/explorer-surface.css";
 import "./features/search/workspace-search.css";

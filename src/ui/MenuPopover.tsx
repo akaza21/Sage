@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -9,6 +10,10 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  menuPopoverPosition,
+  PopoverPlacementContext,
+} from "./menuPopoverPosition";
 
 const ITEM_SELECTOR = [
   '[role="menuitem"]',
@@ -16,7 +21,6 @@ const ITEM_SELECTOR = [
   '[role="menuitemcheckbox"]',
   '[role="option"]',
 ].join(",");
-const VIEWPORT_GUTTER = 8;
 const POPOVER_GAP = 4;
 
 type InitialFocus = "first" | "last" | "selected";
@@ -109,6 +113,8 @@ export function MenuPopover({
   triggerRef: RefObject<HTMLElement | null>;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const parentPlacement = useContext(PopoverPlacementContext);
+  const originRef = parentPlacement?.originRef ?? triggerRef;
   const typeaheadRef = useRef("");
   const typeaheadTimerRef = useRef<number | null>(null);
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
@@ -126,38 +132,19 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const anchor = trigger.getBoundingClientRect();
-      const surface = popover.getBoundingClientRect();
-      const width = Math.max(
-        surface.width,
-        matchTriggerWidth ? anchor.width : 0,
+      const next = menuPopoverPosition(
+        trigger,
+        popover,
+        originRef.current ?? trigger,
+        gap,
+        matchTriggerWidth,
       );
-      const roomBelow = window.innerHeight - anchor.bottom - VIEWPORT_GUTTER;
-      const roomAbove = anchor.top - VIEWPORT_GUTTER;
-      const placeAbove = surface.height > roomBelow && roomAbove > roomBelow;
-      const top = placeAbove
-        ? Math.max(VIEWPORT_GUTTER, anchor.top - surface.height - gap)
-        : Math.min(
-            anchor.bottom + gap,
-            window.innerHeight - surface.height - VIEWPORT_GUTTER,
-          );
-      const preferredLeft = anchor.right - width;
-      const left = Math.min(
-        Math.max(VIEWPORT_GUTTER, preferredLeft),
-        Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER),
-      );
-
-      const next: CSSProperties = {
-        left,
-        minWidth: matchTriggerWidth ? anchor.width : undefined,
-        top: Math.max(VIEWPORT_GUTTER, top),
-        visibility: "visible",
-      };
       const current = positionRef.current;
       if (
         current.left === next.left &&
         current.top === next.top &&
         current.minWidth === next.minWidth &&
+        current.maxHeight === next.maxHeight &&
         current.visibility === next.visibility
       )
         return;
@@ -185,7 +172,16 @@ export function MenuPopover({
       window.removeEventListener("scroll", updatePosition, true);
       resizeObserver?.disconnect();
     };
-  }, [focusKey, gap, matchTriggerWidth, open, portalRoot, triggerRef]);
+  }, [
+    focusKey,
+    gap,
+    matchTriggerWidth,
+    open,
+    originRef,
+    parentPlacement?.position,
+    portalRoot,
+    triggerRef,
+  ]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -359,29 +355,37 @@ export function MenuPopover({
   };
 
   return createPortal(
-    <div
-      ref={popoverRef}
-      id={id}
-      className={["menu-popover", className].filter(Boolean).join(" ")}
-      role={role === "none" ? undefined : role}
-      tabIndex={role === "dialog" ? -1 : undefined}
-      aria-label={role === "none" ? undefined : ariaLabel}
-      hidden={!open}
-      style={position}
-      onKeyDown={moveFocus}
-      onFocus={(event) => {
-        if (focusStrategy === "none") return;
-        const item = (event.target as HTMLElement).closest<HTMLElement>(
-          ITEM_SELECTOR,
-        );
-        if (!item || item.hasAttribute("disabled")) return;
-        const items = enabledMenuItems(event.currentTarget);
-        const index = items.indexOf(item);
-        if (index >= 0) activateMenuItem(event.currentTarget, index);
-      }}
-    >
-      {children}
-    </div>,
+    <PopoverPlacementContext value={{ originRef, position }}>
+      <div
+        ref={popoverRef}
+        id={id}
+        className={[
+          "menu-popover",
+          position.maxHeight === undefined ? null : "menu-popover--bounded",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        role={role === "none" ? undefined : role}
+        tabIndex={role === "dialog" ? -1 : undefined}
+        aria-label={role === "none" ? undefined : ariaLabel}
+        hidden={!open}
+        style={position}
+        onKeyDown={moveFocus}
+        onFocus={(event) => {
+          if (focusStrategy === "none") return;
+          const item = (event.target as HTMLElement).closest<HTMLElement>(
+            ITEM_SELECTOR,
+          );
+          if (!item || item.hasAttribute("disabled")) return;
+          const items = enabledMenuItems(event.currentTarget);
+          const index = items.indexOf(item);
+          if (index >= 0) activateMenuItem(event.currentTarget, index);
+        }}
+      >
+        {children}
+      </div>
+    </PopoverPlacementContext>,
     portalRoot,
   );
 }

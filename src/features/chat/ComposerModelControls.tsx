@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from "react";
-import { ChevronDown, Settings } from "../../ui/leanIcons";
+import { ChevronDown, Sparkles } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type {
@@ -78,7 +78,7 @@ export function ComposerModelControls({
           onPointerDown={(event) => event.currentTarget.blur()}
           onClick={onToggle}
         >
-          <Settings
+          <Sparkles
             className="composer__model-icon"
             size={16}
             aria-hidden="true"

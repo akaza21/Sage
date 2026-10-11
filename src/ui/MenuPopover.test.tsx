@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MenuPopover } from "./MenuPopover";
 
 const INITIAL_INNER_HEIGHT = window.innerHeight;
+const INITIAL_INNER_WIDTH = window.innerWidth;
 
 afterEach(() => {
   cleanup();
@@ -19,6 +20,10 @@ afterEach(() => {
   Object.defineProperty(window, "innerHeight", {
     configurable: true,
     value: INITIAL_INNER_HEIGHT,
+  });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: INITIAL_INNER_WIDTH,
   });
 });
 
@@ -122,6 +127,76 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it("keeps a left-edge composer menu inside its composer when it fits", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.classList.contains("composer"))
+          return new DOMRect(480, 400, 580, 120);
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 298, 140);
+        return new DOMRect(488, 490, 22, 28);
+      },
+    );
+    render(
+      <form className="composer">
+        <MenuHarness />
+      </form>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menu", { name: "Actions" })).toHaveStyle({
+      left: "480px",
+    });
+  });
+
+  it.each([
+    [260, 404, 148],
+    [388, 532, 20],
+  ])(
+    "opens a nested picker below its parent at y=%i with top=%i and height cap=%i",
+    (parentTop, expectedTop, maxHeight) => {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 560,
+      });
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 480,
+      });
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute("role") === "dialog")
+          return new DOMRect(8, parentTop, 298, 140);
+        if (this.id === "nested") return new DOMRect(0, 0, 260, 320);
+        return new DOMRect(20, parentTop + 50, 260, 28);
+      });
+      function NestedHarness() {
+        const triggerRef = useRef<HTMLButtonElement>(null);
+        return (
+          <div className="menu-popover" role="dialog">
+            <button>Project</button>
+            <button ref={triggerRef}>Permission mode</button>
+            <MenuPopover
+              ariaLabel="Picker"
+              id="nested"
+              open
+              role="listbox"
+              triggerRef={triggerRef}
+              onDismiss={() => {}}
+            >
+              <button role="option">Read-only</button>
+            </MenuPopover>
+          </div>
+        );
+      }
+      render(<NestedHarness />);
+      expect(screen.getByRole("listbox", { name: "Picker" })).toHaveStyle({
+        top: expectedTop + "px",
+        maxHeight: maxHeight + "px",
+      });
+    },
+  );
   it("does not commit another render when the measured position is unchanged", () => {
     const onRender = vi.fn();
     render(
@@ -242,6 +317,66 @@ describe("MenuPopover", () => {
       expect(trigger).toHaveFocus();
     },
   );
+
+  it("moves nested pickers with their parent menu when the anchor moves", () => {
+    let anchor = new DOMRect(100, 400, 24, 28);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.id === "outer")
+          return new DOMRect(
+            Number.parseFloat(this.style.left) || 0,
+            Number.parseFloat(this.style.top) || 0,
+            298,
+            140,
+          );
+        if (this.id === "inner") return new DOMRect(0, 0, 260, 100);
+        if (this.textContent === "Nested") {
+          const parent = document.getElementById("outer")!;
+          return new DOMRect(
+            Number.parseFloat(parent.style.left) || 0,
+            Number.parseFloat(parent.style.top) || 0,
+            260,
+            28,
+          );
+        }
+        return anchor;
+      },
+    );
+    function NestedHarness() {
+      const outer = useRef<HTMLButtonElement>(null);
+      const inner = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={outer}>Options</button>
+          <MenuPopover
+            ariaLabel="Outer"
+            id="outer"
+            open
+            triggerRef={outer}
+            onDismiss={() => {}}
+          >
+            <button ref={inner}>Nested</button>
+            <MenuPopover
+              ariaLabel="Inner"
+              id="inner"
+              open
+              triggerRef={inner}
+              onDismiss={() => {}}
+            >
+              <button role="menuitem">Choice</button>
+            </MenuPopover>
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<NestedHarness />);
+    const inner = screen.getByRole("menu", { name: "Inner" });
+    const initialLeft = inner.style.left;
+    anchor = new DOMRect(600, 400, 24, 28);
+    fireEvent(window, new Event("resize"));
+    expect(inner.style.left).not.toBe(initialLeft);
+    expect(inner.style.left).toBe("628px");
+  });
 
   it("leaves focus and keyboard ownership to an opt-in neutral popup", () => {
     function NeutralHarness() {

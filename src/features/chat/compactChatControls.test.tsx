@@ -87,7 +87,10 @@ describe("Compact chat controls", () => {
       "aria-description",
       "Advertised long model",
     );
-    expect(trigger.querySelector(".composer__model-icon")).not.toBeNull();
+    expect(
+      trigger.querySelector(".composer__model-icon.lucide-sparkles"),
+    ).toHaveAttribute("aria-hidden", "true");
+    expect(trigger.querySelector(".lucide-settings")).toBeNull();
   });
 
   it.each(["Escape", "Tab", "Shift+Tab"])(

@@ -13,6 +13,10 @@
 }
 
 @container composer (max-width: 520px) {
+  .composer .composer__plus {
+    width: 24px;
+  }
+
   .composer .composer__queued {
     position: static;
     max-height: min(160px, 24vh);

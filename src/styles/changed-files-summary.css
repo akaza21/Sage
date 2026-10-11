@@ -181,6 +181,7 @@
 .acp-file-changes .chat-file-chip__name {
   min-width: 0;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
 }
 
@@ -291,39 +292,24 @@
 }
 
 @container chat (max-width: 400px) {
-  .edit-summary__header,
-  .acp-file-changes__header {
+  .acp-file-changes .chat-file-chip__root {
+    max-width: 64px;
+  }
+
+  .acp-file-changes--collapsed .acp-file-changes__header {
     grid-template-columns: 18px minmax(0, 1fr);
   }
 
-  .edit-summary__totals,
-  .acp-file-changes__totals {
+  .acp-file-changes--collapsed .acp-file-changes__totals {
     grid-column: 2;
     flex-wrap: wrap;
     white-space: normal;
-  }
-
-  .acp-file-changes .chat-file-chip {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .acp-file-changes .chat-file-chip__root {
-    grid-column: 2;
-  }
-
-  .acp-file-changes .tab__count {
-    grid-column: 2;
-    justify-self: start;
   }
 
   .acp-file-changes__preview-toggle {
     max-width: 100%;
     text-align: left;
     overflow-wrap: anywhere;
-  }
-
-  .edit-file {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .acp-file-changes__disposition > span {

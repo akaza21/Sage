@@ -120,6 +120,7 @@ describe("Composer surface stylesheet seam", () => {
       "composer-context.css",
       "chat-surface.css",
       "shared-controls.css",
+      "popover-containment.css",
       "status-surfaces.css",
     ]) {
       const css = await readFile(resolve("src/styles", file), "utf8");

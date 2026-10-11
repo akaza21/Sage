@@ -1,0 +1,14 @@
+.searchable-picker__popover.menu-popover--bounded {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.searchable-picker__popover.menu-popover--bounded > :not([role="listbox"]) {
+  flex-shrink: 0;
+}
+
+.searchable-picker__popover.menu-popover--bounded > [role="listbox"] {
+  flex: 1 1 auto;
+  min-height: 28px;
+}

@@ -3,7 +3,7 @@ import {
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
-import { revealWorkedContent } from "./agentVisualHelpers";
+import { openComposerOptions, revealWorkedContent } from "./agentVisualHelpers";
 import type { ChatContainmentProfile } from "./fixtures/chatContainmentFixture";
 
 const profiles: ChatContainmentProfile[] = [
@@ -61,7 +61,22 @@ async function expectControls(
     expect(boundary).not.toBeNull();
     const box = await control.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(24);
+    if (
+      await control.evaluate((element) =>
+        element.classList.contains("composer__plus"),
+      )
+    ) {
+      const compact = await owner.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          element.clientWidth -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight) <=
+          520
+        );
+      });
+      expect(box!.width).toBe(compact ? 24 : 22);
+    } else expect(box!.width).toBeGreaterThanOrEqual(24);
     expect(box!.height).toBeGreaterThanOrEqual(24);
     expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, boundary!.x));
     expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, boundary!.y));
@@ -221,6 +236,118 @@ async function expectOverlay(
     ).toBe(true);
   }
 }
+
+async function expectNestedPlacement(picker: Locator, parent: Locator) {
+  const child = await picker.boundingBox();
+  const owner = await parent.boundingBox();
+  expect(
+    child!.x >= owner!.x + owner!.width ||
+      child!.x + child!.width <= owner!.x ||
+      child!.y >= owner!.y + owner!.height,
+  ).toBe(true);
+}
+
+for (const forcedColors of ["none", "active"] as const) {
+  test(`nested Session mode choices and Project stay reachable at 480x560 (${forcedColors})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewports[3]);
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await openScenario(page, "agent-session-mode-open", "agent");
+    await openComposerOptions(page);
+    const options = page.getByRole("dialog", { name: "Composer options menu" });
+    await options
+      .getByRole("button", { name: "Session mode", exact: true })
+      .click();
+    const picker = options.locator(".searchable-picker__popover");
+    await expectOverlay(picker, viewports[3]);
+    await expectNestedPlacement(picker, options);
+    const project = options.getByRole("button", {
+      name: "Project",
+      exact: true,
+    });
+    const projectBox = await project.boundingBox();
+    const pickerBox = await picker.boundingBox();
+    expect(
+      Math.min(
+        projectBox!.x + projectBox!.width,
+        pickerBox!.x + pickerBox!.width,
+      ) -
+        Math.max(projectBox!.x, pickerBox!.x) <=
+        0 ||
+        Math.min(
+          projectBox!.y + projectBox!.height,
+          pickerBox!.y + pickerBox!.height,
+        ) -
+          Math.max(projectBox!.y, pickerBox!.y) <=
+          0,
+    ).toBe(true);
+    const last = picker.getByRole("option").last();
+    await last.scrollIntoViewIfNeeded();
+    expect(
+      await last.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+    await last.click();
+    await expect(picker).toHaveCount(0);
+    await expect(options).toBeVisible();
+  });
+}
+
+test("single-pane composer options stay inside the wide composer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await prepare(page, profiles[0], false, false);
+  const composer = page.locator("form.composer");
+  await composer
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  const options = page.getByRole("dialog", { name: "Composer options menu" });
+  await expectOverlay(options, { width: 1280, height: 1000 });
+  const bounds = await composer.boundingBox();
+  const panel = await options.boundingBox();
+  expect(panel!.x).toBeGreaterThanOrEqual(bounds!.x);
+  expect(panel!.x + panel!.width).toBeLessThanOrEqual(
+    bounds!.x + bounds!.width,
+  );
+});
+
+test("expanded narrow file changes keep names and totals on one row", async ({
+  page,
+}) => {
+  await page.setViewportSize(viewports[0]);
+  await prepare(page, profiles[0], false, true);
+  const summary = page.locator(".acp-file-changes").first();
+  await revealWorkedContent(summary);
+  const disclosure = summary.locator(".acp-file-changes__header");
+  if ((await disclosure.getAttribute("aria-expanded")) === "false")
+    await disclosure.click();
+  const rows = summary.locator(".chat-file-chip");
+  expect(await rows.count()).toBeGreaterThan(0);
+  for (const row of await rows.all()) {
+    const name = row.locator(".chat-file-chip__name");
+    await expect(name).toHaveCSS("text-align", "left");
+    await expect(name).toHaveCSS("text-overflow", "ellipsis");
+    const nameBox = await name.boundingBox();
+    expect(nameBox!.width).toBeGreaterThan(0);
+    for (const detail of await row
+      .locator(".chat-file-chip__root, .tab__count")
+      .all()) {
+      const detailBox = await detail.boundingBox();
+      expect(Math.abs(detailBox!.y - nameBox!.y)).toBeLessThanOrEqual(2);
+      expect(detailBox!.x).toBeGreaterThan(nameBox!.x);
+    }
+    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(28);
+  }
+});
 
 for (const profile of profiles) {
   for (const viewport of viewports) {
@@ -507,7 +634,35 @@ for (const profile of profiles) {
       await page.setViewportSize(viewports[3]);
       await expectOverlay(options, viewports[3]);
       await expectOverlay(picker, viewports[3]);
-      const selected = picker.getByRole("option").first();
+      await expectNestedPlacement(picker, options);
+      const project = options.getByRole("button", {
+        name: "Project",
+        exact: true,
+      });
+      expect(
+        await project.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2,
+            ),
+          );
+        }),
+      ).toBe(true);
+      const selected = picker.getByRole("option").last();
+      await selected.scrollIntoViewIfNeeded();
+      expect(
+        await selected.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2,
+            ),
+          );
+        }),
+      ).toBe(true);
       await selected.click();
       await expect(picker).toHaveCount(0);
       await options.getByRole("button", { name: "Permission mode" }).focus();
