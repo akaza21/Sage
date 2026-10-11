@@ -4,6 +4,10 @@ import {
   type MermaidDiagram,
   type MermaidSource,
 } from "./mermaidDiagram";
+import {
+  FLOWCHART_LABEL_LINE_HEIGHT,
+  layoutFlowchart,
+} from "./mermaidFlowchartLayout";
 
 export function MermaidFigure({ source }: { source: string }) {
   const diagram = parseMermaidSource(source);
@@ -85,7 +89,7 @@ function MermaidSvg({
 }: {
   diagram: Extract<MermaidDiagram, { ok: true }>;
 }) {
-  const placed = layout(diagram);
+  const placed = layoutFlowchart(diagram);
   const marker = useId();
   const byId = new Map(placed.map((node) => [node.id, node]));
   const edges = diagram.edges.map((edge) => {
@@ -94,13 +98,13 @@ function MermaidSvg({
     const horizontal = diagram.direction === "LR";
     const returning = horizontal ? to.x <= from.x : to.y <= from.y;
     const lateral = horizontal !== returning;
-    const startX = from.x + (lateral ? 240 : 120);
-    const startY = from.y + (lateral ? 32 : 64);
-    const endX = to.x + (lateral ? (returning ? 240 : 0) : 120);
-    const endY = to.y + (lateral ? 32 : returning ? 64 : 0);
+    const startX = from.x + (lateral ? from.width : from.width / 2);
+    const startY = from.y + (lateral ? from.height / 2 : from.height);
+    const endX = to.x + (lateral ? (returning ? to.width : 0) : to.width / 2);
+    const endY = to.y + (lateral ? to.height / 2 : returning ? to.height : 0);
     const rail = horizontal
-      ? Math.max(from.y, to.y) + 76
-      : Math.max(from.x, to.x) + 280;
+      ? Math.max(from.y + from.height, to.y + to.height) + 12
+      : Math.max(from.x + from.width, to.x + to.width) + 40;
     const route = returning
       ? horizontal
         ? `L${startX} ${rail}L${endX} ${rail}`
@@ -114,24 +118,18 @@ function MermaidSvg({
     };
   });
   const labelledEdges = edges.filter((edge) => edge.label);
-  const bounds = [
-    ...placed.map((node) => ({
-      x: node.x + 120,
-      half: Math.max(0, ...node.lines.map((line) => line.length)) * 7,
-    })),
-    ...labelledEdges.map((edge) => ({
-      x: edge.x,
-      half: edge.label.length * 7,
-    })),
-  ];
+  const bounds = labelledEdges.map((edge) => ({
+    x: edge.x,
+    half: edge.label.length * 7,
+  }));
   const left = Math.min(0, ...bounds.map((bound) => bound.x - bound.half - 8));
   const width =
     Math.max(
-      ...placed.map((node) => node.x + 300),
+      ...placed.map((node) => node.x + node.width + 60),
       ...bounds.map((bound) => bound.x + bound.half + 8),
     ) - left;
   const height = Math.max(
-    ...placed.map((node) => node.y + 80),
+    ...placed.map((node) => node.y + node.height + 16),
     ...labelledEdges.map((edge) => edge.y + 8),
   );
   return (
@@ -162,17 +160,30 @@ function MermaidSvg({
       {placed.map((node) => (
         <g key={node.id} transform={`translate(${node.x} ${node.y})`}>
           {node.shape === "diamond" ? (
-            <polygon points="120,0 240,32 120,64 0,32" />
+            <polygon
+              points={`${node.width / 2},0 ${node.width},${node.height / 2} ${node.width / 2},${node.height} 0,${node.height / 2}`}
+            />
           ) : (
             <rect
-              width={240}
-              height={64}
+              width={node.width}
+              height={node.height}
               rx={node.shape === "round" ? 16 : 6}
             />
           )}
-          <text x={120} y={36 - (node.lines.length - 1) * 8}>
+          <text
+            x={node.width / 2}
+            y={
+              node.height / 2 +
+              4 -
+              ((node.lines.length - 1) * FLOWCHART_LABEL_LINE_HEIGHT) / 2
+            }
+          >
             {node.lines.map((line, index) => (
-              <tspan key={index} x={120} dy={index ? 16 : 0}>
+              <tspan
+                key={index}
+                x={node.width / 2}
+                dy={index ? FLOWCHART_LABEL_LINE_HEIGHT : 0}
+              >
                 {line}
               </tspan>
             ))}
@@ -299,33 +310,4 @@ function LaneSvg({
       })}
     </DiagramSvg>
   );
-}
-
-function layout(diagram: Extract<MermaidDiagram, { ok: true }>) {
-  const layer = new Map<string, number>();
-  const queue = diagram.nodes
-    .filter((node) => !diagram.edges.some((edge) => edge.to === node.id))
-    .map((node) => ({ id: node.id, depth: 0 }));
-  if (!queue.length) queue.push({ id: diagram.nodes[0].id, depth: 0 });
-  for (let cursor = 0; cursor < queue.length; cursor++) {
-    const { id, depth } = queue[cursor];
-    if (layer.has(id)) continue;
-    layer.set(id, depth);
-    for (const edge of diagram.edges)
-      if (edge.from === id && !layer.has(edge.to))
-        queue.push({ id: edge.to, depth: depth + 1 });
-  }
-  const columns = new Map<number, number>();
-  return diagram.nodes.map((node) => {
-    const depth = layer.get(node.id) ?? 0;
-    const index = columns.get(depth) ?? 0;
-    columns.set(depth, index + 1);
-    const lines =
-      node.label
-        .match(/\S.{0,28}(?:\s|$)|\S{1,30}/gu)
-        ?.map((line) => line.trim()) ?? [];
-    return diagram.direction === "LR"
-      ? { ...node, lines, x: depth * 300 + 20, y: index * 104 + 20 }
-      : { ...node, lines, x: index * 320 + 20, y: depth * 104 + 20 };
-  });
 }

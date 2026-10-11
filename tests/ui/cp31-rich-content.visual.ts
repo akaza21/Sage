@@ -67,6 +67,112 @@ async function installDiagrams(page: Page, source: string) {
 
 test.use({ deviceScaleFactor: 1 });
 
+for (const width of [480, 720, 1888]) {
+  for (const direction of ["TD", "LR"]) {
+    for (const length of [28, 64]) {
+      for (const [shape, open, close] of [
+        ["rect", "[", "]"],
+        ["round", "(", ")"],
+        ["diamond", "{", "}"],
+      ]) {
+        test(`CP-31 long sibling labels have disjoint bounded ${shape} node boxes at ${width}px (${direction}, ${length} characters)`, async ({
+          page,
+        }) => {
+          const label = "W".repeat(length);
+          await page.setViewportSize({ width, height: 1096 });
+          await openScenario(page, "agent-single", "agent");
+          await installDiagrams(
+            page,
+            `graph ${direction}\nStart --> Left${open}${label}${close}\nStart --> Right${open}${label}${close}\nRight --> End`,
+          );
+          const figure = page.getByRole("figure", { name: "Diagram" });
+          await expect(figure.getByRole("img")).toBeVisible();
+          await page.evaluate(() => document.fonts.ready);
+          const metrics = await figure.evaluate((element) => {
+            const svg = element.querySelector("svg")!;
+            const svgBox = svg.getBoundingClientRect();
+            const bodySize = parseFloat(
+              getComputedStyle(element.closest(".acp-markdown")!).fontSize,
+            );
+            return {
+              bodySize,
+              nodes: [...svg.querySelectorAll<SVGGElement>(":scope > g")]
+                .filter((group) => group.querySelector("rect, polygon"))
+                .map((group) => {
+                  const box = group.getBoundingClientRect();
+                  const shape = group
+                    .querySelector("rect, polygon")!
+                    .getBoundingClientRect();
+                  const text = group.querySelector("text")!;
+                  const labelBox = text.getBoundingClientRect();
+                  return {
+                    left: box.left,
+                    right: box.right,
+                    top: box.top,
+                    bottom: box.bottom,
+                    width: box.width,
+                    labelSize:
+                      parseFloat(getComputedStyle(text).fontSize) *
+                      text.getScreenCTM()!.a,
+                    labelInsideNode:
+                      labelBox.left >= shape.left &&
+                      labelBox.right <= shape.right &&
+                      labelBox.top >= shape.top &&
+                      labelBox.bottom <= shape.bottom,
+                    insideSvg:
+                      box.left >= svgBox.left &&
+                      box.right <= svgBox.right &&
+                      box.top >= svgBox.top &&
+                      box.bottom <= svgBox.bottom,
+                    lines: [...text.querySelectorAll("tspan")].map(
+                      (line) => line.textContent,
+                    ),
+                  };
+                }),
+              intrinsicWidth: svg.viewBox.baseVal.width,
+              renderedWidth: svgBox.width,
+              hasLocalOverflow: element.scrollWidth > element.clientWidth,
+              clientWidth: element.clientWidth,
+              paneContained:
+                element.closest(".agent-chat-pane")!.scrollWidth <=
+                element.closest(".agent-chat-pane")!.clientWidth + 1,
+            };
+          });
+          expect(metrics.nodes).toHaveLength(4);
+          for (const [index, node] of metrics.nodes.entries()) {
+            for (const other of metrics.nodes.slice(index + 1)) {
+              expect(
+                node.right <= other.left ||
+                  other.right <= node.left ||
+                  node.bottom <= other.top ||
+                  other.bottom <= node.top,
+              ).toBe(true);
+            }
+            expect(node.width).toBeLessThanOrEqual(320);
+            expect(node.labelInsideNode).toBe(true);
+            expect(node.insideSvg).toBe(true);
+            expect(node.labelSize).toBeCloseTo(metrics.bodySize, 1);
+          }
+          for (const node of metrics.nodes.slice(1, 3)) {
+            expect(node.lines.length).toBeGreaterThan(1);
+            expect(node.lines.join("")).toBe(label);
+          }
+          expect(metrics.renderedWidth).toBeCloseTo(metrics.intrinsicWidth, 1);
+          expect(metrics.hasLocalOverflow).toBe(
+            metrics.intrinsicWidth > metrics.clientWidth,
+          );
+          expect(metrics.paneContained).toBe(true);
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          ).toBe(true);
+        });
+      }
+    }
+  }
+}
+
 for (const width of [720, 1888]) {
   for (const scenario of ["agent-single", "agent-dual"] as const) {
     for (const [name, source] of diagrams) {

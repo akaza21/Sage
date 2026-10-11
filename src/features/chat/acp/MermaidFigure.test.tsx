@@ -6,6 +6,89 @@ import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures
 afterEach(cleanup);
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it.each(
+    [480, 720, 1888].flatMap((width) =>
+      ["TD", "LR"].flatMap((direction) =>
+        [28, 64].flatMap((length) =>
+          [
+            ["[", "]"],
+            ["(", ")"],
+            ["{", "}"],
+          ].map(([open, close]) => ({ width, direction, length, open, close })),
+        ),
+      ),
+    ),
+  )(
+    "keeps $length-character $open siblings disjoint at $width px in $direction",
+    ({ width, direction, length, open, close }) => {
+      const label = "W".repeat(length);
+      const { container } = render(
+        <div style={{ width }}>
+          <MermaidFigure
+            source={`graph ${direction}\nStart --> Left${open}${label}${close}\nStart --> Right${open}${label}${close}\nRight --> End`}
+          />
+        </div>,
+      );
+      const nodes = [...container.querySelectorAll<SVGGElement>("svg > g")]
+        .filter((group) => group.querySelector("rect, polygon"))
+        .map((group) => {
+          const [left, top] = group
+            .getAttribute("transform")!
+            .match(/[\d.]+/gu)!
+            .map(Number);
+          const shape = group.querySelector("rect, polygon")!;
+          const points = shape
+            .getAttribute("points")
+            ?.split(" ")
+            .map((point) => point.split(",").map(Number));
+          const text = group.querySelector("text")!;
+          const lines = [...text.querySelectorAll("tspan")];
+          const labelWidth = Math.max(
+            ...lines.map((line) => Array.from(line.textContent!).length * 14),
+          );
+          const center = left + Number(text.getAttribute("x"));
+          const right =
+            left +
+            (points
+              ? Math.max(...points.map((point) => point[0]))
+              : Number(shape.getAttribute("width")));
+          const bottom =
+            top +
+            (points
+              ? Math.max(...points.map((point) => point[1]))
+              : Number(shape.getAttribute("height")));
+          return {
+            left,
+            top,
+            right,
+            bottom,
+            labelLeft: center - labelWidth / 2,
+            labelRight: center + labelWidth / 2,
+            lines,
+          };
+        });
+      expect(nodes).toHaveLength(4);
+      for (const [index, node] of nodes.entries()) {
+        for (const other of nodes.slice(index + 1)) {
+          expect(
+            Math.max(node.right, node.labelRight) <=
+              Math.min(other.left, other.labelLeft) ||
+              Math.max(other.right, other.labelRight) <=
+                Math.min(node.left, node.labelLeft) ||
+              node.bottom <= other.top ||
+              other.bottom <= node.top,
+          ).toBe(true);
+        }
+        expect(node.right - node.left).toBeLessThanOrEqual(320);
+        expect(node.labelLeft).toBeGreaterThanOrEqual(node.left + 16);
+        expect(node.labelRight).toBeLessThanOrEqual(node.right - 16);
+      }
+      for (const node of nodes.slice(1, 3)) {
+        expect(node.lines.length).toBeGreaterThan(1);
+        expect(node.lines.map((line) => line.textContent).join("")).toBe(label);
+      }
+    },
+  );
   it("reserves unclipped canvas space for an admitted 64-character wide edge label", () => {
     render(<MermaidFigure source={`graph TD\nA -->|${"W".repeat(64)}| B`} />);
     const svg = screen.getByRole("img");
@@ -113,7 +196,7 @@ describe("bounded Mermaid flowchart rendering", () => {
   it("wraps six-node labels, points arrows at boundaries and routes the return branch", () => {
     const { container } = render(<MermaidFigure source={resetFlowchart} />);
     const diagram = screen.getByRole("img", { name: "Mermaid diagram" });
-    expect(diagram).toHaveAttribute("height", "620");
+    expect(diagram).toHaveAttribute("height", "716");
     expect(container.querySelectorAll("path[marker-end]")).toHaveLength(6);
     expect(container.querySelector("marker")).not.toBeNull();
     expect(container.querySelectorAll("tspan").length).toBeGreaterThan(6);
@@ -126,12 +209,12 @@ describe("bounded Mermaid flowchart rendering", () => {
     );
     const path = paths[5].getAttribute("d")!;
     expect(path).toMatch(
-      new RegExp(`^M${positions[4][0] + 240} ${positions[4][1] + 32}L`),
+      new RegExp(`^M${positions[4][0] + 320} ${positions[4][1] + 72}L`),
     );
     expect(path).toMatch(
-      new RegExp(`L${positions[0][0] + 240} ${positions[0][1] + 32}$`),
+      new RegExp(`L${positions[0][0] + 320} ${positions[0][1] + 32}$`),
     );
-    const connectorX = String(positions[0][0] + 120);
+    const connectorX = String(positions[0][0] + 160);
     expect(
       path.match(/\d+ \d+/g)!.map((point) => point.split(" ")[0]),
     ).not.toContain(connectorX);
