@@ -4,6 +4,9 @@ use regex::Regex;
 
 use crate::acp::contract::SafeText;
 
+#[path = "command_summary/redaction.rs"]
+pub(crate) mod redaction;
+
 const MAX_COMMAND_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +31,7 @@ pub(crate) fn sanitize_command_summary(
         .filter_map(|ch| {
             if is_hidden_format(ch) {
                 None
-            } else if ch.is_control() {
+            } else if ch.is_control() && !matches!(ch, '\n' | '\r') {
                 Some(' ')
             } else {
                 Some(ch)
@@ -36,17 +39,22 @@ pub(crate) fn sanitize_command_summary(
         })
         .collect();
 
-    let tokens = redact_tokens(&neutral).map_err(|_| CommandSummaryError::Hidden)?;
-    let mut shown = String::with_capacity(tokens.len());
-    for part in tokens.split_inclusive(char::is_whitespace) {
-        let body = part.trim_end_matches(char::is_whitespace);
-        let whitespace = &part[body.len()..];
-        if contains_absolute_path(body) {
-            return Err(CommandSummaryError::Hidden);
-        }
-        shown.push_str(body);
-        shown.push_str(whitespace);
+    let tokens = shell_tokens(&neutral).map_err(|_| CommandSummaryError::Hidden)?;
+    if tokens
+        .iter()
+        .any(|token| redaction::contains_absolute_path(&token.cooked, true))
+    {
+        return Err(CommandSummaryError::Hidden);
     }
+    let redacted = redaction::redact("permissionCommand", &neutral, MAX_COMMAND_BYTES, true)
+        .map_err(|error| match error {
+            crate::acp::contract::ContractError::InvalidLength { .. } => {
+                CommandSummaryError::TooLong
+            }
+            _ => CommandSummaryError::Hidden,
+        })?;
+    let shown = redact_tokens(&redacted.replace(['\n', '\r'], " "))
+        .map_err(|_| CommandSummaryError::Hidden)?;
     SafeText::new("permissionCommand", shown).map_err(|_| CommandSummaryError::TooLong)
 }
 
@@ -74,7 +82,7 @@ pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
 
 pub(crate) fn is_sensitive_prose_flag(input: &str) -> bool {
     let flag = input.trim_matches(|ch: char| matches!(ch, '"' | '\'' | '`' | ',' | ';'));
-    flag.starts_with('-') && (sensitive_flag(flag) || sensitive_key(flag))
+    flag.starts_with('-') && !flag.contains('=') && (sensitive_flag(flag) || sensitive_key(flag))
 }
 
 #[derive(Debug)]
@@ -266,34 +274,6 @@ fn is_hidden_format(ch: char) -> bool {
         '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}'
         | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}'
     )
-}
-
-fn contains_absolute_path(token: &str) -> bool {
-    if token.to_ascii_lowercase().contains("file://") {
-        return true;
-    }
-    let bytes = token.as_bytes();
-    for index in 0..bytes.len() {
-        let boundary = index == 0
-            || matches!(
-                bytes[index - 1],
-                b'"' | b'\'' | b'(' | b'[' | b'{' | b'=' | b',' | b':'
-            );
-        if !boundary {
-            continue;
-        }
-        let rest = &bytes[index..];
-        if rest.starts_with(b"\\\\")
-            || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
-            || (rest.len() >= 3
-                && rest[0].is_ascii_alphabetic()
-                && rest[1] == b':'
-                && matches!(rest[2], b'\\' | b'/'))
-        {
-            return true;
-        }
-    }
-    false
 }
 
 fn url_userinfo_regex() -> &'static Regex {

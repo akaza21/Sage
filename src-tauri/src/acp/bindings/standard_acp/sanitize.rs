@@ -1,12 +1,10 @@
 use std::borrow::Cow;
 
 use crate::acp::{
-    bindings::command_summary::{is_sensitive_prose_flag, is_sensitive_prose_token},
+    bindings::command_summary::redaction::redact,
     contract::{ContractError, SafeText},
     limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };
-
-const REDACTED: &str = "[redacted]";
 
 pub(crate) fn normalized_text<const MAX: usize>(
     field: &'static str,
@@ -41,17 +39,7 @@ fn redacted_text<const MAX: usize>(
         return SafeText::new(field, input);
     }
     let input = neutralized(input, strip_format);
-    let mut output = String::with_capacity(input.len().min(MAX));
-    let mut secrets = SecretContext::default();
-    for token in input.split_inclusive(char::is_whitespace) {
-        let (body, whitespace) = split_trailing_whitespace(token);
-        if secrets.redact(body, whitespace) {
-            output.push_str(REDACTED);
-        } else {
-            output.push_str(body);
-        }
-        output.push_str(whitespace);
-    }
+    let output = redact(field, &input, MAX, false)?;
     SafeText::new(field, output)
 }
 
@@ -114,173 +102,84 @@ pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractEr
         });
     }
 
-    let mut output = String::new();
-    let mut secrets = SecretContext::default();
     let input = neutralized(input, false);
-    for token in input.split_inclusive(char::is_whitespace) {
-        let (body, whitespace) = split_trailing_whitespace(token);
-        if body.is_empty() {
-            secrets.redact(body, whitespace);
-            append_command_output(&mut output, whitespace, maximum_output)?;
-            continue;
-        }
-        let replacement = if secrets.redact(body, whitespace) {
-            REDACTED
-        } else {
-            body
-        };
-        append_command_output(&mut output, replacement, maximum_output)?;
-        append_command_output(&mut output, whitespace, maximum_output)?;
-    }
-    Ok(output)
-}
-
-#[derive(Default)]
-struct SecretContext {
-    next_value: bool,
-    authorization_line: bool,
-}
-
-impl SecretContext {
-    fn redact(&mut self, body: &str, whitespace: &str) -> bool {
-        let was_authorization_line = self.authorization_line;
-        let redacted = !body.is_empty()
-            && (self.authorization_line
-                || self.next_value
-                || is_secret(body)
-                || is_absolute_native_path(body)
-                || contains_command_absolute_path(body));
-        if !body.is_empty() {
-            self.next_value = is_bearer_marker(body) || is_sensitive_prose_flag(body);
-            if is_authorization_header(body) {
-                self.authorization_line = true;
-            }
-        }
-        if whitespace.contains(['\n', '\r']) {
-            self.authorization_line = false;
-            if was_authorization_line || is_authorization_header(body) {
-                self.next_value = false;
-            }
-        }
-        redacted
-    }
-}
-
-fn is_authorization_header(body: &str) -> bool {
-    let header = body.trim_matches(|ch: char| matches!(ch, '"' | '\'' | '`'));
-    let header = header.to_ascii_lowercase();
-    header.starts_with("authorization:") || header.starts_with("proxy-authorization:")
-}
-
-fn is_bearer_marker(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    });
-    trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("bearer:")
-}
-
-fn append_command_output(
-    output: &mut String,
-    value: &str,
-    maximum: usize,
-) -> Result<(), ContractError> {
-    let next = output
-        .len()
-        .checked_add(value.len())
-        .ok_or(ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        })?;
-    if next > maximum {
-        return Err(ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        });
-    }
-    output
-        .try_reserve(value.len())
-        .map_err(|_| ContractError::InvalidLength {
-            field: "toolOutput",
-            minimum: 0,
-            maximum,
-        })?;
-    output.push_str(value);
-    Ok(())
-}
-
-fn contains_command_absolute_path(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("file:///") || lower.contains("file://\\\\") {
-        return true;
-    }
-    let bytes = value.as_bytes();
-    bytes.iter().enumerate().any(|(index, _)| {
-        let previous = (index > 0).then(|| bytes[index - 1]);
-        let boundary = previous.is_none_or(|byte| {
-            matches!(
-                byte,
-                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';' | b':'
-            )
-        });
-        let rest = &bytes[index..];
-        boundary
-            && (rest.starts_with(b"\\\\")
-                || (starts_posix_path(rest)
-                    && (previous != Some(b'<') || rest[1..].contains(&b'/')))
-                || (rest.len() >= 3
-                    && rest[0].is_ascii_alphabetic()
-                    && rest[1] == b':'
-                    && matches!(rest[2], b'\\' | b'/')))
-    })
-}
-
-fn starts_posix_path(value: &[u8]) -> bool {
-    value.first() == Some(&b'/')
-        && value.get(1).is_some_and(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'~')
-        })
-}
-
-fn split_trailing_whitespace(value: &str) -> (&str, &str) {
-    let split = value
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
-        .unwrap_or(value.len());
-    value.split_at(split)
-}
-
-fn is_secret(value: &str) -> bool {
-    is_sensitive_prose_token(value)
-}
-
-fn is_absolute_native_path(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | ':'
-        )
-    });
-    starts_posix_path(trimmed.as_bytes())
-        || trimmed.starts_with("\\\\")
-        || (trimmed.as_bytes().get(1) == Some(&b':')
-            && trimmed
-                .as_bytes()
-                .get(2)
-                .is_some_and(|separator| matches!(separator, b'\\' | b'/'))
-            && trimmed
-                .as_bytes()
-                .first()
-                .is_some_and(u8::is_ascii_alphabetic))
+    redact("toolOutput", &input, maximum_output, false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp::bindings::command_summary::sanitize_command_summary;
+
+    #[test]
+    fn retained_commands_and_output_hide_paths_after_shell_boundaries_at_any_position() {
+        for prefix in [String::new(), "x".repeat(600)] {
+            for boundary in [">", ">>", "2>", "<", "|", ";", "&&", "$(", "`"] {
+                for path in [
+                    "/home/alice/private.txt",
+                    r"C:\Users\Alice\private.txt",
+                    r"\\server\private\file.txt",
+                ] {
+                    let input = format!("echo {prefix}{boundary}{path}");
+                    assert!(sanitize_command_summary(&input).is_err(), "{input}");
+                    for shown in [
+                        normalized_text::<65536>("toolOutput", &input)
+                            .unwrap()
+                            .as_str()
+                            .to_owned(),
+                        sanitized_command_output(&input).unwrap(),
+                    ] {
+                        assert!(!shown.contains(path), "{input}: {shown}");
+                        assert!(shown.contains("[redacted]"), "{input}: {shown}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn retained_commands_and_output_redact_complete_quoted_secret_values() {
+        for marker in [
+            "--token ",
+            "--password ",
+            "--secret ",
+            "--api-key ",
+            "API_KEY=",
+            "TOKEN=",
+            "SECRET=",
+            "PASSWORD=",
+            "Authorization: Bearer ",
+        ] {
+            for value in [
+                "'private value'",
+                "\"private value\"",
+                "'private \"nested\" value'",
+                "\"private \\\"nested\\\" value\"",
+            ] {
+                let input = format!(
+                    "echo {} {marker}{value} {marker}{value}\nnext",
+                    "x".repeat(600)
+                );
+                for shown in [
+                    sanitize_command_summary(&input)
+                        .unwrap()
+                        .as_str()
+                        .to_owned(),
+                    normalized_text::<65536>("toolOutput", &input)
+                        .unwrap()
+                        .as_str()
+                        .to_owned(),
+                    sanitized_command_output(&input).unwrap(),
+                ] {
+                    for secret in ["private", "value", "nested"] {
+                        assert!(!shown.contains(secret), "{input}: {shown}");
+                    }
+                    assert!(shown.contains("[redacted]"), "{input}: {shown}");
+                    assert!(shown.ends_with("next"), "{input}: {shown}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn source_comment_markers_survive_while_embedded_paths_stay_redacted() {
@@ -294,6 +193,161 @@ mod tests {
         let embedded =
             sanitized_command_output("open(\"/home/probe/secret.txt\") </home/probe/x>").unwrap();
         assert_eq!(embedded, "[redacted] [redacted]");
+    }
+
+    #[test]
+    fn input_redirects_and_unicode_paths_are_not_mistaken_for_source_markup() {
+        for (input, expected) in [
+            ("cat </private.txt", "cat [redacted]"),
+            ("cat </private", "cat [redacted]"),
+            (
+                "echo >/\u{7528}\u{6237}/\u{79c1}\u{5bc6}.txt",
+                "echo [redacted]",
+            ),
+            ("echo >/\u{e9}.txt", "echo [redacted]"),
+        ] {
+            assert!(sanitize_command_summary(input).is_err(), "{input}");
+            assert_eq!(
+                sanitized_command_output(input).unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn quoted_paths_and_secret_tails_are_fully_redacted_without_hiding_safe_following_text() {
+        for input in [
+            "--token='private value' safe",
+            "--password=\"private value\" safe",
+            "KEY='private value' safe",
+            "TOKEN=\"private value\" safe",
+            "--secret private\\ value safe",
+            "--token 'private\nvalue' safe",
+            "cat '/home/alice/private file.txt' safe",
+            r#"cat "C:\Users\Alice\private file.txt" safe"#,
+        ] {
+            let output = sanitized_command_output(input).unwrap();
+            assert!(!output.contains("private"), "{input}: {output}");
+            assert!(!output.contains("value"), "{input}: {output}");
+            assert!(!output.contains("file.txt"), "{input}: {output}");
+            assert!(output.ends_with(" safe"), "{input}: {output}");
+            assert_eq!(
+                normalized_text::<512>("toolOutput", input)
+                    .unwrap()
+                    .as_str(),
+                output
+            );
+        }
+        for input in [
+            "--token 'private value",
+            "PASSWORD=\"private value",
+            "Authorization: Basic private value\nnext",
+        ] {
+            let output = sanitized_command_output(input).unwrap();
+            assert!(!output.contains("private"), "{input}: {output}");
+            assert!(!output.contains("value"), "{input}: {output}");
+        }
+    }
+
+    #[test]
+    fn redaction_expansion_remains_bounded_for_command_and_output_values() {
+        assert!(normalized_text::<2>("toolOutput", "/").is_err());
+        assert!(sanitize_command_summary(&format!("{} --token a", "x".repeat(65_526))).is_err());
+        let output = sanitized_command_output(&"/ ".repeat(524_288)).unwrap();
+        assert_eq!(output.len(), 5_767_168);
+        assert!(sanitized_command_output(&"x".repeat(1_048_577)).is_err());
+    }
+
+    #[test]
+    fn shell_paths_do_not_inherit_source_comment_or_markup_exemptions() {
+        for input in [
+            "cat /*/private.txt",
+            "cat '/*private/notes.txt'",
+            "cat </private>public",
+            "cat //home/alice/private.txt",
+            "cat //server/share/private.txt",
+            r"cat \/home/alice/private.txt",
+            r"cat C\:\\Users\Alice\private.txt",
+        ] {
+            assert!(sanitize_command_summary(input).is_err(), "{input}");
+            assert!(
+                !sanitized_command_output(input).unwrap().contains("private"),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn authorization_headers_and_substitution_values_share_complete_redaction() {
+        for input in [
+            "echo Authorization: Digest nonce=\"private value\"",
+            "AUTH=Bearer 'private value'",
+            "curl -H\"Authorization: Basic private value\"",
+            "TOKEN=$(printf '%s' 'private value') env",
+            "TOKEN=`printf '%s' 'private value'` env",
+            "--token $(printf '%s' 'private value') env",
+        ] {
+            for shown in [
+                sanitize_command_summary(input)
+                    .unwrap_or_else(|error| panic!("{input}: {error:?}"))
+                    .as_str()
+                    .to_owned(),
+                sanitized_command_output(input).unwrap(),
+            ] {
+                assert!(!shown.contains("private"), "{input}: {shown}");
+                assert!(!shown.contains("value"), "{input}: {shown}");
+            }
+        }
+    }
+
+    #[test]
+    fn markdown_wrappers_are_removed_but_unmatched_credential_quotes_fail_closed() {
+        for (input, expected) in [
+            (
+                "Use `token=private` safely afterwards.",
+                "Use [redacted] safely afterwards.",
+            ),
+            ("token=don't ordinary prose", "[redacted]"),
+        ] {
+            assert_eq!(sanitized_command_output(input).unwrap(), expected);
+            assert_eq!(
+                normalized_text::<512>("text", input).unwrap().as_str(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn separators_and_marker_names_inside_secret_values_are_literal_content() {
+        for (input, expected) in [
+            ("--token \"a=b private\" safe", "--token [redacted] safe"),
+            (
+                "--token account='first private value' safe",
+                "--token [redacted] safe",
+            ),
+            ("TOKEN=prefix'first private value' safe", "[redacted] safe"),
+            ("echo --token=private safe", "echo [redacted] safe"),
+            ("echo --token='private' safe", "echo [redacted] safe"),
+            (
+                "--password 'a:b private' safe",
+                "--password [redacted] safe",
+            ),
+            (
+                "--token --password 'private value' safe",
+                "--token [redacted] [redacted] safe",
+            ),
+            ("\"TOKEN=private value\" safe", "[redacted] safe"),
+            ("TOKEN='private Bearer' safe", "[redacted] safe"),
+            ("TOKEN='private --token' safe", "[redacted] safe"),
+            (
+                "--secret 'Authorization: private value' safe",
+                "--secret [redacted] safe",
+            ),
+        ] {
+            assert_eq!(sanitized_command_output(input).unwrap(), expected);
+            assert_eq!(sanitize_command_summary(input).unwrap().as_str(), expected);
+        }
     }
 
     #[test]

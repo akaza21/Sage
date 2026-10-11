@@ -53,30 +53,32 @@ fn command_fact(
 
 #[test]
 fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reopen() {
-    for (late_input, raw_output) in [(false, false), (false, true), (true, false), (true, true)] {
-        let directory = HistoryDirectory(
-            std::env::temp_dir().join(format!("sage-command-{}", uuid::Uuid::new_v4())),
-        );
-        std::fs::create_dir(&directory.0).unwrap();
-        let path = directory.0.join("history.sqlite");
-        let mut runtime = ClaudeRuntime::fixture();
-        ready(&mut runtime);
-        let database = migrated_database_at(&runtime, &path);
-        let command = format!("echo {} --token 'private value'", "x".repeat(1_000));
-        let retained = format!("echo {} --token [redacted]", "x".repeat(1_000));
-        let expected_capabilities = runtime.capabilities().expect("ready capabilities");
-        let initial_page = load_chat_page(
-            &database.connection(),
-            SageProjectId::parse("project-one").unwrap(),
-            SageChatId::parse("chat-one").unwrap(),
-            None,
-        )
-        .expect("fixture capabilities must decode before command ingress");
-        assert_eq!(
-            initial_page.sessions.as_slice()[0].capabilities,
-            expected_capabilities
-        );
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+    for output in ["ok --token private-value", "ok --token 'private value'"] {
+        for (late_input, raw_output) in [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let directory = HistoryDirectory(
+                std::env::temp_dir().join(format!("sage-command-{}", uuid::Uuid::new_v4())),
+            );
+            std::fs::create_dir(&directory.0).unwrap();
+            let path = directory.0.join("history.sqlite");
+            let mut runtime = ClaudeRuntime::fixture();
+            ready(&mut runtime);
+            let database = migrated_database_at(&runtime, &path);
+            let command = format!("echo {} --token 'private value'", "x".repeat(1_000));
+            let retained = format!("echo {} --token [redacted]", "x".repeat(1_000));
+            let expected_capabilities = runtime.capabilities().expect("ready capabilities");
+            let initial_page = load_chat_page(
+                &database.connection(),
+                SageProjectId::parse("project-one").unwrap(),
+                SageChatId::parse("chat-one").unwrap(),
+                None,
+            )
+            .expect("fixture capabilities must decode before command ingress");
+            assert_eq!(
+                initial_page.sessions.as_slice()[0].capabilities,
+                expected_capabilities
+            );
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
             let intent = session_intent().bind_turn(ActiveTurnIntent::store_minted(turn("one")).unwrap());
             let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
             let handle = CloseOnDrop(handle);
@@ -109,9 +111,9 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 assert_eq!(command_fact(&database, &expected_capabilities), (ToolState::InProgress, Some(retained.clone()), None));
             }
             let mut completed = json!({"sessionUpdate": "tool_call_update", "toolCallId": "command-1", "status": "completed",
-                "content": [{"type":"content","content":{"type":"text","text":"```console\nok --token private-value\n```"}}]});
+                "content": [{"type":"content","content":{"type":"text","text":format!("```console\n{output}\n```")}}]});
             if raw_output {
-                completed["rawOutput"] = json!("ok --token private-value");
+                completed["rawOutput"] = json!(output);
             }
             for (offset, frame) in [
                 json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": SESSION, "update": completed}}),
@@ -124,24 +126,25 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
             handle.0.close_when_drained();
             bounded("journal drain", task).await.unwrap();
         });
-        assert_eq!(
-            command_fact(&database, &expected_capabilities),
-            (
-                ToolState::Completed,
-                Some(retained.clone()),
-                Some("ok --token [redacted]".to_owned())
-            )
-        );
-        drop(database);
-        let reopened = Database::open(&path).unwrap();
-        assert_eq!(
-            command_fact(&reopened, &expected_capabilities),
-            (
-                ToolState::Completed,
-                Some(retained),
-                Some("ok --token [redacted]".to_owned())
-            )
-        );
+            assert_eq!(
+                command_fact(&database, &expected_capabilities),
+                (
+                    ToolState::Completed,
+                    Some(retained.clone()),
+                    Some("ok --token [redacted]".to_owned())
+                )
+            );
+            drop(database);
+            let reopened = Database::open(&path).unwrap();
+            assert_eq!(
+                command_fact(&reopened, &expected_capabilities),
+                (
+                    ToolState::Completed,
+                    Some(retained),
+                    Some("ok --token [redacted]".to_owned())
+                )
+            );
+        }
     }
 }
 

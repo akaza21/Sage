@@ -277,6 +277,9 @@ fn claude_command_output_projects_raw_or_console_content_once_and_retains_it_at_
         json!({"rawOutput": "ok --token sk-hidden", "content": [{"type":"content","content":{"type":"text","text":"```console\nok --token sk-hidden\n```"}}]}),
         json!({"content": [{"type":"content","content":{"type":"text","text":"```console\nok --token sk-hidden\n```"}}]}),
         json!({"content": [{"type":"text","text":"ok --token sk-hidden"}]}),
+        json!({"rawOutput": "ok --token 'private value'", "content": [{"type":"content","content":{"type":"text","text":"```console\nok --token 'private value'\n```"}}]}),
+        json!({"content": [{"type":"content","content":{"type":"text","text":"```console\nok --token 'private value'\n```"}}]}),
+        json!({"content": [{"type":"text","text":"ok --token 'private value'"}]}),
     ] {
         let mut translator = translator("claude-code");
         let mut frame = json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","status":"in_progress"});
@@ -306,6 +309,27 @@ fn claude_command_output_projects_raw_or_console_content_once_and_retains_it_at_
                 .collect();
             assert_eq!(outputs, ["ok --token [redacted]"]);
         }
+    }
+}
+
+#[test]
+fn retained_command_input_never_admits_a_path_beyond_the_old_row_limit() {
+    for suffix in [
+        ">/home/alice/private.txt",
+        r">>C:\Users\Alice\private.txt",
+        "</private.txt",
+        "|/home/alice/private.txt",
+        ";/home/alice/private.txt",
+        "&&/home/alice/private.txt",
+        "$(/home/alice/private.txt)",
+        "`/home/alice/private.txt`",
+    ] {
+        let events = update(
+            &mut translator("claude-code"),
+            json!({"sessionUpdate": "tool_call", "toolCallId": "tool-1", "kind": "execute",
+                "rawInput": {"command": format!("echo {}{suffix}", "x".repeat(600))}}),
+        );
+        assert_eq!(input(&events), None, "{suffix}");
     }
 }
 
