@@ -625,6 +625,33 @@ describe("composer permission mode picker", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("releases restored Model trigger focus on pointer down and refocuses the selected model on reopening", () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: [
+        { id: "astra", name: "Astra" },
+        { id: "luna", name: "Luna" },
+      ],
+    });
+    renderControls({ selectedHarnessId: "codex", selectedModelId: "luna" });
+    const trigger = screen.getByRole("button", { name: "Model" });
+    trigger.focus();
+    fireEvent.click(trigger, { detail: 0 });
+    const selected = screen.getByRole("option", { name: "Luna" });
+    expect(selected).toHaveFocus();
+    fireEvent.keyDown(selected, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+    fireEvent.pointerDown(trigger, { pointerType: "mouse" });
+    expect(trigger).not.toHaveFocus();
+    trigger.focus();
+    fireEvent.click(trigger, { detail: 1 });
+    expect(screen.getByRole("option", { name: "Luna" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    expect(screen.getByRole("option", { name: "Astra" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Luna" })).toHaveFocus();
+  });
+
   it("dismisses the model list on outside pointer without stealing focus", () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",

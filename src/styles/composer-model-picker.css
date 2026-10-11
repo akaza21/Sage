@@ -68,7 +68,7 @@
   padding: 4px 8px;
   color: var(--composer-muted-text);
   font-size: var(--font-size-xs);
-  line-height: 1.35;
+  line-height: 16px;
 }
 
 .composer-model-picker__list {

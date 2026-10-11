@@ -84,6 +84,64 @@ for (const forcedColors of ["none", "active"] as const) {
   });
 }
 
+for (const forcedColors of ["none", "active"] as const) {
+  test(`model list pointer reopening clears focus-visible and keyboard navigation restores it (${forcedColors})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await openScenario(page, "agent-picker-harness-model", "agent");
+    await releasePickerHarnessReadiness(page);
+    const model = page
+      .locator("form.composer")
+      .first()
+      .getByRole("button", { name: "Model", exact: true });
+    await model.click();
+    await page
+      .getByRole("option", { name: "Fresh advertised model 2", exact: true })
+      .click();
+    await page.keyboard.press("Enter");
+    const selected = page.getByRole("option", {
+      name: "Fresh advertised model 2",
+      exact: true,
+    });
+    await expect(selected).toHaveAttribute("aria-selected", "true");
+    await expect(selected).toBeFocused();
+    const focusState = () =>
+      selected.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          focusVisible: element.matches(":focus-visible"),
+          outlineStyle: style.outlineStyle,
+          shadow: style.boxShadow,
+        };
+      });
+    const keyboardFocused = await focusState();
+    expect(keyboardFocused.focusVisible).toBe(true);
+    if (forcedColors === "active") {
+      expect(keyboardFocused).toEqual({
+        focusVisible: true,
+        outlineStyle: "none",
+        shadow: "none",
+      });
+    } else {
+      expect(keyboardFocused.shadow).not.toBe("none");
+    }
+    await page.keyboard.press("Escape");
+    await expect(model).toBeFocused();
+    await model.click();
+    await expect(selected).toBeFocused();
+    expect(await focusState()).toEqual({
+      focusVisible: false,
+      outlineStyle: "none",
+      shadow: "none",
+    });
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowDown");
+    await expect(selected).toBeFocused();
+    expect(await focusState()).toEqual(keyboardFocused);
+  });
+}
+
 test("composer and harness picker match the owner's 96-DPI geometry", async ({
   page,
 }) => {
@@ -165,6 +223,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   const scrollBox = await modelCard.boundingBox();
   expect(lastBox).not.toBeNull();
   expect(scrollBox).not.toBeNull();
+  expect(Number.isInteger(scrollBox!.height)).toBe(true);
   expect(lastBox!.y).toBeGreaterThanOrEqual(scrollBox!.y);
   expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(
     scrollBox!.y + scrollBox!.height,

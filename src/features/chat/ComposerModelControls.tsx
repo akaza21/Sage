@@ -75,6 +75,7 @@ export function ComposerModelControls({
           aria-haspopup="listbox"
           aria-expanded={open && available}
           disabled={!available}
+          onPointerDown={(event) => event.currentTarget.blur()}
           onClick={onToggle}
         >
           <span className="composer__model-label">{modelLabel}</span>

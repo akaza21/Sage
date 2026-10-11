@@ -20,6 +20,16 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("uses a whole-pixel 16px model heading line box", async () => {
+    const css = await readFile(
+      resolve("src/styles/composer-model-picker.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.composer-model-picker__title\s*\{[^}]*line-height:\s*16px;/s,
+    );
+  });
+
   it("uses reference-width model menus with compact options, bounded scrolling and system forced colors", async () => {
     const css = await readFile(
       resolve("src/styles/composer-model-picker.css"),
