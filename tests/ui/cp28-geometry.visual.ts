@@ -152,7 +152,7 @@ async function expectColumnAlignment(pane: Locator) {
 }
 
 for (const paneWidth of [360, 384]) {
-  test(`CP-28 composer model label keeps its leading edge and toolbar controls inside a ${paneWidth}px resource Chat pane`, async ({
+  test(`CP-28 compact composer model trigger keeps its leading edge and toolbar controls inside a ${paneWidth}px resource Chat pane`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
@@ -170,37 +170,24 @@ for (const paneWidth of [360, 384]) {
     expect(paneBox!.width).toBeCloseTo(paneWidth, 0);
     const composer = pane.locator(".composer");
     const model = composer.getByRole("button", { name: "Model", exact: true });
-    await expect(model).toHaveText("Model");
-    await expect(model.locator("svg")).toHaveCSS("width", "16px");
-    await expect(model.locator("svg")).toHaveCSS("height", "16px");
+    await expect(model).toHaveAccessibleName("Model");
+    const icon = model.locator(".composer__model-icon");
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveCSS("width", "16px");
+    await expect(icon).toHaveCSS("height", "16px");
+    await expect(model.locator(".composer__model-label")).toBeHidden();
+    await expect(model.locator("svg").last()).toBeHidden();
+    const compactBox = await model.boundingBox();
+    expect(compactBox!.width).toBeGreaterThanOrEqual(24);
+    expect(compactBox!.height).toBeGreaterThanOrEqual(24);
     await expectModelLeadingEdgeContained(model);
     await expectComposerControlsContained(pane);
-    await expect(model.locator(".composer__model-label")).toBeVisible();
-    await expect(model.locator(".composer__model-label")).toHaveCSS(
-      "min-width",
-      "0px",
-    );
-    await expect(model.locator(".composer__model-label")).toHaveCSS(
-      "overflow",
-      "hidden",
-    );
-    await expect(model.locator(".composer__model-label")).toHaveCSS(
-      "text-overflow",
-      "ellipsis",
-    );
-    await expect(model.locator(".composer__model-label")).toHaveCSS(
-      "text-align",
-      "left",
-    );
     const label = model.locator(".composer__model-label");
     await label.evaluate((element) => {
       element.textContent = "GPT-5 with an extended reasoning model name";
     });
-    expect(
-      await label.evaluate(
-        (element) => element.scrollWidth > element.clientWidth,
-      ),
-    ).toBe(true);
+    await expect(label).toBeHidden();
+    expect(await model.boundingBox()).toEqual(compactBox);
     await expectModelLeadingEdgeContained(model);
     await expectComposerControlsContained(pane);
   });

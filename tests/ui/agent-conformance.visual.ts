@@ -988,7 +988,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(7);
+    await expect(toolbar.getByRole("button")).toHaveCount(8);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("textbox", { name: "Message agent" })),
       boundsOf(toolbar),

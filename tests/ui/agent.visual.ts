@@ -83,10 +83,14 @@ async function expectContextUsageRing(progress: Locator, percentage: number) {
       mask: style.maskImage,
       width: box.width,
       height: box.height,
+      ringWidth: style.width,
+      ringHeight: style.height,
     };
   });
-  expect(ring.width).toBe(16);
-  expect(ring.height).toBe(16);
+  expect(ring.width).toBe(24);
+  expect(ring.height).toBe(24);
+  expect(ring.ringWidth).toBe("16px");
+  expect(ring.ringHeight).toBe("16px");
   expect(ring.fill).toMatch(/%$/);
   expect(Number.parseFloat(ring.fill)).toBeCloseTo(percentage, 5);
   expect(ring.gradient).toContain("conic-gradient");
@@ -138,7 +142,13 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     const trigger = harness.querySelector<HTMLButtonElement>("button")!;
     const wrapperBox = harness.getBoundingClientRect();
     const triggerBox = trigger.getBoundingClientRect();
+    const composer = node.closest<HTMLElement>("form.composer")!;
+    const composerStyle = getComputedStyle(composer);
     return {
+      composerWidth:
+        composer.clientWidth -
+        Number.parseFloat(composerStyle.paddingLeft) -
+        Number.parseFloat(composerStyle.paddingRight),
       overflow: node.scrollWidth - node.clientWidth,
       harnessContained:
         triggerBox.left >= wrapperBox.left - 1 &&
@@ -165,7 +175,7 @@ async function expectComposerToolbarLaidOut(form: Locator) {
       }),
     };
   });
-  expect(geometry.buttons).toHaveLength(6);
+  expect(geometry.buttons).toHaveLength(7);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -179,8 +189,30 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     expect(button.height).toBeGreaterThan(0);
     expect(button.contained, button.name ?? "toolbar button").toBe(true);
   }
-  const centers = geometry.buttons.map((button) => button.center);
-  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
+  const trailing = ["Start dictation", "Send message"];
+  const rows =
+    geometry.composerWidth <= 280
+      ? [
+          geometry.buttons.filter(
+            (button) => !trailing.includes(String(button.name)),
+          ),
+          geometry.buttons.filter((button) =>
+            trailing.includes(String(button.name)),
+          ),
+        ]
+      : [geometry.buttons];
+  for (const row of rows) {
+    expect(row.length).toBeGreaterThan(0);
+    const centers = row.map((button) => button.center);
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
+  }
+  if (rows.length === 2) {
+    expect(
+      Math.min(...rows[1].map((button) => button.top)),
+    ).toBeGreaterThanOrEqual(
+      Math.max(...rows[0].map((button) => button.bottom)),
+    );
+  }
   for (const [index, first] of geometry.buttons.entries()) {
     for (const second of geometry.buttons.slice(index + 1)) {
       const overlap =

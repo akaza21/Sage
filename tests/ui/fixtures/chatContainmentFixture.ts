@@ -20,7 +20,17 @@ export function installChatContainmentFixture(
     ...harness,
     name: `${profile.name} ${"long-harness-".repeat(12)}`,
   }));
+  const rendered = new Set(
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        ".acp-chat-projection[data-chat-id]",
+      ),
+    ].map((projection) => projection.dataset.chatId),
+  );
   const chatTabs = store.tabs.filter((tab) => tab.kind === "chat");
+  const renderedTabs = chatTabs.filter((tab) => rendered.has(tab.id));
+  if (renderedTabs.length === 0)
+    throw new Error("Containment fixture requires a rendered chat projection");
   const longTitle = "Review " + "long-resource-and-project-name-".repeat(12);
   useSessionAccessModeStore.setState({ ready: true });
   useWorkbenchStore.setState({
@@ -91,7 +101,7 @@ export function installChatContainmentFixture(
       ]),
     ),
   });
-  for (const tab of chatTabs) {
+  for (const tab of renderedTabs) {
     const projection = acpProjectionStoreFor(tab.id).getState();
     if (!projection.page || !projection.scope)
       throw new Error("Containment fixture requires a settled chat projection");
