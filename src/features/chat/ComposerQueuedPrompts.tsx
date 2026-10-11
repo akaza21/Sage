@@ -22,6 +22,7 @@ export function ComposerQueuedPrompts({
   const [menuId, setMenuId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelId = useId();
+  if (disabled && menuId !== null) setMenuId(null);
   const selected = prompts?.find((prompt) => prompt.id === menuId);
   if (!prompts?.length) return null;
   return (
@@ -99,6 +100,7 @@ export function ComposerQueuedPrompts({
         ariaLabel="Queued message options"
         open={Boolean(selected) && !disabled}
         triggerRef={triggerRef}
+        restoreFocusOnTab
         onDismiss={() => setMenuId(null)}
       >
         <button

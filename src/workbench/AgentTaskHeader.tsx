@@ -96,7 +96,10 @@ export function AgentTaskHeader({
   return (
     <header className="agent-task-header">
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
-        <span className="agent-task-header__project">
+        <span
+          className="agent-task-header__project"
+          title={currentProject.name}
+        >
           {currentProject.name}
         </span>
         <span className="agent-task-header__separator" aria-hidden="true">

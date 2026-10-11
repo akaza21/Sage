@@ -5,7 +5,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { useId, useRef, useState } from "react";
+import { Profiler, useId, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MenuPopover } from "./MenuPopover";
@@ -122,6 +122,21 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it("does not commit another render when the measured position is unchanged", () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="menu" onRender={onRender}>
+        <MenuHarness />
+      </Profiler>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menu", { name: "Actions" })).toBeVisible();
+    onRender.mockClear();
+    fireEvent.resize(window);
+    fireEvent.scroll(window);
+    expect(onRender).not.toHaveBeenCalled();
+  });
+
   it("follows an unchanged-size trigger when its pane resizes and stops observing on close", () => {
     let anchor = new DOMRect(100, 100, 100, 28);
     const observers: {
@@ -170,42 +185,63 @@ describe("MenuPopover", () => {
     expect(observers.every(({ targets }) => targets.size === 0)).toBe(true);
   });
 
-  it("places a dialog in the shared viewport overlay, preserves native tab stops, and returns Escape focus", () => {
-    function DialogHarness() {
-      const trigger = useRef<HTMLButtonElement>(null);
-      const [open, setOpen] = useState(false);
-      return (
-        <div>
-          <button ref={trigger} onClick={() => setOpen(true)}>
-            Options
-          </button>
-          <MenuPopover
-            id="dialog"
-            role="dialog"
-            ariaLabel="Options dialog"
-            open={open}
-            triggerRef={trigger}
-            onDismiss={() => setOpen(false)}
-          >
-            <button>First option</button>
-            <button>Second option</button>
-          </MenuPopover>
-        </div>
+  it.each(["Escape", "Tab", "Shift+Tab"])(
+    "preserves dialog interior tab stops and returns boundary %s focus to its opener",
+    (key) => {
+      function DialogHarness() {
+        const trigger = useRef<HTMLButtonElement>(null);
+        const [open, setOpen] = useState(false);
+        return (
+          <div>
+            <button ref={trigger} onClick={() => setOpen(true)}>
+              Options
+            </button>
+            <MenuPopover
+              id="dialog"
+              role="dialog"
+              ariaLabel="Options dialog"
+              open={open}
+              triggerRef={trigger}
+              onDismiss={() => setOpen(false)}
+            >
+              <button>First option</button>
+              <button>Second option</button>
+            </MenuPopover>
+          </div>
+        );
+      }
+      render(<DialogHarness />);
+      const trigger = screen.getByRole("button", { name: "Options" });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole("dialog", { name: "Options dialog" });
+      expect(dialog.parentElement).toBe(document.body);
+      expect(
+        screen.getByRole("button", { name: "First option" }),
+      ).toHaveFocus();
+      expect(
+        screen.getByRole("button", { name: "Second option" }),
+      ).not.toHaveAttribute("tabindex", "-1");
+      const first = screen.getByRole("button", { name: "First option" });
+      const last = screen.getByRole("button", { name: "Second option" });
+      expect(fireEvent.keyDown(first, { key: "Tab" })).toBe(true);
+      expect(dialog).toBeVisible();
+      last.focus();
+      expect(fireEvent.keyDown(last, { key: "Tab", shiftKey: true })).toBe(
+        true,
       );
-    }
-    render(<DialogHarness />);
-    const trigger = screen.getByRole("button", { name: "Options" });
-    fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Options dialog" });
-    expect(dialog.parentElement).toBe(document.body);
-    expect(screen.getByRole("button", { name: "First option" })).toHaveFocus();
-    expect(
-      screen.getByRole("button", { name: "Second option" }),
-    ).not.toHaveAttribute("tabindex", "-1");
-    fireEvent.keyDown(dialog, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Options dialog" })).toBeNull();
-    expect(trigger).toHaveFocus();
-  });
+      expect(dialog).toBeVisible();
+      const boundary = key === "Shift+Tab" ? first : last;
+      boundary.focus();
+      fireEvent.keyDown(boundary, {
+        key: key === "Escape" ? key : "Tab",
+        shiftKey: key === "Shift+Tab",
+      });
+      expect(
+        screen.queryByRole("dialog", { name: "Options dialog" }),
+      ).toBeNull();
+      expect(trigger).toHaveFocus();
+    },
+  );
 
   it("leaves focus and keyboard ownership to an opt-in neutral popup", () => {
     function NeutralHarness() {
@@ -288,9 +324,11 @@ describe("MenuPopover", () => {
     render(<MenuHarness trapFocus={false} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Actions" }));
-    fireEvent.keyDown(screen.getByRole("menu", { name: "Actions" }), {
-      key: "Tab",
-    });
+    expect(
+      fireEvent.keyDown(screen.getByRole("menu", { name: "Actions" }), {
+        key: "Tab",
+      }),
+    ).toBe(true);
 
     expect(screen.queryByRole("menu", { name: "Actions" })).toBeNull();
   });

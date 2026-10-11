@@ -136,6 +136,14 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
+it("exposes the full project name when its breadcrumb is ellipsized", () => {
+  const name = "long-project-name-".repeat(12);
+  useWorkbenchStore.setState({ project: { id: "project-a", name, roots: [] } });
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  const crumb = screen.getByText(name);
+  expect(crumb).toHaveAttribute("title", name);
+});
+
 it("separates recent working and done figures without an inert child-open control", () => {
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
@@ -165,3 +173,17 @@ it("portals chat resources outside the header and returns Escape focus to the tr
   expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
+
+it.each([false, true])(
+  "returns empty resources-dialog Tab focus to its opener (reverse=%s)",
+  (shiftKey) => {
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    const trigger = screen.getByRole("button", { name: "Show chat resources" });
+    fireEvent.click(trigger);
+    const panel = screen.getByRole("dialog", { name: "Chat resources" });
+    expect(panel).toHaveFocus();
+    fireEvent.keyDown(panel, { key: "Tab", shiftKey });
+    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(trigger).toHaveFocus();
+  },
+);

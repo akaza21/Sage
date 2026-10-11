@@ -30,17 +30,9 @@
   font-size: var(--font-size-md);
 }
 
+.agent-task-header__project,
 .agent-task-header__separator {
   flex: 0 0 auto;
-}
-
-.agent-task-header__project {
-  min-width: 0;
-  max-width: min(128px, 40%);
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .agent-task-header__separator {

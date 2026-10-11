@@ -90,35 +90,84 @@ describe("Compact chat controls", () => {
     expect(trigger.querySelector(".composer__model-icon")).not.toBeNull();
   });
 
-  it("opens queue actions outside the scrolling queue and returns focus on Escape", () => {
-    render(
+  it.each(["Escape", "Tab", "Shift+Tab"])(
+    "opens queue actions outside the scrolling queue and returns focus on %s",
+    (key) => {
+      render(
+        <ComposerQueuedPrompts
+          prompts={[
+            {
+              id: "queued",
+              text: "Long queued prompt",
+              attachedContext: [],
+              bindingId: "binding",
+              modelId: null,
+              status: "blocked",
+            },
+          ]}
+          disabled={false}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "More options for queued message: Long queued prompt",
+      });
+      fireEvent.click(trigger);
+      const menu = screen.getByRole("menu", { name: "Queued message options" });
+      expect(menu.parentElement).toBe(document.body);
+      expect(
+        screen.getByRole("menuitem", { name: "Retry when ready" }),
+      ).toHaveFocus();
+      expect(
+        fireEvent.keyDown(menu, {
+          key: key === "Escape" ? key : "Tab",
+          shiftKey: key === "Shift+Tab",
+        }),
+      ).toBe(false);
+      expect(
+        screen.queryByRole("menu", { name: "Queued message options" }),
+      ).toBeNull();
+      expect(trigger).toHaveFocus();
+    },
+  );
+
+  it("does not reopen queue actions or steal focus after disabling and reenabling", () => {
+    const queue = (disabled: boolean) => (
       <ComposerQueuedPrompts
         prompts={[
           {
             id: "queued",
-            text: "Long queued prompt",
+            text: "Prompt",
             attachedContext: [],
             bindingId: "binding",
             modelId: null,
             status: "blocked",
           },
         ]}
-        disabled={false}
-      />,
+        disabled={disabled}
+      />
     );
+    const { rerender } = render(queue(false));
     const trigger = screen.getByRole("button", {
-      name: "More options for queued message: Long queued prompt",
+      name: "More options for queued message: Prompt",
     });
     fireEvent.click(trigger);
-    const menu = screen.getByRole("menu", { name: "Queued message options" });
-    expect(menu.parentElement).toBe(document.body);
     expect(
-      screen.getByRole("menuitem", { name: "Retry when ready" }),
-    ).toHaveFocus();
-    fireEvent.keyDown(menu, { key: "Escape" });
+      screen.getByRole("menu", { name: "Queued message options" }),
+    ).toBeVisible();
+    rerender(queue(true));
     expect(
       screen.queryByRole("menu", { name: "Queued message options" }),
     ).toBeNull();
-    expect(trigger).toHaveFocus();
+    screen
+      .getByRole("button", { name: "Delete queued message: Prompt" })
+      .focus();
+    rerender(queue(false));
+    expect(
+      screen.queryByRole("menu", { name: "Queued message options" }),
+    ).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.getByRole("button", { name: "Delete queued message: Prompt" }),
+    ).toHaveFocus();
   });
 });

@@ -13,6 +13,27 @@
 }
 
 @container composer (max-width: 520px) {
+  .composer .composer__queued {
+    position: static;
+    max-height: min(160px, 24vh);
+    padding: var(--space-1);
+  }
+
+  .composer .composer__queued-row {
+    flex-wrap: wrap;
+  }
+
+  .composer .composer__queued-text {
+    flex: 1 1 120px;
+  }
+
+  .composer .composer__queued-state {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   .composer .composer__access-text,
   .composer .composer__capacity {
     display: none;
@@ -98,6 +119,15 @@
 }
 
 @container chat-center (max-width: 400px) {
+  .agent-chat-center .agent-task-header__project {
+    min-width: 0;
+    max-width: min(128px, 40%);
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .agent-chat-center .agent-task-header {
     flex-wrap: wrap;
     gap: var(--space-1);

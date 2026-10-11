@@ -33,6 +33,23 @@ function enabledMenuItems(container: HTMLElement) {
   return menuItems(container).filter((item) => !item.hasAttribute("disabled"));
 }
 
+function dialogControls(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      "button, input, select, textarea, a[href], [tabindex]",
+    ),
+  ).filter((item) => {
+    const style = getComputedStyle(item);
+    return (
+      item.tabIndex >= 0 &&
+      !item.matches(":disabled") &&
+      !item.closest("[hidden], [inert]") &&
+      style.display !== "none" &&
+      style.visibility !== "hidden"
+    );
+  });
+}
+
 function activateMenuItem(container: HTMLElement, next: number) {
   const all = menuItems(container);
   const enabled = enabledMenuItems(container);
@@ -68,6 +85,7 @@ export function MenuPopover({
   onDismiss,
   open,
   portalTarget = "document",
+  restoreFocusOnTab = false,
   role = "menu",
   trapFocus = false,
   triggerRef,
@@ -85,6 +103,7 @@ export function MenuPopover({
   onDismiss: (reason: MenuDismissReason) => void;
   open: boolean;
   portalTarget?: PortalTarget;
+  restoreFocusOnTab?: boolean;
   role?: PopoverRole;
   trapFocus?: boolean;
   triggerRef: RefObject<HTMLElement | null>;
@@ -98,6 +117,7 @@ export function MenuPopover({
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
+  const positionRef = useRef(position);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -127,12 +147,22 @@ export function MenuPopover({
         Math.max(VIEWPORT_GUTTER, window.innerWidth - width - VIEWPORT_GUTTER),
       );
 
-      setPosition({
+      const next: CSSProperties = {
         left,
         minWidth: matchTriggerWidth ? anchor.width : undefined,
         top: Math.max(VIEWPORT_GUTTER, top),
         visibility: "visible",
-      });
+      };
+      const current = positionRef.current;
+      if (
+        current.left === next.left &&
+        current.top === next.top &&
+        current.minWidth === next.minWidth &&
+        current.visibility === next.visibility
+      )
+        return;
+      positionRef.current = next;
+      setPosition(next);
     };
 
     updatePosition();
@@ -249,7 +279,21 @@ export function MenuPopover({
       return;
     }
     if (event.key === "Tab") {
-      if (role === "dialog") return;
+      if (role === "dialog") {
+        const controls = dialogControls(popover);
+        const boundary = event.shiftKey ? controls[0] : controls.at(-1);
+        if (
+          !boundary ||
+          document.activeElement === boundary ||
+          document.activeElement === popover
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          triggerRef.current?.focus();
+          onDismiss("tab");
+        }
+        return;
+      }
       if (trapFocus && items.length > 0) {
         event.preventDefault();
         const current = Math.max(
@@ -261,6 +305,10 @@ export function MenuPopover({
           (current + (event.shiftKey ? -1 : 1) + items.length) % items.length,
         );
       } else {
+        if (restoreFocusOnTab) {
+          event.preventDefault();
+          triggerRef.current?.focus();
+        }
         onDismiss("tab");
       }
       return;

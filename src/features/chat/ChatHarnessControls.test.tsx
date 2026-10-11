@@ -548,7 +548,7 @@ describe("composer permission mode picker", () => {
     ).not.toContainElement(screen.getByRole("status"));
   });
 
-  it("dismisses the model list on Tab, restores its trigger and leaves default handling enabled", () => {
+  it("dismisses the model list on Tab and preserves its restored trigger focus", () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
       models: [{ id: "actual", name: "Actual model" }],
@@ -558,7 +558,7 @@ describe("composer permission mode picker", () => {
     fireEvent.click(trigger);
     const option = screen.getByRole("option", { name: "Actual model" });
     expect(option).toHaveFocus();
-    expect(fireEvent.keyDown(option, { key: "Tab" })).toBe(true);
+    expect(fireEvent.keyDown(option, { key: "Tab" })).toBe(false);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(trigger).toHaveFocus();
   });
@@ -624,6 +624,46 @@ describe("composer permission mode picker", () => {
     ).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it.each(["Composer options", "Access options"])(
+    "reports shared-dialog expansion only for %s and transfers ownership to the other opener",
+    (name) => {
+      renderControls();
+      const opener = screen.getByRole("button", { name });
+      const other = screen.getByRole("button", {
+        name:
+          name === "Composer options" ? "Access options" : "Composer options",
+      });
+      fireEvent.click(opener);
+      expect(opener).toHaveAttribute("aria-expanded", "true");
+      expect(other).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(other);
+      expect(opener).toHaveAttribute("aria-expanded", "false");
+      expect(other).toHaveAttribute("aria-expanded", "true");
+      fireEvent.keyDown(
+        screen.getByRole("dialog", { name: "Composer options menu" }),
+        { key: "Escape" },
+      );
+      expect(other).toHaveFocus();
+      expect(other).toHaveAttribute("aria-expanded", "false");
+    },
+  );
+
+  it.each([false, true])(
+    "returns options-dialog Tab boundary focus to its opener (reverse=%s)",
+    (shiftKey) => {
+      renderControls();
+      const trigger = screen.getByRole("button", { name: "Composer options" });
+      fireEvent.click(trigger);
+      const control = screen.getByRole("button", { name: "Permission mode" });
+      expect(control).toHaveFocus();
+      fireEvent.keyDown(control, { key: "Tab", shiftKey });
+      expect(
+        screen.queryByRole("dialog", { name: "Composer options menu" }),
+      ).toBeNull();
+      expect(trigger).toHaveFocus();
+    },
+  );
 
   it("releases restored Model trigger focus on pointer down and refocuses the selected model on reopening", () => {
     useWorkbenchStore.setState({

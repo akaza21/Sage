@@ -243,11 +243,11 @@ export function ChatHarnessControls({
           title={sessionAccessModeCopy(effectiveAccessMode).label}
           aria-haspopup="dialog"
           aria-controls={optionsId}
-          aria-expanded={active === "options"}
+          aria-expanded={active === "access"}
           disabled={turnBusy || projectTransitioning}
           onClick={(event) => {
             optionsTriggerRef.current = event.currentTarget;
-            toggle("options");
+            toggle("access");
           }}
         >
           <ShieldCheck size={13} aria-hidden="true" />
@@ -292,12 +292,13 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {active === "options" ? (
+      {active === "options" || active === "access" ? (
         <MenuPopover
           id={optionsId}
           role="dialog"
           className="composer__popover composer__options"
           ariaLabel="Composer options menu"
+          focusKey={active}
           open
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}

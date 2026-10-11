@@ -156,9 +156,34 @@ async function expectComposerControls(
   ).toBeEnabled();
   await expectControls(
     composer,
-    composer.locator('button, [tabindex="0"]'),
+    composer.locator(
+      'button:not(.composer__queued button), [tabindex="0"]:not(.composer__queued [tabindex="0"])',
+    ),
     viewport,
   );
+  const queue = composer.locator(".composer__queued");
+  if (await queue.count()) {
+    const narrow = await composer.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return (
+        element.clientWidth -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight) <=
+        520
+      );
+    });
+    await expect(queue).toHaveCSS("position", narrow ? "static" : "absolute");
+    if (!narrow) {
+      const box = await queue.boundingBox();
+      const owner = await composer.boundingBox();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(owner!.y);
+    }
+    await expectControls(
+      queue,
+      queue.locator('button, [tabindex="0"]'),
+      viewport,
+    );
+  }
 }
 
 async function expectOverlay(
@@ -337,7 +362,28 @@ for (const profile of profiles) {
 }
 
 for (const forcedColors of ["none", "active"] as const) {
-  test(`options follow the anchor after Tab to the splitter and Home/End (${forcedColors})`, async ({
+  test(`queue actions preserve native Tab and Shift+Tab focus restoration (${forcedColors})`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewports[0]);
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await prepare(page, profiles[0], false, true);
+    const trigger = page
+      .locator("form.composer")
+      .getByRole("button", { name: /^More options for queued message:/ });
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+      const menu = page.getByRole("menu", { name: "Queued message options" });
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem")).toBeFocused();
+      await page.keyboard.press(key);
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+    }
+  });
+
+  test(`options return boundary Tab focus and follow Home/End splitter movement (${forcedColors})`, async ({
     page,
   }) => {
     const viewport = viewports[2];
@@ -352,14 +398,14 @@ for (const forcedColors of ["none", "active"] as const) {
     await trigger.click();
     const panel = page.getByRole("dialog", { name: "Composer options menu" });
     await expect(panel).toBeVisible();
+    await panel.locator("button:enabled").last().focus();
+    await page.keyboard.press("Tab");
+    await expect(panel).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(panel).toBeVisible();
     const initialAnchor = await trigger.boundingBox();
-    for (let step = 0; step < 60; step++) {
-      if (
-        await splitter.evaluate((element) => element === document.activeElement)
-      )
-        break;
-      await page.keyboard.press("Tab");
-    }
+    await splitter.focus();
     await expect(splitter).toBeFocused();
     for (const key of ["Home", "End"]) {
       await page.keyboard.press(key);

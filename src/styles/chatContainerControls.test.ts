@@ -33,6 +33,41 @@ async function containerDisplay(selector: string, width: number) {
 }
 
 describe("Chat container control breakpoints", () => {
+  it("keeps the wide queue floating with its 320px cap and moves compact reflow below 520px", async () => {
+    const queue = await readFile("src/styles/queued-messages.css", "utf8");
+    const compact = await readFile(
+      "src/styles/chat-container-controls.css",
+      "utf8",
+    );
+    expect(queue).toMatch(
+      /\.composer__queued\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*calc\(100% \+ var\(--space-1\)\);[^}]*max-height:\s*min\(320px, 40vh\);/,
+    );
+    expect(queue).not.toMatch(/flex-wrap:\s*wrap;/);
+    expect(compact).toMatch(
+      /@container composer \(max-width: 520px\)[\s\S]*\.composer__queued\s*\{[^}]*position:\s*static;[^}]*max-height:\s*min\(160px, 24vh\);/,
+    );
+    expect(compact).toMatch(
+      /@container composer \(max-width: 520px\)[\s\S]*\.composer__queued-row\s*\{[^}]*flex-wrap:\s*wrap;/,
+    );
+  });
+
+  it("keeps the project crumb uncapped at wide widths and caps it only below 400px", async () => {
+    const header = await readFile("src/styles/agent-chat-panes.css", "utf8");
+    const compact = await readFile(
+      "src/styles/chat-container-controls.css",
+      "utf8",
+    );
+    expect(
+      header.match(/\.agent-task-header__project[^}]*\}/)?.[0],
+    ).not.toMatch(/max-width:/);
+    expect(header).toMatch(
+      /\.agent-task-header__project,\s*\.agent-task-header__separator\s*\{[^}]*flex:\s*0 0 auto;/,
+    );
+    expect(compact).toMatch(
+      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__project\s*\{[^}]*max-width:\s*min\(128px, 40%\);/,
+    );
+  });
+
   it.each([
     ["composer__plus", "src/styles/chat-surface.css"],
     ["composer__context-usage", "src/styles/composer-context.css"],

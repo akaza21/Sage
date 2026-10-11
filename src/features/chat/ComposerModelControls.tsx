@@ -107,10 +107,8 @@ export function ComposerModelControls({
       </div>
       <MenuPopover
         open={open && available}
-        onDismiss={(reason) => {
-          if (reason === "tab") triggerRef.current?.focus();
-          onDismiss();
-        }}
+        onDismiss={onDismiss}
+        restoreFocusOnTab
         triggerRef={triggerRef}
         initialFocus="selected"
         focusKey={choices
