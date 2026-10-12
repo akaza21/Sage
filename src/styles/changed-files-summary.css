@@ -175,7 +175,7 @@
   display: grid;
   width: 100%;
   flex: 1 1 auto;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(48px, 1fr) minmax(0, auto) auto auto;
 }
 
 .acp-file-changes .chat-file-chip__name {
@@ -293,6 +293,7 @@
 
 @container chat (max-width: 400px) {
   .acp-file-changes .chat-file-chip__root {
+    min-width: 0;
     max-width: 64px;
   }
 
@@ -314,6 +315,16 @@
 
   .acp-file-changes__disposition > span {
     flex-basis: 100%;
+  }
+}
+
+@container chat (max-width: 280px) {
+  .acp-file-changes .chat-file-chip {
+    grid-template-columns: auto minmax(48px, 1fr) auto auto;
+  }
+
+  .acp-file-changes .chat-file-chip__root {
+    display: none;
   }
 }
 

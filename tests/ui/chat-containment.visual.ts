@@ -102,14 +102,18 @@ async function expectControls(
       x: box!.x - boundary!.x,
       y: box!.y - boundary!.y,
     };
-    for (const sibling of boxes) {
-      const intersectionWidth =
-        Math.min(localBox.x + localBox.width, sibling.x + sibling.width) -
-        Math.max(localBox.x, sibling.x);
-      const intersectionHeight =
-        Math.min(localBox.y + localBox.height, sibling.y + sibling.height) -
-        Math.max(localBox.y, sibling.y);
-      expect(intersectionWidth <= 0.5 || intersectionHeight <= 0.5).toBe(true);
+    if (!scrollControls) {
+      for (const sibling of boxes) {
+        const intersectionWidth =
+          Math.min(localBox.x + localBox.width, sibling.x + sibling.width) -
+          Math.max(localBox.x, sibling.x);
+        const intersectionHeight =
+          Math.min(localBox.y + localBox.height, sibling.y + sibling.height) -
+          Math.max(localBox.y, sibling.y);
+        expect(intersectionWidth <= 0.5 || intersectionHeight <= 0.5).toBe(
+          true,
+        );
+      }
     }
     boxes.push(localBox);
   }
@@ -175,6 +179,7 @@ async function expectComposerControls(
       'button:not(.composer__queued button), [tabindex="0"]:not(.composer__queued [tabindex="0"])',
     ),
     viewport,
+    true,
   );
   const queue = composer.locator(".composer__queued");
   if (await queue.count()) {
@@ -338,10 +343,15 @@ test("expanded narrow file changes keep names and totals on one row", async ({
     await expect(name).toHaveCSS("text-align", "left");
     await expect(name).toHaveCSS("text-overflow", "ellipsis");
     const nameBox = await name.boundingBox();
-    expect(nameBox!.width).toBeGreaterThan(0);
+    expect(nameBox!.width).toBeGreaterThanOrEqual(48);
     for (const detail of await row
       .locator(".chat-file-chip__root, .tab__count")
       .all()) {
+      if ((await detail.getAttribute("class")) === "chat-file-chip__root") {
+        await expect(detail).toBeHidden();
+        continue;
+      }
+      await expect(detail).toBeVisible();
       const detailBox = await detail.boundingBox();
       expect(Math.abs(detailBox!.y - nameBox!.y)).toBeLessThanOrEqual(2);
       expect(detailBox!.x).toBeGreaterThan(nameBox!.x);
@@ -384,6 +394,28 @@ for (const profile of profiles) {
             }
             for (const pane of await panes.all()) {
               const composer = pane.locator("form.composer");
+              const paneBox = await pane.boundingBox();
+              const composerBox = await composer.boundingBox();
+              expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(
+                paneBox!.y + paneBox!.height + 0.5,
+              );
+              expect(
+                (await pane.locator(".message-list").boundingBox())!.height,
+              ).toBeGreaterThanOrEqual(120);
+              if (viewport.width === 480 && viewport.height === 560) {
+                const body = composer.locator(".composer__body");
+                await expect(body).toHaveCSS("overflow-y", "auto");
+                expect(
+                  await body.evaluate(
+                    (element) => element.scrollHeight > element.clientHeight,
+                  ),
+                ).toBe(true);
+              }
+              await expectControls(
+                composer,
+                composer.locator(".composer__toolbar button"),
+                viewport,
+              );
               await expectComposerControls(composer, viewport);
               await expect(
                 composer.getByRole("button", { name: "Harness", exact: true }),

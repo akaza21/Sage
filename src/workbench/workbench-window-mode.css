@@ -65,20 +65,89 @@
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workbench--agent.workbench--compact .workbench__body {
+.workbench--agent .workbench__body {
   position: relative;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
 }
 
-.workbench--agent.workbench--compact
-  .agent-artifact-pane:not(.agent-artifact-pane--collapsed) {
+.agent-artifact-surface {
+  display: contents;
+}
+
+.workbench__body--artifact-overlay .agent-artifact-pane {
   position: absolute;
   z-index: 12;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(420px, calc(100% - 44px));
+  width: var(--agent-artifact-overlay-width);
   box-shadow: var(--elevation-popover);
+}
+
+.agent-artifact-backdrop {
+  position: absolute;
+  z-index: 11;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: var(--color-overlay);
+}
+
+.agent-artifact-pane__focus-guard {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.agent-chat-center__header {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  background: var(--color-panel);
+}
+
+.agent-chat-center__header > .agent-task-header {
+  flex: 1;
+}
+
+.agent-artifact-header-slot {
+  display: grid;
+  flex: 0 0 auto;
+  align-items: center;
+  padding-inline-end: 8px;
+  border-bottom: 1px solid var(--agent-shell-divider);
+}
+
+.agent-artifact-header-slot:empty {
+  display: none;
+}
+
+.agent-artifact-header-slot .agent-artifact-pane__edge-action {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  place-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+@container chat (max-width: 520px) {
+  .workbench--agent .message-list,
+  .workbench--agent .composer {
+    --chat-column-trailing: 0px;
+  }
+
+  .workbench--agent .message-list {
+    padding-inline-end: calc(
+      var(--chat-column-gutter) + var(--chat-column-trailing) -
+        var(--scrollbar-size)
+    );
+  }
+
+  .workbench--agent .acp-turn {
+    column-gap: 0;
+  }
 }
 
 .workbench-sidebar-splitter {
@@ -164,11 +233,6 @@
 
 .agent-artifact-pane--with-header {
   grid-template-rows: 44px auto minmax(0, 1fr);
-}
-
-.agent-artifact-pane--collapsed {
-  grid-template-rows: minmax(0, 1fr);
-  box-shadow: inset 1px 0 var(--color-border-subtle);
 }
 
 .agent-artifact-pane__header {

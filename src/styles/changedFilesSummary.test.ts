@@ -15,7 +15,7 @@ it("keeps expanded narrow file rows inline while only collapsed totals wrap", as
   try {
     const row = summary.querySelector(".chat-file-chip")!;
     expect(getComputedStyle(row).gridTemplateColumns).toBe(
-      "auto minmax(0, 1fr) auto auto auto",
+      "auto minmax(48px, 1fr) minmax(0, auto) auto auto",
     );
     for (const detail of row.querySelectorAll(
       ".chat-file-chip__root, .tab__count",
@@ -24,6 +24,9 @@ it("keeps expanded narrow file rows inline while only collapsed totals wrap", as
     expect(
       getComputedStyle(row.querySelector(".chat-file-chip__root")!).maxWidth,
     ).toBe("64px");
+    expect(
+      getComputedStyle(row.querySelector(".chat-file-chip__root")!).minWidth,
+    ).toBe("0px");
     const totals = summary.querySelector(".acp-file-changes__totals")!;
     expect(getComputedStyle(totals).flexWrap).not.toBe("wrap");
     summary.classList.add("acp-file-changes--collapsed");
@@ -43,6 +46,38 @@ it("keeps expanded narrow file rows inline while only collapsed totals wrap", as
     expect(
       getComputedStyle(legacy.querySelector(".edit-file")!).gridTemplateColumns,
     ).toBe("minmax(0, 1fr) auto auto");
+  } finally {
+    summary.remove();
+    style.remove();
+  }
+});
+
+it("drops root labels before file names or counts in the smallest chat lanes", async () => {
+  const source = await readFile("src/styles/changed-files-summary.css", "utf8");
+  const narrow = source.match(
+    /@container chat \(max-width: 280px\)\s*\{([\s\S]*?)\n\}/,
+  )?.[1];
+  expect(narrow).toBeDefined();
+  const style = document.createElement("style");
+  style.textContent = narrow!;
+  const summary = document.createElement("div");
+  summary.className = "acp-file-changes";
+  summary.innerHTML =
+    '<span class="chat-file-chip"><span class="chat-file-chip__name">file.tsx</span><span class="chat-file-chip__root">Long project root</span><span class="tab__count">+100</span><span class="tab__count">-200</span></span>';
+  document.head.append(style);
+  document.body.append(summary);
+  try {
+    expect(
+      getComputedStyle(summary.querySelector(".chat-file-chip")!)
+        .gridTemplateColumns,
+    ).toBe("auto minmax(48px, 1fr) auto auto");
+    expect(
+      getComputedStyle(summary.querySelector(".chat-file-chip__root")!).display,
+    ).toBe("none");
+    for (const detail of summary.querySelectorAll(
+      ".chat-file-chip__name, .tab__count",
+    ))
+      expect(getComputedStyle(detail).display).not.toBe("none");
   } finally {
     summary.remove();
     style.remove();

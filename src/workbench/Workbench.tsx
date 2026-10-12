@@ -34,8 +34,6 @@ import {
 import {
   EDITOR_ACTIVITY_BAR_WIDTH,
   EDITOR_TOOL_RAIL_WIDTH,
-  agentDesktopArtifactWidth,
-  agentDesktopLeftRailWidth,
 } from "./workbenchSidebarResize";
 import {
   readWorkbenchLayout,
@@ -181,12 +179,10 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
-  const {
-    changeWidth: changeAgentSidebarWidth,
-    renderedWidths: agentSidebarWidths,
-  } = useAgentDesktopSidebarWidths();
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
-  const [agentNavigationOpen, setAgentNavigationOpen] = useState(false);
+  const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
+    useAgentDesktopSidebarWidths(agentArtifactExpanded);
+  const resourceModal = windowMode === "agent" && agentLayout.artifactModal;
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -197,6 +193,7 @@ export function Workbench() {
   }, []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (resourceModal) return;
       if (matchesKeymapChord(keymapBinding("openSettings"), event)) {
         event.preventDefault();
         setWindowMode("editor");
@@ -210,20 +207,15 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [resourceModal]);
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
       windowMode,
     });
   }, [editorToolRailWidth, windowMode]);
-  const changeAgentNavigation = useCallback((open: boolean) => {
-    setAgentNavigationOpen(open);
-    if (open) setAgentArtifactExpanded(false);
-  }, []);
   const changeAgentArtifact = useCallback((expanded: boolean) => {
     setAgentArtifactExpanded(expanded);
-    if (expanded) setAgentNavigationOpen(false);
   }, []);
   const openArtifactInEditor = useCallback((tabId: string) => {
     void (async () => {
@@ -252,28 +244,25 @@ export function Workbench() {
   }, []);
   const drawerOpen =
     isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
-    (compact &&
-      windowMode === "agent" &&
-      (agentNavigationOpen || agentArtifactExpanded));
-  const bodyStyle = compact
-    ? undefined
-    : windowMode === "agent"
-      ? agentArtifactExpanded
-        ? {
-            gridTemplateColumns: `${agentSidebarWidths.leftRailWidth}px 8px minmax(0, 1fr) 8px ${agentSidebarWidths.artifactWidth}px`,
-          }
+    (windowMode === "agent" && agentLayout.artifactOverlay);
+  const bodyStyle =
+    windowMode === "agent"
+      ? { gridTemplateColumns: agentLayout.gridTemplateColumns }
+      : compact
+        ? undefined
         : {
-            gridTemplateColumns: `${agentSidebarWidths.leftRailWidth}px 8px minmax(0, 1fr) 44px`,
-          }
-      : {
-          gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
-        };
+            gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
+          };
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
       style={workbenchGeometryStyle}
     >
-      <TitleBar mode={windowMode} onModeChange={setWindowMode} />
+      <TitleBar
+        mode={windowMode}
+        onModeChange={setWindowMode}
+        inert={resourceModal}
+      />
       <AgentCenterKeeper windowMode={windowMode} />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
@@ -283,24 +272,14 @@ export function Workbench() {
           load={loadAgentWorkbenchBody}
           render={(AgentWorkbenchBody) => (
             <AgentWorkbenchBody
-              compact={compact}
+              layout={agentLayout}
               style={bodyStyle}
               drawerOpen={drawerOpen}
-              navigationOpen={agentNavigationOpen}
-              onNavigationOpenChange={changeAgentNavigation}
               artifactExpanded={agentArtifactExpanded}
               onArtifactExpandedChange={changeAgentArtifact}
-              agentLeftRailWidth={agentSidebarWidths.leftRailWidth}
-              agentLeftRailWidthBounds={agentDesktopLeftRailWidth(
-                window.innerWidth,
-              )}
               onAgentLeftRailWidthChange={(width) =>
                 changeAgentSidebarWidth("left", width)
               }
-              agentArtifactWidth={agentSidebarWidths.artifactWidth}
-              agentArtifactWidthBounds={agentDesktopArtifactWidth(
-                window.innerWidth,
-              )}
               onAgentArtifactWidthChange={(width) =>
                 changeAgentSidebarWidth("artifact", width)
               }
@@ -341,12 +320,14 @@ export function Workbench() {
           render={(TerminalDock) => (
             <TerminalDock
               setOpen={setTerminalOpen}
+              inert={resourceModal}
               pinnedChatId={pinnedAgentChatOwner()}
             />
           )}
         />
       ) : null}
       <StatusBar
+        inert={resourceModal}
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
         showEditorSettings={windowMode === "editor"}

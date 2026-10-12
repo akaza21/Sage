@@ -59,7 +59,13 @@ function isChatTab(tab: WorkbenchTab | undefined): tab is WorkbenchTab {
   return tab?.kind === "chat";
 }
 
-export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
+export function AgentChatPanes({
+  compact = false,
+  onArtifactHeaderMount,
+}: {
+  compact?: boolean;
+  onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
+}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
@@ -257,14 +263,22 @@ export function AgentChatPanes({ compact = false }: { compact?: boolean }) {
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
       <div className="agent-chat-center">
-        <AgentTaskHeader
-          tab={focusedTab}
-          chatCount={chatTabs.length}
-          snapshot={focusedSnapshot}
-          sessionChrome={
-            sessionChrome?.chatId === focusedId ? sessionChrome : null
-          }
-        />
+        <div className="agent-chat-center__header">
+          <AgentTaskHeader
+            tab={focusedTab}
+            chatCount={chatTabs.length}
+            snapshot={focusedSnapshot}
+            sessionChrome={
+              sessionChrome?.chatId === focusedId ? sessionChrome : null
+            }
+          />
+          {onArtifactHeaderMount ? (
+            <div
+              className="agent-artifact-header-slot"
+              ref={onArtifactHeaderMount}
+            />
+          ) : null}
+        </div>
         <div
           ref={panesRef}
           id="agent-chat-panel"

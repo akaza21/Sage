@@ -59,7 +59,7 @@ function rail(page: Page): Locator {
 }
 
 function artifactRegion(page: Page): Locator {
-  return page.getByRole("complementary", { name: "Agent artifacts" });
+  return page.getByLabel("Agent artifacts", { exact: true });
 }
 
 function artifactTabStrip(page: Page): Locator {
@@ -330,6 +330,18 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
 
   test("renders the three target regions left to right", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
+    // CP-27b: the closed resource region has no permanent right-edge rail;
+    // it opens inline from the chat header trigger at this width.
+    const trigger = page.getByRole("button", {
+      name: /^Show files and preview/,
+    });
+    expect(
+      await trigger.evaluate(
+        (node) => node.closest(".agent-chat-center__header") !== null,
+      ),
+    ).toBe(true);
+    await trigger.click();
+    await expect(artifactRegion(page)).not.toHaveAttribute("role", "dialog");
 
     const [railBox, centreBox, artifactBox] = await Promise.all([
       boundsOf(rail(page)),

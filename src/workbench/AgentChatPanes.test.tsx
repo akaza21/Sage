@@ -148,6 +148,17 @@ afterEach(() => {
 });
 
 describe("AgentChatPanes measured focus-only fallback", () => {
+  it("keeps the project home free of header chrome when no Chat is open", () => {
+    useWorkbenchStore.setState({ tabs: [], activeTabId: null });
+    const onArtifactHeaderMount = vi.fn();
+    const { container } = render(
+      <AgentChatPanes onArtifactHeaderMount={onArtifactHeaderMount} />,
+    );
+    expect(screen.getByRole("tabpanel")).toHaveClass("active-canvas");
+    expect(container.querySelector(".agent-chat-center__header")).toBeNull();
+    expect(onArtifactHeaderMount).not.toHaveBeenCalled();
+  });
+
   it("uses the sidebar for chat switching without a duplicate chat tab row", () => {
     render(<AgentChatPanes />);
     expect(screen.queryByRole("tablist", { name: "Chat tabs" })).toBeNull();
@@ -158,7 +169,7 @@ describe("AgentChatPanes measured focus-only fallback", () => {
   it("keeps two chats wide, shows the focused chat when tight, and restores the split", async () => {
     render(<AgentChatPanes />);
 
-    reportCenterWidth(1_000);
+    reportCenterWidth(860);
     expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
     const splitter = screen.getByRole("separator", {
       name: "Resize chat panes",

@@ -83,6 +83,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/features/preview/previewProjectionStore.ts",
   "src/features/preview/useHarnessBrowseSession.ts",
   "src/workbench/AgentArtifactCollapsedPane.tsx",
+  "src/workbench/AgentArtifactFocusGuard.tsx",
   "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
@@ -101,6 +102,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/ProjectChatNavigation.tsx",
   "src/workbench/ProjectChatRailGlyph.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
+  "src/workbench/useAgentArtifactPaneFocus.ts",
   "src/workbench/useSubagentPaneExpansion.ts",
 ].sort();
 

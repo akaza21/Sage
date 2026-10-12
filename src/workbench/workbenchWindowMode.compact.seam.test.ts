@@ -109,7 +109,7 @@ describe("compact workbench window mode seam", () => {
 
     expect(screen.queryByRole("dialog")).toBeNull();
     await screen.findByRole("button", {
-      name: "Show preview · Waiting",
+      name: "Show files and preview · Waiting",
     });
     const agentCenter = container.querySelector(".center-region");
     expect(agentCenter).not.toHaveAttribute("inert");
@@ -175,8 +175,8 @@ describe("compact workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("complementary", { name: "Agent artifacts" }),
-    ).not.toHaveClass("agent-artifact-pane--collapsed");
+      screen.getByRole("dialog", { name: "Agent artifacts" }),
+    ).toBeVisible();
     const agentCenter = container.querySelector(".center-region");
     expect(agentCenter).toHaveAttribute("inert");
     expect(agentCenter).toHaveAttribute("aria-hidden", "true");

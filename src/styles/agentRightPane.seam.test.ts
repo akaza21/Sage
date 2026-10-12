@@ -32,8 +32,7 @@ describe("Agent right-pane stylesheet seam", () => {
     );
     expect(css).not.toContain("writing-mode: vertical-rl");
     expect(css).not.toContain(".agent-artifact-pane__edge-copy");
-    expect(css).toMatch(
-      /\.agent-artifact-pane--collapsed \.agent-artifact-pane__edge-action\s*\{[^}]*min-height: 44px;/s,
-    );
+    expect(css).not.toContain(".agent-artifact-pane--collapsed");
+    expect(modeShell).not.toContain(".agent-artifact-pane--collapsed");
   });
 });

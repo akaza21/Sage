@@ -54,9 +54,11 @@ function selectedScope(
 }
 
 export function TerminalDockForWorkbench({
+  inert = false,
   setOpen,
   pinnedChatId,
 }: {
+  inert?: boolean;
   setOpen: (open: boolean) => void;
   pinnedChatId: string | null;
 }) {
@@ -83,7 +85,12 @@ export function TerminalDockForWorkbench({
   }, [scope, onClose, pinnedChatId, uiProjectGeneration]);
   if (!scope) {
     return (
-      <section className="terminal-dock" aria-label="Terminal">
+      <section
+        className="terminal-dock"
+        aria-label="Terminal"
+        inert={inert}
+        aria-hidden={inert || undefined}
+      >
         <div className="terminal-dock__header">Terminal unavailable</div>
         <p className="terminal-dock__message" role="status">
           Open a chat in an active project to use the terminal.
@@ -94,13 +101,15 @@ export function TerminalDockForWorkbench({
       </section>
     );
   }
-  return <TerminalDockShell scope={scope} onClose={onClose} />;
+  return <TerminalDockShell scope={scope} onClose={onClose} inert={inert} />;
 }
 
 export function TerminalDockShell({
+  inert = false,
   scope,
   onClose,
 }: {
+  inert?: boolean;
   scope: UserTerminalScope;
   onClose: () => void;
 }) {
@@ -233,6 +242,8 @@ export function TerminalDockShell({
     <section
       className={`terminal-dock${collapsed ? " terminal-dock--collapsed" : ""}`}
       aria-label="Terminal"
+      inert={inert}
+      aria-hidden={inert || undefined}
     >
       <div className="terminal-dock__header">
         <div

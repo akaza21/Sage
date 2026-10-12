@@ -26,11 +26,13 @@ function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {
 }
 
 export function StatusBar({
+  inert = false,
   railLeading = false,
   showSidebarToggle = true,
   showEditorSettings = true,
   onOpenTerminal,
 }: {
+  inert?: boolean;
   railLeading?: boolean;
   showSidebarToggle?: boolean;
   showEditorSettings?: boolean;
@@ -65,7 +67,11 @@ export function StatusBar({
       : "Show artifact pane";
 
   return (
-    <footer className="status-bar">
+    <footer
+      className="status-bar"
+      inert={inert}
+      aria-hidden={inert || undefined}
+    >
       <div className="status-bar__group">
         <span>
           <GitBranch size={14} aria-hidden="true" />

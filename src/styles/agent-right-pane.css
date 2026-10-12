@@ -157,12 +157,6 @@
   line-height: 1.2;
 }
 
-.agent-artifact-pane--collapsed .agent-artifact-pane__edge-action {
-  min-height: 44px;
-  justify-content: center;
-  padding: 0;
-}
-
 .agent-artifact-pane__edge-dot {
   position: absolute;
   top: 8px;
@@ -356,10 +350,6 @@
 
   .agent-artifact-header__title-row {
     gap: var(--space-1);
-  }
-
-  .agent-artifact-pane--collapsed .agent-artifact-pane__edge-action {
-    width: 44px;
   }
 
   .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {

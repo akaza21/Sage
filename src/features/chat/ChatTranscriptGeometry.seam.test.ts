@@ -35,6 +35,32 @@ afterEach(() => {
 });
 
 describe("CP-28 transcript style contracts", () => {
+  it("shares the narrow Agent column without sacrificing the native scrollbar gutter", () => {
+    const source = readFileSync(
+      "src/workbench/workbench-window-mode.css",
+      "utf8",
+    );
+    const narrow = source.match(
+      /@container chat \(max-width: 520px\)\s*\{([\s\S]*?)\n\}/u,
+    )?.[1];
+    expect(narrow).toBeDefined();
+    expect(narrow).toMatch(
+      /\.workbench--agent \.message-list,\s*\.workbench--agent \.composer\s*\{[^}]*--chat-column-trailing:\s*0px;/u,
+    );
+    expect(narrow).toMatch(
+      /padding-inline-end:\s*calc\(\s*var\(--chat-column-gutter\)\s*\+\s*var\(--chat-column-trailing\)\s*-\s*var\(--scrollbar-size\)\s*\);/u,
+    );
+    expect(narrow).toMatch(
+      /\.workbench--agent \.acp-turn\s*\{[^}]*column-gap:\s*0;/u,
+    );
+    expect(
+      declaration(
+        "src/styles/chat-surface.css",
+        ".message-list",
+      ).getPropertyValue("scrollbar-gutter"),
+    ).toBe("stable");
+  });
+
   it("declares no auto-margin override for split composers", () => {
     const split = readFileSync("src/styles/agent-chat-panes.css", "utf8");
     expect(split).not.toMatch(

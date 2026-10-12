@@ -37,7 +37,7 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(shellCss).not.toMatch(/^\.project-sidebar\b/m);
     expect(shellCss).not.toMatch(/^\.project-chat-row\b/m);
     expect(projectCss).toMatch(/^\.project-sidebar\b/m);
-    expect(projectCss).toMatch(/\.project-sidebar__drawer\b/);
+    expect(projectCss).not.toMatch(/\.project-sidebar__drawer\b/);
     expect(chatCss).toMatch(/^\.project-chat-row\b/m);
     expect(chatCss).toMatch(/^\.project-chat-actions__menu\b/m);
     expect(chatCss).toMatch(/^\.project-chat-edit\b/m);
@@ -102,7 +102,7 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
   });
 
-  it("uses a real compact navigation drawer instead of icon-crushing chat rows", async () => {
+  it("keeps Agent navigation persistent instead of a compact drawer", async () => {
     const [shellCss, projectCss, chatCss] = await Promise.all([
       readFile(resolve("src/styles/global.css"), "utf8"),
       readFile(resolve("src/styles/project-navigation-surface.css"), "utf8"),
@@ -113,12 +113,8 @@ describe("Project and chat navigation stylesheet seams", () => {
     expect(shellCss).not.toMatch(/\.project-chats\b/);
     expect(shellCss).not.toMatch(/\.project-empty-action\b/);
     expect(shellCss).not.toMatch(/\.project-sidebar__account\b/);
-    expect(projectCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar--compact\b/,
-    );
-    expect(projectCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*\.project-sidebar__drawer\b/,
-    );
+    expect(projectCss).not.toMatch(/\.project-sidebar--compact\b/);
+    expect(projectCss).not.toMatch(/\.project-sidebar__drawer\b/);
     expect(chatCss).not.toMatch(/@media \(max-width: 760px\)/);
   });
 

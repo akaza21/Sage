@@ -59,6 +59,17 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("keeps upper composer content in a scroll region separate from the toolbar", () => {
+    renderComposer({ workbenchError: "Retry the request" });
+    const form = screen.getByRole("form");
+    const body = form.querySelector(".composer__body");
+    expect(body).not.toBeNull();
+    expect(body).toContainElement(screen.getByRole("textbox"));
+    expect(body).toContainElement(screen.getByRole("alert"));
+    expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
+    expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
+  });
+
   it("explains unavailable capability and refuses a dropped image", () => {
     const { onAddImages } = renderComposer();
     expect(screen.getByRole("button", { name: "Add images" })).toBeDisabled();
@@ -139,6 +150,11 @@ describe("composer image input", () => {
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
       "src",
       "blob:preview",
+    );
+    expect(document.querySelector(".composer__body")).toContainElement(
+      screen.getByRole("button", {
+        name: /^Remove Image .*sample\.png context$/u,
+      }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: "Remove Image · sample.png context" }),

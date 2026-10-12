@@ -289,7 +289,7 @@ describe("D0 workbench window mode seam", () => {
     ).toBeChecked();
   });
 
-  it("keeps Agent artifacts on the right and hides Editor chrome in Agent mode", async () => {
+  it("keeps collapsed Agent resource access in the header and hides Editor chrome", async () => {
     useWorkbenchStore.setState({
       sidebarOpen: false,
       tabs: [
@@ -323,8 +323,16 @@ describe("D0 workbench window mode seam", () => {
       await screen.findByRole("complementary", { name: "Projects and chats" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("complementary", { name: "Agent artifacts" }),
+      screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "Show files and preview · Waiting" })
+        .closest(".agent-chat-center__header"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("complementary", { name: "Agent artifacts" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("navigation", { name: "Agent artifact tabs" }),
     ).toBeNull();

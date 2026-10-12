@@ -13,6 +13,10 @@
 }
 
 @container composer (max-width: 520px) {
+  .composer .composer__body {
+    scrollbar-gutter: stable;
+  }
+
   .composer .composer__plus {
     width: 24px;
   }

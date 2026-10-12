@@ -102,6 +102,7 @@ afterEach(() => {
   compactViewport = false;
   useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initialState, true);
+  vi.unstubAllGlobals();
 });
 
 async function switchWindowMode(mode: "Agent" | "Editor") {
@@ -164,8 +165,11 @@ describe("Agent center workbench window mode seam", () => {
     });
     expect(screen.queryByText("Loading src/current.ts…")).toBeNull();
     expect(
-      screen.getByRole("complementary", { name: "Agent artifacts" }),
+      screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "Agent artifacts" }),
+    ).toBeNull();
     expect(screen.queryByRole("tab", { name: /current\.ts/ })).toBeNull();
     expect(activateTab).not.toHaveBeenCalled();
   });
@@ -200,6 +204,7 @@ describe("Agent center workbench window mode seam", () => {
   });
 
   it("keeps Chat in the Agent center when a Diff or File artifact tab is selected", async () => {
+    vi.stubGlobal("innerWidth", 1280);
     seedArtifactOwner();
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });

@@ -1,58 +1,55 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { LeftSidebar } from "./LeftSidebar";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
-import type { WorkbenchSidebarWidth } from "./workbenchSidebarResize";
+import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 export function AgentWorkbenchBody({
-  compact,
+  layout,
   style,
   drawerOpen,
-  navigationOpen,
-  onNavigationOpenChange,
   artifactExpanded,
   onArtifactExpandedChange,
-  agentLeftRailWidth,
-  agentLeftRailWidthBounds,
   onAgentLeftRailWidthChange,
-  agentArtifactWidth,
-  agentArtifactWidthBounds,
   onAgentArtifactWidthChange,
   onOpenArtifactInEditor,
   onOpenSettings,
 }: {
-  compact: boolean;
+  layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
   drawerOpen: boolean;
-  navigationOpen: boolean;
-  onNavigationOpenChange: (open: boolean) => void;
   artifactExpanded: boolean;
   onArtifactExpandedChange: (expanded: boolean) => void;
-  agentLeftRailWidth: number;
-  agentLeftRailWidthBounds: WorkbenchSidebarWidth;
   onAgentLeftRailWidthChange: (width: number) => void;
-  agentArtifactWidth: number;
-  agentArtifactWidthBounds: WorkbenchSidebarWidth;
   onAgentArtifactWidthChange: (width: number) => void;
   onOpenArtifactInEditor: (tabId: string) => void;
   onOpenSettings: () => void;
 }) {
+  const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
+    null,
+  );
   return (
-    <div className="workbench__body" style={style}>
+    <div
+      className={`workbench__body${layout.artifactOverlay ? " workbench__body--artifact-overlay" : ""}`}
+      style={
+        {
+          ...style,
+          "--agent-artifact-overlay-width": `${layout.artifactOverlayWidth}px`,
+        } as CSSProperties
+      }
+    >
       <LeftSidebar
-        compact={compact}
-        open={navigationOpen}
-        onOpenChange={onNavigationOpenChange}
+        inert={layout.artifactModal}
         onOpenSettings={onOpenSettings}
       />
-      {!compact ? (
+      {layout.navigationResizable ? (
         <WorkbenchSidebarSplitter
           ariaLabel="Resize project and chat rail"
           side="leading"
-          value={agentLeftRailWidth}
-          width={agentLeftRailWidthBounds}
+          value={layout.leftRailWidth}
+          width={layout.leftRailBounds}
           onChange={onAgentLeftRailWidthChange}
         />
       ) : null}
@@ -61,20 +58,35 @@ export function AgentWorkbenchBody({
         inert={drawerOpen}
         aria-hidden={drawerOpen || undefined}
       >
-        <AgentChatPanes compact={compact} />
+        <AgentChatPanes
+          compact={!layout.navigationResizable}
+          onArtifactHeaderMount={setArtifactHeader}
+        />
       </div>
-      {!compact && artifactExpanded ? (
+      {!layout.artifactOverlay && artifactExpanded ? (
         <WorkbenchSidebarSplitter
           ariaLabel="Resize files and preview"
           side="trailing"
-          value={agentArtifactWidth}
-          width={agentArtifactWidthBounds}
+          value={layout.artifactWidth}
+          width={layout.artifactBounds}
           onChange={onAgentArtifactWidthChange}
+        />
+      ) : null}
+      {layout.artifactModal ? (
+        <button
+          className="agent-artifact-backdrop"
+          type="button"
+          tabIndex={-1}
+          aria-label="Dismiss files and preview"
+          onClick={() => onArtifactExpandedChange(false)}
         />
       ) : null}
       <AgentArtifactPane
         expanded={artifactExpanded}
-        focusOnExpand={compact}
+        focusOnExpand={layout.artifactOverlay}
+        modal={layout.artifactModal}
+        overlayOnExpand={layout.artifactOverlayOnExpand}
+        headerNode={artifactHeader}
         onExpandedChange={onArtifactExpandedChange}
         onOpenInEditor={onOpenArtifactInEditor}
       />

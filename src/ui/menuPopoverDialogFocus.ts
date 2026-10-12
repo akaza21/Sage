@@ -32,7 +32,7 @@ export function focusPopoverDialog(popover: HTMLElement) {
 }
 
 export function exitPopoverDialogOnTab(
-  event: KeyboardEvent<HTMLDivElement>,
+  event: KeyboardEvent<HTMLElement>,
   trigger: HTMLElement | null,
   onDismiss: () => void,
 ) {

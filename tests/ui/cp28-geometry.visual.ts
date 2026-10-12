@@ -159,7 +159,7 @@ for (const paneWidth of [360, 384]) {
     await openScenario(page, "file", "agent");
     await settleChatProjections(page);
     await expect(
-      page.getByRole("complementary", { name: "Agent artifacts" }),
+      page.getByLabel("Agent artifacts", { exact: true }),
     ).toBeVisible();
     await page.addStyleTag({
       content: `.agent-chat-panes { grid-template-columns: ${paneWidth}px; }`,

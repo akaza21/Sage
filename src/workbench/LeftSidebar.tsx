@@ -1,6 +1,6 @@
-import { Search, Settings, SquarePen, PanelLeftOpen, X } from "../ui/leanIcons";
+import { Search, Settings, SquarePen, X } from "../ui/leanIcons";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "../features/chatSearch/chatSearchDomain";
@@ -32,14 +32,10 @@ import {
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 export function LeftSidebar({
-  compact = false,
-  open = true,
-  onOpenChange,
+  inert = false,
   onOpenSettings,
 }: {
-  compact?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  inert?: boolean;
   onOpenSettings?: () => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
@@ -72,12 +68,9 @@ export function LeftSidebar({
   const [railTick, setRailTick] = useState(0);
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
-  const drawerRef = useRef<HTMLElement>(null);
-  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const wasDrawerOpen = useRef(false);
   const groups = useMemo(
     () =>
       groupAgentRailProjects({
@@ -167,10 +160,6 @@ export function LeftSidebar({
     projectTransitioning,
   ]);
 
-  useLayoutEffect(() => {
-    if (compact && open) drawerRef.current?.focus();
-  }, [compact, open]);
-
   useEffect(() => {
     if (filterOpen) filterInputRef.current?.focus();
   }, [filterOpen]);
@@ -180,13 +169,6 @@ export function LeftSidebar({
     setFilterOpen(false);
     filterTriggerRef.current?.focus();
   };
-
-  useEffect(() => {
-    if (compact && !open && wasDrawerOpen.current) {
-      drawerTriggerRef.current?.focus();
-    }
-    wasDrawerOpen.current = compact && open;
-  }, [compact, open]);
 
   const navigation = (
     <>
@@ -328,69 +310,26 @@ export function LeftSidebar({
     </>
   );
 
-  if (!compact) {
-    return (
-      <aside className="project-sidebar" aria-label="Projects and chats">
-        <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
-        <AgentPrimaryNavigation
-          onNewChat={() => void createChat()}
-          onSearch={() => {
-            if (project) requestChatSearchInFolder(project.id);
-          }}
-          onSettings={() => {
-            if (onOpenSettings) onOpenSettings();
-            else void openSettings();
-          }}
-          searchDisabled={!project || projectTransitioning}
-        />
-        {navigation}
-      </aside>
-    );
-  }
-
   return (
     <aside
-      className="project-sidebar project-sidebar--compact"
-      aria-label="Agent navigation"
+      className="project-sidebar"
+      aria-label="Projects and chats"
+      inert={inert}
+      aria-hidden={inert || undefined}
     >
       <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
-      <button
-        ref={drawerTriggerRef}
-        className="project-sidebar__drawer-trigger"
-        type="button"
-        aria-label="Open projects and chats"
-        aria-expanded={open}
-        onClick={() => onOpenChange?.(!open)}
-      >
-        <PanelLeftOpen size={18} aria-hidden="true" />
-        <span>Chats</span>
-      </button>
-      {open ? (
-        <section
-          ref={drawerRef}
-          className="project-sidebar__drawer project-sidebar__drawer--agent-v1"
-          role="dialog"
-          aria-label="Projects and chats"
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            onOpenChange?.(false);
-          }}
-        >
-          <header className="project-sidebar__drawer-header">
-            <strong>Projects and chats</strong>
-            <button
-              type="button"
-              aria-label="Close projects and chats"
-              onClick={() => onOpenChange?.(false)}
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          </header>
-          {navigation}
-        </section>
-      ) : null}
+      <AgentPrimaryNavigation
+        onNewChat={() => void createChat()}
+        onSearch={() => {
+          if (project) requestChatSearchInFolder(project.id);
+        }}
+        onSettings={() => {
+          if (onOpenSettings) onOpenSettings();
+          else void openSettings();
+        }}
+        searchDisabled={!project || projectTransitioning}
+      />
+      {navigation}
     </aside>
   );
 }

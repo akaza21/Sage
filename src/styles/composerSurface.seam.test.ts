@@ -20,6 +20,68 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("caps the composer row to leave transcript space and scrolls upper content at every width", async () => {
+    const surface = await composerRules();
+    expect(surface).toMatch(
+      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+auto\s+fit-content\(60%\);/s,
+    );
+    expect(surface).toMatch(
+      /\.composer\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*flex-direction:\s*column;/s,
+    );
+    const compact = await readFile(
+      "src/styles/chat-container-controls.css",
+      "utf8",
+    );
+    expect(compact).toMatch(
+      /@container composer \(max-width: 520px\)[\s\S]*\.composer__body\s*\{[^}]*scrollbar-gutter:\s*stable;/s,
+    );
+    expect(surface).toMatch(
+      /\.composer__body\s*\{[^}]*display:\s*block;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s,
+    );
+    expect(surface).toMatch(/\.composer__toolbar\s*\{[^}]*flex:\s*none;/s);
+  });
+
+  it("keeps transcript and composer in their named rows when notices and follow controls mount", async () => {
+    const style = document.createElement("style");
+    style.textContent = await readFile("src/styles/chat-surface.css", "utf8");
+    const surface = document.createElement("section");
+    surface.className = "chat-surface chat-surface--agent";
+    document.head.append(style);
+    document.body.append(surface);
+    try {
+      for (const extraRows of [false, true]) {
+        surface.innerHTML =
+          (extraRows
+            ? '<div class="composer__notice">Account notice</div>'
+            : "") +
+          '<div class="message-list">Transcript</div>' +
+          (extraRows
+            ? '<div class="chat-follow-end-zone">Jump to latest</div>'
+            : "") +
+          '<form class="composer"></form>';
+        expect(
+          getComputedStyle(surface.querySelector(".message-list")!).gridArea,
+        ).toBe("transcript");
+        expect(
+          getComputedStyle(surface.querySelector(".composer")!).gridArea,
+        ).toBe("composer");
+        if (extraRows) {
+          expect(
+            getComputedStyle(surface.querySelector(".composer__notice")!)
+              .gridArea,
+          ).toBe("notice");
+          expect(
+            getComputedStyle(surface.querySelector(".chat-follow-end-zone")!)
+              .gridArea,
+          ).toBe("follow");
+        }
+      }
+    } finally {
+      surface.remove();
+      style.remove();
+    }
+  });
+
   it("uses a whole-pixel 16px model heading line box", async () => {
     const css = await readFile(
       resolve("src/styles/composer-model-picker.css"),

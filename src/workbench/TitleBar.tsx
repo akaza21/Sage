@@ -82,9 +82,11 @@ function WorkbenchModeSwitch({
 }
 
 export function TitleBar({
+  inert = false,
   mode,
   onModeChange,
 }: {
+  inert?: boolean;
   mode: WorkbenchWindowMode;
   onModeChange: (mode: WorkbenchWindowMode) => void;
 }) {
@@ -103,7 +105,7 @@ export function TitleBar({
     requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
   }, [project]);
   useEffect(() => {
-    if (mode !== "agent" || chatSearchDisabled) return;
+    if (inert || mode !== "agent" || chatSearchDisabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matchesKeymapChord(keymapBinding("chatSearch"), event)) return;
       event.preventDefault();
@@ -111,7 +113,7 @@ export function TitleBar({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [chatSearchDisabled, mode, openChatSearch]);
+  }, [inert, chatSearchDisabled, mode, openChatSearch]);
   const focusedId = titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId);
   const sessionTitle =
     mode === "agent"
@@ -121,7 +123,11 @@ export function TitleBar({
       : null;
 
   return (
-    <header className="title-bar">
+    <header
+      className="title-bar"
+      inert={inert}
+      aria-hidden={inert || undefined}
+    >
       <div className="title-bar__start">
         <WorkbenchBrand />
         <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />

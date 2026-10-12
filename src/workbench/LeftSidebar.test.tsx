@@ -51,9 +51,8 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
   ).toBeEnabled();
 });
 
-it("dismisses the task filter without closing the compact drawer", () => {
-  const onOpenChange = vi.fn();
-  render(<LeftSidebar compact open onOpenChange={onOpenChange} />);
+it("dismisses the task filter without hiding persistent Agent navigation", () => {
+  render(<LeftSidebar />);
 
   fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
   const search = screen.getByRole("searchbox", { name: "Search tasks" });
@@ -62,9 +61,11 @@ it("dismisses the task filter without closing the compact drawer", () => {
 
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(
-    screen.getByRole("dialog", { name: "Projects and chats" }),
+    screen.getByRole("complementary", { name: "Projects and chats" }),
   ).toBeVisible();
-  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", { name: "Open projects and chats" }),
+  ).toBeNull();
   expect(screen.getByRole("button", { name: "Filter tasks" })).toHaveFocus();
 
   fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));

@@ -62,6 +62,10 @@ import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 
+function mountArtifactHeader() {
+  return render(<div />).container.firstElementChild as HTMLElement;
+}
+
 const initialState = useWorkbenchStore.getState();
 const focusedOwner = {
   projectId: "project-a",
@@ -275,6 +279,7 @@ describe("Agent artifact file chips", () => {
       view.rerender(
         <AgentArtifactPane
           expanded={false}
+          headerNode={mountArtifactHeader()}
           onExpandedChange={onExpandedChange}
         />,
       );
@@ -333,6 +338,7 @@ describe("Agent artifact file chips", () => {
     const view = render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
@@ -500,7 +506,7 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Historian" })).toBeNull();
   });
-  it("starts empty as a collapsed right-edge resource affordance", () => {
+  it("starts empty with a collapsed header resource affordance", () => {
     const onExpandedChange = vi.fn();
     pinAgentChatOwner(null);
     useWorkbenchStore.setState({
@@ -520,12 +526,13 @@ describe("Agent artifact file chips", () => {
     const { rerender } = render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
 
     const expand = screen.getByRole("button", {
-      name: "Show preview · Waiting",
+      name: "Show files and preview · Waiting",
     });
     expect(expand).toBeVisible();
     expect(within(expand).queryByText("Files")).toBeNull();
@@ -555,12 +562,13 @@ describe("Agent artifact file chips", () => {
     rerender(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
     expect(
       screen.getByRole("button", {
-        name: "Show preview · Waiting",
+        name: "Show files and preview · Waiting",
       }),
     ).toHaveFocus();
   });
@@ -583,6 +591,7 @@ describe("Agent artifact file chips", () => {
     render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
@@ -745,7 +754,7 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
-  it("keeps the collapsed edge waiting without a Preview session", () => {
+  it("keeps the collapsed header waiting without a Preview session", () => {
     const onExpandedChange = vi.fn();
     useWorkbenchStore.setState({
       tabs: [
@@ -764,18 +773,19 @@ describe("Agent artifact file chips", () => {
     render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
 
     expect(
       screen.getByRole("button", {
-        name: "Show preview · Waiting",
+        name: "Show files and preview · Waiting",
       }),
     ).not.toHaveTextContent("1");
   });
 
-  it("counts a live Preview on the collapsed edge without File or Diff tabs", () => {
+  it("counts a live Preview on the collapsed header without File or Diff tabs", () => {
     const onExpandedChange = vi.fn();
     useWorkbenchStore.setState({
       tabs: [
@@ -798,13 +808,14 @@ describe("Agent artifact file chips", () => {
     render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
 
     expect(
       screen.getByRole("button", {
-        name: "Show preview · Ready · 1 resource",
+        name: "Show files and preview · Ready · 1 resource",
       }),
     ).toHaveTextContent("1");
   });
@@ -927,6 +938,7 @@ describe("Agent artifact file chips", () => {
     view.rerender(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
@@ -1960,33 +1972,83 @@ describe("Agent artifact file chips", () => {
     );
   });
 
+  it("does not allocate a collapsed resource edge without a Chat header", () => {
+    const { container } = render(<AgentArtifactPane expanded={false} />);
+    expect(container.querySelector(".agent-artifact-pane")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
+  });
+
+  it("names the header trigger for all resources and controls the opened pane", () => {
+    const header = render(<div data-testid="resource-header" />);
+    const headerNode = header.getByTestId("resource-header");
+    const view = render(
+      <AgentArtifactPane
+        expanded={false}
+        focusOnExpand
+        headerNode={headerNode}
+      />,
+    );
+    const trigger = screen.getByRole("button", {
+      name: /Show files and preview/,
+    });
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    const paneId = trigger.getAttribute("aria-controls");
+    view.rerender(
+      <AgentArtifactPane expanded focusOnExpand headerNode={headerNode} />,
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Agent artifacts" }),
+    ).toHaveAttribute("id", paneId);
+  });
+
+  it("keeps iframe exit focus within the resource overlay", async () => {
+    openPreviewSession();
+    render(<AgentArtifactPane focusOnExpand />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
+    const pane = screen.getByRole("dialog", { name: "Agent artifacts" });
+    screen.getByTitle("Sage browser").focus();
+    const guards = pane.querySelectorAll<HTMLElement>(
+      "[data-artifact-focus-guard]",
+    );
+    expect(guards).toHaveLength(2);
+    guards[1].focus();
+    expect(pane.contains(document.activeElement)).toBe(true);
+    guards[0].focus();
+    expect(pane.contains(document.activeElement)).toBe(true);
+  });
+
   it("names the collapsed toggle with a truthful resource count badge", () => {
     const onExpandedChange = vi.fn();
     render(
       <AgentArtifactPane
         expanded={false}
+        headerNode={mountArtifactHeader()}
         onExpandedChange={onExpandedChange}
       />,
     );
 
     const toggle = screen.getByRole("button", {
-      name: "Show preview · Ready · 1 resource",
+      name: "Show files and preview · Ready · 1 resource",
     });
     expect(toggle).toHaveAttribute(
       "title",
-      "Show preview · Ready · 1 resource",
+      "Show files and preview · Ready · 1 resource",
     );
     expect(within(toggle).getByText("1")).toBeInTheDocument();
   });
 
   it("keeps the collapsed pane compact while announcing its ready state", () => {
-    render(<AgentArtifactPane expanded={false} />);
+    render(
+      <AgentArtifactPane expanded={false} headerNode={mountArtifactHeader()} />,
+    );
     const toggle = screen.getByRole("button", {
-      name: /Show preview · Ready · 1 resource/,
+      name: /Show files and preview · Ready · 1 resource/,
     });
     expect(toggle).toHaveAttribute(
       "title",
-      "Show preview · Ready · 1 resource",
+      "Show files and preview · Ready · 1 resource",
     );
     expect(toggle.querySelector(".agent-artifact-pane__edge-copy")).toBeNull();
     expect(toggle).not.toHaveTextContent("Ready");
@@ -2089,6 +2151,20 @@ describe("Agent artifact file chips", () => {
       "src",
       "http://127.0.0.1:5173/focused",
     );
+  });
+
+  it("dismisses overlay resources with Escape from portalled Preview chrome", async () => {
+    const onExpandedChange = vi.fn();
+    openPreviewSession();
+    render(
+      <AgentArtifactPane focusOnExpand onExpandedChange={onExpandedChange} />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
+    const reload = screen.getByRole("button", { name: "Reload preview" });
+    reload.focus();
+    fireEvent.keyDown(reload, { key: "Escape" });
+    expect(onExpandedChange).toHaveBeenCalledWith(false);
   });
 
   it("keeps Preview chrome order and returns focus when collapsing", async () => {

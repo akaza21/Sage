@@ -3,51 +3,62 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AgentDesktopSidebarPriority,
   type AgentDesktopSidebarWidths,
-  fitAgentDesktopSidebarWidths,
-  initialAgentDesktopSidebarWidths,
 } from "./workbenchSidebarResize";
+import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 type AgentSidebarOverrides = {
   left: boolean;
   artifact: boolean;
-  prioritize: AgentDesktopSidebarPriority;
 };
 
-export function useAgentDesktopSidebarWidths() {
-  const initialWidths = initialAgentDesktopSidebarWidths(window.innerWidth);
+export function useAgentDesktopSidebarWidths(artifactExpanded: boolean) {
+  const initialLayout = agentWorkbenchLayout({
+    viewportWidth: window.innerWidth,
+    artifactExpanded: false,
+  });
+  const initialWidths = {
+    leftRailWidth: initialLayout.leftRailWidth,
+    artifactWidth: initialLayout.artifactWidth,
+  };
   const requestedWidths = useRef<AgentDesktopSidebarWidths>(initialWidths);
   const overrides = useRef<AgentSidebarOverrides>({
     left: false,
     artifact: false,
-    prioritize: "artifact",
   });
-  const [renderedWidths, setRenderedWidths] = useState(initialWidths);
-  const fitRequestedWidths = useCallback(() => {
-    const defaults = initialAgentDesktopSidebarWidths(window.innerWidth);
-    return fitAgentDesktopSidebarWidths({
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [widthRequests, setWidthRequests] = useState(initialWidths);
+  const [priority, setPriority] =
+    useState<AgentDesktopSidebarPriority>("artifact");
+  const requestsForViewport = useCallback(() => {
+    const defaults = agentWorkbenchLayout({
       viewportWidth: window.innerWidth,
+      artifactExpanded: false,
+    });
+    return {
       leftRailWidth: overrides.current.left
         ? requestedWidths.current.leftRailWidth
         : defaults.leftRailWidth,
       artifactWidth: overrides.current.artifact
         ? requestedWidths.current.artifactWidth
         : defaults.artifactWidth,
-      prioritize: overrides.current.prioritize,
-    });
+    };
   }, []);
 
   useEffect(() => {
-    const resize = () => setRenderedWidths(fitRequestedWidths());
+    const resize = () => {
+      setViewportWidth(window.innerWidth);
+      setWidthRequests(requestsForViewport());
+    };
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [fitRequestedWidths]);
+  }, [requestsForViewport]);
 
   const changeWidth = useCallback(
     (prioritize: AgentDesktopSidebarPriority, width: number) => {
+      setPriority(prioritize);
       overrides.current = {
         ...overrides.current,
         [prioritize]: true,
-        prioritize,
       };
       requestedWidths.current = {
         ...requestedWidths.current,
@@ -55,10 +66,18 @@ export function useAgentDesktopSidebarWidths() {
           ? { leftRailWidth: width }
           : { artifactWidth: width }),
       };
-      setRenderedWidths(fitRequestedWidths());
+      setWidthRequests(requestsForViewport());
     },
-    [fitRequestedWidths],
+    [requestsForViewport],
   );
 
-  return { changeWidth, renderedWidths };
+  return {
+    changeWidth,
+    layout: agentWorkbenchLayout({
+      viewportWidth,
+      artifactExpanded,
+      requestedWidths: widthRequests,
+      prioritize: priority,
+    }),
+  };
 }

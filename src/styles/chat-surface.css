@@ -14,7 +14,24 @@
 }
 
 .chat-surface--agent {
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "notice" "transcript" "follow" "composer";
+  grid-template-rows: auto minmax(120px, 1fr) auto fit-content(60%);
+}
+
+.chat-surface--agent > .composer__notice {
+  grid-area: notice;
+}
+
+.chat-surface--agent > .message-list {
+  grid-area: transcript;
+}
+
+.chat-surface--agent > .chat-follow-end-zone {
+  grid-area: follow;
+}
+
+.chat-surface--agent > .composer {
+  grid-area: composer;
 }
 
 .surface-header {

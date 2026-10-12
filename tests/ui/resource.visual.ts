@@ -64,9 +64,7 @@ test.describe("AV-01 projection-fixture browser routes", () => {
       await installScenario(page, name);
       await page.evaluate(() => document.fonts.ready);
       const workbench = page.locator("main.workbench");
-      const resources = page.getByRole("complementary", {
-        name: "Agent artifacts",
-      });
+      const resources = page.getByLabel("Agent artifacts", { exact: true });
       await expect(
         resources.getByRole("tab", { name: "Preview" }),
       ).toHaveAttribute("aria-selected", "true");
@@ -122,9 +120,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
       await fixtures.installVisualAgentArtifactPinnedFixture();
     });
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     const file = resources.getByRole("tab", {
       name: "File src/workbench/AgentChatPanes.tsx",
     });
@@ -179,10 +175,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       await fixtures.installVisualAgentArtifactFollowFixture();
     });
 
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
-    await expect(resources).not.toHaveClass(/agent-artifact-pane--collapsed/);
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     const resourceSplitter = page.getByRole("separator", {
       name: "Resize files and preview",
     });
@@ -818,14 +811,14 @@ test.describe("V6a Agent right-resource state shell", () => {
   }) => {
     const workbench = await openAgentScenario(page, "agent-single");
     const toggle = page.getByRole("button", {
-      name: "Show preview · Waiting",
+      name: "Show files and preview · Waiting",
     });
     await expect(toggle).toBeVisible();
     await expect(toggle.locator("svg")).toHaveCount(1);
     await expect(toggle.locator("small")).toHaveCount(0);
 
     await page
-      .getByRole("button", { name: "Start dictation", exact: true })
+      .getByRole("button", { name: "Show chat resources", exact: true })
       .focus();
     await page.keyboard.press("Tab");
     await expect(toggle).toBeFocused();
@@ -853,7 +846,7 @@ test.describe("V6a Agent right-resource state shell", () => {
     await page.keyboard.press("Space");
     await expect(
       page.getByRole("button", {
-        name: "Show preview · Waiting",
+        name: "Show files and preview · Waiting",
       }),
     ).toBeFocused();
     await expectNoViewportOverflow(page);
@@ -869,11 +862,11 @@ test.describe("V6a Agent right-resource state shell", () => {
       .click();
     await expect(workbench).not.toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Show preview · Ready · 1 resource",
+      name: "Show files and preview · Ready · 1 resource",
     });
     await expect(toggle).toHaveAttribute(
       "title",
-      "Show preview · Ready · 1 resource",
+      "Show files and preview · Ready · 1 resource",
     );
     await expect(toggle.locator(".agent-artifact-pane__edge-copy")).toHaveCount(
       0,
@@ -971,18 +964,25 @@ test.describe("V6a Agent right-resource state shell", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Show preview · Waiting",
+      name: "Show files and preview · Waiting",
     });
-    expect(
-      await toggle.evaluate((node) => {
-        const bounds = node.getBoundingClientRect();
-        return {
-          count: node.querySelector(".agent-artifact-pane__count")?.textContent,
-          height: bounds.height,
-          width: bounds.width,
-        };
-      }),
-    ).toEqual({ count: undefined, width: 44, height: 44 });
+    // CP-27b: the collapsed toggle is a header control, not a 44px edge rail.
+    const collapsed = await toggle.evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      return {
+        count: node.querySelector(".agent-artifact-pane__count")?.textContent,
+        inHeader: node.closest(".agent-chat-center__header") !== null,
+        right: bounds.right,
+        height: bounds.height,
+        width: bounds.width,
+      };
+    });
+    expect(collapsed.count).toBeUndefined();
+    expect(collapsed.inHeader).toBe(true);
+    expect(collapsed.width).toBeGreaterThanOrEqual(24);
+    expect(collapsed.height).toBeGreaterThanOrEqual(24);
+    expect(collapsed.right).toBeLessThanOrEqual(720);
+    await expect(page.locator(".agent-artifact-pane")).toHaveCount(0);
 
     await toggle.click();
     await expect(
@@ -1005,7 +1005,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     const workbench = await openAgentScenario(page, "agent-single");
     await expect(workbench).toHaveClass(/workbench--compact/);
     const toggle = page.getByRole("button", {
-      name: "Show preview · Waiting",
+      name: "Show files and preview · Waiting",
     });
     await expect(toggle.locator("small")).toHaveCount(0);
     await toggle.click();
@@ -1035,9 +1035,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
         await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
       await fixtures.installVisualAgentPreviewIdleFixture();
     });
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(resources.getByRole("tab", { name: "Preview" })).toHaveCount(
       0,
     );
@@ -1077,9 +1075,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
 
   test("agent-preview-active stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(
       resources.getByRole("tab", { name: "Preview" }),
     ).toHaveAttribute("aria-selected", "true");
@@ -1185,9 +1181,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
         await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
       await fixtures.installVisualAgentLongPathFixture();
     });
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     const longPath =
       "src/workbench/nested/panels/with/very/long/directory/names/for/ellipsis/AgentChatPanes.tsx";
     const assertLongTabLegible = async (tabName: string) => {
@@ -1252,9 +1246,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
   test("agent-preview-narrow-720x560", async ({ page }) => {
     await page.setViewportSize({ width: 720, height: 560 });
     const workbench = await openAgentScenario(page, "preview");
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     const browser = resources.locator(".harness-browser");
     const address = resources.getByRole("textbox", {
       name: "Preview address",
@@ -1331,9 +1323,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
 
     test("agent-preview-zoom-200", async ({ page }) => {
       const workbench = await openAgentScenario(page, "preview");
-      const resources = page.getByRole("complementary", {
-        name: "Agent artifacts",
-      });
+      const resources = page.getByLabel("Agent artifacts", { exact: true });
       const trigger = resources.getByRole("button", {
         name: "Preview controls",
       });
@@ -1400,9 +1390,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
 
   test("agent-preview-keyboard-focus", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
-    const resources = page.getByRole("complementary", {
-      name: "Agent artifacts",
-    });
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     const previewTab = resources.getByRole("tab", { name: "Preview" });
     const collapse = resources.getByRole("button", {
       name: "Collapse files, changes, and preview",
@@ -1448,7 +1436,6 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(address).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(previewTab).toBeFocused();
-    await expect(resources).not.toHaveClass(/agent-artifact-pane--collapsed/);
 
     const splitter = page.getByRole("separator", {
       name: "Resize files and preview",
@@ -1477,8 +1464,8 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await collapse.focus();
     await page.keyboard.press("Space");
     await expect(
-      resources.getByRole("button", {
-        name: "Show preview · Ready · 1 resource",
+      page.getByRole("button", {
+        name: "Show files and preview · Ready · 1 resource",
       }),
     ).toBeFocused();
   });

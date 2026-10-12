@@ -176,112 +176,114 @@ export function ChatComposerRegion({
         onSubmit(event);
       }}
     >
-      <BoundChatGoalControl state={goal} chatId={dictationScope} />
-      <ComposerQueuedPrompts
-        composerRef={composerRef}
-        prompts={queuedPrompts}
-        steerAvailable={steerAvailable}
-        disabled={actionBusy || projectTransitioning}
-        onDelete={onDeleteQueuedPrompt}
-        onRetry={onRetryQueuedPrompt}
-        onSteer={onSteerQueuedPrompt}
-      />
-      {workbenchError ? (
-        <div className="composer__error" role="alert">
-          {workbenchError}
-        </div>
-      ) : null}
-      {chatError ? (
-        <div className="composer__error" role="alert">
-          {chatError}
-          {claudeSignInRequired ? (
-            <ClaudeAuthActions key={claudeAuthScope} />
-          ) : null}
-        </div>
-      ) : null}
-      {imageInput.status ? (
-        <div className="composer__error" role="alert">
-          {imageInput.status}
-        </div>
-      ) : null}
-      {missingBindingNotice ? (
-        <div className="composer__notice">
-          No reviewed local binding is available for this harness.
-        </div>
-      ) : null}
-      <label className="sr-only" htmlFor={fieldId}>
-        Message agent
-      </label>
-      <span className="sr-only" id={descriptionId}>
-        {queueing ? "Queue" : "Send"} a message to the selected harness and
-        model
-      </span>
-      {!composerDisabled ? (
-        <span className="sr-only" id={shortcutDescriptionId}>
-          {shortcutLabel} focuses the composer.{" "}
-          {queueing
-            ? "Enter queues a message while this turn runs."
-            : "Enter sends."}{" "}
-          Shift+Enter adds a new line.
-        </span>
-      ) : null}
-      <div className="composer__input-area">
-        <textarea
-          ref={composerRef}
-          id={fieldId}
-          aria-label="Message agent"
-          aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
-          value={text}
-          maxLength={MAX_CHAT_COMPOSER_BYTES}
-          rows={2}
-          placeholder={
-            queueing
-              ? "Enter to queue a message"
-              : composerPromptPlaceholder(canPrompt, sessionPromptUnavailable)
-          }
-          disabled={composerDisabled}
-          onChange={(event) => onTextChange(event.target.value)}
-          onBlur={dictation.cancel}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && dictation.listening) {
-              event.preventDefault();
-              dictation.cancel();
-              return;
-            }
-            if (
-              enabled &&
-              matchesKeymapChord(keymapBinding("sendMessage"), event)
-            ) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
+      <div className="composer__body">
+        <BoundChatGoalControl state={goal} chatId={dictationScope} />
+        <ComposerQueuedPrompts
+          composerRef={composerRef}
+          prompts={queuedPrompts}
+          steerAvailable={steerAvailable}
+          disabled={actionBusy || projectTransitioning}
+          onDelete={onDeleteQueuedPrompt}
+          onRetry={onRetryQueuedPrompt}
+          onSteer={onSteerQueuedPrompt}
         />
-      </div>
-      {disabledReason ? (
-        <p className="composer__disabled-reason" id={disabledReasonId}>
-          {disabledReason}
-          {onRetryLoad ? (
-            <button
-              type="button"
-              className="composer__disabled-retry"
-              onClick={onRetryLoad}
-            >
-              Retry
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-      {attachedContext.length > 0 ? (
-        <div className="composer__attachment-row">
-          <ComposerAttachments
-            contexts={attachedContext}
-            imagePreviews={imagePreviews}
-            disabled={actionBusy || projectTransitioning}
-            onRemove={onRemoveContext}
+        {workbenchError ? (
+          <div className="composer__error" role="alert">
+            {workbenchError}
+          </div>
+        ) : null}
+        {chatError ? (
+          <div className="composer__error" role="alert">
+            {chatError}
+            {claudeSignInRequired ? (
+              <ClaudeAuthActions key={claudeAuthScope} />
+            ) : null}
+          </div>
+        ) : null}
+        {imageInput.status ? (
+          <div className="composer__error" role="alert">
+            {imageInput.status}
+          </div>
+        ) : null}
+        {missingBindingNotice ? (
+          <div className="composer__notice">
+            No reviewed local binding is available for this harness.
+          </div>
+        ) : null}
+        <label className="sr-only" htmlFor={fieldId}>
+          Message agent
+        </label>
+        <span className="sr-only" id={descriptionId}>
+          {queueing ? "Queue" : "Send"} a message to the selected harness and
+          model
+        </span>
+        {!composerDisabled ? (
+          <span className="sr-only" id={shortcutDescriptionId}>
+            {shortcutLabel} focuses the composer.{" "}
+            {queueing
+              ? "Enter queues a message while this turn runs."
+              : "Enter sends."}{" "}
+            Shift+Enter adds a new line.
+          </span>
+        ) : null}
+        <div className="composer__input-area">
+          <textarea
+            ref={composerRef}
+            id={fieldId}
+            aria-label="Message agent"
+            aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
+            value={text}
+            maxLength={MAX_CHAT_COMPOSER_BYTES}
+            rows={2}
+            placeholder={
+              queueing
+                ? "Enter to queue a message"
+                : composerPromptPlaceholder(canPrompt, sessionPromptUnavailable)
+            }
+            disabled={composerDisabled}
+            onChange={(event) => onTextChange(event.target.value)}
+            onBlur={dictation.cancel}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && dictation.listening) {
+                event.preventDefault();
+                dictation.cancel();
+                return;
+              }
+              if (
+                enabled &&
+                matchesKeymapChord(keymapBinding("sendMessage"), event)
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
         </div>
-      ) : null}
+        {disabledReason ? (
+          <p className="composer__disabled-reason" id={disabledReasonId}>
+            {disabledReason}
+            {onRetryLoad ? (
+              <button
+                type="button"
+                className="composer__disabled-retry"
+                onClick={onRetryLoad}
+              >
+                Retry
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        {attachedContext.length > 0 ? (
+          <div className="composer__attachment-row">
+            <ComposerAttachments
+              contexts={attachedContext}
+              imagePreviews={imagePreviews}
+              disabled={actionBusy || projectTransitioning}
+              onRemove={onRemoveContext}
+            />
+          </div>
+        ) : null}
+      </div>
       <div className="composer__toolbar">
         <ChatHarnessControls
           modelLabelScope={JSON.stringify([dictationScope, sessionId])}

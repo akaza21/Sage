@@ -104,7 +104,11 @@ describe("TitleBar center chrome", () => {
     }
 
     rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();
+    expect(
+      within(screen.getByRole("banner")).getByRole("button", {
+        name: "Search chats",
+      }),
+    ).toBeEnabled();
   });
 
   it("shows the focused session title in Agent and Search files in Editor", () => {
@@ -191,23 +195,24 @@ describe("TitleBar center chrome", () => {
     await waitFor(() => expect(titleSearch).toHaveFocus());
   });
 
-  it("opens one Chat search from the real titlebar with compact navigation unmounted", async () => {
+  it("opens one Chat search from the titlebar with persistent Agent navigation", async () => {
     seedChats();
-    const onOpenChange = vi.fn();
     render(
       <>
         <TitleBar mode="agent" onModeChange={vi.fn()} />
-        <LeftSidebar compact open={false} onOpenChange={onOpenChange} />
+        <LeftSidebar />
       </>,
     );
     const titleSearch = within(screen.getByRole("banner")).getByRole("button", {
       name: "Search chats",
     });
-    const drawerTrigger = screen.getByRole("button", {
-      name: "Open projects and chats",
-    });
-    expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Projects and chats" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Open projects and chats" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     titleSearch.focus();
     fireEvent.click(titleSearch);
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
@@ -224,9 +229,7 @@ describe("TitleBar center chrome", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(drawerTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     expect(useWorkbenchStore.getState().sidebarOpen).toBe(false);
   });
 
@@ -235,14 +238,16 @@ describe("TitleBar center chrome", () => {
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
-    const titleSearch = screen.getByRole("button", { name: "Search chats" });
+    const titleSearch = within(screen.getByRole("banner")).getByRole("button", {
+      name: "Search chats",
+    });
     titleSearch.focus();
     fireEvent.click(titleSearch);
     expect(screen.queryByRole("dialog")).toBeNull();
     rerender(
       <>
         <TitleBar mode="agent" onModeChange={vi.fn()} />
-        <LeftSidebar compact open={false} />
+        <LeftSidebar />
       </>,
     );
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
@@ -250,28 +255,30 @@ describe("TitleBar center chrome", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Search chats" }),
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: "Search chats",
+        }),
       ).toHaveFocus(),
     );
   });
 
-  it("retains exactly one search owner across compact drawer and desktop layout changes", () => {
+  it("retains one search owner as persistent navigation resizes", () => {
     seedChats();
-    const view = (compact: boolean, open: boolean) => (
-      <>
+    const view = (width: number) => (
+      <div style={{ width }}>
         <TitleBar mode="agent" onModeChange={vi.fn()} />
-        <LeftSidebar compact={compact} open={open} />
-      </>
+        <LeftSidebar />
+      </div>
     );
-    const { rerender } = render(view(true, false));
-    fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    const { rerender } = render(view(480));
+    fireEvent.click(
+      within(screen.getByRole("banner")).getByRole("button", {
+        name: "Search chats",
+      }),
+    );
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
-    for (const [compact, open] of [
-      [true, true],
-      [true, false],
-      [false, true],
-    ]) {
-      rerender(view(compact, open));
+    for (const width of [720, 1280, 480]) {
+      rerender(view(width));
       expect(screen.getAllByRole("dialog", { name: "Search Chats" })).toEqual([
         dialog,
       ]);

@@ -610,7 +610,14 @@ test.describe("ED02 picker visual states", () => {
     );
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    await expectComposerPickerValue(harnessTrigger, "Harness", "Codex");
+    // CP-27b keeps navigation at 720px, so the Chat lane is under 400px and
+    // CP-27a's container rule collapses the harness trigger to its icon; the
+    // value remains in the accessible text.
+    await expect(harnessTrigger).toHaveAccessibleName("Harness");
+    await expect(harnessTrigger).toHaveText("Codex");
+    await expect(
+      harnessTrigger.locator(".searchable-picker__trigger-label"),
+    ).toBeHidden();
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
       "Model",
@@ -653,7 +660,7 @@ test.describe("Artifact-constrained composer", () => {
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "agent-session-mode-closed", "agent");
-    await page.getByRole("button", { name: /Show preview/ }).click();
+    await page.getByRole("button", { name: /Show files and preview/ }).click();
     await page.evaluate(async () => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const state = useWorkbenchStore.getState();

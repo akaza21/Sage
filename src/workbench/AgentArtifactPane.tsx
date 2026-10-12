@@ -4,7 +4,6 @@ import {
   Suspense,
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +32,7 @@ import {
   agentArtifactAdmitted,
   agentArtifactVisible,
 } from "./agentArtifactAdmission";
+import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
@@ -41,6 +41,7 @@ import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
+import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
 import {
   useHarnessBrowseOwner,
@@ -64,13 +65,19 @@ const SubagentSurface = lazy(() =>
 export function AgentArtifactPane({
   expanded = true,
   focusOnExpand = false,
+  modal = false,
+  overlayOnExpand = focusOnExpand,
   onExpandedChange,
   onOpenInEditor,
+  headerNode,
 }: {
   expanded?: boolean;
   focusOnExpand?: boolean;
+  modal?: boolean;
+  overlayOnExpand?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onOpenInEditor?: (tabId: string) => void;
+  headerNode?: HTMLElement | null;
 } = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -81,8 +88,16 @@ export function AgentArtifactPane({
   const paneRef = useRef<HTMLElement | null>(null);
   const [canvasNode, setCanvasNode] = useState<HTMLElement | null>(null);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const previousExpanded = useRef(expanded);
+  const onPaneKeyDown = useAgentArtifactPaneFocus({
+    expanded,
+    overlay: focusOnExpand,
+    modal,
+    paneRef,
+    triggerRef: edgeTriggerRef,
+    onExpandedChange,
+  });
   const emptyTitleId = useId();
+  const paneId = useId();
   const admissions = useAgentArtifactAdmissionStore(
     (state) => state.admissions,
   );
@@ -242,19 +257,9 @@ export function AgentArtifactPane({
     if (!expanded && added) onExpandedChange?.(true);
   }, [expanded, onExpandedChange, resourceKeys]);
 
-  useLayoutEffect(() => {
-    if (expanded && !previousExpanded.current && focusOnExpand) {
-      paneRef.current?.focus();
-    }
-    if (!expanded && previousExpanded.current) {
-      edgeTriggerRef.current?.focus();
-    }
-    previousExpanded.current = expanded;
-  }, [expanded, focusOnExpand]);
-
   if (!expanded) {
     return (
-      <>
+      <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
         <AgentArtifactCollapsedPane
           count={
             artifacts.length +
@@ -263,17 +268,22 @@ export function AgentArtifactPane({
           }
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
-          paneRef={paneRef}
+          paneId={paneId}
+          overlay={overlayOnExpand}
+          headerNode={headerNode}
         />
         {previewController}
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
       <aside
+        id={paneId}
         ref={paneRef}
+        role={focusOnExpand ? "dialog" : undefined}
+        aria-modal={modal || undefined}
         className={`agent-artifact-pane${
           hasResources ? "" : " agent-artifact-pane--empty"
         }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}`}
@@ -283,12 +293,8 @@ export function AgentArtifactPane({
         data-owner-session-id={focusedOwner?.sessionId}
         data-owner-runtime-epoch={focusedRuntimeEpoch ?? undefined}
         tabIndex={focusOnExpand ? -1 : undefined}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          onExpandedChange?.(false);
-        }}
       >
+        <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
         <header className="agent-artifact-pane__header">
           {hasResources ? (
             <AgentArtifactTabStrip
@@ -393,8 +399,9 @@ export function AgentArtifactPane({
             </section>
           ) : null}
         </div>
+        <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
       </aside>
       {previewController}
-    </>
+    </div>
   );
 }

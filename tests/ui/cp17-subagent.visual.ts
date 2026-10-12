@@ -53,9 +53,7 @@ test("CP-17(d) refs 07/13/17: Subagent row opens a bounded right-pane tab at 560
   const pane = page.locator(".agent-chat-pane");
   await expect(pane).toHaveCSS("width", "560px");
   await pane.getByRole("button", { name: /Reviewer started working/ }).click();
-  const rightPane = page.getByRole("complementary", {
-    name: "Agent artifacts",
-  });
+  const rightPane = page.getByLabel("Agent artifacts", { exact: true });
   await expect(
     rightPane.getByRole("tab", { name: "Subagent" }),
   ).toHaveAttribute("aria-selected", "true");
