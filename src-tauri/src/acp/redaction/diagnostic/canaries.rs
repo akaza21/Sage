@@ -1,5 +1,8 @@
 use super::sanitize_diagnostic_text;
 
+#[path = "pem_canaries.rs"]
+mod pem_canaries;
+
 #[test]
 fn fallback_assignments_and_embedded_sk_tokens_hide_secrets() {
     for (input, secret) in [
@@ -8,6 +11,12 @@ fn fallback_assignments_and_embedded_sk_tokens_hide_secrets() {
         ("${TOKEN}=abc", "abc"),
         ("provided:sk-abc", "sk-abc"),
         (r#"{"msg":"provided:sk-abc"}"#, "sk-abc"),
+        ("Invalid key sk-or-v1-abc123", "sk-or-v1-abc123"),
+        ("sk-lf-1234abcd", "sk-lf-1234abcd"),
+        ("sk-proj-AbC123", "sk-proj-AbC123"),
+        ("\u{754c}sk-abc", "sk-abc"),
+        ("\u{5bc6}\u{94a5}sk-proj-abc123", "sk-proj-abc123"),
+        ("sk-__a", "sk-__a"),
     ] {
         let actual = sanitize_diagnostic_text(input);
         assert!(!actual.contains(secret), "leaked {secret:?}: {actual:?}");
@@ -20,63 +29,9 @@ fn fallback_assignments_and_embedded_sk_tokens_hide_secrets() {
         "disk-full",
         "sk-ab",
         "provided:sk-!",
-        "\u{754c}sk-abc",
+        "sk-___",
     ] {
         assert_eq!(sanitize_diagnostic_text(input), input);
-    }
-}
-
-#[test]
-fn rsa_private_key_pem_is_redacted_with_bounded_fail_closed_scanning() {
-    let complete =
-        "-----BEGIN RSA PRIVATE KEY-----\npem-body-canary\n-----END RSA PRIVATE KEY-----";
-    let unterminated = "-----BEGIN RSA PRIVATE KEY-----\npem-body-canary";
-    let over_budget = format!(
-        "-----BEGIN RSA PRIVATE KEY-----\n{}pem-body-canary\n-----END RSA PRIVATE KEY-----",
-        "x".repeat(2048)
-    );
-    let unicode = format!(
-        "-----BEGIN RSA PRIVATE KEY-----\n{}pem-body-canary\n-----END RSA PRIVATE KEY-----",
-        "\u{754c}".repeat(400)
-    );
-    let repeated = format!("{complete}\n{complete}");
-    for (input, keeps_tail) in [
-        (complete, true),
-        (unterminated, false),
-        (over_budget.as_str(), false),
-        (unicode.as_str(), false),
-        (repeated.as_str(), true),
-    ] {
-        let actual = sanitize_diagnostic_text(&format!("before {input} after"));
-        assert!(
-            !actual.contains("pem-body-canary"),
-            "leaked PEM: {actual:?}"
-        );
-        assert!(!actual.contains('x') && !actual.contains('\u{754c}'));
-        assert!(
-            actual.starts_with("before [redacted]"),
-            "missing marker: {actual:?}"
-        );
-        assert_eq!(actual.ends_with(" after"), keeps_tail);
-        assert_eq!(sanitize_diagnostic_text(&actual), actual);
-    }
-}
-
-#[test]
-fn attached_rsa_private_key_pem_headers_hide_the_body() {
-    for prefix in ["\"", "pem:", "key=", "(", "prefix"] {
-        for footer in ["-----END RSA PRIVATE KEY----- after", ""] {
-            let input = format!(
-                "before {prefix}-----BEGIN RSA PRIVATE KEY-----\npem-body-canary\n{footer}"
-            );
-            let actual = sanitize_diagnostic_text(&input);
-            assert!(
-                !actual.contains("pem-body-canary"),
-                "leaked PEM: {actual:?}"
-            );
-            assert!(actual.contains("[redacted]"), "missing marker: {actual:?}");
-            assert_eq!(sanitize_diagnostic_text(&actual), actual);
-        }
     }
 }
 

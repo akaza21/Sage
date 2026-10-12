@@ -203,6 +203,7 @@
         "src-tauri/src/acp/intent/capability.rs",
         "src-tauri/src/acp/intent/error_kind.rs",
         "src-tauri/src/acp/intent/file_change.rs",
+        "src-tauri/src/acp/intent/tests.rs",
         "src-tauri/src/acp/intent/tool_category.rs",
         "src-tauri/src/acp/lifecycle.rs",
         "src-tauri/src/acp/limits.rs",

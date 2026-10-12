@@ -11,9 +11,7 @@ pub(super) fn scan_window(value: &str) -> &str {
 }
 
 pub(super) fn redact_pem(value: &str) -> Cow<'_, str> {
-    const BEGIN: &str = "-----BEGIN RSA PRIVATE KEY-----";
-    const END: &str = "-----END RSA PRIVATE KEY-----";
-    let Some(mut start) = value.find(BEGIN) else {
+    let Some((mut start, mut label)) = private_key_begin(value) else {
         return Cow::Borrowed(value);
     };
     let mut remaining = value;
@@ -22,17 +20,35 @@ pub(super) fn redact_pem(value: &str) -> Cow<'_, str> {
         output.push_str(&remaining[..start]);
         output.push_str("[redacted]");
         let block = &remaining[start..];
-        let consumed = scan_window(block)
-            .find(END)
-            .map_or(block.len(), |index| index + END.len());
+        let consumed = label.map_or(block.len(), |label| {
+            let end = format!("-----END {label}-----");
+            scan_window(block)
+                .find(&end)
+                .map_or(block.len(), |index| index + end.len())
+        });
         remaining = &block[consumed..];
-        let Some(next) = remaining.find(BEGIN) else {
+        let Some((next, next_label)) = private_key_begin(remaining) else {
             output.push_str(remaining);
             break;
         };
         start = next;
+        label = next_label;
     }
     Cow::Owned(output)
+}
+
+fn private_key_begin(value: &str) -> Option<(usize, Option<&str>)> {
+    const BEGIN: &str = "-----BEGIN ";
+    value.match_indices(BEGIN).find_map(|(start, _)| {
+        let remaining = &value[start + BEGIN.len()..];
+        let header = scan_window(remaining);
+        let Some(end) = header.find("-----") else {
+            return (header.len() < remaining.len()).then_some((start, None));
+        };
+        let label = &header[..end];
+        (label.ends_with("PRIVATE KEY") && !label.contains(['\r', '\n']))
+            .then_some((start, Some(label)))
+    })
 }
 
 pub(super) fn contains_sk_secret(value: &str) -> bool {
@@ -40,13 +56,19 @@ pub(super) fn contains_sk_secret(value: &str) -> bool {
         !value[..index]
             .chars()
             .next_back()
-            .is_some_and(char::is_alphabetic)
-            && value[index + 3..]
-                .chars()
-                .take_while(char::is_ascii_alphanumeric)
-                .take(3)
-                .count()
-                == 3
+            .is_some_and(|character| character.is_ascii_alphabetic())
+            && {
+                let (length, has_alphanumeric) = value[index + 3..]
+                    .bytes()
+                    .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+                    .fold((0usize, false), |(length, has_alphanumeric), byte| {
+                        (
+                            (length + 1).min(3),
+                            has_alphanumeric || byte.is_ascii_alphanumeric(),
+                        )
+                    });
+                length == 3 && has_alphanumeric
+            }
     })
 }
 
