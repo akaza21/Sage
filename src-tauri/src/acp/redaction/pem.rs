@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
-use super::QUOTE_SCAN_LIMIT;
+const QUOTE_SCAN_LIMIT: usize = 1024;
 
-pub(super) fn scan_window(value: &str) -> &str {
+pub(crate) fn scan_window(value: &str) -> &str {
     let mut end = value.len().min(QUOTE_SCAN_LIMIT);
     while !value.is_char_boundary(end) {
         end -= 1;
@@ -10,7 +10,7 @@ pub(super) fn scan_window(value: &str) -> &str {
     &value[..end]
 }
 
-pub(super) fn redact_pem(value: &str) -> Cow<'_, str> {
+pub(crate) fn redact_pem(value: &str) -> Cow<'_, str> {
     let Some((mut start, mut label)) = private_key_begin(value) else {
         return Cow::Borrowed(value);
     };
@@ -49,32 +49,4 @@ fn private_key_begin(value: &str) -> Option<(usize, Option<&str>)> {
         (label.ends_with("PRIVATE KEY") && !label.contains(['\r', '\n']))
             .then_some((start, Some(label)))
     })
-}
-
-pub(super) fn contains_sk_secret(value: &str) -> bool {
-    value.match_indices("sk-").any(|(index, _)| {
-        !value[..index]
-            .chars()
-            .next_back()
-            .is_some_and(|character| character.is_ascii_alphabetic())
-            && {
-                let (length, has_alphanumeric) = value[index + 3..]
-                    .bytes()
-                    .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-                    .fold((0usize, false), |(length, has_alphanumeric), byte| {
-                        (
-                            (length + 1).min(3),
-                            has_alphanumeric || byte.is_ascii_alphanumeric(),
-                        )
-                    });
-                length == 3 && has_alphanumeric
-            }
-    })
-}
-
-pub(super) fn url_userinfo(token: &str) -> Option<(usize, usize)> {
-    let start = token.find("://")? + 3;
-    let authority = token[start..].split(['/', '?', '#']).next()?;
-    let end = start + authority.rfind('@')?;
-    Some((start, end))
 }

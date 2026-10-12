@@ -1,5 +1,8 @@
 use super::*;
-use crate::acp::bindings::command_summary::{redaction::redact, sanitize_command_summary};
+use crate::acp::{
+    bindings::command_summary::sanitize_command_summary,
+    redaction::text::{Mode, redact},
+};
 
 fn assert_preserved(input: &str) {
     assert_eq!(
@@ -181,7 +184,7 @@ fn an_unquoted_windows_path_redacts_the_segment_after_a_space() {
     assert_prose(input, expected);
     assert_eq!(sanitized_command_output(input).unwrap(), expected);
     assert!(sanitize_command_summary(input).is_err());
-    assert!(redact("permissionCommand", input, 512, true).is_err());
+    assert!(redact("permissionCommand", input, 512, Mode::Permission).is_err());
 }
 
 fn assert_glued_path_rejected(input: &str) {
@@ -189,7 +192,7 @@ fn assert_glued_path_rejected(input: &str) {
     assert_eq!(sanitized_command_output(input).unwrap(), "cc [redacted]");
     assert!(sanitize_command_summary(input).is_err(), "{input}");
     assert!(matches!(
-        redact("permissionCommand", input, 512, true),
+        redact("permissionCommand", input, 512, Mode::Permission),
         Err(crate::acp::contract::ContractError::ForbiddenContent {
             field: "permissionCommand"
         })

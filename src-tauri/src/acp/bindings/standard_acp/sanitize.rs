@@ -17,9 +17,9 @@ mod regression_tests;
 mod review_tests;
 
 use crate::acp::{
-    bindings::command_summary::redaction::redact,
     contract::{ContractError, SafeText},
     limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
+    redaction::text::{Mode, redact},
 };
 
 pub(crate) fn normalized_text<const MAX: usize>(
@@ -119,7 +119,7 @@ pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractEr
     }
 
     let input = neutralized(input, false);
-    redact("toolOutput", &input, maximum_output, false)
+    redact("toolOutput", &input, maximum_output, Mode::CommandOutput)
 }
 
 #[cfg(test)]

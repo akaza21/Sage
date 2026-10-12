@@ -197,6 +197,7 @@ fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {
 }
 
 mod diagnostic;
+pub(crate) mod text;
 pub(crate) use diagnostic::sanitize_diagnostic_text;
 
 #[cfg(test)]

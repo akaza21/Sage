@@ -1,5 +1,8 @@
 use super::*;
-use crate::acp::bindings::command_summary::{redaction::redact, sanitize_command_summary};
+use crate::acp::{
+    bindings::command_summary::sanitize_command_summary,
+    redaction::text::{Mode, redact},
+};
 
 #[test]
 fn prose_and_labels_preserve_division_markup_and_source_comments() {
@@ -105,14 +108,17 @@ fn unmatched_command_quotes_and_backticks_cannot_hide_text_without_a_marker() {
         "echo `unfinished ordinary text",
         "echo unfinished' ordinary text",
     ] {
-        assert_eq!(redact("toolOutput", input, 512, false).unwrap(), input);
+        assert_eq!(
+            redact("toolOutput", input, 512, Mode::CommandOutput).unwrap(),
+            input
+        );
     }
     for input in [
         "--token 'private value",
         "--token `private value",
         "TOKEN=don't private value",
     ] {
-        let shown = redact("toolOutput", input, 512, false).unwrap();
+        let shown = redact("toolOutput", input, 512, Mode::CommandOutput).unwrap();
         assert!(shown.contains("[redacted]"), "{input}: {shown}");
         assert!(!shown.contains("private"), "{input}: {shown}");
         assert!(!shown.contains("value"), "{input}: {shown}");
@@ -122,7 +128,7 @@ fn unmatched_command_quotes_and_backticks_cannot_hide_text_without_a_marker() {
             "toolOutput",
             "Pass `--api-key KEY` to the CLI. Then continue.",
             512,
-            false
+            Mode::CommandOutput
         )
         .unwrap(),
         "Pass `--api-key [redacted] to the CLI. Then continue."
@@ -146,7 +152,7 @@ fn at_file_and_attached_short_flag_paths_are_redacted_and_permissions_fail_close
         assert!(sanitize_command_summary(input).is_err(), "{input}");
         assert!(
             matches!(
-                redact("permissionCommand", input, 512, true),
+                redact("permissionCommand", input, 512, Mode::Permission),
                 Err(crate::acp::contract::ContractError::ForbiddenContent {
                     field: "permissionCommand"
                 })

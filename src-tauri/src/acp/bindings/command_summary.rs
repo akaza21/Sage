@@ -1,17 +1,14 @@
-use std::sync::OnceLock;
-
-use regex::Regex;
-
 use crate::acp::contract::SafeText;
 
-#[path = "command_summary/redaction.rs"]
-pub(crate) mod redaction;
-
-#[path = "command_summary/secrets.rs"]
-pub(crate) mod secrets;
-
-#[path = "command_summary/values.rs"]
-pub(crate) mod values;
+use crate::acp::redaction::text::{
+    self, Mode,
+    credentials::{
+        assigned_auth_marker, attached_short_value, auth_continuation, auth_marker, contains_token,
+        inline_auth, is_sensitive_prose_flag, sensitive_assignment, sensitive_flag,
+        sensitive_header, sensitive_header_name, sensitive_key, url_userinfo,
+    },
+    shell::shell_tokens,
+};
 
 const MAX_COMMAND_BYTES: usize = 65_536;
 
@@ -45,122 +42,19 @@ pub(crate) fn sanitize_command_summary(
         })
         .collect();
 
-    let tokens = shell_tokens(&neutral).map_err(|_| CommandSummaryError::Hidden)?;
-    if tokens.iter().any(|token| {
-        redaction::absolute_path(&token.cooked, redaction::PathMode::Permission).is_some()
-    }) {
-        return Err(CommandSummaryError::Hidden);
-    }
-    let redacted = redaction::redact("permissionCommand", &neutral, MAX_COMMAND_BYTES, true)
-        .map_err(|error| match error {
-            crate::acp::contract::ContractError::InvalidLength { .. } => {
-                CommandSummaryError::TooLong
-            }
-            _ => CommandSummaryError::Hidden,
-        })?;
+    let redacted = text::redact(
+        "permissionCommand",
+        &neutral,
+        MAX_COMMAND_BYTES,
+        Mode::Permission,
+    )
+    .map_err(|error| match error {
+        crate::acp::contract::ContractError::InvalidLength { .. } => CommandSummaryError::TooLong,
+        _ => CommandSummaryError::Hidden,
+    })?;
     let shown = redact_tokens(&redacted.replace(['\n', '\r'], " "))
         .map_err(|_| CommandSummaryError::Hidden)?;
     SafeText::new("permissionCommand", shown).map_err(|_| CommandSummaryError::TooLong)
-}
-
-/// Detect a credential-bearing prose token without interpreting shell quoting.
-pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
-    let token = input.trim_matches(|ch: char| {
-        matches!(
-            ch,
-            '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    });
-    let lower = token.to_ascii_lowercase();
-    let assigned = token
-        .split_once('=')
-        .or_else(|| token.split_once(':'))
-        .is_some_and(|(key, value)| {
-            !value.is_empty()
-                && sensitive_assignment(key, if token.contains('=') { '=' } else { ':' }, value)
-        });
-    let inline_auth = lower
-        .split_once(':')
-        .is_some_and(|(kind, value)| matches!(kind, "bearer" | "basic") && !value.is_empty());
-    assigned
-        || inline_auth
-        || url_userinfo_regex().is_match(token)
-        || standalone_token_regex().is_match(token)
-}
-
-pub(crate) fn is_sensitive_prose_flag(input: &str) -> bool {
-    let flag = input.trim_matches(|ch: char| matches!(ch, '"' | '\'' | '`' | ',' | ';'));
-    flag.starts_with('-') && !flag.contains('=') && (sensitive_flag(flag) || sensitive_key(flag))
-}
-
-#[derive(Debug)]
-struct ShellToken {
-    start: usize,
-    end: usize,
-    cooked: String,
-}
-
-/// Boundaries are shell arguments, not whitespace fragments. Spans let us
-/// replace a complete argument without reassembling or exposing quoted tails.
-fn shell_tokens(input: &str) -> Result<Vec<ShellToken>, ()> {
-    let mut tokens = Vec::new();
-    let mut start = None;
-    let mut cooked = String::new();
-    let mut quote = None;
-    let mut escaped = false;
-    for (index, ch) in input.char_indices() {
-        if escaped {
-            cooked.push(ch);
-            escaped = false;
-            continue;
-        }
-        if quote.is_none()
-            && (input[index..].starts_with("<<")
-                || input[index..].starts_with("@'")
-                || input[index..].starts_with("@\""))
-        {
-            return Err(());
-        }
-        if ch == '\\' || ch == '`' {
-            start.get_or_insert(index);
-            escaped = true;
-            continue;
-        }
-        if let Some(open) = quote {
-            if ch == open {
-                quote = None;
-            } else {
-                cooked.push(ch);
-            }
-            continue;
-        }
-        if ch == '\'' || ch == '"' {
-            start.get_or_insert(index);
-            quote = Some(ch);
-        } else if ch.is_whitespace() {
-            if let Some(begin) = start.take() {
-                tokens.push(ShellToken {
-                    start: begin,
-                    end: index,
-                    cooked: std::mem::take(&mut cooked),
-                });
-            }
-        } else {
-            start.get_or_insert(index);
-            cooked.push(ch);
-        }
-    }
-    if quote.is_some() || escaped {
-        return Err(());
-    }
-    if let Some(begin) = start {
-        tokens.push(ShellToken {
-            start: begin,
-            end: input.len(),
-            cooked,
-        });
-    }
-    Ok(tokens)
 }
 
 fn redact_tokens(input: &str) -> Result<String, ()> {
@@ -179,29 +73,17 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
             continue;
         }
         let lower = cooked.to_ascii_lowercase();
-        let header = sensitive_header(&lower) || (header_name_waiting && lower == ":");
+        let header =
+            sensitive_header(&lower, Mode::Permission) || (header_name_waiting && lower == ":");
         let spaced_assignment = sensitive_key_waiting && cooked == "=";
-        let auth_marker = matches!(lower.as_str(), "bearer" | "basic" | "bearer:" | "basic:");
-        let inline_auth = lower
-            .split_once(':')
-            .is_some_and(|(kind, value)| matches!(kind, "bearer" | "basic") && !value.is_empty());
+        let auth_marker = auth_marker(&lower, Mode::Permission);
+        let inline_auth = inline_auth(&lower);
         let assigned = cooked.split_once('=').is_some_and(|(key, value)| {
             sensitive_assignment(key, '=', value) || sensitive_flag(key)
         });
-        let attached = cooked.len() > 2
-            && (cooked.starts_with("-p")
-                || cooked.starts_with("-P")
-                || cooked.starts_with("-u")
-                || cooked.starts_with("-U"));
-        let long_p_flag = matches!(
-            lower.as_str(),
-            "-password" | "-pass" | "-pw" | "-passwd" | "-pwd"
-        );
-        let separated_flag = cooked.starts_with('-')
-            && (sensitive_key(cooked) || sensitive_flag(cooked))
-            && (!attached || long_p_flag);
-        let known_secret =
-            standalone_token_regex().is_match(cooked) || url_userinfo_regex().is_match(cooked);
+        let attached = attached_short_value(cooked);
+        let separated_flag = is_sensitive_prose_flag(cooked);
+        let known_secret = contains_token(cooked) || url_userinfo(cooked).is_some();
         let redact = redact_next || header || assigned || attached || inline_auth || known_secret;
         output.push_str(if redact {
             "[redacted]"
@@ -211,14 +93,14 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
         redact_next = (separated_flag && !assigned)
             || auth_marker
             || (header && lower.ends_with(':'))
-            || (assigned && lower.ends_with("=bearer"))
+            || (assigned && assigned_auth_marker(&lower, Mode::Permission))
             || spaced_assignment;
         // Authorization: Bearer value is three tokens; the scheme is secret
         // context and must carry the redaction through to its value.
-        if redact && matches!(lower.as_str(), "bearer" | "basic" | "token") {
+        if redact && auth_continuation(&lower, Mode::Permission) {
             redact_next = true;
         }
-        header_name_waiting = sensitive_header_name(&lower);
+        header_name_waiting = sensitive_header_name(&lower, Mode::Permission);
         sensitive_key_waiting = sensitive_key(cooked) || sensitive_flag(cooked);
         cursor = token.end;
     }
@@ -226,118 +108,9 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
     Ok(output)
 }
 
-fn sensitive_header(lower: &str) -> bool {
-    let lower = lower.strip_prefix("-h").unwrap_or(lower);
-    lower
-        .trim_start_matches(['\'', '"', '`', '{'])
-        .split_once(':')
-        .is_some_and(|(name, _)| sensitive_header_name(name.trim_end_matches(['\'', '"', '`'])))
-}
-
-fn sensitive_header_name(lower: &str) -> bool {
-    matches!(
-        lower,
-        "authorization" | "proxy-authorization" | "cookie" | "x-api-key" | "x-auth-token"
-    )
-}
-
-fn sensitive_flag(flag: &str) -> bool {
-    matches!(
-        flag.to_ascii_lowercase().as_str(),
-        "-u" | "--user" | "--proxy-user" | "--userpwd" | "--username" | "--proxy-username"
-    )
-}
-
-fn sensitive_key(key: &str) -> bool {
-    let key = key.trim_matches(['-', '\'', '"', '`', '{', '}']);
-    let key = key.strip_prefix("$env:").unwrap_or(key);
-    let lower = key.to_ascii_lowercase();
-    if [
-        "password",
-        "passwd",
-        "passphrase",
-        "secret",
-        "credential",
-        "privatekey",
-        "apikey",
-        "cookie",
-        "sessionid",
-    ]
-    .iter()
-    .any(|part| lower.contains(part))
-        || lower
-            .match_indices("token")
-            .any(|(index, _)| lower.as_bytes().get(index + 5) != Some(&b's'))
-    {
-        return true;
-    }
-    let bytes = key.as_bytes();
-    let mut start = 0;
-    for index in 0..=bytes.len() {
-        let separator = bytes
-            .get(index)
-            .is_some_and(|byte| matches!(byte, b'_' | b'-' | b'.' | b'\\' | b'"'));
-        let camel = index > start
-            && bytes.get(index).is_some_and(u8::is_ascii_uppercase)
-            && (bytes[index - 1].is_ascii_lowercase()
-                || bytes.get(index + 1).is_some_and(u8::is_ascii_lowercase));
-        if index == bytes.len() || separator || camel {
-            if [
-                "p",
-                "pass",
-                "pw",
-                "key",
-                "pwd",
-                "auth",
-                "authorization",
-                "session",
-            ]
-            .iter()
-            .any(|part| key[start..index].eq_ignore_ascii_case(part))
-            {
-                return true;
-            }
-            start = index + usize::from(separator);
-        }
-    }
-    false
-}
-
-fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {
-    let bare = key.trim_matches(['-', '\'', '"', '`', '{', '}', '\\']);
-    if separator == ':'
-        && ["key", "session"]
-            .iter()
-            .any(|part| bare.eq_ignore_ascii_case(part))
-        && (value.is_empty()
-            || (bare.eq_ignore_ascii_case("session") && value.parse::<f64>().is_ok()))
-    {
-        return false;
-    }
-    if bare == "p" && value.parse::<f64>().is_ok() {
-        return false;
-    }
-    sensitive_key(key)
-}
-
 fn is_hidden_format(ch: char) -> bool {
     matches!(ch,
         '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}'
         | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}'
     )
-}
-
-fn url_userinfo_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"(?i)[a-z][a-z0-9+.-]*://[^\s/@]+@").expect("static URL pattern")
-    })
-}
-
-fn standalone_token_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\b(?:sk-[a-z0-9_-]{3,}|ghp_[a-z0-9_]{3,}|xox[a-z]-[a-z0-9_-]{3,})\b")
-            .expect("static token pattern")
-    })
 }

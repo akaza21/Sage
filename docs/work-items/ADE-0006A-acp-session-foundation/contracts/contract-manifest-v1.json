@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 15,
-  "logicalBytes": 231006,
+  "logicalBytes": 231627,
   "files": [
     {
       "relativePath": "README.md",
@@ -49,8 +49,8 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 18852,
-      "sha256": "77c6e508a8b823d37dfc45c4c1a67dad626cedf84d2ac2a526babcb3dc2fa150"
+      "bytes": 19473,
+      "sha256": "4758d67e5e1df2b4a88f81735a3e33266fcefe4f87de052f5dc1b6f84582e7d6"
     },
     {
       "relativePath": "package-contract-v1.json",

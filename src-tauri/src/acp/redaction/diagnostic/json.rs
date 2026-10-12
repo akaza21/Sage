@@ -1,6 +1,7 @@
 use super::{
     QUOTE_SCAN_LIMIT, assignment_start, diagnostic_word, sanitize_words, sensitive_key, word_len,
 };
+use crate::acp::redaction::text::credentials::decode_key;
 
 pub(super) fn sanitize_word(
     value: &str,
@@ -201,97 +202,20 @@ fn sanitize_span(
 }
 
 pub(super) fn container_end(value: &str, start: usize) -> Option<usize> {
-    let bytes = value.as_bytes();
-    let limit = (start + QUOTE_SCAN_LIMIT).min(value.len());
-    let mut cursor = start;
-    let mut depth = 0;
-    while cursor < limit {
-        match bytes[cursor] {
-            b'"' => cursor = quote_end(value, cursor + 1, false, limit)? - 1,
-            b'\\' if bytes.get(cursor + 1) == Some(&b'"') => {
-                cursor = quote_end(value, cursor + 2, true, limit)? - 1;
-            }
-            b'{' | b'[' => depth += 1,
-            b'}' | b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(cursor + 1);
-                }
-            }
-            _ => {}
-        }
-        cursor += 1;
-    }
-    None
+    crate::acp::redaction::text::spans::container_end(
+        value,
+        start,
+        crate::acp::redaction::text::Mode::Diagnostic,
+    )
 }
 
-fn quote_end(value: &str, mut cursor: usize, escaped: bool, limit: usize) -> Option<usize> {
-    let bytes = value.as_bytes();
-    while cursor < limit {
-        if escaped && bytes[cursor] == b'\\' {
-            let start = cursor;
-            while cursor < limit && bytes[cursor] == b'\\' {
-                cursor += 1;
-            }
-            if cursor < limit && bytes[cursor] == b'"' && (cursor - start) % 4 == 1 {
-                return Some(cursor + 1);
-            }
-            cursor += usize::from(cursor < limit);
-            continue;
-        }
-        if !escaped && bytes[cursor] == b'"' {
-            return Some(cursor + 1);
-        }
-        cursor += if !escaped && bytes[cursor] == b'\\' {
-            2
-        } else {
-            1
-        };
-    }
-    None
-}
-
-fn decode_key(key: &str, escaped: bool) -> String {
-    let decoded = if escaped {
-        key.replace("\\\\", "\\")
-    } else {
-        key.to_owned()
-    };
-    let mut characters = decoded.chars();
-    let mut output = String::with_capacity(decoded.len());
-    while let Some(character) = characters.next() {
-        if character == '\\' && characters.as_str().starts_with('u') {
-            let digits = characters.as_str().as_bytes();
-            if digits.len() >= 5 && digits[1..5].iter().all(u8::is_ascii_hexdigit) {
-                let code = u32::from_str_radix(&characters.as_str()[1..5], 16).unwrap();
-                if let Some(decoded) = char::from_u32(code) {
-                    output.push(decoded);
-                    for _ in 0..5 {
-                        characters.next();
-                    }
-                    continue;
-                }
-            }
-        }
-        if character == '\\'
-            && let Some(escaped) = characters.clone().next()
-        {
-            let decoded = match escaped {
-                '"' | '\\' | '/' => Some(escaped),
-                'n' => Some('\n'),
-                'r' => Some('\r'),
-                't' => Some('\t'),
-                'b' => Some('\u{0008}'),
-                'f' => Some('\u{000c}'),
-                _ => None,
-            };
-            if let Some(decoded) = decoded {
-                output.push(decoded);
-                characters.next();
-                continue;
-            }
-        }
-        output.push(character);
-    }
-    output
+fn quote_end(value: &str, cursor: usize, escaped: bool, limit: usize) -> Option<usize> {
+    crate::acp::redaction::text::spans::quote_end(
+        value,
+        cursor,
+        b'"',
+        escaped,
+        limit,
+        crate::acp::redaction::text::Mode::Diagnostic,
+    )
 }

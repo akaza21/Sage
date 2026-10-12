@@ -101,6 +101,7 @@
     "scripts/footprint/SemanticUia.psm1",
     "scripts/generate-acp-fixture-cases.mjs",
     "scripts/generate-source-manifest.mjs",
+    "scripts/redaction-standalone.rs",
     "scripts/test-ade0006a-c0b-tooling.ps1",
     "scripts/test-c0b-control-smoke.ps1",
     "scripts/validate-ade0006a-c0b-plan.mjs",
@@ -188,9 +189,6 @@
         "src-tauri/src/acp/bindings/adapter/model.rs",
         "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",
         "src-tauri/src/acp/bindings/command_summary.rs",
-        "src-tauri/src/acp/bindings/command_summary/redaction.rs",
-        "src-tauri/src/acp/bindings/command_summary/secrets.rs",
-        "src-tauri/src/acp/bindings/command_summary/values.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",
@@ -224,8 +222,23 @@
         "src-tauri/src/acp/transport/"
       ],
       "files": [
+        "scripts/redaction-standalone.rs",
+        "src-tauri/src/acp/redaction/command.rs",
+        "src-tauri/src/acp/redaction/corpus.rs",
+        "src-tauri/src/acp/redaction/corpus_data.rs",
+        "src-tauri/src/acp/redaction/credentials.rs",
         "src-tauri/src/acp/redaction/diagnostic/canaries.rs",
-        "src-tauri/src/acp/redaction/diagnostic/secrets.rs",
+        "src-tauri/src/acp/redaction/embedded.rs",
+        "src-tauri/src/acp/redaction/paths.rs",
+        "src-tauri/src/acp/redaction/pem.rs",
+        "src-tauri/src/acp/redaction/prose.rs",
+        "src-tauri/src/acp/redaction/regression_tests.rs",
+        "src-tauri/src/acp/redaction/scalars.rs",
+        "src-tauri/src/acp/redaction/secrets.rs",
+        "src-tauri/src/acp/redaction/shell.rs",
+        "src-tauri/src/acp/redaction/spans.rs",
+        "src-tauri/src/acp/redaction/text.rs",
+        "src-tauri/src/acp/redaction/values.rs",
         "src-tauri/src/bin/acp_adversarial_fixture.rs"
       ]
     },
@@ -291,7 +304,7 @@
         "src-tauri/src/acp/bindings/omp/",
         "src-tauri/testdata/acp/omp/"
       ],
-      "files": []
+      "files": ["src-tauri/src/acp/bindings/omp/wire_text.rs"]
     },
     {
       "owner": "h5-standard-acp-admission",

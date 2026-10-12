@@ -1,5 +1,6 @@
-use super::{
-    is_sensitive_prose_flag, is_sensitive_prose_token, sensitive_assignment, sensitive_key,
+use super::credentials::{
+    assigned_auth_marker, auth_marker, is_sensitive_prose_flag, is_sensitive_prose_token,
+    sensitive_assignment, sensitive_header, sensitive_key,
 };
 use crate::acp::contract::ContractError;
 
@@ -10,6 +11,7 @@ pub(crate) struct SecretContext {
     next_value: bool,
     authorization_line: bool,
     key_waiting: bool,
+    colon_key_waiting: bool,
 }
 
 impl SecretContext {
@@ -22,6 +24,9 @@ impl SecretContext {
     }
 
     pub(crate) fn quoted_value_start(&self, body: &str) -> Option<usize> {
+        if super::credentials::quoted_assignment_syntax(body) {
+            return None;
+        }
         if (self.next_value || self.authorization_line) && body.starts_with(['\'', '"']) {
             return Some(0);
         }
@@ -40,6 +45,9 @@ impl SecretContext {
     }
 
     pub(crate) fn redact(&mut self, body: &str, whitespace: &str, continued: bool) -> bool {
+        if super::credentials::quoted_assignment_syntax(body) {
+            return false;
+        }
         let separator = self.next_value && !continued && matches!(body, "<" | ":" | "=");
         let was_authorization_line = self.authorization_line;
         let literal_value = continued || self.next_value;
@@ -47,7 +55,7 @@ impl SecretContext {
             && !continued
             && !body.starts_with(['\'', '"', '`'])
             && is_sensitive_prose_flag(body);
-        let header = is_authorization_header(body);
+        let header = sensitive_header(body, super::Mode::CommandOutput);
         let redacted = !body.is_empty()
             && !separator
             && (self.authorization_line
@@ -70,14 +78,15 @@ impl SecretContext {
             self.next_value = structural_flag
                 || separator
                 || (!literal_value
-                    && (is_bearer_marker(body)
+                    && (auth_marker(body, super::Mode::CommandOutput)
                         || is_sensitive_prose_flag(body)
                         || separated_assignment
-                        || (self.key_waiting && matches!(token, ":" | "="))
-                        || token
-                            .split_once('=')
-                            .is_some_and(|(_, value)| is_bearer_marker(value))));
-            self.key_waiting = !literal_value && sensitive_key(token);
+                        || (self.key_waiting
+                            && (token == "=" || (token == ":" && self.colon_key_waiting)))
+                        || assigned_auth_marker(token, super::Mode::CommandOutput)));
+            self.key_waiting = !literal_value && sensitive_key(token.trim_end_matches(':'));
+            self.colon_key_waiting =
+                sensitive_assignment(token.trim_end_matches(':'), ':', "value");
             if !literal_value && header {
                 self.authorization_line = true;
             }
@@ -91,29 +100,6 @@ impl SecretContext {
         }
         redacted
     }
-}
-
-pub(super) fn is_authorization_header(body: &str) -> bool {
-    let body = body
-        .strip_prefix("-H")
-        .or_else(|| body.strip_prefix("-h"))
-        .unwrap_or(body);
-    body.trim_start_matches(['\'', '"', '`'])
-        .split_once(':')
-        .is_some_and(|(name, _)| {
-            name.eq_ignore_ascii_case("authorization")
-                || name.eq_ignore_ascii_case("proxy-authorization")
-        })
-}
-
-fn is_bearer_marker(value: &str) -> bool {
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-        )
-    });
-    trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("bearer:")
 }
 
 pub(crate) fn append(

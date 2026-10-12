@@ -3,10 +3,7 @@ use std::{collections::BTreeSet, fmt};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::{Map, Number, Value};
 
-use crate::acp::{
-    contract::SafeText,
-    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
-};
+use crate::acp::limits::LIMITS;
 
 pub(super) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     let raw = raw.strip_suffix(b"\n").unwrap_or(raw);
@@ -32,122 +29,9 @@ pub(super) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     Ok(value)
 }
 
-pub(super) fn normalized_text<const MAX: usize>(
-    field: &'static str,
-    text: &str,
-) -> Result<SafeText<MAX>, WireError> {
-    if text.len() > MAX || text.contains('\0') {
-        return Err(WireError::TextLimit);
-    }
-    let mut result = String::with_capacity(text.len());
-    let mut redact_next = false;
-    for part in text.split_inclusive(char::is_whitespace) {
-        let token = part.trim_end_matches(char::is_whitespace);
-        let suffix = &part[token.len()..];
-        let bare = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-            )
-        });
-        let bearer = bare.eq_ignore_ascii_case("bearer");
-        if redact_next || is_sensitive(bare) {
-            result.push_str("[redacted]");
-            result.push_str(suffix);
-        } else {
-            result.push_str(part);
-        }
-        redact_next = bearer;
-        if result.len() > MAX {
-            return Err(WireError::TextLimit);
-        }
-    }
-    SafeText::new(field, result).map_err(|_| WireError::TextLimit)
-}
-
-/// Sanitizes one already frame-bounded command-output value before its display
-/// suffix is retained. General `normalized_text` callers retain their strict
-/// `SafeText` maximum; oversized command output is valid and is capped later.
-pub(super) fn sanitized_command_output(input: &str) -> Result<String, WireError> {
-    let maximum_input = LIMITS.wire.frame_bytes as usize;
-    let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);
-    if input.len() > maximum_input || input.contains('\0') {
-        return Err(WireError::TextLimit);
-    }
-
-    let mut result = String::new();
-    let mut redact_next = false;
-    for part in input.split_inclusive(char::is_whitespace) {
-        let token = part.trim_end_matches(char::is_whitespace);
-        let suffix = &part[token.len()..];
-        if token.is_empty() {
-            append_command_output(&mut result, suffix, maximum_output)?;
-            continue;
-        }
-        let bare = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-            )
-        });
-        let replacement =
-            if redact_next || is_sensitive(bare) || contains_command_absolute_path(token) {
-                "[redacted]"
-            } else {
-                token
-            };
-        append_command_output(&mut result, replacement, maximum_output)?;
-        append_command_output(&mut result, suffix, maximum_output)?;
-        redact_next = is_bearer_marker(bare);
-    }
-    Ok(result)
-}
-
-fn is_bearer_marker(value: &str) -> bool {
-    value.eq_ignore_ascii_case("bearer") || value.eq_ignore_ascii_case("bearer:")
-}
-
-fn append_command_output(
-    output: &mut String,
-    value: &str,
-    maximum: usize,
-) -> Result<(), WireError> {
-    let next = output
-        .len()
-        .checked_add(value.len())
-        .ok_or(WireError::TextLimit)?;
-    if next > maximum {
-        return Err(WireError::TextLimit);
-    }
-    output
-        .try_reserve(value.len())
-        .map_err(|_| WireError::TextLimit)?;
-    output.push_str(value);
-    Ok(())
-}
-
-fn contains_command_absolute_path(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("file:///") || lower.contains("file://\\\\") {
-        return true;
-    }
-    let bytes = value.as_bytes();
-    bytes.iter().enumerate().any(|(index, _)| {
-        let boundary = index == 0
-            || matches!(
-                bytes[index - 1],
-                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';'
-            );
-        let rest = &bytes[index..];
-        boundary
-            && (rest.starts_with(b"\\\\")
-                || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
-                || (rest.len() >= 3
-                    && rest[0].is_ascii_alphabetic()
-                    && rest[1] == b':'
-                    && matches!(rest[2], b'\\' | b'/')))
-    })
-}
+#[path = "wire_text.rs"]
+mod text;
+pub(super) use text::{normalized_text, sanitized_command_output};
 
 pub(super) fn opaque_id(value: Option<&Value>) -> Result<String, WireError> {
     let value = match value {
@@ -166,17 +50,10 @@ pub(super) fn opaque_id(value: Option<&Value>) -> Result<String, WireError> {
 }
 
 fn is_sensitive(token: &str) -> bool {
-    let bytes = token.as_bytes();
-    token.starts_with('/')
-        || token.starts_with("\\\\")
-        || (bytes.len() >= 3
-            && bytes[0].is_ascii_alphabetic()
-            && bytes[1] == b':'
-            && matches!(bytes[2], b'\\' | b'/'))
-        || token.starts_with("sk-")
-        || token.starts_with("ghp_")
-        || token.starts_with("xoxb-")
-        || token.starts_with("AKIA")
+    use crate::acp::redaction::text::{
+        Mode, credentials::is_sensitive_prose_token, paths::absolute_path,
+    };
+    is_sensitive_prose_token(token) || absolute_path(token, Mode::Permission).is_some()
 }
 
 struct UniqueValue(Value);
