@@ -66,7 +66,9 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         }
         let value_start = value_start.or_else(|| {
             bare.split_once('=')
-                .filter(|(_, value)| !value.is_empty())
+                .filter(|(key, value)| {
+                    !key.is_empty() && !value.is_empty() && !value.starts_with('=')
+                })
                 .map(|(key, _)| prefix.len() + key.len() + 1)
         });
         let lower = if redact_next || value_start.is_some() {
