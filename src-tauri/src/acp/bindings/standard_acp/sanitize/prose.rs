@@ -33,13 +33,37 @@ pub(super) fn redact_prose(
     input: &str,
     maximum_output: usize,
 ) -> Result<String, ContractError> {
+    let scanned = crate::acp::bindings::command_summary::values::redact_values(
+        field,
+        input,
+        maximum_output,
+        PathMode::Prose,
+    )?;
+    let input = &scanned.text;
     let mut output = String::new();
     let mut secrets = SecretContext::default();
     let mut value = QuotedValue::default();
+    let mut budget = crate::acp::bindings::command_summary::values::ValueBudget::default();
     let mut paths = PathContext::default();
     for token in input.split_inclusive(char::is_whitespace) {
         let (mut body, whitespace) = split_trailing_whitespace(token);
+        let mut quoted_token = false;
         while !body.is_empty() {
+            if let Some(suffix) = body
+                .strip_prefix(REDACTED)
+                .filter(|_| !secrets.protects_value() && value.quote.is_none())
+            {
+                secrets.finish_value();
+                append(&mut output, REDACTED, maximum_output, field)?;
+                body = suffix.trim_start_matches([',', ';']);
+                append(
+                    &mut output,
+                    &suffix[..suffix.len() - body.len()],
+                    maximum_output,
+                    field,
+                )?;
+                continue;
+            }
             let continued = value.quote.is_some();
             let opening = if continued {
                 None
@@ -47,6 +71,7 @@ pub(super) fn redact_prose(
                 secrets.quoted_value_start(body)
             };
             let quoted = continued || opening.is_some();
+            quoted_token |= quoted;
             let suffix = if quoted {
                 value.suffix(body, opening)
             } else {
@@ -79,13 +104,29 @@ pub(super) fn redact_prose(
         if !whitespace.is_empty() {
             value.escaped = false;
         }
-        if value.quote.is_some() && whitespace.contains(['\n', '\r']) {
-            secrets.finish_value();
-            value = QuotedValue::default();
+        if (value.quote.is_some() || quoted_token)
+            && budget.exhausted(token.trim_end_matches(char::is_whitespace), whitespace)
+        {
+            append(
+                &mut output,
+                crate::acp::bindings::command_summary::values::SECRET_LIMIT,
+                maximum_output,
+                field,
+            )?;
+            return Ok(output);
         }
         if value.quote.is_none() {
+            budget = crate::acp::bindings::command_summary::values::ValueBudget::default();
             append(&mut output, whitespace, maximum_output, field)?;
         }
+    }
+    if scanned.exhausted {
+        append(
+            &mut output,
+            crate::acp::bindings::command_summary::values::SECRET_LIMIT,
+            maximum_output,
+            field,
+        )?;
     }
     Ok(output)
 }

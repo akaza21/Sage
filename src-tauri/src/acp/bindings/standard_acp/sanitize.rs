@@ -12,6 +12,10 @@ mod hardening_tests;
 #[path = "sanitize/regression_tests.rs"]
 mod regression_tests;
 
+#[cfg(test)]
+#[path = "sanitize/review_tests.rs"]
+mod review_tests;
+
 use crate::acp::{
     bindings::command_summary::redaction::redact,
     contract::{ContractError, SafeText},

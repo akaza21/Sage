@@ -190,6 +190,7 @@
         "src-tauri/src/acp/bindings/command_summary.rs",
         "src-tauri/src/acp/bindings/command_summary/redaction.rs",
         "src-tauri/src/acp/bindings/command_summary/secrets.rs",
+        "src-tauri/src/acp/bindings/command_summary/values.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",

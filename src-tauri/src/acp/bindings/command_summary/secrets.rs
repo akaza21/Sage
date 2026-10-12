@@ -1,4 +1,6 @@
-use super::{is_sensitive_prose_flag, is_sensitive_prose_token, sensitive_key};
+use super::{
+    is_sensitive_prose_flag, is_sensitive_prose_token, sensitive_assignment, sensitive_key,
+};
 use crate::acp::contract::ContractError;
 
 pub(crate) const REDACTED: &str = "[redacted]";
@@ -13,6 +15,10 @@ pub(crate) struct SecretContext {
 impl SecretContext {
     pub(crate) fn next_value(&self) -> bool {
         self.next_value
+    }
+
+    pub(crate) fn protects_value(&self) -> bool {
+        self.next_value || self.authorization_line
     }
 
     pub(crate) fn quoted_value_start(&self, body: &str) -> Option<usize> {
@@ -58,7 +64,8 @@ impl SecretContext {
                 .split_once('=')
                 .or_else(|| token.split_once(':'))
                 .is_some_and(|(key, value)| {
-                    sensitive_key(key) && value.trim_matches(['\'', '"', '`']).is_empty()
+                    sensitive_assignment(key, if token.contains('=') { '=' } else { ':' }, value)
+                        && value.trim_matches(['\'', '"', '`']).is_empty()
                 });
             self.next_value = structural_flag
                 || separator

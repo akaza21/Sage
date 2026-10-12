@@ -10,6 +10,9 @@ pub(crate) mod redaction;
 #[path = "command_summary/secrets.rs"]
 pub(crate) mod secrets;
 
+#[path = "command_summary/values.rs"]
+pub(crate) mod values;
+
 const MAX_COMMAND_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +75,10 @@ pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
     let assigned = token
         .split_once('=')
         .or_else(|| token.split_once(':'))
-        .is_some_and(|(key, value)| !value.is_empty() && sensitive_key(key));
+        .is_some_and(|(key, value)| {
+            !value.is_empty()
+                && sensitive_assignment(key, if token.contains('=') { '=' } else { ':' }, value)
+        });
     let inline_auth = lower
         .split_once(':')
         .is_some_and(|(kind, value)| matches!(kind, "bearer" | "basic") && !value.is_empty());
@@ -179,9 +185,9 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
         let inline_auth = lower
             .split_once(':')
             .is_some_and(|(kind, value)| matches!(kind, "bearer" | "basic") && !value.is_empty());
-        let assigned = cooked
-            .split_once('=')
-            .is_some_and(|(key, _)| sensitive_key(key) || sensitive_flag(key));
+        let assigned = cooked.split_once('=').is_some_and(|(key, value)| {
+            sensitive_assignment(key, '=', value) || sensitive_flag(key)
+        });
         let attached = cooked.len() > 2
             && (cooked.starts_with("-p")
                 || cooked.starts_with("-P")
@@ -245,12 +251,32 @@ fn sensitive_flag(flag: &str) -> bool {
 fn sensitive_key(key: &str) -> bool {
     let key = key.trim_matches(['-', '\'', '"', '`', '{', '}']);
     let key = key.strip_prefix("$env:").unwrap_or(key);
+    let lower = key.to_ascii_lowercase();
+    if [
+        "password",
+        "passwd",
+        "passphrase",
+        "secret",
+        "credential",
+        "privatekey",
+        "apikey",
+        "cookie",
+        "sessionid",
+    ]
+    .iter()
+    .any(|part| lower.contains(part))
+        || lower
+            .match_indices("token")
+            .any(|(index, _)| lower.as_bytes().get(index + 5) != Some(&b's'))
+    {
+        return true;
+    }
     let bytes = key.as_bytes();
     let mut start = 0;
     for index in 0..=bytes.len() {
         let separator = bytes
             .get(index)
-            .is_some_and(|byte| matches!(byte, b'_' | b'-' | b'.'));
+            .is_some_and(|byte| matches!(byte, b'_' | b'-' | b'.' | b'\\' | b'"'));
         let camel = index > start
             && bytes.get(index).is_some_and(u8::is_ascii_uppercase)
             && (bytes[index - 1].is_ascii_lowercase()
@@ -261,17 +287,10 @@ fn sensitive_key(key: &str) -> bool {
                 "pass",
                 "pw",
                 "key",
-                "apikey",
-                "token",
-                "secret",
-                "password",
-                "passwd",
                 "pwd",
                 "auth",
                 "authorization",
-                "credential",
-                "credentials",
-                "cookie",
+                "session",
             ]
             .iter()
             .any(|part| key[start..index].eq_ignore_ascii_case(part))
@@ -282,6 +301,23 @@ fn sensitive_key(key: &str) -> bool {
         }
     }
     false
+}
+
+fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {
+    let bare = key.trim_matches(['-', '\'', '"', '`', '{', '}', '\\']);
+    if separator == ':'
+        && ["key", "session"]
+            .iter()
+            .any(|part| bare.eq_ignore_ascii_case(part))
+        && (value.is_empty()
+            || (bare.eq_ignore_ascii_case("session") && value.parse::<f64>().is_ok()))
+    {
+        return false;
+    }
+    if bare == "p" && value.parse::<f64>().is_ok() {
+        return false;
+    }
+    sensitive_key(key)
 }
 
 fn is_hidden_format(ch: char) -> bool {

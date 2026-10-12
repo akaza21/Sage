@@ -7,15 +7,18 @@ pub(crate) fn redact(
     maximum: usize,
     reject_paths: bool,
 ) -> Result<String, ContractError> {
-    let mut output = String::new();
-    let mut secrets = SecretContext::default();
-    let mut value = ShellValueContext::default();
-    let mut paths = PathContext::default();
     let mode = if reject_paths {
         PathMode::Permission
     } else {
         PathMode::CommandOutput
     };
+    let scanned = super::values::redact_values(field, input, maximum, mode)?;
+    let input = &scanned.text;
+    let mut output = String::new();
+    let mut secrets = SecretContext::default();
+    let mut value = ShellValueContext::default();
+    let mut budget = super::values::ValueBudget::default();
+    let mut paths = PathContext::default();
     for token in input.split_inclusive(char::is_whitespace) {
         let body = token.trim_end_matches(char::is_whitespace);
         let whitespace = &token[body.len()..];
@@ -32,9 +35,11 @@ pub(crate) fn redact(
         if !redacted && secrets.next_value() && body.starts_with('`') {
             value.markdown_wrapper = true;
         }
-        if redacted || (secrets.next_value() && body.starts_with(['\'', '"'])) {
-            value.track_value(body, path, literal_value);
-        }
+        let scanned_quote = if redacted || (secrets.next_value() && body.starts_with(['\'', '"'])) {
+            value.track_value(body, path, literal_value)
+        } else {
+            false
+        };
         if value.escaped && !whitespace.is_empty() {
             value.escaped = false;
             value.continued_value = true;
@@ -47,15 +52,19 @@ pub(crate) fn redact(
         if !continued {
             append(&mut output, replacement, maximum, field)?;
         }
-        if whitespace.contains(['\n', '\r']) {
-            if value.in_value() {
-                secrets.finish_value();
-            }
-            value = ShellValueContext::default();
+        if (continued || value.in_value() || quoted || scanned_quote)
+            && budget.exhausted(body, whitespace)
+        {
+            append(&mut output, super::values::SECRET_LIMIT, maximum, field)?;
+            return Ok(output);
         }
         if !value.in_value() {
+            budget = super::values::ValueBudget::default();
             append(&mut output, whitespace, maximum, field)?;
         }
+    }
+    if scanned.exhausted {
+        append(&mut output, super::values::SECRET_LIMIT, maximum, field)?;
     }
     Ok(output)
 }
@@ -76,17 +85,29 @@ pub(crate) enum PathKind {
 #[derive(Default)]
 pub(crate) struct PathContext {
     windows: bool,
+    home_name: bool,
 }
 
 impl PathContext {
     pub(crate) fn redact(&mut self, body: &str, whitespace: &str, mode: PathMode) -> bool {
         let path = absolute_path(body, mode);
-        let continuation = self.windows && body.contains('\\');
+        let continuation = self.home_name || (self.windows && body.contains('\\'));
         if !body.is_empty() {
+            if path == Some(PathKind::Windows) {
+                let lower = body.to_ascii_lowercase();
+                self.home_name = ["\\users\\", "\\home\\"].iter().any(|prefix| {
+                    lower
+                        .find(prefix)
+                        .is_some_and(|index| !lower[index + prefix.len()..].contains('\\'))
+                });
+            } else if self.home_name && body.contains('\\') {
+                self.home_name = false;
+            }
             self.windows = path == Some(PathKind::Windows) || continuation;
         }
         if whitespace.contains(['\n', '\r']) {
             self.windows = false;
+            self.home_name = false;
         }
         path.is_some() || continuation
     }
@@ -104,8 +125,25 @@ pub(crate) fn absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
     }
     let last_non_slash = bytes.iter().rposition(|byte| *byte != b'/');
     let last_slash = bytes.iter().rposition(|byte| *byte == b'/');
+    let flag_start = usize::from(matches!(bytes.first(), Some(b'"' | b'\'' | b'`')));
+    let glued_path = if bytes.get(flag_start) == Some(&b'-') {
+        let letters = bytes[flag_start + 1..]
+            .iter()
+            .take_while(|byte| byte.is_ascii_alphabetic())
+            .count();
+        (letters > 0).then_some(flag_start + 1 + letters)
+    } else {
+        None
+    };
+    let short_path = bytes.get(flag_start).is_some_and(|byte| *byte == b'-')
+        && bytes
+            .get(flag_start + 1)
+            .is_some_and(u8::is_ascii_alphabetic);
     for index in 0..bytes.len() {
-        if !is_path_boundary(bytes, index) {
+        if glued_path != Some(index)
+            && !(short_path && index == flag_start + 2)
+            && !is_path_boundary(bytes, index)
+        {
             continue;
         }
         let rest = &bytes[index..];
@@ -125,15 +163,15 @@ pub(crate) fn absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
             PathMode::Permission => true,
             PathMode::CommandOutput => {
                 rest != b"/*"
-                    && (rest.len() == 1 || last_non_slash.is_some_and(|last| last >= index))
-                    && (previous != Some(b'<') || !is_quoted_closing_tag(bytes, index))
+                    && (plain_slash_path(rest)
+                        || (matches!(rest.get(1), Some(b'/' | b'*'))
+                            && last_slash.is_some_and(|last| last > index + 1)))
+                    && last_non_slash.is_some_and(|last| last >= index)
+                    && (previous != Some(b'<') || !is_closing_tag(bytes, index))
             }
             PathMode::Prose => {
-                rest.get(1).is_some_and(|byte| {
-                    !byte.is_ascii()
-                        || byte.is_ascii_alphanumeric()
-                        || matches!(byte, b'.' | b'_' | b'-' | b'~')
-                }) && (previous != Some(b'<') || last_slash.is_some_and(|last| last > index))
+                plain_slash_path(rest)
+                    && (previous != Some(b'<') || last_slash.is_some_and(|last| last > index))
             }
         };
         if posix && !(previous == Some(b':') && rest.starts_with(b"//")) {
@@ -145,11 +183,6 @@ pub(crate) fn absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {
 
 fn is_path_boundary(value: &[u8], index: usize) -> bool {
     let previous = index.checked_sub(1).map(|index| value[index]);
-    let prefix = &value[..index];
-    let prefix = match prefix.first() {
-        Some(b'"' | b'\'' | b'`') => &prefix[1..],
-        _ => prefix,
-    };
     previous.is_none_or(|byte| {
         matches!(
             byte,
@@ -169,24 +202,26 @@ fn is_path_boundary(value: &[u8], index: usize) -> bool {
                 | b'\\'
                 | b'@'
         )
-    }) || (prefix.len() == 2 && prefix[0] == b'-' && prefix[1].is_ascii_alphabetic())
-        || matches!(prefix, b"-isystem" | b"-iquote")
+    })
 }
 
-fn is_quoted_closing_tag(value: &[u8], slash: usize) -> bool {
-    let Some(quote) = slash.checked_sub(2).and_then(|index| value.get(index)) else {
-        return false;
-    };
-    if !matches!(quote, b'\'' | b'"') {
-        return false;
-    }
+fn plain_slash_path(rest: &[u8]) -> bool {
+    rest.get(1).is_some_and(|byte| {
+        !byte.is_ascii()
+            || byte.is_ascii_alphanumeric()
+            || matches!(byte, b'.' | b'_' | b'-' | b'~')
+    })
+}
+
+fn is_closing_tag(value: &[u8], slash: usize) -> bool {
     let name_end = value[slash + 1..]
         .iter()
         .position(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'-' | b':'));
     name_end.is_some_and(|end| {
         end > 0
             && value.get(slash + end + 1) == Some(&b'>')
-            && value.get(slash + end + 2) == Some(quote)
+            && (slash + end + 2 == value.len()
+                || matches!(value.get(slash + end + 2), Some(b'\'' | b'"')))
     })
 }
 
@@ -204,9 +239,9 @@ impl ShellValueContext {
         self.quote.is_some() || self.continued_value || self.substitution_depth > 0
     }
 
-    fn track_value(&mut self, body: &str, path: bool, literal_value: bool) {
+    fn track_value(&mut self, body: &str, path: bool, literal_value: bool) -> bool {
         if body.is_empty() {
-            return;
+            return false;
         }
         self.continued_value = false;
         let markdown_wrapper = std::mem::take(&mut self.markdown_wrapper);
@@ -236,6 +271,7 @@ impl ShellValueContext {
             body
         };
         let mut previous = None;
+        let mut scanned_quote = self.quote.is_some();
         for (index, character) in body.char_indices() {
             if self.escaped {
                 self.escaped = false;
@@ -250,6 +286,7 @@ impl ShellValueContext {
             {
                 self.escaped = true;
             } else if matches!(character, '\'' | '"' | '`') {
+                scanned_quote = true;
                 self.quote = Some(character);
             } else if character == '(' && (previous == Some('$') || self.substitution_depth > 0) {
                 self.substitution_depth += 1;
@@ -258,5 +295,6 @@ impl ShellValueContext {
             }
             previous = Some(character);
         }
+        scanned_quote
     }
 }

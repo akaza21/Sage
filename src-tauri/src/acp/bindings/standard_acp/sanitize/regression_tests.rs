@@ -53,18 +53,18 @@ fn author_apostrophe_cannot_swallow_following_output_lines() {
 }
 
 #[test]
-fn an_open_console_secret_value_closes_at_the_newline() {
+fn an_open_console_secret_value_keeps_following_lines_private() {
     assert_eq!(
         sanitized_command_output("TOKEN='private words\nordinary output\nlast line").unwrap(),
-        "[redacted]\nordinary output\nlast line"
+        "[redacted]"
     );
 }
 
 #[test]
-fn console_secret_quotes_do_not_continue_on_another_line() {
+fn console_secret_quotes_continue_until_their_closing_quote() {
     assert_eq!(
         sanitized_command_output("--token 'private\nvalue' safe").unwrap(),
-        "--token [redacted]\nvalue' safe"
+        "--token [redacted] safe"
     );
 }
 
@@ -107,10 +107,10 @@ fn quoted_json_authorization_redacts_the_scheme_and_secret_without_dropping_pros
 }
 
 #[test]
-fn unclosed_prose_secret_quotes_stop_at_the_newline() {
+fn unclosed_prose_secret_quotes_keep_following_lines_private() {
     assert_prose(
         "before password = \"a b\nafter ordinary prose",
-        "before password = [redacted]\nafter ordinary prose",
+        "before password = [redacted]",
     );
 }
 
@@ -154,18 +154,15 @@ fn leading_quoted_secret_whitespace_does_not_expose_the_value() {
 }
 
 #[test]
-fn a_pending_quoted_prose_secret_stops_at_the_newline() {
-    assert_prose(
-        "DB_PASSWORD=\"\nordinary prose",
-        "[redacted]\nordinary prose",
-    );
+fn a_pending_quoted_prose_secret_keeps_following_lines_private() {
+    assert_prose("DB_PASSWORD=\"\nordinary prose", "[redacted]");
 }
 
 #[test]
-fn a_pending_quoted_console_secret_stops_at_the_newline() {
+fn a_pending_quoted_console_secret_keeps_following_lines_private() {
     assert_eq!(
         sanitized_command_output("DB_PASSWORD=\"\nordinary output").unwrap(),
-        "[redacted]\nordinary output"
+        "[redacted]"
     );
 }
 
