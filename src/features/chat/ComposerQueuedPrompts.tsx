@@ -1,10 +1,11 @@
 import { MoreHorizontal, X } from "../../ui/leanIcons";
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
 
 export function ComposerQueuedPrompts({
+  composerRef,
   prompts,
   steerAvailable,
   disabled,
@@ -12,6 +13,7 @@ export function ComposerQueuedPrompts({
   onRetry,
   onSteer,
 }: {
+  composerRef?: RefObject<HTMLTextAreaElement | null>;
   prompts?: readonly QueuedChatPrompt[];
   steerAvailable?: boolean;
   disabled: boolean;
@@ -21,10 +23,24 @@ export function ComposerQueuedPrompts({
 }) {
   const [menuId, setMenuId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const rowTriggersRef = useRef(new Map<string, HTMLButtonElement>());
   const panelId = useId();
   if (disabled && menuId !== null) setMenuId(null);
   const selected = prompts?.find((prompt) => prompt.id === menuId);
   if (!prompts?.length) return null;
+  const deletePrompt = (id: string) => {
+    const index = prompts.findIndex((prompt) => prompt.id === id);
+    const adjacent = [
+      ...prompts.slice(index + 1),
+      ...prompts.slice(0, index).reverse(),
+    ];
+    const nextTrigger = adjacent
+      .map((prompt) => rowTriggersRef.current.get(prompt.id))
+      .find((trigger) => trigger && !trigger.disabled);
+    onDelete?.(id);
+    setMenuId(null);
+    (nextTrigger ?? composerRef?.current)?.focus();
+  };
   return (
     <div className="composer__queued" aria-label="Queued messages">
       {prompts.map((prompt) => (
@@ -69,11 +85,15 @@ export function ComposerQueuedPrompts({
             disabled={
               prompt.status === "saving" || prompt.status === "deleting"
             }
-            onClick={() => onDelete?.(prompt.id)}
+            onClick={() => deletePrompt(prompt.id)}
           >
             <X size={16} aria-hidden="true" />
           </button>
           <button
+            ref={(trigger) => {
+              if (trigger) rowTriggersRef.current.set(prompt.id, trigger);
+              else rowTriggersRef.current.delete(prompt.id);
+            }}
             type="button"
             aria-label={`More options for queued message: ${prompt.text}`}
             aria-haspopup="menu"
@@ -109,10 +129,11 @@ export function ComposerQueuedPrompts({
           role="menuitem"
           onClick={() => {
             if (!selected) return;
-            if (selected.status === "blocked") onRetry?.(selected.id);
-            else onDelete?.(selected.id);
-            setMenuId(null);
-            triggerRef.current?.focus();
+            if (selected.status === "blocked") {
+              onRetry?.(selected.id);
+              setMenuId(null);
+              triggerRef.current?.focus();
+            } else deletePrompt(selected.id);
           }}
         >
           {selected?.status === "blocked" ? "Retry when ready" : "Delete"}

@@ -178,6 +178,7 @@ export function ChatComposerRegion({
     >
       <BoundChatGoalControl state={goal} chatId={dictationScope} />
       <ComposerQueuedPrompts
+        composerRef={composerRef}
         prompts={queuedPrompts}
         steerAvailable={steerAvailable}
         disabled={actionBusy || projectTransitioning}

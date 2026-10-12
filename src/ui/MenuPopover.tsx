@@ -2,6 +2,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -10,6 +11,10 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  exitPopoverDialogOnTab,
+  focusPopoverDialog,
+} from "./menuPopoverDialogFocus";
 import {
   menuPopoverPosition,
   PopoverPlacementContext,
@@ -35,23 +40,6 @@ function menuItems(container: HTMLElement) {
 
 function enabledMenuItems(container: HTMLElement) {
   return menuItems(container).filter((item) => !item.hasAttribute("disabled"));
-}
-
-function dialogControls(container: HTMLElement) {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      "button, input, select, textarea, a[href], [tabindex]",
-    ),
-  ).filter((item) => {
-    const style = getComputedStyle(item);
-    return (
-      item.tabIndex >= 0 &&
-      !item.matches(":disabled") &&
-      !item.closest("[hidden], [inert]") &&
-      style.display !== "none" &&
-      style.visibility !== "hidden"
-    );
-  });
 }
 
 function activateMenuItem(container: HTMLElement, next: number) {
@@ -124,6 +112,11 @@ export function MenuPopover({
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
   const positionRef = useRef(position);
+  const measureRef = useRef<() => void>(() => {});
+  const placement = useMemo(
+    () => ({ originRef, position }),
+    [originRef, position],
+  );
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -152,18 +145,29 @@ export function MenuPopover({
       setPosition(next);
     };
 
+    measureRef.current = updatePosition;
     updatePosition();
+  });
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const popover = popoverRef.current;
+    const trigger = triggerRef.current;
+    if (!popover || !trigger) return;
+    const updatePosition = () => measureRef.current();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(updatePosition);
     resizeObserver?.observe(popover);
+    const pane = trigger.closest(".agent-chat-pane");
     for (
       let ancestor: HTMLElement | null = trigger;
       ancestor;
       ancestor = ancestor.parentElement
     ) {
       resizeObserver?.observe(ancestor);
+      if (ancestor === pane || ancestor === portalRoot) break;
     }
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
@@ -172,16 +176,7 @@ export function MenuPopover({
       window.removeEventListener("scroll", updatePosition, true);
       resizeObserver?.disconnect();
     };
-  }, [
-    focusKey,
-    gap,
-    matchTriggerWidth,
-    open,
-    originRef,
-    parentPlacement?.position,
-    portalRoot,
-    triggerRef,
-  ]);
+  }, [open, portalRoot, triggerRef]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -206,17 +201,7 @@ export function MenuPopover({
     const popover = popoverRef.current;
     if (!popover) return;
     if (role === "dialog") {
-      const focusDialog = () => {
-        if (popover.isConnected && !popover.hidden) {
-          (
-            popover.querySelector<HTMLElement>(
-              "button:not(:disabled), input:not(:disabled)",
-            ) ?? popover
-          ).focus();
-        }
-      };
-      focusDialog();
-      queueMicrotask(focusDialog);
+      focusPopoverDialog(popover);
       return;
     }
     const items = enabledMenuItems(popover);
@@ -276,18 +261,9 @@ export function MenuPopover({
     }
     if (event.key === "Tab") {
       if (role === "dialog") {
-        const controls = dialogControls(popover);
-        const boundary = event.shiftKey ? controls[0] : controls.at(-1);
-        if (
-          !boundary ||
-          document.activeElement === boundary ||
-          document.activeElement === popover
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          triggerRef.current?.focus();
-          onDismiss("tab");
-        }
+        exitPopoverDialogOnTab(event, triggerRef.current, () =>
+          onDismiss("tab"),
+        );
         return;
       }
       if (trapFocus && items.length > 0) {
@@ -355,7 +331,7 @@ export function MenuPopover({
   };
 
   return createPortal(
-    <PopoverPlacementContext value={{ originRef, position }}>
+    <PopoverPlacementContext value={placement}>
       <div
         ref={popoverRef}
         id={id}

@@ -1,6 +1,7 @@
 import { createContext, type CSSProperties, type RefObject } from "react";
 
 const GUTTER = 8;
+const MIN_USABLE_HEIGHT = 120;
 export const PopoverPlacementContext = createContext<{
   originRef: RefObject<HTMLElement | null>;
   position: CSSProperties;
@@ -31,11 +32,19 @@ export function menuPopoverPosition(
   }
   const clampLeft = (left: number) =>
     Math.min(Math.max(leftEdge, left), Math.max(leftEdge, rightEdge - width));
-  const clampTop = (top: number) =>
-    Math.max(
-      GUTTER,
-      Math.min(top, window.innerHeight - surface.height - GUTTER),
-    );
+  let topEdge = GUTTER;
+  let bottomEdge = window.innerHeight - GUTTER;
+  const pane = origin.closest(".agent-chat-pane")?.getBoundingClientRect();
+  if (pane) {
+    const top = Math.max(topEdge, pane.top);
+    const bottom = Math.min(bottomEdge, pane.bottom);
+    if (bottom - top >= surface.height) {
+      topEdge = top;
+      bottomEdge = bottom;
+    }
+  }
+  const clampTop = (top: number, height = surface.height) =>
+    Math.max(topEdge, Math.min(top, bottomEdge - height));
   const parent = trigger.closest(".menu-popover")?.getBoundingClientRect();
   const shared = {
     minWidth: matchTriggerWidth ? anchor.width : undefined,
@@ -51,17 +60,34 @@ export function menuPopoverPosition(
         top: clampTop(anchor.top),
       };
     }
-    const below = window.innerHeight - parent.bottom - gap - GUTTER;
-    const maxHeight = Math.max(0, Math.min(320, below));
+    const below = bottomEdge - parent.bottom - gap;
+    const above = parent.top - gap - topEdge;
+    const placeAbove =
+      above >= MIN_USABLE_HEIGHT &&
+      (below < MIN_USABLE_HEIGHT || above > below);
+    const available = placeAbove ? above : below;
+    const fallback = available < MIN_USABLE_HEIGHT;
+    if (fallback) {
+      topEdge = GUTTER;
+      bottomEdge = window.innerHeight - GUTTER;
+    }
+    const maxHeight = Math.max(
+      0,
+      Math.min(320, fallback ? bottomEdge - topEdge : available),
+    );
     return {
       ...shared,
       left: clampLeft(anchor.left),
-      top: parent.bottom + gap,
+      top: fallback
+        ? clampTop(parent.top, maxHeight)
+        : placeAbove
+          ? parent.top - gap - Math.min(surface.height, maxHeight)
+          : parent.bottom + gap,
       maxHeight,
     };
   }
-  const roomBelow = window.innerHeight - anchor.bottom - GUTTER;
-  const roomAbove = anchor.top - GUTTER;
+  const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
+  const roomAbove = anchor.top - gap - GUTTER;
   const placeAbove = surface.height > roomBelow && roomAbove > roomBelow;
   return {
     ...shared,

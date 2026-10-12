@@ -1,10 +1,17 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createRef } from "react";
+import { createRef, useRef, useState } from "react";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 
 const initialAccess = useSessionAccessModeStore.getState();
 beforeEach(() =>
@@ -130,6 +137,143 @@ describe("Compact chat controls", () => {
         screen.queryByRole("menu", { name: "Queued message options" }),
       ).toBeNull();
       expect(trigger).toHaveFocus();
+    },
+  );
+
+  it.each([
+    ["First", ["First", "Middle", "Last"], "Middle", "menu"],
+    ["Middle", ["First", "Middle", "Last"], "Last", "menu"],
+    ["Last", ["First", "Middle", "Last"], "Middle", "menu"],
+    ["Only", ["Only"], null, "menu"],
+    ["Only", ["Only"], null, "inline"],
+  ] as const)(
+    "moves focus after deleting %s from %j to %s via %s",
+    (selected, names, target, action) => {
+      function QueueHarness() {
+        const composerRef = useRef<HTMLTextAreaElement>(null);
+        const [prompts, setPrompts] = useState<QueuedChatPrompt[]>(
+          names.map((text) => ({
+            id: text,
+            text,
+            attachedContext: [],
+            bindingId: "binding",
+            modelId: null,
+            status: "queued",
+          })),
+        );
+        return (
+          <form>
+            <ComposerQueuedPrompts
+              composerRef={composerRef}
+              prompts={prompts}
+              disabled={false}
+              onDelete={(id) =>
+                setPrompts((current) =>
+                  current.filter((prompt) => prompt.id !== id),
+                )
+              }
+            />
+            <textarea ref={composerRef} aria-label="Message agent" />
+          </form>
+        );
+      }
+      render(<QueueHarness />);
+      const trigger = screen.getByRole("button", {
+        name: `More options for queued message: ${selected}`,
+      });
+      if (action === "menu") {
+        fireEvent.click(trigger);
+        fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+      } else {
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: `Delete queued message: ${selected}`,
+          }),
+        );
+      }
+      expect(trigger).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("menu", { name: "Queued message options" }),
+      ).toBeNull();
+      expect(
+        target
+          ? screen.getByRole("button", {
+              name: `More options for queued message: ${target}`,
+            })
+          : screen.getByRole("textbox", { name: "Message agent" }),
+      ).toHaveFocus();
+    },
+  );
+
+  it.each([
+    ["First", ["First", "Last"], "Last"],
+    ["Last", ["First", "Last"], "First"],
+    ["Only", ["Only"], null],
+  ] as const)(
+    "preserves focus after deleting %s through pending acknowledgement and removal",
+    async (selected, names, target) => {
+      let acknowledgeDelete!: () => void;
+      const acknowledgement = new Promise<void>((resolve) => {
+        acknowledgeDelete = resolve;
+      });
+      function QueueHarness() {
+        const composerRef = useRef<HTMLTextAreaElement>(null);
+        const [prompts, setPrompts] = useState<QueuedChatPrompt[]>(
+          names.map((text) => ({
+            id: text,
+            text,
+            attachedContext: [],
+            bindingId: "binding",
+            modelId: null,
+            status: "queued",
+          })),
+        );
+        return (
+          <form>
+            <ComposerQueuedPrompts
+              composerRef={composerRef}
+              prompts={prompts}
+              disabled={false}
+              onDelete={async (id) => {
+                setPrompts((current) =>
+                  current.map((prompt) =>
+                    prompt.id === id
+                      ? { ...prompt, status: "deleting" }
+                      : prompt,
+                  ),
+                );
+                await acknowledgement;
+                setPrompts((current) =>
+                  current.filter((prompt) => prompt.id !== id),
+                );
+              }}
+            />
+            <textarea ref={composerRef} aria-label="Message agent" />
+          </form>
+        );
+      }
+      render(<QueueHarness />);
+      const trigger = screen.getByRole("button", {
+        name: `More options for queued message: ${selected}`,
+      });
+      fireEvent.click(trigger);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+      const destination = target
+        ? screen.getByRole("button", {
+            name: `More options for queued message: ${target}`,
+          })
+        : screen.getByRole("textbox", { name: "Message agent" });
+      expect(trigger).toBeInTheDocument();
+      expect(trigger).toBeDisabled();
+      expect(destination).toHaveFocus();
+      await act(async () => {
+        acknowledgeDelete();
+      });
+      expect(trigger).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("menu", { name: "Queued message options" }),
+      ).toBeNull();
+      expect(destination).toHaveFocus();
     },
   );
 

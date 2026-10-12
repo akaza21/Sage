@@ -149,10 +149,46 @@ describe("MenuPopover", () => {
   });
 
   it.each([
-    [260, 404, 148],
-    [388, 532, 20],
+    [140, 360],
+    [400, 48],
   ])(
-    "opens a nested picker below its parent at y=%i with top=%i and height cap=%i",
+    "clamps a %ipx menu to the chat pane when it fits, otherwise the viewport",
+    (height, top) => {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 768,
+      });
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains("agent-chat-pane"))
+          return new DOMRect(0, 200, 480, 300);
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 160, height);
+        return new DOMRect(100, 452, 100, 28);
+      });
+      render(
+        <section className="agent-chat-pane">
+          <MenuHarness />
+        </section>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+      expect(screen.getByRole("menu", { name: "Actions" })).toHaveStyle({
+        top: top + "px",
+      });
+    },
+  );
+
+  it.each([
+    [100, 244, 308],
+    [200, 344, 208],
+    [260, 8, 248],
+    [388, 64, 320],
+    [408, 84, 320],
+    [8, 8, 320],
+  ])(
+    "keeps a nested picker usable at parent y=%i with top=%i and height cap=%i",
     (parentTop, expectedTop, maxHeight) => {
       Object.defineProperty(window, "innerHeight", {
         configurable: true,
@@ -167,7 +203,7 @@ describe("MenuPopover", () => {
         "getBoundingClientRect",
       ).mockImplementation(function (this: HTMLElement) {
         if (this.getAttribute("role") === "dialog")
-          return new DOMRect(8, parentTop, 298, 140);
+          return new DOMRect(8, parentTop, 298, parentTop === 8 ? 544 : 140);
         if (this.id === "nested") return new DOMRect(0, 0, 260, 320);
         return new DOMRect(20, parentTop + 50, 260, 28);
       });
@@ -197,6 +233,51 @@ describe("MenuPopover", () => {
       });
     },
   );
+  it("falls back to the viewport when neither pane space reaches the usable floor", () => {
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 768,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 480,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.classList.contains("agent-chat-pane"))
+          return new DOMRect(0, 300, 480, 100);
+        if (this.getAttribute("role") === "dialog")
+          return new DOMRect(8, 308, 298, 84);
+        if (this.id === "constrained-picker") return new DOMRect(0, 0, 260, 80);
+        return new DOMRect(20, 330, 260, 28);
+      },
+    );
+    function ConstrainedPicker() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return (
+        <section className="agent-chat-pane">
+          <div className="menu-popover" role="dialog">
+            <button ref={triggerRef}>Permission mode</button>
+            <MenuPopover
+              ariaLabel="Constrained picker"
+              id="constrained-picker"
+              open
+              role="listbox"
+              triggerRef={triggerRef}
+              onDismiss={() => {}}
+            >
+              <button role="option">Read-only</button>
+            </MenuPopover>
+          </div>
+        </section>
+      );
+    }
+    render(<ConstrainedPicker />);
+    expect(
+      screen.getByRole("listbox", { name: "Constrained picker" }),
+    ).toHaveStyle({ top: "308px", maxHeight: "320px" });
+  });
+
   it("does not commit another render when the measured position is unchanged", () => {
     const onRender = vi.fn();
     render(
@@ -239,7 +320,7 @@ describe("MenuPopover", () => {
       },
     );
     render(
-      <section aria-label="Chat pane">
+      <section className="agent-chat-pane" aria-label="Chat pane">
         <MenuHarness />
       </section>,
     );
@@ -247,6 +328,13 @@ describe("MenuPopover", () => {
     const menu = screen.getByRole("menu", { name: "Actions" });
     expect(menu).toHaveStyle({ left: "40px", top: "132px" });
     const pane = screen.getByRole("region", { name: "Chat pane" });
+    expect(observers.some(({ targets }) => targets.has(pane))).toBe(true);
+    expect(observers.some(({ targets }) => targets.has(document.body))).toBe(
+      false,
+    );
+    expect(
+      observers.some(({ targets }) => targets.has(document.documentElement)),
+    ).toBe(false);
     anchor = new DOMRect(400, 200, 100, 28);
     act(() => {
       for (const observer of observers) {
@@ -257,6 +345,106 @@ describe("MenuPopover", () => {
     expect(menu).toHaveStyle({ left: "340px", top: "232px" });
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "Actions" })).toBeNull();
+    expect(observers.every(({ targets }) => targets.size === 0)).toBe(true);
+  });
+
+  it("repositions nested overlays without resubscribing and stops observation at the portal root", () => {
+    let anchorTop = 100;
+    const observers: {
+      callback: ResizeObserverCallback;
+      targets: Set<Element>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }[] = [];
+    class ResizeObserverStub {
+      targets = new Set<Element>();
+      disconnect = vi.fn(() => this.targets.clear());
+      constructor(callback: ResizeObserverCallback) {
+        observers.push({
+          callback,
+          targets: this.targets,
+          disconnect: this.disconnect,
+        });
+      }
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.id === "parent")
+          return new DOMRect(100, anchorTop + 32, 160, 140);
+        if (this.id === "child") return new DOMRect(0, 0, 160, 100);
+        if (this.textContent === "Nested picker")
+          return new DOMRect(120, anchorTop + 50, 100, 28);
+        return new DOMRect(100, anchorTop, 160, 28);
+      },
+    );
+    function NestedMenus() {
+      const rootTrigger = useRef<HTMLButtonElement>(null);
+      const childTrigger = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={rootTrigger}>Options</button>
+          <MenuPopover
+            id="parent"
+            ariaLabel="Options"
+            role="dialog"
+            open
+            triggerRef={rootTrigger}
+            onDismiss={() => {}}
+          >
+            <button ref={childTrigger}>Nested picker</button>
+            <MenuPopover
+              id="child"
+              ariaLabel="Nested"
+              role="listbox"
+              open
+              triggerRef={childTrigger}
+              onDismiss={() => {}}
+            >
+              <button role="option">Choice</button>
+            </MenuPopover>
+          </MenuPopover>
+        </>
+      );
+    }
+    const addListener = vi.spyOn(window, "addEventListener");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    const { rerender, unmount } = render(<NestedMenus />);
+    const child = screen.getByRole("listbox", { name: "Nested" });
+    expect(child).toHaveStyle({ top: "150px" });
+    const subscriptions = observers.length;
+    addListener.mockClear();
+    removeListener.mockClear();
+    rerender(<NestedMenus />);
+    anchorTop = 200;
+    fireEvent.scroll(window);
+    expect(child).toHaveStyle({ top: "250px" });
+    anchorTop = 300;
+    act(() => {
+      for (const observer of observers)
+        observer.callback([], {} as ResizeObserver);
+    });
+    expect(child).toHaveStyle({ top: "350px" });
+    expect(observers).toHaveLength(subscriptions);
+    expect(
+      observers.every(({ disconnect }) => disconnect.mock.calls.length === 0),
+    ).toBe(true);
+    expect(
+      observers.some(({ targets }) => targets.has(document.documentElement)),
+    ).toBe(false);
+    expect(
+      addListener.mock.calls.filter(
+        ([type]) => type === "scroll" || type === "resize",
+      ),
+    ).toHaveLength(0);
+    expect(
+      removeListener.mock.calls.filter(
+        ([type]) => type === "scroll" || type === "resize",
+      ),
+    ).toHaveLength(0);
+    unmount();
     expect(observers.every(({ targets }) => targets.size === 0)).toBe(true);
   });
 
