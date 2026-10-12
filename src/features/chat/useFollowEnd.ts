@@ -48,11 +48,8 @@ export function useFollowEnd({
   const showJumpToLatest = jumpState.ownerKey === ownerKey && jumpState.visible;
   const frameRef = useRef<number | null>(null);
   const jumpingRef = useRef(false);
-  // A programmatic anchor is travelling toward the end. Its own scroll events
-  // (for example the steps of a smooth scroll whose target went stale when the
-  // pane narrowed) are not the reader leaving the end, so they must not turn
-  // following off. Cleared on arrival, on reader input, on any scroll back
-  // toward the start, and on owner change.
+  // Own anchor steps keep following until arrival, reader input, backward
+  // movement, or owner change, even when resizing makes their target stale.
   const anchoringRef = useRef(false);
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
@@ -113,18 +110,16 @@ export function useFollowEnd({
       anchoringRef.current = false;
       interruptJump();
     };
-    const readerKey = () => {
-      anchoringRef.current = false;
-    };
+    // Any pointerdown inside the transcript counts, including child controls.
     transcript.addEventListener("wheel", readerInput);
     transcript.addEventListener("pointerdown", readerInput);
     transcript.addEventListener("touchstart", readerInput);
-    transcript.addEventListener("keydown", readerKey);
+    transcript.addEventListener("keydown", readerInput);
     return () => {
       transcript.removeEventListener("wheel", readerInput);
       transcript.removeEventListener("pointerdown", readerInput);
       transcript.removeEventListener("touchstart", readerInput);
-      transcript.removeEventListener("keydown", readerKey);
+      transcript.removeEventListener("keydown", readerInput);
     };
   }, [interruptJump, ownerKey, transcriptRef]);
 
@@ -149,8 +144,7 @@ export function useFollowEnd({
         });
         return;
       }
-      // A travelling anchor stays marked until it truly lands: the threshold
-      // alone would clear it while its stale smooth steps are still due.
+      // Keep stale smooth steps protected until the anchor actually lands.
       if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
       if (transcriptIsAtEnd(current)) return;
       anchorToEnd("auto");
@@ -165,8 +159,8 @@ export function useFollowEnd({
   const updateFollowEnd = useCallback(() => {
     const current = transcriptRef.current;
     if (current) {
-      // This hook only ever travels toward the end, so a step back toward the
-      // start belongs to the reader even without a wheel or pointer event.
+      // Backward movement is reader-owned. Forward find-in-page/scrollIntoView
+      // jumps are indistinguishable from own steps while an anchor travels.
       if (current.scrollTop < lastScrollTopRef.current - 1)
         anchoringRef.current = false;
       lastScrollTopRef.current = current.scrollTop;
@@ -183,10 +177,8 @@ export function useFollowEnd({
       const transcript = transcriptRef.current;
       if (transcript) {
         if (jumpingRef.current || anchoringRef.current) {
-          if (transcriptIsAtEnd(transcript)) {
-            jumpingRef.current = false;
-            anchoringRef.current = false;
-          }
+          if (transcriptIsAtEnd(transcript)) jumpingRef.current = false;
+          if (distanceFromEnd(transcript) <= 1) anchoringRef.current = false;
           return;
         }
         setFollowState({

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -288,36 +289,47 @@ describe("useFollowEnd", () => {
     expect(view.result.current.showJumpToLatest).toBe(false);
   });
 
-  it("restores Jump to latest when the reader interrupts smooth travel", () => {
+  it.each(["wheel", "pointerdown", "touchstart", "keydown"])(
+    "restores Jump to latest when %s interrupts smooth travel",
+    (eventType) => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal(
+        "requestAnimationFrame",
+        (callback: FrameRequestCallback) => {
+          frames.push(callback);
+          return frames.length;
+        },
+      );
+      const { transcript, view } = mountFollowEnd();
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400,
+        scrollTop: 100,
+      });
+      act(() => {
+        view.result.current.updateFollowEnd();
+        frames.shift()?.(0);
+      });
+      act(() => view.result.current.jumpToLatest());
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400,
+        scrollTop: 800,
+      });
+      act(() =>
+        transcript.dispatchEvent(new Event(eventType, { bubbles: true })),
+      );
+      expect(view.result.current.followingEnd).toBe(false);
+      expect(view.result.current.showJumpToLatest).toBe(true);
+    },
+  );
+
+  it("keeps following when its own anchor scroll steps through a stale target", () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       frames.push(callback);
       return frames.length;
     });
-    const { transcript, view } = mountFollowEnd();
-    measure(transcript, {
-      clientHeight: 400,
-      scrollHeight: 2400,
-      scrollTop: 100,
-    });
-    act(() => {
-      view.result.current.updateFollowEnd();
-      frames.shift()?.(0);
-    });
-    act(() => view.result.current.jumpToLatest());
-    measure(transcript, {
-      clientHeight: 400,
-      scrollHeight: 2400,
-      scrollTop: 800,
-    });
-    act(() =>
-      transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })),
-    );
-    expect(view.result.current.followingEnd).toBe(false);
-    expect(view.result.current.showJumpToLatest).toBe(true);
-  });
-
-  it("keeps following when its own anchor scroll steps through a stale target", () => {
     const { scrollTo, transcript, view } = mountFollowEnd();
     // A new revision anchors toward the end of the wide layout.
     measure(transcript, { clientHeight: 633, scrollHeight: 649, scrollTop: 0 });
@@ -328,10 +340,20 @@ describe("useFollowEnd", () => {
     // Layout settles within the follow threshold before the travel starts.
     act(() => growTranscript());
 
+    measure(transcript, { clientHeight: 633, scrollHeight: 649, scrollTop: 7 });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(true);
+
     // The pane narrows before that travel lands; its first scroll step reports
     // a position more than the follow threshold away from the new end.
     measure(transcript, { clientHeight: 617, scrollHeight: 700, scrollTop: 7 });
-    act(() => view.result.current.updateFollowEnd());
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
     expect(view.result.current.followingEnd).toBe(true);
 
     scrollTo.mockClear();
@@ -339,25 +361,26 @@ describe("useFollowEnd", () => {
     expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 83 });
   });
 
-  it("lets reader input during an anchor scroll leave the end", () => {
-    const { scrollTo, transcript, view } = mountFollowEnd();
-    measure(transcript, {
-      clientHeight: 400,
-      scrollHeight: 2400,
-      scrollTop: 0,
-    });
-    view.rerender({ revision: 2, ownerKey: "chat-1" });
+  it.each(["wheel", "pointerdown", "touchstart", "keydown"])(
+    "lets %s inside the transcript interrupt an anchor scroll",
+    (eventType) => {
+      const { content, scrollTo, transcript, view } = mountFollowEnd();
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400,
+        scrollTop: 0,
+      });
+      view.rerender({ revision: 2, ownerKey: "chat-1" });
 
-    act(() =>
-      transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })),
-    );
-    act(() => view.result.current.updateFollowEnd());
-    expect(view.result.current.followingEnd).toBe(false);
+      act(() => content.dispatchEvent(new Event(eventType, { bubbles: true })));
+      act(() => view.result.current.updateFollowEnd());
+      expect(view.result.current.followingEnd).toBe(false);
 
-    scrollTo.mockClear();
-    act(() => growTranscript());
-    expect(scrollTo).not.toHaveBeenCalled();
-  });
+      scrollTo.mockClear();
+      act(() => growTranscript());
+      expect(scrollTo).not.toHaveBeenCalled();
+    },
+  );
 
   it("treats a scroll back toward the start during an anchor as the reader's", () => {
     const frames: FrameRequestCallback[] = [];
@@ -410,5 +433,141 @@ describe("useFollowEnd", () => {
       growTranscript();
     });
     expect(view.result.current.showJumpToLatest).toBe(false);
+  });
+
+  it.each([1999, 2000])(
+    "releases an anchor when it lands at %s",
+    (scrollTop) => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal(
+        "requestAnimationFrame",
+        (callback: FrameRequestCallback) => {
+          frames.push(callback);
+          return frames.length;
+        },
+      );
+      const { transcript, view } = mountFollowEnd();
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400,
+        scrollTop: 0,
+      });
+      view.rerender({ revision: 2, ownerKey: "chat-1" });
+      measure(transcript, { clientHeight: 400, scrollHeight: 2400, scrollTop });
+      act(() => {
+        view.result.current.updateFollowEnd();
+        frames.shift()?.(0);
+      });
+
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 3400,
+        scrollTop: 2100,
+      });
+      act(() => {
+        view.result.current.updateFollowEnd();
+        frames.shift()?.(0);
+      });
+      expect(view.result.current.followingEnd).toBe(false);
+      expect(view.result.current.showJumpToLatest).toBe(true);
+    },
+  );
+
+  it("does not carry an old owner's travelling anchor into a new Chat", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 900,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+
+    measure(transcript, { clientHeight: 400, scrollHeight: 400, scrollTop: 0 });
+    view.rerender({ revision: 2, ownerKey: "chat-2" });
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 100,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(false);
+    expect(view.result.current.showJumpToLatest).toBe(true);
+  });
+
+  it("compares anchor travel against the new owner's scroll position", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { scrollTo, transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 900,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    scrollTo.mockClear();
+    view.rerender({ revision: 3, ownerKey: "chat-2" });
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ top: 2000 }),
+    );
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 100,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(true);
+    scrollTo.mockClear();
+    act(() => growTranscript());
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 2000 });
+  });
+
+  it("opts the transcript scroller out of browser scroll anchoring", () => {
+    const sheet = document.createElement("style");
+    sheet.textContent = readFileSync("src/styles/chat-surface.css", "utf8");
+    document.body.append(sheet);
+    const { transcript } = mountFollowEnd();
+    transcript.className = "message-list";
+
+    expect(
+      getComputedStyle(transcript).getPropertyValue("overflow-anchor"),
+    ).toBe("none");
   });
 });
