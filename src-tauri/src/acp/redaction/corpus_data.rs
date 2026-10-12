@@ -151,7 +151,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         ("--password 'it's secret' denied", &[], &["--password [redacted] denied"], Tail::All, Permission::Hide, &[]),
         ("--password 'it's secret never closed", &[], &["--password [redacted]"], Tail::LeadingOnly, Permission::Show, &[]),
         (r"Cannot open C:\a\b because C:\c is locked", &["C:\\a\\b", "C:\\c"], &["Cannot open", "because", "is locked"], Tail::All, Permission::Hide, &[]),
-        (r"C:\Users\John Smith failed", &["John"], &["failed"], Tail::All, Permission::Hide, &[]),
+        (r"C:\Users\John Smith failed", &["John", "Smith"], &["failed"], Tail::All, Permission::Hide, &[(Mode::Prose, &["John", "Smith", "failed"], &[]), (Mode::CommandOutput, &["John", "Smith", "failed"], &[])]),
         (r"C:\Users\John Smith\file failed", &["John", "Smith"], &["failed"], Tail::All, Permission::Hide, &[]),
         ("spring.datasource.password=hunter2", &["hunter2"], &[], Tail::All, Permission::Show, &[]),
         ("env:TOKEN=abc", &["abc"], &[], Tail::All, Permission::Show, &[]),

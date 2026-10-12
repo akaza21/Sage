@@ -38,12 +38,18 @@ impl PathContext {
             if path.is_some() {
                 let lower = body.to_ascii_lowercase();
                 let home_name = HOME_PREFIXES.iter().any(|prefix| {
-                    lower
-                        .find(prefix)
-                        .is_some_and(|index| !lower[index + prefix.len()..].contains(['\\', '/']))
+                    lower.find(prefix).is_some_and(|index| {
+                        let drive_alias = index.checked_sub(2).is_some_and(|drive| {
+                            lower.as_bytes()[drive] == b'/'
+                                && lower.as_bytes()[drive + 1].is_ascii_alphabetic()
+                                && is_path_boundary(lower.as_bytes(), drive)
+                        });
+                        (path == Some(PathKind::Windows) || drive_alias)
+                            && !lower[index + prefix.len()..].contains(['\\', '/'])
+                    })
                 });
                 let (words, length) = if home_name && !body.contains([';', '|', '&']) {
-                    home_continuation(tail, path == Some(PathKind::Windows), mode)
+                    home_continuation(tail, if body.contains('\\') { '\\' } else { '/' }, mode)
                 } else {
                     (0, 0)
                 };
@@ -73,7 +79,7 @@ impl PathContext {
     }
 }
 
-fn home_continuation(tail: &str, windows: bool, mode: PathMode) -> (usize, usize) {
+fn home_continuation(tail: &str, separator: char, mode: PathMode) -> (usize, usize) {
     let trimmed = tail.trim_start_matches(horizontal_whitespace);
     let whitespace = tail.len() - trimmed.len();
     let window = super::pem::scan_window(trimmed);
@@ -83,6 +89,9 @@ fn home_continuation(tail: &str, windows: bool, mode: PathMode) -> (usize, usize
     let window = &window[..limit];
     let mut remaining = window;
     let mut words = 0;
+    let mut counted_end = 0;
+    let mut name_words = 0;
+    let mut name_end = 0;
     while !remaining.is_empty() {
         let word = remaining.trim_start_matches(horizontal_whitespace);
         let length = word.find(char::is_whitespace).unwrap_or(word.len());
@@ -98,26 +107,31 @@ fn home_continuation(tail: &str, windows: bool, mode: PathMode) -> (usize, usize
         {
             return (0, 0);
         }
-        words += 1;
         let end = window.len() - word.len() + length;
-        if body.contains(['\\', '/']) {
+        if body.contains(separator) {
             let full_word = &trimmed[window.len() - word.len()..];
             let full_length = full_word
                 .find(|character: char| {
                     character.is_whitespace() || matches!(character, ';' | '|' | '&')
                 })
                 .unwrap_or(full_word.len());
-            return (words, whitespace + end - length + full_length);
+            return (words + 1, whitespace + end - length + full_length);
         }
-        if windows && words == 1 {
-            let rest = trimmed[end..].trim_start_matches(horizontal_whitespace);
-            if rest.is_empty() || rest.starts_with(['\r', '\n']) {
-                return (1, whitespace + end);
-            }
+        if body.contains(['\\', '/']) {
+            return (words, whitespace + counted_end);
+        }
+        words += 1;
+        counted_end = end;
+        if name_words + 1 == words && body.chars().next().is_some_and(char::is_uppercase) {
+            name_words = words;
+            name_end = end;
         }
         remaining = &word[length..];
     }
-    (0, 0)
+    if mode != PathMode::Diagnostic || limit < trimmed.len() || words == 1 {
+        return (words, whitespace + counted_end);
+    }
+    (name_words, whitespace + name_end)
 }
 
 fn horizontal_whitespace(character: char) -> bool {

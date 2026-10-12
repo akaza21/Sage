@@ -132,7 +132,7 @@ fn union_canaries_cover_every_mode() {
         ("cc -isysroot/abs/path", &["/abs/path"], &[], Tail::All, Permission::Hide, &[]),
         ("cc -unknown/abs/path", &["/abs/path"], &[], Tail::All, Permission::Hide, &[]),
         (r"C:\Users\Jane Doe Smith\x tail", &["Jane", "Doe", "Smith"], &[], Tail::All, Permission::Hide, &[]),
-        (r"C:\Users\John Smith", &[r"C:\Users\John"], &[], Tail::All, Permission::Hide, &[]),
+        (r"C:\Users\John Smith", &[r"C:\Users\John", "Smith"], &[], Tail::All, Permission::Hide, &[]),
         (r"C:\home\Jane Doe Smith\x tail", &["Jane", "Doe", "Smith"], &[], Tail::All, Permission::Hide, &[]),
         (r"cc -isystemC:\Users\Jane\inc", &["Jane", "inc"], &[], Tail::All, Permission::Hide, &[]),
         ("C:/Users/Jane Doe/x", &["Jane", "Doe", "/x"], &[], Tail::All, Permission::Hide, &[]),

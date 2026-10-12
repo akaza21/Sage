@@ -50,7 +50,102 @@ fn home_names_use_bounded_continuations_and_release_later_prose() {
         for boundary in [";", "|", "&", "\n", "\r\n"] {
             let input = format!(r"C:\Users\Jane Doe still public{boundary} Smith\x tail");
             let actual = redact("test", &input, 4096, mode).unwrap();
-            assert!(actual.contains("Doe"), "{mode:?}: {actual}");
+            assert!(!actual.contains("Doe"), "{mode:?}: {actual}");
+        }
+    }
+}
+
+#[test]
+fn posix_home_paths_redact_only_the_path_token() {
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        let marker = if mode == Mode::Diagnostic {
+            "[path]"
+        } else {
+            "[redacted]"
+        };
+        for (input, tail) in [
+            ("/Users/jane is ready", "is ready"),
+            ("/home/alice for a/b", "for a/b"),
+            ("/Users/Jane Doe Smith/x tail", "Doe Smith/x tail"),
+            ("/home/alice Doe Smith/x tail", "Doe Smith/x tail"),
+            ("/Users/jane Foo/bar tail", "Foo/bar tail"),
+        ] {
+            assert_eq!(
+                redact("test", input, 4096, mode).unwrap(),
+                format!("{marker} {tail}"),
+                "{mode:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn windows_home_names_remain_private_without_a_path_suffix() {
+    for mode in [Mode::Prose, Mode::CommandOutput] {
+        for input in [
+            r"cd C:\Users\John Paul Smith",
+            r"C:\Users\Jane Doe Smith",
+            r"C:\Users\John Smith is locked",
+            r"C:\Users\John van smith",
+            "C:/Users/John Smith",
+            "C:/Users/John Paul Smith",
+            "/c/Users/John Paul Smith",
+        ] {
+            let actual = redact("test", input, 4096, mode).unwrap();
+            for name in ["John", "Paul", "Jane", "Doe", "Smith", "van", "smith"] {
+                assert!(!actual.contains(name), "{mode:?}: {actual}");
+            }
+        }
+        for home in [r"C:\Users\John", "C:/Users/John", "/c/Users/John"] {
+            let input = format!("{home} Smith {} tail", "Name ".repeat(300));
+            let actual = redact("test", &input, 8192, mode).unwrap();
+            assert!(!actual.contains("Smith"), "{mode:?}: {actual}");
+            assert!(actual.ends_with(" tail"), "{mode:?}: {actual}");
+            for boundary in [";", "|", "&", "\n", "\r\n"] {
+                let input = format!("{home} Doe Smith{boundary} echo public");
+                let actual = redact("test", &input, 4096, mode).unwrap();
+                assert!(
+                    !actual.contains("Doe") && !actual.contains("Smith"),
+                    "{mode:?}: {actual}"
+                );
+                assert!(actual.ends_with("echo public"), "{mode:?}: {actual}");
+            }
+        }
+    }
+}
+
+#[test]
+fn home_continuations_do_not_capture_unrelated_relative_paths() {
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        let marker = if mode == Mode::Diagnostic {
+            "[path]"
+        } else {
+            "[redacted]"
+        };
+        for path in ["a/b", "foo/bar"] {
+            for home in ["/Users/jane", "/Users/Jane Doe"] {
+                let input = format!("{home} {path} tail");
+                assert_eq!(
+                    redact("test", &input, 4096, mode).unwrap(),
+                    format!(
+                        "{marker}{} {path} tail",
+                        if home.ends_with("Doe") { " Doe" } else { "" }
+                    ),
+                    "{mode:?}"
+                );
+            }
+            let input = format!("your home /Users/jane is ready {path}");
+            assert_eq!(
+                redact("test", &input, 4096, mode).unwrap(),
+                format!("your home {marker} is ready {path}"),
+                "{mode:?}"
+            );
+            let input = format!(r"C:\Users\John Smith {path} tail");
+            let actual = redact("test", &input, 4096, mode).unwrap();
+            assert!(
+                actual.ends_with(&format!("{path} tail")),
+                "{mode:?}: {actual}"
+            );
         }
     }
 }
@@ -72,7 +167,14 @@ fn token_key_exclusions_preserve_metrics_without_hiding_credentials() {
             let actual = redact("test", input, 4096, mode).unwrap();
             assert!(!actual.contains("token-canary"), "{mode:?}: {actual}");
         }
-        for input in ["token_count=5", "tokenization:", "detokenize="] {
+        for input in [
+            "token_count=5",
+            "token-count=5",
+            "token_counts=5",
+            "token_count_total=5",
+            "tokenization:",
+            "detokenize=",
+        ] {
             assert_eq!(
                 redact("test", input, 4096, mode).unwrap(),
                 input,

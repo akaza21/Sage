@@ -76,7 +76,12 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
 pub(crate) fn public_token_key(key: &str) -> bool {
     matches!(
         decode_key(key, false).to_ascii_lowercase().as_str(),
-        "token_count" | "tokenization" | "detokenize"
+        "token_count"
+            | "token-count"
+            | "token_counts"
+            | "token_count_total"
+            | "tokenization"
+            | "detokenize"
     )
 }
 
@@ -85,7 +90,16 @@ fn sensitive_token_key(key: &str) -> bool {
         let suffix = &key[index + 5..];
         !suffix.starts_with('s')
             && !suffix.starts_with("iz")
-            && !matches!(suffix, "count" | "_count")
+            && !matches!(
+                suffix,
+                "count"
+                    | "_count"
+                    | "-count"
+                    | "counts"
+                    | "_counts"
+                    | "counttotal"
+                    | "_count_total"
+            )
     })
 }
 

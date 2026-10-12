@@ -166,7 +166,7 @@ redaction_case!(
 redaction_case!(
     windows_name_without_continuation_retains_prose,
     r"C:\Users\John Smith failed",
-    "[path] Smith failed"
+    "[path] failed"
 );
 redaction_case!(
     windows_name_with_continuation_hides_name,
