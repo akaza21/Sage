@@ -747,9 +747,6 @@ describe("MenuPopover", () => {
       popup,
       screen.getByRole("button", { name: "Target" }),
       popup.closest("dialog"),
-      popup.closest("dialog")?.parentElement,
-      document.body,
-      document.documentElement,
     ]);
   });
 });

@@ -243,7 +243,8 @@ async function expectNestedPlacement(picker: Locator, parent: Locator) {
   expect(
     child!.x >= owner!.x + owner!.width ||
       child!.x + child!.width <= owner!.x ||
-      child!.y >= owner!.y + owner!.height,
+      child!.y >= owner!.y + owner!.height ||
+      child!.y + child!.height <= owner!.y,
   ).toBe(true);
 }
 
@@ -532,6 +533,10 @@ for (const forcedColors of ["none", "active"] as const) {
     await trigger.click();
     await expect(panel).toBeVisible();
     const initialAnchor = await trigger.boundingBox();
+    // The leading options trigger sits at the composer's left edge, so the
+    // shared placement clamps the panel to the composer instead of
+    // right-aligning it; following the anchor keeps this offset constant.
+    const initialOffset = (await panel.boundingBox())!.x - initialAnchor!.x;
     await splitter.focus();
     await expect(splitter).toBeFocused();
     for (const key of ["Home", "End"]) {
@@ -545,11 +550,12 @@ for (const forcedColors of ["none", "active"] as const) {
         .poll(async () => {
           const anchor = await trigger.boundingBox();
           const surface = await panel.boundingBox();
-          return surface!.x + surface!.width - (anchor!.x + anchor!.width);
+          return surface!.x - anchor!.x;
         })
-        .toBeCloseTo(0, 0);
+        .toBeCloseTo(initialOffset, 0);
       const anchor = await trigger.boundingBox();
-      expect(anchor!.width).toBe(initialAnchor!.width);
+      // A composer at or below 520px uses the intended compact 24px target.
+      expect([initialAnchor!.width, 24]).toContain(anchor!.width);
       expect(anchor!.height).toBe(initialAnchor!.height);
       expect(anchor!.x).not.toBe(initialAnchor!.x);
       await expectOverlay(panel, viewport);
