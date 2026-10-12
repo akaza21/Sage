@@ -19,6 +19,8 @@ pub(crate) enum ChildTranscriptRead {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ChildTranscriptReadError {
+    #[error("the native child transcript read was rejected")]
+    Rejected,
     #[error("the child transcript is unavailable for this owner")]
     Unavailable,
     #[error("the child transcript binding changed during the read")]
@@ -93,6 +95,7 @@ impl AcpService {
                 Ok(ChildTranscriptRead::Current(merged))
             }
             Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
+            Ok(NativeRpcReply::Rejected) => Err(ChildTranscriptReadError::Rejected),
             Ok(NativeRpcReply::GoalApplied) => Err(ChildTranscriptReadError::RecoveryRequired),
             Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
                 Err(ChildTranscriptReadError::Unavailable)

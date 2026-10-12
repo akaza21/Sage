@@ -5,6 +5,37 @@ import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { answer } from "./acp-native-case-events.mjs";
+test("Codex child-opened admits child ownership before completion and keeps the reader alive", () => {
+  const entry = nativeCases().find(({ id }) => id === "codex-child-opened");
+  const ownerIndex = entry.steps.findIndex(
+    (step) => step.params?.item?.type === "subAgentActivity",
+  );
+  assert.ok(ownerIndex >= 0, "child key alone does not admit a readable owner");
+  const owner = entry.steps[ownerIndex];
+  const spawnIndex = entry.steps.findIndex(
+    (step) => step.params?.item?.type === "collabAgentToolCall",
+  );
+  assert.ok(spawnIndex >= 0, "retain the original collaboration observation");
+  assert.equal(ownerIndex, spawnIndex + 1);
+  const spawn = entry.steps[spawnIndex];
+  assert.equal(spawn.method, "item/completed");
+  assert.equal(spawn.params.threadId, "$SESSION");
+  assert.equal(spawn.params.item.tool, "spawnAgent");
+  assert.deepEqual(spawn.params.item.receiverThreadIds, ["fixture-child-1"]);
+  assert.notEqual(owner.params.item.id, spawn.params.item.id);
+  assert.equal(owner.method, "item/completed");
+  assert.equal(owner.params.threadId, "$SESSION");
+  assert.equal(owner.params.item.agentThreadId, "fixture-child-1");
+  assert.ok(
+    ownerIndex <
+      entry.steps.findIndex((step) => step.shape === "codexCompleted"),
+  );
+  assert.ok(
+    ownerIndex <
+      entry.steps.findIndex((step) => step.kind === "codexUnsubscribe"),
+  );
+  assert.equal(entry.steps.at(-2).kind, "codexUnsubscribe");
+});
 test("native image wire payloads decode to an opaque, visible 320x180 synthetic PNG", () => {
   for (const harness of ["codex", "claude"]) {
     const entry = nativeCases().find(

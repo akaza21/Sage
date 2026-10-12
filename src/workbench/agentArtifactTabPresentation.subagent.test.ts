@@ -140,6 +140,29 @@ it("retains a failed child beside independently completed siblings", () => {
   expect(result.doneAgents).toBe(1);
 });
 
+it("counts paired spawn and native completion observations as one child", () => {
+  const result = summary([
+    event(
+      "spawn",
+      "spawnAgent",
+      ["child-1"],
+      ["Reviewer"],
+      [["child-1", "completed"]],
+    ),
+    event("activity", "completed", [], [], [], "child-1"),
+  ]);
+  expect(result.recentAgents).toEqual([
+    {
+      id: "spawn:child-1",
+      label: "Reviewer",
+      status: "done",
+      agentKey: "child-1",
+    },
+  ]);
+  expect(result.workingAgents).toBe(0);
+  expect(result.doneAgents).toBe(1);
+});
+
 it("does not infer a child from a started event without a retained spawn", () => {
   const started = event(
     "started",

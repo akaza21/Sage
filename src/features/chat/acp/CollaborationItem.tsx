@@ -132,11 +132,15 @@ function CollaborationItemContent({
       const entries = rows.get(row.state) ?? new Map();
       for (const entry of row.entries) {
         const previous = entries.get(entry.key);
+        const source = attributedSubagentKey(member, [entry.key])
+          ? member
+          : undefined;
         entries.set(entry.key, {
           ...(entry.label || !previous ? entry : previous),
           source:
-            previous?.source ??
-            (attributedSubagentKey(member, [entry.key]) ? member : undefined),
+            source?.payload.agentKey && !previous?.source?.payload.agentKey
+              ? source
+              : (previous?.source ?? source),
         });
       }
       rows.set(row.state, entries);

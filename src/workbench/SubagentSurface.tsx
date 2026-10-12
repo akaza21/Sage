@@ -103,6 +103,7 @@ export function SubagentSurface({
         if (active) setRead({ key: requestKey, value });
       })
       .catch(() => {
+        // Only malformed successful responses throw; request failures are typed.
         if (active) setRead({ key: requestKey, value: "error" });
       });
     return () => {
@@ -178,7 +179,7 @@ export function SubagentSurface({
     .slice(0, MAX_CHILD_ACTIVITIES);
   const state = read?.key === requestKey ? read.value : "loading";
   const retainedTurns =
-    typeof state === "object" && state.kind !== "tooLarge" ? state.turns : [];
+    typeof state === "object" && "turns" in state ? state.turns : [];
   const { visibleTurns, visibleCount } = retainedTurns.reduce(
     (result, childTurn) => {
       const items = childTurn.items.slice(
@@ -218,10 +219,24 @@ export function SubagentSurface({
           {state === "error" ? (
             <p>Child transcript is unavailable. Try reopening this view.</p>
           ) : null}
-          {typeof state === "object" && state.kind === "tooLarge" ? (
-            <p>Child transcript is too large to display.</p>
+          {typeof state === "object" && !("turns" in state) ? (
+            <p>
+              {
+                {
+                  tooLarge: "Child transcript is too large to display.",
+                  stale:
+                    "Child transcript read is stale. Reopen this view after the chat updates.",
+                  rejected:
+                    "Child transcript read was rejected. No transcript was loaded.",
+                  recoveryRequired:
+                    "Child transcript read needs recovery. Reload the session.",
+                  unavailable:
+                    "Child transcript is unavailable. Try reopening this view.",
+                }[state.kind]
+              }
+            </p>
           ) : null}
-          {typeof state === "object" && state.kind !== "tooLarge" ? (
+          {typeof state === "object" && "turns" in state ? (
             <>
               <p>
                 {state.kind === "current"

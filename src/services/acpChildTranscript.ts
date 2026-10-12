@@ -21,7 +21,10 @@ export type ChildTranscript =
       retentionLimited: boolean;
       turns: { id: string; status: string; items: AcpItem[] }[];
     }
-  | { kind: "tooLarge" };
+  | {
+      kind:
+        "tooLarge" | "stale" | "rejected" | "recoveryRequired" | "unavailable";
+    };
 
 function itemForView(
   value: unknown,
@@ -212,9 +215,22 @@ function childToolPresentation(payload: Record<string, unknown>): unknown {
 export async function getAcpChildTranscript(
   request: ChildTranscriptRequest,
 ): Promise<ChildTranscript> {
-  const value: unknown = await invokeNative("get_acp_child_transcript", {
-    request,
-  });
+  let value: unknown;
+  try {
+    value = await invokeNative("get_acp_child_transcript", { request });
+  } catch (error) {
+    const kind = isRecord(error) ? error.kind : null;
+    return {
+      kind:
+        kind === "conflict"
+          ? "stale"
+          : kind === "rejected"
+            ? "rejected"
+            : kind === "recoveryRequired"
+              ? "recoveryRequired"
+              : "unavailable",
+    };
+  }
   if (!isRecord(value)) throw new Error("Invalid child transcript response");
   if (value.kind === "tooLarge") return { kind: "tooLarge" };
   if (value.kind !== "current" && value.kind !== "fromEarlierSession")

@@ -1,6 +1,7 @@
 use super::*;
 use sha2::Digest;
 use std::{
+    collections::VecDeque,
     path::Path,
     sync::{
         Arc,
@@ -29,6 +30,7 @@ use crate::{
 
 struct ChildEngine {
     snapshot: ChildTranscriptSnapshot,
+    replies: VecDeque<NativeRpcReply>,
     calls: Arc<AtomicUsize>,
 }
 
@@ -52,7 +54,10 @@ impl RuntimeEngine for ChildEngine {
         {
             return Err(HostError::Intent);
         }
-        completion.complete(Ok(NativeRpcReply::ChildTranscript(self.snapshot.clone())));
+        completion
+            .complete(Ok(self.replies.pop_front().unwrap_or_else(|| {
+                NativeRpcReply::ChildTranscript(self.snapshot.clone())
+            })));
         Ok(())
     }
     fn activate(&mut self, _: &RuntimeOwner) -> Result<(), HostError> {
@@ -235,6 +240,13 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
             rusqlite::params![project_id.as_str(), encoded.len() as i64]).unwrap();
         connection.execute("UPDATE acp_store_usage SET turn_count=turn_count+1,item_count=item_count+1,item_bytes=item_bytes+?1,shared_payload_bytes=shared_payload_bytes+?1 WHERE singleton=1",
             [encoded.len() as i64]).unwrap();
+        // Child reads require a completed parent Turn while its runtime epoch remains running.
+        connection
+            .execute(
+                "UPDATE turns SET state='completed',terminal_at=4 WHERE id='turn-one'",
+                [],
+            )
+            .unwrap();
     }
     let wire = include_bytes!("../../acp/runtime/adapter_pump/fixtures/cp18d_child_read_0146.json");
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
@@ -250,6 +262,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
     let host = Arc::new(
         RuntimeHost::start(ChildEngine {
             snapshot: snapshot.clone(),
+            replies: VecDeque::from([NativeRpcReply::Rejected, NativeRpcReply::TooLarge]),
             calls: Arc::clone(&calls),
         })
         .unwrap(),
@@ -299,13 +312,58 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
             .is_err()
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let mut stale = request.clone();
+    stale.expected_projection_revision = ProjectionRevision::new(revision.get() + 1).unwrap();
+    assert!(matches!(
+        get_acp_child_transcript_inner(&state, stale).await,
+        Err(AcpIpcError::Conflict {
+            resource: crate::acp::intent::AcpConflictResource::ProjectionRevision,
+            ..
+        })
+    ));
+    let mut foreign_session = request.clone();
+    foreign_session.session_id = SageAgentSessionId::parse("foreign-session").unwrap();
+    assert!(matches!(
+        get_acp_child_transcript_inner(&state, foreign_session).await,
+        Err(AcpIpcError::Conflict {
+            resource: crate::acp::intent::AcpConflictResource::Session,
+            ..
+        })
+    ));
+    let mut foreign_epoch = request.clone();
+    foreign_epoch.runtime_epoch = RuntimeEpoch::new(2).unwrap();
+    assert!(matches!(
+        get_acp_child_transcript_inner(&state, foreign_epoch).await,
+        Err(AcpIpcError::Conflict {
+            resource: crate::acp::intent::AcpConflictResource::RuntimeEpoch,
+            ..
+        })
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let result = get_acp_child_transcript_inner(&state, request.clone()).await;
+    assert!(matches!(result, Err(AcpIpcError::Rejected { .. })));
+    assert!(matches!(
+        get_acp_child_transcript_inner(&state, request.clone()).await,
+        Ok(ChildTranscriptResponse::TooLarge)
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let stored: i64 = state
+        .database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM acp_child_thread_transcripts",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, 0);
     let result = get_acp_child_transcript_inner(&state, request.clone())
         .await
         .unwrap();
     assert!(
         matches!(result, ChildTranscriptResponse::Current { snapshot: stored } if stored == snapshot)
     );
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
     let count: i64 = state.database.connection().query_row("SELECT COUNT(*) FROM acp_child_thread_transcripts WHERE native_child_thread_id='child-one'", [], |row| row.get(0)).unwrap();
     assert_eq!(count, 1);
     let mut foreign_owner = scope.clone();

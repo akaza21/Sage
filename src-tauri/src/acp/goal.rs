@@ -34,6 +34,7 @@ pub(crate) enum NativeRpcReply {
     GoalApplied,
     ChildTranscript(crate::acp::bindings::codex::ChildTranscriptSnapshot),
     TooLarge,
+    Rejected,
 }
 
 impl NativeRpcIntent {

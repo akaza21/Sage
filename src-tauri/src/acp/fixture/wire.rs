@@ -18,6 +18,12 @@ mod codex_tests;
 #[path = "wire_pi_tests.rs"]
 mod pi_tests;
 
+#[cfg(test)]
+#[path = "wire_child_opened_tests.rs"]
+mod child_opened_tests;
+#[cfg(test)]
+pub(crate) use child_opened_tests::child_opened_wire_for_test;
+
 #[path = "wire_acp.rs"]
 mod acp;
 #[path = "wire_codex.rs"]

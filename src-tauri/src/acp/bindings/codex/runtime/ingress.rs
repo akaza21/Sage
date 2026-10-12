@@ -24,17 +24,26 @@ impl CodexRuntime {
                 if let Some((pending, child, parent)) = self.inner.child_read_scope()
                     && id == pending
                 {
-                    let snapshot = super::super::child_transcript::normalize_read_response(
+                    use super::super::child_transcript::{
+                        ChildTranscriptError, normalize_read_response,
+                    };
+                    use crate::acp::goal::NativeRpcReply;
+                    let reply = match normalize_read_response(
                         frame.as_bytes(),
                         id,
                         child,
                         parent,
                         resources,
-                    )
-                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                    ) {
+                        Ok(snapshot) => NativeRpcReply::ChildTranscript(snapshot),
+                        Err(ChildTranscriptError::Capacity) => NativeRpcReply::TooLarge,
+                        Err(ChildTranscriptError::Rejected) => NativeRpcReply::Rejected,
+                        Err(ChildTranscriptError::Malformed) => {
+                            return Err(AdapterRuntimeError::Frame);
+                        }
+                    };
                     self.inner.complete_child_read(id).map_err(map_adapter)?;
-                    self.native_rpc_reply =
-                        Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot));
+                    self.native_rpc_reply = Some(reply);
                     return one(AdapterEvent::IgnoredLate);
                 }
             }

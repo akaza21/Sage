@@ -105,6 +105,141 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
 
 struct CaptureTransport(Vec<u8>);
 
+#[test]
+fn correlated_in_frame_child_capacity_settles_without_poisoning_the_parent() {
+    runtime().block_on(async {
+        let (mut pump, shared, _) = goal_active_codex_pump();
+        pump.adapter.learn_child_for_test("child-1");
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let items =
+            vec![serde_json::json!({"id":"item","type":"agentMessage","text":"text"}); 1025];
+        let reply = codex_line(serde_json::json!({"id":request["id"],"result":{"thread":{
+            "id":"child-1","parentThreadId":"thread-1","turns":[{
+                "id":"child-turn","status":"completed","itemsView":"full","items":items
+            }]
+        }}}));
+        assert!(reply.len() < 1_048_576);
+        for chunk in reply.chunks(8 * 1024) {
+            pump.push_stdout_chunk(chunk, 11).await.unwrap();
+            while pump.has_pending_stdout_input() {
+                pump.drain_stdout(11).await.unwrap();
+            }
+        }
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::TooLarge)
+        ));
+        assert!(!pump.adapter.child_read_pending());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
+fn correlated_child_rejection_is_bounded_and_does_not_poison_the_parent() {
+    runtime().block_on(async {
+        let (mut pump, shared, _) = goal_active_codex_pump();
+        pump.adapter.learn_child_for_test("child-1");
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let reply = codex_line(serde_json::json!({"id":request["id"],"error":{
+            "code":-32000,"message":"private rejection details"
+        }}));
+        assert!(pump.push_stdout_chunk(&reply, 11).await.unwrap());
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::Rejected)
+        ));
+        assert!(!pump.adapter.child_read_pending());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let next: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let reply = codex_line(serde_json::json!({"id":next["id"],"result":{"thread":{
+            "id":"child-1","parentThreadId":"thread-1","turns":[]
+        }}}));
+        assert!(pump.push_stdout_chunk(&reply, 12).await.unwrap());
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::ChildTranscript(_))
+        ));
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
+#[test]
+fn late_and_duplicate_same_id_replies_after_rejection_do_not_settle_the_next_child_read() {
+    runtime().block_on(async {
+        let (mut pump, shared, prompt_id) = goal_active_codex_pump();
+        pump.adapter.learn_child_for_test("child-1");
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let rejected_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        let rejection = codex_line(serde_json::json!({"id":rejected_id,"error":{
+            "code":-32000,"message":"private rejection details"
+        }}));
+        assert!(pump.push_stdout_chunk(&rejection, 11).await.unwrap());
+        assert_eq!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::Rejected)
+        );
+        assert!(!pump.adapter.child_read_pending());
+        let late_success = codex_line(serde_json::json!({"id":rejected_id,"result":{"thread":{
+            "id":"child-1","parentThreadId":"thread-1","turns":[]
+        }}}));
+        for reply in [&rejection, &late_success] {
+            assert!(pump.push_stdout_chunk(reply, 12).await.unwrap());
+            assert!(pump.take_native_rpc_reply().is_none());
+        }
+        pump.write_child(&mut output, "child-1", "thread-1")
+            .unwrap();
+        let next_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+        assert_ne!(next_id, rejected_id);
+        for reply in [&rejection, &late_success] {
+            assert!(pump.push_stdout_chunk(reply, 13).await.unwrap());
+            assert!(pump.take_native_rpc_reply().is_none());
+            assert!(pump.adapter.child_read_pending());
+        }
+        assert!(
+            pump.push_stdout_chunk(
+                &codex_line(serde_json::json!({"id":next_id,"result":{"thread":{
+                    "id":"child-1","parentThreadId":"thread-1","turns":[]
+                }}})),
+                14
+            )
+            .await
+            .unwrap()
+        );
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(crate::acp::goal::NativeRpcReply::ChildTranscript(_))
+        ));
+        assert!(!pump.adapter.child_read_pending());
+        assert!(
+            pump.push_stdout_chunk(
+                &codex_line(serde_json::json!({
+                    "id":prompt_id,"result":{"turn":{"id":"turn-A"}}
+                })),
+                15
+            )
+            .await
+            .unwrap()
+        );
+        assert!(pump.take_native_rpc_reply().is_none());
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}
+
 impl EgressTransport for CaptureTransport {
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
         self.0 = frame.payload().to_vec();

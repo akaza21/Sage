@@ -8,6 +8,81 @@ use crate::acp::{
 #[path = "child_binding_tests/subagent_identity_tests.rs"]
 mod subagent_identity_tests;
 
+#[cfg(feature = "acp-fixture")]
+#[test]
+fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion() {
+    runtime().block_on(async {
+        let frames = crate::acp::fixture::child_opened_wire_for_test(50);
+        let parent = "fixture-persisted-session-1";
+        let native_turn = frames.iter().find_map(|frame| frame.pointer("/result/turn/id")
+            .and_then(serde_json::Value::as_str)).unwrap();
+        let database = super::sign_in_tests::migrated_database();
+        database.connection().execute("UPDATE agent_sessions SET external_session_id=?1 WHERE id='session-one'", [parent]).unwrap();
+        let mut adapter = ready_codex_parent_for_thread(parent);
+        adapter.enable_observed_goal_for_test();
+        let prompt = adapter.command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").unwrap(),
+            client_message_id: message(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }).unwrap();
+        adapter.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&prompt),
+            "result":{"turn":{"id":native_turn}}})), &Mapper).unwrap();
+        let started = frames.iter().find(|frame| frame["method"] == "turn/started").unwrap();
+        adapter.ingest(&codex_frame(started.clone()), &Mapper).unwrap();
+        let mut session_scope = session_intent();
+        session_scope.external_session_id = ExternalId::new("session", parent).unwrap();
+        let intent = session_scope.bind_turn(ActiveTurnIntent { turn_id: turn("one"),
+            external_turn_id: Some(ExternalId::new("turn", native_turn).unwrap()),
+            client_message_id: message() });
+        let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+        let task = runner.spawn();
+        let mut pump = AdapterPump::new(adapter,
+            SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()), Mapper,
+            Arc::new(ProjectionMailbox::default()), intent).unwrap();
+        for frame in frames.iter().filter(|frame| frame["method"] == "item/completed" || frame["method"] == "turn/completed") {
+            assert!(pump.push_stdout_chunk(&codex_line(frame.clone()), 9).await.unwrap());
+        }
+        let lifetime: (String, String, i64) = database.connection().query_row(
+            "SELECT t.state,e.state,c.projection_revision FROM turns t
+             JOIN session_runtime_epochs e ON e.session_id=t.session_id AND e.runtime_epoch=t.runtime_epoch
+             JOIN chats c ON c.id=t.chat_id WHERE t.id='turn-one'", [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        assert_eq!((lifetime.0.as_str(), lifetime.1.as_str()), ("completed", "running"));
+        assert!(lifetime.2 > 0);
+        let item_id: String = database.connection().query_row(
+            "SELECT item_id FROM acp_child_thread_bindings WHERE native_child_thread_id='fixture-child-1'", [], |row| row.get(0)).unwrap();
+        let binding_source: String = database.connection().query_row(
+            "SELECT external_item_id FROM items WHERE id=?1", [&item_id], |row| row.get(0)).unwrap();
+        assert_eq!(binding_source, "fixture-child-activity-1");
+        let observations: i64 = database.connection().query_row(
+            "SELECT COUNT(*) FROM items WHERE turn_id='turn-one' AND kind='collaboration'", [], |row| row.get(0)).unwrap();
+        assert_eq!(observations, 2);
+        let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
+            owner: crate::acp::scheduler::RuntimeOwner {
+                project_id: SageProjectId::parse("project-one").unwrap(), chat_id: SageChatId::parse("chat-one").unwrap(),
+                session_id: session("one"), runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            }, item_id, child_thread_id: "fixture-child-1".into(), parent_thread_id: parent.into(),
+        };
+        crate::acp::store::child_transcript::verify_current_binding(&database.connection(), &scope).unwrap();
+        let mut idle = pump.try_into_completed_parts().ok().expect("completed parent handoff");
+        let mut output = CaptureTransport(Vec::new());
+        idle.write_child(&mut output, "fixture-child-1", parent).unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        assert_eq!(request["method"], "thread/read");
+        assert_eq!(request["params"]["includeTurns"], true);
+        let replies = crate::acp::fixture::child_opened_wire_for_test(request["id"].as_u64().unwrap());
+        let reply = replies.iter().find(|frame| frame.pointer("/result/thread/id")
+            == Some(&serde_json::json!("fixture-child-1"))).unwrap();
+        idle.accept_idle_stdout_chunk(&codex_line(reply.clone()), 10, &mut output).await.unwrap();
+        let Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot)) = idle.take_native_rpc_reply() else { panic!("child read did not settle") };
+        crate::acp::store::child_transcript::persist_snapshot(&mut database.connection(), &scope, &snapshot, 10).unwrap();
+        assert_eq!(crate::acp::store::child_transcript::load_snapshot(&database.connection(), &scope).unwrap(), Some(snapshot));
+        drop(idle);
+        handle.close_when_drained();
+        task.await.unwrap();
+    });
+}
+
 #[test]
 fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutation() {
     runtime().block_on(async {
@@ -182,6 +257,10 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
 }
 
 fn ready_codex_parent() -> CodexRuntime {
+    ready_codex_parent_for_thread("external-session")
+}
+
+fn ready_codex_parent_for_thread(parent: &str) -> CodexRuntime {
     let mut adapter =
         CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session("one"));
     let initialize = adapter.command(AdapterCommand::Initialize).unwrap();
@@ -217,7 +296,7 @@ fn ready_codex_parent() -> CodexRuntime {
     adapter
         .ingest(
             &codex_frame(serde_json::json!({
-                "id":session_id,"result":{"thread":{"id":"external-session"}}
+                "id":session_id,"result":{"thread":{"id":parent}}
             })),
             &Mapper,
         )

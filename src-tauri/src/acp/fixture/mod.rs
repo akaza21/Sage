@@ -58,6 +58,9 @@ pub fn is_native_replay_case(case: &str) -> bool {
         .any(|entry| entry.id == case)
 }
 
+#[cfg(test)]
+pub(crate) use wire::child_opened_wire_for_test;
+
 #[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_lists_models(case: &str) -> bool {
     matches!(case, "codex-effort-menu" | "codex-model-menu")

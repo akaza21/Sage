@@ -72,6 +72,8 @@ pub(crate) enum ChildTextRole {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ChildTranscriptError {
+    #[error("child transcript read was rejected")]
+    Rejected,
     #[error("child transcript response is too large")]
     Capacity,
     #[error("child transcript response is malformed or incomplete")]
@@ -89,8 +91,21 @@ pub(crate) fn normalize_read_response<M: ResourceMapper + ?Sized>(
         return Err(ChildTranscriptError::Capacity);
     }
     let value: Value = serde_json::from_slice(wire).map_err(|_| ChildTranscriptError::Malformed)?;
-    if value.get("id").and_then(Value::as_u64) != Some(request_id) || value.get("error").is_some() {
+    if value.get("id").and_then(Value::as_u64) != Some(request_id) || value.get("method").is_some()
+    {
         return Err(ChildTranscriptError::Malformed);
+    }
+    if let Some(error) = value.get("error") {
+        return Err(
+            if value.get("result").is_none()
+                && error.get("code").and_then(Value::as_i64).is_some()
+                && error.get("message").and_then(Value::as_str).is_some()
+            {
+                ChildTranscriptError::Rejected
+            } else {
+                ChildTranscriptError::Malformed
+            },
+        );
     }
     let thread = value
         .get("result")

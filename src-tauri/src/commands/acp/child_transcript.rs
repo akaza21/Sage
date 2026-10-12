@@ -129,6 +129,9 @@ mod tests;
 
 fn read_error(error: ChildTranscriptReadError) -> AcpIpcError {
     match error {
+        ChildTranscriptReadError::Rejected => AcpIpcError::Rejected {
+            message: safe_message("The native child transcript read was rejected."),
+        },
         ChildTranscriptReadError::Unavailable => AcpIpcError::Unavailable {
             reason: AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("The child transcript is unavailable for this session."),

@@ -240,7 +240,20 @@ export function events(harness, state) {
             },
           },
         };
-        codex(finished ? "item/completed" : "item/started", { item });
+        codex(finished ? "item/completed" : "item/started", {
+          ...(state === "child-opened" ? { threadId: "$SESSION" } : {}),
+          item,
+        });
+        if (state === "child-opened")
+          codex("item/completed", {
+            threadId: "$SESSION",
+            item: {
+              id: "fixture-child-activity-" + index,
+              type: "subAgentActivity",
+              agentThreadId: child,
+              kind: "completed",
+            },
+          });
       }
     }
   } else if (state.startsWith("plan")) {

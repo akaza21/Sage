@@ -49,13 +49,13 @@ impl CodexAdapter {
         self.pending_child_read = None;
         let removed = self.take_pending(id);
         debug_assert_eq!(removed, Some(RequestKind::ChildRead));
+        self.child_read_tombstone = Some(id);
         Ok(())
     }
 
     pub(crate) fn oversized_child_response(&mut self, id: u64) -> Result<bool, AdapterError> {
         if self.child_read_scope().map(|(pending, _, _)| pending) == Some(id) {
             self.complete_child_read(id)?;
-            self.child_read_tombstone = Some(id);
             return Ok(true);
         }
         if self.pending_kind(id).is_some() {

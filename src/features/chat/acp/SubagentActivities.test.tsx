@@ -61,6 +61,35 @@ afterEach(() => {
 });
 
 describe("Subagent activity rows", () => {
+  it("deduplicates spawn and native completion and opens the owner-bearing activity", () => {
+    const spawn = child("child-1", "Reviewer", "completed");
+    spawn.id = "spawn" as Collaboration["id"];
+    const completion = {
+      ...spawn,
+      id: "activity" as Collaboration["id"],
+      payload: {
+        ...spawn.payload,
+        label: "Subagent",
+        operation: "completed",
+        agentKey: "child-1",
+        agentKeys: [],
+        receiverLabels: [],
+        agentStates: [],
+      },
+    };
+    activities([spawn, completion]);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByText("2 subagents finished")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reviewer finished. Open Subagent" }),
+    );
+    expect(useSubagentPaneStore.getState().open).toEqual({
+      owner: { projectId: "project", chatId: "chat", sessionId: "session" },
+      itemId: "activity",
+      agentKey: "child-1",
+    });
+  });
+
   it("does not rebuild 300 unchanged members on streaming ticks but updates revised membership", () => {
     const summary = vi.spyOn(subagentActivity, "subagentSummary");
     const members = Array.from({ length: 300 }, (_, index) =>
@@ -299,7 +328,7 @@ describe("Subagent activity rows", () => {
     });
   });
 
-  it("merges compatible spawn and start observations and keeps later supplied name enrichment selectable", () => {
+  it("merges compatible spawn and start observations and selects the native source with its supplied name", () => {
     const spawn = child("a", "");
     const started = {
       ...child("a", ""),
@@ -319,7 +348,7 @@ describe("Subagent activity rows", () => {
     );
     expect(useSubagentPaneStore.getState().open).toEqual({
       owner: { projectId: "project", chatId: "chat", sessionId: "session" },
-      itemId: "a",
+      itemId: "named-start",
       agentKey: "a",
     });
   });
