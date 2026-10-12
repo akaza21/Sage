@@ -105,10 +105,10 @@ fn home_continuation(tail: &str, separator: char, mode: PathMode) -> (usize, usi
                 .eq_ignore_ascii_case("and/or")
             || absolute_path(body, mode).is_some()
         {
-            return (0, 0);
+            return (words, whitespace + counted_end);
         }
         let end = window.len() - word.len() + length;
-        if body.contains(separator) {
+        if body.contains(separator) || (words == 0 && body.contains('/')) {
             let full_word = &trimmed[window.len() - word.len()..];
             let full_length = full_word
                 .find(|character: char| {

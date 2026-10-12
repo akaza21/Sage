@@ -1,7 +1,7 @@
 use super::{Mode, redact};
 
 #[test]
-fn home_names_use_bounded_continuations_and_release_later_prose() {
+fn home_paths_hide_windows_names_and_preserve_posix_prose() {
     for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
         let marker = if mode == Mode::Diagnostic {
             "[path]"
@@ -51,6 +51,64 @@ fn home_names_use_bounded_continuations_and_release_later_prose() {
             let input = format!(r"C:\Users\Jane Doe still public{boundary} Smith\x tail");
             let actual = redact("test", &input, 4096, mode).unwrap();
             assert!(!actual.contains("Doe"), "{mode:?}: {actual}");
+        }
+    }
+}
+
+#[test]
+fn windows_home_names_stay_private_before_continuation_boundaries() {
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        for (input, name, public_tail) in [
+            (r"C:\Users\Jane Doe copied to /tmp/x tail", "Doe", " tail"),
+            (r#"C:\Users\John Smith "D:\out" tail"#, "Smith", " tail"),
+            (r"C:\Users\John Smith 'D:\out' tail", "Smith", " tail"),
+            (r"C:\Users\John Smith \\server\out tail", "Smith", " tail"),
+            (r"C:\Users\John Smith D:\out tail", "Smith", " tail"),
+            (
+                r"C:\Users\John Smith and/or Bob tail",
+                "Smith",
+                "and/or Bob tail",
+            ),
+            (
+                r"C:\Users\John Smith AND/OR! Bob tail",
+                "Smith",
+                "AND/OR! Bob tail",
+            ),
+            (r"C:\Users\John Smith <none> tail", "Smith", "<none> tail"),
+        ] {
+            let actual = redact("test", input, 4096, mode).unwrap();
+            assert!(!actual.contains(name), "{mode:?}: {actual}");
+            assert!(actual.ends_with(public_tail), "{mode:?}: {actual}");
+        }
+    }
+}
+
+#[test]
+fn windows_home_first_name_word_accepts_forward_slash_suffixes() {
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        for name in ["Smith", "smith"] {
+            let input = format!(r"C:\Users\John {name}/Documents tail");
+            let expected = if mode == Mode::Diagnostic {
+                "[path] tail"
+            } else {
+                "[redacted] [redacted] tail"
+            };
+            assert_eq!(
+                redact("test", &input, 4096, mode).unwrap(),
+                expected,
+                "{mode:?}"
+            );
+        }
+        for prefix in ["Smith", "Smith is ready"] {
+            for path in ["a/b", "foo/bar"] {
+                let input = format!(r"C:\Users\John {prefix} {path} tail");
+                let actual = redact("test", &input, 4096, mode).unwrap();
+                assert!(!actual.contains("Smith"), "{mode:?}: {actual}");
+                assert!(
+                    actual.ends_with(&format!("{path} tail")),
+                    "{mode:?}: {actual}"
+                );
+            }
         }
     }
 }
