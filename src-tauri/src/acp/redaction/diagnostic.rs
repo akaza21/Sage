@@ -6,7 +6,7 @@ mod json;
 use super::text::{
     credentials::{
         attached_short_value, auth_scheme, contains_token, is_sensitive_prose_flag,
-        sensitive_assignment, sensitive_key, url_userinfo,
+        public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
     },
     paths::{PathContext, PathMode},
     pem::{redact_pem, scan_window},
@@ -51,7 +51,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         let trimmed = remaining.trim_start_matches(char::is_whitespace);
         let whitespace = &remaining[..remaining.len() - trimmed.len()];
         output.push_str(whitespace);
-        paths.redact("", whitespace, PathMode::Diagnostic);
+        paths.redact("", whitespace, "", PathMode::Diagnostic);
         remaining = trimmed;
         if remaining.is_empty() {
             break;
@@ -88,7 +88,10 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         let value_start = value_start.or_else(|| {
             bare.split_once('=')
                 .filter(|(key, value)| {
-                    !key.is_empty() && !value.is_empty() && !value.starts_with('=')
+                    !key.is_empty()
+                        && !value.is_empty()
+                        && !value.starts_with('=')
+                        && !public_token_key(key)
                 })
                 .map(|(key, _)| prefix.len() + key.len() + 1)
         });
@@ -188,11 +191,19 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str("[redacted]");
             output.push_str(&bare[end..]);
             output.push_str(suffix);
-        } else if paths.redact(bare, "", PathMode::Diagnostic) {
+        } else if let Some(length) =
+            paths.redact(token, "", &remaining[token_len..], PathMode::Diagnostic)
+        {
             output.push_str(prefix);
             output.push_str("[path]");
-            output.push_str(&bare[bare.trim_end_matches(':').len()..]);
-            output.push_str(suffix);
+            consumed += length;
+            let (_, ending_body, ending) = if length == 0 {
+                (prefix, bare, suffix)
+            } else {
+                diagnostic_word(&remaining[..consumed])
+            };
+            output.push_str(&ending_body[ending_body.trim_end_matches(':').len()..]);
+            output.push_str(ending);
         } else {
             output.push_str(token);
             next = auth_scheme(&lower) || is_sensitive_prose_flag(bare);
@@ -225,6 +236,7 @@ fn assignment_start(token: &str, prefix: &str, bare: &str, suffix: &str) -> Opti
             .trim_matches(['"', '\'']);
         let value = &body[index + 1..];
         if !key.is_empty()
+            && !public_token_key(key)
             && (!value.is_empty() || sensitive_key(key))
             && key.chars().all(|character| {
                 character.is_ascii_alphanumeric()

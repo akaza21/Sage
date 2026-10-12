@@ -18,8 +18,11 @@ pub(crate) fn redact_prose(
     let mut value = QuotedValue::default();
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
+    let mut position = 0;
     for token in input.split_inclusive(char::is_whitespace) {
         let (mut body, whitespace) = split_trailing_whitespace(token);
+        let tail = &input[position + body.len()..];
+        position += token.len();
         let mut quoted_token = false;
         while !body.is_empty() {
             if let Some(suffix) = body
@@ -52,7 +55,7 @@ pub(crate) fn redact_prose(
             };
             let prefix = &body[..body.len() - suffix.len()];
             let secret = secrets.redact(prefix, "", continued);
-            let path = paths.redact(prefix, "", PathMode::Prose);
+            let path = paths.redact(prefix, "", tail, PathMode::Prose).is_some();
             if !continued {
                 let replacement = if secret || path || quoted {
                     REDACTED

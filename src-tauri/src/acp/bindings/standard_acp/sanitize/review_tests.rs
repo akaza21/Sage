@@ -210,17 +210,17 @@ path_case!(
 path_case!(
     three_word_windows_name,
     r"C:\Users\Jane Doe Smith\x tail",
-    "[redacted] Doe [redacted] tail"
+    "[redacted] [redacted] [redacted] tail"
 );
 path_case!(
     trailing_windows_name,
     r"C:\Users\John Smith",
-    "[redacted] Smith"
+    "[redacted] [redacted]"
 );
 path_case!(
     windows_home_name,
     r"C:\home\Jane Doe Smith\x tail",
-    "[redacted] Doe [redacted] tail"
+    "[redacted] [redacted] [redacted] tail"
 );
 preserved_case!(relative_glued_flag, "cc -includeinclude.h");
 

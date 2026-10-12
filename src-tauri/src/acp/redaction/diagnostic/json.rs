@@ -3,6 +3,13 @@ use super::{
 };
 use crate::acp::redaction::text::credentials::decode_key;
 
+#[derive(PartialEq, Eq)]
+enum SpanKind {
+    Key,
+    TextValue,
+    EncodedValue,
+}
+
 pub(super) fn sanitize_word(
     value: &str,
     token_len: usize,
@@ -44,8 +51,11 @@ pub(super) fn sanitize_word(
             continue;
         }
         found_key = true;
-        let sensitive = sensitive_key(&decode_key(key, escaped));
-        if let Some(sanitized) = sanitize_span(value, start, end, escaped, json_depth) {
+        let decoded_key = decode_key(key, escaped);
+        let sensitive = sensitive_key(&decoded_key);
+        if let Some(sanitized) =
+            sanitize_span(value, start, end, escaped, json_depth, SpanKind::Key)
+        {
             output.push_str(&value[copied..start]);
             output.push_str(&sanitized);
             copied = end;
@@ -80,6 +90,11 @@ pub(super) fn sanitize_word(
                         end,
                         escaped,
                         if bounded_end.is_some() { json_depth } else { 1 },
+                        if encoded_payload_key(&decoded_key) {
+                            SpanKind::EncodedValue
+                        } else {
+                            SpanKind::TextValue
+                        },
                     ) {
                         output.push_str(&sanitized);
                     } else {
@@ -185,10 +200,14 @@ fn sanitize_span(
     end: usize,
     escaped: bool,
     json_depth: u8,
+    kind: SpanKind,
 ) -> Option<String> {
     let delimiter = 1 + usize::from(escaped);
     let span = &value[start + delimiter..end - delimiter];
     let decoded = decode_key(span, escaped);
+    if kind != SpanKind::Key && base64_value(&decoded, kind) && !super::contains_token(&decoded) {
+        return None;
+    }
     let sanitized = sanitize_words(&decoded, json_depth - 1);
     (sanitized != decoded).then(|| {
         let mut encoded = sanitized.replace('\\', "\\\\").replace('"', "\\\"");
@@ -202,6 +221,64 @@ fn sanitize_span(
             &value[end - delimiter..end]
         )
     })
+}
+
+fn encoded_payload_key(key: &str) -> bool {
+    [
+        "payload",
+        "data",
+        "base64",
+        "image",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+    ]
+    .iter()
+    .any(|candidate| key.eq_ignore_ascii_case(candidate))
+}
+
+fn base64_value(value: &str, kind: SpanKind) -> bool {
+    let payload = value.trim_end_matches('=');
+    let jpeg = kind == SpanKind::EncodedValue && jpeg_header(value);
+    value.len() >= 16
+        && value.len().is_multiple_of(4)
+        && value.len() - payload.len() <= 2
+        && (value.ends_with('=') || jpeg)
+        && (jpeg
+            || crate::acp::redaction::text::paths::absolute_path(
+                value,
+                crate::acp::redaction::text::Mode::Diagnostic,
+            )
+            .is_none())
+        && payload
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
+}
+
+fn jpeg_header(value: &str) -> bool {
+    if value.len() < 16 || !value.starts_with("/9j/") {
+        return false;
+    }
+    let mut header = [0_u8; 12];
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (chunk, bytes) in value.as_bytes()[..16].chunks_exact(4).enumerate() {
+        let mut decoded = 0_u32;
+        for byte in bytes {
+            let Some(index) = alphabet.iter().position(|candidate| candidate == byte) else {
+                return false;
+            };
+            decoded = (decoded << 6) | index as u32;
+        }
+        header[chunk * 3..chunk * 3 + 3].copy_from_slice(&decoded.to_be_bytes()[1..]);
+    }
+    let length = u16::from_be_bytes([header[4], header[5]]);
+    match header[3] {
+        0xe0 => length >= 16 && matches!(&header[6..11], b"JFIF\0" | b"JFXX\0"),
+        0xe1 => length >= 8 && &header[6..12] == b"Exif\0\0",
+        0xdb => length >= 67 && header[6] & 0x0f <= 3,
+        0xc0..=0xcf | 0xdd | 0xe2..=0xef | 0xfe => length >= 2,
+        _ => false,
+    }
 }
 
 pub(super) fn container_end(value: &str, start: usize) -> Option<usize> {

@@ -35,10 +35,8 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
         || normalized
             .match_indices("secret")
             .any(|(index, _)| !normalized[index + 6..].starts_with("ary"))
-        || normalized.match_indices("token").any(|(index, _)| {
-            let suffix = &normalized[index + 5..];
-            !suffix.starts_with('s') && !suffix.starts_with("izer")
-        })
+        || sensitive_token_key(&lower)
+        || sensitive_token_key(normalized)
     {
         return true;
     }
@@ -73,6 +71,22 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
         }
     }
     false
+}
+
+pub(crate) fn public_token_key(key: &str) -> bool {
+    matches!(
+        decode_key(key, false).to_ascii_lowercase().as_str(),
+        "token_count" | "tokenization" | "detokenize"
+    )
+}
+
+fn sensitive_token_key(key: &str) -> bool {
+    key.match_indices("token").any(|(index, _)| {
+        let suffix = &key[index + 5..];
+        !suffix.starts_with('s')
+            && !suffix.starts_with("iz")
+            && !matches!(suffix, "count" | "_count")
+    })
 }
 
 pub(crate) fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {

@@ -15,44 +15,113 @@ pub(crate) enum PathKind {
 #[derive(Default)]
 pub(crate) struct PathContext {
     windows: bool,
-    home_name: bool,
+    home_words: usize,
 }
 
 const HOME_PREFIXES: &[&str] = &["\\users\\", "\\home\\", "/users/", "/home/"];
 
 impl PathContext {
-    pub(crate) fn redact(&mut self, body: &str, whitespace: &str, mode: PathMode) -> bool {
+    pub(crate) fn redact(
+        &mut self,
+        body: &str,
+        whitespace: &str,
+        tail: &str,
+        mode: PathMode,
+    ) -> Option<usize> {
         let normalized = normalized_slashes(body);
         let body = normalized.as_ref();
         let path = detect_absolute_path(body, mode);
         let continuation =
-            (self.home_name && body.contains(['\\', '/'])) || (self.windows && body.contains('\\'));
+            !body.is_empty() && (self.home_words > 0 || (self.windows && body.contains('\\')));
+        let mut span = 0;
         if !body.is_empty() {
             if path.is_some() {
                 let lower = body.to_ascii_lowercase();
-                self.home_name = HOME_PREFIXES.iter().any(|prefix| {
+                let home_name = HOME_PREFIXES.iter().any(|prefix| {
                     lower
                         .find(prefix)
                         .is_some_and(|index| !lower[index + prefix.len()..].contains(['\\', '/']))
                 });
-            } else if self.home_name && body.contains(['\\', '/']) {
-                self.home_name = false;
+                let (words, length) = if home_name && !body.contains([';', '|', '&']) {
+                    home_continuation(tail, path == Some(PathKind::Windows), mode)
+                } else {
+                    (0, 0)
+                };
+                self.home_words = if mode == PathMode::Diagnostic {
+                    0
+                } else {
+                    words
+                };
+                span = length;
+            } else {
+                self.home_words = self.home_words.saturating_sub(1);
             }
             self.windows = path == Some(PathKind::Windows) || continuation;
         }
         if whitespace.contains(['\n', '\r']) || body.contains([';', '|', '&']) {
             self.windows = false;
-            self.home_name = false;
+            self.home_words = 0;
         }
-        path.is_some() || continuation
+        (path.is_some() || continuation).then_some(span)
     }
 
     pub(crate) fn end_span(&mut self, span: &str) {
         if span.contains([';', '|', '&', '\n', '\r']) {
             self.windows = false;
-            self.home_name = false;
+            self.home_words = 0;
         }
     }
+}
+
+fn home_continuation(tail: &str, windows: bool, mode: PathMode) -> (usize, usize) {
+    let trimmed = tail.trim_start_matches(horizontal_whitespace);
+    let whitespace = tail.len() - trimmed.len();
+    let window = super::pem::scan_window(trimmed);
+    let limit = window
+        .find([';', '|', '&', '\r', '\n'])
+        .unwrap_or(window.len());
+    let window = &window[..limit];
+    let mut remaining = window;
+    let mut words = 0;
+    while !remaining.is_empty() {
+        let word = remaining.trim_start_matches(horizontal_whitespace);
+        let length = word.find(char::is_whitespace).unwrap_or(word.len());
+        if length == 0 {
+            break;
+        }
+        let body = &word[..length];
+        if body.starts_with(['"', '\'', '/', '\\', '<'])
+            || body
+                .trim_end_matches([',', '.', ')', ']', '}', '!', '?', ':'])
+                .eq_ignore_ascii_case("and/or")
+            || absolute_path(body, mode).is_some()
+        {
+            return (0, 0);
+        }
+        words += 1;
+        let end = window.len() - word.len() + length;
+        if body.contains(['\\', '/']) {
+            let full_word = &trimmed[window.len() - word.len()..];
+            let full_length = full_word
+                .find(|character: char| {
+                    character.is_whitespace() || matches!(character, ';' | '|' | '&')
+                })
+                .unwrap_or(full_word.len());
+            return (words, whitespace + end - length + full_length);
+        }
+        if windows && words == 1 {
+            let rest = trimmed[end..].trim_start_matches(horizontal_whitespace);
+            if rest.is_empty() || rest.starts_with(['\r', '\n']) {
+                return (1, whitespace + end);
+            }
+        }
+        remaining = &word[length..];
+    }
+    (0, 0)
+}
+
+fn horizontal_whitespace(character: char) -> bool {
+    character.is_whitespace() && !matches!(character, '\r' | '\n')
 }
 
 pub(crate) fn absolute_path(value: &str, mode: PathMode) -> Option<PathKind> {

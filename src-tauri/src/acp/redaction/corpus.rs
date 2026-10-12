@@ -3,6 +3,52 @@ use super::{Mode, redact};
 #[path = "corpus_data.rs"]
 mod data;
 type Expectations<'a> = (Mode, &'a [&'a str], &'a [&'a str]);
+
+#[test]
+fn diagnostic_public_base64_values_are_preserved() {
+    for input in data::PUBLIC_BASE64_CASES {
+        let actual = redact("corpus", input, 4096, Mode::Diagnostic).unwrap();
+        assert_eq!(actual, *input);
+        let escaped = input.replace('"', "\\\"").replace('/', "\\/");
+        assert_eq!(
+            redact("corpus", &escaped, 4096, Mode::Diagnostic).unwrap(),
+            escaped
+        );
+        assert_eq!(
+            redact("corpus", &actual, 4096, Mode::Diagnostic).unwrap(),
+            actual
+        );
+        let sensitive = input.replace("payload", "token").replace("image", "token");
+        assert_eq!(
+            redact("corpus", &sensitive, 4096, Mode::Diagnostic).unwrap(),
+            r#"{"token":[redacted]}"#
+        );
+    }
+    for input in [
+        r#"{"path":"/home/alice/fiE="}"#,
+        r#"{"path":"/9j/private/home"}"#,
+        r#"{\"path\":\"\/9j\/private\/home\"}"#,
+        r#"{"path":"/9j/4AAQSkZJRgAB/private/homeAAA"}"#,
+        r#"{\"path\":\"\/9j\/4AAQSkZJRgAB\/private\/homeAAA\"}"#,
+        r#"{"message":"/9j/4AAQSkZJRgAB/private/homeAAA"}"#,
+    ] {
+        let actual = redact("corpus", input, 4096, Mode::Diagnostic).unwrap();
+        assert!(actual.contains("[path]"), "{actual}");
+        assert!(
+            !actual.contains("alice") && !actual.contains("private"),
+            "{actual}"
+        );
+    }
+}
+
+#[test]
+fn summary_error_kinds_cannot_accept_hidden_paths() {
+    for permission in [Permission::SummaryUndisplayable, Permission::SummaryTooLong] {
+        let mut failures = Vec::new();
+        check_summary(0, "/home/alice/file", permission, &[], &[], &mut failures);
+        assert_eq!(failures.len(), 1);
+    }
+}
 type Case<'a> = (
     &'a str,
     &'a [&'a str],
@@ -85,9 +131,9 @@ fn union_canaries_cover_every_mode() {
         ("cc -include/abs/path", &["/abs/path"], &[], Tail::All, Permission::Hide, &[]),
         ("cc -isysroot/abs/path", &["/abs/path"], &[], Tail::All, Permission::Hide, &[]),
         ("cc -unknown/abs/path", &["/abs/path"], &[], Tail::All, Permission::Hide, &[]),
-        (r"C:\Users\Jane Doe Smith\x tail", &["Jane", "Smith"], &["Doe"], Tail::All, Permission::Hide, &[]),
+        (r"C:\Users\Jane Doe Smith\x tail", &["Jane", "Doe", "Smith"], &[], Tail::All, Permission::Hide, &[]),
         (r"C:\Users\John Smith", &[r"C:\Users\John"], &[], Tail::All, Permission::Hide, &[]),
-        (r"C:\home\Jane Doe Smith\x tail", &["Jane", "Smith"], &["Doe"], Tail::All, Permission::Hide, &[]),
+        (r"C:\home\Jane Doe Smith\x tail", &["Jane", "Doe", "Smith"], &[], Tail::All, Permission::Hide, &[]),
         (r"cc -isystemC:\Users\Jane\inc", &["Jane", "inc"], &[], Tail::All, Permission::Hide, &[]),
         ("C:/Users/Jane Doe/x", &["Jane", "Doe", "/x"], &[], Tail::All, Permission::Hide, &[]),
         ("/c/Users/Jane Doe/x", &["Jane", "Doe", "/x"], &[], Tail::All, Permission::Hide, &[]),
@@ -212,7 +258,8 @@ fn check_summary(
     match sanitize_command_summary(source) {
         Err(CommandSummaryError::TooLong)
             if permission == Permission::SummaryTooLong && source.len() > 65_536 => {}
-        Err(CommandSummaryError::Hidden) if permission != Permission::Show => (),
+        Err(CommandSummaryError::Hidden)
+            if matches!(permission, Permission::Hide | Permission::SummaryHidden) => {}
         Err(CommandSummaryError::Undisplayable)
             if permission == Permission::SummaryUndisplayable => {}
         Ok(summary) if permission == Permission::Show => {

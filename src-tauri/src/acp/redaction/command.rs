@@ -18,10 +18,13 @@ pub(crate) fn redact(
     let mut value = ShellValueContext::default();
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
+    let mut position = 0;
     for token in input.split_inclusive(char::is_whitespace) {
         let body = token.trim_end_matches(char::is_whitespace);
         let whitespace = &token[body.len()..];
-        let path = paths.redact(body, whitespace, mode);
+        let tail = &input[position + body.len()..];
+        position += token.len();
+        let path = paths.redact(body, whitespace, tail, mode).is_some();
         let continued = value.in_value();
         let literal_value = continued || secrets.next_value();
         let quoted = secrets.quoted_value_start(body).is_some();

@@ -1,6 +1,99 @@
 use super::{Mode, redact};
 
 #[test]
+fn home_names_use_bounded_continuations_and_release_later_prose() {
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        let marker = if mode == Mode::Diagnostic {
+            "[path]"
+        } else {
+            "[redacted]"
+        };
+        for input in [
+            r"C:\Users\Jane Doe Smith\x tail",
+            r"C:\home\Jane Doe Smith\x tail",
+            r"C:\Users\Jane  Doe Smith\x tail",
+        ] {
+            let expected = if mode == Mode::Diagnostic {
+                "[path] tail".to_owned()
+            } else {
+                format!(
+                    "{marker}{}{marker} {marker} tail",
+                    if input.contains("  ") { "  " } else { " " }
+                )
+            };
+            assert_eq!(
+                redact("test", input, 4096, mode).unwrap(),
+                expected,
+                "{mode:?}"
+            );
+        }
+        let expected = if mode == Mode::Diagnostic {
+            marker.to_owned()
+        } else {
+            format!("{marker} {marker}")
+        };
+        assert_eq!(
+            redact("test", r"C:\Users\John Smith", 4096, mode).unwrap(),
+            expected,
+            "{mode:?}"
+        );
+        for ending in [
+            "and/or", "and/or,", "and/or.", "AND/OR!", "</div>", "//TODO",
+        ] {
+            let input = format!("your home /Users/jane is ready {ending}");
+            assert_eq!(
+                redact("test", &input, 4096, mode).unwrap(),
+                format!("your home {marker} is ready {ending}"),
+                "{mode:?}"
+            );
+        }
+        for boundary in [";", "|", "&", "\n", "\r\n"] {
+            let input = format!(r"C:\Users\Jane Doe still public{boundary} Smith\x tail");
+            let actual = redact("test", &input, 4096, mode).unwrap();
+            assert!(actual.contains("Doe"), "{mode:?}: {actual}");
+        }
+    }
+}
+
+#[test]
+fn token_key_exclusions_preserve_metrics_without_hiding_credentials() {
+    for mode in [
+        Mode::Prose,
+        Mode::CommandOutput,
+        Mode::Permission,
+        Mode::Diagnostic,
+    ] {
+        for input in [
+            "token_string=token-canary",
+            "TOKEN_SIGNATURE=token-canary",
+            "to_ken=token-canary",
+            "t_o_k_e_n=token-canary",
+        ] {
+            let actual = redact("test", input, 4096, mode).unwrap();
+            assert!(!actual.contains("token-canary"), "{mode:?}: {actual}");
+        }
+        for input in ["token_count=5", "tokenization:", "detokenize="] {
+            assert_eq!(
+                redact("test", input, 4096, mode).unwrap(),
+                input,
+                "{mode:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn diagnostic_home_paths_keep_adjacent_command_operators() {
+    for operator in [";", "|", "&"] {
+        let input = format!(r"C:\Users\Jane Doe Smith\x{operator}echo ok");
+        assert_eq!(
+            redact("test", &input, 4096, Mode::Diagnostic).unwrap(),
+            format!("[path]{operator}echo ok")
+        );
+    }
+}
+
+#[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
     let input = "0AKIA".repeat(65_536);
     let started = std::time::Instant::now();

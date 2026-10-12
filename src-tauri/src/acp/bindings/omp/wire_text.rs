@@ -98,6 +98,8 @@ mod tests {
             "Bearer canary",
             "password:canary",
             "token:canary",
+            "to_ken=canary",
+            "t_o_k_e_n=canary",
             "--token canary",
             "x=1&password=canary",
             "https://host/?x=1&password=canary",

@@ -1,5 +1,11 @@
 use super::{Case, Mode, Permission, Tail};
 
+pub(super) const PUBLIC_BASE64_CASES: &[&str] = &[
+    r#"{"payload":"aPCdEfGhIjKlMnOpQrStUvWxYz0123456789aBcDeFg="}"#,
+    r#"{"image":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA=="}"#,
+    r#"{"image":"/9j/4AAQSkZJRgAB"}"#,
+];
+
 pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
     let oversized_payload = "A".repeat(8193);
     let oversized_then_credential =
@@ -92,7 +98,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         (r#"{"a":"b"},"password"={"c":"d"}"#, &[r#"{"c":"d"}"#], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
         (r#"{"a":"b"},password={"c":"d"}"#, &[r#"{"c":"d"}"#], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
         (r#"{"files":{"/home/alice/.ssh/private_key":"denied"}}"#, &["/home/alice/.ssh/private_key"], &["files"], Tail::All, Permission::Hide, &[(Mode::Prose, &["/home/alice/.ssh/private_key"], &["[redacted]"]), (Mode::CommandOutput, &["/home/alice/.ssh/private_key"], &["[redacted]"])]),
-        (r"C:\Users\John van Smith\.ssh\id failed", &["John", "Smith"], &["van", "failed"], Tail::All, Permission::Hide, &[]),
+        (r"C:\Users\John van Smith\.ssh\id failed", &["John", "van", "Smith"], &["failed"], Tail::All, Permission::Hide, &[]),
        (r#"password={"a":"b"}"#, &[r#"{"a":"b"}"#], &[], Tail::All, Permission::Show, &[]),
         (r#"token:{"value":"abc"}"#, &["abc"], &[], Tail::All, Permission::Show, &[]),
         (r#"{"a":"b"},password=x"#, &["x"], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
@@ -126,7 +132,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         (r#"{"token":"abc","url":"https://user:secret@host/"}"#, &["abc", "user:secret"], &[], Tail::All, Permission::Show, &[]),
         (r#"{"to\u006ben":"canary"}"#, &["canary"], &[], Tail::All, Permission::Show, &[]),
         (r#"{\"token\":\"prefix\\\"tail-canary\"}"#, &["tail-canary", "prefix"], &[], Tail::All, Permission::Show, &[]),
-        (r"C:\Users\John Paul Smith\.ssh\id failed", &["John", "Smith"], &["Paul", "failed"], Tail::All, Permission::Hide, &[]),
+        (r"C:\Users\John Paul Smith\.ssh\id failed", &["John", "Paul", "Smith"], &["failed"], Tail::All, Permission::Hide, &[]),
         ("Proxy-Authorization: Basic abc", &["abc"], &["Authorization"], Tail::All, Permission::Show, &[(Mode::Permission, &["abc"], &["[redacted]"])]),
         ("X-Auth-Token: abc", &["abc"], &[], Tail::All, Permission::Show, &[]),
         ("--refresh-token abc", &["abc"], &[], Tail::All, Permission::Show, &[]),
