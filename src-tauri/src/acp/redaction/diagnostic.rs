@@ -53,14 +53,16 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         }
         let assignment = assignment_start(token, prefix, bare, suffix);
         let value_start = assignment.map(|(start, _)| start);
-        if json_depth > 0 && !redact_next && value_start.is_none() {
-            if let Some((text, consumed)) = json::sanitize_word(remaining, token_len, json_depth) {
-                output.push_str(&text);
-                remaining = &remaining[consumed..];
-                separator_key = false;
-                json_tail = true;
-                continue;
-            }
+        if json_depth > 0
+            && !redact_next
+            && value_start.is_none()
+            && let Some((text, consumed)) = json::sanitize_word(remaining, token_len, json_depth)
+        {
+            output.push_str(&text);
+            remaining = &remaining[consumed..];
+            separator_key = false;
+            json_tail = true;
+            continue;
         }
         let value_start = value_start.or_else(|| {
             bare.split_once('=')

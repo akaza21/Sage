@@ -273,22 +273,22 @@ fn decode_key(key: &str, escaped: bool) -> String {
                 }
             }
         }
-        if character == '\\' {
-            if let Some(escaped) = characters.clone().next() {
-                let decoded = match escaped {
-                    '"' | '\\' | '/' => Some(escaped),
-                    'n' => Some('\n'),
-                    'r' => Some('\r'),
-                    't' => Some('\t'),
-                    'b' => Some('\u{0008}'),
-                    'f' => Some('\u{000c}'),
-                    _ => None,
-                };
-                if let Some(decoded) = decoded {
-                    output.push(decoded);
-                    characters.next();
-                    continue;
-                }
+        if character == '\\'
+            && let Some(escaped) = characters.clone().next()
+        {
+            let decoded = match escaped {
+                '"' | '\\' | '/' => Some(escaped),
+                'n' => Some('\n'),
+                'r' => Some('\r'),
+                't' => Some('\t'),
+                'b' => Some('\u{0008}'),
+                'f' => Some('\u{000c}'),
+                _ => None,
+            };
+            if let Some(decoded) = decoded {
+                output.push(decoded);
+                characters.next();
+                continue;
             }
         }
         output.push(character);
