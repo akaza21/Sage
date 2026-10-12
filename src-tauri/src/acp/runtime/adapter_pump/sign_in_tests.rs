@@ -153,13 +153,20 @@ pub(super) fn migrated_database() -> Database {
 }
 
 fn migrated_database_with_turn_state(turn_state: &str) -> Database {
+    migrated_database_with_session(turn_state, "external-session")
+}
+
+pub(super) fn migrated_database_with_session(
+    turn_state: &str,
+    external_session_id: &str,
+) -> Database {
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection.execute_batch(&format!(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Sign in',1,1,1);
          INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','C:/fixture','c:/fixture',0);
          INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-one','project-one',0,'Sign in',0,1,1);
-         INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-one','project-one','chat-one',0,'binding','{digest}','external-session','{capabilities}','active','hot',0,0,0,1,1);
+         INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at) VALUES('session-one','project-one','chat-one',0,'binding','{digest}','{external_session_id}','{capabilities}','active','hot',0,0,0,1,1);
          INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project-one','chat-one','session-one',0,1);
          INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-one','chat-one','session-one',1,'running','{artifact}',1);
          INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-one','project-one','chat-one','session-one',1,0,'intent-one','{turn_state}','{delivery_state}',0,1,1);

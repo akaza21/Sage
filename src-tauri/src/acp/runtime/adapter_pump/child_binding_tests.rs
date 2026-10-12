@@ -16,8 +16,7 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
         let parent = "fixture-persisted-session-1";
         let native_turn = frames.iter().find_map(|frame| frame.pointer("/result/turn/id")
             .and_then(serde_json::Value::as_str)).unwrap();
-        let database = super::sign_in_tests::migrated_database();
-        database.connection().execute("UPDATE agent_sessions SET external_session_id=?1 WHERE id='session-one'", [parent]).unwrap();
+        let database = super::sign_in_tests::migrated_database_with_session("running", parent);
         let mut adapter = ready_codex_parent_for_thread(parent);
         adapter.enable_observed_goal_for_test();
         let prompt = adapter.command(AdapterCommand::Prompt {

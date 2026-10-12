@@ -114,15 +114,24 @@ fn correlated_in_frame_child_capacity_settles_without_poisoning_the_parent() {
         pump.write_child(&mut output, "child-1", "thread-1")
             .unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
-        let items =
-            vec![serde_json::json!({"id":"item","type":"agentMessage","text":"text"}); 1025];
-        let reply = codex_line(serde_json::json!({"id":request["id"],"result":{"thread":{
-            "id":"child-1","parentThreadId":"thread-1","turns":[{
-                "id":"child-turn","status":"completed","itemsView":"full","items":items
-            }]
-        }}}));
+        let items = (0..1025)
+            .map(|index| serde_json::json!({"id":format!("item-{index}"),"type":"agentMessage","text":"text"}))
+            .collect::<Vec<_>>();
+        let turns = items.chunks(512).enumerate().map(|(index, items)| {
+            serde_json::json!({"id":format!("child-turn-{index}"),"status":"completed",
+                "itemsView":"full","items":items})
+        }).collect::<Vec<_>>();
+        let reply = serde_json::json!({"id":request["id"],"result":{"thread":{
+            "id":"child-1","parentThreadId":"thread-1","turns":turns
+        }}});
+        let reply = codex_line(reply);
         assert!(reply.len() < 1_048_576);
+        let mut decoder = IncrementalFrameDecoder::new();
         for chunk in reply.chunks(8 * 1024) {
+            if let Some(frame) = decoder.push_chunk(chunk).unwrap() {
+                assert!(validate_structure(&frame).is_ok(),
+                    "capacity fixture must reach the child transcript total-item limit");
+            }
             pump.push_stdout_chunk(chunk, 11).await.unwrap();
             while pump.has_pending_stdout_input() {
                 pump.drain_stdout(11).await.unwrap();
