@@ -1,10 +1,9 @@
 use super::Mode;
 
-const SECRET_SUFFIXES: &[&str] = &[
+const SECRET_PARTS: &[&str] = &[
     "password",
     "passwd",
     "passphrase",
-    "secret",
     "credential",
     "privatekey",
     "apikey",
@@ -12,7 +11,6 @@ const SECRET_SUFFIXES: &[&str] = &[
     "secretkey",
     "cookie",
     "sessionid",
-    "token",
 ];
 
 pub(crate) fn sensitive_key(key: &str) -> bool {
@@ -24,17 +22,23 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
         .chars()
         .filter(|character| !matches!(character, '-' | '_' | '.' | '[' | ']'))
         .collect();
+    let normalized = normalized.trim_end_matches(|character: char| character.is_ascii_digit());
     if matches!(
-        normalized.as_str(),
+        normalized,
         "secrets"
             | "passwords"
             | "credentials"
             | "awsaccesskeyid"
             | "authorization"
             | "proxyauthorization"
-    ) || SECRET_SUFFIXES
-        .iter()
-        .any(|suffix| normalized.ends_with(suffix))
+    ) || SECRET_PARTS.iter().any(|part| normalized.contains(part))
+        || normalized
+            .match_indices("secret")
+            .any(|(index, _)| !normalized[index + 6..].starts_with("ary"))
+        || normalized.match_indices("token").any(|(index, _)| {
+            let suffix = &normalized[index + 5..];
+            !suffix.starts_with('s') && !suffix.starts_with("izer")
+        })
     {
         return true;
     }
@@ -60,7 +64,7 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
                 "session",
             ]
             .iter()
-            .chain(SECRET_SUFFIXES.iter())
+            .chain(SECRET_PARTS.iter())
             .any(|part| decoded[start..index].eq_ignore_ascii_case(part))
             {
                 return true;
@@ -112,19 +116,20 @@ pub(crate) fn is_sensitive_prose_flag(input: &str) -> bool {
     let flag = input.trim_matches(['"', '\'', '\x60', ',', ';']);
     flag.starts_with('-')
         && !attached_short_value(flag)
-        && !flag.contains('=')
+        && !flag.contains(['=', ':'])
         && (sensitive_flag(flag) || sensitive_key(flag))
 }
 
 pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
     let token = input.trim_matches(['"', '\'', '\x60', '(', ')', '[', ']', '{', '}', ',', ';']);
-    let assigned = token
-        .split_once('=')
-        .or_else(|| token.split_once(':'))
-        .is_some_and(|(key, value)| {
-            !value.is_empty()
-                && sensitive_assignment(key, if token.contains('=') { '=' } else { ':' }, value)
-        });
+    let assigned = token.split(['?', '&']).any(|part| {
+        part.split_once('=')
+            .or_else(|| part.split_once(':'))
+            .is_some_and(|(key, value)| {
+                !value.is_empty()
+                    && sensitive_assignment(key, if part.contains('=') { '=' } else { ':' }, value)
+            })
+    });
     assigned
         || inline_auth(token)
         || attached_short_value(token)
@@ -139,6 +144,22 @@ pub(crate) fn contains_token(value: &str) -> bool {
             continue;
         }
         let rest = &bytes[index..];
+        if rest.starts_with(b"AKIA") || rest.starts_with(b"ASIA") {
+            let tail = rest[4..]
+                .iter()
+                .take(17)
+                .take_while(|byte| byte.is_ascii_alphanumeric());
+            let (length, uppercase) = tail.fold((0usize, true), |(length, uppercase), byte| {
+                (
+                    length + 1,
+                    uppercase && (byte.is_ascii_uppercase() || byte.is_ascii_digit()),
+                )
+            });
+            if length == 16 && uppercase {
+                return true;
+            }
+            continue;
+        }
         let prefix = if rest.len() >= 3 && rest[..3].eq_ignore_ascii_case(b"sk-") {
             3
         } else if rest.len() >= 4 && rest[..4].eq_ignore_ascii_case(b"ghp_") {
@@ -149,8 +170,6 @@ pub(crate) fn contains_token(value: &str) -> bool {
             && rest[4] == b'-'
         {
             5
-        } else if rest.len() >= 4 && rest[..4].eq_ignore_ascii_case(b"AKIA") {
-            4
         } else {
             continue;
         };

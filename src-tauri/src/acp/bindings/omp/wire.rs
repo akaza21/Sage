@@ -39,21 +39,10 @@ pub(super) fn opaque_id(value: Option<&Value>) -> Result<String, WireError> {
         Some(Value::Number(value)) => value.to_string(),
         _ => return Err(WireError::Identity),
     };
-    if value.is_empty()
-        || value.len() as u64 > LIMITS.wire.external_id_bytes
-        || value.contains('\0')
-        || value.split_whitespace().any(is_sensitive)
-    {
+    if !text::valid_opaque_id(&value) {
         return Err(WireError::Identity);
     }
     Ok(value)
-}
-
-fn is_sensitive(token: &str) -> bool {
-    use crate::acp::redaction::text::{
-        Mode, credentials::is_sensitive_prose_token, paths::absolute_path,
-    };
-    is_sensitive_prose_token(token) || absolute_path(token, Mode::Permission).is_some()
 }
 
 struct UniqueValue(Value);

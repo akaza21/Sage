@@ -1,6 +1,19 @@
 use super::{Mode, redact};
 
 #[test]
+fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
+    let input = "0AKIA".repeat(65_536);
+    let started = std::time::Instant::now();
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        assert_eq!(
+            redact("test", &input, input.len() * 10, mode).unwrap(),
+            input
+        );
+    }
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[test]
 fn all_quote_forms_share_the_newline_bound() {
     for marker in ["KEY='", "KEY=prefix'", "--token '"] {
         for (newlines, tail_kept) in [(63, true), (64, false)] {

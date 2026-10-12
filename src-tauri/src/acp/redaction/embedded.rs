@@ -42,9 +42,18 @@ pub(super) fn redact<'a>(
             continue;
         }
         let Some(end) = quote_end(input, start + delimiter, escaped) else {
-            append(&mut output, &input[copied..start], maximum, field)?;
-            append(&mut output, "[redacted][secret limit]", maximum, field)?;
-            return Ok(Cow::Owned(output));
+            let Some(end) = super::spans::quote_end(
+                input,
+                start + delimiter,
+                b'"',
+                escaped,
+                input.len(),
+                Mode::Diagnostic,
+            ) else {
+                break;
+            };
+            cursor = end;
+            continue;
         };
         let decoded = decode_key(&input[start + delimiter..end - delimiter], escaped);
         if mode == Mode::Permission
@@ -56,8 +65,10 @@ pub(super) fn redact<'a>(
                 field: "permissionCommand",
             });
         }
-        let sanitized = super::redact(field, &decoded, maximum, Mode::Diagnostic)?
-            .replace("[path]", "[redacted]");
+        let sanitized = match mode {
+            Mode::Prose => super::prose::redact_prose(field, &decoded, maximum)?,
+            _ => super::command::redact(field, &decoded, maximum, mode)?,
+        };
         if sanitized != decoded {
             let mut encoded = sanitized.replace('\\', "\\\\").replace('"', "\\\"");
             if escaped {

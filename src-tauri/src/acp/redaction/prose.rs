@@ -73,7 +73,7 @@ pub(crate) fn redact_prose(
             )?;
         }
         secrets.redact("", whitespace, false);
-        paths.redact("", whitespace, PathMode::Prose);
+        paths.end_span(token);
         if !whitespace.is_empty() {
             value.escaped = false;
         }

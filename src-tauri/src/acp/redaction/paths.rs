@@ -20,17 +20,13 @@ pub(crate) struct PathContext {
 
 const HOME_PREFIXES: &[&str] = &["\\users\\", "\\home\\", "/users/", "/home/"];
 
-pub(crate) fn home_path(value: &str) -> bool {
-    let lower = normalized_slashes(value).to_ascii_lowercase();
-    HOME_PREFIXES.iter().any(|prefix| lower.contains(prefix))
-}
-
 impl PathContext {
     pub(crate) fn redact(&mut self, body: &str, whitespace: &str, mode: PathMode) -> bool {
         let normalized = normalized_slashes(body);
         let body = normalized.as_ref();
         let path = detect_absolute_path(body, mode);
-        let continuation = self.home_name || (self.windows && body.contains('\\'));
+        let continuation =
+            (self.home_name && body.contains(['\\', '/'])) || (self.windows && body.contains('\\'));
         if !body.is_empty() {
             if path.is_some() {
                 let lower = body.to_ascii_lowercase();
@@ -44,11 +40,18 @@ impl PathContext {
             }
             self.windows = path == Some(PathKind::Windows) || continuation;
         }
-        if whitespace.contains(['\n', '\r']) {
+        if whitespace.contains(['\n', '\r']) || body.contains([';', '|', '&']) {
             self.windows = false;
             self.home_name = false;
         }
         path.is_some() || continuation
+    }
+
+    pub(crate) fn end_span(&mut self, span: &str) {
+        if span.contains([';', '|', '&', '\n', '\r']) {
+            self.windows = false;
+            self.home_name = false;
+        }
     }
 }
 

@@ -85,7 +85,7 @@ redaction_case!(
 redaction_case!(
     windows_multiword_name_with_continuation,
     r"C:\Users\John Paul Smith\.ssh\id failed",
-    "[path] failed"
+    "[path] Paul [path] failed"
 );
 
 redaction_case!(
@@ -171,7 +171,7 @@ redaction_case!(
 redaction_case!(
     windows_name_with_continuation_hides_name,
     r"C:\Users\John Smith\file failed",
-    "[path] failed"
+    "[path] [path] failed"
 );
 
 redaction_case!(
@@ -243,7 +243,7 @@ redaction_case!(
 redaction_case!(
     windows_path_with_spaces,
     r"C:\Users\John Smith\.ssh\id",
-    "[path]"
+    "[path] [path]"
 );
 redaction_case!(
     unclosed_single_quoted_value_fails_closed,
@@ -306,9 +306,12 @@ fn over_budget_attached_values_fail_closed_with_a_marker() {
 }
 
 #[test]
-fn over_budget_windows_path_continuations_fail_closed() {
+fn long_windows_path_continuations_preserve_whitespace_without_path_values() {
     let input = format!(r"C:\Users\John{}Smith\.ssh\id", " ".repeat(2048));
-    assert_eq!(sanitize_diagnostic_text(&input), "[path]");
+    assert_eq!(
+        sanitize_diagnostic_text(&input),
+        format!("[path]{}[path]", " ".repeat(2048))
+    );
 }
 
 #[test]

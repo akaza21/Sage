@@ -66,16 +66,21 @@ pub(super) fn sanitize_word(
         };
         if !sensitive {
             if let Some((content_start, escaped)) = quoted_start {
-                if let Some(end) = quote_end(
+                let bounded_end = quote_end(
                     value,
                     content_start,
                     escaped,
                     (content_start + QUOTE_SCAN_LIMIT).min(value.len()),
-                ) {
+                );
+                if let Some(end) = quote_end(value, content_start, escaped, value.len()) {
                     output.push_str(&value[copied..secret_start]);
-                    if let Some(sanitized) =
-                        sanitize_span(value, secret_start, end, escaped, json_depth)
-                    {
+                    if let Some(sanitized) = sanitize_span(
+                        value,
+                        secret_start,
+                        end,
+                        escaped,
+                        if bounded_end.is_some() { json_depth } else { 1 },
+                    ) {
                         output.push_str(&sanitized);
                     } else {
                         output.push_str(&value[secret_start..end]);
@@ -87,9 +92,7 @@ pub(super) fn sanitize_word(
                         limit = cursor + word_len(&value[cursor..]);
                     }
                 } else {
-                    output.push_str(&value[copied..secret_start]);
-                    output.push_str("[redacted]");
-                    return Some((output, value.len()));
+                    break;
                 }
             }
             continue;

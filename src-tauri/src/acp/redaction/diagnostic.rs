@@ -8,7 +8,7 @@ use super::text::{
         attached_short_value, auth_scheme, contains_token, is_sensitive_prose_flag,
         sensitive_assignment, sensitive_key, url_userinfo,
     },
-    paths::{PathKind, PathMode, absolute_path, home_path},
+    paths::{PathContext, PathMode},
     pem::{redact_pem, scan_window},
 };
 
@@ -46,9 +46,12 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
     let mut remaining = value;
     let mut word_end = 0;
     let mut json_tail = false;
+    let mut paths = PathContext::default();
     while !remaining.is_empty() {
         let trimmed = remaining.trim_start_matches(char::is_whitespace);
-        output.push_str(&remaining[..remaining.len() - trimmed.len()]);
+        let whitespace = &remaining[..remaining.len() - trimmed.len()];
+        output.push_str(whitespace);
+        paths.redact("", whitespace, PathMode::Diagnostic);
         remaining = trimmed;
         if remaining.is_empty() {
             break;
@@ -64,6 +67,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str(token);
             redact_next = true;
             separator_key = false;
+            paths.end_span(token);
             remaining = &remaining[token_len..];
             continue;
         }
@@ -75,6 +79,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             && let Some((text, consumed)) = json::sanitize_word(remaining, token_len, json_depth)
         {
             output.push_str(&text);
+            paths.end_span(&remaining[..consumed]);
             remaining = &remaining[consumed..];
             separator_key = false;
             json_tail = true;
@@ -83,9 +88,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         let value_start = value_start.or_else(|| {
             bare.split_once('=')
                 .filter(|(key, value)| {
-                    sensitive_assignment(key, '=', value)
-                        && !value.is_empty()
-                        && !value.starts_with('=')
+                    !key.is_empty() && !value.is_empty() && !value.starts_with('=')
                 })
                 .map(|(key, _)| prefix.len() + key.len() + 1)
         });
@@ -175,7 +178,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             consumed = prefix.len() + length;
             let (_, _, ending) = diagnostic_word(&remaining[..consumed]);
             output.push_str(ending);
-        } else if contains_token(&lower) || attached_short_value(bare) {
+        } else if contains_token(bare) || attached_short_value(bare) {
             output.push_str(prefix);
             output.push_str("[redacted]");
             output.push_str(suffix);
@@ -185,29 +188,19 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str("[redacted]");
             output.push_str(&bare[end..]);
             output.push_str(suffix);
-        } else if let Some(kind) = absolute_path(bare, PathMode::Diagnostic) {
+        } else if paths.redact(bare, "", PathMode::Diagnostic) {
             output.push_str(prefix);
             output.push_str("[path]");
-            consumed = if kind == PathKind::Windows || home_path(bare) {
-                windows_path_len(remaining, token_len)
-            } else {
-                token_len
-            };
-            if consumed == token_len {
-                output.push_str(&bare[bare.trim_end_matches(':').len()..]);
-                output.push_str(suffix);
-            } else {
-                let (_, tail, ending) = diagnostic_word(&remaining[..consumed]);
-                output.push_str(&tail[tail.trim_end_matches(':').len()..]);
-                output.push_str(ending);
-            }
+            output.push_str(&bare[bare.trim_end_matches(':').len()..]);
+            output.push_str(suffix);
         } else {
             output.push_str(token);
             next = auth_scheme(&lower) || is_sensitive_prose_flag(bare);
         }
         separator_key = sensitive_key(&lower);
-        separator_colon_key = sensitive_assignment(lower.trim_end_matches(':'), ':', "value");
+        separator_colon_key = diagnostic_assignment(lower.trim_end_matches(':'), ':', "value");
         redact_next = next;
+        paths.end_span(&remaining[..consumed]);
         remaining = &remaining[consumed..];
         json_tail = false;
     }
@@ -231,7 +224,8 @@ fn assignment_start(token: &str, prefix: &str, bare: &str, suffix: &str) -> Opti
             .unwrap_or_default()
             .trim_matches(['"', '\'']);
         let value = &body[index + 1..];
-        if sensitive_assignment(key, '=', value)
+        if !key.is_empty()
+            && (!value.is_empty() || sensitive_key(key))
             && key.chars().all(|character| {
                 character.is_ascii_alphanumeric()
                     || matches!(character, '_' | '-' | '.' | ':' | '[' | ']')
@@ -249,7 +243,7 @@ fn assignment_start(token: &str, prefix: &str, bare: &str, suffix: &str) -> Opti
         return None;
     }
     let key = body[..index].trim_matches(['"', '\'']).to_ascii_lowercase();
-    if !sensitive_assignment(&key, ':', &body[index + 1..]) && !auth_scheme(&key) {
+    if !diagnostic_assignment(&key, ':', &body[index + 1..]) && !auth_scheme(&key) {
         return None;
     }
     let empty = body[index + 1..]
@@ -275,6 +269,14 @@ fn diagnostic_word(token: &str) -> (&str, &str, &str) {
         bare = &bare[..bare.len() - 1];
     }
     (&token[..prefix_len], bare, &bare_start[bare.len()..])
+}
+
+fn diagnostic_assignment(key: &str, separator: char, value: &str) -> bool {
+    sensitive_assignment(key, separator, value)
+        || (separator == ':'
+            && ["credentials", "passwords"]
+                .iter()
+                .any(|name| key.eq_ignore_ascii_case(name)))
 }
 
 fn scan_quoted_value(value: &str) -> QuoteScan {
@@ -316,52 +318,6 @@ fn scan_quoted_value(value: &str) -> QuoteScan {
     } else {
         QuoteScan::TokenOnly
     }
-}
-
-fn windows_path_len(value: &str, token_len: usize) -> usize {
-    let suffix = &value[token_len..];
-    let trimmed_suffix = suffix.trim_start_matches(char::is_whitespace);
-    let whitespace_len = suffix.len() - trimmed_suffix.len();
-    let window = scan_window(trimmed_suffix);
-    let mut remaining = window;
-    while !remaining.is_empty() {
-        let trimmed = remaining.trim_start_matches(char::is_whitespace);
-        let length = word_len(trimmed);
-        let continuation = &trimmed[..length];
-        if continuation.starts_with(['"', '\''])
-            || absolute_path(continuation, PathMode::Diagnostic).is_some()
-        {
-            return token_len;
-        }
-        let boundary = window.len() - trimmed.len() + length;
-        if boundary == window.len()
-            && window.len() < trimmed_suffix.len()
-            && (length == 0
-                || !trimmed_suffix[boundary..]
-                    .chars()
-                    .next()
-                    .is_some_and(char::is_whitespace))
-        {
-            let word_start = window.len() - trimmed.len();
-            let full = &trimmed_suffix[word_start..];
-            let full_length = word_len(full);
-            let full_word = &full[..full_length];
-            return if !full_word.starts_with('\\') && full_word.contains(['\\', '/']) {
-                token_len + whitespace_len + word_start + full_length
-            } else {
-                token_len
-            };
-        } else if continuation.starts_with('\\') {
-            return token_len;
-        } else if continuation.contains(['\\', '/']) {
-            return token_len + whitespace_len + boundary;
-        }
-        if length == 0 {
-            break;
-        }
-        remaining = &trimmed[length..];
-    }
-    token_len
 }
 
 #[cfg(test)]
