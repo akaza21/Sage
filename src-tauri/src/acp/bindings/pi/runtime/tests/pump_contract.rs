@@ -7,11 +7,14 @@ mod dialog_boundaries;
 mod dialog_replays;
 mod dialogs;
 mod discovery;
+mod error_redaction;
 mod fixture;
+mod images;
 mod journey;
 mod lifecycle_history;
 mod refresh_capacity;
 mod review_nits;
+mod turn_failures;
 
 use fixture::*;
 
@@ -65,7 +68,7 @@ fn row_frames(row: Row) -> Vec<Value> {
             json!({"type":"tool_execution_update","toolCallId":"read-content","partialResult":{"content":[{"type":"text","text":"Reading"}]}}),
             tool_end(
                 "read-content",
-                json!([{"type":"text","text":"Read"},{"type":"image","mimeType":"image/png","data":"aGVsbG8="}]),
+                json!([{"type":"text","text":"Read"},{"type":"image","mimeType":"image/png","data":"not-base64"}]),
             ),
             json!({"type":"compaction_start"}),
             json!({"type":"compaction_end","result":{}}),

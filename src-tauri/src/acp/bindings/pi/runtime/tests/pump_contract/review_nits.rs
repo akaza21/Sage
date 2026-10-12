@@ -171,7 +171,7 @@ async fn pi_pump_message_fallbacks_obey_full_unknown_kind_budget() {
 }
 
 #[tokio::test]
-async fn pi_pump_image_fallback_reports_pi_admission_gap() {
+async fn pi_pump_invalid_image_fallback_reports_shared_admission_reason() {
     let fixture = Fixture::new();
     let mut pump = fixture.pump(ready_adapter());
     start(&mut pump).await;
@@ -192,8 +192,9 @@ async fn pi_pump_image_fallback_reports_pi_admission_gap() {
     .unwrap();
     let events = fixture.observed.lock().unwrap().clone();
     assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item {
+        lifecycle: crate::acp::lifecycle::ItemLifecycle::Unsupported,
         payload: NormalizedPayload::Unsupported { external_kind, summary }, ..
-    } if external_kind.as_str() == "pi_image" && summary.as_str() == "Pi image output is not yet admitted")));
+    } if external_kind.as_str() == "pi_image" && summary.as_str() == "Image payload is not valid base64")));
     assert!(
         !serde_json::to_string(&events)
             .unwrap()

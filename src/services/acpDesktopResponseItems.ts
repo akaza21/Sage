@@ -285,7 +285,14 @@ export function safeItem(value: unknown): AcpItem | null {
             ...identity,
             kind: "error",
             toolState: null,
-            payload: { code, message, recoverable: payload.recoverable },
+            payload: {
+              code,
+              message,
+              recoverable: payload.recoverable,
+              ...(payload.kind === "attempt"
+                ? { kind: "attempt" as const }
+                : {}),
+            },
           }
         : null;
     }

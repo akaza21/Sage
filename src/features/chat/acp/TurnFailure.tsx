@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import type { TurnProjection } from "../../../domain/acp";
+import type { AcpItem, TurnProjection } from "../../../domain/acp";
 import { turnTerminalReasonLabels } from "./statusSemantics";
 
 export function TurnFailure({
@@ -12,7 +12,12 @@ export function TurnFailure({
 }) {
   const headingId = useId();
   if (turn.state !== "failed") return null;
-  const error = [...turn.items].reverse().find((item) => item.kind === "error");
+  const error = [...turn.items]
+    .reverse()
+    .find(
+      (item): item is Extract<AcpItem, { kind: "error" }> =>
+        item.kind === "error" && item.payload.kind !== "attempt",
+    );
   const message =
     turn.terminalReason?.message?.trim() ||
     error?.payload.message?.trim() ||

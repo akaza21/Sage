@@ -319,13 +319,19 @@ fn pi_read_tool_projects_bounded_result_without_losing_identity() {
 }
 
 #[test]
-fn pi_valid_and_invalid_read_images_are_visible_unsupported_without_bytes() {
-    for (epoch, data) in [
+fn pi_read_images_use_shared_admission_and_reject_invalid_payloads_without_bytes() {
+    for (epoch, media, data, admitted) in [
         (
             34,
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=",
+            "image/png",
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=".to_owned(),
+            true,
         ),
-        (35, "not-base64"),
+        (35, "image/png", "not-base64".to_owned(), false),
+        (36, "image/svg+xml", "PHN2Zy8+".to_owned(), false),
+        (37, "image/png", String::new(), false),
+        (38, "image/png", "A".repeat(262_144), false),
+        (39, "image/png", "A".repeat(crate::acp::intent::IMAGE_BASE64_MAX + 4), false),
     ] {
         let mut runtime = fixture_runtime(epoch);
         ready(&mut runtime);
@@ -346,30 +352,34 @@ fn pi_valid_and_invalid_read_images_are_visible_unsupported_without_bytes() {
                 &frame(json!({
                     "type":"tool_execution_end",
                     "toolCallId":"read-image",
-                    "result":{"content":[{"type":"image","mimeType":"image/png","data":data}]},
+                    "result":{"content":[{"type":"image","mimeType":media,"data":data}]},
                     "isError":false
                 })),
                 &Mapper,
             )
-            .expect("image fallback remains nonfatal");
-        assert!(batch.events().iter().any(|event| matches!(
+            .expect("image admission remains nonfatal");
+        assert_eq!(batch.events().iter().any(|event| matches!(
             event,
             AdapterEvent::Item {
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Unsupported,
-                payload: NormalizedPayload::Unsupported { external_kind, summary },
-                ..
-            } if external_kind.as_str() == "pi_image"
-                && summary.as_str() == "Pi image output is not yet admitted"
-        )));
-        assert!(!batch.events().iter().any(|event| matches!(
-            event,
-            AdapterEvent::Item {
+                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
                 payload: NormalizedPayload::Image { .. },
                 ..
             }
-        )));
-        let projected = serde_json::to_string(batch.events()).expect("events json");
-        assert!(!projected.contains(data));
+        )), admitted);
+        if admitted {
+            assert!(batch.events().iter().any(|event| matches!(event,
+                AdapterEvent::Item { payload: NormalizedPayload::Image { media_type, data: bytes, source }, .. }
+                    if media_type.as_str() == media && bytes.as_str() == data
+                    && *source == crate::acp::intent::ImageSource::Agent)));
+        } else {
+            assert!(batch.events().iter().any(|event| matches!(event,
+                AdapterEvent::Item { payload: NormalizedPayload::Unsupported { .. }, .. }
+                | AdapterEvent::Unsupported(_))));
+            let projected = serde_json::to_string(batch.events()).expect("events json");
+            if !data.is_empty() {
+                assert!(!projected.contains(&data));
+            }
+        }
     }
 }
 
@@ -405,6 +415,64 @@ fn pi_tool_snapshot_cache_rejects_aggregate_overflow() {
         runtime.command(AdapterCommand::Cancel),
         Err(AdapterRuntimeError::Operation)
     ));
+}
+
+#[test]
+fn pi_retry_notices_are_sanitized_deduplicated_and_bounded_to_32_per_turn() {
+    let mut runtime = fixture_runtime(73);
+    ready(&mut runtime);
+    running(&mut runtime);
+    for attempt in 1..=32 {
+        let retry = json!({"type":"auto_retry_start","attempt":attempt,
+            "errorMessage":"Unavailable sk-private Bearer private /secret token=private"});
+        let batch = runtime.ingest(&frame(retry.clone()), &Mapper).unwrap();
+        assert!(matches!(batch.events(), [AdapterEvent::Item {
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Failed,
+            payload: NormalizedPayload::Error { kind: Some(crate::acp::intent::ErrorKind::Attempt), message, .. }, ..
+        }] if message.as_str() == "Unavailable [redacted] Bearer [redacted] [path] [redacted]"));
+        let replay = runtime.ingest(&frame(retry), &Mapper).unwrap();
+        assert!(matches!(replay.events(), [AdapterEvent::IgnoredDuplicate]));
+    }
+    assert!(matches!(
+        runtime.ingest(
+            &frame(json!({"type":"auto_retry_start","attempt":33,"errorMessage":"Unavailable"})),
+            &Mapper
+        ),
+        Err(AdapterRuntimeError::Frame)
+    ));
+}
+
+#[test]
+fn pi_mixed_read_images_keep_valid_bytes_when_another_image_is_oversized() {
+    let mut runtime = fixture_runtime(74);
+    ready(&mut runtime);
+    running(&mut runtime);
+    runtime.ingest(&frame(json!({"type":"tool_execution_start","toolCallId":"mixed-images","toolName":"read"})), &Mapper).unwrap();
+    let batch = runtime.ingest(&frame(json!({"type":"tool_execution_end","toolCallId":"mixed-images",
+        "result":{"content":[
+            {"type":"image","mimeType":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII="},
+            {"type":"image","mimeType":"image/png","data":"A".repeat(crate::acp::intent::IMAGE_BASE64_MAX + 4)}
+        ]},"isError":false})), &Mapper).unwrap();
+    assert_eq!(
+        batch
+            .events()
+            .iter()
+            .filter(|event| matches!(
+                event,
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::Image { .. },
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::Unsupported(_)))
+    );
 }
 
 #[test]

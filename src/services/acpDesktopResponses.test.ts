@@ -147,6 +147,63 @@ function mutationWithEntityRevisions(revision: unknown): object {
 }
 
 describe("safeAcpMutationResponse", () => {
+  it.each([undefined, "attempt"])(
+    "decodes the optional error kind: %s",
+    (kind) => {
+      const response = mutation({
+        turns: [
+          turn({
+            items: [
+              item(0, {
+                kind: "error",
+                lifecycle: "failed",
+                payload: {
+                  code: "Renamed label",
+                  message: "Attempt cause",
+                  recoverable: false,
+                  ...(kind === undefined ? {} : { kind }),
+                },
+              }),
+            ],
+          }),
+        ],
+      });
+      expect(safeAcpMutationResponse(response)).toEqual(response);
+    },
+  );
+
+  it.each(["unknown", null, 1])(
+    "degrades an unknown error kind: %s",
+    (kind) => {
+      const decoded = safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "error",
+                  payload: {
+                    code: "label",
+                    message: "cause",
+                    recoverable: false,
+                    kind,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      );
+      const error = decoded?.projection.turns[0]?.items[0];
+      expect(error).toMatchObject({
+        kind: "error",
+        payload: { code: "label", message: "cause", recoverable: false },
+      });
+      expect(
+        error?.kind === "error" ? error.payload.kind : "missing",
+      ).toBeUndefined();
+    },
+  );
   it("accepts a bounded native Goal and isolates malformed Goal state", () => {
     const goal = {
       kind: "goal",

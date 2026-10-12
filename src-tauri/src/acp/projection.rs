@@ -213,6 +213,8 @@ pub enum ItemContent {
         offered_option_kinds: Option<BoundedVec<PermissionOptionKind, 8>>,
     },
     Error {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        kind: Option<super::intent::ErrorKind>,
         code: SafeText<128>,
         message: SafeText<8192>,
         recoverable: bool,

@@ -55,9 +55,10 @@ pub(super) fn tool_images(result: Option<&Value>) -> Result<Vec<AdapterOutput>, 
             .and_then(Value::as_str)
             .ok_or(AdapterError::Malformed)?;
         if media_type.len() > 64 || data.len() > crate::acp::intent::IMAGE_BASE64_MAX {
-            return Ok(vec![AdapterOutput::Unsupported {
+            images.push(AdapterOutput::Unsupported {
                 kind: "pi_image_oversize".into(),
-            }]);
+            });
+            continue;
         }
         images.push(AdapterOutput::Image {
             media_type: media_type.to_owned(),

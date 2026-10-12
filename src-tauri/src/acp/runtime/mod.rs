@@ -46,7 +46,7 @@ pub(crate) use process_driver::{
 mod projection_publisher;
 mod runtime_host;
 mod session_coordinator;
-mod terminal_detail;
+pub(crate) mod terminal_detail;
 
 #[allow(unused_imports)]
 pub(crate) use coordinator::{

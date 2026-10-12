@@ -127,6 +127,7 @@ impl OmpTranslator {
                     lifecycle: ItemLifecycle::Failed,
                     tool_state: None,
                     payload: NormalizedPayload::Error {
+                        kind: None,
                         code: SafeText::new("errorCode", "harnessRefusal")?,
                         message: SafeText::new("errorMessage", "Declined by OpenCode")?,
                         retryable: false,

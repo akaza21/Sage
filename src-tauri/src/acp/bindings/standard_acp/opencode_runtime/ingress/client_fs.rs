@@ -44,6 +44,7 @@ impl OpenCodeRuntime {
                 "OpenCode client file write refused: no current single-use approval for the sole pending tool and target, or filesystem safety check failed."
             };
             vec![AdapterEvent::Error(NormalizedPayload::Error {
+                kind: None,
                 code: SafeText::new("errorCode", "clientFileWriteRefused")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 message: SafeText::new("errorMessage", reason)

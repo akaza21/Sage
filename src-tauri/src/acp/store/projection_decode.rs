@@ -281,10 +281,12 @@ fn content(
             }
         }
         NormalizedPayload::Error {
+            kind,
             code,
             message,
             retryable,
         } => ItemContent::Error {
+            kind,
             code,
             message,
             recoverable: retryable,

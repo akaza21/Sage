@@ -1,6 +1,34 @@
 use super::*;
 
 #[test]
+fn attempt_error_kind_survives_durable_decode_and_projection() {
+    for kind in [None, Some("attempt")] {
+        let mut wire = serde_json::json!({"kind":"error","payload":{
+            "code":"Renamed label","message":"Attempt cause","retryable":false
+        }});
+        if let Some(kind) = kind {
+            wire["payload"]["kind"] = serde_json::json!(kind);
+        }
+        let payload: NormalizedPayload = serde_json::from_value(wire).unwrap();
+        let projected = content(
+            payload,
+            crate::acp::lifecycle::ItemLifecycle::Failed,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let encoded = serde_json::to_value(projected).unwrap();
+        assert_eq!(
+            encoded["payload"]
+                .get("kind")
+                .and_then(serde_json::Value::as_str),
+            kind
+        );
+    }
+}
+
+#[test]
 fn root_collaboration_item_without_activity_loads_from_history() {
     let payload = NormalizedPayload::Collaboration {
         label: SafeText::new("label", "Subagent").unwrap(),

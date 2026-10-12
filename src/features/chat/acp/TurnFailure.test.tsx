@@ -93,9 +93,9 @@ describe("TurnFailure", () => {
 
   it.each([
     ["terminal message", "Terminal cause", true],
-    ["latest error item", "Latest error", false],
+    ["latest error", "Latest error", false],
   ] as const)(
-    "uses the %s before the reason-label fallback",
+    "uses the %s before historical error items",
     (_source, expected, hasMessage) => {
       const turn = page("failed", {
         kind: "timeout",
@@ -115,6 +115,7 @@ describe("TurnFailure", () => {
         {
           id: "last-error",
           kind: "error",
+          lifecycle: "failed",
           payload: {
             code: "latest",
             message: "Latest error",
@@ -127,14 +128,91 @@ describe("TurnFailure", () => {
       expect(within(failure).getByText(expected)).toBeVisible();
       expect(failure).not.toHaveTextContent("Earlier error");
       expect(failure).not.toHaveTextContent("Timed out");
+      if (hasMessage) expect(failure).not.toHaveTextContent("Latest error");
     },
   );
+
+  it.each([
+    [false, "failed"],
+    [true, "failed"],
+    [false, "completed"],
+    [true, "completed"],
+  ] as const)(
+    "skips an attempt kind with teardown=%s and lifecycle=%s",
+    (hasTeardownError, lifecycle) => {
+      const turn = page("failed", { kind: "authRequired" }).turns[0];
+      turn.items = [
+        ...(hasTeardownError
+          ? [
+              {
+                id: "teardown-error",
+                kind: "error",
+                lifecycle: "failed",
+                payload: {
+                  code: "auth",
+                  message: "Harness authentication failed",
+                  recoverable: false,
+                },
+              } as never,
+            ]
+          : []),
+        {
+          id: "retry-error",
+          kind: "error",
+          lifecycle,
+          payload: {
+            kind: "attempt",
+            code: "Renamed attempt label",
+            message: "Earlier retry attempt failed",
+            recoverable: false,
+          },
+        } as never,
+      ];
+      render(<TurnFailure turn={turn} />);
+      const failure = screen.getByRole("group", { name: "Turn failed" });
+      expect(
+        within(failure).getByText(
+          hasTeardownError ? "Harness authentication failed" : "Not signed in",
+        ),
+      ).toBeVisible();
+      expect(failure).not.toHaveTextContent("Earlier retry attempt failed");
+    },
+  );
+
+  it("does not exclude a display label without an attempt kind", () => {
+    const turn = page("failed", { kind: "other" }).turns[0];
+    turn.items = [
+      {
+        kind: "error",
+        lifecycle: "failed",
+        payload: {
+          code: "Attempt failed",
+          message: "Harness teardown failed",
+          recoverable: false,
+        },
+      } as never,
+    ];
+    render(<TurnFailure turn={turn} />);
+    expect(screen.getByText("Harness teardown failed")).toBeVisible();
+  });
 
   it("shows no failure box for a completed turn", () => {
     render(<TurnFailure turn={page("completed").turns[0]} onRetry={vi.fn()} />);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("group", { name: "Turn failed" })).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("uses the latest error item for a legacy turn without a terminal reason", () => {
+    const turn = page("failed").turns[0];
+    turn.items = [
+      { kind: "error", payload: { message: "Earlier error" } } as never,
+      { kind: "error", payload: { message: "Latest error" } } as never,
+    ];
+    render(<TurnFailure turn={turn} />);
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    expect(within(failure).getByText("Latest error")).toBeVisible();
+    expect(failure).not.toHaveTextContent("Earlier error");
   });
 
   it("treats whitespace-only terminal and error messages as an unavailable cause", () => {

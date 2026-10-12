@@ -196,63 +196,8 @@ fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {
     }
 }
 
-pub(crate) fn sanitize_diagnostic_text(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut redact_next = false;
-    for part in value.split_inclusive(char::is_whitespace) {
-        let token = part.trim_end_matches(char::is_whitespace);
-        let whitespace = &part[token.len()..];
-        let bare = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
-            )
-        });
-        let bearer = bare.eq_ignore_ascii_case("bearer");
-        let embedded_bearer = bare
-            .get(..7)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer:"));
-        if redact_next || embedded_bearer || bare.contains("sk-") || bare.contains('=') {
-            output.push_str("[redacted]");
-        } else if contains_absolute_path(token) {
-            output.push_str("[path]");
-        } else {
-            output.push_str(token);
-        }
-        output.push_str(whitespace);
-        redact_next = bearer;
-    }
-    output
-}
-
-fn contains_absolute_path(token: &str) -> bool {
-    let lower = token.to_ascii_lowercase();
-    if lower.contains("file:///") || lower.contains("file://\\\\") {
-        return true;
-    }
-    let bytes = token.as_bytes();
-    for index in 0..bytes.len() {
-        let boundary = index == 0
-            || matches!(
-                bytes[index - 1],
-                b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'<' | b'=' | b',' | b';'
-            );
-        if !boundary {
-            continue;
-        }
-        let rest = &bytes[index..];
-        if rest.starts_with(b"\\\\")
-            || (rest.starts_with(b"/") && !rest.starts_with(b"//"))
-            || (rest.len() >= 3
-                && rest[0].is_ascii_alphabetic()
-                && rest[1] == b':'
-                && matches!(rest[2], b'\\' | b'/'))
-        {
-            return true;
-        }
-    }
-    false
-}
+mod diagnostic;
+pub(crate) use diagnostic::sanitize_diagnostic_text;
 
 #[cfg(test)]
 mod tests;

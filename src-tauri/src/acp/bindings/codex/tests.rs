@@ -1471,6 +1471,7 @@ fn pinned_error_notification_validates_identity_and_preserves_retryability() {
     assert!(matches!(
         events.as_slice(),
         [IncomingEvent::Error(NormalizedPayload::Error {
+            kind: None,
             code,
             message,
             retryable: true,

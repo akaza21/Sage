@@ -298,6 +298,7 @@ fn error_event(update: &Map<String, Value>) -> Result<AdapterEvent, TranslationE
         lifecycle: ItemLifecycle::Failed,
         tool_state: None,
         payload: NormalizedPayload::Error {
+            kind: None,
             code: SafeText::new("errorCode", "omp_acp_error")?,
             message: SafeText::new("errorMessage", "OMP reported a bounded ACP error")?,
             retryable,

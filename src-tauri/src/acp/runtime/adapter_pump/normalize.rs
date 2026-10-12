@@ -6,6 +6,7 @@ use super::{
 use sha2::{Digest, Sha256};
 
 mod critical;
+mod terminal_reason;
 pub(super) use critical::control_critical;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
@@ -33,6 +34,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         terminal: Option<TurnState>,
     ) -> Result<Option<NormalizedFact>, AdapterPumpError> {
         match event {
+            AdapterEvent::TerminalReason {
+                id,
+                reason,
+                message,
+            } if self.exact_turn(&id) && terminal.is_none() => Ok(Some(
+                terminal_reason::normalize(self.scope(), reason, message, now_millis),
+            )),
             AdapterEvent::Turn { id, state } if self.exact_turn(&id) => {
                 if terminal.is_some() {
                     return Ok(None);
@@ -283,6 +291,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             }
             AdapterEvent::SessionReady { id, .. } if !self.exact_session(&id) => Ok(None),
             AdapterEvent::Turn { .. }
+            | AdapterEvent::TerminalReason { .. }
             | AdapterEvent::Item { .. }
             | AdapterEvent::ChildThreadItem { .. }
             | AdapterEvent::FilePair { .. }

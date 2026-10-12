@@ -129,6 +129,7 @@ impl HarnessAdapter for Adapter {
                 return AdapterBatch::new(
                     vec![AdapterEvent::Error(
                         crate::acp::intent::NormalizedPayload::Error {
+                            kind: None,
                             code: crate::acp::contract::SafeText::new("code", "unexpected")
                                 .unwrap(),
                             message: crate::acp::contract::SafeText::new(

@@ -109,6 +109,7 @@ impl OpenCodeRuntime {
             return AdapterBatch::new(
                 vec![
                     SharedEvent::Error(NormalizedPayload::Error {
+                        kind: None,
                         code: SafeText::new("errorCode", code)
                             .map_err(|_| AdapterRuntimeError::Frame)?,
                         message: SafeText::new("errorMessage", message)

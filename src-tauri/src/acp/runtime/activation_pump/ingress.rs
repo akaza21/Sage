@@ -212,6 +212,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 | AdapterEvent::Acknowledged
                 | AdapterEvent::SteerResponse { .. }
                 | AdapterEvent::Turn { .. }
+                | AdapterEvent::TerminalReason { .. }
                 | AdapterEvent::Item { .. }
                 | AdapterEvent::ChildThreadItem { .. }
                 | AdapterEvent::ChildLiveItem { .. }

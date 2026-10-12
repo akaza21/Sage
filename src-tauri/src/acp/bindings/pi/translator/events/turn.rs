@@ -36,6 +36,12 @@ impl PiTranslator {
             Some("aborted") => TerminalOutcome::Interrupted,
             _ => TerminalOutcome::Completed,
         };
+        turn.settlement_message = if turn.settlement_outcome == TerminalOutcome::Failed {
+            failure_detail(message.and_then(|message| message.get("errorMessage")))
+                .or_else(|| turn.settlement_message.take())
+        } else {
+            None
+        };
         Ok(message
             .and_then(|message| message.get("usage"))
             .map(|usage| AdapterOutput::Usage {
@@ -53,9 +59,78 @@ impl PiTranslator {
         }
         let outcome = if turn.abort_requested || turn.authority_denied {
             TerminalOutcome::Interrupted
+        } else if turn.retry_failed {
+            TerminalOutcome::Failed
         } else {
             turn.settlement_outcome
         };
         self.finish_turn(outcome)
     }
+
+    pub(super) fn retry_start(
+        &mut self,
+        value: &Value,
+    ) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let Some(attempt) = value
+            .get("attempt")
+            .and_then(Value::as_u64)
+            .filter(|attempt| *attempt > 0)
+        else {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        };
+        let turn = self.session_turn()?;
+        if turn.retry_attempt == Some(attempt) {
+            return Ok(vec![AdapterOutput::DuplicateIgnored]);
+        }
+        if turn.retry_notices >= 32 {
+            return Err(AdapterError::Limit("retry notices per Turn"));
+        }
+        turn.retry_attempt = Some(attempt);
+        turn.retry_notices += 1;
+        turn.retry_failed = false;
+        turn.retry_final_error = None;
+        turn.settlement_message =
+            failure_detail(value.get("errorMessage")).or_else(|| turn.settlement_message.take());
+        Ok(turn
+            .settlement_message
+            .clone()
+            .map(|message| AdapterOutput::AttemptFailed { message })
+            .into_iter()
+            .collect())
+    }
+
+    pub(super) fn retry_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {
+        let Some(success) = value.get("success").and_then(Value::as_bool) else {
+            return Ok(vec![AdapterOutput::Absorbed]);
+        };
+        let turn = self.session_turn()?;
+        if success {
+            turn.settlement_message = None;
+            turn.retry_attempt = None;
+            turn.retry_failed = false;
+            turn.retry_final_error = None;
+        } else {
+            turn.retry_failed = true;
+            turn.retry_final_error = failure_detail(value.get("finalError"));
+        }
+        Ok(vec![AdapterOutput::Absorbed])
+    }
+}
+
+pub(super) fn failure_detail(value: Option<&Value>) -> Option<String> {
+    let detail = value?.as_str()?;
+    let detail: String = detail
+        .chars()
+        .filter_map(|character| {
+            if !character.is_control() || matches!(character, '\n' | '\t') {
+                Some(character)
+            } else {
+                character.is_whitespace().then_some(' ')
+            }
+        })
+        .collect();
+    if detail.trim().is_empty() {
+        return None;
+    }
+    crate::acp::runtime::terminal_detail::protocol_error(detail.trim())
 }

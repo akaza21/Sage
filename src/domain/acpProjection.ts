@@ -179,7 +179,10 @@ export type AcpItem =
         > | null;
       }
     >
-  | PlainItem<"error", { code: string; message: string; recoverable: boolean }>
+  | PlainItem<
+      "error",
+      { kind?: "attempt"; code: string; message: string; recoverable: boolean }
+    >
   | PlainItem<
       "unsupported",
       { category: string; summary: string; truncated: boolean }

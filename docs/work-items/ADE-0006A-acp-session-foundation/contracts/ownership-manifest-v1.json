@@ -201,6 +201,7 @@
         "src-tauri/src/acp/image_admit.rs",
         "src-tauri/src/acp/intent.rs",
         "src-tauri/src/acp/intent/capability.rs",
+        "src-tauri/src/acp/intent/error_kind.rs",
         "src-tauri/src/acp/intent/file_change.rs",
         "src-tauri/src/acp/intent/tool_category.rs",
         "src-tauri/src/acp/lifecycle.rs",
@@ -221,7 +222,11 @@
         "src-tauri/src/acp/redaction/",
         "src-tauri/src/acp/transport/"
       ],
-      "files": ["src-tauri/src/bin/acp_adversarial_fixture.rs"]
+      "files": [
+        "src-tauri/src/acp/redaction/diagnostic/canaries.rs",
+        "src-tauri/src/acp/redaction/diagnostic/secrets.rs",
+        "src-tauri/src/bin/acp_adversarial_fixture.rs"
+      ]
     },
     {
       "owner": "p2-runtime-store",

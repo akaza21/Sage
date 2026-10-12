@@ -122,6 +122,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             message,
             retryable,
         } => NormalizedPayload::Error {
+            kind: None,
             code: SafeText::new("errorCode", code)?,
             message: SafeText::new("errorMessage", message)?,
             retryable,

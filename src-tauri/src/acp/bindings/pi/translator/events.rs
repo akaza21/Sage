@@ -46,10 +46,7 @@ impl PiTranslator {
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
-        if matches!(kind, "turn_start" | "turn_end")
-            || kind.starts_with("auto_retry_")
-            || kind.starts_with("summarization_retry_")
-        {
+        if matches!(kind, "turn_start" | "turn_end") || kind.starts_with("summarization_retry_") {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         match kind {
@@ -62,12 +59,15 @@ impl PiTranslator {
                     return Err(AdapterError::EventSequence);
                 }
                 turn.event_phase = EventPhase::AgentRunning;
+                turn.settlement_message = None;
                 Ok(vec![AdapterOutput::TurnRunning {
                     turn_key: turn.turn_key.clone(),
                 }])
             }
             "agent_end" => self.agent_end(value),
             "agent_settled" => self.agent_settled(),
+            "auto_retry_start" => self.retry_start(value),
+            "auto_retry_end" => self.retry_end(value),
             "message_start" => {
                 self.live_turn()?;
                 if !assistant_message(value) {
@@ -78,26 +78,7 @@ impl PiTranslator {
                 }])
             }
             "message_update" => self.message_update(value),
-            "message_end" => {
-                self.live_turn()?;
-                if !assistant_message(value) {
-                    return Ok(Vec::new());
-                }
-                let outcome = match value
-                    .get("message")
-                    .and_then(|message| message.get("stopReason"))
-                    .and_then(Value::as_str)
-                {
-                    Some("aborted") => TerminalOutcome::Interrupted,
-                    Some("error") => TerminalOutcome::Failed,
-                    _ => TerminalOutcome::Completed,
-                };
-                let mut output = self.complete_thought(outcome);
-                output.push(AdapterOutput::TextCompleted {
-                    external_id: message_id(value)?,
-                });
-                Ok(output)
-            }
+            "message_end" => self.message_end(value),
             "tool_execution_start" => self.tool_start(value),
             "tool_execution_update" => self.tool_update(value),
             "tool_execution_end" => self.tool_end(value),
@@ -189,6 +170,14 @@ impl PiTranslator {
             None => {
                 turn.terminal = Some(incoming);
                 let mut events = Vec::new();
+                if incoming == TerminalOutcome::Failed && turn.event_phase == EventPhase::AgentEnded
+                {
+                    let message = turn
+                        .retry_final_error
+                        .take()
+                        .or_else(|| turn.settlement_message.take());
+                    events.push(AdapterOutput::FailureDetail { message });
+                }
                 if turn.thought_active {
                     turn.thought_active = false;
                     events.push(AdapterOutput::ThoughtCompleted { outcome: incoming });

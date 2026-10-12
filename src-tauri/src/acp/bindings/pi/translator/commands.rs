@@ -88,6 +88,11 @@ impl PiTranslator {
             compaction_active: false,
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
+            settlement_message: None,
+            retry_attempt: None,
+            retry_notices: 0,
+            retry_failed: false,
+            retry_final_error: None,
             unknown_kinds: Default::default(),
             unknown_suppression_emitted: false,
         });

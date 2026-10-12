@@ -4,7 +4,7 @@ use crate::acp::{
         ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload,
         PageCursor, Prompt, SafeResourceRef, UnavailableResourceReason,
     },
-    lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState, TurnState},
+    lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState, TurnState, TurnTerminalReason},
     limits::LIMITS,
     projection::ActivityRole,
     transport::{Frame, OutboundFrame},
@@ -103,6 +103,11 @@ pub(crate) enum AdapterEvent {
     Turn {
         id: AdapterIdentity,
         state: TurnState,
+    },
+    TerminalReason {
+        id: AdapterIdentity,
+        reason: TurnTerminalReason,
+        message: Option<crate::acp::contract::SafeText<8192>>,
     },
     Item {
         id: AdapterIdentity,

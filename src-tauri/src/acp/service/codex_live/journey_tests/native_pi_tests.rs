@@ -160,23 +160,40 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                     let page = setup.page(&owner);
                     let turn = &page.turns.as_slice()[0];
                     assert_eq!(turn.session_id, owner.session_id);
+                    let assistant_attempts = turn
+                        .items
+                        .as_slice()
+                        .iter()
+                        .filter(|item| {
+                            matches!(
+                                &item.content,
+                                ItemContent::Text {
+                                    role: TextRole::Assistant,
+                                    ..
+                                }
+                            )
+                        })
+                        .collect::<Vec<_>>();
                     assert_eq!(
-                        turn.items
-                            .as_slice()
-                            .iter()
-                            .filter(|item| {
-                                item.lifecycle == ItemLifecycle::Completed
-                                    && matches!(
-                                        &item.content,
-                                        ItemContent::Text {
-                                            role: TextRole::Assistant,
-                                            ..
-                                        }
-                                    )
-                            })
-                            .count(),
+                        assistant_attempts.len(),
                         2,
                         "both assistant attempts persist under the same Turn"
+                    );
+                    assert_eq!(
+                        assistant_attempts
+                            .iter()
+                            .map(|item| item.lifecycle)
+                            .collect::<Vec<_>>(),
+                        [ItemLifecycle::Failed, ItemLifecycle::Completed]
+                    );
+                    assert_ne!(assistant_attempts[0].id, assistant_attempts[1].id);
+                    assert!(
+                        matches!(&assistant_attempts[0].content, ItemContent::Text { text, .. }
+                        if text.as_str() == "Synthetic replay.\n\nThe synthetic example is available for native replay review.\n\nSynthetic replay completed.")
+                    );
+                    assert!(
+                        matches!(&assistant_attempts[1].content, ItemContent::Text { text, .. }
+                        if text.as_str() == "Synthetic retry completed.")
                     );
                 }
                 if case == "pi-idle-config-journey" {

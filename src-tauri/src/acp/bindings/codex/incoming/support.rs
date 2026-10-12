@@ -303,6 +303,7 @@ pub(super) fn error_payload(
         return Err(IngressError::Content);
     }
     Ok(NormalizedPayload::Error {
+        kind: None,
         code: SafeText::new("errorCode", code).map_err(content)?,
         message: SafeText::new("errorMessage", sanitize(message)).map_err(content)?,
         retryable,

@@ -19,6 +19,8 @@ mod config_reply;
 mod delivery;
 mod dialog;
 mod errors;
+#[cfg(test)]
+pub(super) use errors::ATTEMPT_FAILURE_CODE;
 mod identity;
 mod image;
 mod permission;
@@ -204,6 +206,8 @@ impl PiRuntime {
                 self.deny = None;
                 (Some(event), None)
             }
+            AdapterOutput::FailureDetail { message } => (Some(self.failure_detail(message)?), None),
+            AdapterOutput::AttemptFailed { message } => (Some(self.attempt_failed(message)?), None),
             AdapterOutput::TextStarted { external_id } => {
                 let id = self.start_text(external_id)?;
                 (
@@ -243,10 +247,18 @@ impl PiRuntime {
             }
             AdapterOutput::ThoughtStarted => (Some(self.start_thought()?), None),
             AdapterOutput::ThoughtCompleted { outcome } => (self.complete_thought(outcome)?, None),
-            AdapterOutput::TextCompleted { external_id } => {
+            AdapterOutput::TextCompleted {
+                external_id,
+                outcome,
+            } => {
                 let (id, snapshot) = self.complete_text(external_id)?;
+                let lifecycle = match outcome {
+                    TerminalOutcome::Completed => ItemLifecycle::Completed,
+                    TerminalOutcome::Failed => ItemLifecycle::Failed,
+                    TerminalOutcome::Interrupted => ItemLifecycle::Cancelled,
+                };
                 (
-                    Some(self.item(id, ItemLifecycle::Completed, None, text_payload(snapshot))?),
+                    Some(self.item(id, lifecycle, None, text_payload(snapshot))?),
                     None,
                 )
             }
@@ -353,9 +365,12 @@ impl PiRuntime {
                 self.block_authority(external_id, tool, resources)?
             }
             AdapterOutput::DialogCancelled { external_id } => self.cancel_dialog(external_id)?,
-            AdapterOutput::Image { .. } => (Some(self.image_event()?), None),
+            AdapterOutput::Image { media_type, data } => {
+                (Some(self.image_event(media_type, data)?), None)
+            }
             AdapterOutput::Error { code } => (
                 Some(AdapterEvent::Error(NormalizedPayload::Error {
+                    kind: None,
                     code: SafeText::new("errorCode", code)
                         .map_err(|_| AdapterRuntimeError::Frame)?,
                     message: SafeText::new("errorMessage", "Pi RPC command failed")

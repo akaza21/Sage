@@ -114,6 +114,7 @@ fn assert_failed_history(database: &Database) {
                 code,
                 message,
                 recoverable,
+                ..
             } => Some((code.as_str(), message.as_str(), *recoverable)),
             _ => None,
         })

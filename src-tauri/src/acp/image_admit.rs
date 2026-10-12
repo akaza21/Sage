@@ -37,6 +37,14 @@ pub(crate) fn admit_image_parts(
     encoded: &str,
 ) -> Result<NormalizedPayload, ImageAdmitError> {
     let bytes = decode_std_base64(encoded)?;
+    let matches_media = match media_type {
+        ImageMediaType::Png => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        ImageMediaType::Jpeg => bytes.starts_with(b"\xff\xd8\xff"),
+        ImageMediaType::Webp => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
+    };
+    if !matches_media {
+        return Err(ImageAdmitError::UnsupportedMediaType);
+    }
     let data = encode_std_base64(&bytes);
     let payload = NormalizedPayload::Image {
         media_type,
@@ -218,6 +226,59 @@ mod tests {
         };
         assert_eq!(media_type, ImageMediaType::Png);
         assert_eq!(data.as_str(), PNG_1X1);
+    }
+
+    #[test]
+    fn image_admission_requires_matching_raster_magic_bytes() {
+        let samples = [
+            (ImageMediaType::Png, b"\x89PNG\r\n\x1a\n".as_slice()),
+            (ImageMediaType::Jpeg, b"\xff\xd8\xff\xe0".as_slice()),
+            (ImageMediaType::Webp, b"RIFF\x04\0\0\0WEBP".as_slice()),
+        ];
+        for (actual_media, bytes) in samples {
+            let encoded = encode_std_base64(bytes);
+            for (declared_media, _) in samples {
+                let admitted = admit_image_parts(declared_media, &encoded);
+                if declared_media == actual_media {
+                    assert!(
+                        matches!(admitted, Ok(NormalizedPayload::Image { media_type, data, .. })
+                        if media_type == actual_media && data.as_str() == encoded)
+                    );
+                } else {
+                    assert_eq!(admitted, Err(ImageAdmitError::UnsupportedMediaType));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn image_admission_rejects_non_images_short_headers_and_gif() {
+        for bytes in [
+            b"hello".as_slice(),
+            b"\x89PNG\r\n\x1a".as_slice(),
+            b"\xff\xd8".as_slice(),
+            b"RIFF\x04\0\0\0WEB".as_slice(),
+            b"RIFF\x04\0\0\0WAVE".as_slice(),
+            b"GIF87a".as_slice(),
+            b"GIF89a".as_slice(),
+        ] {
+            for media_type in [
+                ImageMediaType::Png,
+                ImageMediaType::Jpeg,
+                ImageMediaType::Webp,
+            ] {
+                assert_eq!(
+                    admit_image_parts(media_type, &encode_std_base64(bytes)),
+                    Err(ImageAdmitError::UnsupportedMediaType)
+                );
+            }
+        }
+        assert_eq!(
+            admit_image_data_url(
+                "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+            ),
+            Err(ImageAdmitError::UnsupportedMediaType)
+        );
     }
 
     #[test]

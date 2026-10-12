@@ -99,6 +99,12 @@ pub enum AdapterOutput {
         turn_key: String,
         outcome: TerminalOutcome,
     },
+    FailureDetail {
+        message: Option<String>,
+    },
+    AttemptFailed {
+        message: String,
+    },
     TextStarted {
         external_id: Option<String>,
     },
@@ -116,6 +122,7 @@ pub enum AdapterOutput {
     },
     TextCompleted {
         external_id: Option<String>,
+        outcome: TerminalOutcome,
     },
     CompactionStarted,
     CompactionCompleted,

@@ -60,6 +60,7 @@ fn runtime_items_reload_losslessly_and_the_identical_batch_is_a_no_op() {
             &fixture.owner,
             "error-one",
             NormalizedPayload::Error {
+                kind: None,
                 code: SafeText::new("code", "providerError").unwrap(),
                 message: SafeText::new("message", "safe message").unwrap(),
                 retryable: true,

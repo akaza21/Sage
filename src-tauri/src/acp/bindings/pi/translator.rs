@@ -81,6 +81,11 @@ struct ActiveTurn {
     compaction_active: bool,
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
+    settlement_message: Option<String>,
+    retry_attempt: Option<u64>,
+    retry_notices: u8,
+    retry_failed: bool,
+    retry_final_error: Option<String>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
 }

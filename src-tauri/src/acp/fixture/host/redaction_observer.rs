@@ -131,6 +131,7 @@ fn persist_diagnostic(
 ) {
     let message = serde_json::to_string(&diagnostic).unwrap();
     let payload = NormalizedPayload::Error {
+        kind: None,
         code: SafeText::new("errorCode", "sensitiveInputRedacted").unwrap(),
         message: SafeText::new("errorMessage", message).unwrap(),
         retryable: false,

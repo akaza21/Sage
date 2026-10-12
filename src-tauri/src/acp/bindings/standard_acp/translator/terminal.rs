@@ -94,6 +94,7 @@ impl StandardAcpTranslator {
                 lifecycle: ItemLifecycle::Failed,
                 tool_state: None,
                 payload: NormalizedPayload::Error {
+                    kind: None,
                     code: SafeText::new("errorCode", error_code)?,
                     message: normalized_text("errorMessage", message)?,
                     retryable: false,
@@ -119,6 +120,7 @@ impl StandardAcpTranslator {
                 lifecycle: ItemLifecycle::Failed,
                 tool_state: None,
                 payload: NormalizedPayload::Error {
+                    kind: None,
                     code: SafeText::new("errorCode", "harnessRefusal")?,
                     message: SafeText::new("errorMessage", format!("Declined by {harness}"))?,
                     retryable: false,

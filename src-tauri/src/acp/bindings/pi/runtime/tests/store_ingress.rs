@@ -15,7 +15,7 @@ fn assistant_message(content: Value, stop_reason: &str) -> Value {
 }
 
 #[test]
-fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflicts() {
+fn pi_consecutive_turn_items_and_images_ingest_without_identity_conflicts() {
     let mut connection = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
         .expect("migrated store");
     let mut runtime = fixture_runtime(71);
@@ -48,7 +48,7 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
         )
         .unwrap();
     let mut completed = Vec::new();
-    let mut image_notices = Vec::new();
+    let mut images = Vec::new();
     for ordinal in 0..2 {
         let client = format!("client-store-{ordinal}");
         let turn_id = SageTurnId::parse(format!("turn-store-{ordinal}")).unwrap();
@@ -145,10 +145,6 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
                 } = event
                 {
                     assert_eq!(id.turn_client_message_id.as_ref().unwrap().as_str(), client);
-                    assert!(
-                        !matches!(payload, NormalizedPayload::Image { .. }),
-                        "images must fail closed until shared durable admission exists"
-                    );
                     let bytes = serde_json::to_vec(payload).unwrap();
                     let digest = format!("{:x}", Sha256::digest(bytes));
                     let mutation = apply_item_ingress(
@@ -169,13 +165,9 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
                         },
                     )
                     .expect("distinct durable item identity across turns");
-                    if let NormalizedPayload::Unsupported { external_kind, .. } = payload {
-                        assert_eq!(external_kind.as_str(), "pi_image");
-                        assert_eq!(
-                            *lifecycle,
-                            crate::acp::lifecycle::ItemLifecycle::Unsupported
-                        );
-                        image_notices.push(mutation.item_id.as_str().to_owned());
+                    if let NormalizedPayload::Image { .. } = payload {
+                        assert_eq!(*lifecycle, crate::acp::lifecycle::ItemLifecycle::Completed);
+                        images.push(mutation.item_id.as_str().to_owned());
                     }
                     if lifecycle.is_terminal()
                         && matches!(
@@ -183,7 +175,7 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
                             NormalizedPayload::Text { .. }
                                 | NormalizedPayload::ThoughtSummary { .. }
                                 | NormalizedPayload::CompactionNotice
-                                | NormalizedPayload::Unsupported { .. }
+                                | NormalizedPayload::Image { .. }
                         )
                     {
                         kinds.insert(payload.kind().as_str());
@@ -194,7 +186,7 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
         }
         assert_eq!(
             kinds,
-            BTreeSet::from(["text", "thoughtSummary", "compactionNotice", "unsupported"])
+            BTreeSet::from(["text", "thoughtSummary", "compactionNotice", "image"])
         );
         connection
             .execute(
@@ -205,6 +197,6 @@ fn pi_consecutive_turn_items_and_image_fallbacks_ingest_without_identity_conflic
     }
     assert_eq!(completed.len(), 10);
     assert_eq!(completed.into_iter().collect::<BTreeSet<_>>().len(), 10);
-    assert_eq!(image_notices.len(), 2);
-    assert_eq!(image_notices.into_iter().collect::<BTreeSet<_>>().len(), 2);
+    assert_eq!(images.len(), 2);
+    assert_eq!(images.into_iter().collect::<BTreeSet<_>>().len(), 2);
 }

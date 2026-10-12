@@ -209,7 +209,7 @@ fn terminal_only_error_is_sanitized_before_the_failed_turn_and_duplicate_is_abso
         panic!()
     };
     assert!(matches!(events.as_slice(), [
-        IncomingEvent::Error(NormalizedPayload::Error { code, message, retryable: false }),
+        IncomingEvent::Error(NormalizedPayload::Error { code, message, retryable: false, .. }),
         IncomingEvent::Turn { state: TurnState::Failed, .. }
     ] if code.as_str() == "codex" && message.as_str() == "Failed with [redacted] at [path]"));
     assert_eq!(

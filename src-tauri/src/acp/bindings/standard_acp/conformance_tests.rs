@@ -217,6 +217,7 @@ fn observed_event(event: &AdapterEvent) -> Option<Value> {
                     code,
                     message,
                     retryable,
+                    ..
                 } => json!({
                     "event": "error",
                     "code": code.as_str(),
