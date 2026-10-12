@@ -52,6 +52,8 @@ async function expectControls(
   controls: Locator,
   viewport: { width: number; height: number },
   scrollControls = false,
+  // A queue that scrolls as one block keeps its controls' local offsets.
+  checkOverlap = !scrollControls,
 ) {
   const boxes = [];
   for (const control of await controls.all()) {
@@ -102,7 +104,7 @@ async function expectControls(
       x: box!.x - boundary!.x,
       y: box!.y - boundary!.y,
     };
-    if (!scrollControls) {
+    if (checkOverlap) {
       for (const sibling of boxes) {
         const intersectionWidth =
           Math.min(localBox.x + localBox.width, sibling.x + sibling.width) -
@@ -198,10 +200,13 @@ async function expectComposerControls(
       const owner = await composer.boundingBox();
       expect(box!.y + box!.height).toBeLessThanOrEqual(owner!.y);
     }
+    // Narrow queues live in the scrollable composer body.
     await expectControls(
       queue,
       queue.locator('button, [tabindex="0"]'),
       viewport,
+      narrow,
+      true,
     );
   }
 }

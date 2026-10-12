@@ -148,6 +148,13 @@
   .workbench--agent .acp-turn {
     column-gap: 0;
   }
+
+  .workbench--agent
+    .message-list__content:has(> .acp-chat-projection)
+    > .chat-transcript-actions {
+    width: min(100%, var(--reading-measure));
+    margin-inline-start: max(0px, calc((100% - var(--reading-measure)) / 2));
+  }
 }
 
 .workbench-sidebar-splitter {
