@@ -137,10 +137,12 @@ export function TitleBar({
           <button
             className="title-bar__search"
             type="button"
+            title="Search files"
+            aria-label="Search files"
             onClick={() => setSidebarView("search")}
           >
             <FileSearch size={14} aria-hidden="true" />
-            Search files
+            <span className="title-bar__search-label">Search files</span>
           </button>
         ) : sessionTitle ? (
           <h1 className="title-bar__session">{sessionTitle}</h1>

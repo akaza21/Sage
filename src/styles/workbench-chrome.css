@@ -386,10 +386,11 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 640px) {
   .title-bar {
     grid-template-columns: auto minmax(0, 1fr) auto;
     column-gap: 8px;
+    padding-inline: 8px;
   }
 
   .title-bar__center {
@@ -397,15 +398,14 @@
   }
 
   .title-bar__search {
-    width: 100%;
-    min-width: 0;
-    max-width: 160px;
+    width: var(--control-height-compact);
+    min-width: var(--control-height-compact);
+    max-width: var(--control-height-compact);
+    padding: 0;
   }
-}
 
-@media (max-width: 640px) {
-  .title-bar {
-    padding-inline: 8px;
+  .title-bar__search-label {
+    display: none;
   }
 
   .title-bar__start {

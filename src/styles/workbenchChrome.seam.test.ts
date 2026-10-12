@@ -3,6 +3,27 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+/** Concatenated bodies of every `@media <query>` block, brace-matched. */
+function mediaBlock(css: string, query: string) {
+  const bodies: string[] = [];
+  const opener = `@media ${query} {`;
+  for (
+    let start = css.indexOf(opener);
+    start !== -1;
+    start = css.indexOf(opener, start + opener.length)
+  ) {
+    let depth = 0;
+    for (let index = start + opener.length - 1; index < css.length; index++) {
+      if (css[index] === "{") depth++;
+      else if (css[index] === "}" && --depth === 0) {
+        bodies.push(css.slice(start + opener.length, index));
+        break;
+      }
+    }
+  }
+  return bodies.join("\n");
+}
+
 describe("Workbench chrome stylesheet seam", () => {
   it("uses the measured Agent centre and right-panel chrome", async () => {
     const css = await readFile(
@@ -94,16 +115,29 @@ describe("Workbench chrome stylesheet seam", () => {
     expect(chromeCss).toMatch(
       /\.tab-strip__new\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*100%;/s,
     );
-    expect(chromeCss).toMatch(
-      /@media \(max-width: 760px\)\s*\{[\s\S]*?\.title-bar\s*\{[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/,
+    const narrow = mediaBlock(chromeCss, "(max-width: 640px)");
+    expect(narrow).toMatch(
+      /\.title-bar\s*\{[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/,
     );
-    expect(chromeCss).toMatch(
-      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.title-bar__wordmark,\s*\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
+    expect(chromeCss).not.toMatch(
+      /@media \(max-width: 760px\)\s*\{[^@]*\.title-bar\s*\{/,
     );
-    expect(chromeCss).not.toMatch(/flex-wrap:\s*wrap;/);
-    expect(chromeCss).not.toMatch(/"center center"/);
-    expect(chromeCss).toMatch(
-      /@media \(max-width: 640px\)\s*\{[\s\S]*?\.title-bar__chat-search--pill\s*\{[^}]*width:\s*var\(--title-bar-search-height\);[^}]*justify-content:\s*center;/,
+    expect(narrow).toMatch(
+      /\.title-bar__wordmark,\s*\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
+    );
+    expect(narrow).toMatch(/\.title-bar__start\s*\{[^}]*\}/);
+    expect(narrow.match(/\.title-bar__start\s*\{([^}]*)\}/)?.[1]).not.toMatch(
+      /flex-wrap:\s*wrap;/,
+    );
+    expect(narrow).not.toMatch(/"center center"/);
+    expect(narrow).toMatch(
+      /\.title-bar__chat-search--pill\s*\{[^}]*width:\s*var\(--title-bar-search-height\);[^}]*justify-content:\s*center;/,
+    );
+    expect(narrow).toMatch(
+      /\.title-bar__search\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*padding:\s*0;/,
+    );
+    expect(narrow).toMatch(
+      /\.title-bar__search-label\s*\{[^}]*display:\s*none;/,
     );
   });
 

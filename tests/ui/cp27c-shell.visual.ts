@@ -6,15 +6,28 @@ import {
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
+// Sub-pixel layout (fractional row heights, scrollIntoView alignment) may
+// overshoot a container edge by less than one device pixel.
+const SUBPIXEL = 0.5;
+
 function expectInside(bounds: Bounds, container: Bounds) {
-  expect(bounds.x).toBeGreaterThanOrEqual(container.x);
-  expect(bounds.y).toBeGreaterThanOrEqual(container.y);
+  expect(bounds.x).toBeGreaterThanOrEqual(container.x - SUBPIXEL);
+  expect(bounds.y).toBeGreaterThanOrEqual(container.y - SUBPIXEL);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(
-    container.x + container.width,
+    container.x + container.width + SUBPIXEL,
   );
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(
-    container.y + container.height,
+    container.y + container.height + SUBPIXEL,
   );
+}
+
+function expectDisjoint(first: Bounds, second: Bounds) {
+  expect(
+    first.x + first.width <= second.x ||
+      second.x + second.width <= first.x ||
+      first.y + first.height <= second.y ||
+      second.y + second.height <= first.y,
+  ).toBe(true);
 }
 
 async function expectContained(locator: Locator, page: Page) {
@@ -28,10 +41,7 @@ async function expectContained(locator: Locator, page: Page) {
   return bounds!;
 }
 
-async function expectHitTarget(control: Locator, page: Page) {
-  const bounds = await expectContained(control, page);
-  expect(bounds.width).toBeGreaterThanOrEqual(24);
-  expect(bounds.height).toBeGreaterThanOrEqual(24);
+async function expectHitTestable(control: Locator) {
   expect(
     await control.evaluate((node) => {
       const rect = node.getBoundingClientRect();
@@ -45,26 +55,149 @@ async function expectHitTarget(control: Locator, page: Page) {
   ).toBe(true);
 }
 
+async function expectHitTarget(control: Locator, page: Page) {
+  const bounds = await expectContained(control, page);
+  expect(bounds.width).toBeGreaterThanOrEqual(24);
+  expect(bounds.height).toBeGreaterThanOrEqual(24);
+  await expectHitTestable(control);
+}
+
+/**
+ * The 24px status bar holds 23px controls under its 1px top border (an
+ * established, pre-CP-27c size). They stay reachable when they fill the
+ * bar's inner height, are at least 24px wide and receive the hit.
+ */
+async function expectStatusBarTarget(control: Locator, page: Page) {
+  const bounds = await expectContained(control, page);
+  const bar = await expectContained(page.locator(".status-bar"), page);
+  expectInside(bounds, bar);
+  expect(bounds.width).toBeGreaterThanOrEqual(24);
+  expect(bounds.height).toBeGreaterThanOrEqual(bar.height - 1);
+  await expectHitTestable(control);
+}
+
 async function expectTitleBar(page: Page) {
   const titleBar = page.locator(".title-bar");
   const bounds = await expectContained(titleBar, page);
-  const agent = titleBar.getByRole("radio", { name: "Agent", exact: true });
-  expect(bounds.height).toBe((await agent.isChecked()) ? 48 : 40);
+  // One row: never the old wrapped two-row narrow title bar.
+  expect(bounds.height).toBeLessThanOrEqual(48);
   let previousRight = bounds.x;
   for (const area of ["start", "center", "end"]) {
     const rect = await expectContained(
       titleBar.locator(`.title-bar__${area}`),
       page,
     );
+    expectInside(rect, bounds);
     expect(rect.x).toBeGreaterThanOrEqual(previousRight);
     previousRight = rect.x + rect.width;
   }
+  const modes: Bounds[] = [];
   for (const mode of ["Agent", "Editor"]) {
-    await expectHitTarget(
-      titleBar.getByRole("radio", { name: mode, exact: true }).locator(".."),
-      page,
-    );
+    const label = titleBar
+      .getByRole("radio", { name: mode, exact: true })
+      .locator("..");
+    await expectHitTarget(label, page);
+    await expect(label).toHaveText(mode);
+    expect(
+      await label.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    modes.push((await label.boundingBox())!);
   }
+  expect(modes[0].y).toBe(modes[1].y);
+  expectDisjoint(modes[0], modes[1]);
+}
+
+async function editorControlsReachable(page: Page) {
+  await openScenario(page, "editor", "editor");
+  await expectTitleBar(page);
+  await page.getByRole("button", { name: "Hide left sidebar" }).click();
+  const editor = page.getByRole("textbox", {
+    name: "Edit src/workbench/AgentChatPanes.tsx",
+    exact: true,
+  });
+  await expect(editor).toBeVisible();
+  await expectContained(page.locator(".file-editor-stage"), page);
+  const search = page
+    .locator(".title-bar")
+    .getByRole("button", { name: "Search files", exact: true });
+  await expectHitTarget(search, page);
+  // Icon-only or labelled, the pill never clips its label mid-word.
+  expect(
+    await search.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await editor.press("Control+f");
+  const find = page.getByRole("search", { name: "Find in file" });
+  await find.getByRole("textbox", { name: "Find text" }).fill("ChatSurface");
+  await expectContained(find, page);
+  for (const name of [
+    "Previous match",
+    "Next match",
+    "Match case",
+    "Close find",
+  ]) {
+    await expectHitTarget(find.getByRole("button", { name }), page);
+  }
+  await find.getByRole("button", { name: "Close find" }).click();
+  await search.click();
+  const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+  // At 760px and below the tool sidebar is a modal drawer over the editor.
+  await expectContained(drawer, page);
+  await expectStatusBarTarget(
+    page.getByRole("button", { name: "Hide left sidebar" }),
+    page,
+  );
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expectNoViewportOverflow(page);
+}
+
+async function settingsContained(page: Page) {
+  await openScenario(page, "editor", "editor");
+  await page.getByRole("button", { name: "Hide left sidebar" }).click();
+  await page.getByRole("button", { name: "Open settings" }).click();
+  await expectTitleBar(page);
+  const settings = page.getByRole("region", { name: "Settings", exact: true });
+  const surface = await expectContained(settings, page);
+  await expectHitTarget(settings.getByRole("searchbox"), page);
+  const fontSize = settings.getByRole("combobox", { name: "Font size" });
+  await fontSize.scrollIntoViewIfNeeded();
+  await expectHitTarget(fontSize, page);
+  await settings.getByRole("tab", { name: "Keyboard", exact: true }).click();
+  const rows = settings.locator(".settings-surface__keymap tr");
+  await expect(rows.first()).toBeVisible();
+  for (const row of await rows.all()) {
+    await row.scrollIntoViewIfNeeded();
+    const rowBounds = await expectContained(row, page);
+    expectInside(rowBounds, surface);
+    const label = await expectContained(row.locator("th"), page);
+    const shortcut = await expectContained(row.locator("td"), page);
+    expectInside(label, rowBounds);
+    expectInside(shortcut, rowBounds);
+    expectDisjoint(label, shortcut);
+  }
+  await settings.getByRole("tab", { name: "Editor", exact: true }).click();
+  await page.evaluate(async () => {
+    const { useEditorAppearanceStore } =
+      await import("/src/app/editorAppearanceStore.ts");
+    useEditorAppearanceStore.setState({
+      persistencePhase: "error",
+      persistenceMessage:
+        "Editor settings could not be saved. Your changes remain in this window; retry when storage is available.",
+    });
+  });
+  const error = settings.getByRole("alert");
+  await error.scrollIntoViewIfNeeded();
+  expectInside(await expectContained(error, page), surface);
+  await expectHitTarget(error.getByRole("button", { name: "Retry" }), page);
+  // The last setting stays reachable: Settings scrolls inside its own
+  // surface instead of being clipped by the editor canvas.
+  const reset = settings.getByRole("button", {
+    name: "Reset Editor Appearance",
+  });
+  await reset.scrollIntoViewIfNeeded();
+  expectInside(await expectContained(reset, page), surface);
+  await expectHitTestable(reset);
+  await expectNoViewportOverflow(page);
 }
 
 for (const width of [480, 720]) {
@@ -75,102 +208,13 @@ for (const width of [480, 720]) {
       test("keeps Editor file, find and tool drawer controls reachable", async ({
         page,
       }) => {
-        await openScenario(page, "editor", "editor");
-        await expectTitleBar(page);
-        await page.getByRole("button", { name: "Hide left sidebar" }).click();
-        const editor = page.getByRole("textbox", {
-          name: "Edit src/workbench/AgentChatPanes.tsx",
-          exact: true,
-        });
-        await expect(editor).toBeVisible();
-        await expectContained(page.locator(".file-editor-stage"), page);
-        const search = page.getByRole("button", { name: "Search files" });
-        await expectHitTarget(search, page);
-        await editor.press("Control+f");
-        const find = page.getByRole("search", { name: "Find in file" });
-        await find
-          .getByRole("textbox", { name: "Find text" })
-          .fill("ChatSurface");
-        await expectContained(find, page);
-        for (const name of [
-          "Previous match",
-          "Next match",
-          "Match case",
-          "Close find",
-        ]) {
-          await expectHitTarget(find.getByRole("button", { name }), page);
-        }
-        await find.getByRole("button", { name: "Close find" }).click();
-        await search.click();
-        const drawer = page.locator(
-          '.workbench--editor .sidebar[role="dialog"]',
-        );
-        await expectContained(drawer, page);
-        await expectHitTarget(
-          page.getByRole("button", { name: "Hide left sidebar" }),
-          page,
-        );
-        await page.keyboard.press("Escape");
-        await expect(drawer).toHaveCount(0);
-        await expectNoViewportOverflow(page);
+        await editorControlsReachable(page);
       });
 
       test("contains Settings selectors, keyboard rows and persistence errors", async ({
         page,
       }) => {
-        await openScenario(page, "editor", "editor");
-        await page.getByRole("button", { name: "Hide left sidebar" }).click();
-        await page.getByRole("button", { name: "Open settings" }).click();
-        await expectTitleBar(page);
-        const settings = page.getByRole("region", {
-          name: "Settings",
-          exact: true,
-        });
-        await expectContained(settings, page);
-        await expectHitTarget(settings.getByRole("searchbox"), page);
-        await expectHitTarget(
-          settings.getByRole("combobox", { name: "Font size" }),
-          page,
-        );
-        await settings
-          .getByRole("tab", { name: "Keyboard", exact: true })
-          .click();
-        const rows = settings.locator(".settings-surface__keymap tr");
-        await expect(rows.first()).toBeVisible();
-        for (const row of await rows.all()) {
-          await row.scrollIntoViewIfNeeded();
-          const rowBounds = await expectContained(row, page);
-          const label = await expectContained(row.locator("th"), page);
-          const shortcut = await expectContained(row.locator("td"), page);
-          expectInside(label, rowBounds);
-          expectInside(shortcut, rowBounds);
-          expect(
-            label.x + label.width <= shortcut.x ||
-              shortcut.x + shortcut.width <= label.x ||
-              label.y + label.height <= shortcut.y ||
-              shortcut.y + shortcut.height <= label.y,
-          ).toBe(true);
-        }
-        await settings
-          .getByRole("tab", { name: "Editor", exact: true })
-          .click();
-        await page.evaluate(async () => {
-          const { useEditorAppearanceStore } =
-            await import("/src/app/editorAppearanceStore.ts");
-          useEditorAppearanceStore.setState({
-            persistencePhase: "error",
-            persistenceMessage:
-              "Editor settings could not be saved. Your changes remain in this window; retry when storage is available.",
-          });
-        });
-        const error = settings.getByRole("alert");
-        await error.scrollIntoViewIfNeeded();
-        await expectContained(error, page);
-        await expectHitTarget(
-          error.getByRole("button", { name: "Retry" }),
-          page,
-        );
-        await expectNoViewportOverflow(page);
+        await settingsContained(page);
       });
 
       test("keeps Editor Diff scrolling local and terminal error controls reachable", async ({
@@ -207,13 +251,26 @@ for (const width of [480, 720]) {
         });
         await page.getByRole("button", { name: "Hide left sidebar" }).click();
         const surface = page.locator(".diff-surface");
-        await expectContained(surface, page);
+        const surfaceBefore = await expectContained(surface, page);
         const scroll = surface.locator(".diff-editor");
-        await expectContained(scroll, page);
+        expectInside(await expectContained(scroll, page), surfaceBefore);
         await expect(scroll).toHaveCSS("overflow-x", "auto");
-        expect(
-          await scroll.evaluate((node) => node.scrollWidth > node.clientWidth),
-        ).toBe(true);
+        // Horizontal diff scrolling stays inside the diff editor: scrolling it
+        // to its far edge never scrolls the surface or the page.
+        const scrolled = await scroll.evaluate((node) => {
+          node.scrollLeft = node.scrollWidth;
+          const surfaceNode = node.closest(".diff-surface")!;
+          return {
+            local: node.scrollLeft,
+            max: node.scrollWidth - node.clientWidth,
+            surface: surfaceNode.scrollLeft,
+            page: document.scrollingElement!.scrollLeft,
+          };
+        });
+        expect(Math.abs(scrolled.local - scrolled.max)).toBeLessThanOrEqual(1);
+        expect(scrolled.surface).toBe(0);
+        expect(scrolled.page).toBe(0);
+        expect(await surface.boundingBox()).toEqual(surfaceBefore);
         await expectHitTarget(
           surface.getByRole("button", { name: "Refresh diff" }),
           page,
@@ -229,10 +286,10 @@ for (const width of [480, 720]) {
           name: "Terminal",
           exact: true,
         });
-        const terminalBounds = await expectContained(terminal, page);
+        const expanded = await expectContained(terminal, page);
         const diffBounds = await expectContained(surface, page);
         expect(diffBounds.y + diffBounds.height).toBeLessThanOrEqual(
-          terminalBounds.y,
+          expanded.y,
         );
         await expect(terminal.getByRole("status")).toHaveText(
           "Terminal is unavailable on this platform.",
@@ -247,14 +304,23 @@ for (const width of [480, 720]) {
         });
         await expectHitTarget(collapse, page);
         await collapse.click();
-        expect((await expectContained(terminal, page)).height).toBe(34);
         const expand = terminal.getByRole("button", {
           name: "Expand terminal",
           exact: true,
         });
         await expectHitTarget(expand, page);
+        const collapsed = await expectContained(terminal, page);
+        expect(collapsed.height).toBeLessThan(expanded.height);
+        expectInside((await expand.boundingBox())!, collapsed);
+        const diffWithCollapsed = await expectContained(surface, page);
+        expect(diffWithCollapsed.height).toBeGreaterThan(diffBounds.height);
+        expect(
+          diffWithCollapsed.y + diffWithCollapsed.height,
+        ).toBeLessThanOrEqual(collapsed.y);
         await expand.click();
-        await expectContained(terminal, page);
+        expect((await expectContained(terminal, page)).height).toBe(
+          expanded.height,
+        );
         await expectNoViewportOverflow(page);
       });
 
@@ -262,18 +328,23 @@ for (const width of [480, 720]) {
         page,
       }) => {
         await openScenario(page, "editor", "editor");
+        await page.evaluate(async () => {
+          const fixtures =
+            await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+          fixtures.installVisualExplorerActionFixture();
+        });
         const opener = page
-          .getByRole("button", { name: "New file", exact: true })
-          .first();
+          .getByLabel("Explorer project tools", { exact: true })
+          .getByRole("button", { name: "New File", exact: true });
         await expectHitTarget(opener, page);
         await opener.click();
         const dialog = page.getByRole("dialog", {
-          name: "New file",
+          name: "New File",
           exact: true,
         });
         const input = dialog.getByRole("textbox", {
-          name: "file name",
-          exact: false,
+          name: "File name",
+          exact: true,
         });
         const basename = `${"unbroken".repeat(24)}.txt`;
         await input.fill(basename);
@@ -321,10 +392,9 @@ for (const width of [480, 720]) {
         for (const content of [input, preview, cancel, create]) {
           expectInside((await content.boundingBox())!, contentBounds);
         }
-        const cancelBounds = await cancel.boundingBox();
-        const createBounds = await create.boundingBox();
-        expect(cancelBounds!.x + cancelBounds!.width).toBeLessThanOrEqual(
-          createBounds!.x,
+        expectDisjoint(
+          (await cancel.boundingBox())!,
+          (await create.boundingBox())!,
         );
         await cancel.click();
         await expect(dialog).toHaveCount(0);
@@ -334,23 +404,37 @@ for (const width of [480, 720]) {
       test("preserves the labelled mode toggle with a long Agent title", async ({
         page,
       }) => {
-        await openScenario(page, "editor", "editor");
-        await page.evaluate(async () => {
+        await openScenario(page, "agent-dual", "agent");
+        const longTitle = `Chat: ${"Long title ".repeat(20).trim()}`;
+        await page.evaluate(async (title) => {
           const { useWorkbenchStore } = await import("/src/app/store.ts");
           useWorkbenchStore.setState((state) => ({
             tabs: state.tabs.map((tab) =>
-              tab.kind === "chat"
-                ? { ...tab, title: `Chat: ${"Long title ".repeat(20)}` }
-                : tab,
+              tab.kind === "chat" ? { ...tab, title } : tab,
             ),
           }));
-        });
+        }, longTitle);
         const titleBar = page.locator(".title-bar");
-        await titleBar
-          .getByRole("radio", { name: "Agent", exact: true })
-          .locator("..")
-          .click();
+        const session = titleBar.getByRole("heading", { level: 1 });
+        await expect(session).toContainText("Long title Long title");
         await expectTitleBar(page);
+        const center = await expectContained(
+          titleBar.locator(".title-bar__center"),
+          page,
+        );
+        expectInside((await session.boundingBox())!, center);
+        // The title is capped in JS and, when still too wide, ellipsized on
+        // one line inside the centre track; it never pushes the toggle.
+        expect(
+          await session.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return (
+              style.textOverflow === "ellipsis" &&
+              style.whiteSpace === "nowrap" &&
+              node.textContent!.endsWith("…")
+            );
+          }),
+        ).toBe(true);
         await expectHitTarget(
           titleBar.getByRole("button", { name: "Search chats" }),
           page,
@@ -361,10 +445,38 @@ for (const width of [480, 720]) {
           .click();
         await expectTitleBar(page);
         await expectHitTarget(
+          titleBar.getByRole("button", { name: "Search files", exact: true }),
+          page,
+        );
+        await expectHitTarget(
           titleBar.getByRole("button", { name: "Open settings" }),
           page,
         );
+        await titleBar
+          .getByRole("radio", { name: "Agent", exact: true })
+          .locator("..")
+          .click();
+        await expectTitleBar(page);
+        await expect(session).toContainText("Long title Long title");
       });
     });
   }
 }
+
+// The window is 480 wide at minimum but may be tall; Editor and Settings
+// must use the extra height without leaving controls outside the viewport.
+test.describe("CP-27c 480x1000 none", () => {
+  test.use({ viewport: { width: 480, height: 1000 } });
+
+  test("keeps Editor file, find and tool drawer controls reachable", async ({
+    page,
+  }) => {
+    await editorControlsReachable(page);
+  });
+
+  test("contains Settings selectors, keyboard rows and persistence errors", async ({
+    page,
+  }) => {
+    await settingsContained(page);
+  });
+});
