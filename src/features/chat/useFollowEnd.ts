@@ -48,6 +48,13 @@ export function useFollowEnd({
   const showJumpToLatest = jumpState.ownerKey === ownerKey && jumpState.visible;
   const frameRef = useRef<number | null>(null);
   const jumpingRef = useRef(false);
+  // A programmatic anchor is travelling toward the end. Its own scroll events
+  // (for example the steps of a smooth scroll whose target went stale when the
+  // pane narrowed) are not the reader leaving the end, so they must not turn
+  // following off. Cleared on arrival, on reader input, on any scroll back
+  // toward the start, and on owner change.
+  const anchoringRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
 
   useEffect(() => {
@@ -61,8 +68,10 @@ export function useFollowEnd({
 
   useEffect(() => {
     jumpingRef.current = false;
+    anchoringRef.current = false;
+    lastScrollTopRef.current = transcriptRef.current?.scrollTop ?? 0;
     return cancelFrame;
-  }, [cancelFrame, ownerKey]);
+  }, [cancelFrame, ownerKey, transcriptRef]);
 
   const anchorToEnd = useCallback(
     (behavior: ScrollBehavior) => {
@@ -72,6 +81,7 @@ export function useFollowEnd({
         return;
       }
       const top = transcript.scrollHeight - transcript.clientHeight;
+      if (Math.abs(top - transcript.scrollTop) > 1) anchoringRef.current = true;
       if (typeof transcript.scrollTo === "function") {
         transcript.scrollTo({ behavior, top });
         return;
@@ -99,13 +109,22 @@ export function useFollowEnd({
   useEffect(() => {
     const transcript = transcriptRef.current;
     if (!transcript) return;
-    transcript.addEventListener("wheel", interruptJump);
-    transcript.addEventListener("pointerdown", interruptJump);
-    transcript.addEventListener("touchstart", interruptJump);
+    const readerInput = () => {
+      anchoringRef.current = false;
+      interruptJump();
+    };
+    const readerKey = () => {
+      anchoringRef.current = false;
+    };
+    transcript.addEventListener("wheel", readerInput);
+    transcript.addEventListener("pointerdown", readerInput);
+    transcript.addEventListener("touchstart", readerInput);
+    transcript.addEventListener("keydown", readerKey);
     return () => {
-      transcript.removeEventListener("wheel", interruptJump);
-      transcript.removeEventListener("pointerdown", interruptJump);
-      transcript.removeEventListener("touchstart", interruptJump);
+      transcript.removeEventListener("wheel", readerInput);
+      transcript.removeEventListener("pointerdown", readerInput);
+      transcript.removeEventListener("touchstart", readerInput);
+      transcript.removeEventListener("keydown", readerKey);
     };
   }, [interruptJump, ownerKey, transcriptRef]);
 
@@ -130,6 +149,9 @@ export function useFollowEnd({
         });
         return;
       }
+      // A travelling anchor stays marked until it truly lands: the threshold
+      // alone would clear it while its stale smooth steps are still due.
+      if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
       if (transcriptIsAtEnd(current)) return;
       anchorToEnd("auto");
     });
@@ -142,15 +164,29 @@ export function useFollowEnd({
 
   const updateFollowEnd = useCallback(() => {
     const current = transcriptRef.current;
-    if (current && !jumpingRef.current && !transcriptIsAtEnd(current))
-      followingEndRef.current = false;
+    if (current) {
+      // This hook only ever travels toward the end, so a step back toward the
+      // start belongs to the reader even without a wheel or pointer event.
+      if (current.scrollTop < lastScrollTopRef.current - 1)
+        anchoringRef.current = false;
+      lastScrollTopRef.current = current.scrollTop;
+      if (
+        !jumpingRef.current &&
+        !anchoringRef.current &&
+        !transcriptIsAtEnd(current)
+      )
+        followingEndRef.current = false;
+    }
     if (frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
       const transcript = transcriptRef.current;
       if (transcript) {
-        if (jumpingRef.current) {
-          if (transcriptIsAtEnd(transcript)) jumpingRef.current = false;
+        if (jumpingRef.current || anchoringRef.current) {
+          if (transcriptIsAtEnd(transcript)) {
+            jumpingRef.current = false;
+            anchoringRef.current = false;
+          }
           return;
         }
         setFollowState({

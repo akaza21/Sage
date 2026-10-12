@@ -317,6 +317,85 @@ describe("useFollowEnd", () => {
     expect(view.result.current.showJumpToLatest).toBe(true);
   });
 
+  it("keeps following when its own anchor scroll steps through a stale target", () => {
+    const { scrollTo, transcript, view } = mountFollowEnd();
+    // A new revision anchors toward the end of the wide layout.
+    measure(transcript, { clientHeight: 633, scrollHeight: 649, scrollTop: 0 });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    expect(scrollTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ top: 16 }),
+    );
+    // Layout settles within the follow threshold before the travel starts.
+    act(() => growTranscript());
+
+    // The pane narrows before that travel lands; its first scroll step reports
+    // a position more than the follow threshold away from the new end.
+    measure(transcript, { clientHeight: 617, scrollHeight: 700, scrollTop: 7 });
+    act(() => view.result.current.updateFollowEnd());
+    expect(view.result.current.followingEnd).toBe(true);
+
+    scrollTo.mockClear();
+    act(() => growTranscript());
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 83 });
+  });
+
+  it("lets reader input during an anchor scroll leave the end", () => {
+    const { scrollTo, transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+
+    act(() =>
+      transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })),
+    );
+    act(() => view.result.current.updateFollowEnd());
+    expect(view.result.current.followingEnd).toBe(false);
+
+    scrollTo.mockClear();
+    act(() => growTranscript());
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("treats a scroll back toward the start during an anchor as the reader's", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 900,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(true);
+
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(false);
+    expect(view.result.current.showJumpToLatest).toBe(true);
+  });
+
   it("does not re-show the pill from resize while a jump begins", () => {
     const { transcript, view } = mountFollowEnd();
     measure(transcript, {
