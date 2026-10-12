@@ -80,8 +80,6 @@ export function parseArgs(args) {
     !["1888", "720", "480"].includes(values["--width"])
   )
     fail("arguments");
-  if (width === 480)
-    fail("width-480-blocked-by-product-minimum-720-owner-decision-required");
   requireNativeCase(harness, state);
   const responsiveWidth = {
     "responsive-wide": 1888,

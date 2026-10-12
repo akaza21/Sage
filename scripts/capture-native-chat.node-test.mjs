@@ -114,7 +114,7 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
   return { cdp, clicks, archived, observation, expectedClicks };
 }
 
-for (const width of [1888, 720])
+for (const width of [1888, 720, 480])
   test(`fresh capture archives only the disposable welcome chat at ${width}`, async () => {
     const boundary = captureChatBoundary(width, "claude");
     const captureChat = await prepareCaptureChat(
@@ -198,20 +198,26 @@ const args = [
   "--width",
   "720",
 ];
-test("480 capture requests fail before setup with the product minimum width", () => {
+test("480 capture requests match the native minimum without lowering its height", () => {
   const config = JSON.parse(
     readFileSync(
       new URL("../src-tauri/tauri.conf.json", import.meta.url),
       "utf8",
     ),
   );
-  assert.equal(config.app.windows[0].minWidth, 720);
+  assert.equal(config.app.windows[0].minWidth, 480);
+  assert.equal(config.app.windows[0].minHeight, 560);
   for (const harness of ["codex", "claude", "pi"])
     for (const state of ["turn-completed", "responsive-480"])
-      assert.throws(
-        () =>
-          parseArgs(["--harness", harness, "--state", state, "--width", "480"]),
-        /width-480-blocked-by-product-minimum-720-owner-decision-required/u,
+      assert.deepEqual(
+        parseArgs(["--harness", harness, "--state", state, "--width", "480"]),
+        {
+          harness,
+          state,
+          width: 480,
+          height: 1000,
+          caseId: `${harness}-${state}`,
+        },
       );
 });
 test("native admission rejects product gaps instead of waiting for inert controls", () => {

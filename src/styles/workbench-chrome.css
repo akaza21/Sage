@@ -386,34 +386,44 @@
   }
 }
 
-@media (max-width: 640px) {
-  .workbench {
-    grid-template-rows:
-      minmax(var(--chrome-row-height), auto) minmax(0, 1fr)
-      24px;
-  }
-
+@media (max-width: 760px) {
   .title-bar {
-    grid-template-areas:
-      "start end"
-      "center center";
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 4px var(--control-gap);
-    padding: 4px 8px;
-  }
-
-  .title-bar__start {
-    flex-wrap: wrap;
-    gap: 4px 8px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 8px;
   }
 
   .title-bar__center {
-    justify-content: flex-start;
+    overflow: hidden;
   }
 
   .title-bar__search {
     width: 100%;
-    max-width: none;
+    min-width: 0;
+    max-width: 160px;
+  }
+}
+
+@media (max-width: 640px) {
+  .title-bar {
+    padding-inline: 8px;
+  }
+
+  .title-bar__start {
+    gap: 8px;
+  }
+
+  .title-bar__wordmark,
+  .title-bar__chat-search-label,
+  .title-bar__chord {
+    display: none;
+  }
+
+  .title-bar__chat-search--pill {
+    width: var(--title-bar-search-height);
+    min-width: var(--title-bar-search-height);
+    max-width: var(--title-bar-search-height);
+    justify-content: center;
+    padding: 0;
   }
 }
 

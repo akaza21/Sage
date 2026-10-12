@@ -515,13 +515,6 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
           "--width",
           String(width),
         ];
-        if (width === 480) {
-          assert.throws(
-            () => parseArgs(args),
-            /width-480-blocked-by-product-minimum-720-owner-decision-required/u,
-          );
-          continue;
-        }
         const responsiveWidth = {
           "responsive-wide": 1888,
           "responsive-720": 720,
