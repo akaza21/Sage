@@ -152,19 +152,29 @@ export function projectTaskResources(
             item.payload.agentKey,
           );
           const label = item.payload.label?.trim();
-          if (invocation && agent && target)
+          if (invocation && agent)
             agents.set(invocation, {
               ...agent,
-              target,
-              observationIds: [...(agent.observationIds ?? []), item.id].slice(
-                -MAX_RESOURCE_DETAILS_PER_ITEM,
-              ),
-              label:
-                agent.label === "Subagent" && label && label !== "Subagent"
-                  ? label
-                  : agent.label,
+              ...(target
+                ? {
+                    target,
+                    observationIds: [
+                      ...(agent.observationIds ?? []),
+                      item.id,
+                    ].slice(-MAX_RESOURCE_DETAILS_PER_ITEM),
+                    label:
+                      agent.label === "Subagent" &&
+                      label &&
+                      label !== "Subagent"
+                        ? label
+                        : agent.label,
+                  }
+                : {}),
               status:
-                item.payload.operation === "completed" ? "done" : agent.status,
+                item.payload.operation === "completed" &&
+                (agent.status === "starting" || agent.status === "working")
+                  ? "done"
+                  : agent.status,
             });
         }
         const states = (item.payload.agentStates ?? []).slice(

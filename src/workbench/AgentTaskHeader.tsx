@@ -5,6 +5,7 @@ import {
   Suspense,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -82,12 +83,25 @@ export function AgentTaskHeader({
       ?.runtimeEpoch,
     projectTransitioning,
   ].join("\u0000");
-  const [previousScope, setPreviousScope] = useState(resourcesScope);
-  if (previousScope !== resourcesScope) {
-    setPreviousScope(resourcesScope);
+  const [previousScope, setPreviousScope] = useState({
+    key: resourcesScope,
+    restoreFocus: false,
+  });
+  if (previousScope.key !== resourcesScope) {
+    setPreviousScope({
+      key: resourcesScope,
+      restoreFocus:
+        resourcesOpen &&
+        !!document
+          .getElementById(resourcesId)
+          ?.contains(document.activeElement),
+    });
     setResourcesOpen(false);
     setShowAllSources(false);
   }
+  useLayoutEffect(() => {
+    if (previousScope.restoreFocus) resourcesTriggerRef.current?.focus();
+  }, [previousScope]);
   const validPage = validFocusedSubagentPage(
     page,
     scope,

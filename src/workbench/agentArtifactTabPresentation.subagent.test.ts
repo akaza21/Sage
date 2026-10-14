@@ -163,6 +163,20 @@ it("counts paired spawn and native completion observations as one child", () => 
   expect(result.doneAgents).toBe(1);
 });
 
+it.each(["pendingInit", "running"])(
+  "completes a %s child even when its selection target is unavailable",
+  (state) => {
+    const result = summary([
+      event("spawn", "spawnAgent", ["a"], ["Reviewer"], [["a", state]]),
+      event("native", "completed", [], [], [], "a"),
+    ]);
+    expect(result.recentAgents[0]).toMatchObject({ status: "done" });
+    expect(result.recentAgents[0].target).toBeUndefined();
+    expect(result.workingAgents).toBe(0);
+    expect(result.doneAgents).toBe(1);
+  },
+);
+
 it("does not infer a child from a started event without a retained spawn", () => {
   const started = event(
     "started",

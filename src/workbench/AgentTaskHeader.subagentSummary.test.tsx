@@ -252,6 +252,12 @@ it.each([
       expect(row.firstElementChild).toHaveTextContent(
         names[index] || "Subagent",
       );
+      if (row.tagName === "BUTTON")
+        expect(row).toHaveAccessibleName(
+          names[index]
+            ? `Open subagent ${names[index]}`
+            : `Open subagent Subagent ${index + 1}, ${["starting", "working", "done", "stopped", "failed"][index]}`,
+        );
     }
     expect(section).not.toHaveTextContent("private-");
     expect(readChild).not.toHaveBeenCalled();
@@ -277,7 +283,7 @@ it("bounds 300 child observations to 128 selectable rows and truthful retained c
   const rows = await within(section).findAllByRole("button");
   expect(rows).toHaveLength(128);
   expect(rows[0]).toHaveAccessibleName("Open subagent Agent 172");
-  expect(rows.at(-1)).toHaveAccessibleName("Open subagent Subagent");
+  expect(rows.at(-1)).toHaveAccessibleName("Open subagent Subagent 128, done");
   expect(
     within(section).getByLabelText("Recent subagents working: 64"),
   ).toBeInTheDocument();
@@ -316,6 +322,85 @@ it.each(["project", "generation", "transition"])(
     expect(useSubagentPaneStore.getState().open).toBeNull();
   },
 );
+
+it.each(["project", "generation", "transition", "session", "runtime", "chat"])(
+  "returns focus from inside the resources popover on a %s reset",
+  async (kind) => {
+    replaceItems([
+      collaboration(
+        "spawn-reviewer",
+        0,
+        "spawnAgent",
+        ["private-reviewer"],
+        ["Reviewer"],
+        [["private-reviewer", "running"]],
+      ),
+    ]);
+    const { rerender } = render(
+      <AgentTaskHeader tab={tab} chatCount={2} snapshot={null} />,
+    );
+    const trigger = screen.getByRole("button", { name: "Show chat resources" });
+    fireEvent.click(trigger);
+    const row = await screen.findByRole("button", {
+      name: "Open subagent Reviewer",
+    });
+    row.focus();
+    expect(row).toHaveFocus();
+    if (kind === "chat") {
+      rerender(
+        <AgentTaskHeader
+          tab={{ ...tab, id: "chat:b" }}
+          chatCount={2}
+          snapshot={null}
+        />,
+      );
+    } else if (kind === "session" || kind === "runtime") {
+      replaceItems(
+        [],
+        kind === "session"
+          ? { currentSessionId: "session-2" as AcpChatPage["currentSessionId"] }
+          : {
+              sessions: acpProjectionStoreFor(tab.id)
+                .getState()
+                .page!.sessions.map((session) => ({
+                  ...session,
+                  runtimeEpoch: "4" as typeof session.runtimeEpoch,
+                })),
+            },
+      );
+    } else {
+      act(() =>
+        useWorkbenchStore.setState(
+          kind === "project"
+            ? { project: { id: "project-b", name: "Other", roots: [] } }
+            : kind === "generation"
+              ? { projectGeneration: 8 }
+              : { projectTransitioning: true },
+        ),
+      );
+    }
+    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    expect(trigger).toHaveFocus();
+  },
+);
+
+it("does not steal outside focus when a scope reset dismisses resources", async () => {
+  render(
+    <>
+      <AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />
+      <button>Outside</button>
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  await screen.findByText("Researcher");
+  const outside = screen.getByRole("button", { name: "Outside" });
+  outside.focus();
+  replaceItems([], {
+    currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
+  });
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(outside).toHaveFocus();
+});
 
 it("resets resource visibility on Chat changes even when returning to the original Chat", () => {
   const { rerender } = render(
@@ -465,6 +550,51 @@ it("moves a retained running child to done on its native terminal observation", 
   ).toBeInTheDocument();
   expect(screen.getByLabelText("Recent subagents done: 1")).toBeInTheDocument();
 });
+
+it.each([
+  ["interrupted", "stopped"],
+  ["errored", "failed"],
+])(
+  "preserves %s child state after native completion",
+  async (state, status) => {
+    const native = collaboration("native-child", 2, "completed", [], [], []);
+    if (native.kind !== "collaboration")
+      throw new Error("Expected collaboration");
+    replaceItems([
+      collaboration(
+        "spawn-child",
+        0,
+        "spawnAgent",
+        ["private-child"],
+        ["Reviewer"],
+        [["private-child", "running"]],
+      ),
+      collaboration(
+        "stop-child",
+        1,
+        state === "interrupted" ? "interrupted" : "wait",
+        ["private-child"],
+        ["Reviewer"],
+        [["private-child", state]],
+      ),
+      { ...native, payload: { ...native.payload, agentKey: "private-child" } },
+    ]);
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show chat resources" }),
+    );
+    const row = await screen.findByRole("button", {
+      name: "Open subagent Reviewer",
+    });
+    expect(row).toHaveTextContent(status);
+    expect(
+      screen.getByLabelText("Recent subagents working: 0"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Recent subagents done: 0"),
+    ).toBeInTheDocument();
+  },
+);
 
 it("uses a supplied native child name when its retained spawn was unnamed", async () => {
   const native = collaboration("native-child", 1, "started", [], [], []);

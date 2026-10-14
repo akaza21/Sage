@@ -1,4 +1,7 @@
+import { useLayoutEffect, useRef } from "react";
+
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
+import { focusPopoverDialog } from "../ui/menuPopoverDialogFocus";
 import type { projectTaskResources } from "./agentArtifactTabPresentation";
 
 export function SubagentResourceRows({
@@ -10,14 +13,14 @@ export function SubagentResourceRows({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const list = listRef.current;
-    if (list?.closest('[role="dialog"]') === document.activeElement) {
-      list?.querySelector("button")?.focus();
+    const dialog = listRef.current?.closest<HTMLElement>('[role="dialog"]');
+    if (dialog && dialog === document.activeElement) {
+      focusPopoverDialog(dialog);
     }
   }, []);
   return (
     <div ref={listRef} className="agent-task-header__agent-list">
-      {agents.map((agent) => {
+      {agents.map((agent, index) => {
         const target = agent.target;
         const Row = target ? "button" : "p";
         return (
@@ -27,7 +30,7 @@ export function SubagentResourceRows({
             {...(target
               ? {
                   type: "button" as const,
-                  "aria-label": `Open subagent ${agent.label}`,
+                  "aria-label": `Open subagent ${agent.label === "Subagent" ? `Subagent ${index + 1}, ${agent.status}` : agent.label}`,
                   onClick: () => {
                     useSubagentPaneStore.getState().show(target);
                     onSelect();
@@ -49,4 +52,3 @@ export function SubagentResourceRows({
     </div>
   );
 }
-import { useLayoutEffect, useRef } from "react";
