@@ -135,7 +135,7 @@ const unavailableFile: SafeResourceLocation = {
 };
 
 describe("ToolActivityRollup", () => {
-  it("opens Shell through both Worked disclosures and retains the nested choice on reopen", () => {
+  it("opens Shell through both Worked disclosures and retains the nested choice on reopen", async () => {
     const command = tool("shell", "execute");
     command.payload.inputSummary = "npm run check";
     const turn: TurnProjection = {
@@ -178,7 +178,7 @@ describe("ToolActivityRollup", () => {
     expect(row.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
     fireEvent.click(row.querySelector("summary")!);
     fireEvent(row, new Event("toggle"));
-    expect(screen.getByText("Shell")).toBeVisible();
+    expect(await screen.findByText("Shell")).toBeVisible();
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "$ npm run check",
     );
@@ -194,7 +194,7 @@ describe("ToolActivityRollup", () => {
 
   it.each(["execute", "read", "edit", "search", "other"] as const)(
     "names a visible running indicator on a live %s row and removes it at settlement",
-    (kind) => {
+    async (kind) => {
       const item = {
         ...tool("live", kind),
         toolState: "inProgress" as const,
@@ -219,7 +219,9 @@ describe("ToolActivityRollup", () => {
       fireEvent(row, new Event("toggle"));
       expect(
         within(
-          screen.getByRole("group", { name: item.payload.presentation.label }),
+          await screen.findByRole("group", {
+            name: item.payload.presentation.label,
+          }),
         ).getByRole("status", { name: "Running" }),
       ).toBeVisible();
       for (const state of ["completed", "failed", "cancelled"] as const) {

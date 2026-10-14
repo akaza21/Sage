@@ -63,8 +63,8 @@ function tool(
   } as ToolProjectionItem;
 }
 
-describe("ToolItem", () => {
-  it("opens canonical file and diff ResourceRefs while leaving foreign paths inert", () => {
+describe("ToolItem", async () => {
+  it("opens canonical file and diff ResourceRefs while leaving foreign paths inert", async () => {
     const onOpen = vi.fn();
     const { rerender } = render(
       <ToolItem
@@ -144,7 +144,7 @@ describe("ToolItem", () => {
     return item;
   }
 
-  it("discloses retained read output as bounded escaped text without claiming resources are the result", () => {
+  it("discloses retained read output as bounded escaped text without claiming resources are the result", async () => {
     const onOpen = vi.fn();
     const { rerender } = render(
       <ToolItem
@@ -183,7 +183,7 @@ describe("ToolItem", () => {
     expect(screen.getByText("Tool details")).toBeInTheDocument();
   });
 
-  it("never labels an admitted browse href as tool output", () => {
+  it("never labels an admitted browse href as tool output", async () => {
     const fetchItem = tool({
       kind: "fetch",
       label: "Fetch page",
@@ -200,7 +200,7 @@ describe("ToolItem", () => {
     ).toBeVisible();
   });
 
-  it("keeps harness truncation text verbatim inside keyboard-focusable Shell detail", () => {
+  it("keeps harness truncation text verbatim inside keyboard-focusable Shell detail", async () => {
     const output =
       "[output truncated] retained tail\n\tindented line\n\nfinal line\n";
     render(<ToolItem item={commandItem(output)} />);
@@ -217,7 +217,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("shows command output and its safe File action in one card", () => {
+  it("shows command output and its safe File action in one card", async () => {
     const onOpen = vi.fn();
     const fileItem = tool({
       kind: "read",
@@ -298,7 +298,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("uses one referenced output surface for toolCall command output transitions", () => {
+  it("uses one referenced output surface for toolCall command output transitions", async () => {
     const { rerender } = render(<ToolItem item={commandItem(null)} />);
     expect(
       screen.getByRole("group", { name: "Run command" }),
@@ -323,7 +323,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("adopts a terminal state and duration on one card when a call updates in place", () => {
+  it("adopts a terminal state and duration on one card when a call updates in place", async () => {
     const presentation = {
       kind: "execute" as const,
       cwd: null,
@@ -362,7 +362,7 @@ describe("ToolItem", () => {
     ).toHaveTextContent("3s");
   });
 
-  it("shows Shell and a prompted command even when the command repeats the row label", () => {
+  it("shows Shell and a prompted command even when the command repeats the row label", async () => {
     const echoed = tool({
       kind: "execute",
       cwd: null,
@@ -424,7 +424,7 @@ describe("ToolItem", () => {
     };
   }
 
-  it("shows no Shell or command when only a generic tool label was emitted", () => {
+  it("shows no Shell or command when only a generic tool label was emitted", async () => {
     const item = commandItem(null);
     item.payload.inputSummary = null;
     render(<ToolItem item={item} />);
@@ -433,7 +433,7 @@ describe("ToolItem", () => {
     expect(screen.queryByText("No output")).toBeNull();
   });
 
-  it("keeps command output descriptions scoped to their pane even for equal tool ids", () => {
+  it("keeps command output descriptions scoped to their pane even for equal tool ids", async () => {
     render(
       <>
         <ToolItem item={commandItem("left output")} />
@@ -453,7 +453,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("preserves the full bounded retained heredoc when the native command summary is null", () => {
+  it("preserves the full bounded retained heredoc when the native command summary is null", async () => {
     const item = commandItem(null);
     const prefix = "cat <<'EOF'\n";
     const suffix = "\nEOF";
@@ -466,7 +466,7 @@ describe("ToolItem", () => {
     expect(screen.queryByLabelText("Command output")).toBeNull();
   });
 
-  it("shows full retained multiline input even when a shorter presentation summary exists", () => {
+  it("shows full retained multiline input even when a shorter presentation summary exists", async () => {
     const item = commandItem(null);
     if (item.payload.presentation.kind !== "execute")
       throw new Error("Expected execute presentation");
@@ -480,7 +480,7 @@ describe("ToolItem", () => {
 
   it.each(["`npm run check`", "  ` npm run check `  ", "``npm run check``"])(
     "shows the retained command inside Shell under a backticked title %s",
-    (label) => {
+    async (label) => {
       const item = commandItem(null);
       item.payload.presentation.label = label;
       item.payload.inputSummary = "npm run check";
@@ -495,7 +495,7 @@ describe("ToolItem", () => {
     },
   );
 
-  it("keeps the multiline command pre even when its title repeats the retained input", () => {
+  it("keeps the multiline command pre even when its title repeats the retained input", async () => {
     const item = commandItem(null);
     item.payload.inputSummary = "cat <<'EOF'\nbody\nEOF";
     item.payload.presentation.label = item.payload.inputSummary;
@@ -505,7 +505,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("prefers a nonblank native summary and otherwise uses retained command input", () => {
+  it("prefers a nonblank native summary and otherwise uses retained command input", async () => {
     const item = commandItem(null);
     if (item.payload.presentation.kind !== "execute")
       throw new Error("Expected execute presentation");
@@ -520,7 +520,7 @@ describe("ToolItem", () => {
     expect(toolCommandLine(item)).toBeNull();
   });
 
-  it("normalizes command text to one line and truncates without splitting a surrogate pair", () => {
+  it("normalizes command text to one line and truncates without splitting a surrogate pair", async () => {
     const item = commandItem(null);
     item.payload.inputSummary = " npm\nrun\tcheck ";
     expect(toolCommandLine(item)).toBe("npm run check");
@@ -529,7 +529,7 @@ describe("ToolItem", () => {
     expect(toolCommandLine(item)!.length).toBeLessThanOrEqual(512);
   });
 
-  it("does not invent command text for non-command presentations", () => {
+  it("does not invent command text for non-command presentations", async () => {
     expect(
       toolCommandLine(
         tool({
@@ -542,7 +542,7 @@ describe("ToolItem", () => {
     ).toBeNull();
   });
 
-  it("preserves literal quoted spaces in the expanded retained command", () => {
+  it("preserves literal quoted spaces in the expanded retained command", async () => {
     const item = commandItem(null);
     item.payload.inputSummary = "printf 'two  spaces'";
     expect(toolCommandLine(item)).toBe("printf 'two  spaces'");
@@ -552,7 +552,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("uses one generic card for unknown tools and typed safe summaries", () => {
+  it("uses one generic card for unknown tools and typed safe summaries", async () => {
     const { rerender } = render(
       <ToolItem
         item={tool({
@@ -588,7 +588,7 @@ describe("ToolItem", () => {
     expect(screen.getByText("Issue tracker · Read issue")).toBeInTheDocument();
   });
 
-  it("puts an MCP identity on its activity line without repeating generic detail", () => {
+  it("puts an MCP identity on its activity line without repeating generic detail", async () => {
     const { container } = render(
       <ToolItem
         item={tool({
@@ -607,7 +607,7 @@ describe("ToolItem", () => {
     expect(container.querySelectorAll(".acp-details")).toHaveLength(0);
   });
 
-  it("keeps a terminal tool state accessible without replaying it", () => {
+  it("keeps a terminal tool state accessible without replaying it", async () => {
     render(
       <ToolItem
         item={tool(
@@ -637,31 +637,32 @@ describe("ToolItem", () => {
     "failed",
     "declined",
     "cancelled",
-  ] as const)("exposes the %s state to the shared card grammar", (state) => {
-    const { container } = render(
-      <ToolItem
-        item={tool(
-          {
-            kind: "other",
-            rawKind: null,
-            label: "Tool state",
-            summary: "Bounded detail",
-          },
-          state,
-        )}
-      />,
-    );
-    expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
-      "data-activity-kind",
-      "other",
-    );
-    expect(container.querySelector(".acp-activity-card--tool")).toHaveAttribute(
-      "data-activity-state",
-      state,
-    );
-  });
+  ] as const)(
+    "exposes the %s state to the shared card grammar",
+    async (state) => {
+      const { container } = render(
+        <ToolItem
+          item={tool(
+            {
+              kind: "other",
+              rawKind: null,
+              label: "Tool state",
+              summary: "Bounded detail",
+            },
+            state,
+          )}
+        />,
+      );
+      expect(
+        container.querySelector(".acp-activity-card--tool"),
+      ).toHaveAttribute("data-activity-kind", "other");
+      expect(
+        container.querySelector(".acp-activity-card--tool"),
+      ).toHaveAttribute("data-activity-state", state);
+    },
+  );
 
-  it("renders the kind icon, title, status and duration on one row", () => {
+  it("renders the kind icon, title, status and duration on one row", async () => {
     const { container } = render(
       <ToolItem
         item={tool(
@@ -692,7 +693,7 @@ describe("ToolItem", () => {
     );
   });
 
-  it("labels a sub-second and a multi-minute tool duration without lying", () => {
+  it("labels a sub-second and a multi-minute tool duration without lying", async () => {
     const { container, rerender } = render(
       <ToolItem
         item={tool(
@@ -720,7 +721,7 @@ describe("ToolItem", () => {
     ).toHaveTextContent("2m 5s");
   });
 
-  it("names the unknown provider kind on the other fallback row", () => {
+  it("names the unknown provider kind on the other fallback row", async () => {
     const { container, rerender } = render(
       <ToolItem
         item={tool({
@@ -748,7 +749,7 @@ describe("ToolItem", () => {
     expect(container.querySelector(".acp-tool-card__raw-kind")).toBeNull();
   });
 
-  it("omits the duration until the tool reaches a terminal state", () => {
+  it("omits the duration until the tool reaches a terminal state", async () => {
     const { container } = render(
       <ToolItem
         item={tool({
@@ -764,7 +765,7 @@ describe("ToolItem", () => {
     ).not.toBeNull();
   });
 
-  it("opens an admitted loopback web tool in the Sage browser", () => {
+  it("opens an admitted loopback web tool in the Sage browser", async () => {
     render(
       <ToolItem
         item={tool({
@@ -789,7 +790,7 @@ describe("ToolItem", () => {
     ).toMatchObject({ mode: "pinned", selected: { kind: "preview" } });
   });
 
-  it("does not pin a historical or non-interactive browse item", () => {
+  it("does not pin a historical or non-interactive browse item", async () => {
     render(
       <ToolItem
         allowBrowse={false}
@@ -808,7 +809,7 @@ describe("ToolItem", () => {
     expect(useAgentArtifactFollowStore.getState().records).toEqual([]);
   });
 
-  it("keeps canonical resources inert until a native open handler is wired", () => {
+  it("keeps canonical resources inert until a native open handler is wired", async () => {
     render(
       <ToolItem
         item={tool({

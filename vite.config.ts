@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import type { OutputOptions } from "rolldown";
 import { htmlCompletionSchemaPlugin } from "./scripts/htmlCompletionSchema";
+import { desktopReactRuntimeProjectionPlugin } from "./scripts/reactRuntimeProjection";
 
 const host = process.env.TAURI_DEV_HOST;
 const sourceMaps = process.env.SAGE_BUILD_SOURCEMAPS === "1";
@@ -38,13 +39,13 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "codemirror-deps",
     priority: 1,
-    test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
+    test: /(?:node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]|src[\\/]features[\\/]files[\\/]CodeMirrorEditorRuntime\.ts$)/,
   },
   {
     name: "chat-ui",
     priority: 1,
     includeDependenciesRecursively: false,
-    test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:AcpChatPresentation|MermaidFigure|AcpChatProjection|AcpAnnouncementRegions))[^\\/]+\.tsx$/,
+    test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff))[^\\/]+\.(?:tsx|ts)$/,
   },
   {
     name: "markdown-rendering",
@@ -123,6 +124,7 @@ export default defineConfig(({ command, mode }) => ({
   cacheDir: process.env.SAGE_VITE_CACHE_DIR,
   plugins: [
     react(),
+    desktopReactRuntimeProjectionPlugin(command, mode),
     desktopNativeWorkbenchRuntimePlugin(command, mode),
     htmlCompletionSchemaPlugin(),
   ],
@@ -151,7 +153,10 @@ export default defineConfig(({ command, mode }) => ({
     ...(command === "build" && mode === DESKTOP_NATIVE_BUILD_MODE
       ? {
           rolldownOptions: {
+            optimization: { inlineConst: true },
             output: {
+              entryFileNames: "assets/[hash].js",
+              chunkFileNames: "assets/[hash].js",
               codeSplitting: {
                 groups: DESKTOP_NATIVE_CODE_SPLITTING_GROUPS,
               },

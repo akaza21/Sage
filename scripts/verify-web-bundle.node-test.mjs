@@ -9,10 +9,19 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import test from "node:test";
 
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import { verifyWebBundle } from "./verify-web-bundle.mjs";
+import {
+  WEB_BUNDLE_PATH_ROOTS,
+  measureWebBundlePaths,
+} from "./web-bundle-paths.mjs";
+
+const pathLimits = Object.fromEntries(
+  Object.keys(WEB_BUNDLE_PATH_ROOTS).map((name) => [name, 1000]),
+);
 
 test("named TerminalDock budget isolates xterm from the core bundle", async () => {
   const root = await candidate({ dynamic: "ordinary dynamic" });
@@ -76,6 +85,7 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
       path.join(root, "docs/performance/budgets.json"),
       JSON.stringify({
         bundle: {
+          webPathJsGzipBytes: pathLimits,
           webEntryJsGzipBytes: 1000,
           webInitialStaticClosureGzipBytes: 1000,
           webTotalJsGzipBytes: 1000,
@@ -247,6 +257,7 @@ async function candidate({
     path.join(root, "docs/performance/budgets.json"),
     JSON.stringify({
       bundle: {
+        webPathJsGzipBytes: pathLimits,
         webEntryJsGzipBytes: limits[0],
         webInitialStaticClosureGzipBytes: limits[1],
         webTotalJsGzipBytes: limits[2],
@@ -267,6 +278,12 @@ async function candidate({
     "_imported.js": { file: "assets/imported.js" },
     "_dynamic.js": { file: "assets/dynamic.js" },
   };
+  for (const key of new Set(Object.values(WEB_BUNDLE_PATH_ROOTS).flat())) {
+    if (key === "index.html") continue;
+    manifest[key] = { file: "assets/dynamic.js", imports: ["index.html"] };
+    manifest["_dynamic.js"].dynamicImports ??= [];
+    manifest["_dynamic.js"].dynamicImports.push(key);
+  }
   await writeFile(
     path.join(root, "dist/.vite/manifest.json"),
     JSON.stringify(manifest),
@@ -302,6 +319,79 @@ test("web bundle verifier counts static closure but includes dynamic chunks in t
   }
 });
 
+test("a shrinking core total cannot hide an independently regressed user path", async () => {
+  const root = await candidate();
+  try {
+    const manifestPath = path.join(root, "dist/.vite/manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest["src/features/diff/DiffSurface.tsx"].file = "assets/diff.js";
+    manifest._unused = { file: "assets/unused.js" };
+    manifest["index.html"].dynamicImports.push("_unused");
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeFile(path.join(root, "dist/assets/diff.js"), "b");
+    await writeFile(
+      path.join(root, "dist/assets/unused.js"),
+      "0123456789abcdef".repeat(600),
+    );
+    const before = verifyWebBundle(root);
+    const budgetPath = path.join(root, "docs/performance/budgets.json");
+    const budgets = JSON.parse(await readFile(budgetPath, "utf8"));
+    budgets.bundle.webPathJsGzipBytes.editorDiff =
+      before.paths.editorDiff.gzipBytes;
+    await writeFile(budgetPath, JSON.stringify(budgets));
+    await writeFile(
+      path.join(root, "dist/.sage-web-build-receipt.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        target: desktopTarget,
+        gzip: "node:zlib.gzipSync defaults",
+        source: webBuildSourceFingerprint(root),
+      }),
+    );
+    assert.doesNotThrow(() => verifyWebBundle(root));
+    await writeFile(path.join(root, "dist/assets/unused.js"), "c");
+    await writeFile(
+      path.join(root, "dist/assets/diff.js"),
+      "export const diff = true;",
+    );
+    const after = {
+      paths: measureWebBundlePaths(root, manifest),
+      coreTotalGzipBytes: (
+        await Promise.all(
+          ["entry.js", "imported.js", "dynamic.js", "diff.js", "unused.js"].map(
+            (file) => readFile(path.join(root, "dist/assets", file)),
+          ),
+        )
+      ).reduce((sum, contents) => sum + gzipSync(contents).length, 0),
+    };
+    assert.ok(after.coreTotalGzipBytes < before.coreTotalGzipBytes);
+    assert.ok(
+      after.paths.editorDiff.gzipBytes > before.paths.editorDiff.gzipBytes,
+    );
+    assert.throws(
+      () => verifyWebBundle(root),
+      /editorDiff static closure gzip.*exceeds/,
+    );
+    delete budgets.bundle.webPathJsGzipBytes;
+    await writeFile(budgetPath, JSON.stringify(budgets));
+    await writeFile(
+      path.join(root, "dist/.sage-web-build-receipt.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        target: desktopTarget,
+        gzip: "node:zlib.gzipSync defaults",
+        source: webBuildSourceFingerprint(root),
+      }),
+    );
+    assert.throws(
+      () => verifyWebBundle(root),
+      /path limit.*missing or invalid/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("web bundle verifier enforces exact and plus-one entry, closure, and total limits", async () => {
   const root = await candidate({
     entry: "a".repeat(500),
@@ -314,6 +404,7 @@ test("web bundle verifier enforces exact and plus-one entry, closure, and total 
       path.join(root, "docs/performance/budgets.json"),
       JSON.stringify({
         bundle: {
+          webPathJsGzipBytes: pathLimits,
           webEntryJsGzipBytes: actual.entryGzipBytes,
           webInitialStaticClosureGzipBytes:
             actual.initialStaticClosureGzipBytes,
@@ -335,6 +426,7 @@ test("web bundle verifier enforces exact and plus-one entry, closure, and total 
       path.join(root, "docs/performance/budgets.json"),
       JSON.stringify({
         bundle: {
+          webPathJsGzipBytes: pathLimits,
           webEntryJsGzipBytes: actual.entryGzipBytes - 1,
           webInitialStaticClosureGzipBytes:
             actual.initialStaticClosureGzipBytes,
@@ -356,6 +448,7 @@ test("web bundle verifier enforces exact and plus-one entry, closure, and total 
       path.join(root, "docs/performance/budgets.json"),
       JSON.stringify({
         bundle: {
+          webPathJsGzipBytes: pathLimits,
           webEntryJsGzipBytes: actual.entryGzipBytes,
           webInitialStaticClosureGzipBytes:
             actual.initialStaticClosureGzipBytes - 1,
@@ -377,6 +470,7 @@ test("web bundle verifier enforces exact and plus-one entry, closure, and total 
       path.join(root, "docs/performance/budgets.json"),
       JSON.stringify({
         bundle: {
+          webPathJsGzipBytes: pathLimits,
           webEntryJsGzipBytes: actual.entryGzipBytes,
           webInitialStaticClosureGzipBytes:
             actual.initialStaticClosureGzipBytes,

@@ -71,6 +71,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "ui-test-port.node-test.mjs",
   "validate-performance-budgets.node-test.mjs",
   "verify-web-bundle.node-test.mjs",
+  "web-bundle-paths.node-test.mjs",
   "workbench-transport-parity.node-test.mjs",
 ]);
 
@@ -376,6 +377,11 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
 // split itself (not a migration successor): the discovered file count may
 // grow only through entries recorded here.
 export const LANE_JUSTIFICATIONS = Object.freeze([
+  {
+    file: "web-bundle-paths.node-test.mjs",
+    reason:
+      "Portable BX-3 static-import path closures and independent gzip budget proofs; uses temporary assets without native processes.",
+  },
   {
     file: "ui-test-port.node-test.mjs",
     reason:

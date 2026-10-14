@@ -4,6 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
+import {
+  measureWebBundlePaths,
+  validateWebBundleManifest,
+  verifyWebBundlePathBudgets,
+} from "./web-bundle-paths.mjs";
 
 const DESKTOP_NATIVE_TARGET = "desktop-native";
 const BROWSER_FIXTURE_SENTINEL =
@@ -99,6 +104,7 @@ export function verifyWebBundle(root) {
     path.join(root, "dist/.vite/manifest.json"),
     "Vite manifest",
   );
+  validateWebBundleManifest(manifest);
   const entries = Object.entries(manifest).filter(
     ([, record]) => record?.isEntry && record?.src === "index.html",
   );
@@ -339,7 +345,10 @@ export function verifyWebBundle(root) {
       `subagent lazy gzip ${subagentLazyGzipBytes} exceeds ${subagentLimit}`,
     );
   if (exceeded.length) fail(exceeded.join("; "));
+  const paths = measureWebBundlePaths(root, manifest);
+  verifyWebBundlePathBudgets(paths, budgets.bundle?.webPathJsGzipBytes);
   return {
+    paths,
     entryGzipBytes,
     initialStaticClosureGzipBytes,
     totalGzipBytes,

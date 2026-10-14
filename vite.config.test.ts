@@ -30,6 +30,28 @@ const BASELINE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
     test: /node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]/,
   },
 ];
+const LANE_BASE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
+  BASELINE_DESKTOP_GROUPS[0]!,
+  {
+    ...BASELINE_DESKTOP_GROUPS[1]!,
+    test: /src[\\/]workbench[\\/](?:Workbench|AgentWorkbenchBody)\.tsx$/,
+  },
+  BASELINE_DESKTOP_GROUPS[2]!,
+  {
+    name: "chat-ui",
+    priority: 1,
+    includeDependenciesRecursively: false,
+    test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:AcpChatPresentation|MermaidFigure|AcpChatProjection|AcpAnnouncementRegions))[^\\/]+\.tsx$/,
+  },
+  ...DESKTOP_GROUPS.filter((group) =>
+    [
+      "markdown-rendering",
+      "diff-rendering",
+      "snapshotDiff",
+      "agent-diff-model",
+    ].includes(group.name),
+  ),
+];
 const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
 const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
   css: "src/features/files/editorLanguageCss.ts",
@@ -49,10 +71,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/app/agentDiffLoad.ts",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/acp/AcpChatPresentation.tsx",
+  "src/features/chat/acp/InlineSavedDiff.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
-  "src/features/files/CodeMirrorEditorRuntime.ts",
   "src/features/files/FileSurface.tsx",
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
@@ -67,6 +89,7 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  "src/features/files/CodeMirrorEditorRuntime.ts",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
 ].sort();
@@ -138,10 +161,20 @@ function initialGroupConfig(command: "build" | "serve", mode: string) {
   return viteConfig({ command, mode });
 }
 
+function setDesktopGraphGroups(
+  configured: InlineConfig,
+  groups?: typeof DESKTOP_GROUPS,
+) {
+  const output = configured.build?.rolldownOptions?.output;
+  if (!output || Array.isArray(output))
+    throw new Error("Expected one desktop output configuration");
+  output.codeSplitting = groups ? { groups } : undefined;
+}
+
 function desktopGraphConfig(withInitialGroup: boolean): InlineConfig {
   const configured = initialGroupConfig("build", DESKTOP_NATIVE_BUILD_MODE);
   const buildConfig = { ...configured.build };
-  if (!withInitialGroup) delete buildConfig.rolldownOptions;
+  if (!withInitialGroup) setDesktopGraphGroups(configured);
   return {
     ...configured,
     configFile: false,
@@ -155,17 +188,9 @@ function desktopGraphConfig(withInitialGroup: boolean): InlineConfig {
   };
 }
 
-function htmlOnlyGraphConfig(): InlineConfig {
+function legacyChunkGroupConfig(): InlineConfig {
   const configured = desktopGraphConfig(true);
-  configured.build!.rolldownOptions = {
-    output: {
-      codeSplitting: {
-        groups: DESKTOP_GROUPS.map((group) =>
-          group.name === "workbench-deps" ? BASELINE_DESKTOP_GROUPS[1]! : group,
-        ),
-      },
-    },
-  };
+  setDesktopGraphGroups(configured, LANE_BASE_DESKTOP_GROUPS);
   return configured;
 }
 
@@ -235,6 +260,7 @@ function graphInventory(result: Awaited<ReturnType<typeof build>>) {
         ]),
       ),
     ),
+    chunkNames: new Map(chunks.map((chunk) => [chunk.fileName, chunk.name])),
     dynamicFacades: dynamicStaticClosures
       .flatMap(({ facadeModuleId }) => (facadeModuleId ? [facadeModuleId] : []))
       .sort(),
@@ -281,32 +307,6 @@ function closureForModule(
   const closure = graph.staticClosuresByFile.get(file ?? "");
   if (!closure) throw new Error(`Missing static closure for ${id}`);
   return closure;
-}
-
-function consolidatedClosure(
-  baseline: ReturnType<typeof graphInventory>,
-  id: string,
-) {
-  const original = closureForModule(baseline, id);
-  const workbenchMembers = [
-    "src/workbench/Workbench.tsx",
-    ...CONSOLIDATED_AGENT_MODULES,
-  ];
-  if (
-    !original.some((module) =>
-      workbenchMembers.some((member) =>
-        module.replaceAll("\\", "/").endsWith(`/${member}`),
-      ),
-    )
-  ) {
-    return original;
-  }
-  return [
-    ...new Set([
-      ...original,
-      ...closureForModule(baseline, "src/workbench/AgentWorkbenchBody.tsx"),
-    ]),
-  ].sort();
 }
 
 describe("desktop-native runtime resolver", () => {
@@ -378,11 +378,9 @@ describe("desktop-native chunk topology", () => {
     }
   });
 
-  it("preserves chat-helper ownership with the exact authorised Agent closure consolidation", async () => {
+  it("preserves chat-helper ownership and exact lane-base Workbench and resource closures", async () => {
     const baselineConfig = desktopGraphConfig(true);
-    baselineConfig.build!.rolldownOptions = {
-      output: { codeSplitting: { groups: BASELINE_DESKTOP_GROUPS } },
-    };
+    setDesktopGraphGroups(baselineConfig, LANE_BASE_DESKTOP_GROUPS);
     const [baseline, grouped] = await Promise.all([
       build(baselineConfig),
       build(desktopGraphConfig(true)),
@@ -397,7 +395,7 @@ describe("desktop-native chunk topology", () => {
     ].map((id) => groupedGraph.moduleFiles.get(id));
     expect(files.every((file) => typeof file === "string")).toBe(true);
     expect(new Set(files).size).toBe(1);
-    expect(files[0]).toMatch(/chat-ui-/);
+    expect(groupedGraph.chunkNames.get(files[0]!)).toBe("chat-ui");
     for (const facade of [
       "src/workbench/AgentWorkbenchBody.tsx",
       "src/features/files/CodeMirrorEditorRuntime.ts",
@@ -405,13 +403,13 @@ describe("desktop-native chunk topology", () => {
       "src/features/diff/DiffSurface.tsx",
     ]) {
       expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        consolidatedClosure(baselineGraph, facade),
+        closureForModule(baselineGraph, facade),
       );
     }
   }, 90_000);
 
-  it("consolidates exactly the Agent body while preserving all initial and other lazy boundaries", async () => {
-    const baselineConfig = htmlOnlyGraphConfig();
+  it("preserves Workbench and resource closures against legacy groups on current sources while coalescing chat and editor runtime facades", async () => {
+    const baselineConfig = legacyChunkGroupConfig();
     const [baseline, grouped] = await Promise.all([
       build(baselineConfig),
       build(desktopGraphConfig(true)),
@@ -421,20 +419,14 @@ describe("desktop-native chunk topology", () => {
     const workbench = "src/workbench/Workbench.tsx";
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);
-    const baselineFile = baselineGraph.moduleFiles.get(workbench);
-    expect(sharedFile).toMatch(/workbench-deps-/);
+    expect(groupedGraph.chunkNames.get(sharedFile!)).toBe("workbench-deps");
     expect(groupedGraph.moduleFiles.get(agent)).toBe(sharedFile);
-    const movedModules = [...groupedGraph.moduleFiles]
-      .filter(
-        ([id, file]) =>
-          id.startsWith("src/") &&
-          /\.[cm]?[jt]sx?$/.test(id) &&
-          file === sharedFile &&
-          baselineGraph.moduleFiles.get(id) !== baselineFile,
-      )
-      .map(([id]) => id)
-      .sort();
-    expect(movedModules).toEqual(CONSOLIDATED_AGENT_MODULES);
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/ChatSurface.tsx"),
+    ).toBe(sharedFile);
+    for (const module of CONSOLIDATED_AGENT_MODULES) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(sharedFile);
+    }
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
     expect(new Set(groupedGraph.allModules).size).toBe(
@@ -442,12 +434,19 @@ describe("desktop-native chunk topology", () => {
     );
     const subagent = "src/workbench/SubagentSurface.tsx";
     const childFile = groupedGraph.moduleFiles.get(subagent);
-    expect(childFile).toMatch(/SubagentSurface-/);
+    expect(groupedGraph.chunkNames.get(childFile!)).toBe("SubagentSurface");
     expect(childFile).not.toBe(sharedFile);
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
-    for (const facade of [workbench, agent, ...REQUIRED_DYNAMIC_FACADES]) {
+    for (const facade of [
+      workbench,
+      agent,
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+      "src/features/files/FileSurface.tsx",
+      "src/features/diff/DiffSurface.tsx",
+      "src/features/search/SearchSurface.tsx",
+    ]) {
       expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        consolidatedClosure(baselineGraph, facade),
+        closureForModule(baselineGraph, facade),
       );
     }
     for (const facade of [
@@ -474,9 +473,55 @@ describe("desktop-native chunk topology", () => {
     }
     for (const facade of Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES)) {
       expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        closureForModule(baselineGraph, facade),
+        [
+          ...new Set([
+            ...closureForModule(baselineGraph, facade),
+            ...closureForModule(
+              baselineGraph,
+              "src/features/files/CodeMirrorEditorRuntime.ts",
+            ),
+          ]),
+        ].sort(),
       );
     }
+    const presentation = "src/features/chat/acp/AcpChatPresentation.tsx";
+    const presentationFile = groupedGraph.moduleFiles.get(presentation);
+    expect(groupedGraph.chunkNames.get(presentationFile!)).toBe("chat-ui");
+    expect(closureForModule(groupedGraph, presentation)).toContain(
+      path
+        .join(root, "src/features/chat/acp/ToolItemDetails.tsx")
+        .split(path.sep)
+        .join("/"),
+    );
+    for (const facade of [workbench, agent, presentation]) {
+      expect(
+        closureForModule(groupedGraph, facade).filter((id) =>
+          /(?:InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
+            id,
+          ),
+        ),
+        facade,
+      ).toEqual([]);
+    }
+    for (const facade of [
+      workbench,
+      agent,
+      "src/features/files/FileSurface.tsx",
+      "src/features/diff/DiffSurface.tsx",
+      "src/features/search/SearchSurface.tsx",
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+    ]) {
+      expect(
+        closureForModule(groupedGraph, facade).some((id) =>
+          id.endsWith(presentation),
+        ),
+        facade,
+      ).toBe(false);
+    }
+    const runtimeFile = groupedGraph.moduleFiles.get(
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+    );
+    expect(groupedGraph.chunkNames.get(runtimeFile!)).toBe("codemirror-deps");
   }, 90_000);
 
   it("enables bounded desktop groups only for the desktop-native build", async () => {
@@ -498,6 +543,15 @@ describe("desktop-native chunk topology", () => {
     expect(
       codeSplittingGroups(browserBuild.build?.rolldownOptions?.output),
     ).toBeUndefined();
+    expect(desktopBuild.build.rolldownOptions?.optimization).toEqual({
+      inlineConst: true,
+    });
+    expect(desktopBuild.build.rolldownOptions?.output).toMatchObject({
+      entryFileNames: "assets/[hash].js",
+      chunkFileNames: "assets/[hash].js",
+    });
+    expect(desktopServe.build?.rolldownOptions).toBeUndefined();
+    expect(browserBuild.build?.rolldownOptions).toBeUndefined();
   });
 
   it("preserves the complete desktop-native module graph and lazy facade oracle in memory", async () => {
@@ -558,11 +612,10 @@ describe("desktop-native chunk topology", () => {
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);
 
-    const editorRuntimeClosure = groupedGraph.dynamicStaticClosures.find(
-      ({ facadeModuleId }) =>
-        facadeModuleId === "src/features/files/CodeMirrorEditorRuntime.ts",
-    )?.staticClosure;
-    expect(editorRuntimeClosure).toBeDefined();
+    const editorRuntimeClosure = closureForModule(
+      groupedGraph,
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+    );
     expect(
       editorRuntimeClosure?.some((id) =>
         id.includes("node_modules/@codemirror/state/"),

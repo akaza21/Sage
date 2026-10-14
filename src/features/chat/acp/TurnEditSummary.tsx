@@ -14,7 +14,7 @@ import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { projectAgentEditSummary } from "./agentEditSummary";
-import { InlineSavedDiff } from "./InlineSavedDiff";
+import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;

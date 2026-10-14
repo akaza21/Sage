@@ -20,6 +20,25 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ImportDeclaration[source.value='react'] > ImportNamespaceSpecifier",
+          message:
+            "React namespace imports are forbidden; use named or default imports so desktop export validation is explicit.",
+        },
+        {
+          selector:
+            "ImportDeclaration[source.value='react/jsx-runtime'] > ImportNamespaceSpecifier",
+          message:
+            "React namespace imports are forbidden; use named JSX runtime imports so desktop export validation is explicit.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: {
       globals: globals.node,

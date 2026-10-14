@@ -222,7 +222,7 @@ describe("tool render matrix", () => {
     expect(document.querySelector(".acp-tool-card__raw-kind")).toBeNull();
   });
 
-  it("describes a completed new-file edit without a missing-path error", () => {
+  it("describes a completed new-file edit without a missing-path error", async () => {
     render(
       <ToolItem
         item={item({
@@ -243,10 +243,10 @@ describe("tool render matrix", () => {
       screen.getByRole("group", { name: "Created src/new.ts" }),
     ).toBeVisible();
     expect(screen.queryByText(/Path does not exist/i)).toBeNull();
-    expect(screen.getByText("File location unavailable")).toBeVisible();
+    expect(await screen.findByText("File location unavailable")).toBeVisible();
   });
 
-  it("renders the Standard ACP created-file projection from its raw-event fixture", () => {
+  it("renders the Standard ACP created-file projection from its raw-event fixture", async () => {
     render(
       <ToolItem
         item={item({
@@ -263,11 +263,12 @@ describe("tool render matrix", () => {
       name: createdFileStandardAcp.expected.label,
     });
     expect(card).toHaveTextContent("Created src/new.ts");
+    expect(await screen.findByText("new.ts")).toBeVisible();
     expect(card).toHaveTextContent("new.ts");
     expect(card).not.toHaveTextContent("Path does not exist");
   });
 
-  it("keeps a raw kind that differs from the degraded label", () => {
+  it("keeps a raw kind that differs from the degraded label", async () => {
     render(
       <ToolItem
         item={item({
@@ -279,9 +280,9 @@ describe("tool render matrix", () => {
       />,
     );
 
-    expect(
-      document.querySelector(".acp-tool-card__raw-kind"),
-    ).toHaveTextContent("harness.raw_tool");
+    expect(await screen.findByText("harness.raw_tool")).toHaveClass(
+      "acp-tool-card__raw-kind",
+    );
   });
 
   it("renders the captured cursor-agent read frame with its adversarial id", () => {
@@ -296,7 +297,7 @@ describe("tool render matrix", () => {
     expect(screen.getAllByText("Read File")).toHaveLength(1);
   });
 
-  it("renders an execute whose output was routed through a terminal", () => {
+  it("renders an execute whose output was routed through a terminal", async () => {
     render(
       <ToolItem
         item={item({
@@ -313,7 +314,7 @@ describe("tool render matrix", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Command line")).toHaveTextContent(
+    expect(await screen.findByLabelText("Command line")).toHaveTextContent(
       "pytest -q",
     );
     expect(screen.queryByLabelText("Command output")).toBeNull();
@@ -374,7 +375,7 @@ describe("tool render matrix", () => {
     ["cancelled", "Cancelled", "Permission cancelled"],
   ] as const)(
     "renders a permission-gated execute in the %s state",
-    (toolState, label, outputSummary) => {
+    async (toolState, label, outputSummary) => {
       const { container } = render(
         <ToolItem
           item={item(
@@ -398,13 +399,13 @@ describe("tool render matrix", () => {
 
       expect(container.querySelector(".acp-state")).toHaveTextContent(label);
       if (outputSummary)
-        expect(screen.getByLabelText("Command output")).toHaveTextContent(
-          outputSummary,
-        );
+        expect(
+          await screen.findByLabelText("Command output"),
+        ).toHaveTextContent(outputSummary);
     },
   );
 
-  it("shows a retained command tail with its exit code state", () => {
+  it("shows a retained command tail with its exit code state", async () => {
     render(
       <ToolItem
         item={item(
@@ -426,7 +427,7 @@ describe("tool render matrix", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Command line")).toHaveTextContent(
+    expect(await screen.findByLabelText("Command line")).toHaveTextContent(
       "npm run check",
     );
     expect(screen.getByLabelText("Command output")).toHaveTextContent(
