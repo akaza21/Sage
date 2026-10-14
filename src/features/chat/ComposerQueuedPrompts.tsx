@@ -1,5 +1,11 @@
 import { MoreHorizontal, X } from "../../ui/leanIcons";
-import { useId, useRef, useState, type RefObject } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
@@ -25,6 +31,30 @@ export function ComposerQueuedPrompts({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const rowTriggersRef = useRef(new Map<string, HTMLButtonElement>());
   const panelId = useId();
+  const queueRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const queue = queueRef.current;
+    const composer = queue?.closest<HTMLElement>(".composer");
+    if (!queue || !composer) return;
+    const measure = () => {
+      const space =
+        getComputedStyle(queue).position === "absolute"
+          ? composer.getBoundingClientRect().top -
+            queue.getBoundingClientRect().top
+          : 0;
+      composer.style.setProperty("--queued-tray-space", space + "px");
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    observer?.observe(queue);
+    return () => {
+      observer?.disconnect();
+      composer.style.removeProperty("--queued-tray-space");
+    };
+  }, [prompts?.length]);
   if (disabled && menuId !== null) setMenuId(null);
   const selected = prompts?.find((prompt) => prompt.id === menuId);
   if (!prompts?.length) return null;
@@ -42,7 +72,11 @@ export function ComposerQueuedPrompts({
     (nextTrigger ?? composerRef?.current)?.focus();
   };
   return (
-    <div className="composer__queued" aria-label="Queued messages">
+    <div
+      ref={queueRef}
+      className="composer__queued"
+      aria-label="Queued messages"
+    >
       {prompts.map((prompt) => (
         <div className="composer__queued-row" key={prompt.id}>
           <QueuedAttachmentPreview contexts={prompt.attachedContext} />

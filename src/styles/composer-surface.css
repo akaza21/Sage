@@ -1,4 +1,5 @@
 .composer {
+  --queued-tray-space: 0px;
   position: relative;
   container-name: composer;
   container-type: inline-size;

@@ -30,6 +30,7 @@ type AcpChatProjectionProps = {
   feedback?: Announcement | null;
   onFeedbackQueued?: (id: string) => void;
   emptyState?: ReactNode;
+  editSummaryContainer?: HTMLElement | null;
 };
 
 const loadAcpChatPresentation = () =>
@@ -52,6 +53,7 @@ export function AcpChatProjection({
   feedback,
   onFeedbackQueued,
   emptyState,
+  editSummaryContainer,
 }: AcpChatProjectionProps) {
   useEffect(() => {
     if (!active || !focused) return;
@@ -95,6 +97,7 @@ export function AcpChatProjection({
               projectRoots={projectRoots}
               retentionIncomplete={retentionIncomplete}
               onRetry={onRetry}
+              editSummaryContainer={editSummaryContainer}
             />
           )}
         />

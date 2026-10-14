@@ -694,7 +694,7 @@ describe("visual scenario surface ownership", () => {
     expect(
       await screen.findByRole(
         "region",
-        { name: "Files edited in turn 1" },
+        { name: "Files edited in this chat" },
         { timeout: 5_000 },
       ),
     ).toHaveTextContent("1 file changed");

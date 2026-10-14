@@ -14,8 +14,10 @@
 }
 
 .chat-surface--agent {
-  grid-template-areas: "notice" "transcript" "follow" "composer";
-  grid-template-rows: auto minmax(120px, 1fr) auto fit-content(60%);
+  grid-template-areas: "notice" "transcript" "follow" "edits" "composer";
+  grid-template-rows: auto minmax(120px, 1fr) auto minmax(0, auto) fit-content(
+      60%
+    );
 }
 
 .chat-surface--agent > .composer__notice {
@@ -32,6 +34,33 @@
 
 .chat-surface--agent > .composer {
   grid-area: composer;
+}
+
+.chat-surface--agent > .chat-edit-summary-zone {
+  grid-area: edits;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding-inline: var(--chat-column-gutter)
+    calc(var(--chat-column-gutter) + var(--chat-column-trailing));
+}
+
+.chat-edit-summary-zone:empty {
+  display: none;
+}
+
+@container chat (max-width: 520px) {
+  .chat-surface--agent > .chat-edit-summary-zone {
+    padding-inline: var(--chat-column-gutter);
+  }
+}
+
+.chat-edit-summary-zone > .acp-file-changes {
+  min-height: 0;
+  margin: 0 auto var(--space-2);
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 .surface-header {

@@ -1,6 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { expect, it } from "vitest";
 
+it("centres the narrow composer-adjacent pill without a second scrollbar reservation", async () => {
+  const source = await readFile("src/styles/chat-surface.css", "utf8");
+  const narrow = source.match(
+    /@container chat \(max-width: 520px\)\s*\{([\s\S]*?)\n\}/,
+  )?.[1];
+  expect(narrow).toBeDefined();
+  expect(narrow).toMatch(
+    /\.chat-edit-summary-zone\s*\{\s*padding-inline:\s*var\(--chat-column-gutter\);/,
+  );
+});
+
 it("keeps expanded narrow file rows inline while only collapsed totals wrap", async () => {
   const style = document.createElement("style");
   style.textContent = (

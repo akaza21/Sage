@@ -20,6 +20,7 @@ import {
   compareDecimalRevision,
   mergeProjectionPage,
   normalizeProjectionPage,
+  retainUnchangedTurns,
 } from "./acpProjectionMerge";
 
 export const MAX_RETAINED_TURNS = 100;
@@ -123,16 +124,7 @@ function countActivities(turns: readonly TurnProjection[]): number {
 function capTurnAndItemCounts(
   turns: readonly TurnProjection[],
 ): TurnProjection[] {
-  const retained = turns
-    .slice()
-    .slice(-MAX_RETAINED_TURNS)
-    .map((turn) => ({
-      ...turn,
-      items: turn.items
-        .slice()
-        .sort((left, right) => left.ordinal - right.ordinal),
-      activities: turn.activities.slice(),
-    }));
+  const retained = turns.slice(-MAX_RETAINED_TURNS);
 
   let overflow = countItems(retained) - MAX_RETAINED_ITEMS;
   for (let index = 0; overflow > 0 && index < retained.length; index += 1) {
@@ -314,7 +306,7 @@ export function createAcpProjectionStore() {
           : normalizeProjectionPage(page);
       const retained = trimToByteLimit(preserveNewerConfig(state.page, source));
       set({
-        page: retained.page,
+        page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,
         retentionIncomplete:
           state.retentionIncomplete || retained.retentionIncomplete,
@@ -358,7 +350,7 @@ export function createAcpProjectionStore() {
         preserveNewerConfig(state.page, normalizeProjectionPage(page)),
       );
       set({
-        page: retained.page,
+        page: retainUnchangedTurns(state.page, retained.page),
         retainedBytes: retained.retainedBytes,
         retentionIncomplete:
           state.retentionIncomplete || retained.retentionIncomplete,

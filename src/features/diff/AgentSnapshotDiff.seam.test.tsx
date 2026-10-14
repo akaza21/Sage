@@ -58,24 +58,12 @@ function OpenSurface() {
   return tab ? <DiffSurface tab={tab} /> : null;
 }
 describe("actual saved-edit card to shared Diff surface", () => {
-  it("collapses the edit list when a live Turn completes without remounting", () => {
+  it("keeps the chat pill collapsed during a live Turn and preserves explicit disclosure on completion", () => {
     const complete = snapshotPage();
     const runningTurn = { ...complete.turns[0], state: "running" as const };
     const { rerender } = render(
       <TurnEditSummary
-        page={complete}
-        turn={runningTurn}
-        rootLabels={{ "root-a": "Root" }}
-        countIncomplete={false}
-      />,
-    );
-    expect(
-      screen.getByRole("button", { name: /1 file changed/ }),
-    ).toHaveAttribute("aria-expanded", "true");
-    rerender(
-      <TurnEditSummary
-        page={complete}
-        turn={complete.turns[0]}
+        page={{ ...complete, turns: [runningTurn] }}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -83,10 +71,22 @@ describe("actual saved-edit card to shared Diff surface", () => {
     expect(
       screen.getByRole("button", { name: /1 file changed/ }),
     ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("list")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    rerender(
+      <TurnEditSummary
+        page={complete}
+        rootLabels={{ "root-a": "Root" }}
+        countIncomplete={false}
+      />,
+    );
     expect(
       screen.getByRole("button", { name: /1 file changed/ }),
     ).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+    expect(
+      screen.getByRole("button", { name: /1 file changed/ }),
+    ).toHaveAttribute("aria-expanded", "false");
   });
   it("never substitutes Git when a restored snapshot placement has lost its reference", async () => {
     const git = vi.spyOn(getWorkbenchPorts().repository, "getFileDiff");
@@ -115,7 +115,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     const { rerender } = render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
         onOpenDiff={openDiff}
@@ -149,7 +148,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     rerender(
       <TurnEditSummary
         page={{ ...page }}
-        turn={{ ...page.turns[0] }}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
         onOpenDiff={openDiff}
@@ -175,7 +173,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -203,7 +200,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -261,7 +257,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -305,7 +300,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -343,7 +337,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
       />,
@@ -384,7 +377,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
         onOpenDiff={vi.fn()}
@@ -412,7 +404,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
       <>
         <TurnEditSummary
           page={page}
-          turn={page.turns[0]}
           rootLabels={{ "root-a": "Root" }}
           countIncomplete={false}
           onOpenDiff={(selected, diffRef) => {
@@ -613,7 +604,6 @@ describe("actual saved-edit card to shared Diff surface", () => {
     render(
       <TurnEditSummary
         page={page}
-        turn={page.turns[0]}
         rootLabels={{ "root-a": "Root" }}
         countIncomplete={false}
         onOpenDiff={vi.fn()}

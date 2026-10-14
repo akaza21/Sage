@@ -129,7 +129,7 @@
         title: "Performance fixture",
         projectionRevision: "1",
         currentSessionId: "session-1",
-        sessions: [],
+        sessions: [{ id: "session-1" }],
         nextCursor: null,
         turns: Array.from({ length: mode === "cap" ? 100 : 2000 }, (_, index) =>
           makeTurn(index, mode),

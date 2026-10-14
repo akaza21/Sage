@@ -32,6 +32,12 @@
   background: var(--color-plane-raised);
 }
 
+.acp-editing-files {
+  min-height: 28px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .edit-summary__header,
 .acp-file-changes__header {
   display: grid;

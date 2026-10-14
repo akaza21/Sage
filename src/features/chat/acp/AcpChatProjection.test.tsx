@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState, type ComponentProps } from "react";
 
 import type {
   AcpChatPage,
@@ -21,13 +22,23 @@ import {
 } from "../../preview/harnessBrowse";
 import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
-import { AcpChatProjection } from "./AcpChatProjection";
+import { AcpChatProjection as Projection } from "./AcpChatProjection";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
 import { settleLazyModules } from "../../../test/settleLazyModules";
 import createdFileEvent from "./createdFileEvent.fixture.json";
 import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+
+function AcpChatProjection(props: ComponentProps<typeof Projection>) {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  return (
+    <>
+      <Projection {...props} editSummaryContainer={container} />
+      {props.active ? <div ref={setContainer} /> : null}
+    </>
+  );
+}
 
 async function renderProjection(ui: Parameters<typeof render>[0]) {
   const result = render(ui);
@@ -198,7 +209,9 @@ describe("AcpChatProjection", () => {
 
     await renderProjection(<AcpChatProjection page={projection} active />);
 
-    const card = screen.getByRole("region", { name: "Files edited in turn 1" });
+    const card = screen.getByRole("region", {
+      name: "Files edited in this chat",
+    });
     fireEvent.click(within(card).getByRole("button", { name: /file changed/ }));
     expect(
       within(card).getByText(createdFileEvent.expected.summary),
@@ -382,7 +395,7 @@ describe("AcpChatProjection", () => {
     );
     const answer = turn?.querySelector(".acp-message--assistant");
     const changedFiles = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     const rollup = work?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
 
@@ -1352,7 +1365,7 @@ describe("AcpChatProjection", () => {
     );
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     fireEvent.click(
       within(summary).getByRole("button", { name: /files changed/ }),
@@ -1395,7 +1408,7 @@ describe("AcpChatProjection", () => {
       ];
       await renderProjection(<AcpChatProjection page={edited} active />);
       const summary = screen.getByRole("region", {
-        name: "Files edited in turn 1",
+        name: "Files edited in this chat",
       });
       const totals = within(summary).queryByLabelText("Line changes");
       if (expected === null) expect(totals).toBeNull();
@@ -1431,7 +1444,7 @@ describe("AcpChatProjection", () => {
     );
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     fireEvent.click(
       within(summary).getByRole("button", { name: /files changed/ }),
@@ -1543,7 +1556,7 @@ describe("AcpChatProjection", () => {
     );
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     fireEvent.click(
       within(summary).getByRole("button", { name: /files changed/ }),
@@ -1586,7 +1599,7 @@ describe("AcpChatProjection", () => {
     );
 
     let summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     expect(within(summary).getByText("Showing 1 changed file")).toBeVisible();
     fireEvent.click(
@@ -1613,7 +1626,7 @@ describe("AcpChatProjection", () => {
     await settleLazyModules();
 
     summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     expect(within(summary).getByText("2 files changed")).toBeVisible();
     expect(
@@ -1633,7 +1646,7 @@ describe("AcpChatProjection", () => {
     );
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     expect(within(summary).getByText("Showing 1 changed file")).toBeVisible();
     fireEvent.click(
@@ -1686,7 +1699,7 @@ describe("AcpChatProjection", () => {
     await renderProjection(<AcpChatProjection page={edited} active />);
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
     fireEvent.click(
       within(summary).getByRole("button", { name: /Showing 32 changed files/ }),
@@ -1695,7 +1708,7 @@ describe("AcpChatProjection", () => {
       MAX_AGENT_EDIT_SUMMARY_FILES,
     );
     expect(
-      within(summary).getByText(/1 additional changed files not shown/i),
+      within(summary).getByText("1 additional changed files not shown."),
     ).toBeInTheDocument();
     expect(
       within(summary).getByText(
@@ -1738,9 +1751,15 @@ describe("AcpChatProjection", () => {
     );
 
     let summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
-    expect(within(summary).queryByRole("button")).toBeNull();
+    const disclosure = within(summary).getByRole("button", {
+      name: /Showing 1 changed file/,
+    });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(summary).toHaveClass("acp-file-changes--collapsed");
+    expect(within(summary).queryByRole("list")).toBeNull();
+    fireEvent.click(disclosure);
     expect(
       within(summary).getByText(/outside this Project/i),
     ).toBeInTheDocument();
@@ -1755,7 +1774,7 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
-    summary = screen.getByRole("region", { name: "Files edited in turn 1" });
+    summary = screen.getByRole("region", { name: "Files edited in this chat" });
     expect(within(summary).queryByRole("list")).toBeNull();
     expect(
       within(summary).getByText(
@@ -1819,15 +1838,20 @@ describe("AcpChatProjection", () => {
     );
 
     const summary = screen.getByRole("region", {
-      name: "Files edited in turn 1",
+      name: "Files edited in this chat",
     });
+    fireEvent.click(
+      within(summary).getByRole("button", { name: /2 files changed/ }),
+    );
     expect(
       within(summary).getByText("cp8-pane-probe.md · Deleted"),
     ).toBeInTheDocument();
     expect(
       within(summary).getByText("Path does not exist · unavailable"),
     ).toBeInTheDocument();
-    expect(within(summary).queryByRole("button")).toBeNull();
+    expect(
+      within(summary).queryByRole("button", { name: /^Open / }),
+    ).toBeNull();
     expect(openResource).not.toHaveBeenCalled();
   });
 

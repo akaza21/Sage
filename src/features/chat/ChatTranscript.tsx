@@ -1,6 +1,7 @@
 import {
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -80,6 +81,8 @@ export function ChatTranscript({
   onJumpToLatest: () => void;
 }) {
   const copySequence = useRef(0);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useState<HTMLDivElement | null>(null);
   const focusedRef = useRef(focused);
   useLayoutEffect(() => {
     focusedRef.current = focused;
@@ -111,8 +114,11 @@ export function ChatTranscript({
       current?.announcement.id === id ? null : current,
     );
   }, []);
-  const retryAction =
-    useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined;
+  const retryAction = useMemo(
+    () =>
+      useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined,
+    [useNativeAcp, page, onRetry],
+  );
   const projectName = composerWorkspaceName(project);
   const showHome = Boolean(
     useNativeAcp &&
@@ -151,6 +157,7 @@ export function ChatTranscript({
           ) : useNativeAcp && page ? (
             <AcpChatProjection
               page={page}
+              editSummaryContainer={editSummaryContainer}
               active
               focused={focused}
               projectRoots={projectRoots}
@@ -210,6 +217,9 @@ export function ChatTranscript({
             Jump to latest
           </button>
         </div>
+      ) : null}
+      {useNativeAcp && !projectTransitioning ? (
+        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer} />
       ) : null}
     </>
   );

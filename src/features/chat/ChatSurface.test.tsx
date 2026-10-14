@@ -3374,6 +3374,9 @@ describe("ChatSurface ACP resource integration", () => {
       await screen.findByRole("button", { name: "Open file src/main.ts" }),
     );
     fireEvent.click(
+      await screen.findByRole("button", { name: /file changed/ }),
+    );
+    fireEvent.click(
       await screen.findByRole("button", { name: "Open diff B / src/main.ts" }),
     );
 

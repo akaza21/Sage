@@ -21,7 +21,7 @@ export async function openAgentScenario(page: Page, name: VisualScenarioName) {
 }
 
 export async function expandAgentSnapshotEdits(page: Page) {
-  const edits = page.getByRole("region", { name: "Files edited in turn 1" });
+  const edits = page.getByRole("region", { name: "Files edited in this chat" });
   const disclosure = edits.getByRole("button", { name: /^1 file changed/ });
   await expect(disclosure).toBeVisible();
   if ((await disclosure.getAttribute("aria-expanded")) === "false") {

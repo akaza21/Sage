@@ -121,7 +121,7 @@ test("long Chat follows streaming and Jump to latest restores the end", async ({
   await jump.evaluate((button: HTMLButtonElement) => button.click());
   await expect
     .poll(() => page.evaluate(() => window.chatPerf.distanceFromEnd()))
-    .toBeLessThanOrEqual(64);
+    .toBeLessThanOrEqual(1);
 });
 
 test("expanding a measured Turn keeps neighboring history reachable", async ({
@@ -133,12 +133,24 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
   await page.evaluate(() => window.chatPerf.mount("cap"));
   await page.evaluate(() => window.chatPerf.scrollToMiddle());
   await page.waitForFunction(() => Boolean(window.chatPerf.visibleAnchor()));
-  const before = await page.evaluate(() => window.chatPerf.visibleAnchor());
+  const anchored = await page.evaluate(() => window.chatPerf.visibleAnchor());
   const disclosure = page
-    .locator(`[data-turn-id="${before?.id}"] details`)
+    .locator(`[data-turn-id="${anchored?.id}"] details`)
     .first();
   await expect(disclosure).toBeVisible();
-  await disclosure.locator(":scope > summary").click();
+  // Bring the summary fully into view first so the click's own actionability
+  // scroll cannot masquerade as anchor drift caused by the expansion.
+  const summary = disclosure.locator(":scope > summary");
+  await summary.scrollIntoViewIfNeeded();
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  const before = await page.evaluate(() => window.chatPerf.visibleAnchor());
+  expect(before?.id).toBe(anchored?.id);
+  await summary.click();
   await expect(disclosure).toHaveAttribute("open", "");
   const after = await page.evaluate(() => window.chatPerf.visibleAnchor());
   expect(after?.id).toBe(before?.id);

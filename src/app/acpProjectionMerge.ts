@@ -104,3 +104,49 @@ export function mergeProjectionPage(
     turns: mergeTurns(current.turns, incoming.turns),
   });
 }
+
+function sameTurnData(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    Array.isArray(left) !== Array.isArray(right) ||
+    (Array.isArray(left) && left.length !== (right as unknown[]).length)
+  )
+    return false;
+  const before = left as Record<string, unknown>;
+  const after = right as Record<string, unknown>;
+  const keys = Object.keys(before);
+  return (
+    keys.length === Object.keys(after).length &&
+    keys.every(
+      (key) =>
+        Object.hasOwn(after, key) && sameTurnData(before[key], after[key]),
+    )
+  );
+}
+
+export function retainUnchangedTurns(
+  current: AcpChatPage | null,
+  incoming: AcpChatPage,
+): AcpChatPage {
+  if (
+    !current ||
+    current.projectId !== incoming.projectId ||
+    current.chatId !== incoming.chatId
+  )
+    return incoming;
+  const previous = new Map(current.turns.map((turn) => [turn.id, turn]));
+  return {
+    ...incoming,
+    turns: incoming.turns.map((turn) => {
+      const retained = previous.get(turn.id);
+      return retained?.revision === turn.revision &&
+        sameTurnData(retained, turn)
+        ? retained
+        : turn;
+    }),
+  };
+}

@@ -1,4 +1,6 @@
 import { Fragment, memo, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { FilePenLine } from "../../../ui/leanIcons";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type {
@@ -14,7 +16,11 @@ import { acpDesktop } from "../../../services/acpDesktop";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
-import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
+import {
+  itemOwnershipMatches,
+  projectRootLabelKey,
+  projectRootLabels,
+} from "./agentEditSummary";
 import { TurnEditSummary } from "./TurnEditSummary";
 import { HarnessActivity } from "./HarnessActivity";
 import { promptAttachmentItems } from "./acpTurnState";
@@ -38,23 +44,20 @@ export type AcpChatPresentationProps = {
   projectRoots: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete: boolean;
   onRetry?: () => void;
+  editSummaryContainer?: HTMLElement | null;
 };
 
 const Turn = memo(
   function Turn({
     page,
     turn,
-    labels,
     hasProjectRoot,
-    countIncomplete,
     onOpenResource,
     onRetry,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
-    labels: Readonly<Record<string, string>>;
     hasProjectRoot: boolean;
-    countIncomplete: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
     onRetry?: () => void;
   }) {
@@ -91,11 +94,6 @@ const Turn = memo(
     const openForTurn = useCallback(
       (resource: ResourceRef, target: OpenResourceTarget = "file") =>
         onOpenResource?.(resource, target, actionOrigin),
-      [actionOrigin, onOpenResource],
-    );
-    const openDiffForTurn = useCallback(
-      (resource: ResourceRef, diffRef: AgentDiffRef) =>
-        onOpenResource?.(resource, "diff", actionOrigin, diffRef),
       [actionOrigin, onOpenResource],
     );
     const terminal = terminalTurnStates.has(turn.state);
@@ -234,41 +232,45 @@ const Turn = memo(
               )}
             />
           ))}
-          <TurnEditSummary
-            page={page}
-            turn={turn}
-            rootLabels={labels}
-            countIncomplete={countIncomplete}
-            onOpenDiff={
-              interactive && onOpenResource ? openDiffForTurn : undefined
-            }
-            onOpenFile={interactive ? onOpenResource && openForTurn : undefined}
-            onRecordDisposition={acpDesktop.recordAgentEditDisposition}
-          />
+          {/* docs/work-items/CHAT-WAVE-2/plan.md:28: live edits precede file data. */}
+          {!terminal &&
+          interactive &&
+          turn.items.some(
+            (item) =>
+              item.kind === "fileChangeDiff" &&
+              !terminalItemLifecycles.has(item.lifecycle) &&
+              itemOwnershipMatches(page, turn, item),
+          ) &&
+          !turn.items.some(
+            (item) =>
+              item.kind === "toolCall" &&
+              item.toolState === "inProgress" &&
+              item.payload.presentation.kind === "edit",
+          ) ? (
+            <div
+              className="acp-editing-files acp-tool-rollup__summary-copy"
+              role="status"
+              aria-live="polite"
+            >
+              <FilePenLine size={14} aria-hidden="true" />
+              <span className="acp-live-shimmer">Editing files</span>
+            </div>
+          ) : null}
           <TurnFailure turn={turn} onRetry={onRetry} />
         </div>
       </section>
     );
   },
   (left, right) =>
-    (left.turn !== right.turn || left.page === right.page) &&
-    left.turn.id === right.turn.id &&
-    left.turn.revision === right.turn.revision &&
-    left.turn.items.length === right.turn.items.length &&
-    left.turn.items.every(
-      (item, index) =>
-        item.id === right.turn.items[index]?.id &&
-        item.revision === right.turn.items[index]?.revision,
-    ) &&
-    left.turn.browserOperations === right.turn.browserOperations &&
-    left.turn.browserOperationsCollapsed ===
-      right.turn.browserOperationsCollapsed &&
+    left.turn === right.turn &&
+    left.page.sessions.some((session) => session.id === left.turn.sessionId) ===
+      right.page.sessions.some(
+        (session) => session.id === right.turn.sessionId,
+      ) &&
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
-    left.labels === right.labels &&
     left.hasProjectRoot === right.hasProjectRoot &&
-    left.countIncomplete === right.countIncomplete &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
 );
@@ -283,12 +285,47 @@ export function AcpChatPresentation({
   projectRoots,
   retentionIncomplete,
   onRetry,
+  editSummaryContainer,
 }: AcpChatPresentationProps) {
   const countIncomplete = page.nextCursor !== null || retentionIncomplete;
   const dayTimestamps = useTurnDayTimestamps(page.turns);
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
+  const onOpenDiff = useCallback(
+    (resource: ResourceRef, diffRef: AgentDiffRef) =>
+      onOpenResource?.(
+        resource,
+        "diff",
+        {
+          projectId: page.projectId,
+          chatId: page.chatId,
+          sessionId: diffRef.sessionId,
+        },
+        diffRef,
+      ),
+    [onOpenResource, page.projectId, page.chatId],
+  );
+  const onOpenFile = useCallback(
+    (resource: ResourceRef, turn: TurnProjection) =>
+      onOpenResource?.(resource, "file", {
+        projectId: page.projectId,
+        chatId: page.chatId,
+        sessionId: turn.sessionId,
+      }),
+    [onOpenResource, page.projectId, page.chatId],
+  );
+  const editSummary = (
+    <TurnEditSummary
+      key={page.projectId + ":" + page.chatId + ":" + page.currentSessionId}
+      page={page}
+      rootLabels={labels}
+      countIncomplete={countIncomplete}
+      onOpenDiff={onOpenResource ? onOpenDiff : undefined}
+      onOpenFile={onOpenResource ? onOpenFile : undefined}
+      onRecordDisposition={acpDesktop.recordAgentEditDisposition}
+    />
+  );
   const renderTurn = (turn: TurnProjection, index: number) => {
     const timestamp = dayTimestamps[index];
     return (
@@ -297,9 +334,7 @@ export function AcpChatPresentation({
         <Turn
           page={page}
           turn={turn}
-          labels={labels}
           hasProjectRoot={projectRoots.length > 0}
-          countIncomplete={countIncomplete}
           onOpenResource={onOpenResource}
           onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         />
@@ -344,6 +379,9 @@ export function AcpChatPresentation({
       ) : (
         page.turns.map(renderTurn)
       )}
+      {editSummaryContainer
+        ? createPortal(editSummary, editSummaryContainer)
+        : null}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Files, ChevronRight } from "../../../ui/leanIcons";
 
 import type {
@@ -13,15 +13,14 @@ import type { ResourceRef } from "../../../domain/workbench";
 import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
 import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
-import { projectAgentEditSummary } from "./agentEditSummary";
+import { projectChatEditSummary } from "./chatEditSummary";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
-  turn: TurnProjection;
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
-  onOpenFile?: (resource: ResourceRef) => void;
+  onOpenFile?: (resource: ResourceRef, turn: TurnProjection) => void;
   onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
@@ -42,26 +41,16 @@ function rootDisplayName(
     : rootId;
 }
 
-export function TurnEditSummary({
+export const TurnEditSummary = memo(function TurnEditSummary({
   page,
-  turn,
   rootLabels,
   countIncomplete,
   onOpenFile,
   onOpenDiff,
   onRecordDisposition,
 }: TurnEditSummaryProps) {
-  const summary = projectAgentEditSummary(page, turn);
-  const completed = turn.state === "completed";
-  const [expansion, setExpansion] = useState({
-    turnId: turn.id,
-    completed,
-    expanded: !completed,
-  });
-  const expanded =
-    expansion.turnId === turn.id && expansion.completed === completed
-      ? expansion.expanded
-      : !completed;
+  const summary = useMemo(() => projectChatEditSummary(page), [page]);
+  const [expanded, setExpanded] = useState(false);
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
     null,
   );
@@ -97,7 +86,10 @@ export function TurnEditSummary({
     (change) => change.resource.kind === "resource",
   );
 
-  async function recordDisposition(state: AgentEditDispositionState) {
+  async function recordDisposition(
+    state: AgentEditDispositionState,
+    turn: TurnProjection,
+  ) {
     if (!onRecordDisposition || recording) return;
     setRecording(state);
     setDispositionError(false);
@@ -121,7 +113,13 @@ export function TurnEditSummary({
   const fileLabel = summaryIncomplete
     ? `Showing ${summary.changes.length} changed ${noun}`
     : `${summary.changes.length} ${noun} changed`;
-  const canCollapse = hasInteractiveChanges;
+  const reviewTurns = [
+    ...new Set(
+      summary.changes
+        .filter((change) => change.resource.kind === "resource")
+        .map((change) => change.turn),
+    ),
+  ].filter((turn) => turn.sessionId === page.currentSessionId);
   const totals =
     summary.changes.length > 0 && (additions !== null || deletions !== null) ? (
       <span className="acp-file-changes__totals" aria-label="Line changes">
@@ -136,35 +134,27 @@ export function TurnEditSummary({
 
   return (
     <section
-      className={`acp-file-changes${!expanded && canCollapse ? " acp-file-changes--collapsed" : ""}`}
-      aria-label={`Files edited in turn ${turn.ordinal}`}
-      data-session-attempt={turn.sessionId}
+      className={`acp-file-changes${!expanded ? " acp-file-changes--collapsed" : ""}`}
+      aria-label="Files edited in this chat"
+      data-chat-id={page.chatId}
     >
-      {canCollapse ? (
-        <button
-          className="acp-file-changes__header"
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => {
-            setExpansion({ turnId: turn.id, completed, expanded: !expanded });
-            if (expanded) setPreviewKey(null);
-          }}
-        >
-          <Files size={16} aria-hidden="true" />
-          <strong>{fileLabel}</strong>
-          {dispositionError ? (
-            <span className="acp-file-changes__error">Needs attention</span>
-          ) : null}
-          {totals}
-        </button>
-      ) : (
-        <header className="acp-file-changes__header">
-          <Files size={16} aria-hidden="true" />
-          <strong>{fileLabel}</strong>
-          {totals}
-        </header>
-      )}
-      {(!canCollapse || expanded) && summary.changes.length > 0 ? (
+      <button
+        className="acp-file-changes__header"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => {
+          setExpanded(!expanded);
+          if (expanded) setPreviewKey(null);
+        }}
+      >
+        <Files size={16} aria-hidden="true" />
+        <strong>{fileLabel}</strong>
+        {dispositionError ? (
+          <span className="acp-file-changes__error">Needs attention</span>
+        ) : null}
+        {totals}
+      </button>
+      {expanded && summary.changes.length > 0 ? (
         <ul>
           {summary.changes.map((change, index) => {
             const location = change.resource;
@@ -218,6 +208,7 @@ export function TurnEditSummary({
             return (
               <li key={resourceKey(resource)}>
                 {admitted &&
+                change.turn.sessionId === page.currentSessionId &&
                 ((onOpenDiff && change.diffRef) ||
                   (onOpenFile &&
                     !change.diffRef &&
@@ -229,7 +220,7 @@ export function TurnEditSummary({
                     onClick={() => {
                       if (change.diffRef)
                         onOpenDiff?.(resource, change.diffRef);
-                      else onOpenFile?.(resource);
+                      else onOpenFile?.(resource, change.turn);
                     }}
                   >
                     {chip}
@@ -252,7 +243,9 @@ export function TurnEditSummary({
                 <span className="acp-file-changes__summary">
                   {change.summary}
                 </span>
-                {admitted && change.diffRef ? (
+                {admitted &&
+                change.diffRef &&
+                change.turn.sessionId === page.currentSessionId ? (
                   <button
                     type="button"
                     className="acp-file-changes__preview-toggle"
@@ -282,50 +275,56 @@ export function TurnEditSummary({
           })}
         </ul>
       ) : null}
-      {(!canCollapse || expanded) &&
-      hasInteractiveChanges &&
-      onRecordDisposition ? (
-        <div className="acp-file-changes__disposition">
-          <button
-            type="button"
-            disabled={recording !== null}
-            onClick={() => void recordDisposition("accepted")}
-          >
-            {recording === "accepted" ? "Recording…" : "Mark reviewed"}
-          </button>
-          <button
-            type="button"
-            disabled={recording !== null}
-            onClick={() => void recordDisposition("rejected")}
-          >
-            {recording === "rejected" ? "Recording…" : "Needs follow-up"}
-          </button>
-          <span>
-            This records review status only. It does not apply or revert files.
-          </span>
-        </div>
-      ) : null}
-      {(!canCollapse || expanded) && dispositionError ? (
+      {expanded && hasInteractiveChanges && onRecordDisposition
+        ? reviewTurns.map((turn) => (
+            <div
+              key={turn.id}
+              className="acp-file-changes__disposition"
+              aria-label={"Review turn " + turn.ordinal}
+            >
+              {reviewTurns.length > 1 ? <span>Turn {turn.ordinal}</span> : null}
+              <button
+                type="button"
+                disabled={recording !== null}
+                onClick={() => void recordDisposition("accepted", turn)}
+              >
+                {recording === "accepted" ? "Recording…" : "Mark reviewed"}
+              </button>
+              <button
+                type="button"
+                disabled={recording !== null}
+                onClick={() => void recordDisposition("rejected", turn)}
+              >
+                {recording === "rejected" ? "Recording…" : "Needs follow-up"}
+              </button>
+              <span>
+                This records review status only. It does not apply or revert
+                files.
+              </span>
+            </div>
+          ))
+        : null}
+      {expanded && dispositionError ? (
         <p className="acp-file-changes__disclosure" role="alert">
           The edit disposition was not recorded. No workspace files were
           changed.
         </p>
       ) : null}
-      {(!canCollapse || expanded) && summary.omittedCount > 0 ? (
+      {expanded && summary.omittedCount > 0 ? (
         <p className="acp-file-changes__disclosure">
           {summary.omittedCount} additional changed files not shown.
         </p>
       ) : null}
-      {(!canCollapse || expanded) && summary.sourceTruncated ? (
+      {expanded && summary.sourceTruncated ? (
         <p className="acp-file-changes__disclosure">
           The agent reported further changed files that are not shown.
         </p>
       ) : null}
-      {(!canCollapse || expanded) && summary.rejectedUnsafeOrStale ? (
+      {expanded && summary.rejectedUnsafeOrStale ? (
         <p className="acp-file-changes__disclosure">
           Unsafe or stale change records were not shown.
         </p>
       ) : null}
     </section>
   );
-}
+});

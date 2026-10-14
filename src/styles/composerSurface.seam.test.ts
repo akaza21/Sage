@@ -20,10 +20,46 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
+  it("reserves measured queue space only when the Agent edits row is populated", async () => {
+    const style = document.createElement("style");
+    style.textContent =
+      (await readFile("src/styles/queued-messages.css", "utf8")) +
+      (await readFile("src/styles/chat-surface.css", "utf8"));
+    const surface = document.createElement("section");
+    surface.className = "chat-surface chat-surface--agent";
+    surface.innerHTML =
+      '<div class="chat-edit-summary-zone"></div><form class="composer"><div class="composer__queued"></div></form>';
+    document.head.append(style);
+    document.body.append(surface);
+    try {
+      const queue = surface.querySelector(".composer__queued")!;
+      expect(getComputedStyle(queue).position).toBe("absolute");
+      surface.firstElementChild!.innerHTML =
+        '<section class="acp-file-changes">1 file changed</section>';
+      expect(getComputedStyle(queue).position).toBe("absolute");
+      expect(
+        getComputedStyle(surface.querySelector(".composer")!).marginBlockStart,
+      ).toBe("var(--queued-tray-space, 0px)");
+      expect(getComputedStyle(queue).maxHeight).toBe("min(320px, 40vh)");
+      surface.classList.remove("chat-surface--agent");
+      expect(getComputedStyle(queue).position).toBe("absolute");
+    } finally {
+      surface.remove();
+      style.remove();
+    }
+  });
+
+  it("reserves the same trailing column for the edits row and composer", async () => {
+    const css = await readFile("src/styles/chat-surface.css", "utf8");
+    expect(css).toMatch(
+      /\.chat-surface--agent > \.chat-edit-summary-zone\s*\{[^}]*padding-inline:\s*var\(--chat-column-gutter\)\s*calc\(var\(--chat-column-gutter\) \+ var\(--chat-column-trailing\)\);/s,
+    );
+  });
+
   it("caps the composer row to leave transcript space and scrolls upper content at every width", async () => {
     const surface = await composerRules();
     expect(surface).toMatch(
-      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+auto\s+fit-content\(60%\);/s,
+      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+auto\s+minmax\(0,\s*auto\)\s+fit-content\(\s*60%\s*\);/s,
     );
     expect(surface).toMatch(
       /\.composer\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*flex-direction:\s*column;/s,
@@ -39,6 +75,35 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__body\s*\{[^}]*display:\s*block;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s,
     );
     expect(surface).toMatch(/\.composer__toolbar\s*\{[^}]*flex:\s*none;/s);
+  });
+
+  it("lets expanded edit disclosures shrink and scroll only in their Agent grid row", async () => {
+    const css = await readFile("src/styles/chat-surface.css", "utf8");
+    const style = document.createElement("style");
+    style.textContent = css;
+    const agent = document.createElement("section");
+    agent.className = "chat-surface--agent";
+    agent.innerHTML =
+      '<div class="chat-edit-summary-zone"><section class="acp-file-changes"></section></div>';
+    const foreign = document.createElement("div");
+    foreign.className = "chat-edit-summary-zone";
+    document.head.append(style);
+    document.body.append(agent, foreign);
+    try {
+      const zone = agent.firstElementChild!;
+      expect(getComputedStyle(zone).gridArea).toBe("edits");
+      expect(getComputedStyle(foreign).gridArea).not.toBe("edits");
+      expect(getComputedStyle(zone).minHeight).toBe("0px");
+      expect(getComputedStyle(zone).display).toBe("flex");
+      expect(getComputedStyle(zone).flexDirection).toBe("column");
+      const disclosure = zone.firstElementChild!;
+      expect(getComputedStyle(disclosure).minHeight).toBe("0px");
+      expect(getComputedStyle(disclosure).overflowY).toBe("auto");
+    } finally {
+      style.remove();
+      agent.remove();
+      foreign.remove();
+    }
   });
 
   it("keeps transcript and composer in their named rows when notices and follow controls mount", async () => {

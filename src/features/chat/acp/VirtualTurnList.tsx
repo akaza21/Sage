@@ -12,6 +12,21 @@ import type { TurnProjection } from "../../../domain/acp";
 const ESTIMATED_ROW_HEIGHT = 264;
 const ROW_GAP = 24;
 
+function visibleAnchor(list: HTMLElement, scrollport: HTMLElement) {
+  const top = scrollport.getBoundingClientRect().top;
+  const row = [...list.querySelectorAll<HTMLElement>(".acp-turn")].find(
+    (element) => {
+      const bounds = element.getBoundingClientRect();
+      return (
+        bounds.bottom > top + 16 && bounds.top < top + scrollport.clientHeight
+      );
+    },
+  );
+  return row?.dataset.turnId
+    ? { id: row.dataset.turnId, inset: row.getBoundingClientRect().top - top }
+    : null;
+}
+
 function firstOffsetAtOrAfter(offsets: readonly number[], target: number) {
   let low = 0;
   let high = offsets.length - 1;
@@ -71,11 +86,13 @@ export function VirtualTurnList({
   const listRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState(() => new Map<string, number>());
   const latestHeights = useRef(new Map<string, number>());
-  const previousIds = useRef<readonly string[]>([]);
+  const previousFirst = useRef<string | undefined>(undefined);
   const anchor = useRef<{ id: string; inset: number } | null>(null);
   const pinnedAnchor = useRef<{ id: string; inset: number } | null>(null);
+  const pinnedEnd = useRef(false);
   const releaseFrame = useRef<number | null>(null);
   const [viewport, setViewport] = useState({ top: Infinity, height: 700 });
+  const latestViewport = useRef(viewport);
   const offsets = useMemo(() => {
     const values = [0];
     for (const turn of turns)
@@ -106,18 +123,32 @@ export function VirtualTurnList({
       if (!ids.has(id)) latestHeights.current.delete(id);
   }, [turns]);
 
-  const readViewport = useCallback(() => {
+  const readViewport = useCallback((event?: Event) => {
     const list = listRef.current;
     const scrollport = list?.closest<HTMLElement>(".message-list");
     if (!list || !scrollport) return;
+    if (event) {
+      pinnedAnchor.current = null;
+      pinnedEnd.current =
+        scrollport.scrollHeight -
+          scrollport.scrollTop -
+          scrollport.clientHeight <=
+        1;
+      anchor.current = visibleAnchor(list, scrollport);
+    }
     const listTop =
       list.getBoundingClientRect().top -
       scrollport.getBoundingClientRect().top +
       scrollport.scrollTop;
-    setViewport({
-      top: scrollport.scrollTop - listTop,
-      height: scrollport.clientHeight,
-    });
+    const top = scrollport.scrollTop - listTop;
+    const height = scrollport.clientHeight;
+    if (
+      latestViewport.current.top !== top ||
+      latestViewport.current.height !== height
+    ) {
+      latestViewport.current = { top, height };
+      setViewport(latestViewport.current);
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -128,7 +159,7 @@ export function VirtualTurnList({
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(readViewport);
+        : new ResizeObserver(() => readViewport());
     observer?.observe(scrollport);
     return () => {
       scrollport.removeEventListener("scroll", readViewport);
@@ -138,39 +169,23 @@ export function VirtualTurnList({
 
   useLayoutEffect(() => {
     const first = turns[0]?.id;
-    const previous = previousIds.current;
-    previousIds.current = turns.map((turn) => turn.id);
-    if (!first || previous.length === 0 || first === previous[0]) return;
-    const saved = anchor.current;
-    const index = saved ? turns.findIndex((turn) => turn.id === saved.id) : -1;
-    const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
-    if (!saved || index < 0 || !scrollport) return;
-    pinnedAnchor.current = saved;
-    const list = listRef.current!;
-    const anchoredRow = [
-      ...list.querySelectorAll<HTMLElement>(".acp-turn"),
-    ].find((row) => row.dataset.turnId === saved.id);
-    if (anchoredRow) {
-      scrollport.scrollTop +=
-        anchoredRow.getBoundingClientRect().top -
-        scrollport.getBoundingClientRect().top -
-        saved.inset;
-      readViewport();
-      return;
-    }
-    const listTop =
-      list.getBoundingClientRect().top -
-      scrollport.getBoundingClientRect().top +
-      scrollport.scrollTop;
-    scrollport.scrollTop = listTop + offsets[index]! - saved.inset;
-    readViewport();
-  }, [offsets, readViewport, turns]);
+    const previous = previousFirst.current;
+    previousFirst.current = first;
+    if (first && previous && first !== previous)
+      pinnedAnchor.current ??= anchor.current;
+  }, [turns]);
 
   useLayoutEffect(() => {
     const saved = pinnedAnchor.current;
     const list = listRef.current;
     const scrollport = list?.closest<HTMLElement>(".message-list");
-    if (!saved || !list || !scrollport) return;
+    if (!list || !scrollport) return;
+    if (pinnedEnd.current) {
+      scrollport.scrollTop = scrollport.scrollHeight - scrollport.clientHeight;
+      readViewport();
+      return;
+    }
+    if (!saved) return;
     const row = [...list.querySelectorAll<HTMLElement>(".acp-turn")].find(
       (element) => element.dataset.turnId === saved.id,
     );
@@ -183,16 +198,26 @@ export function VirtualTurnList({
         scrollport.scrollTop += difference;
         readViewport();
       }
+    } else {
+      const index = turns.findIndex((turn) => turn.id === saved.id);
+      if (index < 0) return;
+      const listTop =
+        list.getBoundingClientRect().top -
+        scrollport.getBoundingClientRect().top +
+        scrollport.scrollTop;
+      scrollport.scrollTop = listTop + offsets[index]! - saved.inset;
+      readViewport();
     }
     if (releaseFrame.current !== null)
       cancelAnimationFrame(releaseFrame.current);
     releaseFrame.current = requestAnimationFrame(() => {
       releaseFrame.current = requestAnimationFrame(() => {
+        if (pinnedAnchor.current) anchor.current = pinnedAnchor.current;
         pinnedAnchor.current = null;
         releaseFrame.current = null;
       });
     });
-  }, [end, measured, readViewport, start, turns]);
+  }, [end, measured, offsets, readViewport, start, turns]);
 
   useLayoutEffect(
     () => () => {
@@ -206,15 +231,7 @@ export function VirtualTurnList({
     const list = listRef.current;
     const scrollport = list?.closest<HTMLElement>(".message-list");
     if (!list || !scrollport || pinnedAnchor.current) return;
-    const top = scrollport.getBoundingClientRect().top;
-    const row = [...list.querySelectorAll<HTMLElement>(".acp-turn")].find(
-      (element) => element.getBoundingClientRect().bottom > top + 16,
-    );
-    if (row?.dataset.turnId)
-      anchor.current = {
-        id: row.dataset.turnId,
-        inset: row.getBoundingClientRect().top - top,
-      };
+    anchor.current = visibleAnchor(list, scrollport);
   }, [end, measured, start, turns, viewport.top]);
 
   const onMeasure = useCallback(
@@ -227,6 +244,20 @@ export function VirtualTurnList({
         measured.get(id) ??
         ESTIMATED_ROW_HEIGHT;
       if (Math.abs(prior - height) < 1) return;
+      const list = listRef.current;
+      const scrollport = list?.closest<HTMLElement>(".message-list");
+      if (list && scrollport) {
+        if (
+          scrollport.scrollHeight -
+            scrollport.scrollTop -
+            scrollport.clientHeight <=
+          1
+        )
+          pinnedEnd.current = true;
+        if (!pinnedEnd.current && !pinnedAnchor.current)
+          pinnedAnchor.current =
+            anchor.current ?? visibleAnchor(list, scrollport);
+      }
       latestHeights.current.set(id, height);
       setMeasured((current) => {
         const ids = new Set<string>(turns.map((turn) => turn.id));
@@ -234,11 +265,8 @@ export function VirtualTurnList({
         next.set(id, height);
         return next;
       });
-      const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
-      if (scrollport && offsets[index]! + prior + ROW_GAP <= viewport.top)
-        scrollport.scrollTop += height - prior;
     },
-    [measured, offsets, turns, viewport.top],
+    [measured, turns],
   );
 
   return (

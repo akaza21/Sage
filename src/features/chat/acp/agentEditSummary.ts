@@ -161,7 +161,7 @@ function revisionComparison(left: string, right: string): number | null {
   return left === right ? 0 : left < right ? -1 : 1;
 }
 
-function itemOwnershipMatches(
+export function itemOwnershipMatches(
   page: AcpChatPage,
   turn: TurnProjection,
   item: AcpItem,

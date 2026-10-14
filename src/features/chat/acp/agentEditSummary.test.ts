@@ -10,6 +10,7 @@ import {
   MAX_AGENT_EDIT_SUMMARY_FILES,
   projectAgentEditSummary,
 } from "./agentEditSummary";
+import { projectChatEditSummary } from "./chatEditSummary";
 
 type FileChangeItem = Extract<AcpItem, { kind: "fileChangeDiff" }>;
 
@@ -93,6 +94,117 @@ function page(items: readonly AcpItem[]): AcpChatPage {
 }
 
 describe("agent edit summary projection", () => {
+  it("caps unique edits across retained Turns at 32 without losing the partial-count disclosure", () => {
+    const projection = page(
+      Array.from({ length: 20 }, (_, index) =>
+        fileItem(
+          "first-" + index,
+          index,
+          "root",
+          "first-" + index + ".ts",
+          "first",
+        ),
+      ),
+    );
+    projection.turns = [
+      ...projection.turns,
+      {
+        ...turn(
+          Array.from({ length: 20 }, (_, index) =>
+            fileItem(
+              "second-" + index,
+              index,
+              "root",
+              "second-" + index + ".ts",
+              "second",
+              { turnId: "turn-b" } as never,
+            ),
+          ),
+        ),
+        id: "turn-b",
+        ordinal: 3,
+      } as TurnProjection,
+    ];
+    const summary = projectChatEditSummary(projection);
+    expect(summary.changes).toHaveLength(32);
+    expect(summary.omittedCount).toBe(8);
+    expect(summary.changes[0].resource).toEqual({
+      kind: "resource",
+      resource: { rootId: "root", relativePath: "first-8.ts" },
+    });
+  });
+  it("counts an edited then deleted canonical file once and retains the deletion", () => {
+    const edited = fileItem("edited", 1, "root", "gone.ts", "edited");
+    const deleted = fileItem("deleted", 2, "root", "gone.ts", "deleted");
+    edited.payload.changes = [
+      { ...edited.payload.changes[0], additions: 3, deletions: 4 },
+    ];
+    deleted.payload.changes = [
+      {
+        ...deleted.payload.changes[0],
+        additions: 0,
+        deletions: 5,
+        operation: "deleted",
+        resource: {
+          kind: "unavailable",
+          reason: "missing",
+          label: "Path does not exist",
+          displayResource: { rootId: "root", relativePath: "gone.ts" },
+        },
+      },
+    ];
+    const summary = projectChatEditSummary(page([edited, deleted]));
+    expect(summary.changes).toHaveLength(1);
+    expect(summary.changes[0].operation).toBe("deleted");
+    expect(summary.changes[0]).toMatchObject({ additions: 0, deletions: 5 });
+  });
+  it("deduplicates retained chat edits and preserves the newest originating turn", () => {
+    const projection = page([fileItem("first", 1, "root", "a.ts", "first")]);
+    const latest = {
+      ...turn([
+        fileItem("second", 1, "root", "a.ts", "latest", {
+          turnId: "turn-b",
+        } as never),
+        fileItem("other", 2, "root", "b.ts", "other", {
+          turnId: "turn-b",
+        } as never),
+      ]),
+      id: "turn-b",
+      ordinal: 3,
+    } as TurnProjection;
+    projection.turns = [...projection.turns, latest];
+    const summary = projectChatEditSummary(projection);
+    expect(summary.changes.map((change) => change.summary)).toEqual([
+      "latest",
+      "other",
+    ]);
+    expect(summary.changes[0].turn).toBe(latest);
+  });
+
+  it("bounds chat disclosure and excludes in-flight and foreign changes", () => {
+    const projection = page(
+      Array.from({ length: 33 }, (_, index) =>
+        fileItem("file-" + index, index, "root", index + ".ts", "saved"),
+      ),
+    );
+    projection.turns[0].items = [
+      ...projection.turns[0].items,
+      fileItem("live", 34, "root", "live.ts", "live", {
+        lifecycle: "streaming",
+      }),
+      fileItem("foreign", 35, "root", "foreign.ts", "foreign", {
+        chatId: "another-chat",
+      } as never),
+    ];
+    const summary = projectChatEditSummary(projection);
+    expect(summary.changes).toHaveLength(32);
+    expect(summary.omittedCount).toBe(1);
+    expect(summary.sourceTruncated).toBe(false);
+    expect(summary.rejectedUnsafeOrStale).toBe(true);
+    expect(summary.changes.some((change) => change.summary !== "saved")).toBe(
+      false,
+    );
+  });
   it("keeps edits inside their exact Project, Chat, session attempt, Turn, and runtime epoch", () => {
     const valid = fileItem("valid", 1, "root-a", "src/valid.ts", "valid");
     const projection = page([

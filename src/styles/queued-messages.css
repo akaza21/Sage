@@ -24,6 +24,10 @@
   font-size: var(--font-size-sm);
 }
 
+.chat-surface--agent:has(> .chat-edit-summary-zone:not(:empty)) > .composer {
+  margin-block-start: var(--queued-tray-space, 0px);
+}
+
 .composer__queued-thumbnail {
   display: grid;
   width: 28px;

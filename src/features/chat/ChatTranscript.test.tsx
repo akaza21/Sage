@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +16,7 @@ import { page, textItem } from "./acp/acpProjection.fixture";
 import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { snapshotPage } from "../../app/agentDiff.testFixture";
 
 afterEach(() => {
   cleanup();
@@ -82,6 +84,38 @@ function retryPage() {
 }
 
 describe("ChatTranscript answer actions", () => {
+  it("places isolated chat disclosures outside the scrolling transcript and resets them on owner change", async () => {
+    const first = snapshotPage();
+    const second = structuredClone(first);
+    second.chatId = "chat-b" as never;
+    second.turns[0].items = second.turns[0].items.map((item) => ({
+      ...item,
+      chatId: second.chatId,
+    }));
+    const firstView = await renderTranscript(first);
+    await renderTranscript(second);
+    const summaries = screen.getAllByRole("region", {
+      name: "Files edited in this chat",
+    });
+    expect(summaries).toHaveLength(2);
+    expect(summaries[0].closest(".message-list")).toBeNull();
+    expect(summaries[0].parentElement).toHaveClass("chat-edit-summary-zone");
+    const firstPill = within(summaries[0]).getByRole("button", {
+      name: /1 file changed/,
+    });
+    const secondPill = within(summaries[1]).getByRole("button", {
+      name: /1 file changed/,
+    });
+    fireEvent.click(firstPill);
+    expect(firstPill).toHaveAttribute("aria-expanded", "true");
+    expect(secondPill).toHaveAttribute("aria-expanded", "false");
+    expect(within(summaries[1]).queryByRole("list")).toBeNull();
+    await firstView.rerenderTranscript(second);
+    for (const pill of screen.getAllByRole("button", {
+      name: /1 file changed/,
+    }))
+      expect(pill).toHaveAttribute("aria-expanded", "false");
+  });
   it.each([true, false])(
     "does not replay prior copy feedback when a Chat regains focus (ACP: %s)",
     async (native) => {

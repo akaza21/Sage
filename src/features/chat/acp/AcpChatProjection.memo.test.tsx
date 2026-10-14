@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import { createAcpProjectionStore } from "../../../app/acpProjectionStore";
 import {
   clearBrowseSessions,
   setHarnessBrowseOwner,
@@ -31,8 +32,10 @@ describe("AcpChatProjection", () => {
       <span>{text}</span>
     ));
     const turnEditSummary = vi.fn(() => null);
+    const turnHeader = vi.fn(() => null);
     vi.resetModules();
     vi.doMock("./ChatMarkdown", () => ({ ChatMarkdown: chatMarkdown }));
+    vi.doMock("./TurnHeader", () => ({ TurnHeader: turnHeader }));
     vi.doMock("./TurnEditSummary", () => ({
       TurnEditSummary: turnEditSummary,
     }));
@@ -65,11 +68,26 @@ describe("AcpChatProjection", () => {
       ];
       return turn;
     });
+    const store = createAcpProjectionStore();
+    const scope = {
+      projectId: initial.projectId,
+      chatId: initial.chatId,
+      projectGeneration: "1" as never,
+    };
+    store.getState().activateScope(scope);
+    expect(store.getState().applyAuthoritativePage(scope, initial)).toBe(
+      "accepted",
+    );
     const { container, rerender } = render(
-      <MemoProjection page={initial} active />,
+      <MemoProjection
+        page={store.getState().page!}
+        active
+        editSummaryContainer={document.body}
+      />,
     );
     await screen.findByText("Retained row 14");
     chatMarkdown.mockClear();
+    turnHeader.mockClear();
     turnEditSummary.mockClear();
     const before = Array.from(
       container.querySelectorAll<HTMLElement>(".acp-turn"),
@@ -86,18 +104,32 @@ describe("AcpChatProjection", () => {
           } as AcpItem)
         : item,
     );
-    rerender(<MemoProjection page={revised} active />);
+    revised.projectionRevision = String(
+      Number(initial.projectionRevision) + 1,
+    ) as never;
+    expect(store.getState().applyAuthoritativePage(scope, revised)).toBe(
+      "accepted",
+    );
+    rerender(
+      <MemoProjection
+        page={store.getState().page!}
+        active
+        editSummaryContainer={document.body}
+      />,
+    );
     await screen.findByText("Revised row 7");
     const after = Array.from(
       container.querySelectorAll<HTMLElement>(".acp-turn"),
     );
     expect(chatMarkdown).toHaveBeenCalledOnce();
+    expect(turnHeader).toHaveBeenCalledOnce();
     expect(turnEditSummary).toHaveBeenCalledOnce();
     expect(after[0]).toBe(before[0]);
     expect(after[6]).toBe(before[6]);
     expect(after[6]).toHaveTextContent("Revised row 7");
     expect(after[13]).toBe(before[13]);
     vi.doUnmock("./ChatMarkdown");
+    vi.doUnmock("./TurnHeader");
     vi.doUnmock("./TurnEditSummary");
     vi.resetModules();
   });
