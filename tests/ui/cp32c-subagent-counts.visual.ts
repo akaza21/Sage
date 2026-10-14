@@ -193,7 +193,7 @@ for (const width of [1888, 720, 480]) {
         .getByRole("heading", { name: "Reviewer" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: "Subagent", exact: true }),
+      page.getByRole("tab", { name: "Subagents", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
   });
 

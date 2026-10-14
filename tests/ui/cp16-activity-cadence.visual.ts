@@ -192,5 +192,6 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
   await expect(popover.locator(".agent-task-header__agent-glyph")).toHaveCount(
     1,
   );
+  await expect(popover.locator(".agent-task-header__agent")).toHaveCount(3);
   await expect(popover).toHaveScreenshot("cp16-subagent-counts.png");
 });

@@ -55,3 +55,7 @@
 .agent-task-header__agent-glyph--2 {
   color: var(--agent-subagent-teal);
 }
+
+.agent-task-header__agent-summary + [role="status"] {
+  grid-column: 1 / -1;
+}
