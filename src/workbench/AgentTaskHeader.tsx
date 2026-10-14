@@ -1,6 +1,8 @@
 import { FileText, Globe2, ListFilter, Check, X } from "../ui/leanIcons";
 
 import {
+  lazy,
+  Suspense,
   useEffect,
   useId,
   useMemo,
@@ -22,7 +24,14 @@ import { agentChatMoveDestinations } from "./agentChatRail";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 import { MenuPopover } from "../ui/MenuPopover";
 import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import "./agent-subagent-summary.css";
+
+const SubagentResourceRows = lazy(() =>
+  import("./SubagentSurface").then((module) => ({
+    default: module.SubagentResourceRows,
+  })),
+);
 
 export function AgentTaskHeader({
   tab,
@@ -44,6 +53,7 @@ export function AgentTaskHeader({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const generation = useWorkbenchStore((state) => state.projectGeneration);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,9 +69,40 @@ export function AgentTaskHeader({
     acpProjectionStoreFor(tab?.id ?? null),
     (state) => state.page,
   );
+  const scope = useStore(
+    acpProjectionStoreFor(tab?.id ?? null),
+    (state) => state.scope,
+  );
+  const resourcesScope = [
+    project?.id,
+    generation,
+    tab?.id,
+    page?.currentSessionId,
+    page?.sessions.find((session) => session.id === page.currentSessionId)
+      ?.runtimeEpoch,
+    projectTransitioning,
+  ].join("\u0000");
+  const [previousScope, setPreviousScope] = useState(resourcesScope);
+  if (previousScope !== resourcesScope) {
+    setPreviousScope(resourcesScope);
+    setResourcesOpen(false);
+    setShowAllSources(false);
+  }
+  const validPage = validFocusedSubagentPage(
+    page,
+    scope,
+    project?.id ?? null,
+    tab?.id ?? null,
+    generation,
+    projectTransitioning,
+  );
   const { workingAgents, doneAgents, recentAgents, outputs, sources } = useMemo(
-    () => projectTaskResources(resourcesOpen ? page : null, tab?.id ?? null),
-    [page, resourcesOpen, tab?.id],
+    () =>
+      projectTaskResources(
+        resourcesOpen && validPage ? page : null,
+        tab?.id ?? null,
+      ),
+    [page, resourcesOpen, tab?.id, validPage],
   );
 
   useEffect(() => {
@@ -233,55 +274,54 @@ export function AgentTaskHeader({
                 </button>
               ))}
             </section>
-            <section
-              aria-label="Subagents"
-              title="Recent subagents from the latest 128 turns and 256 items per turn"
-            >
-              <strong>Subagents</strong>
-              <div className="agent-task-header__agent-summary">
-                <span
-                  className="agent-task-header__agent-metric"
-                  aria-label={`Recent subagents working: ${workingAgents}`}
-                >
+            {recentAgents.length > 0 ? (
+              <section
+                aria-label="Subagents"
+                title="Up to 128 subagents from the latest 128 turns and 256 items total"
+              >
+                <strong>Subagents</strong>
+                <div className="agent-task-header__agent-summary">
                   <span
-                    className="agent-task-header__agent-glyphs"
-                    aria-hidden="true"
+                    className="agent-task-header__agent-metric"
+                    aria-label={`Recent subagents working: ${workingAgents}`}
                   >
-                    {Array.from(
-                      { length: Math.min(workingAgents, 3) },
-                      (_, index) => (
-                        <span
-                          className={`agent-task-header__agent-glyph agent-task-header__agent-glyph--${index}`}
-                          key={index}
-                        >
-                          ✦
-                        </span>
-                      ),
-                    )}
+                    <span
+                      className="agent-task-header__agent-glyphs"
+                      aria-hidden="true"
+                    >
+                      {Array.from(
+                        { length: Math.min(workingAgents, 3) },
+                        (_, index) => (
+                          <span
+                            className={`agent-task-header__agent-glyph agent-task-header__agent-glyph--${index}`}
+                            key={index}
+                          >
+                            ✦
+                          </span>
+                        ),
+                      )}
+                    </span>
+                    {workingAgents} working
                   </span>
-                  {workingAgents} working
-                </span>
-                <span
-                  className="agent-task-header__agent-metric"
-                  aria-label={`Recent subagents done: ${doneAgents}`}
-                >
-                  {doneAgents} done
-                </span>
-              </div>
-              {recentAgents.slice(-8).map((agent) => (
-                <p className="agent-task-header__agent" key={agent.id}>
-                  <span>{agent.label}</span>
-                  <span>
-                    {agent.status === "starting"
-                      ? "Starting when observed"
-                      : agent.status === "working"
-                        ? "Working when observed"
-                        : agent.status}
+                  <span
+                    className="agent-task-header__agent-metric"
+                    aria-label={`Recent subagents done: ${doneAgents}`}
+                  >
+                    {doneAgents} done
                   </span>
-                </p>
-              ))}
-              <small>Latest retained observations; not live.</small>
-            </section>
+                </div>
+                <Suspense fallback={<p role="status">Loading subagents…</p>}>
+                  <SubagentResourceRows
+                    agents={recentAgents}
+                    onSelect={() => {
+                      resourcesTriggerRef.current?.focus();
+                      setResourcesOpen(false);
+                    }}
+                  />
+                </Suspense>
+                <small>Latest retained observations; not live.</small>
+              </section>
+            ) : null}
             <section aria-label="Sources">
               <strong>Sources</strong>
               {(showAllSources ? sources : sources.slice(-3)).map(

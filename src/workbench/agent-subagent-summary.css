@@ -8,6 +8,21 @@
   gap: 12px;
 }
 
+.agent-task-header__agent-list {
+  grid-column: 1 / -1;
+  max-height: 224px;
+  overflow-y: auto;
+}
+
+.agent-task-header__agent-list .agent-task-header__agent {
+  width: 100%;
+  margin: 4px 0 0;
+}
+
+.agent-task-header__agent span:last-child {
+  flex-shrink: 0;
+}
+
 .agent-task-header__agent-metric {
   display: inline-flex;
   align-items: center;

@@ -7,6 +7,8 @@ import {
 } from "../services/acpChildTranscript";
 import { projectTaskResources } from "./agentArtifactTabPresentation";
 
+export { SubagentResourceRows } from "./SubagentResourceRows";
+
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
 
@@ -123,24 +125,27 @@ export function SubagentSurface({
   ]);
   if (!turn || item?.kind !== "collaboration") return null;
 
-  const label =
-    item.payload.receiverLabels.length === 1
-      ? item.payload.receiverLabels[0]
-      : item.payload.operation === "started"
-        ? item.payload.label
-        : "Subagent";
   const states = item.payload.agentStates ?? [];
   const recent = agentKey
     ? projectTaskResources(page, page.chatId).recentAgents
     : [];
-  const latest = agentKey
-    ? (
-        recent.find((agent) => agent.id === `${itemId}:${agentKey}`) ??
-        (item.payload.operation === "started"
-          ? recent.filter((agent) => agent.agentKey === agentKey).at(-1)
-          : null)
-      )?.status
-    : null;
+  const observed =
+    agentKey && !superseded
+      ? recent.find(
+          (agent) =>
+            agent.id === `${itemId}:${agentKey}` ||
+            (agent.observationIds?.includes(itemId) &&
+              agent.agentKey === agentKey),
+        )
+      : null;
+  const label =
+    observed?.label ??
+    (item.payload.receiverLabels.length === 1
+      ? item.payload.receiverLabels[0].trim() || "Subagent"
+      : item.payload.operation === "started"
+        ? item.payload.label
+        : "Subagent");
+  const latest = observed?.status;
   const status = latest
     ? latest === "starting"
       ? "Starting when observed"

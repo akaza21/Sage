@@ -13,6 +13,172 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
 afterEach(cleanup);
 
 describe("SubagentSurface", () => {
+  it.each(["session", "invocation"])(
+    "does not relabel a selected native child when its key is reused by another %s",
+    (scope) => {
+      readChild.mockClear();
+      const identity = {
+        projectId: "project",
+        chatId: "chat",
+        sessionId: "session-a",
+      };
+      const spawn = (id: string, name: string, sessionId = "session-a") => ({
+        ...identity,
+        id,
+        sessionId,
+        kind: "collaboration",
+        payload: {
+          operation: "spawnAgent",
+          receiverLabels: [name],
+          agentKeys: ["private-reused"],
+          agentStates: [["private-reused", "running"]],
+        },
+      });
+      const native = (id: string, operation: string, label: string) => ({
+        ...identity,
+        id,
+        kind: "collaboration",
+        payload: {
+          operation,
+          label,
+          receiverLabels: [],
+          agentKey: "private-reused",
+          agentKeys: [],
+          agentStates: [],
+        },
+      });
+      const first = {
+        id: "turn-a",
+        sessionId: "session-a",
+        activities: [],
+        items: [
+          spawn("spawn-a", "Reviewer"),
+          native("started-a", "started", "Reviewer"),
+        ],
+      };
+      const second = {
+        id: "turn-b",
+        sessionId: "session-b",
+        activities: [],
+        items: [spawn("spawn-b", "Builder", "session-b")],
+      };
+      const page = {
+        ...identity,
+        currentSessionId: scope === "session" ? "session-b" : "session-a",
+        sessions: [],
+        turns:
+          scope === "session"
+            ? [first, second]
+            : [
+                {
+                  ...first,
+                  items: [
+                    ...first.items,
+                    native("done-a", "completed", "Subagent"),
+                    spawn("spawn-b", "Builder"),
+                  ],
+                },
+              ],
+      } as unknown as AcpChatPage;
+      render(
+        <SubagentSurface
+          page={page}
+          itemId="started-a"
+          agentKey="private-reused"
+        />,
+      );
+      expect(screen.getByRole("heading", { name: "Reviewer" })).toBeVisible();
+      if (scope === "session")
+        expect(screen.getByText(/from an earlier session/)).toBeVisible();
+      else expect(screen.getByRole("status")).toHaveTextContent("Done");
+      expect(readChild).not.toHaveBeenCalled();
+    },
+  );
+  it("preserves the retained name and done state when opening a bound terminal activity", () => {
+    readChild.mockClear();
+    const identity = {
+      projectId: "project",
+      chatId: "chat",
+      sessionId: "session",
+    };
+    const page = {
+      ...identity,
+      currentSessionId: "session",
+      sessions: [],
+      turns: [
+        {
+          id: "turn",
+          sessionId: "session",
+          items: [
+            {
+              ...identity,
+              id: "spawn",
+              kind: "collaboration",
+              payload: {
+                operation: "spawnAgent",
+                receiverLabels: ["Reviewer"],
+                agentKeys: ["private-child"],
+                agentStates: [["private-child", "completed"]],
+              },
+            },
+            {
+              ...identity,
+              id: "native",
+              kind: "collaboration",
+              payload: {
+                operation: "completed",
+                receiverLabels: [],
+                agentKey: "private-child",
+                agentKeys: [],
+                agentStates: [],
+                label: "Subagent",
+              },
+            },
+          ],
+          activities: [],
+        },
+      ],
+    } as unknown as AcpChatPage;
+    render(
+      <SubagentSurface page={page} itemId="native" agentKey="private-child" />,
+    );
+    expect(screen.getByRole("heading", { name: "Reviewer" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Done");
+    expect(readChild).not.toHaveBeenCalled();
+  });
+  it("uses the generic role for an explicitly selected unnamed child without reading", () => {
+    readChild.mockClear();
+    const page = {
+      projectId: "project",
+      chatId: "chat",
+      currentSessionId: "session",
+      sessions: [],
+      turns: [
+        {
+          id: "turn",
+          sessionId: "session",
+          items: [
+            {
+              id: "spawn",
+              kind: "collaboration",
+              payload: {
+                operation: "spawnAgent",
+                receiverLabels: [""],
+                agentKeys: ["private-child"],
+                agentStates: [["private-child", "running"]],
+              },
+            },
+          ],
+          activities: [],
+        },
+      ],
+    } as unknown as AcpChatPage;
+    render(
+      <SubagentSurface page={page} itemId="spawn" agentKey="private-child" />,
+    );
+    expect(screen.getByRole("heading", { name: "Subagent" })).toBeVisible();
+    expect(readChild).not.toHaveBeenCalled();
+  });
   it("shows an attributed current child through read-only chat rows", async () => {
     readChild.mockResolvedValue({
       kind: "current",
@@ -485,6 +651,9 @@ describe("SubagentSurface", () => {
             },
             {
               id: "started",
+              projectId: "project",
+              chatId: "chat",
+              sessionId: "session",
               kind: "collaboration",
               payload: {
                 operation: "started",

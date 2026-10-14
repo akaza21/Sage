@@ -413,11 +413,7 @@ describe("AgentTaskHeader working status", () => {
     expect(
       within(screen.getByRole("region", { name: "Outputs" })).queryByText("0"),
     ).toBeNull();
-    expect(screen.getByText("Subagents")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Subagents" })).toHaveAttribute(
-      "title",
-      "Recent subagents from the latest 128 turns and 256 items per turn",
-    );
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
     expect(screen.getByText("Sources")).toBeInTheDocument();
     expect(
       within(screen.getByRole("region", { name: "Sources" })).queryByText("0"),
@@ -575,7 +571,7 @@ describe("AgentTaskHeader working status", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows named recent subagents with distinct working and done states", () => {
+  it("shows named recent subagents with distinct working and done states", async () => {
     seedHeaderItems([
       collaborationItem(
         "spawn-1",
@@ -604,8 +600,8 @@ describe("AgentTaskHeader working status", () => {
     const section = screen.getByRole("region", { name: "Subagents" });
     expect(section).toHaveTextContent("1 working");
     expect(section).toHaveTextContent("1 done");
-    expect(section).toHaveTextContent("Researcher");
-    expect(section).toHaveTextContent("Builder");
+    expect(await within(section).findByText("Researcher")).toBeInTheDocument();
+    expect(await within(section).findByText("Builder")).toBeInTheDocument();
     expect(section).not.toHaveTextContent("private-thread");
   });
 
@@ -854,12 +850,7 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
-    expect(
-      screen.getByLabelText("Recent subagents working: 0"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Recent subagents done: 0"),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
   });
 
   it("does not revive an interrupted child without another spawn", () => {
@@ -902,6 +893,7 @@ describe("AgentTaskHeader working status", () => {
         project: { id: "project-a", name: "Sage", roots: [] },
         projects: [{ id: "project-a", name: "Sage", roots: [] }],
         projectTransitioning: false,
+        projectGeneration: 7,
       } as never);
     });
     render(

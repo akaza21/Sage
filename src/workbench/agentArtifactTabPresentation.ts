@@ -4,6 +4,12 @@ import type { AgentDiffRef } from "../domain/agentDiff";
 import type { ResourceRef } from "../domain/workbench";
 import { resourceKey } from "../domain/resourceIdentity";
 import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
+import {
+  attributedSubagentKey,
+  type SubagentPaneTarget,
+} from "../app/subagentPaneStore";
+import { sameAgentArtifactOwner } from "../domain/agentArtifact";
+import type { AcpItem } from "../domain/acp";
 
 type ArtifactTab = { resource?: { relativePath?: string }; title: string };
 
@@ -27,7 +33,22 @@ type RecentAgent = {
   label: string;
   status: AgentStatus;
   agentKey?: string;
+  target?: SubagentPaneTarget;
+  observationIds?: readonly string[];
 };
+
+function childTarget(
+  page: AcpChatPage,
+  sessionId: AgentArtifactOwner["sessionId"],
+  item: Extract<AcpItem, { kind: "collaboration" }>,
+  agentKey: string,
+): SubagentPaneTarget | undefined {
+  const owner = { projectId: page.projectId, chatId: page.chatId, sessionId };
+  return sameAgentArtifactOwner(owner, item) &&
+    attributedSubagentKey(item, [agentKey]) === agentKey
+    ? { owner, itemId: item.id, agentKey }
+    : undefined;
+}
 
 function agentStatus(state: string | undefined): AgentStatus | null {
   if (state === "pendingInit") return "starting";
@@ -112,7 +133,40 @@ export function projectTaskResources(
       sources.set(operation.tabId, { label, tabId: operation.tabId });
     }
     for (const item of turn.items) {
+      if (
+        page.currentSessionId !== undefined &&
+        turn.sessionId !== page.currentSessionId &&
+        (item.kind === "collaboration" ||
+          (item.kind === "toolCall" &&
+            item.payload.presentation.kind === "subagent"))
+      )
+        continue;
       if (item.kind === "collaboration") {
+        if (item.payload.operation !== "spawnAgent" && item.payload.agentKey) {
+          const invocation = latestInvocation.get(item.payload.agentKey);
+          const agent = invocation ? agents.get(invocation) : null;
+          const target = childTarget(
+            page,
+            turn.sessionId,
+            item,
+            item.payload.agentKey,
+          );
+          const label = item.payload.label?.trim();
+          if (invocation && agent && target)
+            agents.set(invocation, {
+              ...agent,
+              target,
+              observationIds: [...(agent.observationIds ?? []), item.id].slice(
+                -MAX_RESOURCE_DETAILS_PER_ITEM,
+              ),
+              label:
+                agent.label === "Subagent" && label && label !== "Subagent"
+                  ? label
+                  : agent.label,
+              status:
+                item.payload.operation === "completed" ? "done" : agent.status,
+            });
+        }
         const states = (item.payload.agentStates ?? []).slice(
           0,
           MAX_RESOURCE_DETAILS_PER_ITEM,
@@ -127,12 +181,14 @@ export function projectTaskResources(
             const label =
               item.payload.receiverLabels[index]?.trim() || "Subagent";
             const status = agentStatus(state);
+            const target = childTarget(page, turn.sessionId, item, key);
             if (status)
               agents.set(invocation, {
                 id: invocation,
                 label,
                 status,
                 agentKey: key,
+                ...(target ? { target, observationIds: [item.id] } : {}),
               });
           }
         } else if (
@@ -148,6 +204,7 @@ export function projectTaskResources(
             (agent.status === "starting" || agent.status === "working")
           )
             agents.set(invocation, {
+              ...agent,
               id: invocation,
               label: agent.label,
               status: "working",
@@ -183,6 +240,7 @@ export function projectTaskResources(
                 (status !== "starting" && status !== "working"))
             )
               agents.set(invocation, {
+                ...agents.get(invocation),
                 id: invocation,
                 label,
                 status,

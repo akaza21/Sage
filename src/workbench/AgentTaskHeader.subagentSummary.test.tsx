@@ -4,18 +4,25 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
 } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+
+const readChild = vi.hoisted(() => vi.fn());
+vi.mock("../services/acpChildTranscript", () => ({
+  getAcpChildTranscript: readChild,
+}));
 
 const initialState = useWorkbenchStore.getState();
 const tab: WorkbenchTab = {
@@ -66,6 +73,7 @@ function collaboration(
 }
 
 beforeEach(() => {
+  readChild.mockClear();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState({
     ...initialState,
@@ -73,6 +81,7 @@ beforeEach(() => {
     projects: [{ id: "project-a", name: "Sage", roots: [] }],
     tabs: [tab],
     activeTabId: tab.id,
+    projectGeneration: 7,
   } as never);
   const store = acpProjectionStoreFor(tab.id);
   const scope = {
@@ -130,10 +139,360 @@ beforeEach(() => {
   });
 });
 
+function replaceItems(items: AcpItem[], updates: Partial<AcpChatPage> = {}) {
+  const store = acpProjectionStoreFor(tab.id);
+  const { scope, page } = store.getState();
+  if (!scope || !page) throw new Error("Missing projection");
+  act(() => {
+    store.getState().applyAuthoritativePage(scope, {
+      ...page,
+      projectionRevision: String(
+        Number(page.projectionRevision) + 1,
+      ) as AcpChatPage["projectionRevision"],
+      turns: [{ ...page.turns[0], items }],
+      ...updates,
+    });
+  });
+}
+
+it("makes a lazily loaded child row keyboard reachable and returns Tab focus", async () => {
+  replaceItems([
+    collaboration(
+      "spawn-reviewer",
+      0,
+      "spawnAgent",
+      ["private-reviewer"],
+      ["Reviewer"],
+      [["private-reviewer", "running"]],
+    ),
+  ]);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  const trigger = screen.getByRole("button", { name: "Show chat resources" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const row = await screen.findByRole("button", {
+    name: "Open subagent Reviewer",
+  });
+  await waitFor(() => expect(row).toHaveFocus());
+  expect(readChild).not.toHaveBeenCalled();
+  expect(useSubagentPaneStore.getState().open).toBeNull();
+  fireEvent.keyDown(row, { key: "Tab" });
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+
+it("drops old-session counts and dismisses an open popover on session replacement", () => {
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  const trigger = screen.getByRole("button", { name: "Show chat resources" });
+  fireEvent.click(trigger);
+  replaceItems(
+    acpProjectionStoreFor(tab.id).getState().page!.turns[0].items as AcpItem[],
+    {
+      currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
+    },
+  );
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  fireEvent.click(trigger);
+  expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+});
+
+it("omits unsupported subagent chrome instead of inventing empty counts", () => {
+  replaceItems([]);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+  expect(readChild).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["named", ["Initializer", "Researcher", "Builder", "Closer", "Reviewer"]],
+  ["unnamed", ["", "", "", "", ""]],
+  ["mixed", ["Initializer", "", "Builder", "", "Reviewer"]],
+])(
+  "counts %s children across starting, working, done, stopped and failed observations",
+  async (_kind, names) => {
+    replaceItems(
+      ["pendingInit", "running", "completed", "interrupted", "errored"].map(
+        (state, index) =>
+          collaboration(
+            `spawn-${index}`,
+            index,
+            "spawnAgent",
+            [`private-${index}`],
+            [names[index]],
+            [[`private-${index}`, state]],
+          ),
+      ),
+    );
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show chat resources" }),
+    );
+    const section = screen.getByRole("region", { name: "Subagents" });
+    expect(
+      within(section).getByLabelText("Recent subagents working: 2"),
+    ).toHaveTextContent("2 working");
+    expect(
+      within(section).getByLabelText("Recent subagents done: 1"),
+    ).toHaveTextContent("1 done");
+    for (const state of [
+      "Starting when observed",
+      "Working when observed",
+      "done",
+      "stopped",
+      "failed",
+    ]) {
+      expect(
+        await within(section).findByText(state, { exact: true }),
+      ).toBeInTheDocument();
+    }
+    const list = section.querySelector(".agent-task-header__agent-list")!;
+    expect(list.children).toHaveLength(5);
+    for (const [index, row] of Array.from(list.children).entries()) {
+      expect(row.firstElementChild).toHaveTextContent(
+        names[index] || "Subagent",
+      );
+    }
+    expect(section).not.toHaveTextContent("private-");
+    expect(readChild).not.toHaveBeenCalled();
+  },
+);
+
+it("bounds 300 child observations to 128 selectable rows and truthful retained counts", async () => {
+  replaceItems(
+    Array.from({ length: 300 }, (_, index) =>
+      collaboration(
+        `spawn-${index}`,
+        index,
+        "spawnAgent",
+        [`private-${index}`],
+        [index % 2 ? "" : `Agent ${index}`],
+        [[`private-${index}`, index % 2 ? "completed" : "running"]],
+      ),
+    ),
+  );
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  const section = screen.getByRole("region", { name: "Subagents" });
+  const rows = await within(section).findAllByRole("button");
+  expect(rows).toHaveLength(128);
+  expect(rows[0]).toHaveAccessibleName("Open subagent Agent 172");
+  expect(rows.at(-1)).toHaveAccessibleName("Open subagent Subagent");
+  expect(
+    within(section).getByLabelText("Recent subagents working: 64"),
+  ).toBeInTheDocument();
+  expect(
+    within(section).getByLabelText("Recent subagents done: 64"),
+  ).toBeInTheDocument();
+  expect(
+    section.querySelectorAll(".agent-task-header__agent-glyph"),
+  ).toHaveLength(3);
+  expect(section).toHaveAttribute(
+    "title",
+    "Up to 128 subagents from the latest 128 turns and 256 items total",
+  );
+  expect(section).not.toHaveTextContent("private-");
+  expect(readChild).not.toHaveBeenCalled();
+});
+
+it.each(["project", "generation", "transition"])(
+  "dismisses and withholds child resources after a %s owner change",
+  (kind) => {
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    const trigger = screen.getByRole("button", { name: "Show chat resources" });
+    fireEvent.click(trigger);
+    act(() =>
+      useWorkbenchStore.setState(
+        kind === "project"
+          ? { project: { id: "project-b", name: "Other", roots: [] } }
+          : kind === "generation"
+            ? { projectGeneration: 8 }
+            : { projectTransitioning: true },
+      ),
+    );
+    expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+    expect(useSubagentPaneStore.getState().open).toBeNull();
+  },
+);
+
+it("resets resource visibility on Chat changes even when returning to the original Chat", () => {
+  const { rerender } = render(
+    <AgentTaskHeader tab={tab} chatCount={2} snapshot={null} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  rerender(
+    <AgentTaskHeader
+      tab={{ ...tab, id: "chat:b" }}
+      chatCount={2}
+      snapshot={null}
+    />,
+  );
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  rerender(<AgentTaskHeader tab={tab} chatCount={2} snapshot={null} />);
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+});
+
+it("keeps Task lifecycle metadata readable without a child selection or transcript read", async () => {
+  replaceItems(
+    ["inProgress", "completed"].map(
+      (toolState, index) =>
+        ({
+          ...collaboration(`task-${index}`, index, "spawnAgent", [], [], []),
+          kind: "toolCall",
+          toolState,
+          payload: {
+            presentation: {
+              kind: "subagent",
+              label: index ? "Review tests" : "Inspect layout",
+              activityId: null,
+              taskLifecycle: true,
+            },
+            inputSummary: null,
+          },
+        }) as AcpItem,
+    ),
+  );
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  const section = screen.getByRole("region", { name: "Subagents" });
+  expect(
+    await within(section).findByText("Inspect layout"),
+  ).toBeInTheDocument();
+  expect(await within(section).findByText("Review tests")).toBeInTheDocument();
+  expect(within(section).queryByRole("button")).toBeNull();
+  expect(section).toHaveTextContent("1 working");
+  expect(section).toHaveTextContent("1 done");
+  expect(useSubagentPaneStore.getState().open).toBeNull();
+  expect(readChild).not.toHaveBeenCalled();
+});
+
 afterEach(() => {
   cleanup();
+  useSubagentPaneStore.getState().clear();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initialState, true);
+});
+
+it("opens the observed child only after explicit resource selection", async () => {
+  const store = acpProjectionStoreFor(tab.id);
+  const { scope, page } = store.getState();
+  if (!scope || !page) throw new Error("Missing projection");
+  act(() => {
+    store.getState().applyAuthoritativePage(scope, {
+      ...page,
+      projectionRevision: "2" as AcpChatPage["projectionRevision"],
+      turns: [
+        {
+          ...page.turns[0],
+          items: [
+            collaboration(
+              "spawn-reviewer",
+              0,
+              "spawnAgent",
+              ["private-reviewer"],
+              ["Reviewer"],
+              [["private-reviewer", "running"]],
+            ),
+          ],
+        },
+      ],
+    });
+  });
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  expect(useSubagentPaneStore.getState().open).toBeNull();
+  const trigger = screen.getByRole("button", { name: "Show chat resources" });
+  fireEvent.click(trigger);
+  const row = await screen.findByRole("button", {
+    name: "Open subagent Reviewer",
+  });
+  expect(useSubagentPaneStore.getState().open).toBeNull();
+  fireEvent.click(row);
+  expect(useSubagentPaneStore.getState().open).toEqual({
+    owner: { projectId: "project-a", chatId: tab.id, sessionId: "session-1" },
+    itemId: "spawn-reviewer",
+    agentKey: "private-reviewer",
+  });
+  expect(useSubagentPaneStore.getState().selected).toBe(true);
+  expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
+  expect(trigger).toHaveFocus();
+});
+
+it("selects the bound native activity for a child already completed at spawn", async () => {
+  const native = collaboration("native-child", 1, "completed", [], [], []);
+  if (native.kind !== "collaboration")
+    throw new Error("Expected collaboration");
+  replaceItems([
+    collaboration(
+      "spawn-child",
+      0,
+      "spawnAgent",
+      ["private-child"],
+      ["Reviewer"],
+      [["private-child", "completed"]],
+    ),
+    { ...native, payload: { ...native.payload, agentKey: "private-child" } },
+  ]);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(screen.getByLabelText("Recent subagents done: 1")).toBeInTheDocument();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open subagent Reviewer" }),
+  );
+  expect(useSubagentPaneStore.getState().open?.itemId).toBe("native-child");
+});
+
+it("moves a retained running child to done on its native terminal observation", () => {
+  const native = collaboration("native-child", 1, "completed", [], [], []);
+  if (native.kind !== "collaboration")
+    throw new Error("Expected collaboration");
+  replaceItems([
+    collaboration(
+      "spawn-child",
+      0,
+      "spawnAgent",
+      ["private-child"],
+      ["Reviewer"],
+      [["private-child", "running"]],
+    ),
+    { ...native, payload: { ...native.payload, agentKey: "private-child" } },
+  ]);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(
+    screen.getByLabelText("Recent subagents working: 0"),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Recent subagents done: 1")).toBeInTheDocument();
+});
+
+it("uses a supplied native child name when its retained spawn was unnamed", async () => {
+  const native = collaboration("native-child", 1, "started", [], [], []);
+  if (native.kind !== "collaboration")
+    throw new Error("Expected collaboration");
+  replaceItems([
+    collaboration(
+      "spawn-child",
+      0,
+      "spawnAgent",
+      ["private-child"],
+      [""],
+      [["private-child", "running"]],
+    ),
+    {
+      ...native,
+      payload: {
+        ...native.payload,
+        label: "Researcher",
+        agentKey: "private-child",
+      },
+    },
+  ]);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(
+    await screen.findByRole("button", { name: "Open subagent Researcher" }),
+  ).toBeInTheDocument();
 });
 
 it("exposes the full project name when its breadcrumb is ellipsized", () => {
