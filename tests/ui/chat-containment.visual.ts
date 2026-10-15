@@ -626,7 +626,7 @@ for (const profile of profiles) {
       for (const name of [
         "Harness",
         "Model",
-        ...(profile.effort ? ["Thinking level"] : []),
+        ...(profile.effort ? ["High"] : []),
         "Composer options",
         "Access options",
       ]) {

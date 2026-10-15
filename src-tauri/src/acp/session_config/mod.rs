@@ -58,8 +58,14 @@ pub(crate) struct ConfigOption {
     pub name: Label,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<Description>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<ConfigId>,
+    #[serde(
+        default,
+        rename = "defaultValue",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub default_value: Option<ConfigId>,
     #[serde(flatten)]
     pub kind: ConfigKind,
 }
@@ -126,10 +132,17 @@ impl SessionConfig {
     pub(crate) fn from_wire(value: &Value, boolean_supported: bool) -> Result<Self, String> {
         // Parse away tolerated extensions before charging the canonical admitted payload.
         let value = strip_meta(value);
-        let config = serde_json::json!({
+        let mut config = serde_json::json!({
             "modes":value.get("modes"),
             "configOptions":value.get("configOptions").cloned().unwrap_or_else(|| serde_json::json!([]))
         });
+        if let Some(options) = config["configOptions"].as_array_mut() {
+            for option in options {
+                if let Some(fields) = option.as_object_mut() {
+                    fields.remove("defaultValue");
+                }
+            }
+        }
         validate_shapes(&config)?;
         let mut result: Self = serde_json::from_value(config).map_err(|e| e.to_string())?;
         if !boolean_supported {
@@ -195,6 +208,13 @@ impl SessionConfig {
                     unique(values.iter().copied())?;
                     if !values.contains(&current_value.as_str()) {
                         return Err("select currentValue not advertised".into());
+                    }
+                    if option
+                        .default_value
+                        .as_ref()
+                        .is_some_and(|default| !values.contains(&default.as_str()))
+                    {
+                        return Err("select defaultValue not advertised".into());
                     }
                 }
             }

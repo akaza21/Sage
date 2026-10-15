@@ -153,21 +153,27 @@ pub(super) fn config_for_model(
             })
         })
         .collect();
-    crate::acp::session_config::SessionConfig::from_wire(
-        &serde_json::json!({
+    let default = model.default_effort.as_ref().filter(|default| {
+        model
+            .supported_efforts
+            .iter()
+            .any(|effort| effort.id == **default)
+    });
+    let mut option = serde_json::json!({
+        "id":"effort", "name":"Thinking level", "category":"effort", "type":"select",
+        "currentValue":current, "options":options
+    });
+    if let Some(default) = default {
+        option["defaultValue"] = serde_json::json!(default);
+    }
+    let config: crate::acp::session_config::SessionConfig =
+        serde_json::from_value(serde_json::json!({
             "modes":null,
-            "configOptions":[{
-                "id":"effort",
-                "name":"Thinking level",
-                "category":"effort",
-                "type":"select",
-            "currentValue":current,
-                "options":options
-            }]
-        }),
-        true,
-    )
-    .ok()
+            "configOptions":[option]
+        }))
+        .ok()?;
+    config.validate().ok()?;
+    Some(config)
 }
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {

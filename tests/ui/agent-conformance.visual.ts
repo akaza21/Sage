@@ -922,30 +922,24 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       fixtures.installVisualComposerEffortFixture();
     });
     const thinking = composer(page).getByRole("button", {
-      name: "Thinking level",
+      name: "Medium",
       exact: true,
     });
     await expect(thinking).toBeVisible();
     await expect(thinking).toBeEnabled();
     await expect(thinking).toHaveText("Medium");
     await thinking.click();
-    const input = page.getByRole("combobox", {
-      name: "Thinking level",
-      exact: true,
-    });
-    const choices = page.getByRole("listbox", {
+    const input = page.getByRole("slider", {
       name: "Thinking level",
       exact: true,
     });
     await expect(input).toBeFocused();
-    await expect(choices.getByRole("option")).toHaveText([
-      "Low",
-      "Medium",
-      "High",
-    ]);
+    await expect(input).toHaveAttribute("min", "0");
+    await expect(input).toHaveAttribute("max", "2");
+    await expect(input).toHaveAttribute("aria-valuetext", "Medium");
     await expect(
-      choices.getByRole("option", { name: "Medium", exact: true }),
-    ).toHaveAttribute("aria-selected", "true");
+      page.getByRole("button", { name: "Reset effort" }),
+    ).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(thinking).toBeFocused();
   });

@@ -7,6 +7,12 @@ use crate::acp::{
 };
 
 fn ready_config(resume: bool) -> ClaudeRuntime {
+    ready_config_options(
+        resume,
+        json!([{"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":"low","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}]),
+    )
+}
+fn ready_config_options(resume: bool, options: Value) -> ClaudeRuntime {
     let mut runtime = ClaudeRuntime::fixture();
     initialize(&mut runtime);
     let command = if resume {
@@ -26,8 +32,34 @@ fn ready_config(resume: bool) -> ClaudeRuntime {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Written)
         .unwrap();
-    runtime.ingest(&frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"external-a","modes":{"currentModeId":"ask","availableModes":[{"id":"ask","name":"Ask"},{"id":"code","name":"Code"}]},"configOptions":[{"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":"low","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]}]}})), &Mapper).unwrap();
+    runtime.ingest(&frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"external-a","modes":{"currentModeId":"ask","availableModes":[{"id":"ask","name":"Ask"},{"id":"code","name":"Code"}]},"configOptions":options}})), &Mapper).unwrap();
     runtime
+}
+#[test]
+fn stray_defaults_never_enable_claude_reset_or_reject_session_configuration() {
+    for resume in [false, true] {
+        for default in [
+            json!("high"),
+            json!("unsupported"),
+            json!(false),
+            json!(null),
+            json!({"bad":1}),
+        ] {
+            let runtime = ready_config_options(
+                resume,
+                json!([
+                    {"id":"effort","name":"Effort","category":"thought_level","type":"select","currentValue":"low","defaultValue":default,"options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]},
+                    {"id":"flag","name":"Flag","type":"boolean","currentValue":true,"defaultValue":default}
+                ]),
+            );
+            let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+            assert_eq!(wire["configOptions"][0]["currentValue"], "low");
+            assert_eq!(wire["configOptions"][1]["currentValue"], true);
+            for option in wire["configOptions"].as_array().unwrap() {
+                assert!(option.get("defaultValue").is_none());
+            }
+        }
+    }
 }
 fn intent(mutation: ConfigMutation) -> ConfigIntent {
     ConfigIntent {
@@ -55,6 +87,11 @@ fn new_and_resume_preserve_configuration_without_durable_capability_count() {
             1
         );
         assert_eq!(runtime.capabilities().unwrap().config_count, 0);
+        let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert_eq!(wire["configOptions"][0]["category"], "thought_level");
+        assert_eq!(wire["configOptions"][0]["options"][0]["value"], "low");
+        assert_eq!(wire["configOptions"][0]["options"][1]["value"], "high");
+        assert!(wire["configOptions"][0].get("defaultValue").is_none());
     }
 }
 #[test]

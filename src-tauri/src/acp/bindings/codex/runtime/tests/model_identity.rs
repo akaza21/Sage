@@ -1,6 +1,52 @@
 use super::*;
 
 #[test]
+fn effort_reset_metadata_is_absent_without_an_advertised_catalog_default() {
+    for default in [None, Some("unsupported")] {
+        let mut runtime = fixture_runtime();
+        initialize(&mut runtime);
+        let start = runtime
+            .command(AdapterCommand::NewSession {
+                native_root: r"C:\repo".into(),
+                model: None,
+            })
+            .unwrap();
+        runtime
+            .ingest(
+                &frame(json!({"id":request_id(&start),"result":{
+                    "thread":{"id":"thread-1"},"model":"actual","reasoningEffort":"high"
+                }})),
+                &Mapper,
+            )
+            .unwrap();
+        let list_id = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+        let mut model = json!({"id":"actual","displayName":"Actual model","supportedReasoningEfforts":[
+            {"reasoningEffort":"low","description":"Quick"},
+            {"reasoningEffort":"high","description":"Deep"}
+        ]});
+        if let Some(default) = default {
+            model["defaultReasoningEffort"] = json!(default);
+        }
+        runtime
+            .ingest(
+                &frame(json!({"id":list_id,"result":{"data":[model],"nextCursor":null}})),
+                &Mapper,
+            )
+            .unwrap();
+        let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
+        assert_eq!(wire["configOptions"][0]["currentValue"], "high");
+        assert_eq!(
+            wire["configOptions"][0]["options"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(wire["configOptions"][0].get("defaultValue").is_none());
+    }
+}
+
+#[test]
 fn oversized_combined_config_preserves_identity_through_native_config_channel() {
     for (name, option_count) in [("Short".to_owned(), 1), ("M".repeat(512), 0)] {
         let mut adapter = fixture_runtime();
@@ -163,6 +209,7 @@ fn session_identity_uses_reported_model_not_requested_model_or_catalog_default()
         json!({"id":"actual","name":"Actual model"})
     );
     assert_eq!(config["configOptions"][0]["currentValue"], "high");
+    assert_eq!(config["configOptions"][0]["defaultValue"], "low");
     assert_eq!(config["configOptions"].as_array().unwrap().len(), 1);
 }
 

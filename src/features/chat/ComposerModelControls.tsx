@@ -1,12 +1,11 @@
 import { useEffect, type RefObject } from "react";
 import { ChevronDown, Sparkles } from "../../ui/leanIcons";
-import { SearchablePicker } from "../../ui/SearchablePicker";
+import { ComposerEffortControl } from "./ComposerEffortControl";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type {
   AcpConfigOption,
   AcpConfigValue,
 } from "../../domain/acpSessionConfig";
-import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import {
   ChatModelPicker,
   MAX_VISIBLE_MODELS,
@@ -17,7 +16,9 @@ export function ComposerModelControls({
   triggerRef,
   panelId,
   open,
+  effortOpen,
   onToggle,
+  onToggleEffort,
   onDismiss,
   choices,
   selectedId,
@@ -33,7 +34,9 @@ export function ComposerModelControls({
   triggerRef: RefObject<HTMLButtonElement | null>;
   panelId: string;
   open: boolean;
+  effortOpen: boolean;
   onToggle: () => void;
+  onToggleEffort: () => void;
   onDismiss: () => void;
   choices: readonly ComposerModelChoice[];
   selectedId: string | null;
@@ -52,15 +55,12 @@ export function ComposerModelControls({
       ? undefined
       : `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`;
   useEffect(() => {
-    if (open && !available) onDismiss();
-  }, [available, onDismiss, open]);
-  const effortCandidates =
-    effortOption?.type === "select"
-      ? flattenChoices(effortOption).map((choice) => ({
-          id: choice.value,
-          label: choice.name || choice.value,
-        }))
-      : [];
+    if (
+      (open && !available) ||
+      (effortOpen && (disabled || effortOption?.type !== "select"))
+    )
+      onDismiss();
+  }, [available, disabled, effortOpen, effortOption?.type, onDismiss, open]);
   return (
     <>
       <div className="composer__model-group">
@@ -90,15 +90,18 @@ export function ComposerModelControls({
           <ChevronDown size={12} aria-hidden="true" />
         </button>
         {effortOption?.type === "select" ? (
-          <SearchablePicker
-            ariaLabel="Thinking level"
-            candidates={effortCandidates}
-            className="composer__effort-picker"
-            popoverClassName="composer__popover composer__effort-menu"
-            triggerClassName="composer__control-trigger composer__picker-trigger"
-            disabled={disabled || pending}
-            onSelect={(value) => void onSetOption(effortOption.id, { value })}
-            selectedId={effortOption.currentValue}
+          <ComposerEffortControl
+            fallbackRef={triggerRef}
+            option={effortOption}
+            modelLabel={modelLabel}
+            open={effortOpen}
+            onToggle={onToggleEffort}
+            onDismiss={onDismiss}
+            onOpenModel={onToggle}
+            modelAvailable={available}
+            disabled={disabled}
+            pending={pending}
+            onSetOption={onSetOption}
           />
         ) : null}
         {contextWindow ? (

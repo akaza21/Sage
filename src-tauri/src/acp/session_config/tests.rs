@@ -1,5 +1,46 @@
 use super::*;
 #[test]
+fn wire_defaults_are_tolerated_but_never_confirmed_by_generic_acp() {
+    let option = json!({"id":"effort","name":"Effort","type":"select",
+        "currentValue":"high","defaultValue":"low",
+        "options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]});
+    for default in [
+        json!("low"),
+        json!("unsupported"),
+        json!(""),
+        json!(null),
+        json!(1),
+        json!(true),
+    ] {
+        let mut invalid = option.clone();
+        invalid["defaultValue"] = default;
+        let config = SessionConfig::from_wire(&json!({"configOptions":[invalid,
+            {"id":"flag","name":"Flag","type":"boolean","currentValue":true,"defaultValue":false}
+        ]}), true).unwrap();
+        let wire = serde_json::to_value(config).unwrap();
+        assert_eq!(wire["configOptions"].as_array().unwrap().len(), 2);
+        for option in wire["configOptions"].as_array().unwrap() {
+            assert!(option.get("defaultValue").is_none());
+        }
+    }
+    let mut absent = option;
+    absent.as_object_mut().unwrap().remove("defaultValue");
+    let config = SessionConfig::from_wire(&json!({"configOptions":[absent]}), true).unwrap();
+    assert!(
+        serde_json::to_value(config).unwrap()["configOptions"][0]
+            .get("defaultValue")
+            .is_none()
+    );
+}
+#[test]
+fn generic_acp_preserves_thought_level_category() {
+    let config = SessionConfig::from_wire(&json!({"configOptions":[select()]}), true).unwrap();
+    assert_eq!(
+        serde_json::to_value(config).unwrap()["configOptions"][0]["category"],
+        "thought_level"
+    );
+}
+#[test]
 fn confirmed_effort_is_bounded_binding_metadata_without_selectable_authority() {
     let mut config =
         SessionConfig::from_wire(&json!({"configOptions":[],"confirmedEffort":"high"}), true)

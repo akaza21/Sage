@@ -22,6 +22,23 @@ const overlay = () => ({
 });
 
 describe("session config boundary", () => {
+  it("retains only an advertised confirmed select default", () => {
+    const config = {
+      ...overlay(),
+      configOptions: [{ ...select, defaultValue: "high" }],
+    };
+    expect(decodeSessionConfig(config)?.configOptions[0]).toMatchObject({
+      defaultValue: "high",
+    });
+    for (const defaultValue of ["unsupported", "", null, 1, true]) {
+      expect(
+        decodeSessionConfig({
+          ...config,
+          configOptions: [{ ...select, defaultValue }],
+        })?.configOptions[0],
+      ).not.toHaveProperty("defaultValue");
+    }
+  });
   it("admits bounded confirmed effort without advertising selectable options", () => {
     const config = {
       ...overlay(),

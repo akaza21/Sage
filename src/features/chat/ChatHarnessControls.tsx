@@ -145,9 +145,15 @@ export function ChatHarnessControls({
   const modelOption = configOptions.find(
     (option) => (option.category ?? option.id).toLocaleLowerCase() === "model",
   );
-  const effortOption = configOptions.find(
-    (option) => (option.category ?? option.id).toLocaleLowerCase() === "effort",
-  );
+  const effortOption =
+    configOptions.find(
+      (option) =>
+        (option.category ?? option.id).toLocaleLowerCase() === "effort",
+    ) ??
+    configOptions.find(
+      (option) =>
+        (option.category ?? option.id).toLocaleLowerCase() === "thought_level",
+    );
   const hasSessionModel = modelOption?.type === "select";
   const modelLabel = useConfirmedModelLabel(
     JSON.stringify([
@@ -279,7 +285,9 @@ export function ChatHarnessControls({
         triggerRef={modelTrigger}
         panelId={modelId}
         open={active === "model"}
+        effortOpen={active === "effort"}
         onToggle={() => toggle("model")}
+        onToggleEffort={() => toggle("effort")}
         onDismiss={dismiss}
         choices={modelChoices}
         selectedId={currentModelId}

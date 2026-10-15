@@ -687,6 +687,8 @@ fn pi_thinking_config_uses_reported_levels_only() {
     ready(&mut runtime);
     let wire = serde_json::to_value(runtime.session_config().unwrap()).unwrap();
     assert_eq!(wire["configOptions"][1]["id"], "pi.thinking");
+    assert_eq!(wire["configOptions"][1]["category"], "effort");
+    assert!(wire["configOptions"][1].get("defaultValue").is_none());
     assert_eq!(wire["configOptions"][1]["currentValue"], "high");
     assert_eq!(wire["configOptions"][1]["options"][0]["value"], "off");
     assert_eq!(wire["configOptions"][1]["options"][1]["value"], "high");

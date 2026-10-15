@@ -82,6 +82,48 @@ function setup() {
 }
 
 describe("ephemeral session config projection", () => {
+  it("preserves newer advertised effort and confirmed default against stale mutation responses", () => {
+    const store = setup();
+    const current = page("3");
+    const option = {
+      id: "effort",
+      name: "Effort",
+      category: "effort",
+      type: "select" as const,
+      currentValue: "high",
+      defaultValue: "medium",
+      options: [
+        { value: "medium", name: "Medium" },
+        { value: "high", name: "High" },
+      ],
+    };
+    current.sessionConfig!.configOptions = [option];
+    store.getState().applyAuthoritativePage(scope, current);
+    const stale = page("2");
+    stale.sessionConfig!.configOptions = [
+      {
+        ...option,
+        currentValue: "medium",
+        defaultValue: "high",
+      },
+    ];
+    store.getState().applyAuthoritativePage(scope, stale);
+    expect(
+      store.getState().page?.sessionConfig?.configOptions[0],
+    ).toMatchObject({ currentValue: "high", defaultValue: "medium" });
+    const foreign = {
+      ...stale,
+      sessionConfig: {
+        ...stale.sessionConfig!,
+        runtimeEpoch: "1",
+        configRevision: "99",
+      },
+    };
+    expect(safeAcpMutationResponse({ projection: foreign })).toBeNull();
+    expect(
+      store.getState().page?.sessionConfig?.configOptions[0],
+    ).toMatchObject({ currentValue: "high", defaultValue: "medium" });
+  });
   it("composes strict config with matching live owner and configCount", () => {
     expect(
       safeAcpMutationResponse({ projection: page() })?.projection.sessionConfig,

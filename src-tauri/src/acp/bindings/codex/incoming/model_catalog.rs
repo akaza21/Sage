@@ -62,6 +62,7 @@ pub(super) fn parse_models(
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             supported_efforts,
+            default_effort,
         });
     }
     let next_cursor = result

@@ -1,7 +1,17 @@
 import { acpProjectionStoreFor } from "../../../../src/app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../../src/app/store";
 
-export function installVisualComposerEffortFixture() {
+export function installVisualComposerEffortFixture({
+  id = "effort",
+  levels = ["low", "medium", "high"],
+  currentValue = "medium",
+  defaultValue,
+}: {
+  id?: string;
+  levels?: string[];
+  currentValue?: string;
+  defaultValue?: string;
+} = {}) {
   const chat = useWorkbenchStore
     .getState()
     .tabs.find((tab) => tab.kind === "chat");
@@ -25,19 +35,23 @@ export function installVisualComposerEffortFixture() {
       sageAgentSessionId: session.id,
       runtimeEpoch: session.runtimeEpoch,
       configRevision: "1",
+      confirmedModel: {
+        id: session.modelId ?? "visual-model",
+        name: "GPT-6 Astra",
+      },
       modes: null,
       configOptions: [
         {
-          id: "effort",
+          id,
           name: "Thinking level",
           category: "effort",
           type: "select",
-          currentValue: "medium",
-          options: [
-            { value: "low", name: "Low" },
-            { value: "medium", name: "Medium" },
-            { value: "high", name: "High" },
-          ],
+          currentValue,
+          ...(defaultValue === undefined ? {} : { defaultValue }),
+          options: levels.map((value) => ({
+            value,
+            name: value[0].toUpperCase() + value.slice(1),
+          })),
         },
       ],
     },

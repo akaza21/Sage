@@ -35,7 +35,7 @@
   color: var(--composer-muted-text);
 }
 
-.composer__effort-picker .searchable-picker__trigger {
+.composer__model-group .composer__effort-picker {
   height: 28px;
   gap: 4px;
   padding: 0 4px;
@@ -43,6 +43,124 @@
   color: var(--composer-control-text);
   background: transparent;
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.composer__effort-menu.menu-popover {
+  display: flex;
+  flex-direction: column;
+  width: min(232px, calc(100vw - 32px));
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-xl);
+}
+
+.composer-effort__heading {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  align-items: start;
+  gap: 4px;
+}
+
+.composer-effort__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  line-height: 16px;
+}
+
+.composer-effort__level {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-effort__heading button {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  color: var(--composer-muted-text);
+  background: transparent;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.composer-effort__identity button {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-effort__identity svg {
+  display: inline;
+}
+
+.composer-effort__track {
+  position: relative;
+  height: 24px;
+}
+
+.composer-effort__track input {
+  display: block;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  appearance: none;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    to right,
+    var(--color-accent) var(--effort-position),
+    color-mix(in srgb, var(--color-text-muted) 35%, var(--color-plane-raised))
+      var(--effort-position)
+  );
+  cursor: pointer;
+}
+
+.composer-effort__track input::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  appearance: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-circle);
+  background: var(--color-status-foreground);
+}
+
+.composer-effort__stops {
+  position: absolute;
+  inset: 10px 10px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.composer-effort__stops span {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-circle);
+  background: var(--composer-muted-text);
+}
+
+.composer-effort__stops [data-selected="true"] {
+  visibility: hidden;
+}
+
+@media (forced-colors: active) {
+  .composer-effort__track input {
+    border: 1px solid ButtonText;
+  }
+
+  .composer-effort__track input::-webkit-slider-thumb {
+    background: Highlight;
+  }
 }
 
 .composer__capacity {

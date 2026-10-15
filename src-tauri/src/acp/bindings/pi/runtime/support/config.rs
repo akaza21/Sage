@@ -137,7 +137,7 @@ impl PiRuntime {
             config_options.push(serde_json::json!({
                 "id":"pi.thinking",
                 "name":"Thinking",
-                "category":"thought_level",
+                "category":"effort",
                 "type":"select",
                 "currentValue":thinking,
                 "options":options

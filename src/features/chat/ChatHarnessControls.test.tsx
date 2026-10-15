@@ -107,6 +107,75 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it.each([false, true])(
+    "prefers explicit effort over thought_level regardless of order (%s)",
+    (reverse) => {
+      const onSetSessionConfigOption = vi.fn().mockResolvedValue(undefined);
+      const options = [
+        {
+          id: "legacy",
+          category: "thought_level",
+          name: "Thinking",
+          type: "select",
+          currentValue: "low",
+          options: [
+            { value: "low", name: "Legacy low" },
+            { value: "high", name: "Legacy high" },
+          ],
+        },
+        {
+          id: "explicit",
+          category: "effort",
+          name: "Effort",
+          type: "select",
+          currentValue: "medium",
+          options: [
+            { value: "medium", name: "Medium" },
+            { value: "max", name: "Maximum" },
+          ],
+        },
+      ];
+      renderControls({
+        sessionConfig: decodeSessionConfig({
+          sageAgentSessionId: "session-1",
+          runtimeEpoch: "1",
+          configRevision: "1",
+          modes: null,
+          configOptions: reverse ? [...options].reverse() : options,
+        }),
+        onSetSessionConfigOption,
+      });
+      fireEvent.click(
+        screen.getByRole("button", { description: "Select effort" }),
+      );
+      const slider = screen.getByRole("slider");
+      expect(slider).toHaveAttribute("aria-valuetext", "Medium");
+      fireEvent.keyDown(slider, { key: "End" });
+      expect(onSetSessionConfigOption).toHaveBeenCalledExactlyOnceWith(
+        "explicit",
+        { value: "max" },
+      );
+    },
+  );
+  it.each([true, false])(
+    "uses generic thought_level without rewriting its category (present: %s)",
+    (categorized) => {
+      const config = confirmedModelConfig()!;
+      if (categorized) config.configOptions[1].category = "thought_level";
+      else config.configOptions[1].id = "thought_level";
+      renderControls({ sessionConfig: config });
+      fireEvent.click(
+        screen.getByRole("button", { description: "Select effort" }),
+      );
+      expect(screen.getByRole("slider")).toHaveAttribute(
+        "aria-valuetext",
+        "High",
+      );
+      expect(config.configOptions[1].category).toBe(
+        categorized ? "thought_level" : undefined,
+      );
+    },
+  );
   it("shows confirmed effort after catalog failure without inventing effort choices", () => {
     useWorkbenchStore.setState({ selectedHarnessId: "codex", models: [] });
     const sessionConfig = decodeSessionConfig({
@@ -127,7 +196,9 @@ describe("last confirmed model label", () => {
     expect(trigger).toHaveTextContent(/^actual High$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
     expect(trigger).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { description: "Select effort" }),
+    ).toBeNull();
   });
 
   it("does not confirm a requested catalog model until the harness reports identity", () => {
@@ -336,7 +407,7 @@ describe("last confirmed model label", () => {
         "Confirmed session model",
       );
       expect(
-        screen.getByRole("button", { name: "Thinking level" }),
+        screen.getByRole("button", { description: "Select effort" }),
       ).toBeDisabled();
       view.rerenderControls({
         ...selection,
@@ -355,7 +426,7 @@ describe("last confirmed model label", () => {
         screen.queryByRole("listbox", { name: "Select model" }),
       ).toBeNull();
       expect(
-        screen.queryByRole("button", { name: "Thinking level" }),
+        screen.queryByRole("button", { description: "Select effort" }),
       ).toBeNull();
     },
   );
@@ -770,7 +841,7 @@ describe("composer permission mode picker", () => {
       "Claude Opus 5.5",
     );
     expect(
-      screen.getByRole("button", { name: "Thinking level" }),
+      screen.getByRole("button", { description: "Select effort" }),
     ).toHaveTextContent("High");
     expect(
       screen.getByRole("button", { name: "Access options" }),
@@ -829,8 +900,12 @@ describe("composer permission mode picker", () => {
       value: "sonnet",
     });
     expect(onSelectModel).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Thinking level" }));
-    fireEvent.click(screen.getByRole("option", { name: "High" }));
+    fireEvent.click(
+      screen.getByRole("button", { description: "Select effort" }),
+    );
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Thinking level" }), {
+      key: "End",
+    });
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("effort", {
       value: "high",
     });
@@ -1285,7 +1360,9 @@ describe("composer permission mode picker", () => {
     expect(screen.getByRole("option", { name: /New Model/ })).toBeVisible();
     expect(screen.queryByText("Old Model")).toBeNull();
     expect(screen.queryByText("High")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { description: "Select effort" }),
+    ).toBeNull();
   });
 
   it("replaces the hard-coded chip with the live persisted mode", () => {

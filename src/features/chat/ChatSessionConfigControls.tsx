@@ -36,7 +36,7 @@ export function ChatSessionConfigControls({
   const options = sessionConfigControls(sessionConfig)
     .filter((option) => {
       if (!group) return true;
-      const modelRelated = ["model", "effort"].includes(
+      const modelRelated = ["model", "effort", "thought_level"].includes(
         (option.category ?? option.id).toLocaleLowerCase(),
       );
       return group === "model" ? modelRelated : !modelRelated;

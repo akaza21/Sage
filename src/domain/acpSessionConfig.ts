@@ -31,6 +31,7 @@ export type AcpConfigOption = ConfigBase &
     | {
         type: "select";
         currentValue: string;
+        defaultValue?: string;
         options: AcpConfigChoice[] | AcpConfigGroup[];
       }
     | { type: "boolean"; currentValue: boolean }
@@ -154,7 +155,15 @@ function option(v: unknown): AcpConfigOption | null {
     values = options.map((c) => c.value);
   }
   if (!unique(values) || !values.includes(v.currentValue)) return null;
-  return { ...base, type: "select", currentValue: v.currentValue, options };
+  return {
+    ...base,
+    type: "select",
+    currentValue: v.currentValue,
+    options,
+    ...(text(v.defaultValue) && values.includes(v.defaultValue)
+      ? { defaultValue: v.defaultValue }
+      : {}),
+  };
 }
 function modes(v: unknown): AcpSessionModes | null {
   if (!object(v) || !text(v.currentModeId) || !array(v.availableModes))

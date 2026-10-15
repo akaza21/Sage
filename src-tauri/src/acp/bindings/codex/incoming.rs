@@ -66,6 +66,7 @@ pub(crate) struct ModelDescriptor {
     pub(crate) name: RequiredText<512>,
     pub(crate) is_default: bool,
     pub(crate) supported_efforts: Vec<ReasoningEffort>,
+    pub(crate) default_effort: Option<RequiredText<512>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
