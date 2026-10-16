@@ -7,12 +7,60 @@ import { projectChatEditSummary } from "./chatEditSummary";
 
 afterEach(() => vi.restoreAllMocks());
 
+it("caches at most 32 changes per turn while retaining keys for unique omissions", () => {
+  const page = snapshotPage();
+  const original = page.turns[0];
+  const saved = original.items[0];
+  if (saved.kind !== "fileChangeDiff") throw new Error("Expected saved edit");
+  original.items = Array.from({ length: 40 }, (_, index) => ({
+    ...saved,
+    id: `edit-${index}` as never,
+    ordinal: index,
+    payload: {
+      ...saved.payload,
+      changes: [
+        {
+          ...saved.payload.changes[0],
+          resource: {
+            kind: "resource" as const,
+            resource: {
+              rootId: "root-a",
+              relativePath: `src/file-${index}.ts`,
+            },
+          },
+        },
+      ],
+    },
+  }));
+  const project = vi.spyOn(agentSummary, "projectAgentEditSummary");
+  expect(projectChatEditSummary(page).omittedCount).toBe(8);
+  const cached = project.mock.results[0].value;
+  expect(cached.changes).toHaveLength(32);
+  expect(cached.changeKeys.size).toBe(40);
+  project.mockClear();
+  expect(projectChatEditSummary({ ...page }).omittedCount).toBe(8);
+  expect(project).not.toHaveBeenCalled();
+  page.turns = [
+    original,
+    {
+      ...original,
+      id: "latest" as never,
+      ordinal: 2,
+      items: [{ ...original.items[0], turnId: "latest" as never }],
+    },
+  ];
+  const summary = projectChatEditSummary(page);
+  expect(summary.changes).toHaveLength(32);
+  expect(summary.omittedCount).toBe(8);
+  expect(summary.changes.at(-1)?.turn.id).toBe("latest");
+});
+
 it.each([
-  [2, 3, 3, 4],
-  [null, 3, null, 4],
-  [2, null, 3, null],
+  [2, 3, 2, 3],
+  [null, 3, null, 3],
+  [2, null, 2, null],
 ])(
-  "sums per-file totals across turns, preserving unknown sides (%s, %s)",
+  "uses the latest diff's per-file totals, preserving unknown sides (%s, %s)",
   (additions, deletions, totalAdditions, totalDeletions) => {
     const page = snapshotPage();
     const original = page.turns[0];

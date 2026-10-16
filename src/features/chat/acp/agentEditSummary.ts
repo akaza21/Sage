@@ -49,6 +49,7 @@ const MAX_COUNTER_VALUE = 9_223_372_036_854_775_807n;
 
 export interface AgentEditSummaryProjection {
   changes: readonly AgentEditSummaryChange[];
+  changeKeys: ReadonlySet<string>;
   omittedCount: number;
   sourceTruncated: boolean;
   rejectedUnsafeOrStale: boolean;
@@ -225,7 +226,9 @@ function newerItem(current: AcpItem, candidate: AcpItem): AcpItem | null {
     : current;
 }
 
-function changeKey(change: FileChangeProjection): string {
+export function agentEditSummaryChangeKey(
+  change: FileChangeProjection,
+): string {
   return change.resource.kind === "resource"
     ? `resource:${resourceKey(change.resource.resource)}`
     : change.resource.displayResource
@@ -257,6 +260,7 @@ export function projectAgentEditSummary(
   if (!turnBelongsToPage || turn.items.length > MAX_PROJECTED_ITEMS_PER_TURN) {
     return {
       changes: [],
+      changeKeys: new Set(),
       omittedCount: 0,
       sourceTruncated: false,
       rejectedUnsafeOrStale: true,
@@ -291,6 +295,7 @@ export function projectAgentEditSummary(
       codeUnitComparison(left.id, right.id),
   );
   const changesByResource = new Map<string, AgentEditSummaryChange>();
+  const changeKeys = new Set<string>();
   let sourceTruncated = false;
   for (const item of ordered) {
     if (item.kind !== "fileChangeDiff") continue;
@@ -304,7 +309,7 @@ export function projectAgentEditSummary(
         rejectedUnsafeOrStale = true;
         continue;
       }
-      const key = changeKey(change);
+      const key = agentEditSummaryChangeKey(change);
       const diffRef =
         change.pairState === "available" &&
         change.resource.kind === "resource" &&
@@ -328,17 +333,16 @@ export function projectAgentEditSummary(
       }
       changesByResource.delete(key);
       changesByResource.set(key, diffRef ? { ...change, diffRef } : change);
+      changeKeys.add(key);
+      if (changesByResource.size > MAX_AGENT_EDIT_SUMMARY_FILES)
+        changesByResource.delete(changesByResource.keys().next().value!);
     }
   }
 
-  const allChanges = [...changesByResource.values()];
-  const omittedCount = Math.max(
-    0,
-    allChanges.length - MAX_AGENT_EDIT_SUMMARY_FILES,
-  );
   return {
-    changes: allChanges.slice(-MAX_AGENT_EDIT_SUMMARY_FILES),
-    omittedCount,
+    changes: [...changesByResource.values()],
+    changeKeys,
+    omittedCount: changeKeys.size - changesByResource.size,
     sourceTruncated,
     rejectedUnsafeOrStale,
   };

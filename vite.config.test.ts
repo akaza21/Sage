@@ -309,6 +309,25 @@ function closureForModule(
   return closure;
 }
 
+function expectNoNewFeatureModules(
+  graph: ReturnType<typeof graphInventory>,
+  baseline: ReturnType<typeof graphInventory>,
+  facade: string,
+  additionalBaseline: readonly string[] = [],
+) {
+  const allowed = new Set([
+    ...closureForModule(baseline, facade),
+    ...additionalBaseline,
+  ]);
+  expect(
+    closureForModule(graph, facade).filter(
+      (id) =>
+        !allowed.has(id) && !id.endsWith("/src/app/snapshotProjection.ts"),
+    ),
+    facade,
+  ).toEqual([]);
+}
+
 describe("desktop-native runtime resolver", () => {
   it("redirects only the canonical runtime import during the desktop build", () => {
     expect(
@@ -353,19 +372,60 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
-  it("adds only the Agent-body reserve", () => {
+  it("keeps chat announcements, edit summaries and queued-tray sizing out of Editor closures", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    const chatOnly = [
+      "src/features/chat/ChatSurface.tsx",
+      "src/features/chat/ComposerQueuedPrompts.tsx",
+      "src/features/chat/acp/AcpAnnouncementRegions.tsx",
+      "src/features/chat/acp/agentEditSummary.ts",
+      "src/features/chat/acp/chatEditSummary.ts",
+      "src/features/chat/acp/editingFiles.ts",
+    ];
+    for (const facade of [
+      "src/workbench/Workbench.tsx",
+      "src/features/diff/DiffSurface.tsx",
+      "src/features/search/SearchSurface.tsx",
+      "src/features/files/FileSurface.tsx",
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+    ]) {
+      const closure = closureForModule(graph, facade);
+      for (const module of chatOnly)
+        expect(
+          closure.some((id) => id.endsWith(module)),
+          `${facade}: ${module}`,
+        ).toBe(false);
+    }
+    const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
+    for (const module of chatOnly.filter(
+      (id) => !id.endsWith("chatEditSummary.ts"),
+    ))
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+  }, 90_000);
+
+  it("keeps the Agent-body reserve separate from the Editor shell", () => {
     expect(DESKTOP_GROUPS[0]).toEqual(BASELINE_DESKTOP_GROUPS[0]);
     const workbench = DESKTOP_GROUPS.find(
       (group) => group.name === "workbench-deps",
     );
+    const agent = DESKTOP_GROUPS.find(
+      (group) => group.name === "agent-workbench",
+    );
     expect(workbench?.priority).toBe(1);
     if (!(workbench?.test instanceof RegExp))
       throw new Error("Expected a bounded Workbench filter");
+    if (!(agent?.test instanceof RegExp))
+      throw new Error("Expected a bounded Agent filter");
     for (const separator of ["/", "\\"]) {
       const id = (module: string) =>
         `${root}/src/workbench/${module}.tsx`.replaceAll("/", separator);
       expect(workbench.test.test(id("Workbench"))).toBe(true);
-      expect(workbench.test.test(id("AgentWorkbenchBody"))).toBe(true);
+      expect(workbench.test.test(id("AgentWorkbenchBody"))).toBe(false);
+      expect(agent.test.test(id("AgentWorkbenchBody"))).toBe(true);
+      expect(agent.test.test(id("Workbench"))).toBe(false);
       for (const module of [
         "SubagentSurface",
         "SettingsSurface",
@@ -374,11 +434,12 @@ describe("desktop-native chunk topology", () => {
         "TerminalDockShell",
       ]) {
         expect(workbench.test.test(id(module)), module).toBe(false);
+        expect(agent.test.test(id(module)), module).toBe(false);
       }
     }
   });
 
-  it("preserves chat-helper ownership and exact lane-base Workbench and resource closures", async () => {
+  it("preserves chat-helper ownership without adding feature modules to lane-base closures", async () => {
     const baselineConfig = desktopGraphConfig(true);
     setDesktopGraphGroups(baselineConfig, LANE_BASE_DESKTOP_GROUPS);
     const [baseline, grouped] = await Promise.all([
@@ -402,13 +463,11 @@ describe("desktop-native chunk topology", () => {
       "src/features/files/FileSurface.tsx",
       "src/features/diff/DiffSurface.tsx",
     ]) {
-      expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        closureForModule(baselineGraph, facade),
-      );
+      expectNoNewFeatureModules(groupedGraph, baselineGraph, facade);
     }
   }, 90_000);
 
-  it("preserves Workbench and resource closures against legacy groups on current sources while coalescing chat and editor runtime facades", async () => {
+  it("preserves the legacy module graph while separating Agent and Editor closures", async () => {
     const baselineConfig = legacyChunkGroupConfig();
     const [baseline, grouped] = await Promise.all([
       build(baselineConfig),
@@ -420,12 +479,14 @@ describe("desktop-native chunk topology", () => {
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);
     expect(groupedGraph.chunkNames.get(sharedFile!)).toBe("workbench-deps");
-    expect(groupedGraph.moduleFiles.get(agent)).toBe(sharedFile);
+    const agentFile = groupedGraph.moduleFiles.get(agent);
+    expect(groupedGraph.chunkNames.get(agentFile!)).toBe("agent-workbench");
+    expect(agentFile).not.toBe(sharedFile);
     expect(
       groupedGraph.moduleFiles.get("src/features/chat/ChatSurface.tsx"),
-    ).toBe(sharedFile);
+    ).toBe(agentFile);
     for (const module of CONSOLIDATED_AGENT_MODULES) {
-      expect(groupedGraph.moduleFiles.get(module), module).toBe(sharedFile);
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
@@ -445,9 +506,7 @@ describe("desktop-native chunk topology", () => {
       "src/features/diff/DiffSurface.tsx",
       "src/features/search/SearchSurface.tsx",
     ]) {
-      expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        closureForModule(baselineGraph, facade),
-      );
+      expectNoNewFeatureModules(groupedGraph, baselineGraph, facade);
     }
     for (const facade of [
       workbench,
@@ -472,16 +531,14 @@ describe("desktop-native chunk topology", () => {
       ).toBe(false);
     }
     for (const facade of Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES)) {
-      expect(closureForModule(groupedGraph, facade), facade).toEqual(
-        [
-          ...new Set([
-            ...closureForModule(baselineGraph, facade),
-            ...closureForModule(
-              baselineGraph,
-              "src/features/files/CodeMirrorEditorRuntime.ts",
-            ),
-          ]),
-        ].sort(),
+      expectNoNewFeatureModules(
+        groupedGraph,
+        baselineGraph,
+        facade,
+        closureForModule(
+          baselineGraph,
+          "src/features/files/CodeMirrorEditorRuntime.ts",
+        ),
       );
     }
     const presentation = "src/features/chat/acp/AcpChatPresentation.tsx";

@@ -1255,7 +1255,7 @@ describe("AcpChatProjection", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("keeps one announcement pair when two projections are mounted", () => {
+  it("keeps one live announcement pair when two projections are mounted", () => {
     const focusedPage = page("completed");
     focusedPage.title = "Focused chat";
     const unfocusedPage = page("completed");
@@ -1273,14 +1273,20 @@ describe("AcpChatProjection", () => {
         <AcpChatProjection page={unfocusedPage} active focused={false} />
       </>,
     );
-    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
-      2,
-    );
     expect(
-      document.querySelectorAll('[data-acp-announcement="polite"]'),
+      document.querySelectorAll(
+        '[data-acp-announcement]:not([aria-live="off"])',
+      ),
+    ).toHaveLength(2);
+    expect(
+      document.querySelectorAll(
+        '[data-acp-announcement="polite"][aria-live="polite"]',
+      ),
     ).toHaveLength(1);
     expect(
-      document.querySelectorAll('[data-acp-announcement="assertive"]'),
+      document.querySelectorAll(
+        '[data-acp-announcement="assertive"][aria-live="assertive"]',
+      ),
     ).toHaveLength(1);
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
     expect(screen.getByText("Unfocused answer")).toBeInTheDocument();

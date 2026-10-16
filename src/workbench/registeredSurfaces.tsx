@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 
 import type { WorkbenchTab } from "../domain/workbench";
-import { ChatSurface } from "../features/chat/ChatSurface";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
 import { OutlineSurface } from "../features/outline/OutlineSurface";
 import { ProblemsSurface } from "../features/problems/ProblemsSurface";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
+const loadChatSurface = () =>
+  import("../features/chat/ChatSurface").then(({ ChatSurface }) => ({
+    default: ChatSurface,
+  }));
 const loadSearchSurface = () =>
   import("../features/search/SearchSurface").then(({ SearchSurface }) => ({
     default: SearchSurface,
@@ -78,7 +81,13 @@ function ChatCanvas({
   tab: WorkbenchTab;
   paneHeader?: ReactNode;
 }) {
-  return <ChatSurface chatId={tab.id} paneHeader={paneHeader} />;
+  return (
+    <LazyModuleBoundary<{ chatId: string; paneHeader?: ReactNode }>
+      label="Chat"
+      load={loadChatSurface}
+      render={(Surface) => <Surface chatId={tab.id} paneHeader={paneHeader} />}
+    />
+  );
 }
 
 let registered = false;

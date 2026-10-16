@@ -133,7 +133,7 @@ describe("agent edit summary projection", () => {
       resource: { rootId: "root", relativePath: "first-8.ts" },
     });
   });
-  it("counts an edited then deleted canonical file once and retains the deletion", () => {
+  it("keeps resource and unavailable changes for the same display path distinct", () => {
     const edited = fileItem("edited", 1, "root", "gone.ts", "edited");
     const deleted = fileItem("deleted", 2, "root", "gone.ts", "deleted");
     edited.payload.changes = [
@@ -154,9 +154,33 @@ describe("agent edit summary projection", () => {
       },
     ];
     const summary = projectChatEditSummary(page([edited, deleted]));
-    expect(summary.changes).toHaveLength(1);
-    expect(summary.changes[0].operation).toBe("deleted");
-    expect(summary.changes[0]).toMatchObject({ additions: 0, deletions: 5 });
+    expect(summary.changes).toHaveLength(2);
+    expect(summary.changes[0]).toMatchObject({ additions: 3, deletions: 4 });
+    expect(summary.changes[1].operation).toBe("deleted");
+    expect(summary.changes[1]).toMatchObject({ additions: 0, deletions: 5 });
+  });
+  it("counts unique omitted files only once when a capped file appears in another turn", () => {
+    const projection = page(
+      Array.from({ length: 33 }, (_, index) =>
+        fileItem(`file-${index}`, index, "root", `file-${index}.ts`, "first"),
+      ),
+    );
+    projection.turns = [
+      ...projection.turns,
+      {
+        ...turn([
+          fileItem("repeat", 0, "root", "file-0.ts", "latest", {
+            turnId: "turn-b",
+          } as never),
+        ]),
+        id: "turn-b",
+        ordinal: 3,
+      } as TurnProjection,
+    ];
+    const summary = projectChatEditSummary(projection);
+    expect(summary.changes).toHaveLength(32);
+    expect(summary.omittedCount).toBe(1);
+    expect(summary.changes.at(-1)?.summary).toBe("latest");
   });
   it("deduplicates retained chat edits and preserves the newest originating turn", () => {
     const projection = page([fileItem("first", 1, "root", "a.ts", "first")]);
@@ -228,6 +252,7 @@ describe("agent edit summary projection", () => {
 
     expect(projectAgentEditSummary(projection, projection.turns[0])).toEqual({
       changes: [valid.payload.changes[0]],
+      changeKeys: new Set(["resource:6:root-asrc/valid.ts"]),
       omittedCount: 0,
       sourceTruncated: false,
       rejectedUnsafeOrStale: true,
@@ -240,6 +265,7 @@ describe("agent edit summary projection", () => {
     } as AcpChatPage;
     expect(projectAgentEditSummary(switched, switched.turns[0])).toEqual({
       changes: [],
+      changeKeys: new Set(),
       omittedCount: 0,
       sourceTruncated: false,
       rejectedUnsafeOrStale: true,
@@ -427,6 +453,7 @@ describe("agent edit summary projection", () => {
       projectAgentEditSummary(oversizedPage, oversizedPage.turns[0]),
     ).toEqual({
       changes: [],
+      changeKeys: new Set(),
       omittedCount: 0,
       sourceTruncated: false,
       rejectedUnsafeOrStale: true,

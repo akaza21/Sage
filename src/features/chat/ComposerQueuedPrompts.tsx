@@ -36,22 +36,32 @@ export function ComposerQueuedPrompts({
     const queue = queueRef.current;
     const composer = queue?.closest<HTMLElement>(".composer");
     if (!queue || !composer) return;
+    let frame = 0;
     const measure = () => {
       const space =
         getComputedStyle(queue).position === "absolute"
           ? composer.getBoundingClientRect().top -
             queue.getBoundingClientRect().top
           : 0;
-      composer.style.setProperty("--queued-tray-space", space + "px");
+      const value = space + "px";
+      if (composer.style.getPropertyValue("--queued-tray-space") !== value)
+        composer.style.setProperty("--queued-tray-space", value);
     };
     measure();
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(measure);
+        : new ResizeObserver(() => {
+            if (frame) return;
+            frame = requestAnimationFrame(() => {
+              frame = 0;
+              measure();
+            });
+          });
     observer?.observe(queue);
     return () => {
       observer?.disconnect();
+      cancelAnimationFrame(frame);
       composer.style.removeProperty("--queued-tray-space");
     };
   }, [prompts?.length]);

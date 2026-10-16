@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import { snapshotProjectionRevision } from "../../app/agentDiffAdmission";
+import { snapshotProjectionRevision } from "../../app/snapshotProjection";
 import { diffCacheKey } from "../../domain/diffIdentity";
 import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";

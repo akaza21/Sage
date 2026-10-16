@@ -16,12 +16,9 @@ import { acpDesktop } from "../../../services/acpDesktop";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
-import {
-  itemOwnershipMatches,
-  projectRootLabelKey,
-  projectRootLabels,
-} from "./agentEditSummary";
+import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import { TurnEditSummary } from "./TurnEditSummary";
+import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
 import { promptAttachmentItems } from "./acpTurnState";
 import type { OpenResourceTarget } from "./ToolItem";
@@ -233,25 +230,14 @@ const Turn = memo(
             />
           ))}
           {/* docs/work-items/CHAT-WAVE-2/plan.md:28: live edits precede file data. */}
-          {!terminal &&
-          interactive &&
-          turn.items.some(
-            (item) =>
-              item.kind === "fileChangeDiff" &&
-              !terminalItemLifecycles.has(item.lifecycle) &&
-              itemOwnershipMatches(page, turn, item),
-          ) &&
+          {isEditingFiles(page, turn) &&
           !turn.items.some(
             (item) =>
               item.kind === "toolCall" &&
               item.toolState === "inProgress" &&
               item.payload.presentation.kind === "edit",
           ) ? (
-            <div
-              className="acp-editing-files acp-tool-rollup__summary-copy"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="acp-editing-files acp-tool-rollup__summary-copy">
               <FilePenLine size={14} aria-hidden="true" />
               <span className="acp-live-shimmer">Editing files</span>
             </div>

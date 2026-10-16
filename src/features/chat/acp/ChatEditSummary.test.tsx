@@ -18,6 +18,94 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it.each([
+  [7, 4, "+11-5", "+7", "+4"],
+  [800000, 800000, "+1600000-5", "+999+", "+999+"],
+] as const)(
+  "sums latest-revision row totals (%s, %s) in the pill and opens those same diffs",
+  (firstAdditions, secondAdditions, totalLabel, firstLabel, secondLabel) => {
+    const page = snapshotPage();
+    const original = page.turns[0];
+    const saved = original.items[0];
+    if (saved.kind !== "fileChangeDiff") throw new Error("Expected edit");
+    const latest = {
+      ...original,
+      id: "latest" as never,
+      ordinal: 2,
+      items: [
+        {
+          ...saved,
+          turnId: "latest" as never,
+          payload: {
+            ...saved.payload,
+            changes: [
+              {
+                ...saved.payload.changes[0],
+                additions: firstAdditions,
+                deletions: 2,
+              },
+            ],
+          },
+        },
+        {
+          ...saved,
+          id: "second" as never,
+          turnId: "latest" as never,
+          ordinal: 2,
+          payload: {
+            ...saved.payload,
+            changes: [
+              {
+                ...saved.payload.changes[0],
+                additions: secondAdditions,
+                deletions: 3,
+                resource: {
+                  kind: "resource" as const,
+                  resource: { rootId: "root-a", relativePath: "src/b.ts" },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+    page.turns = [original, latest];
+    const open = vi.fn();
+    render(
+      <AcpChatPresentation
+        page={page}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
+        editSummaryContainer={document.body}
+        onOpenResource={open}
+      />,
+    );
+    const pill = screen.getByRole("button", { name: /2 files changed/ });
+    expect(within(pill).getByLabelText("Line changes")).toHaveTextContent(
+      totalLabel,
+    );
+    fireEvent.click(pill);
+    for (const [name, additions, deletions, itemId] of [
+      ["a.ts", firstLabel, 2, saved.id],
+      ["b.ts", secondLabel, 3, "second"],
+    ] as const) {
+      const row = screen.getByText(name).closest("li")!;
+      expect(row).toHaveTextContent(additions);
+      expect(row).toHaveTextContent(`-${deletions}`);
+      fireEvent.click(within(row).getByRole("button", { name: /Open diff/ }));
+      expect(open).toHaveBeenLastCalledWith(
+        expect.anything(),
+        "diff",
+        expect.anything(),
+        expect.objectContaining({ turnId: "latest", itemId }),
+      );
+    }
+  },
+);
+
 it("keeps the real expanded summary asleep on unrelated presentation renders", () => {
   const props = {
     page: snapshotPage(),

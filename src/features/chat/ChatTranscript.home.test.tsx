@@ -290,7 +290,12 @@ it("keeps an empty unfocused second pane isolated from a live first pane", async
   expect(
     within(panes[1] as HTMLElement).getByRole("region", { name: "New chat" }),
   ).toBeVisible();
-  expect(container.querySelectorAll("[data-acp-announcement]")).toHaveLength(2);
+  expect(container.querySelectorAll("[data-acp-announcement]")).toHaveLength(4);
+  expect(
+    container.querySelectorAll(
+      '[data-acp-announcement]:not([aria-live="off"])',
+    ),
+  ).toHaveLength(2);
   rerender(
     <>
       <ChatTranscript {...props} page={page("completed")} />

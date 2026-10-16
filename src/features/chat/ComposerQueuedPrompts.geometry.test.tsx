@@ -10,6 +10,21 @@ afterEach(() => {
 it("reserves the actual floating queue height and releases it on compact reflow or removal", () => {
   let queueHeight = 40;
   let resized: ResizeObserverCallback | undefined;
+  let nextFrame = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.set(++nextFrame, callback);
+    return nextFrame;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (frame: number) =>
+    frames.delete(frame),
+  );
+  const flushFrame = () =>
+    act(() => {
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(0));
+    });
   const disconnect = vi.fn();
   vi.stubGlobal(
     "ResizeObserver",
@@ -54,12 +69,22 @@ it("reserves the actual floating queue height and releases it on compact reflow 
     expect(composer.style.getPropertyValue("--queued-tray-space")).toBe("44px");
     queueHeight = 320;
     act(() => resized?.([], {} as ResizeObserver));
+    expect(composer.style.getPropertyValue("--queued-tray-space")).toBe("44px");
+    act(() => resized?.([], {} as ResizeObserver));
+    expect(frames.size).toBe(1);
+    flushFrame();
     expect(composer.style.getPropertyValue("--queued-tray-space")).toBe(
       "324px",
     );
     queue.style.position = "static";
     act(() => resized?.([], {} as ResizeObserver));
+    expect(composer.style.getPropertyValue("--queued-tray-space")).toBe(
+      "324px",
+    );
+    flushFrame();
     expect(composer.style.getPropertyValue("--queued-tray-space")).toBe("0px");
+    queue.style.position = "absolute";
+    act(() => resized?.([], {} as ResizeObserver));
     view.rerender(
       <form className="composer">
         <ComposerQueuedPrompts disabled={false} prompts={[]} />
@@ -67,6 +92,9 @@ it("reserves the actual floating queue height and releases it on compact reflow 
     );
     expect(composer.style.getPropertyValue("--queued-tray-space")).toBe("");
     expect(disconnect).toHaveBeenCalledOnce();
+    expect(frames.size).toBe(0);
+    flushFrame();
+    expect(composer.style.getPropertyValue("--queued-tray-space")).toBe("");
   } finally {
     style.remove();
   }

@@ -144,8 +144,9 @@ describe("ChatTranscript answer actions", () => {
           ),
       );
       expect(
-        container.querySelector('[data-acp-announcement="polite"]'),
-      ).toBeEmptyDOMElement();
+        container.querySelector('[data-acp-announcement="polite"]')
+          ?.textContent,
+      ).toBe(native ? "Completed" : "");
     },
   );
 
@@ -172,7 +173,7 @@ describe("ChatTranscript answer actions", () => {
     );
     expect(
       container.querySelector('[data-acp-announcement="polite"]'),
-    ).toBeEmptyDOMElement();
+    ).toHaveTextContent("Completed");
   });
   it.each([false, true])(
     "announces answer copy feedback in the existing polite region (failed: %s)",

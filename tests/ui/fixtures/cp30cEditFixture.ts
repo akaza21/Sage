@@ -1,22 +1,42 @@
 import { acpProjectionStoreFor } from "../../../src/app/acpProjectionRegistry";
-import type { AcpItem, SageChatId } from "../../../src/domain/acp";
+import type { AcpChatPage, AcpItem, SageChatId } from "../../../src/domain/acp";
+
+function savedEdit(page: AcpChatPage | null | undefined) {
+  return page?.turns
+    .flatMap((candidate) => candidate.items)
+    .find((item) => item.kind === "fileChangeDiff");
+}
 
 export function installCp30cEdit(
   lifecycle: "streaming" | "completed" | "failed",
   chatId?: string,
 ) {
-  for (const projection of document.querySelectorAll<HTMLElement>(
-    ".acp-chat-projection[data-chat-id]",
-  )) {
+  const projections = [
+    ...document.querySelectorAll<HTMLElement>(
+      ".acp-chat-projection[data-chat-id]",
+    ),
+  ];
+  // A chat without a saved edit of its own (agent-dual's waiting chat)
+  // borrows the shape of another rendered chat's saved edit.
+  const template = projections
+    .map((projection) =>
+      savedEdit(
+        acpProjectionStoreFor(
+          projection.dataset.chatId as SageChatId,
+        ).getState().page,
+      ),
+    )
+    .find(Boolean);
+  for (const projection of projections) {
     if (chatId && projection.dataset.chatId !== chatId) continue;
     const store = acpProjectionStoreFor(
       projection.dataset.chatId as SageChatId,
     );
     const page = structuredClone(store.getState().page);
     const turn = page?.turns.at(-1);
-    const saved = page?.turns
-      .flatMap((candidate) => candidate.items)
-      .find((item) => item.kind === "fileChangeDiff");
+    const saved =
+      savedEdit(page) ??
+      (page && template ? { ...template, chatId: page.chatId } : undefined);
     if (!page || !turn || !saved || saved.kind !== "fileChangeDiff")
       throw new Error("CP-30c requires a settled changed-file projection");
     turn.state = "running";

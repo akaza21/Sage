@@ -53,9 +53,7 @@ for (const width of [1888, 720, 480]) {
       const summary = pane.getByRole("region", {
         name: "Files edited in this chat",
       });
-      await expect(
-        pane.getByText("Editing files", { exact: true }),
-      ).toBeVisible();
+      await expect(pane.locator(".acp-editing-files")).toBeVisible();
       await expect(pill).toHaveAttribute("aria-expanded", "false");
       await expect(summary.locator("li")).toHaveCount(0);
       await expect(pane.locator(".message-list .acp-file-changes")).toHaveCount(
@@ -104,17 +102,13 @@ for (const width of [1888, 720, 480]) {
       await collapseArtifactPane(page);
       await pill.click();
       await edit(page, "completed");
-      await expect(
-        pane.getByText("Editing files", { exact: true }),
-      ).toHaveCount(0);
+      await expect(pane.locator(".acp-editing-files")).toHaveCount(0);
       await expect(
         pane.getByRole("button", { name: /^2 files changed/ }),
       ).toHaveAttribute("aria-expanded", "false");
       await expect(pane.locator('[data-turn-state="running"]')).toHaveCount(1);
       await edit(page, "failed");
-      await expect(
-        pane.getByText("Editing files", { exact: true }),
-      ).toHaveCount(0);
+      await expect(pane.locator(".acp-editing-files")).toHaveCount(0);
     },
   );
 }
@@ -287,18 +281,112 @@ test("CP-30c two visible chats keep disclosure and activity isolated", async ({
     .getAttribute("data-chat-id");
   expect(owner).not.toBeNull();
   await edit(page, "streaming", owner!);
-  await expect(first.getByText("Editing files", { exact: true })).toBeVisible();
+  await expect(first.locator(".acp-editing-files")).toBeVisible();
   await first.getByRole("button", { name: /^2 files changed/ }).click();
   await expect(first.locator(".acp-file-changes li")).toHaveCount(2);
   await expect(second.locator(".acp-file-changes")).toHaveCount(0);
-  await expect(second.getByText("Editing files", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
   await edit(page, "completed", owner!);
-  await expect(first.getByText("Editing files", { exact: true })).toHaveCount(
-    0,
+  await expect(first.locator(".acp-editing-files")).toHaveCount(0);
+  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
+});
+
+test("CP-30d two selected chats keep edit zones and queued trays free of resize loops", async ({
+  page,
+}) => {
+  // Chromium reports ResizeObserver loops as a window error event without an
+  // Error object, so collect them in-page as well as from the console.
+  await page.addInitScript(() => {
+    const target = window as unknown as { __resizeLoops: string[] };
+    target.__resizeLoops = [];
+    window.addEventListener(
+      "error",
+      (event) => {
+        if (String(event.message).includes("ResizeObserver loop"))
+          target.__resizeLoops.push(String(event.message));
+      },
+      true,
+    );
+  });
+  const resizeErrors: string[] = [];
+  const recordResizeError = (message: string) => {
+    if (message.includes("ResizeObserver loop")) resizeErrors.push(message);
+  };
+  page.on("pageerror", (error) => recordResizeError(error.message));
+  page.on("console", (message) => recordResizeError(message.text()));
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-dual", "agent");
+  await settleChatProjections(page);
+  await collapseArtifactPane(page);
+  const panes = page.locator(".agent-chat-pane");
+  await expect(panes).toHaveCount(2);
+  for (const pane of await panes.all()) {
+    const owner = await pane
+      .locator(".acp-chat-projection")
+      .getAttribute("data-chat-id");
+    expect(owner).not.toBeNull();
+    await edit(page, "completed", owner!);
+  }
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/chatContainmentFixture.ts");
+    fixture.installChatContainmentFixture(
+      { name: "Codex", effort: true, context: true, goal: true, steer: true },
+      true,
+    );
+  });
+  for (const pane of await panes.all()) {
+    await expect(pane.locator(".composer__queued")).toBeVisible();
+    await expect(
+      pane.getByRole("button", { name: /files? changed/ }),
+    ).toBeVisible();
+  }
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    for (const pane of await panes.all()) {
+      const queue = pane.locator(".composer__queued");
+      const composer = pane.locator("form.composer");
+      const summary = pane.getByRole("region", {
+        name: "Files edited in this chat",
+      });
+      const pill = summary.getByRole("button", { name: /files? changed/ });
+      await pill.click();
+      const height = cycle % 2 ? 160 : 80;
+      await queue.evaluate((element, height) => {
+        (element as HTMLElement).style.height = height + "px";
+      }, height);
+      await expect(queue).toHaveCSS("position", "absolute");
+      await expect.poll(async () => (await box(queue)).height).toBe(height);
+      // The reservation is the measured distance from the tray top to the
+      // composer top (tray height plus its offset above the border box).
+      await expect
+        .poll(() =>
+          composer.evaluate((form) => {
+            const tray = form.querySelector<HTMLElement>(".composer__queued")!;
+            const expected =
+              form.getBoundingClientRect().top -
+              tray.getBoundingClientRect().top;
+            return (
+              form.style.getPropertyValue("--queued-tray-space") ===
+                expected + "px" && expected >= tray.offsetHeight
+            );
+          }),
+        )
+        .toBe(true);
+      const tray = await box(queue);
+      for (const zone of [await box(pill), await box(summary)])
+        expect(zone.y + zone.height).toBeLessThanOrEqual(tray.y);
+    }
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+  }
+  resizeErrors.push(
+    ...(await page.evaluate(
+      () => (window as unknown as { __resizeLoops: string[] }).__resizeLoops,
+    )),
   );
-  await expect(second.getByText("Editing files", { exact: true })).toHaveCount(
-    0,
-  );
+  expect(resizeErrors).toEqual([]);
 });

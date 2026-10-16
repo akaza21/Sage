@@ -34,7 +34,12 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    test: /src[\\/]workbench[\\/](?:Workbench|AgentWorkbenchBody)\.tsx$/,
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|app[\\/]snapshotProjection\.ts)$/,
+  },
+  {
+    name: "agent-workbench",
+    priority: 1,
+    test: /src[\\/]workbench[\\/]AgentWorkbenchBody\.tsx$/,
   },
   {
     name: "codemirror-deps",

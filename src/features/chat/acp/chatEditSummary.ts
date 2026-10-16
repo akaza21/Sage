@@ -1,7 +1,7 @@
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
-import { resourceKey } from "../../../domain/resourceIdentity";
 import {
   MAX_AGENT_EDIT_SUMMARY_FILES,
+  agentEditSummaryChangeKey,
   projectAgentEditSummary,
   type AgentEditSummaryChange,
   type AgentEditSummaryProjection,
@@ -18,17 +18,15 @@ const retainedTurns = new WeakMap<
   }
 >();
 
-function sum(total: number | null | undefined, delta: number | null) {
-  return total === null || delta === null ? null : (total ?? 0) + delta;
-}
-
 export function projectChatEditSummary(page: AcpChatPage) {
+  const changeKeys = new Set<string>();
   const changes = new Map<
     string,
     AgentEditSummaryChange & { turn: TurnProjection }
   >();
   const summary: AgentEditSummaryProjection = {
     changes: [],
+    changeKeys,
     omittedCount: 0,
     sourceTruncated: false,
     rejectedUnsafeOrStale: false,
@@ -57,36 +55,25 @@ export function projectChatEditSummary(page: AcpChatPage) {
         summary: retained,
       });
     summary.sourceTruncated ||= retained.sourceTruncated;
-    summary.omittedCount += retained.omittedCount;
     summary.rejectedUnsafeOrStale ||= retained.rejectedUnsafeOrStale;
-    const turnChanges = new Map<string, AgentEditSummaryChange>();
-    for (const change of retained.changes) {
-      const location = change.resource;
-      const resource =
-        location.kind === "resource"
-          ? location.resource
-          : location.displayResource;
-      const key = resource ? resourceKey(resource) : JSON.stringify(location);
-      turnChanges.delete(key);
-      turnChanges.set(key, change);
+    for (const key of retained.changeKeys) {
+      changeKeys.add(key);
+      changes.delete(key);
     }
-    for (const [key, change] of turnChanges) {
-      const previous = changes.get(key);
+    for (const change of retained.changes) {
+      const key = agentEditSummaryChangeKey(change);
       changes.delete(key);
       changes.set(key, {
         ...change,
-        additions: sum(previous?.additions, change.additions),
-        deletions: sum(previous?.deletions, change.deletions),
         turn,
       });
+      if (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
+        changes.delete(changes.keys().next().value!);
     }
   }
-  summary.omittedCount += Math.max(
-    0,
-    changes.size - MAX_AGENT_EDIT_SUMMARY_FILES,
-  );
+  summary.omittedCount = changeKeys.size - changes.size;
   return {
     ...summary,
-    changes: [...changes.values()].slice(-MAX_AGENT_EDIT_SUMMARY_FILES),
+    changes: [...changes.values()],
   };
 }

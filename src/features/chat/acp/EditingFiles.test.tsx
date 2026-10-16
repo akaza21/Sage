@@ -40,8 +40,8 @@ it("shows Editing files only while a genuinely active owned edit is in flight", 
   expect(screen.getByText("Editing files")).toBeVisible();
   const liveRow = () => screen.getByText("Editing files").parentElement;
   const announcement = liveRow();
-  expect(announcement).toHaveAttribute("role", "status");
-  expect(announcement).toHaveAttribute("aria-live", "polite");
+  expect(announcement).not.toHaveAttribute("role", "status");
+  expect(announcement).not.toHaveAttribute("aria-live");
   expect(announcement).toHaveTextContent("Editing files");
   const delta = structuredClone(projection);
   delta.turns[0].revision = "2" as never;

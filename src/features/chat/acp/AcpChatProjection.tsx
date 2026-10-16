@@ -72,13 +72,12 @@ export function AcpChatProjection({
       data-current-session-id={page.currentSessionId ?? ""}
       data-expected-resource-root-id={canonicalRootId}
     >
-      {focused ? (
-        <AcpAnnouncementRegions
-          page={page}
-          feedback={feedback}
-          onFeedbackQueued={onFeedbackQueued}
-        />
-      ) : null}
+      <AcpAnnouncementRegions
+        page={page}
+        enabled={focused}
+        feedback={feedback}
+        onFeedbackQueued={onFeedbackQueued}
+      />
       <h2 className="sr-only">{page.title}</h2>
       {page.turns.length === 0 && emptyState ? (
         emptyState

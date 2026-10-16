@@ -6,6 +6,8 @@ import {
   MAX_RETAINED_TURNS,
 } from "../../../app/acpProjectionStore";
 import type { AcpChatPage, AcpItem } from "../../../domain/acp";
+import { isEditingFiles } from "./editingFiles";
+import { itemOwnershipMatches } from "./agentEditSummary";
 import {
   getPermissionStatus,
   getTurnStatusLabel,
@@ -83,8 +85,19 @@ function deriveAnnouncements(
     );
     for (const turn of page.turns) {
       const previousTurn = previousTurns.get(turn.id);
+      if (previousTurn === turn) continue;
       const newLatest = !previousTurn && isNewLatestTurn(previous, page, turn);
       if (!previousTurn && !newLatest) continue;
+      const editing = isEditingFiles(page, turn);
+      const wasEditing = previousTurn
+        ? isEditingFiles(previous, previousTurn)
+        : false;
+      if (editing !== wasEditing) {
+        polite.push({
+          id: `editing:${turn.id}:${page.projectionRevision}`,
+          text: editing ? "Editing files" : "Finished editing files",
+        });
+      }
       if (
         terminalTurnStates.has(turn.state) &&
         previousTurn?.state !== turn.state
@@ -130,6 +143,46 @@ function deriveAnnouncements(
 function clearRegion(region: HTMLElement) {
   region.removeAttribute("aria-label");
   region.textContent = "";
+}
+
+function currentAnnouncements(
+  page: AcpChatPage,
+  resumed: boolean,
+): Announcement[] {
+  const turns = page.turns.filter(
+    (turn) => turn.sessionId === page.currentSessionId,
+  );
+  const editing = turns.find((turn) => isEditingFiles(page, turn));
+  const announcements: Announcement[] = [];
+  if (
+    editing ||
+    (resumed &&
+      turns.some((turn) =>
+        turn.items.some(
+          (item) =>
+            item.kind === "fileChangeDiff" &&
+            itemOwnershipMatches(page, turn, item),
+        ),
+      ))
+  ) {
+    announcements.push({
+      id: `editing:current:${page.projectionRevision}`,
+      text: editing ? "Editing files" : "Finished editing files",
+    });
+  }
+  const terminal = resumed
+    ? turns
+        .filter((turn) => terminalTurnStates.has(turn.state))
+        .sort((left, right) =>
+          compareTurnOrder(turnOrder(page, right), turnOrder(page, left)),
+        )[0]
+    : undefined;
+  if (terminal)
+    announcements.push({
+      id: `turn:${terminal.id}:${terminal.state}`,
+      text: getTurnStatusLabel(terminal),
+    });
+  return announcements;
 }
 
 interface AnnouncementDrain {
@@ -184,6 +237,11 @@ function enqueueAnnouncements(
   region: HTMLElement | null,
   announcements: readonly Announcement[],
 ) {
+  if (!region) {
+    if (drain.frame) cancelAnimationFrame(drain.frame);
+    drain.frame = 0;
+    if (drain.region) clearRegion(drain.region);
+  }
   drain.region = region;
   for (const announcement of announcements) {
     if (
@@ -211,14 +269,17 @@ function resetDrain(drain: AnnouncementDrain) {
 
 export function AcpAnnouncementRegions({
   page,
+  enabled = true,
   feedback,
   onFeedbackQueued,
 }: {
   page: AcpChatPage | null;
+  enabled?: boolean;
   feedback?: Announcement | null;
   onFeedbackQueued?: (id: string) => void;
 }) {
   const previousRef = useRef<AcpChatPage | null>(null);
+  const enabledRef = useRef(enabled);
   const politeRef = useRef<HTMLDivElement>(null);
   const assertiveRef = useRef<HTMLDivElement>(null);
   const politeDrainRef = useRef<AnnouncementDrain>(createDrain());
@@ -227,19 +288,29 @@ export function AcpAnnouncementRegions({
   useLayoutEffect(() => {
     const previous = previousRef.current;
     previousRef.current = page;
-    if (
+    const resumed = enabled && !enabledRef.current;
+    enabledRef.current = enabled;
+    const scopeChanged =
       previous &&
       (!page ||
         previous.projectId !== page.projectId ||
-        previous.chatId !== page.chatId)
-    ) {
+        previous.chatId !== page.chatId ||
+        (previous.currentSessionId !== null &&
+          previous.currentSessionId !== page.currentSessionId));
+    if (scopeChanged || !enabled || resumed) {
       resetDrain(politeDrainRef.current);
       resetDrain(assertiveDrainRef.current);
     }
+    if (!enabled) return;
     const announcements =
-      previous && page
+      previous && page && !scopeChanged && !resumed
         ? deriveAnnouncements(previous, page)
-        : { assertive: [], polite: [] };
+        : {
+            assertive: [],
+            polite: page
+              ? currentAnnouncements(page, resumed && !scopeChanged)
+              : [],
+          };
     enqueueAnnouncements(
       politeDrainRef.current,
       politeRef.current,
@@ -250,21 +321,23 @@ export function AcpAnnouncementRegions({
       assertiveRef.current,
       announcements.assertive,
     );
-  }, [page]);
+  }, [enabled, page]);
 
   useLayoutEffect(() => {
     if (feedback) {
-      enqueueAnnouncements(politeDrainRef.current, politeRef.current, [
-        feedback,
-      ]);
+      if (enabled)
+        enqueueAnnouncements(politeDrainRef.current, politeRef.current, [
+          feedback,
+        ]);
       onFeedbackQueued?.(feedback.id);
     }
-  }, [feedback, onFeedbackQueued]);
+  }, [enabled, feedback, onFeedbackQueued]);
 
   useLayoutEffect(() => {
     const politeDrain = politeDrainRef.current;
     const assertiveDrain = assertiveDrainRef.current;
     return () => {
+      previousRef.current = null;
       resetDrain(politeDrain);
       resetDrain(assertiveDrain);
     };
@@ -275,16 +348,16 @@ export function AcpAnnouncementRegions({
       <div
         ref={politeRef}
         className="sr-only"
-        role="status"
-        aria-live="polite"
+        role={enabled ? "status" : undefined}
+        aria-live={enabled ? "polite" : "off"}
         aria-atomic="true"
         data-acp-announcement="polite"
       />
       <div
         ref={assertiveRef}
         className="sr-only"
-        role="status"
-        aria-live="assertive"
+        role={enabled ? "status" : undefined}
+        aria-live={enabled ? "assertive" : "off"}
         aria-atomic="true"
         data-acp-announcement="assertive"
       />

@@ -4237,7 +4237,8 @@ describe("ChatSurface A11Y-2 singleton chrome", () => {
     return (
       composer
         ?.closest(".chat-surface")
-        ?.querySelectorAll("[data-acp-announcement]").length ?? 0
+        ?.querySelectorAll('[data-acp-announcement]:not([aria-live="off"])')
+        .length ?? 0
     );
   }
 
@@ -4271,9 +4272,11 @@ describe("ChatSurface A11Y-2 singleton chrome", () => {
         <ChatSurface chatId="chat-b" />
       </>,
     );
-    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
-      2,
-    );
+    expect(
+      document.querySelectorAll(
+        '[data-acp-announcement]:not([aria-live="off"])',
+      ),
+    ).toHaveLength(2);
     expect(screen.getAllByText("Durable chat")).toHaveLength(2);
   });
 
@@ -4316,9 +4319,11 @@ describe("ChatSurface A11Y-2 singleton chrome", () => {
         <ChatSurface chatId="chat-b" />
       </>,
     );
-    expect(document.querySelectorAll("[data-acp-announcement]")).toHaveLength(
-      2,
-    );
+    expect(
+      document.querySelectorAll(
+        '[data-acp-announcement]:not([aria-live="off"])',
+      ),
+    ).toHaveLength(2);
     expect(screen.getAllByText("Durable chat")).toHaveLength(2);
     expect(announcementCountInChat("chat-a")).toBe(2);
     expect(announcementCountInChat("chat-b")).toBe(0);

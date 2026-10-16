@@ -27,8 +27,6 @@ interface TurnEditSummaryProps {
   ) => Promise<AcpMutationResult>;
 }
 
-const MAX_FILE_CHANGE_LINES = 1_000_000;
-
 function rootDisplayName(
   rootLabels: Readonly<Record<string, string>>,
   rootId: string,
@@ -72,14 +70,14 @@ export const TurnEditSummary = memo(function TurnEditSummary({
     (total, change) =>
       total === null || change.additions === null
         ? null
-        : Math.min(MAX_FILE_CHANGE_LINES, total + change.additions),
+        : total + change.additions,
     0,
   );
   const deletions = summary.changes.reduce<number | null>(
     (total, change) =>
       total === null || change.deletions === null
         ? null
-        : Math.min(MAX_FILE_CHANGE_LINES, total + change.deletions),
+        : total + change.deletions,
     0,
   );
   const hasInteractiveChanges = summary.changes.some(
