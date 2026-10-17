@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
 import { actionsFor, namedState } from "./capture-native-chat-dom.mjs";
@@ -7,6 +8,22 @@ import { observationFor, HARNESS } from "./capture-native-chat-dom.mjs";
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 import { JSDOM } from "jsdom";
 import { waitForComposerIdle } from "./capture-native-chat-drive.mjs";
+
+test("capture accessible selectors stay anchored to product controls", () => {
+  const effort = readFileSync(
+    new URL("../src/features/chat/ComposerEffortControl.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(effort.includes('title="Select effort"'));
+  assert.ok(effort.includes('aria-haspopup="dialog"'));
+  const header = readFileSync(
+    new URL("../src/workbench/AgentTaskHeader.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(header.includes('aria-label="Show chat resources"'));
+  assert.ok(header.includes('ariaLabel="Chat resources"'));
+  assert.ok(header.includes("aria-label={`Recent subagents working:"));
+});
 
 test("effort readiness does not depend on the no-account Codex model picker", async () => {
   const samples = [
@@ -57,7 +74,7 @@ test("Codex subagents-started includes distinct admitted native ownership before
   );
   assert.ok(activity);
   assert.equal(spawn.method, "item/started");
-  assert.equal(activity.method, "item/started");
+  assert.equal(activity.method, "item/completed");
   assert.equal(activity.params.threadId, "$SESSION");
   assert.equal(activity.params.item.kind, "started");
   assert.equal(
@@ -135,7 +152,7 @@ async function observeMarkup(markup) {
 
 test("observation sees the current effort slider and shared Access options trigger", async () => {
   const observation = await observeMarkup(
-    '<button class="composer__effort-picker" title="Select effort">Medium</button><div class="composer__effort-menu" role="dialog"><input type="range" aria-label="Thinking level"></div><button aria-label="Access options">Read-only</button>',
+    '<button aria-haspopup="dialog" title="Select effort">Medium</button><div class="composer__effort-menu" role="dialog"><input type="range" aria-label="Thinking level"></div><button aria-label="Access options">Read-only</button>',
   );
   assert.equal(observation.controls.effort, true);
   assert.equal(observation.controls.effortEnabled, true);
@@ -143,7 +160,7 @@ test("observation sees the current effort slider and shared Access options trigg
   assert.equal(observation.visible.effortMenu, true);
   assert.equal(observation.visible.effortSlider, true);
   const withdrawn = await observeMarkup(
-    '<button class="composer__effort-picker" title="Select effort" disabled>Medium</button><div class="composer__effort-menu" role="dialog"></div>',
+    '<button aria-haspopup="dialog" title="Select effort" disabled>Medium</button><div class="composer__effort-menu" role="dialog"></div>',
   );
   assert.equal(withdrawn.controls.effortEnabled, false);
   assert.equal(withdrawn.visible.effortSlider, false);
@@ -156,7 +173,7 @@ test("observation distinguishes CP-32c header counts and loaded rows from the ch
   assert.equal(pane.visible.popover, false);
   assert.equal(pane.visible.child, true);
   const loading =
-    '<div class="agent-task-header__resource-panel" role="dialog"><section aria-label="Subagents"><div class="agent-task-header__agent-summary">0 working 1 done</div><p role="status">Loading subagents</p></section></div>';
+    '<div role="dialog" aria-label="Chat resources"><section aria-label="Subagents"><div aria-label="Recent subagents working: 0">0 working 1 done</div><p role="status">Loading subagents</p></section></div>';
   const pending = await observeMarkup(loading);
   assert.equal(pending.visible.popover, true);
   assert.equal(pending.visible.subagentCounts, true);
@@ -298,6 +315,7 @@ test("Pi answer-image is a correlated read-tool image, never an assistant image 
   assert.equal(end.frame.toolName, "read");
   assert.equal(end.frame.isError, false);
   assert.deepEqual(end.frame.result.content, [
+    { type: "text", text: "Read image file [image/png]" },
     { type: "image", mimeType: "image/png", data: NATIVE_IMAGE_BASE64 },
   ]);
   assert.ok(steps.indexOf(start) < steps.indexOf(end));
@@ -328,7 +346,7 @@ test("every admitted harness captures its advertised effort slider", () => {
         `${harness}-effort-menu`,
       );
     assert.deepEqual(actionsFor("effort-menu", harness), [
-      'button.composer__effort-picker[title="Select effort"]',
+      'button[aria-haspopup="dialog"][title="Select effort"]',
     ]);
     const observation = {
       state: "completed",

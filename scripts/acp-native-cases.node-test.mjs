@@ -52,7 +52,7 @@ test("native image wire payloads decode to an opaque, visible 320x180 synthetic 
       harness === "codex"
         ? frame.params.item.result.slice("data:image/png;base64,".length)
         : harness === "pi"
-          ? frame.frame.result.content[0].data
+          ? frame.frame.result.content.find(({ type }) => type === "image").data
           : frame.update.content.data;
     const png = Buffer.from(encoded, "base64");
     assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");

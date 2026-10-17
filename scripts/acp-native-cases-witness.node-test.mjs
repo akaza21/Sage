@@ -180,7 +180,10 @@ test("native file witnesses resolve to the existing file provisioned for Preview
     );
     assert.deepEqual(
       readFileSync(imageFile),
-      Buffer.from(imageEnd.frame.result.content[0].data, "base64"),
+      Buffer.from(
+        imageEnd.frame.result.content.find(({ type }) => type === "image").data,
+        "base64",
+      ),
     );
     for (const harness of ["claude", "codex"]) {
       const { steps } = nativeCases().find(

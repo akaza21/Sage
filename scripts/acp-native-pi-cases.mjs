@@ -155,6 +155,7 @@ function events(state, { update, finish }) {
         toolName: "read",
         result: {
           content: [
+            { type: "text", text: "Read image file [image/png]" },
             { type: "image", mimeType: "image/png", data: NATIVE_IMAGE_BASE64 },
           ],
         },

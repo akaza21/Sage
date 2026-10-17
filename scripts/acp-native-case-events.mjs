@@ -274,7 +274,7 @@ export function events(harness, state) {
           item,
         });
         if (state === "child-opened" || state === "subagents-started")
-          codex(finished ? "item/completed" : "item/started", {
+          codex("item/completed", {
             threadId: "$SESSION",
             item: {
               id: "fixture-child-activity-" + index,
