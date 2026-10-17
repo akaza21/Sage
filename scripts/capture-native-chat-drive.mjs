@@ -145,7 +145,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       HARNESS[options.harness].binding,
       deadline,
     );
-  if (options.state === "model-menu")
+  if (["model-menu", "effort-menu"].includes(options.state))
     await waitForComposerIdle(
       evaluate,
       OBSERVATION,
@@ -153,6 +153,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       HARNESS[options.harness].binding,
       deadline,
       record,
+      options.state === "effort-menu" ? "effortEnabled" : "modelEnabled",
     );
   for (const action of actionsFor(options.state, options.harness)) {
     let latest = await evaluate(OBSERVATION);
@@ -224,6 +225,7 @@ export async function waitForComposerIdle(
   bindingId,
   deadline,
   record,
+  control = "modelEnabled",
 ) {
   let latest = await evaluate(observationExpression);
   record("composer-idle-start", latest);
@@ -235,7 +237,7 @@ export async function waitForComposerIdle(
       SETTLED_TURN_STATES.includes(latest.state) &&
       !latest.controls.stop &&
       latest.controls.send === true &&
-      latest.controls.modelEnabled === true
+      latest.controls[control] === true
     );
   }, deadline);
   record("composer-idle-ready", latest);

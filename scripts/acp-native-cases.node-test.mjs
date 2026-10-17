@@ -37,19 +37,23 @@ test("Codex child-opened admits child ownership before completion and keeps the 
   assert.equal(entry.steps.at(-2).kind, "codexUnsubscribe");
 });
 test("native image wire payloads decode to an opaque, visible 320x180 synthetic PNG", () => {
-  for (const harness of ["codex", "claude"]) {
+  for (const harness of ["codex", "claude", "pi"]) {
     const entry = nativeCases().find(
       ({ id }) => id === `${harness}-answer-image`,
     );
     const frame = entry.steps.find((step) =>
       harness === "codex"
         ? step.params?.item?.type === "imageGeneration"
-        : step.update?.content?.type === "image",
+        : harness === "pi"
+          ? step.frame?.type === "tool_execution_end"
+          : step.update?.content?.type === "image",
     );
     const encoded =
       harness === "codex"
         ? frame.params.item.result.slice("data:image/png;base64,".length)
-        : frame.update.content.data;
+        : harness === "pi"
+          ? frame.frame.result.content[0].data
+          : frame.update.content.data;
     const png = Buffer.from(encoded, "base64");
     assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     assert.equal(png.readUInt32BE(16), 320);
@@ -357,7 +361,6 @@ test("catalogue excludes states the binding cannot represent", () => {
     "codex-compaction-started",
     "codex-compaction-failed",
     "codex-compaction-cancelled",
-    "claude-effort-menu",
     "claude-context-meter",
   ])
     assert.equal(ids.has(id), false, id);

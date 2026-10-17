@@ -1,4 +1,9 @@
-import { answer, emit, wait } from "./acp-native-case-events.mjs";
+import {
+  answer,
+  emit,
+  wait,
+  NATIVE_IMAGE_BASE64,
+} from "./acp-native-case-events.mjs";
 
 export const piAbsentStates = Object.freeze([
   "tool-long-label",
@@ -19,11 +24,8 @@ export const piAbsentStates = Object.freeze([
   "approval-pending",
   "approval-approved",
   "approval-declined",
-  "answer-image",
-  "access-menu",
   "context-meter",
   "attachment-chip",
-  "effort-menu",
 ]);
 const states = [
   "new-chat",
@@ -48,11 +50,14 @@ const states = [
   "answer-table-lists",
   "answer-code",
   "answer-mermaid",
+  "answer-image",
   "composer-idle",
   "composer-stop",
   "harness-menu",
   "model-menu",
+  "effort-menu",
   "add-menu",
+  "access-menu",
   "responsive-wide",
   "responsive-720",
   "responsive-480",
@@ -138,6 +143,24 @@ function assistantStream() {
 }
 function events(state, { update, finish }) {
   const steps = [];
+  if (state === "answer-image")
+    steps.push(
+      frame("tool_execution_start", {
+        toolCallId: "fixture-read-image",
+        toolName: "read",
+        args: { path: "$ROOT/src/example.png" },
+      }),
+      frame("tool_execution_end", {
+        toolCallId: "fixture-read-image",
+        toolName: "read",
+        result: {
+          content: [
+            { type: "image", mimeType: "image/png", data: NATIVE_IMAGE_BASE64 },
+          ],
+        },
+        isError: false,
+      }),
+    );
   if (state === "prose-then-thinking")
     steps.push(update("text_delta", "Inspecting the synthetic example. "));
   if (state.includes("thinking")) {

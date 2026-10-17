@@ -100,7 +100,7 @@ export function observationFor(binding) {
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>queryAll(selector).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.acp-file-changes',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.subagent-surface',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu',addMenu:'.composer__options',access:'[aria-label="Permission mode"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]'};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'.agent-task-header__resource-panel[role="dialog"]',subagentCounts:'.agent-task-header__resource-panel [aria-label="Subagents"] .agent-task-header__agent-summary',subagentEntries:'.agent-task-header__resource-panel [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'.composer__options',access:'button[aria-label="Access options"]',accessMenu:'[role="listbox"][aria-label="Permission mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]'};
   const elements=[]; let charged=0;
   for(const [kind,selector] of Object.entries(selectors))for(const element of queryAll(selector)){
     if(elements.length>=64)throw Error('probe-elements');
@@ -111,7 +111,7 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-label="Thinking level"]'),add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Permission mode"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button.composer__effort-picker[title="Select effort"]'),effortEnabled:has('button.composer__effort-picker[title="Select effort"]') && !query('button.composer__effort-picker[title="Select effort"]')?.disabled,add:has('button[aria-label="Composer options"]'),access:has('button[aria-label="Access options"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(queryAll('.acp-turn').find(element=>element.dataset.turnId===turn?.id),visible,element=>getComputedStyle(element));
   return {chatId,projectId,projectionLoaded,singlePane,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,...richContent,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
@@ -204,7 +204,7 @@ export function namedState(options, observation, captureChat) {
       terminal && view.rollup && observation.toolStates.length >= 3,
     "tool-expanded": view.expanded,
     "tool-long-label": terminal && (view.tool || view.rollup),
-    "file-edit-live": live && view.files && rendered("fileChangeDiff"),
+    "file-edit-live": live && view.editingFiles && rendered("fileChangeDiff"),
     "files-pill": terminal && view.files,
     "file-hunk": terminal && view.hunk,
     "file-diff-tab": terminal && view.diffTab,
@@ -213,7 +213,8 @@ export function namedState(options, observation, captureChat) {
     "subagents-started": live && view.subagent,
     "subagents-finished": terminal && view.subagent,
     "subagents-grouped": terminal && view.subagent,
-    "subagents-popover": view.popover,
+    "subagents-popover":
+      terminal && view.popover && view.subagentCounts && view.subagentEntries,
     "child-opened": view.child,
     "plan-running": live && view.plan,
     "plan-completed": terminal && view.plan,
@@ -283,7 +284,7 @@ export function namedState(options, observation, captureChat) {
     "composer-stop": live && observation.controls.stop,
     "harness-menu": view.harnessMenu,
     "model-menu": view.modelMenu,
-    "effort-menu": view.effortMenu,
+    "effort-menu": terminal && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
     "access-menu": view.addMenu && view.accessMenu,
     "context-meter": view.meter,
@@ -326,6 +327,10 @@ export function scopeToTurn(selector, turnId) {
   );
 }
 export function actionsFor(state, harness) {
+  if (state === "subagents-popover")
+    return ['button[aria-label="Show chat resources"]'];
+  if (state === "effort-menu")
+    return ['button.composer__effort-picker[title="Select effort"]'];
   if (state === "turn-retry" && harness === "pi") return [];
   if (
     [
@@ -344,7 +349,6 @@ export function actionsFor(state, harness) {
       "cancelled-dialog",
       "subagents-finished",
       "subagents-grouped",
-      "subagents-popover",
       "child-opened",
     ].includes(state)
   )
@@ -356,9 +360,7 @@ export function actionsFor(state, harness) {
       ...(state === "cancelled-dialog"
         ? [LAST_TURN + ".acp-unknown .acp-details > summary"]
         : []),
-      ...(["subagents-popover", "child-opened"].includes(state)
-        ? [LAST_TURN + ".acp-subagent-row"]
-        : []),
+      ...(state === "child-opened" ? [LAST_TURN + ".acp-subagent-row"] : []),
     ];
   if (state === "approval-approved")
     return [
@@ -381,7 +383,9 @@ export function actionsFor(state, harness) {
     ];
   if (state === "plan-mode-entry" || state === "access-menu")
     return [
-      'button[aria-label="Composer options"]',
+      state === "access-menu"
+        ? 'button[aria-label="Access options"]'
+        : 'button[aria-label="Composer options"]',
       state === "plan-mode-entry"
         ? 'button[aria-label="Session mode"]'
         : 'button[aria-label="Permission mode"]',
@@ -389,10 +393,7 @@ export function actionsFor(state, harness) {
   const menus = {
     "harness-menu": "Harness",
     "model-menu": "Model",
-    "effort-menu": "Thinking level",
     "add-menu": "Composer options",
-    "access-menu": "Composer options",
-    "plan-mode-entry": "Composer options",
   };
   return menus[state] ? ['button[aria-label="' + menus[state] + '"]'] : [];
 }

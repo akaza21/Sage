@@ -1,4 +1,9 @@
-import { emit, wait, events } from "./acp-native-case-events.mjs";
+import {
+  emit,
+  wait,
+  events,
+  acpEffortUpdate,
+} from "./acp-native-case-events.mjs";
 
 const sharedStates = [
   "new-chat",
@@ -88,12 +93,17 @@ export const truthfulAbsentStates = Object.freeze({
     "compaction-completed",
     "compaction-failed",
     "compaction-cancelled",
-    "effort-menu",
     "context-meter",
   ]),
 });
 export const nativeCaptureProductGaps = Object.freeze({
-  codex: Object.freeze(["model-menu", "attachment-chip"]),
+  codex: Object.freeze([
+    "model-menu",
+    "attachment-chip",
+    "file-edit-live",
+    "file-hunk",
+    "file-diff-tab",
+  ]),
   claude: Object.freeze(["attachment-chip"]),
   pi: Object.freeze([]),
 });
@@ -135,6 +145,7 @@ export function nativeCases() {
                 wait("acpNew"),
                 emit("acpSession"),
                 wait("acpPrompt"),
+                ...(state === "effort-menu" ? [acpEffortUpdate()] : []),
               ];
         if (state.startsWith("approval-"))
           steps.push(

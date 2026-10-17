@@ -223,6 +223,9 @@ test("480 capture requests match the native minimum without lowering its height"
 test("native admission rejects product gaps instead of waiting for inert controls", () => {
   for (const [harness, state] of [
     ["codex", "model-menu"],
+    ["codex", "file-edit-live"],
+    ["codex", "file-hunk"],
+    ["codex", "file-diff-tab"],
     ["codex", "attachment-chip"],
     ["claude", "attachment-chip"],
   ])
@@ -476,7 +479,6 @@ test("capture explicitly rejects truthful-absent pairs", () => {
     ["codex", "approval-pending"],
     ["codex", "approval-approved"],
     ["codex", "approval-declined"],
-    ["claude", "effort-menu"],
     ["claude", "context-meter"],
     ["claude", "child-opened"],
   ])
@@ -549,7 +551,7 @@ test("probe exact limits pass; plus-one, privacy and unknown fields fail", () =>
     (value) => (value.protocol = "codex-app-server-0.146.0"),
     (value) => (value.dump = "private"),
     (value) => (value.hashes.servedAsset = "d".repeat(63)),
-    (value) => (value.caseId = "claude-effort-menu"),
+    (value) => (value.caseId = "claude-context-meter"),
     (value) => (value.elements[0].x = Infinity),
     (value) => (value.elements[0].text = "C:\\Users\\someone\\secret"),
   ]) {

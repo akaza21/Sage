@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 
 export function runTool(executable, args, timeout = 10000) {
   return new Promise((resolve, reject) =>
@@ -101,6 +102,11 @@ export function freshRoots(workspace) {
     project = path.join(owned, "project");
   mkdirSync(profile);
   mkdirSync(path.join(project, "src"), { recursive: true });
+  writeFileSync(
+    path.join(project, "src", "example.png"),
+    Buffer.from(NATIVE_IMAGE_BASE64, "base64"),
+    { flag: "wx" },
+  );
   writeFileSync(
     path.join(profile, ".sage-disposable-profile-v1"),
     "sage-disposable-profile-v1\n",

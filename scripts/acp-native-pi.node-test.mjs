@@ -75,10 +75,13 @@ test("Pi capture admits source-shaped read-only replay and refuses absent states
     "answer-table-lists",
     "answer-code",
     "answer-mermaid",
+    "answer-image",
     "composer-idle",
     "composer-stop",
     "model-menu",
+    "effort-menu",
     "add-menu",
+    "access-menu",
     "non-read-denial",
     "cancelled-dialog",
   ]) {

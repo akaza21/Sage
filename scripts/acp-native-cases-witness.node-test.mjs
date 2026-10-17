@@ -167,6 +167,21 @@ test("native file witnesses resolve to the existing file provisioned for Preview
   const workspace = mkdtempSync(path.join(tmpdir(), "sage-native-witness-"));
   try {
     const { project } = freshRoots(workspace);
+    const imageCase = nativeCases().find(({ id }) => id === "pi-answer-image");
+    const imageStart = imageCase.steps.find(
+      ({ frame }) => frame?.type === "tool_execution_start",
+    );
+    const imageEnd = imageCase.steps.find(
+      ({ frame }) => frame?.type === "tool_execution_end",
+    );
+    const imageFile = path.join(
+      project,
+      ...imageStart.frame.args.path.slice("$ROOT/".length).split("/"),
+    );
+    assert.deepEqual(
+      readFileSync(imageFile),
+      Buffer.from(imageEnd.frame.result.content[0].data, "base64"),
+    );
     for (const harness of ["claude", "codex"]) {
       const { steps } = nativeCases().find(
         ({ id }) => id === `${harness}-file-edit-live`,
@@ -190,7 +205,7 @@ test("native file witnesses resolve to the existing file provisioned for Preview
     rmSync(workspace, { recursive: true });
   }
 });
-test("every native generated wire sequence equals its source catalogue including unchanged Pi cases", () => {
+test("every native generated wire sequence equals its source catalogue", () => {
   const source = readFileSync(
     new URL("../src-tauri/src/acp/fixture/generated_cases.rs", import.meta.url),
     "utf8",

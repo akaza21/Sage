@@ -33,6 +33,35 @@ export const answer = (state) => {
   return "The synthetic example is available for native replay review.";
 };
 
+export const acpEffortUpdate = () =>
+  emit("acpUpdate", {
+    update: {
+      sessionUpdate: "config_option_update",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "fixture-model",
+          options: [{ value: "fixture-model", name: "Synthetic replay" }],
+        },
+        {
+          id: "effort",
+          name: "Effort",
+          category: "thought_level",
+          type: "select",
+          currentValue: "medium",
+          options: [
+            { value: "low", name: "Low" },
+            { value: "medium", name: "Medium" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ],
+    },
+  });
+
 export function events(harness, state) {
   const frames = [];
   const acp = (update) => frames.push(emit("acpUpdate", { update }));
@@ -244,14 +273,14 @@ export function events(harness, state) {
           ...(state === "child-opened" ? { threadId: "$SESSION" } : {}),
           item,
         });
-        if (state === "child-opened")
-          codex("item/completed", {
+        if (state === "child-opened" || state === "subagents-started")
+          codex(finished ? "item/completed" : "item/started", {
             threadId: "$SESSION",
             item: {
               id: "fixture-child-activity-" + index,
               type: "subAgentActivity",
               agentThreadId: child,
-              kind: "completed",
+              kind: finished ? "completed" : "started",
             },
           });
       }
