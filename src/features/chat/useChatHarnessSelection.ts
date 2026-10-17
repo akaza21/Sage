@@ -48,7 +48,7 @@ export function harnessPickerCandidates(
 
 export function useComposerPopovers(disabled = false) {
   const [selected, setActive] = useState<
-    "options" | "access" | "model" | "effort" | null
+    "options" | "access" | "harness" | "model" | "effort" | null
   >(null);
   const active = disabled ? null : selected;
   const optionsId = useId();
@@ -67,7 +67,7 @@ export function useComposerPopovers(disabled = false) {
     optionsId,
     optionsTrigger,
     dismiss: () => setActive(null),
-    toggle: (kind: "options" | "access" | "model" | "effort") => {
+    toggle: (kind: "options" | "access" | "harness" | "model" | "effort") => {
       if (!disabled) setActive((current) => (current === kind ? null : kind));
     },
   };

@@ -1320,6 +1320,50 @@ mod tests {
     }
 
     #[test]
+    fn advertised_access_policies_drive_permission_wire_outcomes() {
+        use crate::settings_store::SessionAccessMode;
+        let root = TempRoot(std::env::temp_dir().join(format!(
+            "sage-opencode-admitted-policy-{}",
+            uuid::Uuid::new_v4()
+        )));
+        std::fs::create_dir_all(&root.0).unwrap();
+        let target = root.0.join("file.txt");
+        std::fs::write(&target, "before").unwrap();
+        for capability in crate::acp::bindings::access_policy::access_modes(
+            "opencode-acp",
+            OPENCODE_OBSERVED_VERSION,
+            true,
+        ) {
+            let batch = workspace_permission_case(
+                &root,
+                &capability.label,
+                "edit",
+                target.to_str(),
+                capability.id,
+            );
+            match capability.id {
+                SessionAccessMode::ReadOnly => assert_eq!(
+                    egress_value(&batch.egress()[0])["result"]["outcome"]["outcome"],
+                    "cancelled"
+                ),
+                SessionAccessMode::Ask => {
+                    assert!(batch.egress().is_empty());
+                    assert!(
+                        batch
+                            .events()
+                            .iter()
+                            .any(|event| matches!(event, AdapterEvent::PermissionRequest { .. }))
+                    );
+                }
+                SessionAccessMode::WorkspaceWrite => assert_eq!(
+                    egress_value(&batch.egress()[0])["result"]["outcome"]["optionId"],
+                    "once"
+                ),
+            }
+        }
+    }
+
+    #[test]
     fn maximum_length_wire_permission_id_has_bounded_durable_identity() {
         let root = TempRoot(std::env::temp_dir().join(format!(
             "sage-opencode-long-request-{}",

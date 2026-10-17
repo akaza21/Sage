@@ -4,7 +4,6 @@ import {
   DEFAULT_SESSION_ACCESS_MODE,
   SESSION_ACCESS_MODES,
   admitSessionAccessMode,
-  sessionAccessModeCopy,
 } from "./sessionAccessMode";
 
 describe("session access mode", () => {
@@ -31,12 +30,5 @@ describe("session access mode", () => {
     expect(admitSessionAccessMode(null)).toBe("readOnly");
     expect(admitSessionAccessMode(undefined)).toBe("readOnly");
     expect(admitSessionAccessMode(7)).toBe("readOnly");
-  });
-
-  it("gives every mode a label and a description", () => {
-    for (const mode of SESSION_ACCESS_MODES) {
-      expect(sessionAccessModeCopy(mode).label.length).toBeGreaterThan(0);
-      expect(sessionAccessModeCopy(mode).description.length).toBeGreaterThan(0);
-    }
   });
 });

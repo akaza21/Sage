@@ -238,7 +238,6 @@ impl AcpService {
         self.registry.codex_admission().clone()
     }
 
-    #[cfg(test)]
     pub(crate) fn binding_registry(&self) -> &Arc<BindingRegistry> {
         &self.registry
     }

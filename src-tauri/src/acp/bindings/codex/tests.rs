@@ -1230,7 +1230,13 @@ fn pinned_codex_0146_dispatches_saved_ask_as_read_only() {
         2,
         &Prompt::new("prompt", "inspect").unwrap(),
         &RequiredText::new("client", "client-ask").unwrap(),
-        requested.effective(false),
+        crate::acp::bindings::access_policy::effective_mode(
+            "codex-app-server",
+            "0.146.0",
+            Some(requested),
+            true,
+        )
+        .unwrap(),
     );
     assert!(turn.is_ok());
     let wire: Value = serde_json::from_slice(&turn.unwrap().bytes).unwrap();

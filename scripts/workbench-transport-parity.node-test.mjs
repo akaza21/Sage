@@ -30,6 +30,7 @@ test("frozen workbench transport types have an explicit field freeze", () => {
     FROZEN_WORKBENCH_TRANSPORT_FIELDS.HarnessDefinition.includes("bindingId"),
   );
   assert.deepEqual(FROZEN_WORKBENCH_TRANSPORT_FIELDS.HarnessDefinition, [
+    "accessModes",
     "accountModelDiscovery",
     "bindingId",
     "boundVersion",

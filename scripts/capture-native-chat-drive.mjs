@@ -126,15 +126,17 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
     );
   };
   if (options.state.startsWith("approval-")) {
+    const mode = (await evaluate(OBSERVATION)).accessModes?.find(
+      (mode) => mode === "ask",
+    );
+    if (!mode) throw new Error("approval-access-unavailable");
+    await clickCapture('button[aria-label="Access options"]');
+    await clickCapture('[role="menuitemradio"][data-option-id="' + mode + '"]');
     await submit();
     await waitForState(
       async () => (await evaluate(OBSERVATION)).state === "completed",
       deadline,
     );
-    await clickCapture('button[aria-label="Composer options"]');
-    await clickCapture('button[aria-label="Permission mode"]');
-    await clickCapture('[role="option"][data-option-id="ask"]');
-    await clickCapture('button[aria-label="Composer options"]');
   }
   if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
   if (options.state === "jump-to-latest")

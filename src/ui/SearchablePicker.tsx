@@ -45,6 +45,8 @@ export function SearchablePicker({
   emptyLabel = "Select…",
   footer,
   onOptionRender,
+  open: controlledOpen,
+  onOpenChange,
   popoverClassName,
   popoverGap,
   triggerClassName,
@@ -65,6 +67,8 @@ export function SearchablePicker({
   emptyLabel?: string;
   footer?: string;
   onOptionRender?: (id: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   popoverClassName?: string;
   popoverGap?: number;
   triggerClassName?: string;
@@ -82,7 +86,9 @@ export function SearchablePicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -144,7 +150,7 @@ export function SearchablePicker({
       if (reason === "escape" || (!searchable && reason === "tab"))
         triggerRef.current?.focus();
     },
-    [searchable],
+    [searchable, setOpen],
   );
   useLayoutEffect(() => {
     if (!disabled) return;

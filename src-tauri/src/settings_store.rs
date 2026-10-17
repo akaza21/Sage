@@ -7,6 +7,8 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+mod access;
+pub use access::SessionAccessModes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,15 +28,6 @@ pub enum SessionAccessMode {
     ReadOnly,
     Ask,
     WorkspaceWrite,
-}
-
-impl SessionAccessMode {
-    pub(crate) fn effective(self, permission_requests: bool) -> Self {
-        match (self, permission_requests) {
-            (Self::Ask, false) => Self::ReadOnly,
-            _ => self,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +113,7 @@ impl SettingsStore {
                    mode TEXT NOT NULL CHECK (mode IN ('readOnly', 'ask', 'workspaceWrite'))
                  ) STRICT;",
             )?;
+            migration.execute_batch("CREATE TABLE IF NOT EXISTS binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite'))) STRICT;")?;
             migration.execute_batch(
                 "CREATE TABLE IF NOT EXISTS ui_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -205,50 +199,6 @@ impl SettingsStore {
         Ok(value)
     }
 
-    pub fn session_access_mode(&self) -> AppResult<SessionAccessMode> {
-        let connection = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection
-            .query_row(
-                "SELECT mode FROM session_access_mode WHERE singleton = 1",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .or_else(|error| match error {
-                rusqlite::Error::QueryReturnedNoRows => Ok("readOnly".to_owned()),
-                error => Err(error),
-            })
-            .and_then(|mode| {
-                serde_json::from_value(serde_json::Value::String(mode)).map_err(|_| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Text,
-                        Box::new(std::fmt::Error),
-                    )
-                })
-            })
-            .map_err(Into::into)
-    }
-
-    pub fn set_session_access_mode(&self, mode: SessionAccessMode) -> AppResult<SessionAccessMode> {
-        let value = match mode {
-            SessionAccessMode::ReadOnly => "readOnly",
-            SessionAccessMode::Ask => "ask",
-            SessionAccessMode::WorkspaceWrite => "workspaceWrite",
-        };
-        let connection = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO session_access_mode(singleton, mode) VALUES (1, ?1)
-             ON CONFLICT(singleton) DO UPDATE SET mode=excluded.mode",
-            [value],
-        )?;
-        Ok(mode)
-    }
     pub fn ui_appearance(&self) -> AppResult<UiAppearance> {
         let connection = self
             .0
@@ -313,25 +263,6 @@ fn table_has_column(connection: &Connection, column: &str) -> AppResult<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn persists_the_session_access_mode_with_a_read_only_default() {
-        let store = SettingsStore::in_memory().unwrap();
-        assert_eq!(
-            store.session_access_mode().unwrap(),
-            SessionAccessMode::ReadOnly
-        );
-        assert_eq!(
-            store
-                .set_session_access_mode(SessionAccessMode::WorkspaceWrite)
-                .unwrap(),
-            SessionAccessMode::WorkspaceWrite
-        );
-        assert_eq!(
-            store.session_access_mode().unwrap(),
-            SessionAccessMode::WorkspaceWrite
-        );
-    }
 
     #[test]
     fn persists_only_the_bounded_ui_appearance_values() {

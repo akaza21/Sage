@@ -231,11 +231,10 @@ test("file captures distinguish live Editing files from the composer-adjacent co
   );
 });
 
-test("Pi captures the shared access picker without claiming Ask or write authority", () => {
+test("access-menu opens the anchored access menu for every harness", () => {
   for (const harness of ["codex", "claude", "pi"]) {
     assert.deepEqual(actionsFor("access-menu", harness), [
       'button[aria-label="Access options"]',
-      'button[aria-label="Permission mode"]',
     ]);
     assert.equal(
       parseArgs([

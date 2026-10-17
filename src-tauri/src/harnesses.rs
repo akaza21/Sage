@@ -308,16 +308,7 @@ impl HarnessCatalog {
             {
                 definition.sign_in = None;
             }
-            match record.bound_build() {
-                Some(bound) => {
-                    definition.bound_version = safe_display_version(&bound.reported_version);
-                    definition.characterisation = Some(bound.characterisation);
-                    definition.account_model_discovery = bound.account_model_discovery;
-                }
-                None => {
-                    definition.unavailable_reason = record.unavailable_reason();
-                }
-            }
+            catalog_definition::annotate_binding(definition, record);
         }
         definitions
     }
@@ -767,6 +758,7 @@ mod tests {
                     "transport",
                     "bindingId",
                     "accountModelDiscovery",
+                    "accessModes",
                     "version",
                     "versionChecking",
                     "boundVersion",

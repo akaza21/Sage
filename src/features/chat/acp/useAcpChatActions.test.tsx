@@ -103,7 +103,7 @@ beforeEach(() => {
   const intent = useAcpProjectionStore.getState().beginPageLoad(null);
   useAcpProjectionStore.getState().completePageLoad(intent, page());
   useSessionAccessModeStore.setState({
-    mode: DEFAULT_SESSION_ACCESS_MODE,
+    modes: { fixture: DEFAULT_SESSION_ACCESS_MODE },
     ready: true,
     error: null,
   });

@@ -1,6 +1,6 @@
 import type { SettingsPort } from "./workbenchPorts";
 import type { EditorAppearance } from "../features/files/editorAppearance";
-import type { SessionAccessMode } from "../domain/sessionAccessMode";
+import type { SessionAccessModes } from "../domain/sessionAccessMode";
 import type { UiAppearance } from "../domain/uiAppearance";
 import { invokeNative } from "./nativeInvoke";
 
@@ -11,11 +11,13 @@ export const nativeSettingsPort: SettingsPort = {
   setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance> {
     return invokeNative("set_editor_appearance", { appearance });
   },
-  getSessionAccessMode(): Promise<SessionAccessMode> {
-    return invokeNative("get_session_access_mode");
+  getSessionAccessModes(): Promise<SessionAccessModes> {
+    return invokeNative("get_session_access_modes");
   },
-  setSessionAccessMode(mode: SessionAccessMode): Promise<SessionAccessMode> {
-    return invokeNative("set_session_access_mode", { mode });
+  setSessionAccessModes(
+    modes: SessionAccessModes,
+  ): Promise<SessionAccessModes> {
+    return invokeNative("set_session_access_modes", { modes });
   },
   getUiAppearance(): Promise<UiAppearance> {
     return invokeNative("get_ui_appearance");

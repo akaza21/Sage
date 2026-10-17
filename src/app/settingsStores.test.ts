@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_SESSION_ACCESS_MODE,
-  type SessionAccessMode,
+  type SessionAccessModes,
 } from "../domain/sessionAccessMode";
 import { DEFAULT_UI_APPEARANCE } from "../domain/uiAppearance";
 import {
@@ -15,10 +15,12 @@ import { useUiAppearanceStore } from "./uiAppearanceStore";
 beforeEach(async () => {
   vi.restoreAllMocks();
   resetWorkbenchPortsForTests();
-  await getPorts().settings.setSessionAccessMode(DEFAULT_SESSION_ACCESS_MODE);
+  await getPorts().settings.setSessionAccessModes({
+    "binding-test": DEFAULT_SESSION_ACCESS_MODE,
+  });
   await getPorts().settings.setUiAppearance(DEFAULT_UI_APPEARANCE);
   useSessionAccessModeStore.setState({
-    mode: DEFAULT_SESSION_ACCESS_MODE,
+    modes: { "binding-test": DEFAULT_SESSION_ACCESS_MODE },
     ready: false,
     error: null,
   });
@@ -31,46 +33,60 @@ beforeEach(async () => {
 
 describe("session access mode store", () => {
   it("starts fail-closed and unready", () => {
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "readOnly",
+    );
     expect(useSessionAccessModeStore.getState().ready).toBe(false);
   });
 
   it("restores the persisted mode through the settings port", async () => {
-    await getPorts().settings.setSessionAccessMode("workspaceWrite");
+    await getPorts().settings.setSessionAccessModes({
+      "binding-test": "workspaceWrite",
+    });
     await useSessionAccessModeStore.getState().restore();
-    expect(useSessionAccessModeStore.getState().mode).toBe("workspaceWrite");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "workspaceWrite",
+    );
     expect(useSessionAccessModeStore.getState().ready).toBe(true);
     expect(useSessionAccessModeStore.getState().error).toBeNull();
   });
 
   it("ignores writes before the store is ready", async () => {
-    const save = vi.spyOn(getPorts().settings, "setSessionAccessMode");
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
+    const save = vi.spyOn(getPorts().settings, "setSessionAccessModes");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
     expect(save).not.toHaveBeenCalled();
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "readOnly",
+    );
   });
 
   it("writes through and keeps the optimistic value", async () => {
     await useSessionAccessModeStore.getState().restore();
-    const save = vi.spyOn(getPorts().settings, "setSessionAccessMode");
-    useSessionAccessModeStore.getState().setMode("ask");
-    expect(useSessionAccessModeStore.getState().mode).toBe("ask");
-    expect(save).toHaveBeenCalledWith("ask");
+    const save = vi.spyOn(getPorts().settings, "setSessionAccessModes");
+    useSessionAccessModeStore.getState().setMode("binding-test", "ask");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "ask",
+    );
+    expect(save).toHaveBeenCalledWith({ "binding-test": "ask" });
     await useSessionAccessModeStore.getState().settle();
-    expect(await getPorts().settings.getSessionAccessMode()).toBe("ask");
+    expect(await getPorts().settings.getSessionAccessModes()).toEqual({
+      "binding-test": "ask",
+    });
   });
 
   it("degrades an unknown persisted value instead of throwing", async () => {
-    vi.spyOn(getPorts().settings, "getSessionAccessMode").mockResolvedValue(
+    vi.spyOn(getPorts().settings, "getSessionAccessModes").mockResolvedValue(
       "elevated" as never,
     );
     await useSessionAccessModeStore.getState().restore();
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    expect(useSessionAccessModeStore.getState().modes).toEqual({});
     expect(useSessionAccessModeStore.getState().ready).toBe(true);
   });
 
   it("surfaces a load failure without claiming readiness", async () => {
-    vi.spyOn(getPorts().settings, "getSessionAccessMode").mockRejectedValue(
+    vi.spyOn(getPorts().settings, "getSessionAccessModes").mockRejectedValue(
       new Error("nope"),
     );
     await useSessionAccessModeStore.getState().restore();
@@ -82,27 +98,37 @@ describe("session access mode store", () => {
 
   it("surfaces a save failure and reverts to the persisted value", async () => {
     await useSessionAccessModeStore.getState().restore();
-    vi.spyOn(getPorts().settings, "setSessionAccessMode").mockRejectedValue(
+    vi.spyOn(getPorts().settings, "setSessionAccessModes").mockRejectedValue(
       new Error("nope"),
     );
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
     await useSessionAccessModeStore.getState().settle();
     expect(useSessionAccessModeStore.getState().error).toBe(
       "Permission mode could not be saved.",
     );
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "readOnly",
+    );
   });
 
   it("keeps the newest persisted choice when an older queued write fails", async () => {
     await useSessionAccessModeStore.getState().restore();
     failNthSessionAccessModeWrite(1);
 
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
-    useSessionAccessModeStore.getState().setMode("ask");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
+    useSessionAccessModeStore.getState().setMode("binding-test", "ask");
     await useSessionAccessModeStore.getState().settle();
 
-    expect(await getPorts().settings.getSessionAccessMode()).toBe("ask");
-    expect(useSessionAccessModeStore.getState().mode).toBe("ask");
+    expect(await getPorts().settings.getSessionAccessModes()).toEqual({
+      "binding-test": "ask",
+    });
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "ask",
+    );
     expect(useSessionAccessModeStore.getState().error).toBeNull();
   });
 
@@ -110,12 +136,18 @@ describe("session access mode store", () => {
     await useSessionAccessModeStore.getState().restore();
     failNthSessionAccessModeWrite(1, 2);
 
-    useSessionAccessModeStore.getState().setMode("ask");
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
+    useSessionAccessModeStore.getState().setMode("binding-test", "ask");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
     await useSessionAccessModeStore.getState().settle();
 
-    expect(await getPorts().settings.getSessionAccessMode()).toBe("readOnly");
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    expect(await getPorts().settings.getSessionAccessModes()).toEqual({
+      "binding-test": "readOnly",
+    });
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "readOnly",
+    );
     expect(useSessionAccessModeStore.getState().error).toBe(
       "Permission mode could not be saved.",
     );
@@ -123,24 +155,34 @@ describe("session access mode store", () => {
 
   it("coalesces rapid choices into a bounded number of native writes", async () => {
     await useSessionAccessModeStore.getState().restore();
-    const save = vi.spyOn(getPorts().settings, "setSessionAccessMode");
+    const save = vi.spyOn(getPorts().settings, "setSessionAccessModes");
 
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
-    useSessionAccessModeStore.getState().setMode("readOnly");
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
-    useSessionAccessModeStore.getState().setMode("readOnly");
-    useSessionAccessModeStore.getState().setMode("ask");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
+    useSessionAccessModeStore.getState().setMode("binding-test", "readOnly");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
+    useSessionAccessModeStore.getState().setMode("binding-test", "readOnly");
+    useSessionAccessModeStore.getState().setMode("binding-test", "ask");
     await useSessionAccessModeStore.getState().settle();
 
     expect(save.mock.calls.length).toBeLessThanOrEqual(2);
-    expect(save).toHaveBeenLastCalledWith("ask");
-    expect(await getPorts().settings.getSessionAccessMode()).toBe("ask");
-    expect(useSessionAccessModeStore.getState().mode).toBe("ask");
+    expect(save).toHaveBeenLastCalledWith({ "binding-test": "ask" });
+    expect(await getPorts().settings.getSessionAccessModes()).toEqual({
+      "binding-test": "ask",
+    });
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "ask",
+    );
   });
 
   it("settles true once the newest choice is persisted", async () => {
     await useSessionAccessModeStore.getState().restore();
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
 
     await expect(useSessionAccessModeStore.getState().settle()).resolves.toBe(
       true,
@@ -150,7 +192,9 @@ describe("session access mode store", () => {
   it("settles false when the newest choice failed to persist", async () => {
     await useSessionAccessModeStore.getState().restore();
     failNthSessionAccessModeWrite(1);
-    useSessionAccessModeStore.getState().setMode("workspaceWrite");
+    useSessionAccessModeStore
+      .getState()
+      .setMode("binding-test", "workspaceWrite");
 
     await expect(useSessionAccessModeStore.getState().settle()).resolves.toBe(
       false,
@@ -158,8 +202,8 @@ describe("session access mode store", () => {
   });
 
   it("settles only after an in-flight restore finishes", async () => {
-    const load = deferred<SessionAccessMode>();
-    vi.spyOn(getPorts().settings, "getSessionAccessMode").mockReturnValue(
+    const load = deferred<SessionAccessModes>();
+    vi.spyOn(getPorts().settings, "getSessionAccessModes").mockReturnValue(
       load.promise,
     );
     void useSessionAccessModeStore.getState().restore();
@@ -175,13 +219,15 @@ describe("session access mode store", () => {
     await Promise.resolve();
     expect(resolved).toBe(false);
 
-    load.resolve("workspaceWrite");
+    load.resolve({ "binding-test": "workspaceWrite" });
     await expect(settling).resolves.toBe(true);
-    expect(useSessionAccessModeStore.getState().mode).toBe("workspaceWrite");
+    expect(useSessionAccessModeStore.getState().modes["binding-test"]).toBe(
+      "workspaceWrite",
+    );
   });
 
   it("settles false when the restore failed", async () => {
-    vi.spyOn(getPorts().settings, "getSessionAccessMode").mockRejectedValue(
+    vi.spyOn(getPorts().settings, "getSessionAccessModes").mockRejectedValue(
       new Error("nope"),
     );
     await useSessionAccessModeStore.getState().restore();
@@ -289,9 +335,9 @@ function deferred<T>() {
 
 function failNthSessionAccessModeWrite(...failed: number[]) {
   const settings = getPorts().settings;
-  const write = settings.setSessionAccessMode.bind(settings);
+  const write = settings.setSessionAccessModes.bind(settings);
   let call = 0;
-  vi.spyOn(settings, "setSessionAccessMode").mockImplementation((mode) => {
+  vi.spyOn(settings, "setSessionAccessModes").mockImplementation((mode) => {
     call += 1;
     return failed.includes(call)
       ? Promise.reject(new Error("native write failed"))

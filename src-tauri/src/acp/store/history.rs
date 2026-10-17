@@ -239,8 +239,6 @@ fn load_sessions(
     Ok(result)
 }
 
-const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
-
 fn permission_requests_supported(
     binding_id: &BindingId,
     capabilities: &CapabilitySnapshotV1,
@@ -250,7 +248,7 @@ fn permission_requests_supported(
             crate::acp::bindings::codex::supports_native_0146_protocol(
                 capabilities.protocol_version.as_str(),
             ) && capabilities.active_turn_steer
-                && CODEX_ASK_NATIVE_APPROVAL_PROVEN
+                && crate::acp::bindings::access_policy::CODEX_ASK_NATIVE_APPROVAL_PROVEN
         }
         "claude-agent-acp" | "cursor-agent-acp" | "opencode-acp" | "gemini-cli-acp" => true,
         _ => false,
@@ -376,7 +374,11 @@ mod permission_request_tests {
         let mut observed = capabilities("codex-app-server-observed-0.146.0");
         assert!(!permission_requests_supported(&codex, &observed));
         observed.active_turn_steer = true;
-        assert!(!permission_requests_supported(&codex, &observed));
+        let advertised =
+            crate::acp::bindings::access_policy::access_modes("codex-app-server", "0.146.0", true)
+                .iter()
+                .any(|mode| mode.id == crate::settings_store::SessionAccessMode::Ask);
+        assert_eq!(permission_requests_supported(&codex, &observed), advertised);
 
         let claude = BindingId::new("bindingId", "claude-agent-acp").expect("Claude binding");
         assert!(permission_requests_supported(&claude, &capabilities("1")));

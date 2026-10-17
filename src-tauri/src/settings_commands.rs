@@ -1,9 +1,29 @@
 use tauri::State;
 
 use crate::{
-    settings_store::{EditorAppearance, SessionAccessMode, UiAppearance},
+    settings_store::{EditorAppearance, SessionAccessModes, UiAppearance},
     state::AppState,
 };
+
+pub(crate) fn access_preferences(state: &AppState) -> crate::error::AppResult<SessionAccessModes> {
+    if !state.settings.pending_access_migration()? {
+        return state.settings.session_access_modes();
+    }
+    let snapshot = state
+        .database
+        .bootstrap_snapshot_with_catalog(&state.harnesses)?;
+    let binding = snapshot
+        .session_id
+        .and(snapshot.selected_harness_id)
+        .and_then(|id| {
+            state
+                .acp
+                .binding_registry()
+                .for_harness(&id)
+                .map(|record| record.binding_id())
+        });
+    state.settings.migrate_session_access_modes(binding)
+}
 
 #[tauri::command]
 pub fn get_editor_appearance(state: State<'_, AppState>) -> Result<EditorAppearance, String> {
@@ -25,21 +45,18 @@ pub fn set_editor_appearance(
 }
 
 #[tauri::command]
-pub fn get_session_access_mode(state: State<'_, AppState>) -> Result<SessionAccessMode, String> {
-    state
-        .settings
-        .session_access_mode()
-        .map_err(|error| error.to_string())
+pub fn get_session_access_modes(state: State<'_, AppState>) -> Result<SessionAccessModes, String> {
+    access_preferences(&state).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub fn set_session_access_mode(
+pub fn set_session_access_modes(
     state: State<'_, AppState>,
-    mode: SessionAccessMode,
-) -> Result<SessionAccessMode, String> {
+    modes: SessionAccessModes,
+) -> Result<SessionAccessModes, String> {
     state
         .settings
-        .set_session_access_mode(mode)
+        .set_session_access_modes(&modes)
         .map_err(|error| error.to_string())
 }
 

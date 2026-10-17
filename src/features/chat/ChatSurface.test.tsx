@@ -61,6 +61,14 @@ vi.mock("./acp", async () => {
 import { ChatSurface } from "./ChatSurface";
 
 const initialState = useWorkbenchStore.getState();
+const nativeReadOnly = [
+  {
+    id: "readOnly" as const,
+    label: "Read-only",
+    description: "Read workspace files; no writes or network.",
+    fallback: true,
+  },
+];
 
 function openComposerOptions() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
@@ -232,6 +240,7 @@ async function expandReadActivity() {
 }
 
 beforeEach(() => {
+  useSessionAccessModeStore.setState({ modes: {}, ready: true, error: null });
   useAcpProjectionStore.setState({ retentionIncomplete: false });
   hooks.page = projection();
   hooks.actions.busy = false;
@@ -253,6 +262,7 @@ beforeEach(() => {
         accountModelDiscovery: true,
         transport: "acp",
         bindingId: "codex-app-server",
+        accessModes: nativeReadOnly,
       },
     ],
     selectedHarnessId: "codex",
@@ -1475,6 +1485,14 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
       models: [],
@@ -1589,6 +1607,14 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
     });
@@ -1746,6 +1772,14 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
           signIn: {
             command: "claude auth login",
             hint: "Complete sign-in in the terminal.",
@@ -1824,6 +1858,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
       ],
       models: [{ id: "gpt-5.6", name: "gpt-5.6" }],
@@ -1959,6 +1994,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
         {
           id: "pi",
@@ -2053,6 +2089,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
         {
           id: "pi",
@@ -2186,7 +2223,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Read-only");
   });
 
@@ -2198,7 +2235,7 @@ describe("ChatSurface ACP resource integration", () => {
       turns: [],
     };
     useSessionAccessModeStore.setState({
-      mode: "readOnly",
+      modes: { "codex-app-server": "readOnly" },
       ready: true,
       error: null,
     });
@@ -2215,6 +2252,7 @@ describe("ChatSurface ACP resource integration", () => {
           bindingId: "codex-app-server",
           boundVersion: "0.146.0",
           characterisation: "characterised",
+          accessModes: nativeReadOnly,
         },
       ],
       selectedHarnessId: "codex",
@@ -2222,10 +2260,13 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
     openComposerOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
-    const ask = screen.getByRole("option", { name: /Ask each time/ });
-    expect(ask).toHaveAttribute("aria-disabled", "true");
-    expect(useSessionAccessModeStore.getState().mode).toBe("readOnly");
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+    expect(
+      screen.queryByRole("menuitemradio", { name: "Ask each time" }),
+    ).toBeNull();
+    expect(useSessionAccessModeStore.getState().modes["codex-app-server"]).toBe(
+      "readOnly",
+    );
   });
 
   it("shows effective Read-only for saved Ask across observed and pinned Codex", async () => {
@@ -2237,7 +2278,7 @@ describe("ChatSurface ACP resource integration", () => {
     };
     hooks.actions.submit.mockResolvedValue("applied");
     useSessionAccessModeStore.setState({
-      mode: "ask",
+      modes: { "codex-app-server": "ask" },
       ready: true,
       error: null,
     });
@@ -2246,6 +2287,7 @@ describe("ChatSurface ACP resource integration", () => {
         {
           id: "codex",
           name: "Codex observed",
+          accessModes: nativeReadOnly,
           description: "ACP",
           installState: "available",
           source: "builtIn",
@@ -2258,6 +2300,7 @@ describe("ChatSurface ACP resource integration", () => {
         {
           id: "pinned-codex",
           name: "Codex pinned",
+          accessModes: nativeReadOnly,
           description: "ACP",
           installState: "available",
           source: "builtIn",
@@ -2301,7 +2344,9 @@ describe("ChatSurface ACP resource integration", () => {
         null,
       ),
     );
-    expect(useSessionAccessModeStore.getState().mode).toBe("ask");
+    expect(useSessionAccessModeStore.getState().modes["codex-app-server"]).toBe(
+      "ask",
+    );
   });
 
   it.each([
@@ -2342,7 +2387,7 @@ describe("ChatSurface ACP resource integration", () => {
       },
     ],
   ] as const)(
-    "keeps Ask unavailable before the first prompt for %s",
+    "does not infer access capabilities from a harness identity alone for %s",
     (_label, identity) => {
       hooks.page = {
         ...projection(),
@@ -2351,7 +2396,7 @@ describe("ChatSurface ACP resource integration", () => {
         turns: [],
       };
       useSessionAccessModeStore.setState({
-        mode: "readOnly",
+        modes: { "codex-app-server": "readOnly" },
         ready: true,
         error: null,
       });
@@ -2371,11 +2416,15 @@ describe("ChatSurface ACP resource integration", () => {
       });
 
       render(<ChatSurface />);
-      openComposerOptions();
-      fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
       expect(
-        screen.getByRole("option", { name: /Ask each time/ }),
-      ).toHaveAttribute("aria-disabled", "true");
+        screen.queryByRole("button", { name: "Access options" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("textbox", { name: "Message agent" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByText("Choose a supported access mode before sending."),
+      ).toBeVisible();
     },
   );
 
@@ -3111,6 +3160,7 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
       ],
       selectedHarnessId: "old-harness",
@@ -3201,6 +3251,14 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
           version: "2.1.270",
           boundVersion: "0.99.0",
           characterisation: "uncharacterised",
@@ -3238,6 +3296,14 @@ describe("ChatSurface ACP resource integration", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
           versionChecking: true,
         },
       ],
@@ -3671,6 +3737,7 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
       ],
       selectedHarnessId: "sage-simulator",
@@ -3795,6 +3862,7 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
         {
           id: "claude",
@@ -3805,6 +3873,14 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
       selectedHarnessId: "codex",
@@ -3894,6 +3970,7 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
       ],
       selectedHarnessId: "codex",
@@ -3975,6 +4052,14 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
       selectedHarnessId: "claude",
@@ -4054,6 +4139,7 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
         {
           id: "claude",
@@ -4064,6 +4150,14 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
       selectedHarnessId: "claude",
@@ -4125,6 +4219,7 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
         {
           id: "claude",
@@ -4135,6 +4230,14 @@ describe("ChatSurface per-chat composer", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accessModes: [
+            {
+              id: "ask",
+              label: "Ask each time",
+              description: "Review permission requests.",
+              fallback: true,
+            },
+          ],
         },
       ],
       selectedHarnessId: "claude",
@@ -4429,6 +4532,7 @@ describe("ChatSurface composer focus hotkey", () => {
           accountModelDiscovery: true,
           transport: "acp",
           bindingId: "codex-app-server",
+          accessModes: nativeReadOnly,
         },
       ],
       selectedHarnessId: "codex",

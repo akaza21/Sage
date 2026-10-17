@@ -130,26 +130,21 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
-    let page = state
-        .acp
-        .load_chat_page(project_id.clone(), chat_id.clone(), None)
-        .map_err(store_error)
-        .map_err(prompt_not_dispatched)?;
-    let permission_requests = page
-        .sessions
-        .as_slice()
-        .iter()
-        .find(|session| session.id == session_id)
-        .is_some_and(|session| session.permission_requests);
-    let access_mode = state
-        .settings
-        .session_access_mode()
-        .map_err(|_| {
-            prompt_not_dispatched(AcpIpcError::RecoveryRequired {
-                message: safe_message("Session access mode could not be loaded; reload Sage."),
-            })
-        })?
-        .effective(permission_requests);
+    let requested_access = state.settings.session_access_modes().map_err(|_| {
+        prompt_not_dispatched(AcpIpcError::RecoveryRequired {
+            message: safe_message("Session access mode could not be loaded; reload Sage."),
+        })
+    })?;
+    let access_mode = crate::acp::bindings::access_policy::effective_for_binding(
+        state.acp.binding_registry(),
+        binding_id.as_str(),
+        requested_access.get(binding_id.as_str()).copied(),
+    )
+    .ok_or_else(|| {
+        prompt_not_dispatched(AcpIpcError::InvalidRequest {
+            message: safe_message("Choose a supported access mode before sending."),
+        })
+    })?;
     state
         .acp
         .dispatch_session_turn(

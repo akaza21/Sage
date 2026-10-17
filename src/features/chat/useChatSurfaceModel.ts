@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
 
+import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import type { AgentDiffRef } from "../../domain/agentDiff";
 import type { AttachedContext } from "../../domain/attachedContext";
@@ -28,6 +29,7 @@ type SurfaceHarness = Pick<
   | "source"
   | "name"
   | "signIn"
+  | "accessModes"
 >;
 
 export function useChatSurfaceModel({
@@ -155,6 +157,12 @@ export function useChatSurfaceModel({
       harnessStatus,
     };
   }, [discoveryPhase, harnesses, page, selectedHarnessId, selectedModelId]);
+  const accessBindingId = model.selectedSession?.bindingId ?? model.bindingId;
+  const access = useSessionAccessSelection(
+    accessBindingId,
+    model.selectedHarness?.accessModes,
+  );
+  const accessReason = model.availableBinding ? access.reason : null;
   const pageRef = useRef(page);
   useEffect(() => {
     pageRef.current = page;
@@ -219,9 +227,10 @@ export function useChatSurfaceModel({
     workingTurnCount,
     canCloseSession,
     canEndSession,
-    canPrompt,
+    canPrompt: protocolCanPrompt,
     usage,
   } = turnEligibility;
+  const canPrompt = protocolCanPrompt && !accessReason;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
   const imageSendBlocked =
@@ -247,26 +256,28 @@ export function useChatSurfaceModel({
     model.selectedSession &&
     !model.selectedSession.capabilities.prompt,
   );
-  const disabledReason = legacyAttachments
-    ? "Attached context requires an ACP harness. Remove it or select an ACP harness."
-    : queueSavePending
-      ? "Saving queued message."
-      : activeAcpTurn && queuedPromptCount >= MAX_QUEUED_CHAT_PROMPTS
-        ? `Queue is full (${MAX_QUEUED_CHAT_PROMPTS} messages).`
-        : queueAvailable
-          ? null
-          : composerDisabledReason({
-              actionBusy,
-              activeTurn: Boolean(activeAcpTurn),
-              availableBinding: model.availableBinding,
-              canPrompt,
-              chatLoadFailed,
-              harnessAvailable: model.harnessAvailable,
-              harnessDiscoveryPhase: discoveryPhase,
-              projectTransitioning,
-              selectedHarness: Boolean(model.selectedHarness),
-              useNativeAcp: model.useNativeAcp,
-            });
+  const disabledReason =
+    accessReason ??
+    (legacyAttachments
+      ? "Attached context requires an ACP harness. Remove it or select an ACP harness."
+      : queueSavePending
+        ? "Saving queued message."
+        : activeAcpTurn && queuedPromptCount >= MAX_QUEUED_CHAT_PROMPTS
+          ? `Queue is full (${MAX_QUEUED_CHAT_PROMPTS} messages).`
+          : queueAvailable
+            ? null
+            : composerDisabledReason({
+                actionBusy,
+                activeTurn: Boolean(activeAcpTurn),
+                availableBinding: model.availableBinding,
+                canPrompt,
+                chatLoadFailed,
+                harnessAvailable: model.harnessAvailable,
+                harnessDiscoveryPhase: discoveryPhase,
+                projectTransitioning,
+                selectedHarness: Boolean(model.selectedHarness),
+                useNativeAcp: model.useNativeAcp,
+              }));
   const submit = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
@@ -344,6 +355,7 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
+    accessBindingId,
     foregroundError:
       acpActions.errorKind === "signInRequired" && model.selectedHarness
         ? signInRequiredMessage(model.selectedHarness)

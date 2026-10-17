@@ -7,7 +7,7 @@ export {
   useAcpChatLoadFailure,
 } from "./useAcpChatProjection";
 export { terminalTurnStates } from "./statusSemantics";
-export { latestRetryPrompt, permissionRequestsAvailable } from "./acpTurnState";
+export { latestRetryPrompt } from "./acpTurnState";
 export { useRendererRecreationFocus } from "./useRendererRecreationFocus";
 export { applyAgentFileIntent } from "./agentFileOps";
 export type { AgentFileIntent, AgentFileOperation } from "./agentFileOps";

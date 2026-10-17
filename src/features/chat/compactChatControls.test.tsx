@@ -11,19 +11,46 @@ import { ComposerModelControls } from "./ComposerModelControls";
 import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../../app/store";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 
 const initialAccess = useSessionAccessModeStore.getState();
+const initialWorkbench = useWorkbenchStore.getState();
 beforeEach(() =>
-  useSessionAccessModeStore.setState({ ready: true, mode: "readOnly" }),
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { fixture: "readOnly" },
+  }),
 );
 afterEach(() => {
   cleanup();
   useSessionAccessModeStore.setState(initialAccess, true);
+  useWorkbenchStore.setState(initialWorkbench, true);
 });
 
 describe("Compact chat controls", () => {
   it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", () => {
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "access-fixture",
+          name: "Native fixture",
+          description: "",
+          installState: "available",
+          source: "development",
+          transport: "acp",
+          bindingId: "fixture",
+          accountModelDiscovery: false,
+          accessModes: [
+            {
+              id: "readOnly",
+              label: "Read-only",
+              description: "Read workspace files; no writes or network.",
+            },
+          ],
+        },
+      ],
+    });
     render(
       <ChatHarnessControls
         availableBinding
@@ -32,12 +59,11 @@ describe("Compact chat controls", () => {
         modelLabelScope="compact"
         sessionHarnessId={null}
         sessionModelId={null}
-        selectedHarnessId={null}
+        selectedHarnessId="access-fixture"
         selectedModelId={null}
         projectName={null}
         turnBusy={false}
         sessionConfig={null}
-        permissionRequests={false}
         modePending={false}
         modeError={null}
         focused={false}
@@ -49,24 +75,24 @@ describe("Compact chat controls", () => {
       />,
     );
     const trigger = screen.getByRole("button", { name: "Access options" });
-    expect(trigger).toHaveAttribute("aria-description", "Read-only");
+    expect(trigger).toHaveAccessibleDescription(
+      "Read workspace files; no writes or network. Applies from your next message with this harness.",
+    );
     expect(trigger.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", {
-      name: "Composer options menu",
+    const dialog = screen.getByRole("menu", {
+      name: "Access mode",
     });
     expect(dialog.parentElement).toBe(document.body);
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("menuitemradio", { name: "Read-only" }),
     ).toHaveFocus();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(trigger).toHaveFocus();
     fireEvent.click(trigger);
     fireEvent.pointerDown(trigger);
     fireEvent.click(trigger);
-    expect(
-      screen.queryByRole("dialog", { name: "Composer options menu" }),
-    ).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Access mode" })).toBeNull();
   });
 
   it("gives the model trigger a meaningful icon and the confirmed identity as its description", () => {

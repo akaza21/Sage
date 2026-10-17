@@ -24,6 +24,20 @@ import { ChatHarnessControls } from "./ChatHarnessControls";
 
 const noop = () => Promise.resolve();
 const initialWorkbenchState = useWorkbenchStore.getState();
+const nativeAccessModes = [
+  {
+    id: "readOnly" as const,
+    label: "Read-only",
+    description: "Read workspace files; no writes or network.",
+    fallback: true,
+  },
+  {
+    id: "workspaceWrite" as const,
+    label: "Workspace edits",
+    description:
+      "Edits and commands run without asking inside the workspace and temp folders; no network access.",
+  },
+];
 
 function renderControls(overrides: Record<string, unknown> = {}) {
   const renderWith = (props: Record<string, unknown>) => (
@@ -32,14 +46,13 @@ function renderControls(overrides: Record<string, unknown> = {}) {
       canPrompt
       discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
-      sessionHarnessId={null}
+      sessionHarnessId="access-test"
       sessionModelId={null}
-      selectedHarnessId={null}
+      selectedHarnessId="access-test"
       selectedModelId={null}
       projectName={null}
       turnBusy={false}
       sessionConfig={null}
-      permissionRequests={false}
       modePending={false}
       modeError={null}
       focused={false}
@@ -62,11 +75,26 @@ function renderControls(overrides: Record<string, unknown> = {}) {
 beforeEach(async () => {
   vi.restoreAllMocks();
   resetWorkbenchPortsForTests();
-  await getWorkbenchPorts().settings.setSessionAccessMode(
-    DEFAULT_SESSION_ACCESS_MODE,
-  );
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        id: "access-test",
+        name: "Native policy fixture",
+        description: "",
+        installState: "available",
+        source: "builtIn",
+        transport: "acp",
+        bindingId: "fixture",
+        accountModelDiscovery: false,
+        accessModes: nativeAccessModes,
+      },
+    ],
+  });
+  await getWorkbenchPorts().settings.setSessionAccessModes({
+    fixture: DEFAULT_SESSION_ACCESS_MODE,
+  });
   useSessionAccessModeStore.setState({
-    mode: DEFAULT_SESSION_ACCESS_MODE,
+    modes: { fixture: DEFAULT_SESSION_ACCESS_MODE },
     ready: true,
     error: null,
   });
@@ -75,6 +103,22 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialWorkbenchState, true);
+});
+
+it("keeps Harness and Access mutually exclusive without pointer events", () => {
+  renderControls();
+  const access = screen.getByRole("button", { name: "Access options" });
+  const harness = screen.getByRole("button", { name: "Harness" });
+  fireEvent.click(access);
+  fireEvent.click(harness);
+  expect(screen.queryByRole("menu", { name: "Access mode" })).toBeNull();
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  fireEvent.click(access);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Access mode" }), {
+    key: "Escape",
+  });
+  expect(access).toHaveFocus();
 });
 
 function openOptions() {
@@ -680,14 +724,17 @@ describe("composer permission mode picker", () => {
   });
 
   it("moves focus into the options dialog and restores it on Escape", () => {
-    renderControls();
+    useWorkbenchStore.setState({
+      projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
+    });
+    renderControls({ projectName: "Alpha" });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     expect(
       screen.getByRole("dialog", { name: "Composer options menu" }),
     ).toBeVisible();
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("button", { name: "Project" }),
     );
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -697,9 +744,9 @@ describe("composer permission mode picker", () => {
   });
 
   it.each(["Composer options", "Access options"])(
-    "reports shared-dialog expansion only for %s and transfers ownership to the other opener",
+    "opens only one surface from %s and returns Escape focus to the current opener",
     (name) => {
-      renderControls();
+      renderControls({ projectName: "Alpha" });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
         name:
@@ -711,8 +758,14 @@ describe("composer permission mode picker", () => {
       fireEvent.click(other);
       expect(opener).toHaveAttribute("aria-expanded", "false");
       expect(other).toHaveAttribute("aria-expanded", "true");
+      expect([
+        ...screen.queryAllByRole("menu"),
+        ...screen.queryAllByRole("dialog"),
+      ]).toHaveLength(1);
       fireEvent.keyDown(
-        screen.getByRole("dialog", { name: "Composer options menu" }),
+        name === "Composer options"
+          ? screen.getByRole("menu", { name: "Access mode" })
+          : screen.getByRole("dialog", { name: "Composer options menu" }),
         { key: "Escape" },
       );
       expect(other).toHaveFocus();
@@ -723,10 +776,15 @@ describe("composer permission mode picker", () => {
   it.each([false, true])(
     "returns options-dialog Tab boundary focus to its opener (reverse=%s)",
     (shiftKey) => {
-      renderControls();
+      useWorkbenchStore.setState({
+        projects: [
+          { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
+        ],
+      });
+      renderControls({ projectName: "Alpha" });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
-      const control = screen.getByRole("button", { name: "Permission mode" });
+      const control = screen.getByRole("button", { name: "Project" });
       expect(control).toHaveFocus();
       fireEvent.keyDown(control, { key: "Tab", shiftKey });
       expect(
@@ -778,20 +836,19 @@ describe("composer permission mode picker", () => {
   });
 
   it("closes the nested picker before its parent dialog on successive Escape presses", () => {
-    renderControls();
+    useWorkbenchStore.setState({
+      projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
+    });
+    renderControls({ projectName: "Alpha" });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-    expect(
-      screen.queryByRole("listbox", { name: "Permission mode" }),
-    ).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Project" })).toBeNull();
     expect(
       screen.getByRole("dialog", { name: "Composer options menu" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Permission mode" }),
-    ).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Project" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
       screen.queryByRole("dialog", { name: "Composer options menu" }),
@@ -800,8 +857,8 @@ describe("composer permission mode picker", () => {
   });
 
   it("shows effective read-only access when ask is unsupported", () => {
-    useSessionAccessModeStore.setState({ mode: "ask" });
-    renderControls({ permissionRequests: false });
+    useSessionAccessModeStore.setState({ modes: { fixture: "ask" } });
+    renderControls();
     expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
       "composer__access-label",
     );
@@ -835,7 +892,9 @@ describe("composer permission mode picker", () => {
       ],
     });
     if (!sessionConfig) throw new Error("session config did not decode");
-    useSessionAccessModeStore.setState({ mode: "workspaceWrite" });
+    useSessionAccessModeStore.setState({
+      modes: { fixture: "workspaceWrite" },
+    });
     renderControls({ sessionConfig });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
       "Claude Opus 5.5",
@@ -845,7 +904,7 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent("High");
     expect(
       screen.getByRole("button", { name: "Access options" }),
-    ).toHaveTextContent("Full access");
+    ).toHaveTextContent("Workspace edits");
     expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
       "composer__access-label--write",
     );
@@ -911,7 +970,7 @@ describe("composer permission mode picker", () => {
     });
   });
 
-  it("keeps the harness visible beside the model and permission choices under plus", () => {
+  it("keeps access directly beside the harness and model, not nested under plus", () => {
     renderControls();
     expect(
       screen.getByRole("button", { name: "Composer options" }),
@@ -928,8 +987,16 @@ describe("composer permission mode picker", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("button", { name: "Access options" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Permission mode" }),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Access options" })
+        .closest('[role="dialog"]'),
+    ).toBeNull();
   });
 
   it("gives harness and model triggers the same control treatment", () => {
@@ -1370,70 +1437,87 @@ describe("composer permission mode picker", () => {
     openOptions();
     expect(screen.queryByText("Read-only policy")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Read-only");
   });
 
   it("reflects a different persisted mode", () => {
-    useSessionAccessModeStore.setState({ mode: "workspaceWrite" });
+    useSessionAccessModeStore.setState({
+      modes: { fixture: "workspaceWrite" },
+    });
     renderControls();
     openOptions();
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
-    ).toHaveTextContent("Auto-accept edits in workspace");
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Workspace edits");
   });
 
   it("persists a chosen mode through the settings port", async () => {
-    const save = vi.spyOn(getWorkbenchPorts().settings, "setSessionAccessMode");
+    const save = vi.spyOn(
+      getWorkbenchPorts().settings,
+      "setSessionAccessModes",
+    );
     renderControls();
     openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
-      screen.getByRole("option", { name: /Auto-accept edits in workspace/ }),
+      screen.getByRole("menuitemradio", { name: "Workspace edits" }),
     );
-    expect(save).toHaveBeenCalledWith("workspaceWrite");
+    expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" });
     await waitFor(() =>
-      expect(useSessionAccessModeStore.getState().mode).toBe("workspaceWrite"),
+      expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+        "workspaceWrite",
+      ),
     );
   });
 
   it("states when the chosen mode takes effect", () => {
     renderControls();
     openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
-      screen.getByText("Applies from your next message in any chat."),
+      screen.getByText(/Applies from your next message with this harness./),
     ).toBeInTheDocument();
   });
 
-  it("gates ask honestly while permission prompts are unconfirmed", () => {
+  it("omits Ask when native policies do not admit it", () => {
     renderControls();
-    openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
-    const ask = screen.getByRole("option", { name: /Ask each time/ });
-    expect(ask).toBeDisabled();
-    expect(ask).toHaveTextContent(
-      "This harness has not confirmed support for permission prompts.",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+    expect(
+      screen.queryByRole("menuitemradio", { name: "Ask each time" }),
+    ).toBeNull();
   });
 
-  it("admits ask when the session projection confirms permission requests", () => {
-    renderControls({ permissionRequests: true });
-    openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
-    const ask = screen.getByRole("option", { name: /Ask each time/ });
+  it("admits Ask only from the native policy capabilities", () => {
+    useWorkbenchStore.setState((state) => ({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        accessModes: [
+          {
+            id: "ask",
+            label: "Ask each time",
+            description:
+              "Review each permission request; no filesystem sandbox.",
+          },
+        ],
+      })),
+    }));
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+    const ask = screen.getByRole("menuitemradio", { name: "Ask each time" });
     expect(ask).toBeEnabled();
-    expect(ask).not.toHaveTextContent(
-      "This harness has not confirmed support for permission prompts.",
+    expect(ask).toHaveAccessibleDescription(
+      "Review each permission request; no filesystem sandbox.",
     );
+    expect(
+      screen.queryByRole("menuitemradio", { name: "Read-only" }),
+    ).toBeNull();
   });
 
   it("hides the picker without an available binding", () => {
     renderControls({ availableBinding: false });
     openOptions();
-    expect(
-      screen.queryByRole("button", { name: "Permission mode" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Access options" })).toBeNull();
   });
 
   it("is not actionable before the persisted mode has been restored", () => {
@@ -1441,20 +1525,20 @@ describe("composer permission mode picker", () => {
     renderControls();
     openOptions();
     expect(
-      screen.getByRole("button", { name: "Permission mode" }),
+      screen.getByRole("button", { name: "Access options" }),
     ).toBeDisabled();
   });
 
   it("surfaces a save failure instead of silently reverting", async () => {
     vi.spyOn(
       getWorkbenchPorts().settings,
-      "setSessionAccessMode",
+      "setSessionAccessModes",
     ).mockRejectedValue(new Error("nope"));
     renderControls();
     openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Permission mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
-      screen.getByRole("option", { name: /Auto-accept edits in workspace/ }),
+      screen.getByRole("menuitemradio", { name: "Workspace edits" }),
     );
 
     await waitFor(() =>
@@ -1463,4 +1547,38 @@ describe("composer permission mode picker", () => {
       ),
     );
   });
+});
+
+it("uses the send binding's modes rather than a stale picker identity", () => {
+  useWorkbenchStore.setState({
+    harnesses: [
+      ...useWorkbenchStore.getState().harnesses,
+      {
+        id: "other",
+        name: "Other",
+        description: "ACP",
+        accountModelDiscovery: false,
+        source: "builtIn",
+        transport: "acp",
+        installState: "available",
+        bindingId: "other-binding",
+        accessModes: [
+          {
+            id: "ask",
+            label: "Ask each time",
+            description: "Review requests.",
+            fallback: true,
+          },
+        ],
+      },
+    ],
+  });
+  renderControls({ selectedHarnessId: "other", accessBindingId: "fixture" });
+  fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+  expect(
+    screen.getByRole("menuitemradio", { name: "Workspace edits" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("menuitemradio", { name: "Ask each time" }),
+  ).toBeNull();
 });

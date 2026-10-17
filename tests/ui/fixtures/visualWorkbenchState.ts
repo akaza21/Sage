@@ -278,6 +278,20 @@ export function applyVisualWorkbenchState(
         accountModelDiscovery: false,
         transport: "acp",
         bindingId: BINDING_ID,
+        accessModes: [
+          {
+            id: "readOnly",
+            label: "Read-only",
+            fallback: true,
+            description: "Read workspace files; no writes or network.",
+          },
+          {
+            id: "workspaceWrite",
+            label: "Workspace edits",
+            description:
+              "Edit workspace files without approval; no outside writes or network.",
+          },
+        ],
       },
       ...(pickerHarnessScenario
         ? [

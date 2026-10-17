@@ -57,7 +57,7 @@ import type {
 } from "../domain/workbench";
 import type { HarnessDefinition } from "../domain/harness";
 import type { EditorAppearance } from "../features/files/editorAppearance";
-import type { SessionAccessMode } from "../domain/sessionAccessMode";
+import type { SessionAccessModes } from "../domain/sessionAccessMode";
 import type { UiAppearance } from "../domain/uiAppearance";
 
 export interface SendPromptRequest {
@@ -244,10 +244,10 @@ export interface AgentPort {
 
 export interface SettingsPort {
   getEditorAppearance(): Promise<EditorAppearance>;
-  getSessionAccessMode(): Promise<SessionAccessMode>;
+  getSessionAccessModes(): Promise<SessionAccessModes>;
   getUiAppearance(): Promise<UiAppearance>;
   setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance>;
-  setSessionAccessMode(mode: SessionAccessMode): Promise<SessionAccessMode>;
+  setSessionAccessModes(modes: SessionAccessModes): Promise<SessionAccessModes>;
   setUiAppearance(appearance: UiAppearance): Promise<UiAppearance>;
 }
 
@@ -318,10 +318,10 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
   agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
   settings: [
     "getEditorAppearance",
-    "getSessionAccessMode",
+    "getSessionAccessModes",
     "getUiAppearance",
     "setEditorAppearance",
-    "setSessionAccessMode",
+    "setSessionAccessModes",
     "setUiAppearance",
   ],
 } as const;

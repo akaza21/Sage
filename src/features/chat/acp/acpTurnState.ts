@@ -5,7 +5,6 @@ import type {
   SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
-import type { HarnessDefinition } from "../../../domain/harness";
 
 export function promptAttachmentItems(
   items: readonly AcpItem[],
@@ -45,27 +44,6 @@ function currentSession(page: AcpChatPage): AgentSessionProjection | null {
   return (
     page.sessions.find((session) => session.id === page.currentSessionId) ??
     null
-  );
-}
-
-const CODEX_ASK_NATIVE_APPROVAL_PROVEN = false;
-
-export function permissionRequestsAvailable(
-  page: AcpChatPage | null,
-  selectedHarness?: HarnessDefinition | null,
-): boolean {
-  if (page?.currentSessionId) {
-    return currentSession(page)?.permissionRequests === true;
-  }
-  return (
-    selectedHarness?.id === "codex" &&
-    selectedHarness.source === "builtIn" &&
-    selectedHarness.transport === "acp" &&
-    selectedHarness.installState === "available" &&
-    selectedHarness.bindingId === "codex-app-server" &&
-    selectedHarness.boundVersion === "0.146.0" &&
-    selectedHarness.characterisation === "characterised" &&
-    CODEX_ASK_NATIVE_APPROVAL_PROVEN
   );
 }
 

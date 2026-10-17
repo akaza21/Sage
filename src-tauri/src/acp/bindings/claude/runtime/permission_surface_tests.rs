@@ -107,6 +107,41 @@ fn live_reject_only_permission_is_published_without_approval() {
 }
 
 #[test]
+fn advertised_claude_ask_emits_prompt_then_requires_permission() {
+    let capabilities =
+        crate::acp::bindings::access_policy::access_modes("claude-agent-acp", "0.76.0", true);
+    assert_eq!(capabilities.len(), 1);
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "run a tool").unwrap(),
+            client_message_id: RequiredText::new("client", "admitted-ask").unwrap(),
+            access_mode: capabilities[0].id,
+        })
+        .unwrap();
+    let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
+    assert_eq!(wire["method"], "session/prompt");
+    runtime
+        .resolve_egress(egress.into_token(), EgressResolution::Written)
+        .unwrap();
+    started(&mut runtime, "admitted-tool");
+    let batch = runtime
+        .ingest(
+            &permission_frame("admitted-tool", "admitted-permission", "pwd"),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(batch.egress().is_empty());
+    assert!(
+        batch
+            .events()
+            .iter()
+            .any(|event| matches!(event, SharedEvent::PermissionRequest { .. }))
+    );
+}
+
+#[test]
 fn the_permission_relabel_reaches_the_durable_tool_card() {
     let mut runtime = ClaudeRuntime::fixture();
     opened(&mut runtime);

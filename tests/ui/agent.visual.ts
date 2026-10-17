@@ -323,7 +323,7 @@ async function expectArtifactConstrainedComposer(
     options.getByRole("button", { name: "Session mode", exact: true }),
   ).toHaveText(expectedLabels[2]!);
   await expect(
-    options.getByRole("button", { name: "Permission mode", exact: true }),
+    form.getByRole("button", { name: "Access options", exact: true }),
   ).toHaveText(expectedLabels[3]!);
   await page.keyboard.press("Escape");
   await expect(

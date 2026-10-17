@@ -194,6 +194,26 @@ fn running(runtime: &mut PiRuntime) {
 }
 
 #[test]
+fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
+    let capabilities = crate::acp::bindings::access_policy::access_modes("pi-rpc", "0.83.0", true);
+    assert_eq!(capabilities.len(), 1);
+    assert_eq!(
+        capabilities[0].id,
+        crate::settings_store::SessionAccessMode::ReadOnly
+    );
+    let mut runtime = fixture_runtime(31);
+    ready(&mut runtime);
+    let egress = runtime
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "inspect").unwrap(),
+            client_message_id: RequiredText::new("client", "admitted-pi").unwrap(),
+            access_mode: capabilities[0].id,
+        })
+        .unwrap();
+    assert_eq!(request(&egress)["type"], "prompt");
+}
+
+#[test]
 fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
     let mut runtime = fixture_runtime(31);
     ready(&mut runtime);

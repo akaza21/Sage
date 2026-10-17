@@ -15,6 +15,7 @@
     "src-tauri/src/acp/",
     "src-tauri/src/persistence/",
     "src-tauri/src/session_events/",
+    "src-tauri/src/settings_store/",
     "src-tauri/src/workbench_persistence/",
     "src-tauri/testdata/acp/",
     "src/features/chat/acp/"
@@ -181,6 +182,7 @@
         "src-tauri/migrations/005_acp_session_foundation.sql",
         "src-tauri/src/acp/attached_context.rs",
         "src-tauri/src/acp/bindings/adapter.rs",
+        "src-tauri/src/acp/bindings/access_policy.rs",
         "src-tauri/src/acp/bindings/adapter/batch_builder.rs",
         "src-tauri/src/acp/bindings/adapter/byte_count.rs",
         "src-tauri/src/acp/bindings/adapter/egress_resolution.rs",
@@ -250,6 +252,7 @@
         "src-tauri/src/acp/store/",
         "src-tauri/src/persistence/",
         "src-tauri/src/session_events/",
+        "src-tauri/src/settings_store/",
         "src-tauri/src/workbench_persistence/"
       ],
       "files": [

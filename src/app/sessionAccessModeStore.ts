@@ -1,46 +1,37 @@
 import { create } from "zustand";
-
 import {
-  DEFAULT_SESSION_ACCESS_MODE,
-  admitSessionAccessMode,
+  admitSessionAccessModes,
   type SessionAccessMode,
+  type SessionAccessModes,
 } from "../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
 
-const LOAD_FAILURE = "Permission mode could not be loaded.";
-const SAVE_FAILURE = "Permission mode could not be saved.";
-
 interface SessionAccessModeStore {
-  mode: SessionAccessMode;
+  modes: SessionAccessModes;
   ready: boolean;
   error: string | null;
   restore: () => Promise<void>;
   settle: () => Promise<boolean>;
-  setMode: (mode: SessionAccessMode) => void;
+  setMode: (bindingId: string, mode: SessionAccessMode) => void;
 }
-
-const writes = createSettingWriter<SessionAccessMode>(
-  DEFAULT_SESSION_ACCESS_MODE,
-);
-
+const writes = createSettingWriter<SessionAccessModes>({});
 let loading: Promise<void> | null = null;
-
 export const useSessionAccessModeStore = create<SessionAccessModeStore>(
   (set, get) => ({
-    mode: DEFAULT_SESSION_ACCESS_MODE,
+    modes: {},
     ready: false,
     error: null,
     restore: async () => {
       const load = (async () => {
         try {
-          const mode = admitSessionAccessMode(
-            await getWorkbenchPorts().settings.getSessionAccessMode(),
+          const modes = admitSessionAccessModes(
+            await getWorkbenchPorts().settings.getSessionAccessModes(),
           );
-          writes.persisted(mode);
-          set({ mode, ready: true, error: null });
+          writes.persisted(modes);
+          set({ modes, ready: true, error: null });
         } catch {
-          set({ ready: false, error: LOAD_FAILURE });
+          set({ ready: false, error: "Permission mode could not be loaded." });
         }
       })();
       loading = load;
@@ -52,14 +43,21 @@ export const useSessionAccessModeStore = create<SessionAccessModeStore>(
       await writes.idle();
       return get().ready && get().error === null;
     },
-    setMode: (mode) => {
+    setMode: (bindingId, mode) => {
       if (!get().ready) return;
-      const admitted = admitSessionAccessMode(mode);
-      set({ mode: admitted, error: null });
+      const modes = admitSessionAccessModes({
+        ...get().modes,
+        [bindingId]: mode,
+      });
+      set({ modes, error: null });
       writes.write(
-        admitted,
-        (value) => getWorkbenchPorts().settings.setSessionAccessMode(value),
-        (persisted) => set({ mode: persisted, error: SAVE_FAILURE }),
+        modes,
+        (value) => getWorkbenchPorts().settings.setSessionAccessModes(value),
+        (persisted) =>
+          set({
+            modes: persisted,
+            error: "Permission mode could not be saved.",
+          }),
       );
     },
   }),

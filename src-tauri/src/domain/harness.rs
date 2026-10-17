@@ -11,6 +11,8 @@ pub struct HarnessDefinition {
     pub transport: HarnessTransport,
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
+    #[serde(default)]
+    pub access_modes: Vec<crate::acp::bindings::access_policy::AccessModeCapability>,
     pub version: Option<String>,
     pub version_checking: bool,
     pub bound_version: Option<String>,

@@ -51,6 +51,7 @@ export function ChatComposerRegion({
   chatError,
   claudeSignInRequired,
   claudeAuthScope,
+  accessBindingId,
   availableBinding,
   canPrompt,
   discoveryPhase,
@@ -60,7 +61,6 @@ export function ChatComposerRegion({
   selectedModelId,
   sessionPromptUnavailable,
   sessionConfig,
-  permissionRequests,
   modePending,
   modeError,
   focused,
@@ -105,6 +105,7 @@ export function ChatComposerRegion({
   chatError: string | null;
   claudeSignInRequired?: boolean;
   claudeAuthScope?: string;
+  accessBindingId?: string | null;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -114,7 +115,6 @@ export function ChatComposerRegion({
   selectedModelId: string | null;
   sessionPromptUnavailable: boolean;
   sessionConfig: AcpSessionConfig | null;
-  permissionRequests: boolean;
   modePending: boolean;
   modeError: string | null;
   focused: boolean;
@@ -296,6 +296,7 @@ export function ChatComposerRegion({
               onChoose={imageInput.accept}
             />
           }
+          accessBindingId={accessBindingId}
           availableBinding={availableBinding}
           canPrompt={canPrompt}
           discoveryPhase={discoveryPhase}
@@ -306,7 +307,6 @@ export function ChatComposerRegion({
           projectName={projectName}
           turnBusy={actionBusy || activeTurn}
           sessionConfig={sessionConfig}
-          permissionRequests={permissionRequests}
           modePending={modePending}
           modeError={modeError}
           focused={focused}

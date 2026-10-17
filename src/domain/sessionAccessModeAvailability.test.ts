@@ -1,77 +1,66 @@
 import { describe, expect, it } from "vitest";
-
 import {
-  DEFAULT_SESSION_ACCESS_MODE,
-  SESSION_ACCESS_MODES,
-  SESSION_ACCESS_MODE_SCOPE,
-  admitSessionAccessMode,
   sessionAccessModeAvailability,
-  sessionAccessModeCopy,
+  type SessionAccessModeCapability,
 } from "./sessionAccessMode";
 
-describe("session access mode availability", () => {
-  it("keeps read-only and workspace write available without permission prompts", () => {
-    for (const mode of ["readOnly", "workspaceWrite"] as const) {
-      expect(sessionAccessModeAvailability(mode, false)).toEqual({
-        effective: mode,
-        unavailableReason: null,
-      });
-      expect(sessionAccessModeAvailability(mode, true)).toEqual({
-        effective: mode,
-        unavailableReason: null,
-      });
-    }
-  });
+const readOnly: SessionAccessModeCapability = {
+  id: "readOnly",
+  label: "Read-only",
+  description: "Read tools only.",
+  fallback: true,
+};
+const ask: SessionAccessModeCapability = {
+  id: "ask",
+  label: "Ask each time",
+  description: "Review permission requests.",
+};
+const workspaceWrite: SessionAccessModeCapability = {
+  id: "workspaceWrite",
+  label: "Workspace edits",
+  description: "Approve workspace edits automatically.",
+};
 
-  it("degrades ask to read-only until permission prompts are confirmed", () => {
-    expect(sessionAccessModeAvailability("ask", false)).toEqual({
-      effective: "readOnly",
-      unavailableReason:
-        "This harness has not confirmed support for permission prompts.",
-    });
-  });
-
-  it("admits ask once permission prompts are confirmed", () => {
-    expect(sessionAccessModeAvailability("ask", true)).toEqual({
-      effective: "ask",
-      unavailableReason: null,
-    });
-  });
-
-  it("fails closed on an unknown capability value", () => {
+describe("admitted session access modes", () => {
+  it("does not invent a fallback that native did not declare", () => {
     expect(
-      sessionAccessModeAvailability("ask", undefined as unknown as boolean)
+      sessionAccessModeAvailability("ask", [{ ...readOnly, fallback: false }])
         .effective,
-    ).toBe("readOnly");
+    ).toBeNull();
+  });
+  it.each([readOnly, ask, workspaceWrite])(
+    "admits an explicitly supported policy: $id",
+    (capability) => {
+      expect(
+        sessionAccessModeAvailability(capability.id, [capability]),
+      ).toEqual({ effective: capability.id, unavailableReason: null });
+    },
+  );
+  it.each(["ask", "workspaceWrite"] as const)(
+    "degrades unsupported %s only to an admitted read-only policy",
+    (mode) => {
+      expect(sessionAccessModeAvailability(mode, [readOnly])).toEqual({
+        effective: "readOnly",
+        unavailableReason: "This access mode is not supported by this harness.",
+      });
+    },
+  );
+  it("does not silently replace read-only with permission approval", () => {
     expect(
-      sessionAccessModeAvailability("ask", null as unknown as boolean)
-        .effective,
-    ).toBe("readOnly");
+      sessionAccessModeAvailability("readOnly", [ask]).effective,
+    ).toBeNull();
   });
-
-  it("degrades an unknown requested mode before gating it", () => {
-    expect(sessionAccessModeAvailability("elevated" as never, true)).toEqual({
-      effective: "readOnly",
-      unavailableReason: null,
-    });
+  it("does not fabricate access capabilities before native admission", () => {
+    expect(
+      sessionAccessModeAvailability("readOnly", undefined).effective,
+    ).toBeNull();
+    expect(
+      sessionAccessModeAvailability("workspaceWrite", []).effective,
+    ).toBeNull();
   });
-});
-
-describe("session access mode", () => {
-  it("keeps the frozen list and default", () => {
-    expect([...SESSION_ACCESS_MODES]).toEqual([
-      "readOnly",
-      "ask",
-      "workspaceWrite",
-    ]);
-    expect(DEFAULT_SESSION_ACCESS_MODE).toBe("readOnly");
-    expect(admitSessionAccessMode("nope")).toBe("readOnly");
-    expect(sessionAccessModeCopy("ask").label).toBe("Ask each time");
-  });
-
-  it("states one scope sentence for every permission mode surface", () => {
-    expect(SESSION_ACCESS_MODE_SCOPE).toBe(
-      "Applies from your next message in any chat.",
-    );
+  it("fails closed for unknown stored modes", () => {
+    expect(
+      sessionAccessModeAvailability("elevated" as never, [readOnly]),
+    ).toEqual({ effective: "readOnly", unavailableReason: null });
   });
 });

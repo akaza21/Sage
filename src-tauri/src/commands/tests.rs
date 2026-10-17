@@ -477,7 +477,17 @@ fn install_command_host(
     mode: CommandHostMode,
     close_unproven: bool,
 ) -> (RuntimeOwner, Arc<Mutex<Vec<&'static str>>>) {
-    let binding = state.acp.codex_registration().refresh().unwrap();
+    let binding_id: String = state
+        .database
+        .connection()
+        .query_row(
+            "SELECT binding_id FROM agent_sessions WHERE id=?1",
+            [session_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let admitted = state.acp.binding_registry().resolve(&binding_id).unwrap();
+    let binding = admitted.identity();
     let owner = RuntimeOwner {
         project_id: project_id.clone(),
         chat_id: chat_id.clone(),
@@ -500,13 +510,13 @@ fn install_command_host(
                 client_intent_id: ClientIntentId::new(),
                 session_id: session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
-                artifact_digest: binding.artifact_digest().to_owned(),
+                artifact_digest: binding.artifact_digest.to_owned(),
                 now_millis: crate::persistence::now_millis(),
             },
         )
         .unwrap()
     };
-    let mut capabilities = binding.capability_ceiling().unwrap();
+    let mut capabilities = admitted.supported_capabilities().unwrap();
     if close_unproven {
         capabilities.close_session = false;
     }
@@ -519,8 +529,8 @@ fn install_command_host(
                 chat_id: chat_id.clone(),
                 session_id: session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
-                binding_digest: binding.binding_digest_hex().to_owned(),
-                artifact_digest: binding.artifact_digest().to_owned(),
+                binding_digest: binding.binding_digest_hex.to_owned(),
+                artifact_digest: binding.artifact_digest.to_owned(),
                 external_session_id: crate::acp::intent::ExternalId::new(
                     "externalSessionId",
                     "thread-command-route",
@@ -726,6 +736,64 @@ fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
             )
             .unwrap();
         assert_eq!(after, before);
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn legacy_access_migration_requires_a_restored_session_not_a_catalog_default() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let (mut state, project, chat, root) = state_with_admitted_codex_project();
+        state.harnesses = state.harnesses.clone().settled_for_test();
+        let settings_path = root.join("legacy-settings.sqlite");
+        state.settings = crate::settings_store::SettingsStore::open(&settings_path).unwrap();
+        rusqlite::Connection::open(&settings_path)
+            .unwrap()
+            .execute(
+                "INSERT INTO session_access_mode VALUES (1,'workspaceWrite')",
+                [],
+            )
+            .unwrap();
+        let snapshot = state
+            .database
+            .bootstrap_snapshot_with_catalog(&state.harnesses)
+            .unwrap();
+        assert!(snapshot.session_id.is_none());
+        assert_eq!(snapshot.selected_harness_id.as_deref(), Some("codex"));
+        assert!(
+            crate::settings_commands::access_preferences(&state)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(!state.settings.pending_access_migration().unwrap());
+        start_admitted_command_session(
+            &state,
+            &SageProjectId::parse(project).unwrap(),
+            &SageChatId::parse(chat).unwrap(),
+        )
+        .await;
+        assert!(
+            crate::settings_commands::access_preferences(&state)
+                .unwrap()
+                .is_empty()
+        );
+        rusqlite::Connection::open(&settings_path)
+            .unwrap()
+            .execute(
+                "INSERT INTO session_access_mode VALUES (1,'workspaceWrite')",
+                [],
+            )
+            .unwrap();
+        assert!(state.settings.session_access_modes().is_err());
+        let modes = crate::settings_commands::access_preferences(&state).unwrap();
+        assert_eq!(modes.len(), 1);
+        assert_eq!(
+            modes["codex-app-server"],
+            crate::settings_store::SessionAccessMode::WorkspaceWrite
+        );
+        assert!(!state.settings.pending_access_migration().unwrap());
         drop(state);
         fs::remove_dir_all(root).unwrap();
     });
@@ -1936,6 +2004,121 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 prompt_dispatch: PromptDispatch::NotStarted,
             })
         ));
+        state.acp.shutdown_blocking().unwrap();
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[cfg(windows)]
+#[test]
+fn admitted_claude_default_access_sends_without_requiring_a_preference_change() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+        let (mut state, project, chat, root) = state_with_admitted_codex_project();
+        state
+            .settings
+            .set_session_access_modes(&std::collections::BTreeMap::from([(
+                "codex-app-server".into(),
+                crate::settings_store::SessionAccessMode::WorkspaceWrite,
+            )]))
+            .unwrap();
+        let adapter = root.join("adapter.js");
+        let node = root.join("node.exe");
+        fs::write(&adapter, b"adapter").unwrap();
+        fs::write(&node, b"node").unwrap();
+        let claude = crate::acp::bindings::claude::ClaudeBindingRegistration::admitted_for_test(
+            ClaudeLaunchDiscovery::Present(Box::new(DiscoveredClaudeLaunch {
+                adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+                node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+                adapter_path: adapter,
+                adapter_version: "0.76.0".into(),
+                acp_sdk_version: "9.9.9".into(),
+                node_engine: ">=22".into(),
+                node_path: node,
+                node_version: "22.18.0".into(),
+            })),
+        );
+        let registry = Arc::new(crate::acp::bindings::registry::BindingRegistry::new(
+            crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test(),
+            claude,
+        ));
+        assert!(registry.claude().bound_build().is_some());
+        state.acp = crate::acp::service::AcpService::new_with_registry_for_test(
+            state.database.clone(),
+            Arc::clone(&registry),
+        )
+        .unwrap();
+        state.harnesses = crate::harnesses::HarnessCatalog::with_registry(registry);
+        let project_id = SageProjectId::parse(project).unwrap();
+        let chat_id = SageChatId::parse(chat).unwrap();
+        let context = state
+            .lock_active_project(&project_id, ProjectGeneration::ZERO)
+            .await
+            .unwrap();
+        let admitted = state
+            .acp
+            .binding_registry()
+            .resolve("claude-agent-acp")
+            .unwrap();
+        let project_root = admitted.project_root(&state.database, &context).unwrap();
+        drop(context);
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let session_id = state
+            .acp
+            .start_session(
+                admitted,
+                &project_root,
+                StartSessionCommand {
+                    project_id: project_id.clone(),
+                    chat_id: chat_id.clone(),
+                    expected_projection_revision: page.projection_revision,
+                    client_intent_id: ClientIntentId::new(),
+                    binding_id: BindingId::new("bindingId", "claude-agent-acp").unwrap(),
+                    binding_digest: String::new(),
+                    harness_version: None,
+                    model_id: None,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            )
+            .await
+            .unwrap()
+            .session_id;
+        let (owner, calls) = install_command_host(
+            &state,
+            &project_id,
+            &chat_id,
+            &session_id,
+            CommandHostMode::Idle,
+            false,
+        );
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let result = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id,
+                runtime_epoch: owner.runtime_epoch,
+                prompt: Prompt::new("prompt", "must not run").unwrap(),
+                attached_context: Default::default(),
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "Claude default must permit sending: {result:?}"
+        );
+        assert_eq!(*calls.lock().unwrap(), ["prepare", "dispatch"]);
         state.acp.shutdown_blocking().unwrap();
         drop(state);
         fs::remove_dir_all(root).unwrap();

@@ -10,7 +10,7 @@ function load() {
 
 function option(id, label, reason) {
   return (
-    '<button type="button" role="option" class="searchable-picker__option" data-option-id="' +
+    '<button type="button" role="menuitemradio" class="searchable-picker__option" data-option-id="' +
     id +
     '"' +
     (reason ? ' aria-disabled="true" disabled' : "") +
@@ -30,30 +30,30 @@ function pickerMarkup(options = {}) {
   const expanded = options.expanded === true;
   const disabled = options.disabled === true ? " disabled" : "";
   const reason = options.reason
-    ? '<span class="select-control__reason" role="alert">' +
+    ? '<span class="composer-access-error" role="alert">' +
       options.reason +
       "</span>"
     : "";
   const list = expanded
-    ? '<div id="access-listbox" role="listbox">' +
+    ? '<div id="access-listbox" role="menu">' +
       (
         options.options ?? [
           option("readOnly", "Read-only"),
           option("ask", "Ask each time"),
-          option("workspaceWrite", "Auto-accept edits in workspace"),
+          option("workspaceWrite", "Workspace edits"),
         ]
       ).join("") +
       "</div>"
     : "";
   return (
-    '<label class="select-control select-control--chip access-mode">' +
-    '<div class="searchable-picker"><button type="button" class="searchable-picker__trigger" aria-label="Permission mode" aria-expanded="' +
+    '<label class="composer__controls">' +
+    '<div class="searchable-picker"><button type="button" class="composer__access-label" aria-label="Access options" aria-expanded="' +
     String(expanded) +
     '" aria-controls="access-listbox" data-selected-id="' +
     selected +
     '"' +
     disabled +
-    '><span class="searchable-picker__trigger-label">' +
+    '><span class="composer__access-text">' +
     label +
     "</span></button></div>" +
     reason +
@@ -183,9 +183,7 @@ test("an unsupported mode is rejected before any click", async () => {
 test("opening the picker clicks the trigger once and reports expansion", async () => {
   const dom = buildDom(pickerMarkup());
   const module = await load();
-  const trigger = dom.window.document.querySelector(
-    ".searchable-picker__trigger",
-  );
+  const trigger = dom.window.document.querySelector(".composer__access-label");
   let clicks = 0;
   trigger.addEventListener("click", () => {
     clicks += 1;
@@ -205,7 +203,9 @@ test("opening the picker clicks the trigger once and reports expansion", async (
 test("the target option is clicked exactly once", async () => {
   const dom = buildDom(pickerMarkup({ expanded: true }));
   const module = await load();
-  const options = [...dom.window.document.querySelectorAll('[role="option"]')];
+  const options = [
+    ...dom.window.document.querySelectorAll('[role="menuitemradio"]'),
+  ];
   const clicked = [];
   for (const node of options)
     node.addEventListener("click", () =>
@@ -234,7 +234,9 @@ test("a disabled option is never clicked", async () => {
   );
   const module = await load();
   let clicks = 0;
-  for (const node of dom.window.document.querySelectorAll('[role="option"]'))
+  for (const node of dom.window.document.querySelectorAll(
+    '[role="menuitemradio"]',
+  ))
     node.addEventListener("click", () => {
       clicks += 1;
     });
@@ -257,7 +259,9 @@ test("a label that no longer matches the mode id is never clicked", async () => 
   );
   const module = await load();
   let clicks = 0;
-  for (const node of dom.window.document.querySelectorAll('[role="option"]'))
+  for (const node of dom.window.document.querySelectorAll(
+    '[role="menuitemradio"]',
+  ))
     node.addEventListener("click", () => {
       clicks += 1;
     });
@@ -277,7 +281,9 @@ test("a duplicated option fails closed without clicking", async () => {
   );
   const module = await load();
   let clicks = 0;
-  for (const node of dom.window.document.querySelectorAll('[role="option"]'))
+  for (const node of dom.window.document.querySelectorAll(
+    '[role="menuitemradio"]',
+  ))
     node.addEventListener("click", () => {
       clicks += 1;
     });
@@ -308,7 +314,7 @@ test("the approval surfacing mode is ask each time", async () => {
   assert.deepEqual(module.accessModeLabels(), {
     readOnly: "Read-only",
     ask: "Ask each time",
-    workspaceWrite: "Auto-accept edits in workspace",
+    workspaceWrite: "Workspace edits",
   });
 });
 

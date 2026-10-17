@@ -26,9 +26,8 @@ import {
   type EditorAppearance,
 } from "../features/files/editorAppearance";
 import {
-  DEFAULT_SESSION_ACCESS_MODE,
-  admitSessionAccessMode,
-  type SessionAccessMode,
+  admitSessionAccessModes,
+  type SessionAccessModes,
 } from "../domain/sessionAccessMode";
 import {
   DEFAULT_UI_APPEARANCE,
@@ -194,7 +193,7 @@ const agent: AgentPort = {
 };
 
 let editorAppearance: EditorAppearance = DEFAULT_EDITOR_APPEARANCE;
-let sessionAccessMode: SessionAccessMode = DEFAULT_SESSION_ACCESS_MODE;
+let sessionAccessModes: SessionAccessModes = {};
 let uiAppearance: UiAppearance = DEFAULT_UI_APPEARANCE;
 
 const settings: SettingsPort = {
@@ -203,10 +202,10 @@ const settings: SettingsPort = {
     editorAppearance = admitEditorAppearance(appearance);
     return Promise.resolve(editorAppearance);
   },
-  getSessionAccessMode: () => Promise.resolve(sessionAccessMode),
-  setSessionAccessMode: (mode) => {
-    sessionAccessMode = admitSessionAccessMode(mode);
-    return Promise.resolve(sessionAccessMode);
+  getSessionAccessModes: () => Promise.resolve(sessionAccessModes),
+  setSessionAccessModes: (modes) => {
+    sessionAccessModes = admitSessionAccessModes(modes);
+    return Promise.resolve(sessionAccessModes);
   },
   getUiAppearance: () => Promise.resolve(uiAppearance),
   setUiAppearance: (appearance) => {

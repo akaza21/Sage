@@ -13,7 +13,6 @@ import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import { ChatTranscript } from "./ChatTranscript";
 import {
   terminalTurnStates,
-  permissionRequestsAvailable,
   latestRetryPrompt,
   useAcpChatActions,
   useAcpChatHistory,
@@ -101,6 +100,7 @@ export function ChatSurface({
     canEndSession,
     canPrompt,
     sessionHarnessId,
+    accessBindingId,
     sessionModelId,
     sessionPromptUnavailable,
     usage,
@@ -360,6 +360,7 @@ export function ChatSurface({
           acpActions.errorKind === "signInRequired"
         }
         claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
+        accessBindingId={accessBindingId}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
         discoveryPhase={discoveryPhase}
@@ -369,10 +370,6 @@ export function ChatSurface({
         selectedModelId={selectedModelId}
         sessionPromptUnavailable={sessionPromptUnavailable}
         sessionConfig={acpPage?.sessionConfig ?? null}
-        permissionRequests={permissionRequestsAvailable(
-          useNativeAcp ? (acpPage ?? null) : null,
-          selectedHarnessDefinition,
-        )}
         modePending={modeChanging}
         modeError={modeError}
         focused={focused}

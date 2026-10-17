@@ -91,6 +91,16 @@ impl BindingRecord {
         self.binding_id
     }
 
+    pub(crate) fn access_policy_binding_id(&self) -> &'static str {
+        match &self.admission {
+            Admission::Codex(_) => crate::acp::bindings::codex::CODEX_BINDING_ID,
+            Admission::Claude(_) => crate::acp::bindings::claude::CLAUDE_BINDING_ID,
+            Admission::OpenCode(_) => crate::acp::bindings::standard_acp::OPENCODE_BINDING_ID,
+            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+            Admission::Pi(_) => crate::acp::bindings::pi::fixture_admission::PI_FIXTURE_BINDING_ID,
+        }
+    }
+
     pub(crate) fn session_operations_enabled(&self) -> bool {
         self.session_operations_enabled
     }

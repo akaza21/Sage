@@ -116,10 +116,10 @@ describe("S0.3 workbench port seam", () => {
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.settings).toEqual([
       "getEditorAppearance",
-      "getSessionAccessMode",
+      "getSessionAccessModes",
       "getUiAppearance",
       "setEditorAppearance",
-      "setSessionAccessMode",
+      "setSessionAccessModes",
       "setUiAppearance",
     ]);
   });

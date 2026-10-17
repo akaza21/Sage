@@ -75,6 +75,43 @@ mod tests {
     use serde_json::Value;
 
     #[test]
+    fn advertised_codex_policies_emit_the_enforced_sandbox() {
+        for capability in
+            crate::acp::bindings::access_policy::access_modes("codex-app-server", "0.146.0", true)
+        {
+            let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
+                2,
+                &RequiredText::new("thread", "thread-1").unwrap(),
+                &Prompt::new("prompt", "inspect").unwrap(),
+                &RequiredText::new("client", "client-policy").unwrap(),
+                capability.id,
+                TurnPolicySurface::Supported0146,
+                None,
+            )
+            .unwrap();
+            let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+            let sandbox = if capability.id == SessionAccessMode::WorkspaceWrite {
+                "workspaceWrite"
+            } else {
+                "readOnly"
+            };
+            assert_eq!(wire["params"]["approvalPolicy"], "never");
+            assert_eq!(wire["params"]["sandboxPolicy"]["type"], sandbox);
+            assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
+            if capability.id == SessionAccessMode::WorkspaceWrite {
+                assert_eq!(
+                    wire["params"]["sandboxPolicy"],
+                    serde_json::json!({"type":"workspaceWrite","networkAccess":false})
+                );
+                assert_eq!(
+                    capability.description,
+                    "Edits and commands run without asking inside the workspace and temp folders; no network access."
+                );
+            }
+        }
+    }
+
+    #[test]
     fn observed_0146_ask_turn_uses_read_only_sandbox() {
         let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
             2,

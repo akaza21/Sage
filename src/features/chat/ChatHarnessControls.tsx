@@ -1,12 +1,6 @@
-import { Plus, Settings, ShieldCheck } from "../../ui/leanIcons";
+import { Plus, Settings } from "../../ui/leanIcons";
 
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -14,14 +8,6 @@ import {
   harnessModelIdentity,
 } from "../../app/harnessModelCache";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
-import {
-  SESSION_ACCESS_MODE_SCOPE,
-  sessionAccessModeAvailability,
-  sessionAccessModeCandidates,
-  sessionAccessModeCopy,
-} from "../../domain/sessionAccessMode";
-import type { SessionAccessMode } from "../../domain/sessionAccessMode";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -34,6 +20,7 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
+import { ComposerAccessControl } from "./ComposerAccessControl";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
@@ -45,6 +32,7 @@ import {
 import "../../styles/harness-picker.css";
 interface Props {
   imageControl?: ReactNode;
+  accessBindingId?: string | null;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -56,7 +44,6 @@ interface Props {
   projectName: string | null;
   turnBusy: boolean;
   sessionConfig: AcpSessionConfig | null;
-  permissionRequests: boolean;
   modePending: boolean;
   modeError: string | null;
   focused: boolean;
@@ -73,6 +60,7 @@ interface Props {
 
 export function ChatHarnessControls({
   imageControl,
+  accessBindingId,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -83,7 +71,6 @@ export function ChatHarnessControls({
   projectName,
   turnBusy,
   sessionConfig,
-  permissionRequests,
   modePending,
   modeError,
   focused,
@@ -112,24 +99,15 @@ export function ChatHarnessControls({
     (state) => state.selectedHarnessId,
   );
   const globalModels = useWorkbenchStore((state) => state.models);
-  const accessMode = useSessionAccessModeStore((state) => state.mode);
-  const effectiveAccessMode = sessionAccessModeAvailability(
-    accessMode,
-    permissionRequests,
-  ).effective;
-  const accessModeReady = useSessionAccessModeStore((state) => state.ready);
-  const accessModeError = useSessionAccessModeStore((state) => state.error);
-  const setAccessMode = useSessionAccessModeStore((state) => state.setMode);
-  const accessModeCandidates = useMemo(
-    () => sessionAccessModeCandidates(permissionRequests),
-    [permissionRequests],
-  );
   const harnessesPending = harnesses.some(
     (harness) => harness.installState === "detecting",
   );
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
+  const accessHarness = accessBindingId
+    ? harnesses.find((harness) => harness.bindingId === accessBindingId)
+    : selectedHarness;
   const modelIdentity = selectedHarness?.accountModelDiscovery
     ? null
     : harnessModelIdentity(selectedHarness);
@@ -240,33 +218,21 @@ export function ChatHarnessControls({
         <Plus size={16} aria-hidden="true" />
       </button>
       {imageControl}
-      {availableBinding ? (
-        <button
-          type="button"
-          className={`composer__control-trigger composer__access-label${effectiveAccessMode === "workspaceWrite" ? " composer__access-label--write" : ""}`}
-          aria-label="Access options"
-          aria-description={sessionAccessModeCopy(effectiveAccessMode).label}
-          title={sessionAccessModeCopy(effectiveAccessMode).label}
-          aria-haspopup="dialog"
-          aria-controls={optionsId}
-          aria-expanded={active === "access"}
+      {availableBinding && accessHarness?.bindingId ? (
+        <ComposerAccessControl
+          bindingId={accessHarness.bindingId}
+          capabilities={accessHarness.accessModes}
           disabled={turnBusy || projectTransitioning}
-          onClick={(event) => {
-            optionsTriggerRef.current = event.currentTarget;
-            toggle("access");
-          }}
-        >
-          <ShieldCheck size={13} aria-hidden="true" />
-          <span className="composer__access-text">
-            {effectiveAccessMode === "workspaceWrite"
-              ? "Full access"
-              : sessionAccessModeCopy(effectiveAccessMode).label}
-          </span>
-        </button>
+          open={active === "access"}
+          onToggle={() => toggle("access")}
+          onDismiss={dismiss}
+        />
       ) : null}
       <label className="composer__control-trigger composer__harness">
         <SearchablePicker
           ariaLabel="Harness"
+          open={active === "harness"}
+          onOpenChange={(open) => (open ? toggle("harness") : dismiss())}
           triggerIcon={<Settings size={16} aria-hidden="true" />}
           candidates={harnessCandidates}
           popoverClassName="composer__popover composer__harness-menu"
@@ -300,7 +266,7 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {active === "options" || active === "access" ? (
+      {active === "options" ? (
         <MenuPopover
           id={optionsId}
           role="dialog"
@@ -352,31 +318,6 @@ export function ChatHarnessControls({
               {modeError ? (
                 <span className="select-control__reason" role="alert">
                   {modeError}
-                </span>
-              ) : null}
-            </label>
-          ) : null}
-          {availableBinding ? (
-            <label className="select-control select-control--chip access-mode">
-              <ShieldCheck
-                className="select-control__icon"
-                size={14}
-                aria-hidden="true"
-              />
-              <SearchablePicker
-                ariaLabel="Permission mode"
-                portalTarget="closest-dialog"
-                candidates={accessModeCandidates}
-                disabled={!accessModeReady || turnBusy || projectTransitioning}
-                footer={SESSION_ACCESS_MODE_SCOPE}
-                onSelect={(mode) =>
-                  void setAccessMode(mode as SessionAccessMode)
-                }
-                selectedId={accessMode}
-              />
-              {accessModeError ? (
-                <span className="select-control__reason" role="alert">
-                  {accessModeError}
                 </span>
               ) : null}
             </label>

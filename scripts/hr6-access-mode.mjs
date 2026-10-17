@@ -8,13 +8,13 @@ import {
 export const ACCESS_MODE_LIMIT = 8;
 export const APPROVAL_ACCESS_MODE = "ask";
 export const ACCESS_MODE_TRIGGER =
-  '.searchable-picker__trigger[aria-label="Permission mode"]';
-const ACCESS_MODE_HOST = ".access-mode";
-const ACCESS_MODE_REASON = '.select-control__reason[role="alert"]';
+  '.composer__access-label[aria-label="Access options"]';
+const ACCESS_MODE_HOST = ".composer__controls";
+const ACCESS_MODE_REASON = '.composer-access-error[role="alert"]';
 const LABELS = {
   readOnly: "Read-only",
   ask: "Ask each time",
-  workspaceWrite: "Auto-accept edits in workspace",
+  workspaceWrite: "Workspace edits",
 };
 
 export function accessModeLabels() {
@@ -44,7 +44,7 @@ export function accessModeStateExpression(preamble) {
     if(scan.exceeded||scan.nodes.length!==1)return out;
     const trigger=scan.nodes[0];
     out.selectedId=scalar(trigger.getAttribute("data-selected-id"));
-    out.label=walk(find(trigger,".searchable-picker__trigger-label",false).nodes[0]??null).text||null;
+    out.label=walk(find(trigger,".composer__access-text",false).nodes[0]??null).text||null;
     out.expanded=trigger.getAttribute("aria-expanded")==="true";
     out.disabled=trigger.disabled===true;
     const host=trigger.closest?trigger.closest(${JSON.stringify(ACCESS_MODE_HOST)}):null;
@@ -115,7 +115,7 @@ export function chooseAccessModeExpression(preamble, id) {
     const listId=trigger.getAttribute("aria-controls");
     const list=listId?document.getElementById(listId):null;
     if(!list)return {outcome:"picker-closed"};
-    const options=find(list,'[role="option"]',false);
+    const options=find(list,'[role="menuitemradio"]',false);
     if(options.exceeded)return {outcome:"option-scan-exceeded"};
     const matched=[];
     for(let index=0;index<options.nodes.length;index+=1){

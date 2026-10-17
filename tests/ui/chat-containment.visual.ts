@@ -635,13 +635,21 @@ for (const profile of profiles) {
         await page.keyboard.press("Enter");
         const panel = page.locator(".menu-popover").filter({ visible: true });
         await expect(panel).toHaveCount(1);
-        if (name === "Composer options" || name === "Access options") {
+        if (name === "Composer options") {
           const first = panel.locator("button:enabled").first();
-          const second = panel.locator("button:enabled").nth(1);
           await expect(first).toBeFocused();
           await page.keyboard.press("Tab");
-          await expect(second).toBeFocused();
-          await page.keyboard.press("Shift+Tab");
+          await expect(panel).toHaveCount(0);
+          await expect(trigger).toBeFocused();
+          await page.keyboard.press("Enter");
+          await expect(first).toBeFocused();
+        } else if (name === "Access options") {
+          const first = panel.getByRole("menuitemradio").first();
+          const last = panel.getByRole("menuitemradio").last();
+          await expect(first).toBeFocused();
+          await page.keyboard.press("End");
+          await expect(last).toBeFocused();
+          await page.keyboard.press("Home");
           await expect(first).toBeFocused();
         }
         for (const viewport of [
@@ -671,7 +679,7 @@ for (const profile of profiles) {
       const options = page.getByRole("dialog", {
         name: "Composer options menu",
       });
-      await options.getByRole("button", { name: "Permission mode" }).click();
+      await options.getByRole("button", { name: "Project" }).click();
       const picker = options.locator(".searchable-picker__popover");
       await expectOverlay(picker, viewports[2]);
       await page.setViewportSize(viewports[3]);
@@ -708,14 +716,14 @@ for (const profile of profiles) {
       ).toBe(true);
       await selected.click();
       await expect(picker).toHaveCount(0);
-      await options.getByRole("button", { name: "Permission mode" }).focus();
+      await options.getByRole("button", { name: "Project" }).focus();
       await page.keyboard.press("Enter");
       await expect(
-        picker.getByRole("combobox", { name: "Permission mode" }),
+        picker.getByRole("combobox", { name: "Project" }),
       ).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(
-        options.getByRole("button", { name: "Permission mode" }),
+        options.getByRole("button", { name: "Project" }),
       ).toBeFocused();
       await expect(options).toBeVisible();
       await page.keyboard.press("Escape");

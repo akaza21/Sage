@@ -1111,8 +1111,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(project).toBeEnabled();
     await expect(project).toHaveText("Sage");
     await expect(project).toHaveAttribute("aria-haspopup", "listbox");
-    const permission = menu.getByRole("button", {
-      name: "Permission mode",
+    const permission = composer(page).getByRole("button", {
+      name: "Access options",
       exact: true,
     });
     await expect(permission).toBeVisible();
@@ -1204,12 +1204,15 @@ test.describe("Agent Panel V1 conformance — composer", () => {
         .evaluateAll((nodes) =>
           nodes.map((node) => node.getAttribute("aria-label")),
         ),
-    ).toEqual(["Project", "Session mode", "Permission mode"]);
+    ).toEqual(["Project", "Session mode"]);
     await expect(
       menu.getByRole("button", { name: "Session mode", exact: true }),
     ).toHaveText("Review changes");
     await expect(
-      menu.getByRole("button", { name: "Permission mode", exact: true }),
+      composer(page).getByRole("button", {
+        name: "Access options",
+        exact: true,
+      }),
     ).toHaveText("Read-only");
   });
 });

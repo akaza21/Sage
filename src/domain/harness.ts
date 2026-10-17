@@ -48,12 +48,15 @@ export function harnessUnavailableReason(
   }
 }
 
+import type { SessionAccessModeCapability } from "./sessionAccessMode";
+
 interface HarnessDefinitionBase {
   id: string;
   name: string;
   description: string;
   source: "builtIn" | "registry" | "custom" | "development";
   accountModelDiscovery: boolean;
+  accessModes?: readonly SessionAccessModeCapability[];
   version?: string | null;
   versionChecking?: boolean;
   boundVersion?: string | null;

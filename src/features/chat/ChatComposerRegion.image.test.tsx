@@ -34,7 +34,6 @@ function renderComposer(
     selectedModelId: null,
     sessionPromptUnavailable: false,
     sessionConfig: null,
-    permissionRequests: false,
     modePending: false,
     modeError: null,
     focused: true,

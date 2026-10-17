@@ -132,6 +132,15 @@ export function journeySnapshot(
         accountModelDiscovery: false,
         transport: "acp",
         bindingId: JOURNEY_IDS.binding,
+        // CP-29d: Send requires an advertised access mode.
+        accessModes: [
+          {
+            id: "readOnly",
+            label: "Read-only",
+            description: "Read workspace files; no writes or network.",
+            fallback: true,
+          },
+        ],
       },
     ],
     sessionId: sessionId(

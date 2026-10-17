@@ -95,6 +95,24 @@
   color: var(--composer-control-text);
 }
 
+.composer-access-menu.menu-popover {
+  width: min(420px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
+}
+
+.composer-access-menu__option {
+  display: grid;
+  grid-template-columns: 1fr 14px;
+  gap: 4px 8px;
+}
+
+.composer-access-menu__description {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: normal;
+}
+
 .composer__harness-menu .searchable-picker__reason {
   position: absolute;
   width: 1px;

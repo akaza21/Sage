@@ -29,6 +29,7 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "turnChanges",
   ],
   HarnessDefinition: [
+    "accessModes",
     "accountModelDiscovery",
     "bindingId",
     "boundVersion",

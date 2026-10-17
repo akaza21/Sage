@@ -1,0 +1,225 @@
+use std::collections::BTreeMap;
+
+use rusqlite::{OptionalExtension, params};
+
+use super::{SessionAccessMode, SettingsStore};
+use crate::error::{AppError, AppResult};
+
+pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
+
+impl SettingsStore {
+    pub fn session_access_modes(&self) -> AppResult<SessionAccessModes> {
+        let connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if migration_pending(&connection)? {
+            return Err(AppError::InvalidRequest(
+                "Access preferences must be restored before sending.".into(),
+            ));
+        }
+        read_modes(&connection)
+    }
+
+    pub fn migrate_session_access_modes(
+        &self,
+        restored_binding: Option<&str>,
+    ) -> AppResult<SessionAccessModes> {
+        let mut connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let transaction = connection.transaction()?;
+        if let Some(binding) = restored_binding {
+            transaction.execute(
+                "INSERT OR IGNORE INTO binding_access_modes(binding_id,mode)
+                SELECT ?1,mode FROM session_access_mode WHERE singleton=1",
+                [binding],
+            )?;
+        }
+        transaction.execute("DELETE FROM session_access_mode WHERE singleton=1", [])?;
+        let modes = read_modes(&transaction)?;
+        transaction.commit()?;
+        Ok(modes)
+    }
+
+    pub fn set_session_access_modes(
+        &self,
+        modes: &SessionAccessModes,
+    ) -> AppResult<SessionAccessModes> {
+        validate(modes)?;
+        let mut connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let transaction = connection.transaction()?;
+        transaction.execute("DELETE FROM binding_access_modes", [])?;
+        for (binding, mode) in modes {
+            let mode = serde_json::to_value(mode).expect("access mode serializes");
+            transaction.execute(
+                "INSERT INTO binding_access_modes(binding_id,mode) VALUES (?1,?2)",
+                params![binding, mode.as_str()],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(modes.clone())
+    }
+
+    pub fn pending_access_migration(&self) -> AppResult<bool> {
+        let connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        migration_pending(&connection)
+    }
+}
+
+fn migration_pending(connection: &rusqlite::Connection) -> AppResult<bool> {
+    Ok(connection
+        .query_row(
+            "SELECT singleton FROM session_access_mode WHERE singleton=1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn read_modes(connection: &rusqlite::Connection) -> AppResult<SessionAccessModes> {
+    let mut statement = connection
+        .prepare("SELECT binding_id,mode FROM binding_access_modes ORDER BY binding_id LIMIT 9")?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut modes = BTreeMap::new();
+    for row in rows {
+        let (binding, mode) = row?;
+        let mode = serde_json::from_value(serde_json::Value::String(mode))
+            .map_err(|_| AppError::InvalidRequest("Stored access policy is invalid.".into()))?;
+        modes.insert(binding, mode);
+    }
+    validate(&modes)?;
+    Ok(modes)
+}
+
+fn validate(modes: &SessionAccessModes) -> AppResult<()> {
+    if modes.len() > 8
+        || modes
+            .keys()
+            .any(|binding| binding.is_empty() || binding.len() > 128)
+    {
+        return Err(AppError::InvalidRequest(
+            "Access preferences exceed their binding limit.".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings_store::SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
+
+    #[test]
+    fn access_modes_persist_per_binding_without_cross_harness_escalation() {
+        let directory = std::env::temp_dir().join(format!("sage-access-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.sqlite");
+        let store = SettingsStore::open(&path).unwrap();
+        assert!(store.session_access_modes().unwrap().is_empty());
+        let modes = BTreeMap::from([
+            ("codex-app-server".into(), WorkspaceWrite),
+            ("claude-agent-acp".into(), Ask),
+            ("opencode-acp".into(), ReadOnly),
+        ]);
+        store.set_session_access_modes(&modes).unwrap();
+        drop(store);
+        assert_eq!(
+            SettingsStore::open(&path)
+                .unwrap()
+                .session_access_modes()
+                .unwrap(),
+            modes
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_global_choice_is_claimed_once_by_its_restored_binding_only() {
+        let store = SettingsStore::in_memory().unwrap();
+        store
+            .0
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO session_access_mode VALUES (1,'workspaceWrite')",
+                [],
+            )
+            .unwrap();
+        assert!(store.pending_access_migration().unwrap());
+        assert!(store.session_access_modes().is_err());
+        let expected = BTreeMap::from([("codex-app-server".into(), WorkspaceWrite)]);
+        assert_eq!(
+            store
+                .migrate_session_access_modes(Some("codex-app-server"))
+                .unwrap(),
+            expected
+        );
+        assert!(!store.pending_access_migration().unwrap());
+        assert_eq!(
+            store
+                .migrate_session_access_modes(Some("claude-agent-acp"))
+                .unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn migration_does_not_overwrite_an_existing_scoped_choice() {
+        let store = SettingsStore::in_memory().unwrap();
+        store
+            .set_session_access_modes(&BTreeMap::from([("codex-app-server".into(), ReadOnly)]))
+            .unwrap();
+        store
+            .0
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO session_access_mode VALUES (1,'workspaceWrite')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .migrate_session_access_modes(Some("codex-app-server"))
+                .unwrap()["codex-app-server"],
+            ReadOnly
+        );
+    }
+
+    #[test]
+    fn legacy_explicit_read_only_remains_scoped_and_never_escalates_to_claude_ask() {
+        let store = SettingsStore::in_memory().unwrap();
+        store
+            .0
+            .lock()
+            .unwrap()
+            .execute("INSERT INTO session_access_mode VALUES (1,'readOnly')", [])
+            .unwrap();
+        assert_eq!(
+            store
+                .migrate_session_access_modes(Some("claude-agent-acp"))
+                .unwrap()["claude-agent-acp"],
+            ReadOnly
+        );
+        assert!(!store.pending_access_migration().unwrap());
+    }
+
+    #[test]
+    fn access_preferences_are_bounded() {
+        let store = SettingsStore::in_memory().unwrap();
+        let modes = (0..9).map(|index| (index.to_string(), ReadOnly)).collect();
+        assert!(store.set_session_access_modes(&modes).is_err());
+        assert!(store.session_access_modes().unwrap().is_empty());
+    }
+}

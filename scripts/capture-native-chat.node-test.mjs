@@ -292,12 +292,63 @@ for (const width of [1888, 720, 480])
         assert.equal(boundary.observation.selected, "simulator");
       });
   }
+test("ordinary Claude captures never change access preferences", async () => {
+  const boundary = captureChatBoundary(1888, "claude");
+  await driveCaptureChat(
+    boundary.cdp,
+    parseArgs([
+      "--harness",
+      "claude",
+      "--state",
+      "harness-menu",
+      "--width",
+      "1888",
+    ]),
+    Date.now() + 1000,
+    () => {},
+  );
+  assert.ok(
+    boundary.clicks.every(
+      (selector) =>
+        !selector.includes("Access options") &&
+        !selector.includes("menuitemradio"),
+    ),
+  );
+});
+test("approval capture rejects missing advertised Ask before changing access or sending", async () => {
+  const boundary = captureChatBoundary(1888, "claude", { accessModes: [] });
+  await assert.rejects(
+    driveCaptureChat(
+      boundary.cdp,
+      parseArgs([
+        "--harness",
+        "claude",
+        "--state",
+        "approval-approved",
+        "--width",
+        "1888",
+      ]),
+      Date.now() + 1000,
+      () => {},
+    ),
+    /approval-access-unavailable/u,
+  );
+  assert.ok(
+    boundary.clicks.every(
+      (selector) =>
+        !selector.includes("Access options") &&
+        !selector.includes("Send message"),
+    ),
+  );
+});
+
 for (const state of ["approval-approved", "approval-declined"])
-  test(`compact Claude ${state} capture leaves five timing slots after cleanup`, async () => {
+  test(`compact Claude ${state} capture leaves nine timing slots after cleanup`, async () => {
     const timing = captureTiming();
     const boundary = captureChatBoundary(720, "claude");
     const deadline = Date.now() + 1000;
     const observationExpression = observationFor(HARNESS.claude.binding);
+    boundary.observation.accessModes = ["ask"];
     let warmupObservations = 0;
     const observation = {
       turnId: "none",
@@ -338,10 +389,10 @@ for (const state of ["approval-approved", "approval-declined"])
           };
         }
         if (
-          expression === clickExpression('button[aria-label="Permission mode"]')
+          expression === clickExpression('button[aria-label="Access options"]')
         ) {
-          assert.equal(observation.turnCount, 1);
-          assert.equal(observation.state, "completed");
+          assert.equal(observation.turnCount, 0);
+          assert.equal(observation.state, "none");
           assert.equal(observation.controls.modelEnabled, true);
         }
         if (
@@ -409,11 +460,11 @@ for (const state of ["approval-approved", "approval-declined"])
       ]),
       undefined,
     );
-    assert.equal(timing.steps.length, 59);
+    assert.equal(timing.steps.length, 55);
     const value = probe();
     value.timing.steps = timing.steps;
     assert.doesNotThrow(() => validateProbe(value));
-    for (let remaining = 0; remaining < 5; remaining++)
+    for (let remaining = 0; remaining < 9; remaining++)
       timing.record("reserved-cleanup");
     assert.throws(() => timing.record("extra"), /timing-bound/u);
   });
