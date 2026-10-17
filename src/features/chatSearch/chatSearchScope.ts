@@ -4,7 +4,7 @@ import type {
   ProjectSummary,
   WorkbenchTab,
 } from "../../domain/workbench";
-import { MAX_AGENT_RAIL_PROJECTS } from "../../workbench/agentChatRail";
+import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
 import { CHAT_SEARCH_ALL_FOLDERS_ID } from "./chatSearchFanout";
 
 export interface ChatSearchScope {

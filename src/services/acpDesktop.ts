@@ -25,11 +25,11 @@ import type {
   GetAgentDiffRequest,
 } from "../domain/agentDiff";
 import { invokeNative } from "../ports/nativeInvoke";
+import { isTauriRuntime } from "../ports/desktopRuntime";
 import type { ResourceRef } from "../domain/workbench";
 import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { safeProjectionChanged } from "./acpDesktopProjection";
-import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
 import {
   isOneOf,
@@ -42,10 +42,6 @@ import {
 } from "./acpDesktopResponses";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 function safeCodexAuth(value: unknown): CodexAuthResponse | null {
   if (!isRecord(value)) return null;
@@ -258,10 +254,6 @@ export const acpDesktop = {
     );
   },
 
-  async getCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
-    return invokeCodexAuth("get_codex_auth", request);
-  },
-
   async startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("start_codex_auth", { ...request, consent: true });
   },
@@ -363,8 +355,6 @@ export const acpDesktop = {
   ): Promise<AcpMutationResult> {
     return invokeAcpMutation("record_agent_edit_disposition", request);
   },
-
-  acknowledgeReadTextFileFlush,
 
   async subscribeProjectionChanges(
     onChange: (event: AcpProjectionChangedEvent) => void,

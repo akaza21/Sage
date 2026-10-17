@@ -16,6 +16,9 @@ import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
+import { shortcutLabel } from "../../ui/shortcutLabel";
+
+export { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
 
 export const COMPOSER_PROMPT_PLACEHOLDER = "Do anything";
 export const COMPOSER_PROMPT_PLACEHOLDER_DISABLED =
@@ -275,15 +278,6 @@ export function composerOptionLabel(
         (choice) => choice.value === option.currentValue,
       )?.name || option.currentValue
     : null;
-}
-
-export function shortcutLabel(key: string, usesMeta: boolean): string {
-  const upper = key.toUpperCase();
-  return usesMeta === true ? `⌘${upper}` : `Ctrl+${upper}`;
-}
-
-export function usesMetaModifier(): boolean {
-  return /mac/i.test(navigator.platform);
 }
 
 export function composerShortcutLabel(usesMetaModifier: boolean): string {

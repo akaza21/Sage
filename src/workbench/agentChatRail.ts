@@ -4,9 +4,11 @@ import type {
   ProjectListItem,
 } from "../domain/workbench";
 import { compareAgentRailViewChats } from "./agentRailStatusView";
+import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
+
+export { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 
 export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
-export const MAX_AGENT_RAIL_PROJECTS = 64;
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;

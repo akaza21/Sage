@@ -50,6 +50,13 @@ const LANE_BASE_DESKTOP_GROUPS: typeof DESKTOP_GROUPS = [
       "snapshotDiff",
       "agent-diff-model",
     ].includes(group.name),
+  ).map((group) =>
+    group.name === "snapshotDiff"
+      ? {
+          ...group,
+          test: /src[\\/]features[\\/]diff[\\/]snapshotDiff\.ts$/,
+        }
+      : group,
   ),
 ];
 const BROWSER_FIXTURE_MODULE = "/src/services/browserWorkspaceFixture.ts";
@@ -67,11 +74,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
-  "src/app/agentDiffAdmission.ts",
-  "src/app/agentDiffLoad.ts",
   "src/features/browser/BrowserSurface.tsx",
-  "src/features/chat/acp/AcpChatPresentation.tsx",
-  "src/features/chat/acp/InlineSavedDiff.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
@@ -79,7 +82,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",
-  "src/services/acpFileSnapshot.ts",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -89,6 +91,11 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
+  "src/app/agentDiffAdmission.ts",
+  "src/app/agentDiffLoad.ts",
+  "src/features/chat/acp/AcpChatPresentation.tsx",
+  "src/features/chat/acp/InlineSavedDiff.tsx",
+  "src/services/acpFileSnapshot.ts",
   "src/features/files/CodeMirrorEditorRuntime.ts",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
@@ -98,6 +105,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/app/subagentPaneStore.ts",
   "src/features/chat/acp/chatLiveSnapshot.ts",
   "src/features/chat/acp/useAcpChatLiveSnapshot.ts",
+  "src/features/chat/composerChrome.ts",
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chatSearch/chatSearchDesktop.ts",
   "src/features/preview/AgentPreviewSurface.tsx",
@@ -119,6 +127,8 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
   "src/workbench/AgentWorkbenchBody.tsx",
+  "src/workbench/agentChatRail.ts",
+  "src/workbench/agentRailStatusView.ts",
   "src/workbench/artifactChipStats.ts",
   "src/workbench/LeftSidebar.tsx",
   "src/workbench/ProjectChatActionMenu.tsx",
@@ -329,6 +339,28 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
+  it("keeps Agent-only rail and composer logic out of Editor closures", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    for (const facade of [
+      "src/workbench/Workbench.tsx",
+      "src/features/files/FileSurface.tsx",
+      "src/features/diff/DiffSurface.tsx",
+      "src/features/search/SearchSurface.tsx",
+      "src/features/files/CodeMirrorEditorRuntime.ts",
+    ]) {
+      for (const module of [
+        "/src/features/chat/composerChrome.ts",
+        "/src/workbench/agentChatRail.ts",
+        "/src/workbench/agentRailStatusView.ts",
+      ]) {
+        expect(
+          closureForModule(graph, facade).some((id) => id.endsWith(module)),
+          `${facade}: ${module}`,
+        ).toBe(false);
+      }
+    }
+  }, 90_000);
+
   it("redirects only the canonical runtime import during the desktop build", () => {
     expect(
       resolveDesktopNativeWorkbenchRuntime(
@@ -456,14 +488,24 @@ describe("desktop-native chunk topology", () => {
     ].map((id) => groupedGraph.moduleFiles.get(id));
     expect(files.every((file) => typeof file === "string")).toBe(true);
     expect(new Set(files).size).toBe(1);
-    expect(groupedGraph.chunkNames.get(files[0]!)).toBe("chat-ui");
+    expect(groupedGraph.chunkNames.get(files[0]!)).toBe("agent-workbench");
     for (const facade of [
       "src/workbench/AgentWorkbenchBody.tsx",
       "src/features/files/CodeMirrorEditorRuntime.ts",
       "src/features/files/FileSurface.tsx",
       "src/features/diff/DiffSurface.tsx",
     ]) {
-      expectNoNewFeatureModules(groupedGraph, baselineGraph, facade);
+      expectNoNewFeatureModules(
+        groupedGraph,
+        baselineGraph,
+        facade,
+        facade === "src/workbench/AgentWorkbenchBody.tsx"
+          ? closureForModule(
+              baselineGraph,
+              "src/features/chat/acp/AcpChatPresentation.tsx",
+            )
+          : [],
+      );
     }
   }, 90_000);
 
@@ -506,7 +548,17 @@ describe("desktop-native chunk topology", () => {
       "src/features/diff/DiffSurface.tsx",
       "src/features/search/SearchSurface.tsx",
     ]) {
-      expectNoNewFeatureModules(groupedGraph, baselineGraph, facade);
+      expectNoNewFeatureModules(
+        groupedGraph,
+        baselineGraph,
+        facade,
+        facade === agent
+          ? closureForModule(
+              baselineGraph,
+              "src/features/chat/acp/AcpChatPresentation.tsx",
+            )
+          : [],
+      );
     }
     for (const facade of [
       workbench,
@@ -543,7 +595,10 @@ describe("desktop-native chunk topology", () => {
     }
     const presentation = "src/features/chat/acp/AcpChatPresentation.tsx";
     const presentationFile = groupedGraph.moduleFiles.get(presentation);
-    expect(groupedGraph.chunkNames.get(presentationFile!)).toBe("chat-ui");
+    expect(presentationFile).toBe(agentFile);
+    expect(groupedGraph.chunkNames.get(presentationFile!)).toBe(
+      "agent-workbench",
+    );
     expect(closureForModule(groupedGraph, presentation)).toContain(
       path
         .join(root, "src/features/chat/acp/ToolItemDetails.tsx")
@@ -573,7 +628,35 @@ describe("desktop-native chunk topology", () => {
           id.endsWith(presentation),
         ),
         facade,
-      ).toBe(false);
+      ).toBe(facade === agent);
+    }
+    const snapshotFile = groupedGraph.moduleFiles.get(
+      "src/features/diff/snapshotDiff.ts",
+    );
+    expect(groupedGraph.chunkNames.get(snapshotFile!)).toBe("snapshotDiff");
+    for (const module of [
+      "src/app/agentDiffAdmission.ts",
+      "src/app/agentDiffLoad.ts",
+      "src/app/snapshotTabPresence.ts",
+      "src/services/acpFileSnapshot.ts",
+      "src/features/chat/acp/InlineSavedDiff.tsx",
+    ]) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(snapshotFile);
+      for (const facade of [
+        workbench,
+        agent,
+        "src/features/diff/DiffSurface.tsx",
+        "src/features/search/SearchSurface.tsx",
+        "src/features/files/FileSurface.tsx",
+        "src/features/files/CodeMirrorEditorRuntime.ts",
+      ]) {
+        expect(
+          closureForModule(groupedGraph, facade).some((id) =>
+            id.endsWith(module),
+          ),
+          `${facade}: ${module}`,
+        ).toBe(false);
+      }
     }
     const runtimeFile = groupedGraph.moduleFiles.get(
       "src/features/files/CodeMirrorEditorRuntime.ts",

@@ -8,10 +8,8 @@ import { sameResource } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
 import { snapshotFileDiff } from "../features/diff/snapshotDiff";
 import { acpDesktop } from "../services/acpDesktop";
-import {
-  snapshotProjectionRevision,
-  snapshotTabIsPresent,
-} from "./agentDiffAdmission";
+import { snapshotProjectionRevision } from "./snapshotProjection";
+import { snapshotTabIsPresent } from "./snapshotTabPresence";
 import { issueRequestIntent, matchesRequestIntent } from "./projectIntent";
 import { boundedResourceStateUpdate } from "./resourceStateHelpers";
 import type { WorkbenchState } from "./store";

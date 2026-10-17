@@ -3,6 +3,7 @@ import type {
   PreviewTargetRef,
 } from "../../domain/previewProjection";
 import { invokeNative } from "../../ports/nativeInvoke";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
 import {
   boundedIdentifier,
   decimalU64Counter,
@@ -40,10 +41,6 @@ type PreviewFailure = {
 };
 
 export const MAX_PREVIEW_TARGETS = 16;
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 export function previewDesktopAvailable(): boolean {
   return isTauriRuntime();

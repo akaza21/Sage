@@ -3,7 +3,6 @@ import {
   parseAgentDiffRef,
   type AgentDiffRef,
 } from "../domain/agentDiff";
-import { sameResource } from "../domain/resourceIdentity";
 import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
 import { acpProjectionStoreFor } from "./acpProjectionRegistry";
 import type { WorkbenchState } from "./store";
@@ -11,20 +10,7 @@ import { snapshotProjectionRevision } from "./snapshotProjection";
 
 export { snapshotProjectionRevision } from "./snapshotProjection";
 
-export function snapshotTabIsPresent(
-  state: WorkbenchState,
-  ref: AgentDiffRef,
-): boolean {
-  const key = agentDiffKey(ref);
-  return state.tabs.some(
-    (tab) =>
-      tab.kind === "diff" &&
-      !tab.repository &&
-      sameResource(tab.resource, ref) &&
-      tab.diffRef &&
-      agentDiffKey(tab.diffRef) === key,
-  );
-}
+export { snapshotTabIsPresent } from "./snapshotTabPresence";
 
 /** A new card action must be the exact currently displayed retained projection. */
 export function selectedSnapshotIsCurrent(

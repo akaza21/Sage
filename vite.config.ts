@@ -39,18 +39,12 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/]workbench[\\/]AgentWorkbenchBody\.tsx$/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",
     priority: 1,
     test: /(?:node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]|src[\\/]features[\\/]files[\\/]CodeMirrorEditorRuntime\.ts$)/,
-  },
-  {
-    name: "chat-ui",
-    priority: 1,
-    includeDependenciesRecursively: false,
-    test: /src[\\/]features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff))[^\\/]+\.(?:tsx|ts)$/,
   },
   {
     name: "markdown-rendering",
@@ -68,7 +62,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "snapshotDiff",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /src[\\/]features[\\/]diff[\\/]snapshotDiff\.ts$/,
+    test: /src[\\/](?:(?:features[\\/]diff[\\/]snapshotDiff|app[\\/](?:agentDiff(?:Admission|Load)|snapshotTabPresence)|services[\\/]acpFileSnapshot)\.ts|features[\\/]chat[\\/]acp[\\/]InlineSavedDiff\.tsx)$/,
   },
   {
     name: "agent-diff-model",

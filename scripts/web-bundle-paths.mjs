@@ -79,9 +79,9 @@ export function measureWebBundlePaths(root, manifest) {
         : key === "src/workbench/AgentWorkbenchBody.tsx"
           ? ["agent-workbench", "workbench-deps"]
           : key === "src/features/chat/ChatSurface.tsx"
-            ? ["workbench-deps"]
+            ? ["agent-workbench", "workbench-deps"]
             : key === "src/features/chat/acp/AcpChatPresentation.tsx"
-              ? ["chat-ui"]
+              ? ["chat-ui", "agent-workbench"]
               : key === "src/features/files/CodeMirrorEditorRuntime.ts"
                 ? ["codemirror-deps"]
                 : [];

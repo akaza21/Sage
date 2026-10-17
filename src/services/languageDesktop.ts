@@ -8,10 +8,7 @@ import type { ResourceRef } from "../domain/resource";
 import { isRecord } from "../domain/guards";
 import { utf8ByteLength } from "../domain/text";
 import { invokeNative } from "../ports/nativeInvoke";
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
+import { isTauriRuntime } from "../ports/desktopRuntime";
 
 async function invokeLanguage<T>(
   command: string,

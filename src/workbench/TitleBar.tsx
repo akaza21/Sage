@@ -3,10 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
-import {
-  shortcutLabel,
-  usesMetaModifier,
-} from "../features/chat/composerChrome";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
 import {

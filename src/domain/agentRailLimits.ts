@@ -1,0 +1,1 @@
+export const MAX_AGENT_RAIL_PROJECTS = 64;

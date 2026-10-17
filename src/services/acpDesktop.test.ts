@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
+import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 
 const request: StartAcpSessionRequest = {
   projectId: "project-a" as SageProjectId,
@@ -262,9 +263,11 @@ describe("ACP desktop bridge", () => {
       phase: "consent",
       revision: "0",
     });
-    await expect(acpDesktop.getCodexAuth(authRequest)).rejects.toMatchObject({
-      failure: { kind: "internal" },
-    });
+    await expect(acpDesktop.cancelCodexAuth(authRequest)).rejects.toMatchObject(
+      {
+        failure: { kind: "internal" },
+      },
+    );
   });
 
   it("accepts only the sanitized auth recovery projection", async () => {
@@ -276,7 +279,7 @@ describe("ACP desktop bridge", () => {
       error: "never-forward",
     });
 
-    await expect(acpDesktop.getCodexAuth(authRequest)).resolves.toEqual({
+    await expect(acpDesktop.cancelCodexAuth(authRequest)).resolves.toEqual({
       ...authRequest,
       phase: "recovery",
       revision: "4",
@@ -783,7 +786,7 @@ describe("ACP desktop bridge", () => {
         editorRevision: null,
       },
     };
-    await acpDesktop.acknowledgeReadTextFileFlush(ack);
+    await acknowledgeReadTextFileFlush(ack);
     expect(invokeMock).toHaveBeenCalledWith("acknowledge_acp_read_text_file", {
       ack,
     });

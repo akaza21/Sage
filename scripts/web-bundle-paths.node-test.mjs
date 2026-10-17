@@ -189,6 +189,52 @@ test("folded chat presentation and editor runtime roots retain their static clos
   }
 });
 
+test("Agent roots folded into one group count its static files once and exclude click-only diffs", async () => {
+  const { root, manifest, files } = await fixture();
+  try {
+    const workbench = "src/workbench/Workbench.tsx";
+    const agent = "src/workbench/AgentWorkbenchBody.tsx";
+    manifest._agent = {
+      ...manifest[agent],
+      name: "agent-workbench",
+      imports: [workbench],
+      dynamicImports: ["snapshot"],
+    };
+    for (const key of [
+      agent,
+      "src/features/chat/ChatSurface.tsx",
+      "src/features/chat/acp/AcpChatPresentation.tsx",
+    ])
+      delete manifest[key];
+    manifest.snapshot = { file: "assets/snapshot.js" };
+    await writeFile(path.join(root, "dist/assets/snapshot.js"), "saved diff");
+    manifest["index.html"].dynamicImports = Object.keys(manifest).slice(1);
+    const paths = measureWebBundlePaths(root, manifest);
+    const expected = [
+      manifest["index.html"].file,
+      manifest[workbench].file,
+      manifest._agent.file,
+    ].sort();
+    assert.deepEqual(paths.agentOneChat.files, expected);
+    assert.equal(
+      paths.agentOneChat.rawBytes,
+      expected.reduce((sum, file) => sum + files.get(file).length, 0),
+    );
+    assert.equal(
+      paths.agentOneChat.gzipBytes,
+      expected.reduce((sum, file) => sum + gzipSync(files.get(file)).length, 0),
+    );
+    assert.ok(!paths.agentOneChat.files.includes("assets/snapshot.js"));
+    manifest._ambiguous = { ...manifest._agent, file: "assets/other.js" };
+    assert.throws(
+      () => measureWebBundlePaths(root, manifest),
+      /path root is ambiguous/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("manifest traversal accepts bounded deep graphs and rejects the next record or edge", async () => {
   const { root, manifest } = await fixture();
   try {

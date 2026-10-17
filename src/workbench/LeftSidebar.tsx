@@ -4,10 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "../features/chatSearch/chatSearchDomain";
-import {
-  shortcutLabel,
-  usesMetaModifier,
-} from "../features/chat/composerChrome";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
 import { CHAT_SEARCH_ALL_FOLDERS_ID } from "../features/chatSearch/chatSearchFanout";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
