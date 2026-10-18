@@ -326,6 +326,7 @@ export function captureTiming() {
       state: observation?.state ?? "none",
       cancelPresent: observation?.controls?.stop === true,
       assistantRendered: observation?.assistantRendered === true,
+      lazyFallbackVisible: observation?.lazyFallbackVisible === true,
     });
   };
   return { steps, record };

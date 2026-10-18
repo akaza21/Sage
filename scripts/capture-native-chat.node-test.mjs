@@ -52,6 +52,7 @@ import { prepareCaptureChat } from "./capture-native-chat.mjs";
 function captureChatBoundary(width, harness, created = {}, initial = {}) {
   const observation = {
     chatId: "welcome-chat",
+    lazyFallbackVisible: false,
     projectId: "project",
     projectionLoaded: true,
     turnCount: 1,
@@ -136,6 +137,7 @@ for (const harness of ["codex", "claude", "pi"])
       const captureChat = { chatId: "capture-chat", projectId: "project" };
       const observation = {
         ...captureChat,
+        lazyFallbackVisible: false,
         projectionLoaded: true,
         singlePane: true,
         selected: HARNESS[harness].id,
@@ -559,6 +561,8 @@ const probe = () => ({
     css: { width: 480, height: 1000 },
   },
   predicates: { namedState: true, binding: true },
+  assistantRendered: true,
+  lazyFallbackVisible: false,
   elements: [],
   controls: { model: true },
   overflow: { horizontal: false },
@@ -581,6 +585,21 @@ test("Pi capture and probe protocols agree with the binding version constant", (
     protocol,
   };
   assert.equal(validateProbe(value), value);
+});
+test("probe JSON records boolean rendered and lazy-fallback witnesses and fails closed", () => {
+  const value = JSON.parse(JSON.stringify(probe()));
+  assert.equal(validateProbe(value).assistantRendered, true);
+  assert.equal(value.lazyFallbackVisible, false);
+  for (const field of ["assistantRendered", "lazyFallbackVisible"])
+    for (const invalid of [undefined, null, "false"])
+      assert.throws(
+        () => validateProbe({ ...value, [field]: invalid }),
+        /probe-rendered/u,
+      );
+  assert.throws(
+    () => validateProbe({ ...value, lazyFallbackVisible: true }),
+    /state-predicate/u,
+  );
 });
 test("probe exact limits pass; plus-one, privacy and unknown fields fail", () => {
   const exact = probe();
@@ -670,6 +689,7 @@ test("stalled predicates are bounded and teardown runs on failure", async () => 
 
 test("named states do not mistake settled compaction or allowed approvals", () => {
   const observation = {
+    lazyFallbackVisible: false,
     bindingId: "codex-app-server",
     selected: "codex",
     state: "running",
@@ -871,6 +891,7 @@ test("disclosure opening is idempotent and refuses ambiguous or non-details targ
 });
 test("live predicates accept waiting turn states but not queued or settled ones", () => {
   const observation = (state) => ({
+    lazyFallbackVisible: false,
     state,
     visible: { pendingApproval: true, thought: true },
     itemKinds: [],

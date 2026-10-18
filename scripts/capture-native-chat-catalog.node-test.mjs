@@ -89,9 +89,9 @@ test("Codex subagents-started includes distinct admitted native ownership before
   );
 });
 
-async function observeMarkup(markup) {
+async function observeMarkup(markup, outsideMarkup = "", state = "completed") {
   const window = new JSDOM(
-    `<section class="agent-chat-pane agent-chat-pane--focused">${markup}</section>`,
+    `<section class="agent-chat-pane agent-chat-pane--focused">${markup}</section>${outsideMarkup}`,
     { runScripts: "outside-only" },
   ).window;
   try {
@@ -126,7 +126,7 @@ async function observeMarkup(markup) {
               {
                 id: "turn",
                 sessionId: "session",
-                state: "completed",
+                state,
                 items: [],
               },
             ],
@@ -231,6 +231,109 @@ test("file captures distinguish live Editing files from the composer-adjacent co
   );
 });
 
+test("observations distinguish rendered assistant text from visible chat lazy fallbacks", async () => {
+  const transcript =
+    '<div class="acp-chat-projection"><section class="acp-turn" data-turn-id="turn"><div class="acp-message--assistant"><div class="acp-markdown">Synthetic completed answer.</div></div></section>';
+  for (const [status, expected] of [
+    ['<p role="status">Loading Chat history\u2026</p>', true],
+    ['<p role="status">Loading Markdown...</p>', true],
+    [
+      '<p role="status" style="visibility:hidden">Loading Chat history\u2026</p>',
+      false,
+    ],
+    [
+      '<details><summary>Details</summary><p role="status">Loading Chat history\u2026</p></details>',
+      false,
+    ],
+    ['<p role="status">Completed</p>', false],
+    ["", false],
+  ]) {
+    const observation = await observeMarkup(transcript + status + "</div>");
+    assert.equal(observation.assistantRendered, true);
+    assert.equal(observation.lazyFallbackVisible, expected, status);
+    assert.equal(
+      namedState({ harness: "claude", state: "turn-completed" }, observation)
+        .namedState,
+      !expected,
+    );
+  }
+  const loading = await observeMarkup(
+    '<div class="chat-surface"><p role="status">Loading Chat history\u2026</p></div>',
+  );
+  assert.equal(loading.assistantRendered, false);
+  assert.equal(loading.lazyFallbackVisible, true);
+  const unrelated = await observeMarkup(
+    transcript + '</div><p role="status">Loading unrelated panel\u2026</p>',
+    '<section class="agent-chat-pane"><div class="chat-surface"><p role="status">Loading Chat history\u2026</p></div></section>',
+  );
+  assert.equal(unrelated.assistantRendered, true);
+  assert.equal(unrelated.lazyFallbackVisible, false);
+});
+
+test("terminal witnesses belong to the observed Turn, never the last rendered older Turn", async () => {
+  for (const [state, turnState, kind, markup] of [
+    [
+      "turn-error",
+      "failed",
+      "failure",
+      '<div class="acp-turn__failure">Turn failed</div>',
+    ],
+    [
+      "turn-stopped",
+      "cancelled",
+      "stopped",
+      '<span class="acp-turn__reason" role="status">Stopped</span>',
+    ],
+    [
+      "plan-completed",
+      "completed",
+      "plan",
+      '<div class="acp-plan">Plan completed</div>',
+    ],
+    [
+      "compaction-completed",
+      "completed",
+      "compaction",
+      '<div class="acp-compaction-notice">Compacted</div>',
+    ],
+    [
+      "subagents-finished",
+      "completed",
+      "subagent",
+      '<div class="acp-subagent-row">Subagent finished</div>',
+    ],
+  ]) {
+    const old =
+      '<section class="acp-turn" data-turn-id="previous">' +
+      markup +
+      "</section>";
+    const options = { harness: "claude", state };
+    for (const current of [
+      "",
+      '<section class="acp-turn" data-turn-id="turn"></section>',
+    ]) {
+      const stale = await observeMarkup(old + current, "", turnState);
+      stale.compactionStates = ["completed"];
+      assert.equal(stale.assistantRendered, false);
+      assert.equal(stale.lazyFallbackVisible, false);
+      assert.equal(stale.visible[kind], false, state);
+      assert.equal(namedState(options, stale).namedState, false, state);
+    }
+    const rendered = await observeMarkup(
+      old +
+        '<section class="acp-turn" data-turn-id="turn">' +
+        markup +
+        "</section>",
+      "",
+      turnState,
+    );
+    rendered.compactionStates = ["completed"];
+    assert.equal(rendered.assistantRendered, false);
+    assert.equal(rendered.visible[kind], true, state);
+    assert.equal(namedState(options, rendered).namedState, true, state);
+  }
+});
+
 test("access-menu opens the anchored access menu for every harness", () => {
   for (const harness of ["codex", "claude", "pi"]) {
     assert.deepEqual(actionsFor("access-menu", harness), [
@@ -265,6 +368,7 @@ test("subagents-popover opens header counts without selecting a child pane", () 
     const observation = {
       state: "completed",
       visible: {},
+      lazyFallbackVisible: false,
       controls: {},
       itemKinds: [],
     };
@@ -350,6 +454,8 @@ test("every admitted harness captures its advertised effort slider", () => {
     const observation = {
       state: "completed",
       visible: { effortMenu: true },
+      assistantRendered: true,
+      lazyFallbackVisible: false,
       controls: {},
       itemKinds: [],
     };

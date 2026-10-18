@@ -802,6 +802,8 @@ function stagedPair(root, mutate = () => {}) {
       css: { width: 720, height: 1000 },
     },
     predicates: { namedState: true, binding: true },
+    assistantRendered: true,
+    lazyFallbackVisible: false,
     elements: [],
     controls: { send: true },
     overflow: { horizontal: false },

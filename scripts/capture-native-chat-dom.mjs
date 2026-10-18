@@ -67,6 +67,17 @@ export function assistantTextRendered(turnId, document, visible) {
       ).some((text) => visible(text) && text.textContent.trim().length > 0),
     );
 }
+export function hasVisibleLazyFallback(document, visible) {
+  return Array.from(
+    document.querySelectorAll(
+      '.acp-chat-projection [role="status"], .chat-surface [role="status"]',
+    ),
+  ).some(
+    (element) =>
+      visible(element) &&
+      /^Loading\s+.+(?:\u2026|\.\.\.)$/u.test(element.textContent.trim()),
+  );
+}
 /** Selects the title-bar Agent window mode; true only once it is checked. */
 export const AGENT_MODE = String.raw`(()=>{const inputs=document.querySelectorAll('input[name="workbench-window-mode"][value="agent"]');if(inputs.length!==1 || inputs[0].disabled)return false;if(!inputs[0].checked)inputs[0].click();return inputs[0].checked})()`;
 /**
@@ -101,9 +112,12 @@ export function observationFor(binding) {
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>queryAll(selector).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',answer:'.acp-turn:last-of-type .acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'.composer__options',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]'};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'.composer__options',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]'};
+  const currentTurn=queryAll('.acp-turn').find(element=>turn?.id && element.dataset.turnId===turn.id);
+  const turnKinds=new Set(['thought','tool','rollup','editingFiles','hunk','subagent','plan','compaction','notice','permission','pendingApproval','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded']);
+  const nodesFor=(kind,selector)=>turnKinds.has(kind) ? queryAll(selector).filter(element=>currentTurn && element.closest('.acp-turn')===currentTurn) : queryAll(selector);
   const elements=[]; let charged=0;
-  for(const [kind,selector] of Object.entries(selectors))for(const element of queryAll(selector)){
+  for(const [kind,selector] of Object.entries(selectors))for(const element of nodesFor(kind,selector)){
     if(elements.length>=64)throw Error('probe-elements');
     const raw=(element.innerText ?? '').trim(); charged+=raw.length;
     if(raw.length>16384 || charged>65536)throw Error('probe-text-bound');
@@ -114,8 +128,9 @@ export function observationFor(binding) {
   }
   const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-haspopup="dialog"][title="Select effort"]'),effortEnabled:has('button[aria-haspopup="dialog"][title="Select effort"]') && !query('button[aria-haspopup="dialog"][title="Select effort"]')?.disabled,add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Access options"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
-  const richContent=(${richContentReadiness.toString()})(queryAll('.acp-turn').find(element=>element.dataset.turnId===turn?.id),visible,element=>getComputedStyle(element));
-  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,...richContent,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,has(selector)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
+  const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
+  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
 
@@ -172,6 +187,7 @@ export function namedState(options, observation, captureChat) {
     view = observation.visible,
     terminal = observation.state === "completed",
     live = LIVE_TURN_STATES.includes(observation.state),
+    assistantRendered = observation.assistantRendered === true,
     rendered = (kind) => observation.itemKinds.includes(kind);
   const predicates = {
     binding: observation.bindingId === HARNESS[options.harness]?.binding,
@@ -187,7 +203,7 @@ export function namedState(options, observation, captureChat) {
   const rules = {
     "new-chat": observation.state === "none",
     "turn-running": live,
-    "turn-completed": terminal,
+    "turn-completed": terminal && assistantRendered,
     "worked-expanded": terminal && view.worked,
     "jump-to-latest": view.jump,
     "thinking-first-token": live && view.thought,
@@ -260,8 +276,11 @@ export function namedState(options, observation, captureChat) {
       view.permission &&
       !view.pendingApproval &&
       observation.permissionStates?.includes("resolvedDeclined"),
-    "turn-error": observation.state === "failed",
-    "turn-stopped": ["cancelled", "interrupted"].includes(observation.state),
+    "turn-error":
+      observation.state === "failed" && (assistantRendered || view.failure),
+    "turn-stopped":
+      ["cancelled", "interrupted"].includes(observation.state) &&
+      (assistantRendered || view.stopped),
     "turn-retry":
       options.harness === "pi"
         ? terminal &&
@@ -275,7 +294,8 @@ export function namedState(options, observation, captureChat) {
           )
         : terminal &&
           observation.turnCount >= 2 &&
-          observation.failedTurns >= 1,
+          observation.failedTurns >= 1 &&
+          assistantRendered,
     "answer-table-lists": terminal && view.table,
     "answer-code":
       terminal && view.code && observation.codeHighlighted === true,
@@ -285,15 +305,20 @@ export function namedState(options, observation, captureChat) {
     "composer-stop": live && observation.controls.stop,
     "harness-menu": view.harnessMenu,
     "model-menu": view.modelMenu,
-    "effort-menu": terminal && view.effortMenu && view.effortSlider,
+    "effort-menu":
+      terminal && assistantRendered && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
     "access-menu": view.addMenu && view.accessMenu,
     "context-meter": view.meter,
-    "responsive-wide": terminal && observation.controls.send,
-    "responsive-720": terminal && observation.controls.send,
-    "responsive-480": terminal && observation.controls.send,
+    "responsive-wide":
+      terminal && assistantRendered && observation.controls.send,
+    "responsive-720":
+      terminal && assistantRendered && observation.controls.send,
+    "responsive-480":
+      terminal && assistantRendered && observation.controls.send,
   };
-  predicates.namedState = rules[state] === true;
+  predicates.namedState =
+    rules[state] === true && observation.lazyFallbackVisible === false;
   return predicates;
 }
 export function clickExpression(selector) {

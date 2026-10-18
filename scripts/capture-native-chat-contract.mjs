@@ -146,6 +146,8 @@ export function validateProbe(probe) {
     "dpr",
     "dimensions",
     "predicates",
+    "assistantRendered",
+    "lazyFallbackVisible",
     "elements",
     "controls",
     "overflow",
@@ -191,6 +193,12 @@ export function validateProbe(probe) {
   flags(probe.predicates);
   flags(probe.controls);
   flags(probe.overflow);
+  if (
+    typeof probe.assistantRendered !== "boolean" ||
+    typeof probe.lazyFallbackVisible !== "boolean"
+  )
+    fail("probe-rendered");
+  if (probe.lazyFallbackVisible) fail("state-predicate");
   if (probe.predicates.namedState !== true || probe.predicates.binding !== true)
     fail("state-predicate");
   keys(probe.timing, ["elapsedMs", "steps"]);
@@ -205,13 +213,15 @@ export function validateProbe(probe) {
       "state",
       "cancelPresent",
       "assistantRendered",
+      "lazyFallbackVisible",
     ]);
     if (
       !IDENTIFIER.test(step.step) ||
       !IDENTIFIER.test(step.turnId) ||
       !IDENTIFIER.test(step.state) ||
       typeof step.cancelPresent !== "boolean" ||
-      typeof step.assistantRendered !== "boolean"
+      typeof step.assistantRendered !== "boolean" ||
+      typeof step.lazyFallbackVisible !== "boolean"
     )
       fail("probe-timing");
     finite(step.atMs, 0, Number.MAX_SAFE_INTEGER);

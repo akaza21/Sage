@@ -18,7 +18,150 @@ const ready = {
   state: "running",
   controls: { stop: true },
   assistantRendered: true,
+  lazyFallbackVisible: false,
 };
+
+test("terminal capture waits for rendered content and rejects a visible lazy fallback", () => {
+  for (const harness of ["codex", "claude", "pi"]) {
+    const options = { harness, state: "turn-completed" };
+    const observation = {
+      ...ready,
+      state: "completed",
+      visible: {},
+      itemKinds: [],
+    };
+    for (const missing of [
+      { assistantRendered: false },
+      { lazyFallbackVisible: true },
+      { lazyFallbackVisible: undefined },
+    ])
+      assert.equal(
+        dom.namedState(options, { ...observation, ...missing }).namedState,
+        false,
+        harness + ": " + JSON.stringify(missing),
+      );
+    assert.equal(dom.namedState(options, observation).namedState, true);
+  }
+});
+
+test("all terminal predicates need rendered content and no chat lazy fallback", () => {
+  const cases = [
+    ["turn-completed", {}],
+    ["worked-expanded", { worked: true }],
+    ["tool-finished", { tool: true }],
+    ["tools-grouped", { rollup: true }],
+    ["tool-long-label", { tool: true }],
+    ["files-pill", { files: true }],
+    ["file-hunk", { hunk: true }],
+    ["file-diff-tab", { diffTab: true }],
+    ["git-finished", { tool: true }],
+    ["subagents-finished", { subagent: true }],
+    ["subagents-grouped", { subagent: true }],
+    [
+      "subagents-popover",
+      { popover: true, subagentCounts: true, subagentEntries: true },
+    ],
+    ["plan-completed", { plan: true }],
+    ["compaction-completed", { compaction: true }],
+    ["compaction-failed", { compaction: true }],
+    ["compaction-cancelled", { compaction: true }],
+    ["cancelled-dialog", { notice: true }],
+    ["approval-approved", { permission: true }],
+    ["approval-declined", { permission: true }],
+    ["turn-error", { failure: true }, "failed"],
+    ["turn-stopped", { stopped: true }, "cancelled"],
+    ["turn-stopped", { stopped: true }, "interrupted"],
+    ["non-read-denial", { rollup: true }, "interrupted"],
+    ["turn-retry", { answer: true }],
+    ["answer-table-lists", { table: true }],
+    ["answer-code", { code: true }],
+    ["answer-mermaid", { mermaid: true }],
+    ["answer-image", { image: true }],
+    ["effort-menu", { effortMenu: true, effortSlider: true }],
+    ["responsive-wide", {}],
+    ["responsive-720", {}],
+    ["responsive-480", {}],
+    ["compaction-started", { compaction: true }, "running"],
+  ];
+  for (const [state, visible, turnState = "completed"] of cases) {
+    const options = { harness: "pi", state };
+    const observation = {
+      ...ready,
+      state: turnState,
+      visible,
+      itemKinds: [],
+      toolStates: ["completed", "completed", "declined"],
+      compactionStates: ["started", "completed", "failed", "cancelled"],
+      permissionStates: ["resolvedAllowed", "resolvedDeclined"],
+      noticeKinds: ["pi_dialog_cancelled"],
+      controls: { send: true },
+      turnCount: 1,
+      failedTurns: 0,
+      elements: [{ kind: "answer", text: "Synthetic retry completed." }],
+      codeHighlighted: true,
+      imageLoaded: true,
+    };
+    assert.equal(dom.namedState(options, observation).namedState, true, state);
+    assert.equal(
+      dom.namedState(options, { ...observation, lazyFallbackVisible: true })
+        .namedState,
+      false,
+      state,
+    );
+    assert.equal(
+      dom.namedState(options, {
+        ...observation,
+        assistantRendered: false,
+        visible: {},
+      }).namedState,
+      false,
+      state,
+    );
+  }
+  for (const harness of ["codex", "claude"])
+    for (const assistantRendered of [false, true]) {
+      const observation = {
+        ...ready,
+        state: "completed",
+        visible: {},
+        itemKinds: [],
+        turnCount: 2,
+        failedTurns: 1,
+        assistantRendered,
+      };
+      const options = { harness, state: "turn-retry" };
+      assert.equal(
+        dom.namedState(options, observation).namedState,
+        assistantRendered,
+      );
+      assert.equal(
+        dom.namedState(options, { ...observation, lazyFallbackVisible: true })
+          .namedState,
+        false,
+      );
+    }
+  for (const [state, turnState, visible] of [
+    ["turn-error", "failed", { failure: true }],
+    ["turn-stopped", "cancelled", { stopped: true }],
+    ["plan-completed", "completed", { plan: true }],
+    ["compaction-completed", "completed", { compaction: true }],
+  ])
+    assert.equal(
+      dom.namedState(
+        { harness: "pi", state },
+        {
+          ...ready,
+          state: turnState,
+          assistantRendered: false,
+          visible,
+          itemKinds: [],
+          compactionStates: ["completed"],
+        },
+      ).namedState,
+      true,
+      state,
+    );
+});
 
 test("answer-code capture rejects a visible plain panel until coloured tokens render", () => {
   const observation = {

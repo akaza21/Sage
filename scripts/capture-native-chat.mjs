@@ -186,6 +186,8 @@ export async function capture(options) {
           dpr: observation.dpr,
           dimensions: { ...nativeBounds, css: observation.css },
           predicates: namedState(options, observation, captureChat),
+          assistantRendered: observation.assistantRendered,
+          lazyFallbackVisible: observation.lazyFallbackVisible,
           elements: observation.elements,
           controls: observation.controls,
           overflow: observation.overflow,
