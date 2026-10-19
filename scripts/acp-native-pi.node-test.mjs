@@ -186,6 +186,8 @@ test("Pi capture predicates distinguish compaction outcomes and read-only notice
     toolStates: ["completed"],
     noticeKinds: ["pi_dialog_cancelled"],
     compactionStates: ["failed"],
+    assistantRendered: true,
+    lazyFallbackVisible: false,
   };
   const check = (state, changes = {}) =>
     namedState({ harness: "pi", state }, { ...observation, ...changes })
@@ -245,6 +247,8 @@ test("Pi retry continuation keeps one prompt and settles only after recovery", (
     turnCount: 1,
     failedTurns: 0,
     elements: [{ kind: "answer", text: "Synthetic retry completed." }],
+    assistantRendered: true,
+    lazyFallbackVisible: false,
   };
   assert.equal(
     namedState({ harness: "pi", state: "turn-retry" }, observation).namedState,
