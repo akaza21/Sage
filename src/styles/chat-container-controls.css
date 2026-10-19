@@ -54,6 +54,24 @@
 }
 
 @container composer (max-width: 400px) {
+  .composer .project-scope {
+    width: 28px;
+    flex: none;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .composer .project-scope .searchable-picker__trigger {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .composer .project-scope .searchable-picker__trigger-label,
+  .composer .project-scope .searchable-picker__chevron,
+  .composer .project-scope__label {
+    display: none;
+  }
+
   .composer .composer__harness .searchable-picker__trigger-label,
   .composer .composer__model-label,
   .composer .composer__model-effort {
@@ -65,7 +83,7 @@
   }
 
   .composer__controls .composer__harness.composer__control-trigger {
-    flex: 0 0 40px;
+    flex: 0 1 40px;
   }
 
   .composer__controls .composer__harness .searchable-picker__trigger {
@@ -82,10 +100,6 @@
     width: 28px;
     flex: none;
     justify-content: center;
-  }
-
-  .composer .composer__controls {
-    flex-wrap: wrap;
   }
 
   .composer .composer__model-group {
@@ -111,6 +125,16 @@
     order: 1;
   }
 
+  .composer .composer__queued-text {
+    flex-basis: calc(100% - 40px);
+  }
+}
+
+@container composer (width < 260px) {
+  .composer .composer__controls {
+    flex-wrap: wrap;
+  }
+
   .composer .composer__toolbar {
     grid-template-areas: "controls controls controls" "mic meter send";
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -119,10 +143,6 @@
 
   .composer .composer__mic {
     justify-self: end;
-  }
-
-  .composer .composer__queued-text {
-    flex-basis: calc(100% - 40px);
   }
 }
 
@@ -152,5 +172,13 @@
     max-width: 100%;
     overflow-wrap: anywhere;
     white-space: normal;
+  }
+}
+
+/* Short viewports (such as 200% zoom): the transcript yields its 120px floor
+   so the composer keeps its full draft field and toolbar visible. */
+@media (max-height: 480px) {
+  .agent-chat-pane .chat-surface--agent {
+    grid-template-rows: auto minmax(0, 1fr) auto minmax(0, auto) max-content;
   }
 }

@@ -26,9 +26,15 @@ function restatesModes(
 
 export function sessionConfigControls(
   config: AcpSessionConfig | null,
+  group?: "model" | "other",
 ): AcpConfigOption[] {
   if (!config || config.removed) return [];
-  return config.configOptions.filter(
-    (option) => !restatesModes(option, config),
-  );
+  return config.configOptions.filter((option) => {
+    if (restatesModes(option, config)) return false;
+    if (!group) return true;
+    const modelRelated = ["model", "effort", "thought_level"].includes(
+      (option.category ?? option.id).toLocaleLowerCase(),
+    );
+    return group === "model" ? modelRelated : !modelRelated;
+  });
 }

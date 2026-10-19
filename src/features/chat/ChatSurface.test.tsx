@@ -318,8 +318,13 @@ describe("ChatSurface ACP resource integration", () => {
       acpProjectionStoreFor("chat-b").setState({ page: hooks.page });
       try {
         render(<ChatSurface chatId="chat-b" />);
-        fireEvent.click(screen.getByRole("button", { name: "Project" }));
-        const picker = screen.getByRole("combobox", { name: "Project" });
+        fireEvent.click(
+          within(screen.getByRole("region", { name: "New chat" })).getByRole(
+            "button",
+            { name: "Project: A" },
+          ),
+        );
+        const picker = screen.getByRole("combobox", { name: "Project: A" });
         fireEvent.keyDown(picker, { key: "End" });
         fireEvent.keyDown(picker, { key: "Enter" });
         expect(screen.getByRole("alert")).toHaveTextContent(
@@ -1341,14 +1346,21 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     openComposerOptions();
 
-    const trigger = screen.getByRole("button", { name: "Session mode" });
-    expect(trigger).toHaveTextContent("Review changes");
-    expect(trigger).toHaveAccessibleName("Session mode");
-    expect(trigger.scrollWidth).toBe(trigger.clientWidth);
-    fireEvent.click(trigger);
+    const modes = screen.getByRole("group", { name: "Session mode" });
     expect(
-      screen.getAllByRole("option").map((option) => option.textContent),
+      within(modes)
+        .getAllByRole("menuitemradio")
+        .map((option) => option.textContent),
     ).toEqual(["Review changes", "Apply changes"]);
+    expect(
+      within(modes).getByRole("menuitemradio", { name: "Review changes" }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(
+      within(modes).getByRole("menuitemradio", { name: "Apply changes" }),
+    );
+    expect(hooks.actions.setSessionMode).toHaveBeenCalledExactlyOnceWith(
+      "apply",
+    );
   });
 
   it("does not render a session mode picker without advertised modes", () => {
@@ -1407,18 +1419,18 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     openComposerOptions();
 
-    expect(screen.getByRole("button", { name: "Session mode" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Session mode" })).toBeTruthy();
     expect(
-      screen.queryAllByRole("button", { name: "Session mode" }),
+      screen.queryAllByRole("group", { name: "Session mode" }),
     ).toHaveLength(1);
     expect(
-      screen.getByRole("checkbox", { name: "Session fast mode" }),
+      screen.getByRole("menuitemcheckbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
     expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
   });
 
-  it("shows an unsupported config option as a read-only chip with no settable control", () => {
+  it("omits unsupported config actions instead of enabling an inert Add menu", () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1448,8 +1460,10 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     openComposerOptions();
 
-    const chip = screen.getByText("Thinking budget");
-    expect(chip.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByText("Thinking budget")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -1643,9 +1657,9 @@ describe("ChatSurface ACP resource integration", () => {
     matchConfiguredSession();
     const { rerender } = render(<ChatSurface />);
     openComposerOptions();
-    const trigger = screen.getByRole("button", { name: "Session mode" });
-    fireEvent.click(trigger);
-    const modeInput = screen.getByRole("combobox", { name: "Session mode" });
+    const modeInput = screen.getByRole("menuitemradio", {
+      name: "Review changes",
+    });
     await waitFor(() => expect(modeInput).toHaveFocus());
     hooks.page = {
       ...hooks.page!,
@@ -1660,7 +1674,10 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     rerender(<ChatSurface />);
 
-    expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Session mode" })).toBeNull();
+    expect(
+      screen.queryByRole("menu", { name: "Composer options menu" }),
+    ).toBeNull();
     await waitFor(() =>
       expect(
         screen.getByRole("textbox", { name: "Message agent" }),
@@ -1715,7 +1732,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(foregroundDraft).toHaveFocus();
   });
 
-  it("renders pending mode state and errors beside the mode picker", () => {
+  it("announces pending mode state and errors outside the action menu", () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1740,18 +1757,21 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     openComposerOptions();
 
-    const modeTrigger = screen.getByRole("button", { name: "Session mode" });
-    expect(modeTrigger).toHaveTextContent("Review changes");
-    expect(modeTrigger).toHaveAccessibleName("Session mode");
-    expect(modeTrigger.scrollWidth).toBe(modeTrigger.clientWidth);
-    expect(screen.getByText("Changing mode…")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    const modeTrigger = screen.getByRole("menuitemradio", {
+      name: "Review changes",
+    });
+    expect(modeTrigger).toHaveAttribute("aria-checked", "true");
+    expect(modeTrigger).toBeDisabled();
+    const pending = screen.getByText("Changing session settings…");
+    expect(pending).toHaveAttribute("role", "status");
+    const menu = screen.getByRole("menu", { name: "Composer options menu" });
+    expect(menu).not.toContainElement(pending);
     expect(screen.getByText("Prompt dispatch failed")).toHaveClass(
       "composer__error",
     );
-    expect(screen.getByText("Mode change was rejected")).toBeInTheDocument();
+    const error = screen.getByText("Mode change was rejected");
+    expect(error).toHaveAttribute("role", "alert");
+    expect(menu).not.toContainElement(error);
   });
 
   it("offers a clicked-only Claude login and an explicit sign-in recheck", async () => {
@@ -4932,7 +4952,10 @@ describe("ChatSurface composer context", () => {
     const scope = document.querySelector(".project-scope");
     expect(scope).not.toBeNull();
     expect(scope).toHaveTextContent("micrograd");
-    expect(scope).toHaveAttribute("title", "No other projects available");
+    expect(scope).toHaveAttribute(
+      "title",
+      "Project: micrograd (No other projects available)",
+    );
     expect(screen.queryByLabelText("Composer context")).toBeNull();
   });
 

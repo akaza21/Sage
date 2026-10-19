@@ -952,7 +952,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(input).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
   });
 
-  test("offers options, supported image input and dictation below the prompt", async ({
+  test("offers capability-backed options and dictation below the prompt", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -963,27 +963,17 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toBeEnabled();
-    await expect(options).toHaveAttribute("aria-haspopup", "dialog");
+    // This binding advertises no image input, Goal or session modes, so the
+    // Add menu has nothing truthful to offer and no image chooser exists.
+    await expect(options).toBeDisabled();
+    await expect(options).toHaveAttribute("aria-haspopup", "menu");
     await expect(options).toHaveAttribute("aria-expanded", "false");
-    const images = toolbar.getByRole("button", {
-      name: "Add images",
-      exact: true,
-    });
-    await expect(images).toBeDisabled();
-    await expect(images).toHaveAttribute(
-      "title",
-      "Image input is unavailable for the selected binding.",
+    await expect(
+      toolbar.getByRole("button", { name: "Add images", exact: true }),
+    ).toHaveCount(0);
+    await expect(form.getByLabel("Choose images", { exact: true })).toHaveCount(
+      0,
     );
-    const chooseImages = form.getByLabel("Choose images", { exact: true });
-    await expect(chooseImages).toBeDisabled();
-    await expect(chooseImages).toHaveAttribute("type", "file");
-    await expect(chooseImages).toHaveAttribute(
-      "accept",
-      "image/png,image/jpeg",
-    );
-    await expect(chooseImages).toHaveAttribute("multiple", "");
-    await expect(chooseImages).toHaveAttribute("tabindex", "-1");
     const dictation = toolbar.getByRole("button", {
       name: "Start dictation",
       exact: true,
@@ -994,7 +984,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(8);
+    await expect(toolbar.getByRole("button")).toHaveCount(7);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("textbox", { name: "Message agent" })),
       boundsOf(toolbar),
@@ -1022,11 +1012,10 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(inventory).toEqual([
       "Message agent",
       "Composer options",
-      "Choose images",
-      "Add images",
       "Access options",
       "Harness",
       "Model",
+      "Project: Sage",
       "Start dictation",
       "Send message",
     ]);
@@ -1051,16 +1040,19 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
       "Composer options",
-      "Add images",
       "Access options",
       "Harness",
       "Model",
+      "Project: Sage",
       "Start dictation",
       "Send message",
     ]);
-    const [images, access, harness, send] = await Promise.all([
+    const [options, access, harness, send] = await Promise.all([
       boundsOf(
-        composer(page).getByRole("button", { name: "Add images", exact: true }),
+        composer(page).getByRole("button", {
+          name: "Composer options",
+          exact: true,
+        }),
       ),
       boundsOf(composer(page).locator(".composer__access-label")),
       boundsOf(
@@ -1068,7 +1060,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       ),
       boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
-    expect(access.x).toBeGreaterThanOrEqual(images.x + images.width - 1);
+    expect(access.x).toBeGreaterThanOrEqual(options.x + options.width - 1);
     expect(access.x + access.width).toBeLessThanOrEqual(harness.x + 1);
     expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
   });
@@ -1094,19 +1086,20 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
-  test("names the active project in the options menu", async ({ page }) => {
+  test("keeps the active project reachable beside the Add menu", async ({
+    page,
+  }) => {
     await openScenario(page, "agent-single", "agent");
     const options = composer(page).getByRole("button", {
       name: "Composer options",
       exact: true,
     });
     await expect(options).toBeVisible();
-    await expect(
-      composer(page).getByRole("button", { name: "Project", exact: true }),
-    ).toHaveCount(0);
-    const menu = await openComposerOptions(page);
-    await expect(options).toHaveAttribute("aria-expanded", "true");
-    const project = menu.getByRole("button", { name: "Project", exact: true });
+    await expect(options).toBeDisabled();
+    const project = composer(page).getByRole("button", {
+      name: "Project: Sage",
+      exact: true,
+    });
     await expect(project).toBeVisible();
     await expect(project).toBeEnabled();
     await expect(project).toHaveText("Sage");
@@ -1117,8 +1110,6 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
-    await options.click();
-    await expect(menu).toHaveCount(0);
     await expect(options).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -1198,16 +1189,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       composer(page).getByRole("button", { name: "Session mode", exact: true }),
     ).toHaveCount(0);
     const menu = await openComposerOptions(page);
-    expect(
-      await menu
-        .getByRole("button")
-        .evaluateAll((nodes) =>
-          nodes.map((node) => node.getAttribute("aria-label")),
-        ),
-    ).toEqual(["Project", "Session mode"]);
+    expect(await menu.getByRole("menuitemradio").allTextContents()).toEqual([
+      "Review changes",
+      "Apply changes",
+    ]);
     await expect(
-      menu.getByRole("button", { name: "Session mode", exact: true }),
-    ).toHaveText("Review changes");
+      menu.getByRole("menuitemradio", { name: "Review changes", exact: true }),
+    ).toHaveAttribute("aria-checked", "true");
     await expect(
       composer(page).getByRole("button", {
         name: "Access options",

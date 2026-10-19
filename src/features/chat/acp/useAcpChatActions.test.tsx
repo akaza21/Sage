@@ -1,4 +1,12 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,6 +27,7 @@ import { DEFAULT_SESSION_ACCESS_MODE } from "../../../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
+import { ChatHarnessControls } from "../ChatHarnessControls";
 
 const projectPort = getWorkbenchPorts().project;
 
@@ -133,7 +142,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
     expect(result.current.error).toMatch(/Chat.*load|Chat.*ready/i);
   });
 
-  it("keeps a mode failure separate from the prompt error slot", async () => {
+  it("sends the Add menu mode through the scoped wire request and keeps its failure separate", async () => {
     const setSessionMode = vi
       .spyOn(acpDesktop, "setSessionMode")
       .mockRejectedValue(
@@ -144,11 +153,45 @@ describe("useAcpChatActions per-Chat ownership", () => {
         }),
       );
     const { result } = renderHook(() => useAcpChatActions());
+    render(
+      <ChatHarnessControls
+        availableBinding
+        canPrompt
+        discoveryPhase="ready"
+        modelLabelScope="chat-a"
+        sessionHarnessId="fixture"
+        selectedHarnessId="fixture"
+        sessionModelId={null}
+        selectedModelId={null}
+        projectName={null}
+        turnBusy={false}
+        sessionConfig={page().sessionConfig ?? null}
+        modePending={false}
+        modeError={null}
+        focused
+        onSetSessionMode={result.current.setSessionMode}
+        onSetSessionConfigOption={result.current.setSessionConfigOption}
+        onSelectHarness={vi.fn()}
+        onSelectModel={vi.fn()}
+        onModeRemoved={vi.fn()}
+      />,
+    );
 
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     await act(async () => {
-      await result.current.setSessionMode("review");
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Review" }));
     });
-    expect(setSessionMode).toHaveBeenCalledOnce();
+    expect(setSessionMode).toHaveBeenCalledExactlyOnceWith({
+      projectId: "project-a",
+      projectGeneration: "0",
+      chatId: "chat-a",
+      sessionId: "session-a",
+      runtimeEpoch: "1",
+      modeId: "review",
+      expectedProjectionRevision: "1",
+      expectedConfigRevision: "1",
+      clientIntentId: expect.any(String),
+    });
 
     expect(result.current.error).toBeNull();
     expect(result.current.modeError).toBe("Mode update conflicted");

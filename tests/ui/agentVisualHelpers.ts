@@ -98,7 +98,7 @@ export async function openComposerOptions(page: Page) {
   await trigger.click();
   const panelId = await trigger.getAttribute("aria-controls");
   const menu = page.locator(`[id="${panelId}"]`);
-  await expect(menu).toHaveAttribute("role", "dialog");
+  await expect(menu).toHaveAttribute("role", "menu");
   await expect(menu).toHaveAttribute("aria-label", "Composer options menu");
   await expect(menu).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");

@@ -3,9 +3,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { useWorkbenchStore } from "../../app/store";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
+import {
+  agentSessionFixture,
+  capabilitySetFixture,
+} from "../../domain/acpProjection.fixture";
 
 const png = () => new File(["png"], "sample.png", { type: "image/png" });
-afterEach(cleanup);
+const initial = useWorkbenchStore.getState();
+afterEach(() => {
+  cleanup();
+  clearAcpProjectionRegistry();
+  useWorkbenchStore.setState(initial, true);
+});
 
 function renderComposer(
   overrides: Partial<ComponentProps<typeof ChatComposerRegion>> = {},
@@ -54,10 +68,120 @@ function renderComposer(
     ...overrides,
   };
   const view = render(<ChatComposerRegion {...props} />);
-  return { onAddImages, ...view };
+  return {
+    onAddImages,
+    ...view,
+    rerenderComposer: (next: Partial<typeof props>) =>
+      view.rerender(<ChatComposerRegion {...props} {...next} />),
+  };
 }
 
 describe("composer image input", () => {
+  it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
+    "omits Goal actions for %s without admitted mutation capabilities",
+    (name) => {
+      useWorkbenchStore.setState({
+        harnesses: [
+          {
+            id: "fixture",
+            name,
+            description: "",
+            installState: "available",
+            source: "builtIn",
+            transport: "acp",
+            bindingId: "fixture",
+            accountModelDiscovery: false,
+          },
+        ],
+      });
+      renderComposer({
+        selectedHarnessId: "fixture",
+        sessionHarnessId: "fixture",
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
+    },
+  );
+
+  it("gates only Add Goal by binding and picker identity, preserving native details actions", () => {
+    const goal = {
+      kind: "goal" as const,
+      snapshot: {
+        objective: "Ship safely",
+        status: "active" as const,
+        tokenBudget: null,
+        tokensUsed: 0,
+        timeUsedSeconds: 1,
+        createdAt: null,
+        updatedAt: null,
+      },
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectGeneration: 0,
+      projectTransitioning: false,
+      activeTabId: "chat-a",
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+    });
+    acpProjectionStoreFor("chat-a").setState({
+      scope: {
+        projectId: "project-a",
+        projectGeneration: "0",
+        chatId: "chat-a",
+      } as never,
+      page: {
+        projectId: "project-a",
+        chatId: "chat-a",
+        title: "A",
+        projectionRevision: "1",
+        nextCursor: null,
+        turns: [],
+        goal,
+        currentSessionId: "session-a",
+        sessions: [
+          agentSessionFixture({
+            id: "session-a" as never,
+            runtimeEpoch: "1" as never,
+            capabilities: capabilitySetFixture({
+              protocolVersion: "codex-app-server-observed-0.146.0",
+            }),
+          }),
+        ],
+      } as never,
+    });
+    const { rerenderComposer } = renderComposer({
+      goal,
+      imageInputAvailable: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByText("Ship safely", { selector: "p" })).toBeVisible();
+    expect(screen.getByLabelText("Goal details")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
+    for (const eligibility of [
+      { availableBinding: false },
+      { selectedHarnessId: "another-harness" },
+    ]) {
+      rerenderComposer(eligibility);
+      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
+    }
+  });
   it("keeps upper composer content in a scroll region separate from the toolbar", () => {
     renderComposer({ workbenchError: "Retry the request" });
     const form = screen.getByRole("form");
@@ -69,22 +193,12 @@ describe("composer image input", () => {
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
   });
 
-  it("explains unavailable capability and refuses a dropped image", () => {
+  it("omits unavailable image actions and refuses a dropped image", () => {
     const { onAddImages } = renderComposer();
-    expect(screen.getByRole("button", { name: "Add images" })).toBeDisabled();
-    const toolbar = document.querySelector(".composer__toolbar");
     const options = screen.getByRole("button", { name: "Composer options" });
-    const image = screen.getByRole("button", { name: "Add images" });
-    const harness = screen.getByRole("button", { name: "Harness" });
-    expect(toolbar?.querySelector(".composer__controls")?.contains(image)).toBe(
-      true,
-    );
-    expect(
-      options.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      image.compareDocumentPosition(harness) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    fireEvent.click(options);
+    expect(screen.queryByText("Add images", { exact: true })).toBeNull();
+    expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
@@ -107,6 +221,19 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledTimes(2);
   });
 
+  it("opens the persistent chooser from Add and closes the only menu", () => {
+    renderComposer({ imageInputAvailable: true });
+    const chooser = screen.getByLabelText("Choose images");
+    const choose = vi.spyOn(chooser, "click");
+    const trigger = screen.getByRole("button", { name: "Composer options" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add images" }));
+    expect(choose).toHaveBeenCalledOnce();
+    expect(chooser.isConnected).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
   it("refuses a fifth image before upload", () => {
     const { onAddImages } = renderComposer({
       imageInputAvailable: true,
@@ -126,6 +253,8 @@ describe("composer image input", () => {
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("four images");
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
   });
 
   it("shows an uploaded image thumbnail and removes its context", () => {

@@ -1,5 +1,4 @@
-import { SlidersHorizontal } from "../../ui/leanIcons";
-import { useCallback, useState } from "react";
+import { Check } from "../../ui/leanIcons";
 
 import type {
   AcpConfigOption,
@@ -10,14 +9,12 @@ import {
   flattenChoices,
   sessionConfigControls,
 } from "../../domain/acpSessionConfigControls";
-import { SearchablePicker } from "../../ui/SearchablePicker";
 
 interface Props {
   sessionConfig: AcpSessionConfig | null;
   group?: "model" | "other";
   pending: boolean;
   disabled?: boolean;
-  error: string | null;
   onSetSessionConfigOption: (
     configId: string,
     value: AcpConfigValue,
@@ -29,26 +26,9 @@ export function ChatSessionConfigControls({
   group,
   pending,
   disabled = false,
-  error,
   onSetSessionConfigOption,
 }: Props) {
-  const [lastChangedId, setLastChangedId] = useState<string | null>(null);
-  const options = sessionConfigControls(sessionConfig)
-    .filter((option) => {
-      if (!group) return true;
-      const modelRelated = ["model", "effort", "thought_level"].includes(
-        (option.category ?? option.id).toLocaleLowerCase(),
-      );
-      return group === "model" ? modelRelated : !modelRelated;
-    })
-    .sort((left, right) => configPriority(left.id) - configPriority(right.id));
-  const change = useCallback(
-    (configId: string, value: AcpConfigValue) => {
-      setLastChangedId(configId);
-      void onSetSessionConfigOption(configId, value);
-    },
-    [onSetSessionConfigOption],
-  );
+  const options = sessionConfigControls(sessionConfig, group);
   if (options.length === 0) return null;
   return (
     <>
@@ -56,84 +36,73 @@ export function ChatSessionConfigControls({
         <SessionConfigControl
           key={option.id}
           option={option}
-          pending={pending && lastChangedId === option.id}
           disabled={disabled || pending}
-          error={lastChangedId === option.id ? error : null}
-          onChange={change}
+          onChange={onSetSessionConfigOption}
         />
       ))}
     </>
   );
 }
 
-function configPriority(id: string): number {
-  const normalized = id.toLocaleLowerCase();
-  if (normalized === "model") return 0;
-  if (normalized === "effort") return 1;
-  return 2;
-}
-
 function SessionConfigControl({
   option,
-  pending,
   disabled,
-  error,
   onChange,
 }: {
   option: AcpConfigOption;
-  pending: boolean;
   disabled: boolean;
-  error: string | null;
   onChange: (configId: string, value: AcpConfigValue) => void;
 }) {
   const controlLabel = `Session ${option.name.toLocaleLowerCase()}`;
   return (
-    <label className="select-control select-control--chip">
-      <SlidersHorizontal
-        className="select-control__icon"
-        size={14}
-        aria-hidden="true"
-      />
+    <div role="group" aria-label={controlLabel}>
       {option.type === "unsupported" ? (
-        <span className="select-control__unsupported" aria-disabled="true">
+        <span className="menu-empty" aria-disabled="true">
           {option.name}
         </span>
       ) : option.type === "boolean" ? (
-        <input
-          type="checkbox"
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          className="menu-item"
           aria-label={controlLabel}
-          checked={option.currentValue}
+          aria-checked={option.currentValue}
           disabled={disabled}
-          onChange={(event) =>
+          tabIndex={-1}
+          onClick={() =>
             onChange(option.id, {
               type: "boolean",
-              value: event.target.checked,
+              value: !option.currentValue,
             })
           }
-        />
+        >
+          {option.name}
+          {option.currentValue ? <Check size={14} aria-hidden="true" /> : null}
+        </button>
       ) : (
-        <SearchablePicker
-          portalTarget="closest-dialog"
-          ariaLabel={controlLabel}
-          candidates={flattenChoices(option).map((choice) => ({
-            id: choice.value,
-            label: choice.name || choice.value,
-          }))}
-          disabled={disabled}
-          onSelect={(value) => onChange(option.id, { value })}
-          selectedId={option.currentValue}
-        />
+        <>
+          <p className="menu-empty" aria-hidden="true">
+            {option.name}
+          </p>
+          {flattenChoices(option).map((choice) => (
+            <button
+              key={choice.value}
+              type="button"
+              role="menuitemradio"
+              className="menu-item"
+              aria-checked={choice.value === option.currentValue}
+              disabled={disabled}
+              tabIndex={-1}
+              onClick={() => onChange(option.id, { value: choice.value })}
+            >
+              <span>{choice.name || choice.value}</span>
+              {choice.value === option.currentValue ? (
+                <Check size={14} aria-hidden="true" />
+              ) : null}
+            </button>
+          ))}
+        </>
       )}
-      {pending ? (
-        <span className="select-control__reason" role="status">
-          Changing {option.name}…
-        </span>
-      ) : null}
-      {error ? (
-        <span className="select-control__reason" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </label>
+    </div>
   );
 }

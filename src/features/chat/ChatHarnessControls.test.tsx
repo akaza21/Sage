@@ -691,7 +691,7 @@ describe("composer permission mode picker", () => {
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
   });
 
-  it("keeps project choices reachable from the plus menu", () => {
+  it("keeps the named project icon inside its clickable target and switches projects", () => {
     const switchProject = vi.fn().mockResolvedValue(undefined);
     useWorkbenchStore.setState({
       project: { id: "alpha", name: "Alpha", roots: [] },
@@ -703,7 +703,13 @@ describe("composer permission mode picker", () => {
     });
     renderControls({ projectName: "Alpha" });
     openOptions();
-    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    const project = screen.getByRole("button", { name: "Project: Alpha" });
+    expect(project).toHaveAttribute("title", "Project: Alpha");
+    expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    fireEvent.click(project);
     fireEvent.click(screen.getByRole("option", { name: "Beta" }));
     expect(switchProject).toHaveBeenCalledWith("beta");
   });
@@ -720,25 +726,27 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Composer options" }),
     ).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Project" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Project: Alpha" }),
+    ).toBeDisabled();
   });
 
-  it("moves focus into the options dialog and restores it on Escape", () => {
+  it("moves focus into the action menu and restores it on Escape", () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
-    renderControls({ projectName: "Alpha" });
+    renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     expect(
-      screen.getByRole("dialog", { name: "Composer options menu" }),
+      screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Project" }),
+      screen.getByRole("menuitem", { name: "Add images" }),
     );
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
-      screen.queryByRole("dialog", { name: "Composer options menu" }),
+      screen.queryByRole("menu", { name: "Composer options menu" }),
     ).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
@@ -746,7 +754,10 @@ describe("composer permission mode picker", () => {
   it.each(["Composer options", "Access options"])(
     "opens only one surface from %s and returns Escape focus to the current opener",
     (name) => {
-      renderControls({ projectName: "Alpha" });
+      renderControls({
+        projectName: "Alpha",
+        imageAction: { disabled: false, onChoose: vi.fn() },
+      });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
         name:
@@ -765,7 +776,7 @@ describe("composer permission mode picker", () => {
       fireEvent.keyDown(
         name === "Composer options"
           ? screen.getByRole("menu", { name: "Access mode" })
-          : screen.getByRole("dialog", { name: "Composer options menu" }),
+          : screen.getByRole("menu", { name: "Composer options menu" }),
         { key: "Escape" },
       );
       expect(other).toHaveFocus();
@@ -774,21 +785,21 @@ describe("composer permission mode picker", () => {
   );
 
   it.each([false, true])(
-    "returns options-dialog Tab boundary focus to its opener (reverse=%s)",
+    "returns action-menu Tab focus to its opener (reverse=%s)",
     (shiftKey) => {
       useWorkbenchStore.setState({
         projects: [
           { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
         ],
       });
-      renderControls({ projectName: "Alpha" });
+      renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
-      const control = screen.getByRole("button", { name: "Project" });
+      const control = screen.getByRole("menuitem", { name: "Add images" });
       expect(control).toHaveFocus();
       fireEvent.keyDown(control, { key: "Tab", shiftKey });
       expect(
-        screen.queryByRole("dialog", { name: "Composer options menu" }),
+        screen.queryByRole("menu", { name: "Composer options menu" }),
       ).toBeNull();
       expect(trigger).toHaveFocus();
     },
@@ -835,25 +846,25 @@ describe("composer permission mode picker", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("closes the nested picker before its parent dialog on successive Escape presses", () => {
+  it("replaces Add with the project picker and closes it on a single Escape", () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
     renderControls({ projectName: "Alpha" });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Project" }));
-    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-    expect(screen.queryByRole("listbox", { name: "Project" })).toBeNull();
-    expect(
-      screen.getByRole("dialog", { name: "Composer options menu" }),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Project" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
-      screen.queryByRole("dialog", { name: "Composer options menu" }),
+      screen.queryByRole("listbox", { name: "Project: Alpha" }),
     ).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    expect(
+      screen.queryByRole("menu", { name: "Composer options menu" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Project: Alpha" }),
+    ).toHaveFocus();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows effective read-only access when ask is unsupported", () => {
@@ -1016,14 +1027,16 @@ describe("composer permission mode picker", () => {
   });
 
   it("closes an already open menu when a turn starts", () => {
-    const { rerenderControls } = renderControls();
+    const { rerenderControls } = renderControls({
+      imageAction: { disabled: false, onChoose: vi.fn() },
+    });
     openOptions();
     expect(
-      screen.getByRole("dialog", { name: "Composer options menu" }),
+      screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
     rerenderControls({ turnBusy: true });
     expect(
-      screen.queryByRole("dialog", { name: "Composer options menu" }),
+      screen.queryByRole("menu", { name: "Composer options menu" }),
     ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Composer options" }),
@@ -1549,7 +1562,7 @@ describe("composer permission mode picker", () => {
   });
 });
 
-it("uses the send binding's modes rather than a stale picker identity", () => {
+it("keeps the send binding's access modes when switching between Access and Add", () => {
   useWorkbenchStore.setState({
     harnesses: [
       ...useWorkbenchStore.getState().harnesses,
@@ -1573,12 +1586,38 @@ it("uses the send binding's modes rather than a stale picker identity", () => {
       },
     ],
   });
-  renderControls({ selectedHarnessId: "other", accessBindingId: "fixture" });
-  fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+  const onChoose = vi.fn();
+  renderControls({
+    selectedHarnessId: "other",
+    accessBindingId: "fixture",
+    imageAction: { disabled: false, onChoose },
+  });
+  const access = screen.getByRole("button", { name: "Access options" });
+  const add = screen.getByRole("button", { name: "Composer options" });
+  fireEvent.click(access);
   expect(
     screen.getByRole("menuitemradio", { name: "Workspace edits" }),
   ).toBeInTheDocument();
   expect(
     screen.queryByRole("menuitemradio", { name: "Ask each time" }),
   ).toBeNull();
+  fireEvent.click(add);
+  expect(screen.queryByRole("menu", { name: "Access mode" })).toBeNull();
+  expect(screen.getAllByRole("menu")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Add images" }));
+  expect(onChoose).toHaveBeenCalledOnce();
+  expect(add).toHaveFocus();
+  fireEvent.click(add);
+  fireEvent.click(access);
+  expect(
+    screen.queryByRole("menu", { name: "Composer options menu" }),
+  ).toBeNull();
+  const menu = screen.getByRole("menu", { name: "Access mode" });
+  expect(screen.getAllByRole("menu")).toHaveLength(1);
+  expect(
+    screen.getByRole("menuitemradio", { name: "Workspace edits" }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(menu, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(access).toHaveFocus();
 });

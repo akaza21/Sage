@@ -5,21 +5,3 @@
   border-radius: var(--radius-sm);
   object-fit: cover;
 }
-
-.composer__image-button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-
-.composer__image-button:disabled {
-  color: var(--color-text-disabled);
-  cursor: not-allowed;
-}

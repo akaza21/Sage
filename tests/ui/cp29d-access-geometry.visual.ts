@@ -97,15 +97,27 @@ for (const width of [1888, 720, 480]) {
           .fill("Default access sends");
         await expect(send).toBeEnabled();
       }
+      // Give Add a capability-backed action and open it first, so the
+      // "Access closes Add" assertion below proves a real dismissal.
+      await page.evaluate(async () => {
+        const fixture =
+          await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
+        fixture.installVisualComposerActionsFixture([
+          { id: "default", name: "Default" },
+        ]);
+      });
       await composer
         .getByRole("button", { name: "Composer options", exact: true })
         .click();
+      await expect(
+        page.getByRole("menu", { name: "Composer options menu" }),
+      ).toBeVisible();
       await trigger.focus();
       await page.keyboard.press("Enter");
       const menu = page.getByRole("menu", { name: "Access mode", exact: true });
       await expect(menu).toBeVisible();
       await expect(
-        page.getByRole("dialog", { name: "Composer options menu" }),
+        page.getByRole("menu", { name: "Composer options menu" }),
       ).toHaveCount(0);
       await expect(menu.getByRole("menuitemradio")).toHaveCount(
         profile.modes.length,

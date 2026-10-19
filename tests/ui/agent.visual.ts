@@ -111,10 +111,10 @@ async function expectComposerControlRow(page: Page) {
   const form = page.locator("form.composer").first();
   const controls = [
     form.getByRole("button", { name: "Composer options", exact: true }),
-    form.getByRole("button", { name: "Add images", exact: true }),
     form.locator(".composer__access-label"),
     form.getByRole("button", { name: "Harness", exact: true }),
     form.getByRole("button", { name: "Model", exact: true }),
+    form.getByRole("button", { name: "Project: Sage", exact: true }),
     form.getByRole("button", { name: "Start dictation", exact: true }),
     form.getByRole("button", { name: "Send message", exact: true }),
   ];
@@ -320,8 +320,11 @@ async function expectArtifactConstrainedComposer(
   await expectComposerToolbarLaidOut(form);
   const options = await openComposerOptions(page);
   await expect(
-    options.getByRole("button", { name: "Session mode", exact: true }),
-  ).toHaveText(expectedLabels[2]!);
+    options.getByRole("menuitemradio", {
+      name: expectedLabels[2]!,
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-checked", "true");
   await expect(
     form.getByRole("button", { name: "Access options", exact: true }),
   ).toHaveText(expectedLabels[3]!);
@@ -706,8 +709,8 @@ test.describe("V2-4 session mode picker", () => {
       "agent",
     );
     const closedOptions = await openComposerOptions(page);
-    const closedTrigger = page.getByRole("button", {
-      name: "Session mode",
+    const closedTrigger = closedOptions.getByRole("menuitemradio", {
+      name: "Review changes",
       exact: true,
     });
     await expectComposerPickerValue(
@@ -720,14 +723,10 @@ test.describe("V2-4 session mode picker", () => {
       "Model",
       "GPT-5",
     );
-    await expectComposerPickerValue(
-      closedTrigger,
-      "Session mode",
-      "Review changes",
-    );
+    await expect(closedTrigger).toHaveAttribute("aria-checked", "true");
     await expect(page.locator(".project-scope")).toHaveText("Sage");
-    const projectTrigger = closedOptions.getByRole("button", {
-      name: "Project",
+    const projectTrigger = page.locator("form.composer").getByRole("button", {
+      name: "Project: Sage",
       exact: true,
     });
     await expect(projectTrigger).toBeEnabled();
@@ -745,18 +744,15 @@ test.describe("V2-4 session mode picker", () => {
       "agent",
     );
     await openComposerOptions(page);
-    const openTrigger = page.getByRole("button", {
-      name: "Session mode",
-      exact: true,
+    const openInput = page.getByRole("menuitemradio", {
+      name: "Review changes",
     });
-    await openTrigger.click();
-    const openInput = page.getByRole("combobox", { name: "Session mode" });
-    const openListbox = page.getByRole("listbox", { name: "Session mode" });
-    await expect(openListbox.getByRole("option")).toHaveCount(2);
-    await expect(openListbox.getByRole("option").nth(0)).toHaveText(
+    const openListbox = page.getByRole("group", { name: "Session mode" });
+    await expect(openListbox.getByRole("menuitemradio")).toHaveCount(2);
+    await expect(openListbox.getByRole("menuitemradio").nth(0)).toHaveText(
       "Review changes",
     );
-    await expect(openListbox.getByRole("option").nth(1)).toHaveText(
+    await expect(openListbox.getByRole("menuitemradio").nth(1)).toHaveText(
       "Apply changes",
     );
     await expectOpenPickerContained(page, openInput, openListbox);
@@ -769,16 +765,15 @@ test.describe("V2-4 session mode picker", () => {
       "agent",
     );
     await openComposerOptions(page);
-    const narrowTrigger = page.getByRole("button", {
-      name: "Session mode",
+    const narrowTrigger = page.getByRole("menuitemradio", {
+      name: "Review changes",
       exact: true,
     });
     await expect(narrowTrigger).toBeVisible();
-    await narrowTrigger.click();
     await expectOpenPickerContained(
       page,
-      page.getByRole("combobox", { name: "Session mode" }),
-      page.getByRole("listbox", { name: "Session mode" }),
+      narrowTrigger,
+      page.getByRole("group", { name: "Session mode" }),
     );
     await expectNoViewportOverflow(page);
     await takeCanonicalScreenshot(narrowWorkbench, "agent-session-mode-narrow");
@@ -793,14 +788,9 @@ test.describe("V2-4 session mode picker", () => {
       "agent",
     );
     await openComposerOptions(page);
-    const forcedTrigger = page.getByRole("button", {
-      name: "Session mode",
-      exact: true,
-    });
-    await forcedTrigger.click();
     const forcedState = await page
-      .getByRole("listbox", { name: "Session mode" })
-      .getByRole("option", { name: "Review changes" })
+      .getByRole("group", { name: "Session mode" })
+      .getByRole("menuitemradio", { name: "Review changes" })
       .evaluate((option) => ({
         background: getComputedStyle(option).backgroundColor,
         color: getComputedStyle(option).color,
@@ -1203,26 +1193,20 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await optionsTrigger.click();
     const panelId = await optionsTrigger.getAttribute("aria-controls");
     const options = page.locator(`[id="${panelId}"]`);
-    await expect(options).toHaveAttribute("role", "dialog");
+    await expect(options).toHaveAttribute("role", "menu");
     await expect(options).toHaveAttribute(
       "aria-label",
       "Composer options menu",
     );
     await expect(
-      options.getByRole("button", { name: "Session mode" }),
-    ).toHaveText("Review changes");
-    await expect(options.getByRole("alert")).toHaveText(
-      "Mode update conflicted",
-    );
-    await options.getByRole("button", { name: "Session mode" }).click();
-    await expect(
-      page.getByRole("combobox", { name: "Session mode" }),
-    ).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(
-      options.getByRole("button", { name: "Session mode" }),
-    ).toBeFocused();
-    await expect(options).toBeVisible();
+      options.getByRole("menuitemradio", { name: "Review changes" }),
+    ).toHaveAttribute("aria-checked", "true");
+    // Session-setting errors stay in the toolbar, outside the Add menu.
+    const modeAlert = narrowPane
+      .locator("form.composer .composer__controls")
+      .getByRole("alert");
+    await expect(modeAlert).toHaveText("Mode update conflicted");
+    await expect(modeAlert).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(options).toHaveCount(0);
     await expect(optionsTrigger).toBeFocused();

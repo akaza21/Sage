@@ -10,6 +10,7 @@ import { createRef, useRef, useState } from "react";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import { ChatHarnessControls } from "./ChatHarnessControls";
+import { ProjectScopeChip } from "./ProjectScopeChip";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
@@ -29,6 +30,16 @@ afterEach(() => {
 });
 
 describe("Compact chat controls", () => {
+  it("keeps a noninteractive Project identity accessible when its text collapses", () => {
+    useWorkbenchStore.setState({ projects: [] });
+    render(<ProjectScopeChip projectName="Alpha" />);
+    expect(screen.getByRole("img", { name: "Project: Alpha" })).toHaveAttribute(
+      "title",
+      "Project: Alpha (No other projects available)",
+    );
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", () => {
     useWorkbenchStore.setState({
       harnesses: [

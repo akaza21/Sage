@@ -1,4 +1,4 @@
-import { useState, type DragEvent, type ClipboardEvent } from "react";
+import { useRef, useState, type DragEvent, type ClipboardEvent } from "react";
 import type { AttachedContext } from "../../domain/attachedContext";
 
 export const imageDisabledReason =
@@ -8,14 +8,17 @@ export function useComposerImageInput({
   contexts,
   available,
   disabled,
+  uploading = false,
   onAddImages,
 }: {
   contexts: readonly AttachedContext[];
   available: boolean;
   disabled: boolean;
+  uploading?: boolean;
   onAddImages?: (files: File[]) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const chooserRef = useRef<HTMLInputElement>(null);
   const count = contexts.filter((context) => context.kind === "image").length;
   const sendBlocked = count > 0 && !available;
   const accept = (files: File[]) => {
@@ -36,6 +39,14 @@ export function useComposerImageInput({
     onAddImages?.(files);
   };
   return {
+    chooserRef,
+    action:
+      available && onAddImages
+        ? {
+            disabled: disabled || uploading || count >= 4,
+            onChoose: () => chooserRef.current?.click(),
+          }
+        : undefined,
     count,
     sendBlocked,
     accept,

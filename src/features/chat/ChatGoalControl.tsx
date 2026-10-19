@@ -1,5 +1,5 @@
 import { Maximize2, Pause, Target, Trash2 } from "../../ui/leanIcons";
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import "../../styles/chat-goal.css";
 
@@ -40,12 +40,15 @@ export function ChatGoalControl({
   state,
   canMutate = false,
   onMutation,
+  detailsRef: externalDetailsRef,
 }: {
   state: AcpGoalState;
   canMutate?: boolean;
   onMutation?: (action: "pause" | "clear") => Promise<GoalMutationOutcome>;
+  detailsRef?: RefObject<HTMLDetailsElement | null>;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const internalDetailsRef = useRef<HTMLDetailsElement>(null);
+  const detailsRef = externalDetailsRef ?? internalDetailsRef;
   const [mutation, setMutation] = useState<
     | { kind: "idle" | "pending" }
     | { kind: "refused" | "outcomeUnknown"; message: string }

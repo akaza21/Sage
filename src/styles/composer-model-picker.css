@@ -7,6 +7,7 @@
 }
 
 .composer__model-group .composer__model-trigger {
+  min-width: 28px;
   max-width: 148px;
   justify-content: flex-start;
   gap: 4px;
@@ -30,12 +31,19 @@
   flex: 0 0 auto;
 }
 
+/* The effort suffix yields before the model name so a long level never
+   starves the model label to zero width. */
 .composer__model-effort {
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 8 auto;
+  overflow: hidden;
   color: var(--composer-muted-text);
+  text-overflow: ellipsis;
 }
 
 .composer__model-group .composer__effort-picker {
+  min-width: 28px;
+  overflow: hidden;
   height: 28px;
   gap: 4px;
   padding: 0 4px;

@@ -94,10 +94,10 @@ it("places the project picker outside a plain home subheading below the chat tit
   expect(
     screen.getByRole("heading", { name: emptyPage().title, level: 2 }),
   ).toBeInTheDocument();
-  const picker = within(home).getByRole("button", { name: "Project" });
+  const picker = within(home).getByRole("button", { name: "Project: Sage" });
   expect(picker.closest("h1, h2, h3, h4, h5, h6")).toBeNull();
   fireEvent.click(picker);
-  expect(screen.getByRole("combobox", { name: "Project" })).toBeVisible();
+  expect(screen.getByRole("combobox", { name: "Project: Sage" })).toBeVisible();
 });
 
 it.each(["", "   ", "bad\u0000name", "bad\u007fname"])(
@@ -113,7 +113,12 @@ it.each(["", "   ", "bad\u0000name", "bad\u007fname"])(
       screen.getByRole("heading", { name: "What should we work on?" }),
     ).toBeVisible();
     expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Project" })).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "New chat" })).queryByRole(
+        "button",
+        { name: /^Project:/ },
+      ),
+    ).toBeNull();
   },
 );
 
@@ -244,15 +249,15 @@ it("switches projects through the existing keyboard-accessible picker and discar
   });
   const props = transcriptProps();
   const { rerender } = render(<ChatTranscript {...props} />);
-  const chip = screen.getByRole("button", { name: "Project" });
+  const chip = screen.getByRole("button", { name: "Project: Sage" });
   chip.focus();
   fireEvent.click(chip);
-  const picker = screen.getByRole("combobox", { name: "Project" });
+  const picker = screen.getByRole("combobox", { name: "Project: Sage" });
   fireEvent.keyDown(picker, { key: "End" });
   fireEvent.keyDown(picker, { key: "Enter" });
   expect(switchProject).toHaveBeenCalledExactlyOnceWith("project-2");
   rerender(<ChatTranscript {...props} projectTransitioning />);
-  expect(screen.queryByRole("button", { name: "Project" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Project: Sage" })).toBeNull();
   useWorkbenchStore.setState({
     project: { id: "project-2", name: "Other", roots: [] },
   });
@@ -372,9 +377,9 @@ it("uses the authoritative project name even when the project list still has an 
       project={{ id: "project-1", name: "Renamed" }}
     />,
   );
-  expect(screen.getByRole("button", { name: "Project" })).toHaveTextContent(
-    "Renamed",
-  );
+  expect(
+    screen.getByRole("button", { name: "Project: Renamed" }),
+  ).toHaveTextContent("Renamed");
   expect(screen.queryByText("Old name")).toBeNull();
 });
 
@@ -399,10 +404,12 @@ it.each([
       ...(busy as Partial<ReturnType<typeof useWorkbenchStore.getState>>),
     });
     render(<ChatTranscript {...transcriptProps()} />);
-    const chip = screen.getByRole("button", { name: "Project" });
+    const chip = screen.getByRole("button", { name: "Project: Sage" });
     expect(chip).toBeDisabled();
     fireEvent.click(chip);
-    expect(screen.queryByRole("combobox", { name: "Project" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Project: Sage" }),
+    ).toBeNull();
     expect(switchProject).not.toHaveBeenCalled();
     act(() => useWorkbenchStore.setState({ sending: false, chatUiById: {} }));
     expect(chip).toBeEnabled();
@@ -442,10 +449,10 @@ it("allows the home project action with an idle Chat focused while an unfocused 
       focused
     />,
   );
-  const chip = screen.getByRole("button", { name: "Project" });
+  const chip = screen.getByRole("button", { name: "Project: Sage" });
   expect(chip).toBeEnabled();
   fireEvent.click(chip);
-  const picker = screen.getByRole("combobox", { name: "Project" });
+  const picker = screen.getByRole("combobox", { name: "Project: Sage" });
   fireEvent.keyDown(picker, { key: "End" });
   fireEvent.keyDown(picker, { key: "Enter" });
   expect(switchProject).toHaveBeenCalledExactlyOnceWith("project-2");

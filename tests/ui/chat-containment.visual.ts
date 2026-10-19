@@ -258,23 +258,33 @@ async function expectNestedPlacement(picker: Locator, parent: Locator) {
   ).toBe(true);
 }
 
+async function installModeActions(page: Page, chatIndex = 0) {
+  await page.evaluate(async (index) => {
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
+    fixture.installVisualComposerActionsFixture(
+      [
+        { id: "review", name: "Review changes" },
+        { id: "apply", name: "Apply changes" },
+      ],
+      index,
+    );
+  }, chatIndex);
+}
+
 for (const forcedColors of ["none", "active"] as const) {
-  test(`nested Session mode choices and Project stay reachable at 480x560 (${forcedColors})`, async ({
+  test(`single-surface Session mode choices and Project stay reachable at 480x560 (${forcedColors})`, async ({
     page,
   }) => {
     await page.setViewportSize(viewports[3]);
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
     await openScenario(page, "agent-session-mode-open", "agent");
     await openComposerOptions(page);
-    const options = page.getByRole("dialog", { name: "Composer options menu" });
-    await options
-      .getByRole("button", { name: "Session mode", exact: true })
-      .click();
-    const picker = options.locator(".searchable-picker__popover");
+    const options = page.getByRole("menu", { name: "Composer options menu" });
+    const picker = options;
     await expectOverlay(picker, viewports[3]);
-    await expectNestedPlacement(picker, options);
-    const project = options.getByRole("button", {
-      name: "Project",
+    const project = page.locator("form.composer").getByRole("button", {
+      name: "Project: Sage",
       exact: true,
     });
     const projectBox = await project.boundingBox();
@@ -293,7 +303,7 @@ for (const forcedColors of ["none", "active"] as const) {
           Math.max(projectBox!.y, pickerBox!.y) <=
           0,
     ).toBe(true);
-    const last = picker.getByRole("option").last();
+    const last = picker.getByRole("menuitemradio").last();
     await last.scrollIntoViewIfNeeded();
     expect(
       await last.evaluate((element) => {
@@ -308,7 +318,12 @@ for (const forcedColors of ["none", "active"] as const) {
     ).toBe(true);
     await last.click();
     await expect(picker).toHaveCount(0);
-    await expect(options).toBeVisible();
+    await expect(options).toHaveCount(0);
+    await project.click();
+    const projectPicker = page.locator(".searchable-picker__popover");
+    await expectOverlay(projectPicker, viewports[3]);
+    await page.keyboard.press("Escape");
+    await expect(project).toBeFocused();
   });
 }
 
@@ -317,11 +332,12 @@ test("single-pane composer options stay inside the wide composer", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
   await prepare(page, profiles[0], false, false);
+  await installModeActions(page);
   const composer = page.locator("form.composer");
   await composer
     .getByRole("button", { name: "Composer options", exact: true })
     .click();
-  const options = page.getByRole("dialog", { name: "Composer options menu" });
+  const options = page.getByRole("menu", { name: "Composer options menu" });
   await expectOverlay(options, { width: 1280, height: 1000 });
   const bounds = await composer.boundingBox();
   const panel = await options.boundingBox();
@@ -555,13 +571,14 @@ for (const forcedColors of ["none", "active"] as const) {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
     await prepare(page, profiles[0], true, false);
+    await installModeActions(page, 1);
     const trigger = page.locator("form.composer").nth(1).getByRole("button", {
       name: "Composer options",
       exact: true,
     });
     const splitter = page.getByRole("separator", { name: "Resize chat panes" });
     await trigger.click();
-    const panel = page.getByRole("dialog", { name: "Composer options menu" });
+    const panel = page.getByRole("menu", { name: "Composer options menu" });
     await expect(panel).toBeVisible();
     await panel.locator("button:enabled").last().focus();
     await page.keyboard.press("Tab");
@@ -627,7 +644,8 @@ for (const profile of profiles) {
         "Harness",
         "Model",
         ...(profile.effort ? ["High"] : []),
-        "Composer options",
+        // Add stays disabled here (no capability-backed action); its menu
+        // keyboard and resize behaviour is covered with installModeActions.
         "Access options",
       ]) {
         const trigger = composer.getByRole("button", { name, exact: true });
@@ -635,15 +653,7 @@ for (const profile of profiles) {
         await page.keyboard.press("Enter");
         const panel = page.locator(".menu-popover").filter({ visible: true });
         await expect(panel).toHaveCount(1);
-        if (name === "Composer options") {
-          const first = panel.locator("button:enabled").first();
-          await expect(first).toBeFocused();
-          await page.keyboard.press("Tab");
-          await expect(panel).toHaveCount(0);
-          await expect(trigger).toBeFocused();
-          await page.keyboard.press("Enter");
-          await expect(first).toBeFocused();
-        } else if (name === "Access options") {
+        if (name === "Access options") {
           const first = panel.getByRole("menuitemradio").first();
           const last = panel.getByRole("menuitemradio").last();
           await expect(first).toBeFocused();
@@ -673,23 +683,21 @@ for (const profile of profiles) {
           }),
         ).toBeFocused();
       }
-      await composer
-        .getByRole("button", { name: "Composer options", exact: true })
-        .click();
-      const options = page.getByRole("dialog", {
+      await expect(
+        composer.getByRole("button", { name: "Composer options", exact: true }),
+      ).toBeDisabled();
+      const options = page.getByRole("menu", {
         name: "Composer options menu",
       });
-      await options.getByRole("button", { name: "Project" }).click();
-      const picker = options.locator(".searchable-picker__popover");
+      // The fixture renames the project, so match the chip by its prefix.
+      const project = composer.getByRole("button", { name: /^Project: / });
+      await project.click();
+      await expect(options).toHaveCount(0);
+      const picker = page.locator(".searchable-picker__popover");
       await expectOverlay(picker, viewports[2]);
       await page.setViewportSize(viewports[3]);
-      await expectOverlay(options, viewports[3]);
       await expectOverlay(picker, viewports[3]);
-      await expectNestedPlacement(picker, options);
-      const project = options.getByRole("button", {
-        name: "Project",
-        exact: true,
-      });
+      await expectNestedPlacement(picker, project);
       expect(
         await project.evaluate((element) => {
           const rect = element.getBoundingClientRect();
@@ -716,21 +724,16 @@ for (const profile of profiles) {
       ).toBe(true);
       await selected.click();
       await expect(picker).toHaveCount(0);
-      await options.getByRole("button", { name: "Project" }).focus();
+      await project.focus();
       await page.keyboard.press("Enter");
       await expect(
-        picker.getByRole("combobox", { name: "Project" }),
+        picker.getByRole("combobox", { name: /^Project: / }),
       ).toBeFocused();
       await page.keyboard.press("Escape");
-      await expect(
-        options.getByRole("button", { name: "Project" }),
-      ).toBeFocused();
-      await expect(options).toBeVisible();
-      await page.keyboard.press("Escape");
+      await expect(project).toBeFocused();
       await expect(options).toHaveCount(0);
-      await expect(
-        composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toBeFocused();
+      await expect(options).toHaveCount(0);
+      await expect(project).toBeFocused();
       await page.setViewportSize(viewports[2]);
       await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
       for (const field of await page.locator("form.composer textarea").all()) {

@@ -14,6 +14,7 @@ import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
+import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import {
@@ -25,8 +26,8 @@ import {
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ComposerContext } from "./ComposerContext";
 import { ClaudeAuthActions } from "./ClaudeAuthActions";
-import { ComposerImageButton } from "./ComposerImageButton";
 import { useComposerImageInput } from "./useComposerImageInput";
+import { ComposerImageInput } from "./ComposerImageInput";
 import "../../styles/queued-messages.css";
 
 export function ChatComposerRegion({
@@ -143,10 +144,16 @@ export function ChatComposerRegion({
 }) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || actionBusy || projectTransitioning;
+  const goalDetails = useBoundGoalDetails(
+    goal,
+    dictationScope,
+    availableBinding && sessionHarnessId === selectedHarnessId,
+  );
   const imageInput = useComposerImageInput({
     contexts: attachedContext,
     available: imageInputAvailable,
     disabled: composerDisabled,
+    uploading: imageUploading,
     onAddImages,
   });
   const queueing = activeTurn && queueAvailable && !composerDisabled;
@@ -177,7 +184,12 @@ export function ChatComposerRegion({
       }}
     >
       <div className="composer__body">
-        <BoundChatGoalControl state={goal} chatId={dictationScope} />
+        <BoundChatGoalControl
+          state={goal}
+          chatId={dictationScope}
+          detailsRef={goalDetails.detailsRef}
+          canMutate={goalDetails.canMutate}
+        />
         <ComposerQueuedPrompts
           composerRef={composerRef}
           prompts={queuedPrompts}
@@ -285,18 +297,18 @@ export function ChatComposerRegion({
         ) : null}
       </div>
       <div className="composer__toolbar">
+        {imageInputAvailable ? (
+          <ComposerImageInput
+            inputRef={imageInput.chooserRef}
+            disabled={composerDisabled || imageUploading}
+            onChoose={imageInput.accept}
+          />
+        ) : null}
         <ChatHarnessControls
           modelLabelScope={JSON.stringify([dictationScope, sessionId])}
-          imageControl={
-            <ComposerImageButton
-              available={imageInputAvailable}
-              disabled={composerDisabled}
-              uploading={imageUploading}
-              count={imageInput.count}
-              onChoose={imageInput.accept}
-            />
-          }
           accessBindingId={accessBindingId}
+          onOpenGoal={goalDetails.onOpen}
+          imageAction={imageInput.action}
           availableBinding={availableBinding}
           canPrompt={canPrompt}
           discoveryPhase={discoveryPhase}

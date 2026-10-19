@@ -202,16 +202,8 @@
   display: flex;
   flex-direction: column;
   overflow: auto;
-}
-
-.composer__options .select-control,
-.composer__options .project-scope {
-  width: 100%;
-  max-width: none;
-  flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+  width: min(280px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
 }
 
 .composer__controls > .select-control {
@@ -220,7 +212,7 @@
 
 .project-scope {
   display: inline-flex;
-  min-width: 0;
+  min-width: 28px;
   max-width: 12rem;
   height: var(--control-height-compact);
   flex: 0 1 auto;
@@ -242,6 +234,25 @@
 .project-scope > span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The trigger overlays the chip's 1px border so its 28px target is neither
+   clipped by the chip nor inset from the chip's visible edge. */
+.project-scope.select-control {
+  padding: 0;
+  overflow: visible;
+}
+
+.project-scope .searchable-picker {
+  width: calc(100% + 2px);
+  margin: -1px;
+}
+
+.project-scope .searchable-picker__trigger {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-md);
 }
 
 .project-scope__icon,
@@ -325,7 +336,7 @@
 }
 
 @media (max-width: 520px) {
-  .composer__controls > .select-control {
+  .composer__controls > .select-control:not(.project-scope) {
     max-width: none;
     flex: 1 1 100%;
   }

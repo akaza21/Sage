@@ -1,6 +1,6 @@
 .composer__harness.composer__control-trigger {
   height: 40px;
-  min-width: 0;
+  min-width: 28px;
   max-width: 128px;
   flex: 0 1 128px;
 }

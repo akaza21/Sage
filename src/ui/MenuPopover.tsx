@@ -49,7 +49,13 @@ function activateMenuItem(container: HTMLElement, next: number) {
     item.tabIndex = -1;
   });
   const item = enabled[next];
-  if (!item) return;
+  if (!item) {
+    if (container.getAttribute("role") === "menu") {
+      container.tabIndex = -1;
+      container.focus();
+    }
+    return;
+  }
   item.tabIndex = 0;
   item.focus();
 }

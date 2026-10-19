@@ -8,9 +8,13 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 export function ProjectScopeChip({
   projectName,
   disabled = false,
+  open,
+  onOpenChange,
 }: {
   projectName: string;
   disabled?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
@@ -33,8 +37,14 @@ export function ProjectScopeChip({
   );
   return (
     <span
+      role={candidates.length === 0 ? "img" : undefined}
+      aria-label={
+        candidates.length === 0 ? `Project: ${projectName}` : undefined
+      }
       title={
-        candidates.length === 0 ? "No other projects available" : undefined
+        candidates.length === 0
+          ? `Project: ${projectName} (No other projects available)`
+          : undefined
       }
       className={
         candidates.length > 0
@@ -42,11 +52,20 @@ export function ProjectScopeChip({
           : "project-scope"
       }
     >
-      <Folder className="project-scope__icon" size={14} aria-hidden="true" />
       {candidates.length > 0 ? (
         <SearchablePicker
           portalTarget="closest-dialog"
-          ariaLabel="Project"
+          ariaLabel={`Project: ${projectName}`}
+          stateTitle={`Project: ${projectName}`}
+          triggerIcon={
+            <Folder
+              className="project-scope__icon"
+              size={14}
+              aria-hidden="true"
+            />
+          }
+          open={open}
+          onOpenChange={onOpenChange}
           candidates={candidates}
           disabled={disabled || switchBlocked}
           emptyLabel={projectName}
@@ -67,7 +86,19 @@ export function ProjectScopeChip({
           selectedId={projectId}
         />
       ) : (
-        <span>{projectName}</span>
+        <>
+          <Folder
+            className="project-scope__icon"
+            size={14}
+            aria-hidden="true"
+          />
+          <span
+            className="project-scope__label"
+            title={`Project: ${projectName}`}
+          >
+            {projectName}
+          </span>
+        </>
       )}
     </span>
   );

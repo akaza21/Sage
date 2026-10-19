@@ -1,6 +1,6 @@
-import { Plus, Settings } from "../../ui/leanIcons";
+import { Check, Plus, Settings } from "../../ui/leanIcons";
 
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -31,8 +31,9 @@ import {
 } from "./useChatHarnessSelection";
 import "../../styles/harness-picker.css";
 interface Props {
-  imageControl?: ReactNode;
   accessBindingId?: string | null;
+  imageAction?: { disabled: boolean; onChoose: () => void };
+  onOpenGoal?: () => void;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -55,12 +56,12 @@ interface Props {
   onSelectHarness: (harnessId: string) => Promise<void>;
   onSelectModel: (modelId: string) => void;
   onModeRemoved: () => void;
-  modeControlRef?: RefObject<HTMLLabelElement | null>;
 }
 
 export function ChatHarnessControls({
-  imageControl,
   accessBindingId,
+  imageAction,
+  onOpenGoal,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -79,7 +80,6 @@ export function ChatHarnessControls({
   onSelectHarness,
   onSelectModel,
   onModeRemoved,
-  modeControlRef: externalModeControlRef,
 }: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
@@ -173,33 +173,50 @@ export function ChatHarnessControls({
     modelTrigger.current?.focus();
   };
   const harnessCandidates = harnessPickerCandidates(harnesses);
-  const internalModeControlRef = useRef<HTMLLabelElement>(null);
-  const modeControlRef = externalModeControlRef ?? internalModeControlRef;
   const modeOptions = selectedSessionConfig?.modes?.availableModes ?? [];
   const hasModes = !selectedSessionConfig?.removed && modeOptions.length > 0;
   const modeCandidates = modeOptions.map((mode) => ({
     id: mode.id,
     label: mode.name || mode.id,
   }));
-  const hadModes = useRef(hasModes);
+  const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
+  const hasActions = Boolean(
+    imageAction ||
+    onOpenGoal ||
+    hasModes ||
+    otherOptions.some((option) => option.type !== "unsupported"),
+  );
+  const actionsKey = JSON.stringify([
+    selectedHarnessId,
+    selectedModelId,
+    selectedSessionConfig?.sageAgentSessionId,
+    Boolean(imageAction),
+    Boolean(onOpenGoal),
+    modeCandidates.map((mode) => mode.id),
+    otherOptions.map((option) => [
+      option.id,
+      option.type,
+      flattenChoices(option).map((choice) => choice.value),
+    ]),
+  ]);
+  const previousActionsKey = useRef(actionsKey);
   useLayoutEffect(() => {
-    const activeElement = document.activeElement;
-    const modePopoverHadFocus =
-      activeElement instanceof HTMLElement &&
-      activeElement.getAttribute("role") === "combobox" &&
-      activeElement.getAttribute("aria-label") === "Session mode";
-    const modeControlHadFocus = Boolean(
-      activeElement === document.body ||
-      modePopoverHadFocus ||
-      (activeElement instanceof HTMLElement &&
-        (!activeElement.isConnected ||
-          modeControlRef.current?.contains(activeElement))),
-    );
-    if (hadModes.current && !hasModes && focused && modeControlHadFocus) {
-      onModeRemoved();
+    if (previousActionsKey.current !== actionsKey && active === "options") {
+      const element = document.activeElement;
+      const menuHadFocus =
+        element === document.body ||
+        Boolean(
+          element && document.getElementById(optionsId)?.contains(element),
+        );
+      dismiss();
+      if (focused && menuHadFocus) onModeRemoved();
     }
-    hadModes.current = hasModes;
-  }, [focused, hasModes, modeControlRef, onModeRemoved]);
+    previousActionsKey.current = actionsKey;
+  }, [actionsKey, active, dismiss, focused, onModeRemoved, optionsId]);
+  const closeActions = () => {
+    dismiss();
+    optionsTriggerRef.current?.focus();
+  };
   return (
     <div className="composer__controls">
       <button
@@ -207,9 +224,9 @@ export function ChatHarnessControls({
         type="button"
         aria-label="Composer options"
         aria-controls={optionsId}
-        aria-haspopup="dialog"
+        aria-haspopup="menu"
         aria-expanded={active === "options"}
-        disabled={turnBusy || projectTransitioning}
+        disabled={turnBusy || projectTransitioning || !hasActions}
         onClick={(event) => {
           optionsTriggerRef.current = event.currentTarget;
           toggle("options");
@@ -217,7 +234,6 @@ export function ChatHarnessControls({
       >
         <Plus size={16} aria-hidden="true" />
       </button>
-      {imageControl}
       {availableBinding && accessHarness?.bindingId ? (
         <ComposerAccessControl
           bindingId={accessHarness.bindingId}
@@ -266,63 +282,108 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {active === "options" ? (
+      {projectName ? (
+        <ProjectScopeChip
+          projectName={projectName}
+          disabled={projectTransitioning || turnBusy}
+          open={active === "project"}
+          onOpenChange={(open) => {
+            if (open && active !== "project") toggle("project");
+            else if (!open && active === "project") dismiss();
+          }}
+        />
+      ) : null}
+      {active === "options" && hasActions ? (
         <MenuPopover
           id={optionsId}
-          role="dialog"
           className="composer__popover composer__options"
           ariaLabel="Composer options menu"
           focusKey={active}
+          restoreFocusOnTab
           open
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}
           gap={8}
         >
+          {imageAction ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              disabled={imageAction.disabled}
+              tabIndex={-1}
+              onClick={() => {
+                imageAction.onChoose();
+                closeActions();
+              }}
+            >
+              Add images
+            </button>
+          ) : null}
+          {onOpenGoal ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              tabIndex={-1}
+              onClick={() => {
+                dismiss();
+                onOpenGoal();
+              }}
+            >
+              Goal
+            </button>
+          ) : null}
           <ChatSessionConfigControls
             sessionConfig={selectedSessionConfig}
             group="other"
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
-            error={modeError}
-            onSetSessionConfigOption={onSetSessionConfigOption}
+            onSetSessionConfigOption={(id, value) => {
+              closeActions();
+              return onSetSessionConfigOption(id, value);
+            }}
           />
-          {projectName ? (
-            <ProjectScopeChip
-              projectName={projectName}
-              disabled={projectTransitioning || turnBusy}
-            />
-          ) : null}
           {hasModes ? (
-            <label
-              ref={modeControlRef}
-              className="select-control select-control--chip"
-            >
-              <Settings
-                className="select-control__icon"
-                size={14}
-                aria-hidden="true"
-              />
-              <SearchablePicker
-                ariaLabel="Session mode"
-                portalTarget="closest-dialog"
-                candidates={modeCandidates}
-                disabled={turnBusy || projectTransitioning || modePending}
-                onSelect={(modeId) => void onSetSessionMode(modeId)}
-                selectedId={selectedSessionConfig?.modes?.currentModeId ?? null}
-              />
-              {modePending ? (
-                <span className="select-control__reason" role="status">
-                  Changing mode…
-                </span>
-              ) : null}
-              {modeError ? (
-                <span className="select-control__reason" role="alert">
-                  {modeError}
-                </span>
-              ) : null}
-            </label>
+            <div role="group" aria-label="Session mode">
+              <p className="menu-group-label" aria-hidden="true">
+                Session mode
+              </p>
+              {modeCandidates.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  role="menuitemradio"
+                  className="menu-item"
+                  aria-checked={
+                    mode.id === selectedSessionConfig?.modes?.currentModeId
+                  }
+                  disabled={modePending}
+                  tabIndex={-1}
+                  onClick={() => {
+                    closeActions();
+                    void onSetSessionMode(mode.id);
+                  }}
+                >
+                  <span>{mode.label}</span>
+                  {mode.id === selectedSessionConfig?.modes?.currentModeId ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : null}
+                </button>
+              ))}
+            </div>
           ) : null}
         </MenuPopover>
+      ) : null}
+      {modePending ? (
+        <span className="select-control__reason" role="status">
+          Changing session settings…
+        </span>
+      ) : null}
+      {modeError ? (
+        <span className="select-control__reason" role="alert">
+          {modeError}
+        </span>
       ) : null}
     </div>
   );
