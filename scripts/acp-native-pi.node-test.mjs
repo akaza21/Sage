@@ -171,10 +171,9 @@ test("Pi capture predicates distinguish compaction outcomes and read-only notice
     actionsFor("cancelled-dialog", "pi").map((action) =>
       scopeToTurn(action, "pi-turn"),
     ),
-    [
-      '.acp-turn[data-turn-id="pi-turn"] .chat-transcript-work > summary',
-      '.acp-turn[data-turn-id="pi-turn"] .acp-unknown .acp-details > summary',
-    ],
+    // The cancelled-dialog notice is a plain lifecycle status line, not a
+    // disclosure, so only the worked group opens.
+    ['.acp-turn[data-turn-id="pi-turn"] .chat-transcript-work > summary'],
   );
   const observation = {
     bindingId: "pi-rpc",

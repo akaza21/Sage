@@ -3,7 +3,12 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
-import { actionsFor, namedState } from "./capture-native-chat-dom.mjs";
+import {
+  actionsFor,
+  namedState,
+  isExpandable,
+  expandExpression,
+} from "./capture-native-chat-dom.mjs";
 import { observationFor, HARNESS } from "./capture-native-chat-dom.mjs";
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 import { JSDOM } from "jsdom";
@@ -23,6 +28,138 @@ test("capture accessible selectors stay anchored to product controls", () => {
   assert.ok(header.includes('aria-label="Show chat resources"'));
   assert.ok(header.includes('ariaLabel="Chat resources"'));
   assert.ok(header.includes("aria-label={`Recent subagents working:"));
+  const source = (file) =>
+    readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
+  const composer = source("features/chat/ChatHarnessControls.tsx");
+  assert.ok(composer.includes('aria-label="Composer options"'));
+  assert.ok(composer.includes('ariaLabel="Composer options menu"'));
+  assert.ok(composer.includes('<div role="group" aria-label="Session mode">'));
+  assert.ok(composer.includes('role="menuitemradio"'));
+  const access = source("features/chat/ComposerAccessControl.tsx");
+  assert.ok(access.includes('aria-label="Access options"'));
+  assert.ok(access.includes('ariaLabel="Access mode"'));
+  const edits = source("features/chat/acp/TurnEditSummary.tsx");
+  assert.ok(edits.includes('aria-label="Files edited in this chat"'));
+  assert.ok(
+    edits.includes("aria-label={`Preview saved diff ${qualifiedLabel}`}"),
+  );
+  assert.ok(
+    edits.includes(
+      'aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}',
+    ),
+  );
+  assert.ok(
+    source("features/chat/acp/InlineSavedDiff.tsx").includes(
+      'label="Inline saved diff"',
+    ),
+  );
+  const tabs = source("workbench/AgentArtifactTabStrip.tsx");
+  assert.ok(tabs.includes('aria-label="Agent artifact tabs"'));
+  assert.ok(
+    tabs.includes("const accessibleName = `${kindLabel} ${fullPath}`;"),
+  );
+});
+
+test("CP-29d/e composer menus: access is its own menu, plan is a named Session mode item", async () => {
+  const menu = (items) =>
+    '<button aria-label="Composer options" aria-controls="options">+</button><div id="options" class="menu-popover" role="menu" aria-label="Composer options menu"><div role="group" aria-label="Session mode">' +
+    items +
+    "</div></div>";
+  const plan = await observeMarkup(
+    menu(
+      '<button role="menuitemradio">Default</button><button role="menuitemradio">Plan</button>',
+    ),
+  );
+  assert.equal(plan.visible.addMenu, true);
+  assert.equal(plan.visible.planEntry, true);
+  assert.equal(plan.controls.addEnabled, true);
+  const options = { harness: "claude", state: "plan-mode-entry" };
+  assert.equal(namedState(options, plan).namedState, true);
+  const noPlan = await observeMarkup(
+    menu('<button role="menuitemradio">Default</button>'),
+  );
+  assert.equal(noPlan.visible.planEntry, false);
+  assert.equal(namedState(options, noPlan).namedState, false);
+  assert.deepEqual(actionsFor("plan-mode-entry", "claude"), [
+    'button[aria-label="Composer options"]',
+  ]);
+  const disabled = await observeMarkup(
+    '<button aria-label="Composer options" disabled>+</button><button aria-label="Access options" disabled>Ask</button>',
+  );
+  assert.equal(disabled.controls.addEnabled, false);
+  assert.equal(disabled.controls.accessEnabled, false);
+  const access = await observeMarkup(
+    '<button aria-label="Access options" aria-controls="access">Ask</button>',
+    '<div id="access" class="menu-popover" role="menu" aria-label="Access mode"><button role="menuitemradio">Ask each time</button></div>',
+  );
+  assert.equal(access.visible.addMenu, false);
+  assert.equal(access.visible.accessMenu, true);
+  assert.equal(
+    namedState({ harness: "pi", state: "access-menu" }, access).namedState,
+    true,
+  );
+});
+
+test("CP-32c header resources popover is owned by the focused chat", async () => {
+  const popover = await observeMarkup(
+    "",
+    '<header><button aria-label="Show chat resources" aria-controls="resources"></button></header><div id="resources" class="menu-popover" role="dialog" aria-label="Chat resources"><section aria-label="Subagents"><span aria-label="Recent subagents working: 0">0 working</span><div class="agent-task-header__agent-list"><p class="agent-task-header__agent">Subagent done</p></div></section></div>',
+  );
+  assert.equal(popover.visible.popover, true);
+  assert.equal(popover.visible.subagentCounts, true);
+  assert.equal(popover.visible.subagentEntries, true);
+});
+
+test("file-hunk and file-diff-tab use the chat-wide summary and the named Diff tab", async () => {
+  const zone =
+    '<section class="acp-turn" data-turn-id="turn"></section><div class="chat-edit-summary-zone"><section aria-label="Files edited in this chat"><button aria-expanded="true">1 file changed</button><ul><li><button aria-label="Open diff project / src/example.ts"></button><button aria-label="Preview saved diff project / src/example.ts" aria-expanded="true">Preview saved diff</button><div role="table" aria-label="Inline saved diff">@@</div></li></ul></section></div>';
+  const hunk = await observeMarkup(zone);
+  assert.equal(hunk.visible.hunk, true);
+  assert.equal(
+    namedState({ harness: "claude", state: "file-hunk" }, hunk).namedState,
+    true,
+  );
+  const tab = await observeMarkup(
+    zone,
+    '<aside class="agent-artifact-pane" data-owner-chat-id="capture-chat"><nav aria-label="Agent artifact tabs"><div role="presentation" data-resource-kind="diff"><button role="tab" aria-label="Diff src/example.ts"></button></div></nav></aside>',
+  );
+  assert.equal(tab.visible.diffTab, true);
+  const [header, preview] = actionsFor("file-hunk", "claude");
+  assert.equal(isExpandable(header), true);
+  assert.equal(isExpandable(preview), true);
+  assert.equal(isExpandable(actionsFor("file-diff-tab", "claude")[1]), false);
+  let clicks = 0;
+  const button = {
+    disabled: false,
+    expanded: "true",
+    hasAttribute: () => true,
+    getAttribute() {
+      return this.expanded;
+    },
+    scrollIntoView() {},
+    click() {
+      clicks += 1;
+      this.expanded = this.expanded === "true" ? "false" : "true";
+    },
+  };
+  const run = () =>
+    new Function("document", "return " + expandExpression(header))({
+      querySelectorAll: (selector) =>
+        selector.includes("[aria-controls]") ? [] : [button],
+    });
+  assert.equal(run(), true);
+  assert.equal(clicks, 0);
+  button.expanded = "false";
+  assert.equal(run(), true);
+  assert.equal(clicks, 1);
+});
+
+test("pre-session composer stays out of the idle add-menu path", () => {
+  // CP-29e: Composer options is disabled until a session offers actions, so
+  // add-menu submits a Turn and waits for the enabled trigger first.
+  assert.deepEqual(actionsFor("add-menu", "claude"), [
+    'button[aria-label="Composer options"]',
+  ]);
 });
 
 test("effort readiness does not depend on the no-account Codex model picker", async () => {

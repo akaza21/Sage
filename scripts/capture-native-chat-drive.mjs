@@ -22,6 +22,9 @@ import {
   scopeToTurn,
   isDisclosure,
   openExpression,
+  isExpandable,
+  expandExpression,
+  COMPOSER_IDLE_CONTROL,
 } from "./capture-native-chat-dom.mjs";
 
 export async function captureStep(record, step, action) {
@@ -147,7 +150,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       HARNESS[options.harness].binding,
       deadline,
     );
-  if (["model-menu", "effort-menu"].includes(options.state))
+  if (COMPOSER_IDLE_CONTROL[options.state])
     await waitForComposerIdle(
       evaluate,
       OBSERVATION,
@@ -155,7 +158,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       HARNESS[options.harness].binding,
       deadline,
       record,
-      options.state === "effort-menu" ? "effortEnabled" : "modelEnabled",
+      COMPOSER_IDLE_CONTROL[options.state],
     );
   for (const action of actionsFor(options.state, options.harness)) {
     let latest = await evaluate(OBSERVATION);
@@ -172,6 +175,12 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       continue;
     }
     record("action-start", latest);
+    if (isExpandable(action)) {
+      const selector = scopeToTurn(action, latest.turnId);
+      await waitForState(() => evaluate(expandExpression(selector)), deadline);
+      record("action-expanded", latest);
+      continue;
+    }
     if (!isDisclosure(action)) {
       await clickCapture(scopeToTurn(action, latest.turnId));
       record("action-clicked", latest);

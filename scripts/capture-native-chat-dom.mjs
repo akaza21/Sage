@@ -9,8 +9,29 @@ export const IDLE_CAPTURE_STATES = Object.freeze([
   "new-chat",
   "composer-idle",
   "harness-menu",
-  "add-menu",
 ]);
+/** Composer controls enable only once the owned Turn settles (CP-29d/e). */
+export const COMPOSER_IDLE_CONTROL = Object.freeze({
+  "model-menu": "modelEnabled",
+  "effort-menu": "effortEnabled",
+  "add-menu": "addEnabled",
+  "plan-mode-entry": "addEnabled",
+  "access-menu": "accessEnabled",
+});
+/** CP-29e: one composer action menu; session modes are a group inside it. */
+const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
+/** CP-30c chat-wide edit summary above the composer. */
+const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
+export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
+/** Kinds whose matching node must also carry this accessible name. */
+export const NAMED_KINDS = Object.freeze({ planEntry: "Plan" });
+export function accessibleName(element) {
+  return (
+    element.getAttribute("aria-label") ??
+    element.textContent ??
+    ""
+  ).trim();
+}
 export const HARNESS = Object.freeze({
   pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-0.83.0" },
   codex: {
@@ -112,10 +133,13 @@ export function observationFor(binding) {
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>queryAll(selector).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'.acp-inline-diff',diffTab:'[role="tab"][data-resource-kind="diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'.composer__options',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'[role="listbox"][aria-label="Session mode"] [data-option-id="plan"]',meter:'.composer__context [role="progressbar"]'};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'${FILES_EDITED} [role="table"][aria-label="Inline saved diff"]',diffTab:'[aria-label="Agent artifact tabs"] [role="tab"][aria-label^="Diff "]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'${COMPOSER_MENU}',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'${COMPOSER_MENU} [role="group"][aria-label="Session mode"] [role="menuitemradio"]',meter:'.composer__context [role="progressbar"]'};
   const currentTurn=queryAll('.acp-turn').find(element=>turn?.id && element.dataset.turnId===turn.id);
-  const turnKinds=new Set(['thought','tool','rollup','editingFiles','hunk','subagent','plan','compaction','notice','permission','pendingApproval','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded']);
-  const nodesFor=(kind,selector)=>turnKinds.has(kind) ? queryAll(selector).filter(element=>currentTurn && element.closest('.acp-turn')===currentTurn) : queryAll(selector);
+  const turnKinds=new Set(['thought','tool','rollup','editingFiles','subagent','plan','compaction','notice','permission','pendingApproval','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded']);
+  const namedKinds=${JSON.stringify(NAMED_KINDS)};
+  const accessibleName=${accessibleName.toString()};
+  const named=(kind,nodes)=>namedKinds[kind] ? nodes.filter(element=>accessibleName(element)===namedKinds[kind]) : nodes;
+  const nodesFor=(kind,selector)=>named(kind,turnKinds.has(kind) ? queryAll(selector).filter(element=>currentTurn && element.closest('.acp-turn')===currentTurn) : queryAll(selector));
   const elements=[]; let charged=0;
   for(const [kind,selector] of Object.entries(selectors))for(const element of nodesFor(kind,selector)){
     if(elements.length>=64)throw Error('probe-elements');
@@ -126,7 +150,7 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-haspopup="dialog"][title="Select effort"]'),effortEnabled:has('button[aria-haspopup="dialog"][title="Select effort"]') && !query('button[aria-haspopup="dialog"][title="Select effort"]')?.disabled,add:has('button[aria-label="Composer options"]'),access:has('[aria-label="Access options"]'),stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-haspopup="dialog"][title="Select effort"]'),effortEnabled:has('button[aria-haspopup="dialog"][title="Select effort"]') && !query('button[aria-haspopup="dialog"][title="Select effort"]')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
@@ -308,7 +332,7 @@ export function namedState(options, observation, captureChat) {
     "effort-menu":
       terminal && assistantRendered && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
-    "access-menu": view.addMenu && view.accessMenu,
+    "access-menu": view.accessMenu,
     "context-meter": view.meter,
     "responsive-wide":
       terminal && assistantRendered && observation.controls.send,
@@ -330,6 +354,17 @@ export function openExpression(selector) {
 }
 export function isDisclosure(selector) {
   return selector.endsWith("> summary");
+}
+/** Toggle buttons that default open must not be clicked closed. */
+export function isExpandable(selector) {
+  return (
+    selector === FILES_EDITED_HEADER ||
+    selector.includes('[aria-label^="Preview saved diff"]')
+  );
+}
+/** Expands the single matching aria-expanded button; idempotent, true once open. */
+export function expandExpression(selector) {
+  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});const button=elements[0];if(elements.length!==1 || button.disabled || !button.hasAttribute('aria-expanded'))return false;if(button.getAttribute('aria-expanded')!=='true'){button.scrollIntoView({block:'center',inline:'nearest'});button.click()}return button.getAttribute('aria-expanded')==='true'})()`;
 }
 export function isLiveTurnAction(selector) {
   return (
@@ -383,9 +418,6 @@ export function actionsFor(state, harness) {
       ...(state === "tool-expanded"
         ? [LAST_TURN + ".acp-tool-rollup > summary"]
         : []),
-      ...(state === "cancelled-dialog"
-        ? [LAST_TURN + ".acp-unknown .acp-details > summary"]
-        : []),
       ...(state === "child-opened" ? [LAST_TURN + ".acp-subagent-row"] : []),
     ];
   if (state === "approval-approved")
@@ -402,17 +434,12 @@ export function actionsFor(state, harness) {
   if (state === "turn-retry") return [".acp-turn__failure button"];
   if (state === "file-hunk" || state === "file-diff-tab")
     return [
-      ".acp-file-changes__header",
+      FILES_EDITED_HEADER,
       state === "file-hunk"
-        ? '.acp-file-changes button[aria-label^="Preview"]'
-        : '.acp-file-changes button[aria-label^="Open diff"]',
+        ? FILES_EDITED + ' button[aria-label^="Preview saved diff"]'
+        : FILES_EDITED + ' button[aria-label^="Open diff"]',
     ];
   if (state === "access-menu") return ['button[aria-label="Access options"]'];
-  if (state === "plan-mode-entry")
-    return [
-      'button[aria-label="Composer options"]',
-      'button[aria-label="Session mode"]',
-    ];
   const menus = {
     "harness-menu": "Harness",
     "model-menu": "Model",

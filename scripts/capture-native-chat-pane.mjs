@@ -1,9 +1,16 @@
+/**
+ * CP-32c: the chat header above the panes belongs to the focused Chat; capture
+ * already requires exactly one focused pane, so its resources popover is owned.
+ */
 export function paneSelector(selector) {
+  // Self-contained: serialized into page expressions.
+  const FOCUSED_CHAT_RESOURCES = 'button[aria-label="Show chat resources"]';
   if (
     [
       'button[aria-label="Open projects and chats"]',
       'button[aria-label="Close projects and chats"]',
       'button[aria-label="New task"]',
+      FOCUSED_CHAT_RESOURCES,
     ].includes(selector)
   )
     return selector;
@@ -23,6 +30,12 @@ export function ownedPaneNodes(document, selector, chatId = null) {
   );
   const controls = [
     ...bounded(document.querySelectorAll(paneSelector("[aria-controls]")), 64),
+    ...bounded(
+      document.querySelectorAll(
+        'button[aria-label="Show chat resources"][aria-controls]',
+      ),
+      64,
+    ),
   ];
   const roots = [];
   if (chatId)
