@@ -53,6 +53,16 @@ test("capture accessible selectors stay anchored to product controls", () => {
       'label="Inline saved diff"',
     ),
   );
+  assert.ok(
+    source("workbench/AgentArtifactPane.tsx").includes(
+      'aria-label="Agent artifacts"',
+    ),
+  );
+  assert.ok(
+    source("features/diff/DiffSurface.tsx").includes(
+      'label="Unified file diff"',
+    ),
+  );
   const tabs = source("workbench/AgentArtifactTabStrip.tsx");
   assert.ok(tabs.includes('aria-label="Agent artifact tabs"'));
   assert.ok(
@@ -124,6 +134,16 @@ test("file-hunk and file-diff-tab use the chat-wide summary and the named Diff t
     '<aside class="agent-artifact-pane" data-owner-chat-id="capture-chat"><nav aria-label="Agent artifact tabs"><div role="presentation" data-resource-kind="diff"><button role="tab" aria-label="Diff src/example.ts"></button></div></nav></aside>',
   );
   assert.equal(tab.visible.diffTab, true);
+  const diffTab = { harness: "claude", state: "file-diff-tab" };
+  // The lazy Diff surface still shows "Loading Diff…": not yet capturable.
+  assert.equal(tab.visible.diffView, false);
+  assert.equal(namedState(diffTab, tab).namedState, false);
+  const loaded = await observeMarkup(
+    zone,
+    '<aside class="agent-artifact-pane" aria-label="Agent artifacts" data-owner-chat-id="capture-chat"><nav aria-label="Agent artifact tabs"><div role="presentation" data-resource-kind="diff"><button role="tab" aria-label="Diff src/example.ts"></button></div></nav><section aria-label="Diff for src/example.ts"><div role="table" aria-label="Unified file diff">@@</div></section></aside>',
+  );
+  assert.equal(loaded.visible.diffView, true);
+  assert.equal(namedState(diffTab, loaded).namedState, true);
   const [header, preview] = actionsFor("file-hunk", "claude");
   assert.equal(isExpandable(header), true);
   assert.equal(isExpandable(preview), true);
