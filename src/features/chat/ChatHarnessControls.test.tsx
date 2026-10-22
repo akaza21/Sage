@@ -151,6 +151,72 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it("shows effort once when a separate effort control is available", () => {
+    renderControls({ sessionConfig: confirmedModelConfig() });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Confirmed session model$/,
+    );
+    expect(screen.getAllByText("High", { exact: true })).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { description: "Select effort" }),
+    ).toHaveTextContent("High");
+  });
+
+  it("keeps effort reachable through Add when its compact toolbar control yields", () => {
+    renderControls({ sessionConfig: confirmedModelConfig() });
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Thinking level" }));
+    expect(
+      screen.getByRole("dialog", { name: "Thinking level" }),
+    ).toBeVisible();
+    expect(screen.getByRole("slider")).toHaveAttribute(
+      "aria-valuetext",
+      "High",
+    );
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Thinking level" }), {
+      key: "Escape",
+    });
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toHaveFocus();
+  });
+
+  it.each([null, "previous-harness"])(
+    "shows a known draft catalog selection apart from session %s",
+    (sessionHarnessId) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "access-test",
+        models: [{ id: "chosen", name: "Chosen model" }],
+      });
+      renderControls({
+        sessionHarnessId,
+        selectedModelId: "chosen",
+      });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        /^Chosen model$/,
+      );
+    },
+  );
+
+  it("does not offer inert effort actions when prompting is unavailable", () => {
+    renderControls({ sessionConfig: confirmedModelConfig(), canPrompt: false });
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeDisabled();
+  });
+
+  it("shows only the selected harness's confirmed model and effort in its picker row", () => {
+    renderControls({ sessionConfig: confirmedModelConfig() });
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    expect(screen.getByRole("option")).toHaveTextContent(
+      "Confirmed session model High",
+    );
+    expect(
+      screen.getByRole("button", { name: "Harness" }),
+    ).not.toHaveTextContent("Confirmed session model");
+  });
+
   it.each([false, true])(
     "prefers explicit effort over thought_level regardless of order (%s)",
     (reverse) => {
@@ -320,7 +386,7 @@ describe("last confirmed model label", () => {
     };
     renderControls({ sessionConfig });
     const trigger = screen.getByRole("button", { name: "Model" });
-    expect(trigger).toHaveTextContent(/^session-model High$/);
+    expect(trigger).toHaveTextContent(/^session-model$/);
     expect(trigger).toHaveAccessibleDescription("session-model High");
     fireEvent.click(trigger);
     expect(
@@ -419,7 +485,7 @@ describe("last confirmed model label", () => {
       sessionConfig,
     });
     const trigger = screen.getByRole("button", { name: "Model" });
-    expect(trigger).toHaveTextContent(/^GPT-6 Astra High$/);
+    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
     expect(trigger).toBeDisabled();
     fireEvent.click(trigger);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
@@ -1134,7 +1200,7 @@ describe("composer permission mode picker", () => {
     ).not.toBeNull();
   });
 
-  it("shows harness names without model or installation subtitles and keeps reasons accessible", () => {
+  it("shows confirmed model subtitles without installation details and keeps reasons accessible", () => {
     const claude = {
       id: "claude",
       name: "Claude Code",
@@ -1216,7 +1282,7 @@ describe("composer permission mode picker", () => {
     const codexRow = screen.getByRole("option", { name: /Codex/ });
     expect(
       claudeRow.querySelector(".searchable-picker__option-copy"),
-    ).toHaveTextContent(/^Claude Code$/);
+    ).toHaveTextContent(/^Claude CodeOpus 5 High$/);
     expect(
       claudeRow.querySelector(".searchable-picker__selected-check"),
     ).not.toBeNull();
@@ -1373,7 +1439,10 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      /^Model$/,
+      /^Codex 6$/,
+    );
+    expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
+      "Claude Opus",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
     expect(screen.getByRole("option", { name: /Codex 6/ })).toBeVisible();

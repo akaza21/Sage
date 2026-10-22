@@ -1,6 +1,6 @@
-import { Check, Plus, Settings } from "../../ui/leanIcons";
+import { Plus, Settings } from "../../ui/leanIcons";
 
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -21,7 +21,7 @@ import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { ComposerAddActions } from "./ComposerAddActions";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
@@ -86,6 +86,7 @@ export function ChatHarnessControls({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const [effortFromAdd, setEffortFromAdd] = useState(false);
   const {
     active,
     modelId,
@@ -133,7 +134,7 @@ export function ChatHarnessControls({
         (option.category ?? option.id).toLocaleLowerCase() === "thought_level",
     );
   const hasSessionModel = modelOption?.type === "select";
-  const modelLabel = useConfirmedModelLabel(
+  const confirmedModelLabel = useConfirmedModelLabel(
     JSON.stringify([
       projectId,
       modelLabelScope,
@@ -145,6 +146,11 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
+  const modelLabel =
+    confirmedModelLabel === "Model" && sessionHarnessId !== selectedHarnessId
+      ? (models.find((model) => model.id === selectedModelId)?.name ??
+        confirmedModelLabel)
+      : confirmedModelLabel;
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortLabel =
     composerOptionLabel(effortOption) ??
@@ -172,7 +178,15 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(harnesses);
+  const harnessCandidates = harnessPickerCandidates(harnesses).map(
+    (candidate) => ({
+      ...candidate,
+      subtitle:
+        candidate.id === selectedHarnessId && modelLabel !== "Model"
+          ? `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+          : undefined,
+    }),
+  );
   const modeOptions = selectedSessionConfig?.modes?.availableModes ?? [];
   const hasModes = !selectedSessionConfig?.removed && modeOptions.length > 0;
   const modeCandidates = modeOptions.map((mode) => ({
@@ -180,9 +194,16 @@ export function ChatHarnessControls({
     label: mode.name || mode.id,
   }));
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
+  const canSelectEffort =
+    canPrompt &&
+    effortOption?.type === "select" &&
+    flattenChoices(effortOption).some(
+      (choice) => choice.value === effortOption.currentValue,
+    );
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
+    canSelectEffort ||
     hasModes ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -192,6 +213,7 @@ export function ChatHarnessControls({
     selectedSessionConfig?.sageAgentSessionId,
     Boolean(imageAction),
     Boolean(onOpenGoal),
+    canSelectEffort,
     modeCandidates.map((mode) => mode.id),
     otherOptions.map((option) => [
       option.id,
@@ -269,7 +291,11 @@ export function ChatHarnessControls({
         open={active === "model"}
         effortOpen={active === "effort"}
         onToggle={() => toggle("model")}
-        onToggleEffort={() => toggle("effort")}
+        onToggleEffort={() => {
+          setEffortFromAdd(false);
+          toggle("effort");
+        }}
+        effortAnchorRef={effortFromAdd ? optionsTriggerRef : undefined}
         onDismiss={dismiss}
         choices={modelChoices}
         selectedId={currentModelId}
@@ -305,74 +331,24 @@ export function ChatHarnessControls({
           onDismiss={dismiss}
           gap={8}
         >
-          {imageAction ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-item"
-              disabled={imageAction.disabled}
-              tabIndex={-1}
-              onClick={() => {
-                imageAction.onChoose();
-                closeActions();
-              }}
-            >
-              Add images
-            </button>
-          ) : null}
-          {onOpenGoal ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-item"
-              tabIndex={-1}
-              onClick={() => {
-                dismiss();
-                onOpenGoal();
-              }}
-            >
-              Goal
-            </button>
-          ) : null}
-          <ChatSessionConfigControls
+          <ComposerAddActions
             sessionConfig={selectedSessionConfig}
-            group="other"
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
-            onSetSessionConfigOption={(id, value) => {
-              closeActions();
-              return onSetSessionConfigOption(id, value);
-            }}
-          />
-          {hasModes ? (
-            <div role="group" aria-label="Session mode">
-              <p className="menu-group-label" aria-hidden="true">
-                Session mode
-              </p>
-              {modeCandidates.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  role="menuitemradio"
-                  className="menu-item"
-                  aria-checked={
-                    mode.id === selectedSessionConfig?.modes?.currentModeId
+            imageAction={imageAction}
+            onOpenGoal={onOpenGoal}
+            onOpenEffort={
+              canSelectEffort
+                ? () => {
+                    setEffortFromAdd(true);
+                    toggle("effort");
                   }
-                  disabled={modePending}
-                  tabIndex={-1}
-                  onClick={() => {
-                    closeActions();
-                    void onSetSessionMode(mode.id);
-                  }}
-                >
-                  <span>{mode.label}</span>
-                  {mode.id === selectedSessionConfig?.modes?.currentModeId ? (
-                    <Check size={14} aria-hidden="true" />
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
+                : undefined
+            }
+            onClose={closeActions}
+            onSetSessionMode={onSetSessionMode}
+            onSetSessionConfigOption={onSetSessionConfigOption}
+          />
         </MenuPopover>
       ) : null}
       {modePending ? (

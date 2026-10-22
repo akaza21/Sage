@@ -59,6 +59,11 @@ export const PickerOption = memo(function PickerOption({
       ) : null}
       <span className="searchable-picker__option-copy">
         <span>{candidate.label}</span>
+        {candidate.subtitle ? (
+          <span className="searchable-picker__subtitle">
+            {candidate.subtitle}
+          </span>
+        ) : null}
       </span>
       {selected && (logo || showSelectedCheck) ? (
         <Check

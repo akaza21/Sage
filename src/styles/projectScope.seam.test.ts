@@ -99,8 +99,8 @@ describe("Composer Project chip responsive seam", () => {
     expect(split).not.toContain(".composer__controls > .select-control {");
   });
 
-  it.each([128, 184, 252, 259, 259.5, 260, 280, 400, 401])(
-    "reflows toolbar actions only below 260px at %ipx composer content width",
+  it.each([128, 184, 252, 259, 259.5, 260, 280, 320, 321, 400, 401])(
+    "keeps toolbar actions in one row down to 184px at %ipx composer content width",
     async (width) => {
       const narrow = await readFile(
         "src/styles/chat-container-controls.css",
@@ -108,10 +108,15 @@ describe("Composer Project chip responsive seam", () => {
       );
       const surface = await readFile("src/styles/composer-surface.css", "utf8");
       const harness = await readFile("src/styles/harness-picker.css", "utf8");
+      const model = await readFile(
+        "src/styles/composer-model-picker.css",
+        "utf8",
+      );
       const style = document.createElement("style");
       style.textContent =
         surface +
         harness +
+        model +
         narrow.replace(
           /@container composer \((max-width:|width <) (\d+)px\)\s*\{([\s\S]*?)\n\}/g,
           (_query, operator, breakpoint, rules) =>
@@ -130,13 +135,19 @@ describe("Composer Project chip responsive seam", () => {
       document.head.append(style);
       document.body.append(composer);
       try {
-        const wrapped = width < 260;
+        const wrapped = width < 180;
         const harnessStyle = getComputedStyle(
           composer.querySelector(".composer__harness")!,
         );
         expect(harnessStyle.flexShrink).toBe("1");
-        expect(harnessStyle.flexBasis).toBe(width <= 400 ? "40px" : "128px");
-        expect(harnessStyle.minWidth).toBe("28px");
+        expect(harnessStyle.flexBasis).toBe(
+          width < 280 ? "24px" : width <= 400 ? "28px" : "128px",
+        );
+        expect(harnessStyle.minWidth).toBe(width < 280 ? "24px" : "28px");
+        expect(
+          getComputedStyle(composer.querySelector(".composer__model-group")!)
+            .minWidth,
+        ).toBe(width < 280 ? "24px" : width <= 320 ? "28px" : "60px");
         expect(
           getComputedStyle(composer.firstElementChild!).gridTemplateAreas,
         ).toBe(
@@ -152,7 +163,7 @@ describe("Composer Project chip responsive seam", () => {
           expect(
             getComputedStyle(composer.querySelector(".composer__model-group")!)
               .flexWrap,
-          ).toBe("wrap");
+          ).toBe("nowrap");
         }
         if (wrapped) {
           expect(

@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Square } from "../../ui/leanIcons";
+import { Mic } from "../../ui/leanIcons";
 
 import type { FormEventHandler, RefObject } from "react";
 
@@ -28,6 +28,7 @@ import { ComposerContext } from "./ComposerContext";
 import { ClaudeAuthActions } from "./ClaudeAuthActions";
 import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerImageInput } from "./ComposerImageInput";
+import { ComposerTurnControl } from "./ComposerTurnControl";
 import "../../styles/queued-messages.css";
 
 export function ChatComposerRegion({
@@ -184,12 +185,14 @@ export function ChatComposerRegion({
       }}
     >
       <div className="composer__body">
-        <BoundChatGoalControl
-          state={goal}
-          chatId={dictationScope}
-          detailsRef={goalDetails.detailsRef}
-          canMutate={goalDetails.canMutate}
-        />
+        {goal.kind === "goal" && goalDetails.canMutate ? (
+          <BoundChatGoalControl
+            state={goal}
+            chatId={dictationScope}
+            detailsRef={goalDetails.detailsRef}
+            canMutate={goalDetails.canMutate}
+          />
+        ) : null}
         <ComposerQueuedPrompts
           composerRef={composerRef}
           prompts={queuedPrompts}
@@ -243,15 +246,19 @@ export function ChatComposerRegion({
             ref={composerRef}
             id={fieldId}
             aria-label="Message agent"
+            aria-description={
+              queueing
+                ? "Enter queues a message while this turn runs."
+                : undefined
+            }
             aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
             value={text}
             maxLength={MAX_CHAT_COMPOSER_BYTES}
             rows={2}
-            placeholder={
-              queueing
-                ? "Enter to queue a message"
-                : composerPromptPlaceholder(canPrompt, sessionPromptUnavailable)
-            }
+            placeholder={composerPromptPlaceholder(
+              canPrompt,
+              sessionPromptUnavailable,
+            )}
             disabled={composerDisabled}
             onChange={(event) => onTextChange(event.target.value)}
             onBlur={dictation.cancel}
@@ -364,36 +371,17 @@ export function ChatComposerRegion({
             {dictation.error}
           </span>
         ) : null}
-        {onCancelTurn ? (
-          <button
-            className="send-button send-button--cancel"
-            type="button"
-            aria-label="Cancel turn"
-            disabled={actionBusy || projectTransitioning}
-            onClick={onCancelTurn}
-          >
-            <Square size={14} fill="currentColor" aria-hidden="true" />
-          </button>
-        ) : null}
-        {!onCancelTurn ? (
-          <button
-            className="send-button"
-            type="submit"
-            aria-label={
-              activeTurn && queueAvailable ? "Queue message" : "Send message"
-            }
-            disabled={
-              projectTransitioning ||
-              !text.trim() ||
-              !enabled ||
-              actionBusy ||
-              imageUploading ||
-              imageInput.sendBlocked
-            }
-          >
-            <ArrowUp size={20} aria-hidden="true" />
-          </button>
-        ) : null}
+        <ComposerTurnControl
+          onCancelTurn={onCancelTurn}
+          cancelDisabled={actionBusy || projectTransitioning}
+          queueing={Boolean(activeTurn && queueAvailable)}
+          sendDisabled={
+            composerDisabled ||
+            !text.trim() ||
+            imageUploading ||
+            imageInput.sendBlocked
+          }
+        />
       </div>
     </form>
   );

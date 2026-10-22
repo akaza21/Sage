@@ -15,6 +15,7 @@ import { ChevronDown, RotateCcw, Sparkles } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 
 export function ComposerEffortControl({
+  anchorRef,
   fallbackRef,
   option,
   modelLabel,
@@ -27,6 +28,7 @@ export function ComposerEffortControl({
   pending,
   onSetOption,
 }: {
+  anchorRef?: RefObject<HTMLButtonElement | null>;
   fallbackRef: RefObject<HTMLButtonElement | null>;
   option: Extract<AcpConfigOption, { type: "select" }>;
   modelLabel: string;
@@ -40,6 +42,7 @@ export function ComposerEffortControl({
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelTriggerRef = anchorRef ?? triggerRef;
   const sliderRef = useRef<HTMLInputElement>(null);
   const panelId = useId();
   const [draft, setDraft] = useState<{
@@ -57,7 +60,7 @@ export function ComposerEffortControl({
           !panel?.contains(document.activeElement)
         )
           return;
-        const trigger = triggerRef.current;
+        const trigger = panelTriggerRef.current;
         const fallback =
           trigger?.isConnected && !trigger.disabled
             ? trigger
@@ -73,7 +76,7 @@ export function ComposerEffortControl({
     if (disabled) restoreFocus();
     else queueMicrotask(() => sliderRef.current?.focus());
     return restoreFocus;
-  }, [disabled, fallbackRef, open, panelId]);
+  }, [disabled, fallbackRef, open, panelId, panelTriggerRef]);
   const levels = flattenChoices(option);
   const index = levels.findIndex(
     (level) => level.value === option.currentValue,
@@ -114,7 +117,7 @@ export function ComposerEffortControl({
         ariaLabel="Thinking level"
         role="dialog"
         open={open}
-        triggerRef={triggerRef}
+        triggerRef={panelTriggerRef}
         onDismiss={onDismiss}
         className="composer__popover composer__effort-menu"
       >

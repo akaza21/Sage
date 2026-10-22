@@ -98,11 +98,23 @@ describe("composer image input", () => {
         selectedHarnessId: "fixture",
         sessionHarnessId: "fixture",
       });
+      expect(screen.queryByText("Goal", { exact: true })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
     },
   );
+
+  it("keeps the running prompt plain while describing queue behavior accessibly", () => {
+    renderComposer({ activeTurn: true, queueAvailable: true });
+    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    expect(prompt).toHaveAttribute("placeholder", "Do anything");
+    expect(prompt).toHaveAttribute(
+      "aria-description",
+      "Enter queues a message while this turn runs.",
+    );
+    expect(prompt).toHaveAccessibleDescription(/Enter queues a message/);
+  });
 
   it("gates only Add Goal by binding and picker identity, preserving native details actions", () => {
     const goal = {

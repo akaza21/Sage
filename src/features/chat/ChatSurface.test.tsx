@@ -338,18 +338,18 @@ describe("ChatSurface ACP resource integration", () => {
   );
 
   it.each([
-    ["unsupported", /not available for this binding/i],
-    ["unavailable", /native goal unavailable/i],
-  ] as const)(
-    "keeps the %s Goal explanation reachable from the composer",
-    (kind, explanation) => {
-      hooks.page = { ...projection(), goal: { kind } };
-      matchConfiguredSession();
-      render(<ChatSurface />);
-      fireEvent.click(screen.getByText("Goal"));
-      expect(screen.getByText(explanation)).toBeVisible();
-    },
-  );
+    "unsupported",
+    "unavailable",
+    "noGoal",
+    "loading",
+    "offline",
+  ] as const)("omits the %s Goal row from the composer", (kind) => {
+    hooks.page = { ...projection(), goal: { kind } };
+    matchConfiguredSession();
+    render(<ChatSurface />);
+    expect(screen.queryByText("Goal", { exact: true })).toBeNull();
+    expect(screen.queryByLabelText("Goal details")).toBeNull();
+  });
 
   it("opens an earlier-session assistant file link in its owning Chat", async () => {
     const resource = { rootId: "root-a", relativePath: "README.md" };
@@ -553,7 +553,11 @@ describe("ChatSurface ACP resource integration", () => {
     expect(composer).toHaveAccessibleDescription(
       /Enter queues a message while this turn runs\. Shift\+Enter adds a new line\./,
     );
-    expect(composer).toHaveAttribute("placeholder", "Enter to queue a message");
+    expect(composer).toHaveAttribute("placeholder", "Do anything");
+    expect(composer).toHaveAttribute(
+      "aria-description",
+      "Enter queues a message while this turn runs.",
+    );
     fireEvent.change(composer, { target: { value: "Follow up" } });
     const stop = screen.getByRole("button", { name: "Cancel turn" });
     expect(stop.closest("form")?.querySelectorAll(".send-button")).toHaveLength(
@@ -1350,7 +1354,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       within(modes)
         .getAllByRole("menuitemradio")
-        .map((option) => option.textContent),
+        .map((option) => option.getAttribute("aria-label")),
     ).toEqual(["Review changes", "Apply changes"]);
     expect(
       within(modes).getByRole("menuitemradio", { name: "Review changes" }),
