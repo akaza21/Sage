@@ -79,7 +79,7 @@ it("selects an advertised session mode directly in the Add menu", () => {
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
   expect(within(menu).queryByRole("combobox")).toBeNull();
   const build = within(menu).getByRole("menuitemradio", { name: "Build" });
-  const plan = within(menu).getByRole("menuitemradio", { name: "Plan" });
+  const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(build).toHaveAttribute("aria-checked", "true");
   expect(build).toHaveFocus();
   fireEvent.keyDown(menu, { key: "End" });
@@ -165,13 +165,21 @@ it.each([false, true])(
   },
 );
 
-it("keeps the mode group named while hiding its visual heading from menu navigation", () => {
-  renderActions();
-  const group = screen.getByRole("group", { name: "Session mode" });
-  expect(within(group).getByText("Session mode")).toHaveAttribute(
-    "aria-hidden",
-    "true",
-  );
+it("gives Add a header and icon rows with truthful one-line Plan and Goal descriptions", () => {
+  const onOpenGoal = vi.fn();
+  renderActions(true, { onOpenGoal });
+  const menu = screen.getByRole("menu", { name: "Composer options menu" });
+  expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
+  expect(within(menu).queryByText("Session mode")).toBeNull();
+  const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
+  expect(plan).toHaveAccessibleDescription("Turn plan mode on");
+  expect(plan.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  const goal = within(menu).getByRole("menuitem", { name: "Goal" });
+  expect(goal).toHaveAccessibleDescription("View the current goal");
+  expect(goal.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  fireEvent.click(goal);
+  expect(onOpenGoal).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("menu")).toBeNull();
 });
 
 it.each(["mode", "config"])(

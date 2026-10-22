@@ -13,11 +13,15 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   expect(box!.width).toBeGreaterThanOrEqual(24);
   expect(box!.height).toBeGreaterThanOrEqual(24);
   if (compact) {
-    expect(box!.width).toBe(28);
+    expect(box!.width).toBe(
+      await composer.evaluate((element) =>
+        element.clientWidth < 280 ? 24 : 28,
+      ),
+    );
     expect(box!.height).toBe(28);
   }
   const controlsCompact = await composer.evaluate(
-    (element) => element.clientWidth <= 400,
+    (element) => element.clientWidth <= 280,
   );
   const harness = composer.getByRole("button", {
     name: "Harness",
@@ -25,8 +29,8 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   });
   const model = composer.getByRole("button", { name: "Model", exact: true });
   for (const [trigger, minimum] of [
-    [harness, 28],
-    [model, 28],
+    [harness, 24],
+    [model, 24],
   ] as const) {
     await expect(trigger).toBeVisible();
     expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(
@@ -35,12 +39,15 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   }
   const harnessLabel = harness.locator(".searchable-picker__trigger-label");
   const modelLabel = model.locator(".composer__model-label");
-  if (controlsCompact) {
+  if (await composer.evaluate((element) => element.clientWidth <= 400)) {
     await expect(harnessLabel).toBeHidden();
+  } else {
+    await expect(harnessLabel).toBeVisible();
+  }
+  if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
     await expect(model.locator(".composer__model-icon")).toBeVisible();
   } else {
-    await expect(harnessLabel).toBeVisible();
     await expect(modelLabel).toBeVisible();
   }
   if (compact) {
@@ -79,7 +86,7 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
       Number.parseFloat(computed.borderRightWidth) -
       Number.parseFloat(computed.paddingLeft) -
       Number.parseFloat(computed.paddingRight);
-    const secondRow = contentWidth < 260;
+    const secondRow = contentWidth < 180;
     return {
       overflow: toolbar.scrollWidth > toolbar.clientWidth,
       disjoint: bounds.every((button, index) =>
@@ -124,7 +131,6 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
       actionsAligned: Math.abs(mic.top - send.top) <= 1,
       identityRow:
         secondRow ||
-        Boolean(toolbar.querySelector(".composer__effort-picker")) ||
         targets.every(
           (target) =>
             Math.abs(
@@ -173,7 +179,7 @@ for (const width of [1888, 720, 480]) {
 }
 
 for (const contentWidth of [
-  128, 184, 252, 259, 259.5, 260, 264, 280, 400, 401,
+  128, 184, 252, 259, 259.5, 260, 264, 280, 281, 320, 321, 400, 401,
 ]) {
   test(`Project toolbar remains hit-testable at ${contentWidth}px content width`, async ({
     page,

@@ -6,6 +6,7 @@ import type {
   AcpConfigOption,
   AcpConfigValue,
 } from "../../domain/acpSessionConfig";
+import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import {
   ChatModelPicker,
   MAX_VISIBLE_MODELS,
@@ -19,6 +20,7 @@ export function ComposerModelControls({
   effortOpen,
   onToggle,
   onToggleEffort,
+  effortAnchorRef,
   onDismiss,
   choices,
   selectedId,
@@ -37,6 +39,7 @@ export function ComposerModelControls({
   effortOpen: boolean;
   onToggle: () => void;
   onToggleEffort: () => void;
+  effortAnchorRef?: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
   choices: readonly ComposerModelChoice[];
   selectedId: string | null;
@@ -50,6 +53,11 @@ export function ComposerModelControls({
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
   const available = !disabled && !pending && choices.length > 0;
+  const hasEffortControl =
+    effortOption?.type === "select" &&
+    flattenChoices(effortOption).some(
+      (choice) => choice.value === effortOption.currentValue,
+    );
   const modelDescription =
     modelLabel === "Model"
       ? undefined
@@ -84,13 +92,14 @@ export function ComposerModelControls({
             aria-hidden="true"
           />
           <span className="composer__model-label">{modelLabel}</span>
-          {effortLabel ? (
+          {effortLabel && !hasEffortControl ? (
             <span className="composer__model-effort"> {effortLabel}</span>
           ) : null}
           <ChevronDown size={12} aria-hidden="true" />
         </button>
         {effortOption?.type === "select" ? (
           <ComposerEffortControl
+            anchorRef={effortAnchorRef}
             fallbackRef={triggerRef}
             option={effortOption}
             modelLabel={modelLabel}

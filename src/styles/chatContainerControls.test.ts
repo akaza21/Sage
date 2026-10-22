@@ -144,10 +144,12 @@ describe("Chat container control breakpoints", () => {
     [521, "inline", "inline"],
     [520, "none", "inline"],
     [401, "none", "inline"],
-    [400, "none", "none"],
+    [400, "none", "inline"],
+    [281, "none", "inline"],
+    [280, "none", "none"],
     [180, "none", "none"],
   ])(
-    "at %ipx collapses access text before harness/model text",
+    "at %ipx preserves model text until icon compaction is necessary",
     async (width, access, identity) => {
       expect(await containerDisplay(".composer__access-text", width)).toBe(
         access,
@@ -157,7 +159,7 @@ describe("Chat container control breakpoints", () => {
           ".composer__harness .searchable-picker__trigger-label",
           width,
         ),
-      ).toBe(identity);
+      ).toBe(width <= 400 ? "none" : "inline");
       expect(await containerDisplay(".composer__model-label", width)).toBe(
         identity,
       );
@@ -166,7 +168,9 @@ describe("Chat container control breakpoints", () => {
 
   it.each([
     [401, "none"],
-    [400, "block"],
+    [400, "none"],
+    [281, "none"],
+    [280, "block"],
     [180, "block"],
   ])(
     "declares the model icon display at %ipx as %s",

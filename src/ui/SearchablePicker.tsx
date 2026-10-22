@@ -24,6 +24,7 @@ export const SEARCHABLE_PICKER_PAGE_SIZE = 10;
 export interface SearchablePickerOption {
   id: string;
   label: string;
+  subtitle?: string;
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;

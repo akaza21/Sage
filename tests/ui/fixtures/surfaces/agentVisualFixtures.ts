@@ -7,7 +7,7 @@ import type {
   SageTurnId,
 } from "../../../../src/domain/acp";
 
-import { FIXED_NOW, MODEL_ID, ROOT_ID } from "../visualFixtureIds";
+import { FIXED_NOW, MODEL_ID, ROOT_ID, session } from "../visualFixtureIds";
 import type { ItemInput } from "../visualFixtureIds";
 import { itemIdentity } from "../visualFixtureIds";
 import {
@@ -541,6 +541,15 @@ export function buildAgentPages(
             6_000,
             272_000,
           ),
+          sessions: [
+            {
+              ...session(),
+              capabilities: {
+                ...session().capabilities,
+                protocolVersion: "codex-app-server-observed-0.146.0",
+              },
+            },
+          ],
           goal: {
             kind: "goal",
             snapshot: {

@@ -73,17 +73,12 @@
   }
 
   .composer .composer__harness .searchable-picker__trigger-label,
-  .composer .composer__model-label,
-  .composer .composer__model-effort {
+  .composer .composer__harness .searchable-picker__chevron {
     display: none;
   }
 
-  .composer__model-icon {
-    display: block;
-  }
-
   .composer__controls .composer__harness.composer__control-trigger {
-    flex: 0 1 40px;
+    flex: 0 1 28px;
   }
 
   .composer__controls .composer__harness .searchable-picker__trigger {
@@ -91,9 +86,36 @@
     padding: 0;
   }
 
-  .composer .composer__harness .searchable-picker__chevron,
-  .composer__model-trigger > svg:last-child {
+  .composer .composer__model-group {
+    max-width: 100%;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+  }
+
+  .composer__effort-picker {
+    max-width: min(80px, 100%);
+  }
+}
+
+@container composer (max-width: 320px) {
+  .composer .composer__effort-picker {
     display: none;
+  }
+
+  .composer .composer__model-group {
+    min-width: 28px;
+  }
+}
+
+@container composer (max-width: 280px) {
+  .composer .composer__model-label,
+  .composer .composer__model-effort,
+  .composer .composer__model-trigger > svg:last-child {
+    display: none;
+  }
+
+  .composer__model-icon {
+    display: block;
   }
 
   .composer__controls .composer__model-group .composer__model-trigger {
@@ -102,17 +124,6 @@
     justify-content: center;
   }
 
-  .composer .composer__model-group {
-    max-width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .composer__effort-picker {
-    max-width: min(80px, 100%);
-  }
-}
-
-@container composer (max-width: 280px) {
   .composer .chat-goal-strip__row {
     height: auto;
     flex-wrap: wrap;
@@ -130,7 +141,52 @@
   }
 }
 
-@container composer (width < 260px) {
+@container composer (width < 280px) {
+  .composer .composer__toolbar {
+    gap: 2px;
+    padding-inline: 4px;
+  }
+
+  .composer .composer__controls {
+    gap: 0;
+  }
+
+  .composer .composer__model-group {
+    min-width: 24px;
+    flex: none;
+    gap: 0;
+  }
+
+  .composer .composer__context {
+    display: none;
+  }
+
+  .composer .composer__harness.composer__control-trigger {
+    min-width: 24px;
+    height: 28px;
+    flex-basis: 24px;
+  }
+
+  .composer .composer__harness .searchable-picker__trigger {
+    height: 28px;
+  }
+
+  .composer .project-scope,
+  .composer .project-scope .searchable-picker__trigger,
+  .composer .composer__model-group .composer__model-trigger,
+  .composer .composer__mic,
+  .composer .composer__access-label,
+  .composer .send-button {
+    min-width: 24px;
+    width: 24px;
+  }
+
+  .composer .send-button {
+    height: 24px;
+  }
+}
+
+@container composer (width < 180px) {
   .composer .composer__controls {
     flex-wrap: wrap;
   }

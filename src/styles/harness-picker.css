@@ -84,6 +84,15 @@
   overflow-y: auto;
 }
 
+.composer__harness-menu .searchable-picker__subtitle {
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer__harness-menu .searchable-picker__option:hover,
 .composer__harness-menu .searchable-picker__option:focus-visible {
   background: var(--composer-control-hover);
@@ -110,6 +119,22 @@
   margin: 4px 8px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+
+.composer__add-action {
+  justify-content: flex-start;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.composer__add-action > svg {
+  flex: none;
+}
+
+.composer__action-description {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  text-overflow: ellipsis;
 }
 
 .composer-access-menu__option {
