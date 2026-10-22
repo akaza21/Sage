@@ -192,7 +192,7 @@ for (const width of [480, 720, 1888]) {
                     right: box.right,
                     top: box.top,
                     bottom: box.bottom,
-                    width: box.width,
+                    intrinsicWidth: group.getBBox().width,
                     labelSize:
                       parseFloat(getComputedStyle(text).fontSize) *
                       text.getScreenCTM()!.a,
@@ -230,18 +230,29 @@ for (const width of [480, 720, 1888]) {
                   other.bottom <= node.top,
               ).toBe(true);
             }
-            expect(node.width).toBeLessThanOrEqual(320);
+            expect(node.intrinsicWidth).toBeLessThanOrEqual(320);
             expect(node.labelInsideNode).toBe(true);
             expect(node.insideSvg).toBe(true);
-            expect(node.labelSize).toBeCloseTo(metrics.bodySize, 1);
+            expect(node.labelSize).toBeCloseTo(
+              metrics.bodySize *
+                (metrics.renderedWidth / metrics.intrinsicWidth),
+              1,
+            );
+            expect(node.labelSize).toBeGreaterThanOrEqual(11.99);
           }
           for (const node of metrics.nodes.slice(1, 3)) {
             expect(node.lines.length).toBeGreaterThan(1);
             expect(node.lines.join("")).toBe(label);
           }
-          expect(metrics.renderedWidth).toBeCloseTo(metrics.intrinsicWidth, 1);
+          expect(metrics.renderedWidth).toBeCloseTo(
+            Math.max(
+              (metrics.intrinsicWidth * 6) / 7,
+              Math.min(metrics.intrinsicWidth, metrics.clientWidth),
+            ),
+            1,
+          );
           expect(metrics.hasLocalOverflow).toBe(
-            metrics.intrinsicWidth > metrics.clientWidth,
+            (metrics.intrinsicWidth * 6) / 7 > metrics.clientWidth,
           );
           expect(metrics.paneContained).toBe(true);
           if (metrics.hasLocalOverflow) {
@@ -260,7 +271,7 @@ for (const width of [480, 720, 1888]) {
   }
 }
 
-for (const width of [720, 1888]) {
+for (const width of [480, 720, 1888]) {
   for (const scenario of ["agent-single", "agent-dual"] as const) {
     for (const [name, source] of diagrams) {
       test(`CP-31 ${name} keeps readable labels inside the SVG at ${width}px in ${scenario}`, async ({
@@ -316,6 +327,7 @@ for (const width of [720, 1888]) {
                   element.closest(".agent-chat-pane")!.scrollWidth <=
                   element.closest(".agent-chat-pane")!.clientWidth + 1,
                 background: style.backgroundColor,
+                nodeFill: getComputedStyle(document.body).backgroundColor,
                 border: style.borderTopWidth,
                 padding: style.paddingTop,
                 nodeFills: [...svg.querySelectorAll("rect")].map(
@@ -324,21 +336,31 @@ for (const width of [720, 1888]) {
               };
             });
             expect(metrics.labelSizes.length).toBeGreaterThan(0);
-            for (const size of metrics.labelSizes)
-              expect(size).toBeCloseTo(metrics.bodySize, 1);
+            for (const size of metrics.labelSizes) {
+              expect(size).toBeCloseTo(
+                metrics.bodySize *
+                  (metrics.renderedWidth / metrics.intrinsicWidth),
+                1,
+              );
+              expect(size).toBeGreaterThanOrEqual(11.99);
+            }
             expect(metrics.renderedWidth).toBeCloseTo(
-              metrics.intrinsicWidth,
+              Math.max(
+                (metrics.intrinsicWidth * 6) / 7,
+                Math.min(metrics.intrinsicWidth, metrics.clientWidth),
+              ),
               1,
             );
             expect(metrics.hasLocalOverflow).toBe(
-              metrics.intrinsicWidth > metrics.clientWidth,
+              (metrics.intrinsicWidth * 6) / 7 > metrics.clientWidth,
             );
             expect(metrics.labelsInsideSvg).toBe(true);
             expect(metrics.paneContained).toBe(true);
             expect(metrics.background).toBe("rgba(0, 0, 0, 0)");
             expect(metrics.border).toBe("0px");
             expect(metrics.padding).toBe("0px");
-            for (const fill of metrics.nodeFills) expect(fill).toBe("none");
+            for (const fill of metrics.nodeFills)
+              expect(fill).toBe(metrics.nodeFill);
             if (metrics.hasLocalOverflow) {
               await expect(figure).toHaveAttribute("tabindex", "0");
               await figure.evaluate((element) => {

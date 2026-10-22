@@ -86,6 +86,7 @@
 
 .acp-permission__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: var(--space-2) 0 0;
 }
@@ -96,6 +97,7 @@
 
 .acp-permission__action {
   display: inline-flex;
+  flex: none;
   min-height: var(--control-height-compact);
   align-items: center;
   padding: 0 var(--space-3);
@@ -105,6 +107,7 @@
   background: var(--color-panel);
   font: inherit;
   font-size: var(--font-size-xs);
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -264,6 +267,8 @@
 
 .acp-mermaid svg {
   display: block;
+  width: clamp(calc(var(--mermaid-width) * 6 / 7), 100%, var(--mermaid-width));
+  height: auto;
   max-width: none;
   margin: 0 auto;
   color: var(--color-text-primary);
@@ -283,8 +288,8 @@
 }
 
 .acp-mermaid :is(rect, polygon) {
-  fill: none;
-  stroke: currentColor;
+  fill: var(--color-panel);
+  stroke: var(--color-border-strong);
 }
 
 .acp-mermaid :is(path, line) {
@@ -325,6 +330,10 @@
 
   .acp-mermaid text {
     stroke: Canvas;
+  }
+
+  .acp-mermaid :is(rect, polygon) {
+    fill: Canvas;
   }
 
   .acp-mermaid :is(rect, polygon, path, line) {
