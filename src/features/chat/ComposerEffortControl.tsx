@@ -93,6 +93,7 @@ export function ComposerEffortControl({
       void onSetOption(option.id, { value: level.value });
   };
   if (index < 0) return null;
+  const label = levels[index].name;
   return (
     <>
       <button
@@ -121,7 +122,9 @@ export function ComposerEffortControl({
         <div className="composer-effort__heading">
           <Sparkles size={13} aria-hidden="true" />
           <div className="composer-effort__identity">
-            <span className="composer-effort__level">{levels[index].name}</span>
+            <span className="composer-effort__level">
+              {label.charAt(0).toUpperCase() + label.slice(1)}
+            </span>
             <button
               type="button"
               disabled={!modelAvailable}

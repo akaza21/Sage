@@ -73,6 +73,34 @@ function effort(
 }
 
 describe("Advertised composer effort", () => {
+  it.each(["medium", "Balanced thinking"])(
+    "uses the %s display label in its heading and retains an advertised reset",
+    (label) => {
+      const { onSetOption } = controls({
+        ...effort("effort", ["low", "medium"], "medium"),
+        defaultValue: "low",
+        options: [
+          { value: "low", name: "Low" },
+          { value: "medium", name: label },
+        ],
+      });
+      fireEvent.click(
+        screen.getByRole("button", { description: "Select effort" }),
+      );
+      const dialog = screen.getByRole("dialog", { name: "Thinking level" });
+      expect(dialog.querySelector(".composer-effort__level")).toHaveTextContent(
+        label === "medium" ? "Medium" : label,
+      );
+      const reset = screen.getByRole("button", { name: "Reset effort" });
+      expect(reset).toBeVisible();
+      expect(reset).toHaveAttribute("title", "Reset effort");
+      fireEvent.click(reset);
+      expect(onSetOption).toHaveBeenCalledExactlyOnceWith("effort", {
+        value: "low",
+      });
+    },
+  );
+
   it.each([
     ["Codex", "effort", ["minimal", "low", "medium", "high", "xhigh"], "xhigh"],
     ["Claude", "effort", ["low", "medium", "high"], "high"],
