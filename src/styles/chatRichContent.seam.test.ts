@@ -11,19 +11,33 @@ const rule = (selector: string) => {
 };
 
 describe("Chat rich content layout", () => {
-  it("keeps body-sized Mermaid labels in a neutral, horizontally scrollable figure", () => {
+  it("keeps body-sized Mermaid labels in a neutral figure with filled subtly bordered nodes", () => {
     const figure = rule(".acp-mermaid");
     expect(figure).toContain("max-width: 100%");
     expect(figure).toContain("overflow: auto");
     expect(figure).not.toMatch(/(?:padding|border|border-radius|background):/u);
     expect(rule(".acp-mermaid svg")).toContain("max-width: none");
+    expect(rule(".acp-mermaid svg")).toContain(
+      "calc(var(--mermaid-width) * 6 / 7)",
+    );
+    expect(rule(".acp-mermaid svg")).toContain("height: auto");
     expect(rule(".acp-mermaid svg")).not.toContain("min-width:");
     expect(rule(".acp-mermaid text")).toContain(
       "font-size: var(--font-size-md)",
     );
-    expect(rule(".acp-mermaid :is(rect, polygon)")).toContain("fill: none");
+    expect(rule(".acp-mermaid :is(rect, polygon)")).toContain(
+      "fill: var(--color-panel)",
+    );
+    expect(rule(".acp-mermaid :is(rect, polygon)")).toContain(
+      "stroke: var(--color-border-strong)",
+    );
     expect(rule(".acp-mermaid__copy")).toContain(
       "color: var(--color-text-secondary)",
     );
+  });
+  it("wraps whole approval buttons instead of breaking the words inside them", () => {
+    expect(rule(".acp-permission__actions")).toContain("flex-wrap: wrap");
+    expect(rule(".acp-permission__action")).toContain("flex: none");
+    expect(rule(".acp-permission__action")).toContain("white-space: nowrap");
   });
 });

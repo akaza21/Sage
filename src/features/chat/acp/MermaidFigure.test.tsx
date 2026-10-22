@@ -15,6 +15,13 @@ afterEach(() => {
 });
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it("fits between a 12px label floor and natural size without changing the routing canvas", () => {
+    render(<MermaidFigure source={"graph TD\nA --> B"} />);
+    const svg = screen.getByRole("img");
+    expect(svg).toHaveAttribute("width", "320");
+    expect(svg).toHaveAttribute("viewBox", "0 0 320 204");
+    expect(svg.style.getPropertyValue("--mermaid-width")).toBe("320px");
+  });
   it.each([
     ["OK", 64, 240],
     ["Token and password valid?", 128, 300],
@@ -318,6 +325,9 @@ describe("bounded Mermaid flowchart rendering", () => {
     render(<MermaidFigure source={resetFlowchart} />);
     const figure = screen.getByRole("figure");
     const copy = screen.getByRole("button", { name: "Copy diagram source" });
+    expect(copy).toHaveAttribute("title", "Copy diagram source");
+    expect(copy.textContent).toBe("");
+    expect(copy.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(figure).not.toContainElement(copy);
     expect(figure.parentElement).toContainElement(copy);
     fireEvent.click(copy);

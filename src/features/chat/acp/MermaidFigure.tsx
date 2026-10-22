@@ -4,8 +4,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
+import { Copy } from "../../../ui/leanIcons";
 import {
   parseMermaidSource,
   type MermaidDiagram,
@@ -73,7 +75,9 @@ export function MermaidFigure({ source }: { source: string }) {
       </figure>
       <button
         type="button"
-        className="acp-mermaid__copy"
+        className="icon-button acp-mermaid__copy"
+        aria-label="Copy diagram source"
+        title="Copy diagram source"
         onClick={async () => {
           setCopyState({ identity, status: "" });
           let status = "Copied";
@@ -87,7 +91,7 @@ export function MermaidFigure({ source }: { source: string }) {
           );
         }}
       >
-        Copy diagram source
+        <Copy aria-hidden="true" />
       </button>
       <span role="status">{status}</span>
     </div>
@@ -118,6 +122,7 @@ function DiagramSvg({
       viewBox={`${left} 0 ${width} ${height}`}
       width={width}
       height={height}
+      style={{ "--mermaid-width": `${width}px` } as CSSProperties}
     >
       <desc id={descriptionId}>{description}</desc>
       {children}
