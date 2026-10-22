@@ -57,9 +57,15 @@ it("keeps full chat and harness status discoverable when compacted", () => {
   expect(
     screen.getByRole("status", { name: "Chat status: Waiting for approval" }),
   ).toHaveAttribute("title", "Waiting for approval");
+  expect(screen.getByRole("status")).toHaveAttribute("tabindex", "0");
   expect(
     screen.getByLabelText(
       "Harness status: Disconnected; reconnect to continue",
     ),
   ).toHaveAttribute("title", "Disconnected; reconnect to continue");
+  expect(
+    screen.getByLabelText(
+      "Harness status: Disconnected; reconnect to continue",
+    ),
+  ).toHaveAttribute("tabindex", "0");
 });

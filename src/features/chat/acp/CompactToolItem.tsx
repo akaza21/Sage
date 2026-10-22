@@ -10,14 +10,7 @@ export function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
   const label = compactToolLabels[kind];
   if (!label) return null;
   const { commandLine, output } = toolCommandContent(item);
-  const outcome = [
-    "failed",
-    "cancelled",
-    "declined",
-    "waitingForApproval",
-  ].includes(item.toolState)
-    ? toolStateLabels[item.toolState]
-    : null;
+  const outcome = toolStateLabels[item.toolState];
   return (
     <article
       className="acp-activity-card acp-tool-compact"

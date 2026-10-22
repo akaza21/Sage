@@ -170,6 +170,14 @@
   white-space: normal;
 }
 
+.acp-tool-command__outcome {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .acp-tool-compact[data-activity-state="failed"] .acp-tool-command__outcome {
   color: var(--color-danger);
 }

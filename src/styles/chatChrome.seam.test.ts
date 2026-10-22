@@ -1,18 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { expect, it } from "vitest";
 
-it("keeps compact chat headers on one line with bounded status text", async () => {
-  const css = await readFile("src/styles/chat-container-controls.css", "utf8");
+it("keeps compact status shapes visible and full harness errors expandable", async () => {
+  const css = await readFile("src/styles/agent-task-header.css", "utf8");
   const compact = css.slice(css.indexOf("@container chat-center"));
   expect(compact).not.toMatch(/flex-wrap:\s*wrap|flex-basis:\s*100%/);
-  expect(compact).toMatch(/\.agent-task-header__status[^}]*font-size:\s*0;/s);
   expect(compact).toMatch(
-    /\.agent-task-header__harness-status[^}]*text-overflow:\s*ellipsis;/s,
+    /\.agent-task-header__status:not\(\.agent-chat-chip--idle\)[\s\S]*status-label\s*\{[^}]*display:\s*none;/,
   );
+  expect(css).not.toMatch(
+    /font-size:\s*0;|text-overflow:\s*ellipsis;[^}]*harness/s,
+  );
+  expect(css).toMatch(/harness-status p\s*\{[^}]*white-space:\s*normal;/s);
+  expect(css).toMatch(/harness-icon\s*\{[^}]*display:\s*block;/s);
 });
 
 it("keeps a failed rename readable without adding a compact header row", async () => {
-  const css = await readFile("src/styles/chat-container-controls.css", "utf8");
+  const css = await readFile("src/styles/agent-task-header.css", "utf8");
   const compact = css.slice(css.indexOf("@container chat-center"));
   expect(compact).toMatch(
     /\.agent-task-header__rename \[role="alert"\]\s*\{[^}]*position:\s*absolute;/s,

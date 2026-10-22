@@ -1,4 +1,5 @@
 @import "./split-chat-controls.css";
+@import "./agent-task-header.css";
 
 .agent-chat-center {
   display: grid;
@@ -8,108 +9,6 @@
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--color-canvas);
-}
-
-.agent-task-header {
-  display: flex;
-  min-width: 0;
-  min-height: 44px;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-panel);
-}
-
-.agent-task-header__breadcrumb {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-2);
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-md);
-}
-
-.agent-task-header__project,
-.agent-task-header__separator {
-  flex: 0 0 auto;
-}
-
-.agent-task-header__separator {
-  color: var(--color-text-disabled);
-}
-
-.agent-task-header__title {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-task-header__status {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.agent-task-header__harness-status {
-  min-width: 0;
-  max-width: 120px;
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-task-header .project-chat__actions {
-  opacity: 1;
-}
-
-.agent-task-header__rename {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.agent-task-header__rename input {
-  min-width: 0;
-  width: min(260px, 100%);
-  height: var(--control-height-compact);
-  padding: 0 var(--space-1);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-plane-raised);
-  font: inherit;
-}
-
-.agent-task-header__rename button {
-  display: grid;
-  width: var(--control-height-compact);
-  height: var(--control-height-compact);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-}
-
-.agent-task-header__rename button:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.agent-task-header__rename [role="alert"] {
-  color: var(--color-danger);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
 }
 
 .agent-chat-tabs {
@@ -359,16 +258,6 @@
   color: var(--color-accent);
   animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
     infinite;
-}
-
-.agent-task-header__status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.agent-task-header__status.agent-chat-chip--working {
-  animation: none;
 }
 
 .agent-chat-chip__spinner {

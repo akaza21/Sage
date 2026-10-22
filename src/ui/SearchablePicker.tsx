@@ -51,6 +51,7 @@ export function SearchablePicker({
   popoverClassName,
   popoverGap,
   triggerClassName,
+  triggerRole,
   triggerIcon,
   sectionLabel,
   searchable = true,
@@ -73,11 +74,12 @@ export function SearchablePicker({
   popoverClassName?: string;
   popoverGap?: number;
   triggerClassName?: string;
+  triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
-  portalTarget?: "closest-dialog" | "document";
+  portalTarget?: "closest-dialog" | "closest-popover" | "document";
   selectedId: string | null;
   state?: "error" | "idle" | "loading";
   stateDetail?: string;
@@ -215,7 +217,7 @@ export function SearchablePicker({
       event.stopPropagation();
       close("escape");
     } else if (event.key === "Tab") {
-      if (portalTarget === "closest-dialog") {
+      if (portalTarget !== "document") {
         flushSync(() => close("tab"));
         triggerRef.current?.focus();
         return;
@@ -249,6 +251,7 @@ export function SearchablePicker({
         aria-expanded={open && !disabled}
         aria-haspopup="listbox"
         aria-controls={`${id}-listbox`}
+        role={triggerRole}
         data-selected-id={selectedId ?? ""}
         disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}

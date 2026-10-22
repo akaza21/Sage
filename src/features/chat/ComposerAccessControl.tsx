@@ -64,6 +64,7 @@ export function ComposerAccessControl({
         open={open && !disabled && ready}
         triggerRef={trigger}
         ariaLabel="Access mode"
+        ariaDescribedBy={`${id}-heading`}
         className="composer__popover composer-access-menu"
         initialFocus="selected"
         focusKey={`${effective}:${candidates.map((candidate) => candidate.id).join()}`}
@@ -71,7 +72,11 @@ export function ComposerAccessControl({
         onDismiss={onDismiss}
         gap={8}
       >
-        <p className="composer-access-menu__heading">
+        <p
+          id={`${id}-heading`}
+          className="composer-access-menu__heading"
+          aria-hidden="true"
+        >
           How should agent actions be approved?
         </p>
         {candidates.map((candidate) => {

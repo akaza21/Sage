@@ -5,6 +5,7 @@ import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
 import { groupPrimaryActivities } from "./toolActivityRollup";
 import { CollaborationItem } from "./CollaborationItem";
+import { compactToolLabels } from "./toolCommandContent";
 
 export function PrimaryActivities({
   items,
@@ -20,6 +21,15 @@ export function PrimaryActivities({
   renderItem: (item: AcpItem) => ReactNode;
 }) {
   const grouped = groupPrimaryActivities(items);
+  const latestCompact = [...grouped]
+    .reverse()
+    .find(
+      (activity) =>
+        activity.kind === "toolRollup" &&
+        activity.rollup.items.every(
+          (item) => compactToolLabels[item.payload.presentation.kind],
+        ),
+    );
   return (
     <>
       {grouped.map((activity) =>
@@ -28,7 +38,7 @@ export function PrimaryActivities({
             key={activity.rollup.items[0]?.id}
             rollup={activity.rollup}
             interactive={interactive}
-            expandDetails={expandDetails}
+            expandDetails={expandDetails && activity === latestCompact}
             onOpenResource={onOpenResource}
           />
         ) : activity.kind === "collaborationRollup" ? (

@@ -25,6 +25,8 @@ import { ComposerAddActions } from "./ComposerAddActions";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
+import { useComposerCompaction } from "./useComposerCompaction";
+import { capitalizeLabel } from "../../domain/text";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -96,6 +98,8 @@ export function ChatHarnessControls({
     toggle,
     dismiss,
   } = useComposerPopovers(turnBusy || projectTransitioning);
+  const { effort: compactEffort, project: compactProject } =
+    useComposerCompaction(optionsTriggerRef);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -147,16 +151,13 @@ export function ChatHarnessControls({
     selectedSessionConfig?.confirmedModel,
   );
   const modelLabel =
-    confirmedModelLabel === "Model" && sessionHarnessId !== selectedHarnessId
-      ? (models.find((model) => model.id === selectedModelId)?.name ??
-        confirmedModelLabel)
-      : confirmedModelLabel;
+    !confirmedModelLabel && sessionHarnessId !== selectedHarnessId
+      ? (models.find((model) => model.id === selectedModelId)?.name ?? "Model")
+      : (confirmedModelLabel ?? "Model");
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortLabel =
     composerOptionLabel(effortOption) ??
-    (confirmedEffort
-      ? confirmedEffort[0].toLocaleUpperCase() + confirmedEffort.slice(1)
-      : null);
+    (confirmedEffort ? capitalizeLabel(confirmedEffort) : null);
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({
         id: choice.value,
@@ -182,8 +183,8 @@ export function ChatHarnessControls({
     (candidate) => ({
       ...candidate,
       subtitle:
-        candidate.id === selectedHarnessId && modelLabel !== "Model"
-          ? `${modelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+        candidate.id === selectedHarnessId && confirmedModelLabel
+          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
           : undefined,
     }),
   );
@@ -203,7 +204,8 @@ export function ChatHarnessControls({
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
-    canSelectEffort ||
+    (compactProject && projectName) ||
+    (canSelectEffort && compactEffort) ||
     hasModes ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -214,6 +216,8 @@ export function ChatHarnessControls({
     Boolean(imageAction),
     Boolean(onOpenGoal),
     canSelectEffort,
+    compactEffort,
+    compactProject,
     modeCandidates.map((mode) => mode.id),
     otherOptions.map((option) => [
       option.id,
@@ -242,6 +246,7 @@ export function ChatHarnessControls({
   return (
     <div className="composer__controls">
       <button
+        ref={optionsTriggerRef}
         className="composer__plus"
         type="button"
         aria-label="Composer options"
@@ -300,7 +305,7 @@ export function ChatHarnessControls({
         choices={modelChoices}
         selectedId={currentModelId}
         modelLabel={modelLabel}
-        effortLabel={modelLabel === "Model" ? null : effortLabel}
+        effortLabel={confirmedModelLabel ? effortLabel : null}
         contextWindow={contextWindow}
         effortOption={effortOption}
         disabled={turnBusy || projectTransitioning || !canPrompt}
@@ -308,7 +313,7 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {projectName ? (
+      {projectName && !compactProject ? (
         <ProjectScopeChip
           projectName={projectName}
           disabled={projectTransitioning || turnBusy}
@@ -332,13 +337,18 @@ export function ChatHarnessControls({
           gap={8}
         >
           <ComposerAddActions
+            projectAction={
+              compactProject && projectName ? (
+                <ProjectScopeChip projectName={projectName} menuItem />
+              ) : undefined
+            }
             sessionConfig={selectedSessionConfig}
             pending={modePending}
             disabled={turnBusy || projectTransitioning}
             imageAction={imageAction}
             onOpenGoal={onOpenGoal}
             onOpenEffort={
-              canSelectEffort
+              canSelectEffort && compactEffort
                 ? () => {
                     setEffortFromAdd(true);
                     toggle("effort");

@@ -51,20 +51,13 @@ describe("Chat container control breakpoints", () => {
     );
   });
 
-  it("keeps the wide project crumb and yields compact space to the chat title", async () => {
-    const header = await readFile("src/styles/agent-chat-panes.css", "utf8");
-    const compact = await readFile(
-      "src/styles/chat-container-controls.css",
-      "utf8",
-    );
-    expect(
-      header.match(/\.agent-task-header__project[^}]*\}/)?.[0],
-    ).not.toMatch(/max-width:/);
+  it("truncates rather than removes the project breadcrumb in compact panes", async () => {
+    const header = await readFile("src/styles/agent-task-header.css", "utf8");
     expect(header).toMatch(
-      /\.agent-task-header__project,\s*\.agent-task-header__separator\s*\{[^}]*flex:\s*0 0 auto;/,
+      /\.agent-task-header__project\s*\{[^}]*max-width:\s*30%;[^}]*flex:\s*0 1 auto;[^}]*text-overflow:\s*ellipsis;/s,
     );
-    expect(compact).toMatch(
-      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__project\s*\{[^}]*display:\s*none;/,
+    expect(header).not.toMatch(
+      /\.agent-task-header__project\s*\{[^}]*display:\s*none;/s,
     );
   });
 
@@ -132,9 +125,10 @@ describe("Chat container control breakpoints", () => {
       "src/styles/chat-container-controls.css",
       "utf8",
     );
-    expect(css).toMatch(
-      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__status\s*\{[^}]*font-size:\s*0;/,
-    );
+    const header = await readFile("src/styles/agent-task-header.css", "utf8");
+    expect(header).toContain("@container chat-center (max-width: 400px)");
+    expect(header).toContain(".agent-task-header__status-label");
+    expect(header).not.toMatch(/font-size:\s*0;/);
     expect(css).toMatch(
       /@container composer \(max-width: 280px\)[\s\S]*\.chat-goal-strip__row\s*\{[^}]*height:\s*auto;[^}]*flex-wrap:\s*wrap;/,
     );

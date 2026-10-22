@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("bounded Mermaid flowchart rendering", () => {
-  it("fits between a 12px label floor and natural size without changing the routing canvas", () => {
+  it("preserves the natural routing canvas and delegates scaling to CSS", () => {
     render(<MermaidFigure source={"graph TD\nA --> B"} />);
     const svg = screen.getByRole("img");
     expect(svg).toHaveAttribute("width", "320");

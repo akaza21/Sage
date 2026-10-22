@@ -15,6 +15,34 @@ import { CollaborationItem } from "./CollaborationItem";
 afterEach(cleanup);
 
 describe("CollaborationItem", () => {
+  it.each(["running", "completed"])(
+    "keeps a non-BMP initial and a distinct %s glyph",
+    (state) => {
+      const item = {
+        kind: "collaboration",
+        lifecycle: "completed",
+        payload: {
+          activityId: "activity",
+          label: "spawnAgent",
+          summary: "",
+          receiverLabels: ["𐐀gent"],
+          operation: "spawnAgent",
+          agentKeys: ["child"],
+          agentStates: [["child", state]],
+        },
+      } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+      const { container } = render(<CollaborationItem item={item} />);
+      expect(
+        container.querySelector(".acp-subagent-row__glyph"),
+      ).toHaveTextContent("𐐀");
+      expect(
+        container.querySelector(".acp-subagent-row__glyph"),
+      ).toHaveAttribute(
+        "data-state",
+        state === "running" ? "working" : "finished",
+      );
+    },
+  );
   it.each([
     { labels: ["", ""], participants: null },
     { labels: ["", "Bob"], participants: "Participants: Bob" },

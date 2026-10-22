@@ -31,7 +31,7 @@ const POPOVER_GAP = 4;
 type InitialFocus = "first" | "last" | "selected";
 type PopoverRole = "menu" | "listbox" | "dialog" | "none";
 type FocusStrategy = "none" | "roving";
-type PortalTarget = "closest-dialog" | "document";
+type PortalTarget = "closest-dialog" | "closest-popover" | "document";
 export type MenuDismissReason = "escape" | "outside" | "tab";
 
 function menuItems(container: HTMLElement) {
@@ -71,6 +71,7 @@ function selectedItemIndex(items: HTMLElement[]) {
 
 export function MenuPopover({
   ariaLabel,
+  ariaDescribedBy,
   children,
   className,
   focusKey,
@@ -89,6 +90,7 @@ export function MenuPopover({
   triggerRef,
 }: {
   ariaLabel: string;
+  ariaDescribedBy?: string;
   children: ReactNode;
   className?: string;
   focusKey?: string | number | boolean;
@@ -188,16 +190,18 @@ export function MenuPopover({
   useLayoutEffect(() => {
     if (!open) return;
     const nextRoot =
-      portalTarget === "closest-dialog"
+      portalTarget !== "document"
         ? (triggerRef.current?.closest<HTMLElement>(
-            'dialog, [role="dialog"]',
+            portalTarget === "closest-popover"
+              ? ".menu-popover"
+              : 'dialog, [role="dialog"]',
           ) ?? document.body)
         : document.body;
     setPortalRoot((current) => (current === nextRoot ? current : nextRoot));
   }, [open, portalTarget, triggerRef]);
 
   useLayoutEffect(() => {
-    if (!open || portalTarget !== "closest-dialog") return;
+    if (!open || portalTarget === "document") return;
     popoverRef.current
       ?.querySelector<HTMLElement>('[role="combobox"]')
       ?.focus();
@@ -352,6 +356,7 @@ export function MenuPopover({
         role={role === "none" ? undefined : role}
         tabIndex={role === "dialog" ? -1 : undefined}
         aria-label={role === "none" ? undefined : ariaLabel}
+        aria-describedby={ariaDescribedBy}
         hidden={!open}
         style={position}
         onKeyDown={moveFocus}

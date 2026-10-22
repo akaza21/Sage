@@ -280,9 +280,9 @@ it("bounds 300 child observations to 128 selectable rows and truthful retained c
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const section = screen.getByRole("region", { name: "Subagents" });
-  expect(within(section).getByLabelText("Subagents: 128")).toHaveTextContent(
-    "128",
-  );
+  expect(
+    within(section).getByRole("heading", { name: "Subagents: 128" }),
+  ).toHaveTextContent("128");
   const rows = await within(section).findAllByRole("button");
   expect(rows).toHaveLength(128);
   expect(rows[0]).toHaveAccessibleName("Open subagent Agent 172");
@@ -640,7 +640,9 @@ it("separates recent working and done figures without an inert child-open contro
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const section = screen.getByRole("region", { name: "Subagents" });
-  expect(within(section).getByLabelText("Subagents: 2")).toHaveTextContent("2");
+  expect(
+    within(section).getByRole("heading", { name: "Subagents: 2" }),
+  ).toHaveTextContent("2");
   expect(
     within(section).getByLabelText("Recent subagents working: 1"),
   ).toHaveTextContent("1 working");

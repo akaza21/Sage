@@ -1,4 +1,3 @@
-import "../../../src/main";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { acpProjectionStoreFor } from "../../../src/app/acpProjectionRegistry";

@@ -19,10 +19,6 @@
   cursor: pointer;
 }
 
-.chat-follow-end > svg {
-  transform: rotate(180deg);
-}
-
 .chat-follow-end:hover {
   background: var(--color-surface-hover);
 }

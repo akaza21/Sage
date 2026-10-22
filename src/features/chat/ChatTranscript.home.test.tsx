@@ -69,7 +69,7 @@ it("replaces the established empty transcript with the real project home without
   const { container } = render(<ChatTranscript {...transcriptProps()} />);
   await settleLazyModules();
   expect(
-    screen.getByRole("heading", { name: "What should we work on in Sage?" }),
+    screen.getByRole("heading", { name: "What should we work on?" }),
   ).toBeVisible();
   expect(screen.getByText("Sage")).toBeVisible();
   expect(screen.queryByText("No turns in this chat yet.")).toBeNull();
@@ -77,7 +77,7 @@ it("replaces the established empty transcript with the real project home without
   expect(container.querySelector(".chat-transcript-actions")).toBeNull();
 });
 
-it("names the project once in the home heading and keeps its picker usable", () => {
+it("names the project once adjacent to the home heading and keeps its picker usable", () => {
   useWorkbenchStore.setState({
     project: { id: "project-1", name: "Sage", roots: [] },
     projects: [
@@ -88,7 +88,7 @@ it("names the project once in the home heading and keeps its picker usable", () 
   render(<ChatTranscript {...transcriptProps()} />);
   const home = screen.getByRole("region", { name: "New chat" });
   const heading = within(home).getByRole("heading", {
-    name: "What should we work on in Sage?",
+    name: "What should we work on?",
   });
   expect(heading.tagName).toBe("H3");
   expect(home.textContent?.match(/Sage/g)).toHaveLength(1);
@@ -96,7 +96,7 @@ it("names the project once in the home heading and keeps its picker usable", () 
     screen.getByRole("heading", { name: emptyPage().title, level: 2 }),
   ).toBeInTheDocument();
   const picker = within(home).getByRole("button", { name: "Project: Sage" });
-  expect(heading).toContainElement(picker);
+  expect(heading).not.toContainElement(picker);
   fireEvent.click(picker);
   expect(screen.getByRole("combobox", { name: "Project: Sage" })).toBeVisible();
 });
@@ -299,7 +299,7 @@ it("switches projects through the existing keyboard-accessible picker and discar
     />,
   );
   expect(
-    screen.getByRole("heading", { name: "What should we work on in Other?" }),
+    screen.getByRole("heading", { name: "What should we work on?" }),
   ).toBeVisible();
   expect(screen.queryByText("Sage")).toBeNull();
   await settleLazyModules();

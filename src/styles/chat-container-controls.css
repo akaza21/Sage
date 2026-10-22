@@ -2,6 +2,10 @@
   display: none;
 }
 
+.composer__effort-icon {
+  display: none;
+}
+
 .composer__access-text {
   min-width: 0;
   overflow: hidden;
@@ -66,6 +70,15 @@
     padding: 0;
   }
 
+  .composer .project-scope .searchable-picker {
+    width: 100%;
+    margin: 0;
+  }
+
+  .composer .project-scope {
+    border: 0;
+  }
+
   .composer .project-scope .searchable-picker__trigger-label,
   .composer .project-scope .searchable-picker__chevron,
   .composer .project-scope__label {
@@ -99,7 +112,18 @@
 
 @container composer (max-width: 320px) {
   .composer .composer__effort-picker {
+    width: 24px;
+    min-width: 24px;
+    flex: none;
+  }
+
+  .composer .composer__effort-label,
+  .composer .composer__effort-picker > svg:last-child {
     display: none;
+  }
+
+  .composer .composer__effort-icon {
+    display: block;
   }
 
   .composer .composer__model-group {
@@ -141,7 +165,7 @@
   }
 }
 
-@container composer (width < 280px) {
+@container composer (max-width: 280px) {
   .composer .composer__toolbar {
     gap: 2px;
     padding-inline: 4px;
@@ -172,6 +196,8 @@
   }
 
   .composer .project-scope,
+  .composer .composer__plus,
+  .composer .composer__effort-picker,
   .composer .project-scope .searchable-picker__trigger,
   .composer .composer__model-group .composer__model-trigger,
   .composer .composer__mic,
@@ -186,7 +212,7 @@
   }
 }
 
-@container composer (width < 180px) {
+@container composer (width < 182px) {
   .composer .composer__controls {
     flex-wrap: wrap;
   }
@@ -199,58 +225,6 @@
 
   .composer .composer__mic {
     justify-self: end;
-  }
-}
-
-@container chat-center (max-width: 400px) {
-  .agent-chat-center .agent-task-header__project {
-    display: none;
-  }
-
-  .agent-chat-center .agent-task-header__separator {
-    display: none;
-  }
-
-  .agent-chat-center .agent-task-header {
-    position: relative;
-    gap: var(--space-1);
-    padding: 0 var(--space-2);
-  }
-
-  .agent-chat-center .agent-task-header__status {
-    width: 12px;
-    height: 12px;
-    gap: 0;
-    font-size: 0;
-  }
-
-  .agent-chat-center
-    .agent-task-header__status:not(:has(.agent-chat-chip__spinner))::before {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-circle);
-    background: currentColor;
-    content: "";
-  }
-
-  .agent-chat-center .agent-task-header__harness-status {
-    min-width: 0;
-    max-width: 32px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .agent-chat-center .agent-task-header__rename [role="alert"] {
-    position: absolute;
-    z-index: 1;
-    inset: 100% var(--space-2) auto;
-    padding: var(--space-2);
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-sm);
-    background: var(--color-panel);
-    overflow-wrap: anywhere;
-    white-space: normal;
   }
 }
 

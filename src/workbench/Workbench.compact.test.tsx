@@ -655,7 +655,9 @@ describe("compact Workbench project tools", () => {
     openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
     expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
-    const disclosure = screen.getByRole("button", { name: "Archived chats" });
+    const disclosure = screen.getByRole("button", {
+      name: "Archived chats: 1",
+    });
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "true");

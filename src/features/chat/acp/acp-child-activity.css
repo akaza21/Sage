@@ -157,12 +157,20 @@
 }
 
 .acp-subagent-row__glyph {
+  position: relative;
   display: inline-flex;
   width: 16px;
   height: 20px;
   align-items: center;
   justify-content: center;
   color: var(--agent-subagent-violet);
+}
+
+.acp-subagent-row__done {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  font-size: 10px;
 }
 
 .acp-subagent-row > [role="status"] {

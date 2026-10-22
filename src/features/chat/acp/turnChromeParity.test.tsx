@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AcpItem } from "../../../domain/acp";
 import { ChatTranscriptFooter } from "../ChatTranscriptFooter";
@@ -6,6 +6,7 @@ import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { page, textItem } from "./acpProjection.fixture";
 import { parityTool } from "./activityParity.fixture";
+import { CompactToolItem } from "./CompactToolItem";
 
 afterEach(cleanup);
 
@@ -84,7 +85,7 @@ it("keeps a simple completed answer's Worked duration without an empty disclosur
   expect(container.querySelector("details.chat-transcript-work")).toBeNull();
 });
 
-it.each(["completed", "cancelled", "interrupted"] as const)(
+it.each(["completed"] as const)(
   "omits orphan retry-only actions for a %s tool-only turn",
   (state) => {
     const projection = page(state);
@@ -99,5 +100,74 @@ it.each(["completed", "cancelled", "interrupted"] as const)(
     );
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+  },
+);
+
+it.each(["cancelled", "interrupted"] as const)(
+  "keeps Retry with the %s notice before any prose",
+  (state) => {
+    const projection = page(state);
+    projection.turns[0].items = [parityTool()];
+    const retry = vi.fn();
+    render(
+      <AcpChatPresentation
+        page={projection}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
+        onRetry={retry}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Retry" });
+    expect(button.previousElementSibling?.className).toBe("acp-turn__header");
+    fireEvent.click(button);
+    expect(retry).toHaveBeenCalledOnce();
+  },
+);
+
+it("opens only the latest compact rollup when Worked is opened", () => {
+  const projection = page("completed");
+  projection.turns[0].items = [
+    parityTool("read", 1),
+    { ...textItem(), id: "middle" as AcpItem["id"], ordinal: 3 },
+    { ...parityTool("execute", 2), ordinal: 4 },
+    { ...textItem(), ordinal: 5 },
+  ];
+  const { container } = render(
+    <AcpChatPresentation
+      page={projection}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
+  );
+  const work = container.querySelector<HTMLDetailsElement>(
+    ".chat-transcript-work",
+  )!;
+  work.open = true;
+  fireEvent(work, new Event("toggle"));
+  const rows =
+    container.querySelectorAll<HTMLDetailsElement>(".acp-tool-rollup");
+  expect([...rows].map((row) => row.open)).toEqual([false, true]);
+  rows[0].open = true;
+  fireEvent(rows[0], new Event("toggle"));
+  expect(rows[0].open).toBe(true);
+});
+
+it.each(["completed", "failed"] as const)(
+  "puts the %s tool outcome after output in the card footer",
+  (state) => {
+    const { container } = render(
+      <CompactToolItem item={parityTool("execute", 1, state)} />,
+    );
+    const frame = container.querySelector(".acp-tool-command-frame")!;
+    expect(frame.lastElementChild).toHaveAttribute("role", "status");
+    expect(frame.lastElementChild).toHaveTextContent(
+      state === "completed" ? "Completed" : "Failed",
+    );
   },
 );

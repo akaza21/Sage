@@ -350,7 +350,7 @@ it("restores a foreign-folder archived chat without switching first", () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: "Archived chats" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(
     screen.getByRole("button", { name: "Restore chat Research" }),
   );

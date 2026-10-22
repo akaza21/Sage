@@ -106,6 +106,20 @@ describe("Composer Project chip responsive seam", () => {
     expect(split).not.toContain(".composer__controls > .select-control {");
   });
 
+  it("fits seven 24px controls including Add in the 184px compact toolbar", async () => {
+    const css = await readFile(
+      "src/styles/chat-container-controls.css",
+      "utf8",
+    );
+    const compact = css
+      .split("@container composer (max-width: 280px)")
+      .slice(1)
+      .join("");
+    expect(compact).toContain(".composer .composer__plus,");
+    expect(compact).not.toMatch(/(?:min-width|width):\s*20px/);
+    expect(7 * 24 + 2 * 4 + 3 * 2).toBeLessThanOrEqual(184);
+  });
+
   it.each([128, 184, 252, 259, 259.5, 260, 280, 320, 321, 400, 401])(
     "keeps toolbar actions in one row down to 184px at %ipx composer content width",
     async (width) => {
@@ -142,19 +156,19 @@ describe("Composer Project chip responsive seam", () => {
       document.head.append(style);
       document.body.append(composer);
       try {
-        const wrapped = width < 180;
+        const wrapped = width < 182;
         const harnessStyle = getComputedStyle(
           composer.querySelector(".composer__harness")!,
         );
         expect(harnessStyle.flexShrink).toBe("1");
         expect(harnessStyle.flexBasis).toBe(
-          width < 280 ? "24px" : width <= 400 ? "28px" : "128px",
+          width <= 280 ? "24px" : width <= 400 ? "28px" : "128px",
         );
-        expect(harnessStyle.minWidth).toBe(width < 280 ? "24px" : "28px");
+        expect(harnessStyle.minWidth).toBe(width <= 280 ? "24px" : "28px");
         expect(
           getComputedStyle(composer.querySelector(".composer__model-group")!)
             .minWidth,
-        ).toBe(width < 280 ? "24px" : width <= 320 ? "28px" : "60px");
+        ).toBe(width <= 280 ? "24px" : width <= 320 ? "28px" : "60px");
         expect(
           getComputedStyle(composer.firstElementChild!).gridTemplateAreas,
         ).toBe(

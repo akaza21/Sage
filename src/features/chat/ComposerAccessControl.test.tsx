@@ -60,6 +60,12 @@ it("introduces the approval question and distinct icons only for admitted modes"
     screen.getByText("How should agent actions be approved?"),
   ).toBeVisible();
   const menu = screen.getByRole("menu", { name: "Access mode" });
+  expect(menu).toHaveAccessibleDescription(
+    "How should agent actions be approved?",
+  );
+  expect(
+    screen.getByText("How should agent actions be approved?"),
+  ).toHaveAttribute("aria-hidden", "true");
   expect(menu.querySelectorAll('[role="menuitemradio"]')).toHaveLength(3);
   expect(
     screen

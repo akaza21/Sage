@@ -194,6 +194,30 @@ describe("composer image input", () => {
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }
   });
+  it("keeps an existing goal visible with an unavailable explanation while reloading", () => {
+    renderComposer({
+      availableBinding: false,
+      goal: {
+        kind: "goal",
+        snapshot: {
+          objective: "Keep this goal",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: null,
+          updatedAt: null,
+        },
+      },
+    });
+    expect(screen.getByLabelText("Goal details")).toBeVisible();
+    fireEvent.click(screen.getByLabelText("Goal details"));
+    expect(
+      screen.getByText(/Native Goal actions are unavailable/),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
+  });
+
   it("keeps upper composer content in a scroll region separate from the toolbar", () => {
     renderComposer({ workbenchError: "Retry the request" });
     const form = screen.getByRole("form");

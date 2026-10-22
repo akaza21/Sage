@@ -10,11 +10,13 @@ export function ProjectScopeChip({
   disabled = false,
   open,
   onOpenChange,
+  menuItem = false,
 }: {
   projectName: string;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  menuItem?: boolean;
 }) {
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
@@ -54,7 +56,9 @@ export function ProjectScopeChip({
     >
       {candidates.length > 0 ? (
         <SearchablePicker
-          portalTarget="closest-dialog"
+          triggerRole={menuItem ? "menuitem" : undefined}
+          triggerClassName={menuItem ? "menu-item" : undefined}
+          portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
           ariaLabel={`Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}
           triggerIcon={

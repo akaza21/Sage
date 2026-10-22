@@ -32,6 +32,10 @@ export const ArrowUp = leanIcon("lucide lucide-arrow-up", [
   ["path", { d: "m5 12 7-7 7 7" }],
   ["path", { d: "M12 19V5" }],
 ]);
+export const ArrowDown = leanIcon("lucide lucide-arrow-down", [
+  ["path", { d: "M12 5v14" }],
+  ["path", { d: "m19 12-7 7-7-7" }],
+]);
 export const Bot = leanIcon("lucide lucide-bot", [
   ["path", { d: "M12 8V4H8" }],
   ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2" }],

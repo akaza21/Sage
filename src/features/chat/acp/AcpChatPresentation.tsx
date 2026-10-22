@@ -247,6 +247,11 @@ const Turn = memo(
             </div>
           ) : null}
           {stopped ? <TurnHeader turn={turn} /> : null}
+          {stopped && !finalAnswer && onRetry ? (
+            <button type="button" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
           <TurnFailure turn={turn} onRetry={onRetry} />
         </div>
       </section>

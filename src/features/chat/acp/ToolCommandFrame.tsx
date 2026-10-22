@@ -15,15 +15,6 @@ export function ToolCommandFrame({
     <div className="acp-tool-command-frame">
       <p className="acp-tool-command__disclosure" role="note">
         {label}
-        {outcome ? (
-          <span
-            className="acp-tool-command__outcome"
-            role="status"
-            aria-live="off"
-          >
-            {outcome}
-          </span>
-        ) : null}
       </p>
       {commandLine ? (
         <pre
@@ -43,6 +34,11 @@ export function ToolCommandFrame({
         >
           {output || "No output"}
         </pre>
+      ) : null}
+      {outcome ? (
+        <p className="acp-tool-command__outcome" role="status" aria-live="off">
+          {outcome}
+        </p>
       ) : null}
     </div>
   );

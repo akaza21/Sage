@@ -1,8 +1,6 @@
 import { FileText, Globe2, ListFilter, Check, X } from "../ui/leanIcons";
 
 import {
-  lazy,
-  Suspense,
   useEffect,
   useId,
   useLayoutEffect,
@@ -28,11 +26,8 @@ import { projectTaskResources } from "./agentArtifactTabPresentation";
 import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import "./agent-subagent-summary.css";
 
-const SubagentResourceRows = lazy(() =>
-  import("./SubagentSurface").then((module) => ({
-    default: module.SubagentResourceRows,
-  })),
-);
+import { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
+import { AgentTaskStatus } from "./AgentTaskStatus";
 
 export function AgentTaskHeader({
   tab,
@@ -204,26 +199,10 @@ export function AgentTaskHeader({
           </strong>
         )}
       </div>
-      <span
-        className={`agent-task-header__status agent-chat-chip agent-chat-chip--${snapshot?.statusTone ?? "idle"}`}
-        role="status"
-        aria-label={`Chat status: ${snapshot?.statusLabel ?? "Idle"}`}
-        title={snapshot?.statusLabel ?? "Idle"}
-      >
-        {snapshot?.statusTone === "working" ? (
-          <span className="agent-chat-chip__spinner" aria-hidden="true" />
-        ) : null}
-        {snapshot?.statusLabel ?? "Idle"}
-      </span>
-      {sessionChrome ? (
-        <span
-          className="agent-task-header__harness-status"
-          aria-label={`Harness status: ${sessionChrome.harnessStatus}`}
-          title={sessionChrome.harnessStatus}
-        >
-          {sessionChrome.harnessStatus}
-        </span>
-      ) : null}
+      <AgentTaskStatus
+        snapshot={snapshot}
+        harnessStatus={sessionChrome?.harnessStatus}
+      />
       <ProjectChatActionMenu
         chatTitle={`${title} task`}
         pinned={currentTab.pinned}
@@ -290,56 +269,15 @@ export function AgentTaskHeader({
                 </button>
               ))}
             </section>
-            {recentAgents.length > 0 ? (
-              <section
-                aria-label="Subagents"
-                title="Up to 128 subagents from the latest 128 turns and 256 items total"
-              >
-                <strong aria-label={`Subagents: ${recentAgents.length}`}>
-                  Subagents {recentAgents.length}
-                </strong>
-                <div className="agent-task-header__agent-summary">
-                  <span
-                    className="agent-task-header__agent-metric"
-                    aria-label={`Recent subagents working: ${workingAgents}`}
-                  >
-                    <span
-                      className="agent-task-header__agent-glyphs"
-                      aria-hidden="true"
-                    >
-                      {Array.from(
-                        { length: Math.min(workingAgents, 3) },
-                        (_, index) => (
-                          <span
-                            className={`agent-task-header__agent-glyph agent-task-header__agent-glyph--${index}`}
-                            key={index}
-                          >
-                            ✦
-                          </span>
-                        ),
-                      )}
-                    </span>
-                    {workingAgents} working
-                  </span>
-                  <span
-                    className="agent-task-header__agent-metric"
-                    aria-label={`Recent subagents done: ${doneAgents}`}
-                  >
-                    {doneAgents} done
-                  </span>
-                </div>
-                <Suspense fallback={<p role="status">Loading subagents…</p>}>
-                  <SubagentResourceRows
-                    agents={recentAgents}
-                    onSelect={() => {
-                      resourcesTriggerRef.current?.focus();
-                      setResourcesOpen(false);
-                    }}
-                  />
-                </Suspense>
-                <small>Latest retained observations; not live.</small>
-              </section>
-            ) : null}
+            <AgentTaskSubagentSummary
+              recentAgents={recentAgents}
+              workingAgents={workingAgents}
+              doneAgents={doneAgents}
+              onSelect={() => {
+                resourcesTriggerRef.current?.focus();
+                setResourcesOpen(false);
+              }}
+            />
             <section aria-label="Sources">
               <strong>Sources</strong>
               {(showAllSources ? sources : sources.slice(-3)).map(

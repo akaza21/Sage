@@ -1,7 +1,19 @@
-import { expect, type Locator } from "@playwright/test";
-import { test } from "./shared/serverlessWorkbench";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectCompactComposerTargets } from "./shared/composerGeometry";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
 import { popoverProfiles } from "./fixtures/popoverProfiles";
 import type {} from "./fixtures/popoverWorkbench";
+
+async function openPopoverScenario(page: Page) {
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    await import("/tests/ui/fixtures/popoverWorkbench.ts");
+  });
+}
 
 async function subtleSelection(menu: Locator) {
   const selected = menu.locator(
@@ -57,12 +69,7 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await page.setViewportSize({ width, height: 1096 });
       expect(await page.evaluate(() => document.compatMode)).toBe("CSS1Compat");
-      await page.evaluate(() =>
-        window.popoverWorkbench.install("agent-single"),
-      );
-      await expect
-        .poll(() => page.evaluate(() => window.popoverWorkbench.settled()))
-        .toBe(true);
+      await openPopoverScenario(page);
       await page.evaluate(
         (modes) => window.popoverWorkbench.access(modes),
         profile.access,
@@ -80,7 +87,11 @@ for (const width of [1888, 720, 480]) {
       );
       for (const [name, menuName, available] of [
         ["Access options", "Access mode", profile.access.length > 0],
-        ["Composer options", "Composer options menu", profile.modes.length > 0],
+        [
+          "Composer options",
+          "Composer options menu",
+          profile.modes.length > 0 || width === 480,
+        ],
       ] as const) {
         const trigger = composer.getByRole("button", { name, exact: true });
         if (!available) {
@@ -94,7 +105,8 @@ for (const width of [1888, 720, 480]) {
         await trigger.click();
         const menu = page.getByRole("menu", { name: menuName, exact: true });
         await contained(menu, trigger, pane);
-        await subtleSelection(menu);
+        if (name === "Access options" || profile.modes.length > 0)
+          await subtleSelection(menu);
         if (name === "Access options") {
           for (const nextWidth of [480, 720, 1888, width]) {
             await page.setViewportSize({ width: nextWidth, height: 1096 });
@@ -132,6 +144,29 @@ for (const width of [1888, 720, 480]) {
         await expect(composer.locator(".composer__effort-picker")).toHaveCount(
           0,
         );
+      const add = composer.getByRole("button", {
+        name: "Composer options",
+        exact: true,
+      });
+      if (width === 480) await expectCompactComposerTargets(composer);
+      if (width === 480) {
+        await add.click();
+        await expect(
+          page.getByRole("menuitem", { name: "Thinking level" }),
+        ).toHaveCount(profile.effort ? 1 : 0);
+        await expect(
+          page.getByRole("menuitem", { name: /^Project:/ }),
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
+      } else if (profile.effort || profile.modes.length === 0) {
+        await expect(add).toBeDisabled();
+      } else {
+        await add.click();
+        await expect(
+          page.getByRole("menuitem", { name: "Thinking level" }),
+        ).toHaveCount(0);
+        await page.keyboard.press("Escape");
+      }
       for (const [name, selector] of [
         ...(profile.effort
           ? [
@@ -194,10 +229,7 @@ for (const width of [1888, 720, 480]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 1096 });
-    await page.evaluate(() => window.popoverWorkbench.install("agent-single"));
-    await expect
-      .poll(() => page.evaluate(() => window.popoverWorkbench.settled()))
-      .toBe(true);
+    await openPopoverScenario(page);
     await page.evaluate(() => window.popoverWorkbench.nested());
     const trigger = page.getByRole("button", {
       name: "Nested fixture",
@@ -232,5 +264,37 @@ for (const width of [1888, 720, 480]) {
     await expect(parent).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
+  });
+}
+
+for (const height of [320, 400]) {
+  test(`w5 header menus clamp vertically in a ${height}px viewport`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height });
+    await openPopoverScenario(page);
+    await page.evaluate(() => window.popoverWorkbench.subagents("children"));
+    for (const [name, role, label] of [
+      ["Show chat resources", "dialog", "Chat resources"],
+      ["Chat actions for", "menu", "Actions for"],
+    ] as const) {
+      const trigger = page
+        .getByRole("button", { name: new RegExp(name) })
+        .last();
+      await trigger.click();
+      const menu = page.getByRole(role, { name: new RegExp(label) });
+      await expect(menu).toBeVisible();
+      await menu.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      const box = (await menu.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(8);
+      expect(box.y + box.height).toBeLessThanOrEqual(height - 8);
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+    }
   });
 }

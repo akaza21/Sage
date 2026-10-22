@@ -13,6 +13,7 @@ import type {
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { ChevronDown, RotateCcw, Sparkles } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
+import { capitalizeLabel } from "../../domain/text";
 
 export function ComposerEffortControl({
   anchorRef,
@@ -104,6 +105,7 @@ export function ComposerEffortControl({
         type="button"
         className="composer__control-trigger composer__effort-picker"
         title="Select effort"
+        aria-label={levels[index].name}
         aria-controls={panelId}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -111,7 +113,13 @@ export function ComposerEffortControl({
         onPointerDown={(event) => event.currentTarget.blur()}
         onClick={onToggle}
       >
-        {levels[index].name} <ChevronDown size={12} aria-hidden="true" />
+        <Sparkles
+          className="composer__effort-icon"
+          size={14}
+          aria-hidden="true"
+        />
+        <span className="composer__effort-label">{levels[index].name}</span>
+        <ChevronDown size={12} aria-hidden="true" />
       </button>
       <MenuPopover
         id={panelId}
@@ -126,7 +134,7 @@ export function ComposerEffortControl({
           <Sparkles size={13} aria-hidden="true" />
           <div className="composer-effort__identity">
             <span className="composer-effort__level">
-              {label.charAt(0).toUpperCase() + label.slice(1)}
+              {capitalizeLabel(label)}
             </span>
             <button
               type="button"

@@ -1,50 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import react from "@vitejs/plugin-react";
-import { build } from "vite";
-
-let fixtureHtml = "";
-let fixtureScript = "";
-
-test.beforeAll(async () => {
-  const result = await build({
-    configFile: false,
-    plugins: [react()],
-    define: { "process.env.NODE_ENV": JSON.stringify("production") },
-    logLevel: "error",
-    build: {
-      write: false,
-      lib: {
-        entry: "tests/ui/fixtures/chatChromeGeometry.tsx",
-        formats: ["es"],
-        fileName: "fixture",
-      },
-      rolldownOptions: { output: { inlineDynamicImports: true } },
-    },
-  });
-  const outputs = (Array.isArray(result) ? result : [result]).flatMap(
-    (bundle) => {
-      if (!("output" in bundle))
-        throw new Error("Expected an in-memory fixture bundle");
-      return bundle.output;
-    },
-  );
-  fixtureScript = outputs
-    .filter((entry) => entry.type === "chunk")
-    .map((entry) => entry.code)
-    .join("\n");
-  const css = outputs
-    .flatMap((entry) =>
-      entry.type === "asset" && entry.fileName.endsWith(".css")
-        ? [String(entry.source)]
-        : [],
-    )
-    .join("\n");
-  fixtureHtml = `<html><head><style>${css}</style><style>
-    .chrome-layout { display: grid; grid-template-columns: min(332px, 54vw) minmax(0, 1fr); height: 100vh; }
-    .chrome-layout > aside { min-width: 0; padding: 16px 8px; }
-    .chrome-layout .composer { min-height: 88px; }
-  </style></head><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>`;
-});
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
+import { popoverProfiles } from "./fixtures/popoverProfiles";
 
 async function openChrome(
   page: Page,
@@ -56,26 +15,58 @@ async function openChrome(
   harnessStatus = "Live",
 ) {
   await page.setViewportSize({ width, height: 1000 });
-  await page.route("**/*", (route) => {
-    const url = new URL(route.request().url());
-    if (url.origin !== "https://sage-chrome.test") return route.abort();
-    return route.fulfill(
-      url.pathname === "/fixture.js"
-        ? { contentType: "text/javascript", body: fixtureScript }
-        : { contentType: "text/html", body: fixtureHtml },
-    );
-  });
-  await page.goto(
-    `https://sage-chrome.test/?${new URLSearchParams({ harness, state, status, tone, harnessStatus })}`,
+  await openScenario(
+    page,
+    state === "home-split" ? "agent-dual" : "agent-single",
+    "agent",
   );
-  await expect(page.locator(".chrome-layout")).toHaveAttribute(
-    "data-harness",
-    harness,
+  await settleChatProjections(page);
+  await page.evaluate(
+    async ({ harness, state, status, tone, harnessStatus }) => {
+      const { installChatChromeFixture } =
+        await import("/tests/ui/fixtures/chatChromeFixture.ts");
+      const turnState =
+        status === "Queued"
+          ? "queued"
+          : tone === "working"
+            ? "running"
+            : tone === "waiting"
+              ? "waitingApproval"
+              : tone === "failed"
+                ? "failed"
+                : "completed";
+      installChatChromeFixture(
+        harness,
+        state.startsWith("home"),
+        turnState,
+        harnessStatus === "Sign in required",
+      );
+    },
+    { harness, state, status, tone, harnessStatus },
   );
+  await page.getByRole("radio", { name: "Editor", exact: true }).check();
+  await expect(page.locator(".agent-task-header")).toHaveCount(0);
+  await page.getByRole("radio", { name: "Agent", exact: true }).check();
+  await settleChatProjections(page);
+  const profile =
+    popoverProfiles[
+      ["codex", "claude-code", "pi", "opencode", "oh-my-pi"].indexOf(harness)
+    ];
+  const composer = page.locator("form.composer").first();
+  await expect(composer.locator(".composer__model-label")).toHaveText(
+    `${profile.name} confirmed model`,
+  );
+  await expect(composer.locator(".composer__effort-picker")).toHaveCount(
+    profile.effort ? 1 : 0,
+  );
+  await expect(
+    composer.getByRole("button", { name: "Access options" }),
+  ).toHaveCount(profile.access.length ? 1 : 0);
   await page.evaluate(() => document.fonts.ready);
 }
 
 async function expectSingleHeaderRow(page: Page, width: number) {
+  await expect(page.locator(".agent-task-header__project")).toBeVisible();
   const header = page.locator(".agent-task-header");
   await expect(header).toBeVisible();
   const geometry = await header.evaluate((element) => {
@@ -114,7 +105,7 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     test(`${harness} header and Archived row at ${width}`, async ({ page }) => {
       await openChrome(page, harness, width);
       await expectSingleHeaderRow(page, width);
-      const archived = page.getByRole("button", { name: "Archived chats" });
+      const archived = page.getByRole("button", { name: "Archived chats: 1" });
       await expect(archived).toHaveText("Archived 1");
       await expect(archived).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(archived).toHaveCSS("border-top-width", "0px");
@@ -161,9 +152,7 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(
         page.getByRole("region", { name: "Archived chats" }),
       ).toBeVisible();
-      await page
-        .getByRole("button", { name: /^Chat actions for .* task$/ })
-        .click();
+      await page.getByRole("button", { name: /^Chat actions for / }).click();
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
       ).toHaveCount(0);
@@ -227,14 +216,14 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await openChrome(page, harness, width, "home");
       const home = page.getByRole("region", { name: "New chat", exact: true });
       const heading = home.getByRole("heading", {
-        name: "What should we work on in Sage project with a long name?",
+        name: "What should we work on?",
         level: 3,
       });
       await expect(heading).toHaveCSS("font-weight", "400");
       await expect(home).toHaveText(
-        "What should we work on in Sage project with a long name?",
+        "What should we work on?Sage project with a long name",
       );
-      const project = heading.getByRole("button", {
+      const project = home.getByRole("button", {
         name: "Project: Sage project with a long name",
         exact: true,
       });
@@ -253,13 +242,13 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
 }
 
 for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
-  for (const width of [720, 480]) {
+  for (const width of [1888, 720, 480]) {
     test(`${harness} compact status variants at ${width}`, async ({ page }) => {
       for (const [status, tone, harnessStatus] of [
-        ["Working", "working", "Live"],
+        ["Running", "working", "Live"],
         ["Waiting for approval", "waiting", "Live"],
-        ["Failed", "failed", "Disconnected; reconnect to continue"],
-        ["Idle", "idle", "Sign in is required before this harness can start"],
+        ["Failed", "failed", "Live"],
+        ["Queued", "working", "Sign in required"],
       ]) {
         await openChrome(
           page,
@@ -282,7 +271,19 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
         await expect(
           indicator.locator(".agent-chat-chip__spinner"),
         ).toHaveCount(tone === "working" ? 1 : 0);
-        expect((await indicator.boundingBox())!.width).toBe(12);
+        await indicator.focus();
+        await expect(indicator).toBeFocused();
+        if (tone === "waiting" || tone === "failed")
+          await expect(indicator.locator("svg")).toBeVisible();
+        const harnessIndicator = page.getByLabel(
+          `Harness status: ${harnessStatus}`,
+          { exact: true },
+        );
+        await harnessIndicator.focus();
+        await page.keyboard.press("Enter");
+        await expect(
+          page.locator(".agent-task-header__harness-status > p"),
+        ).toHaveText(harnessStatus);
         await expectNoOverflow(page);
       }
     });

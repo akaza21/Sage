@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
@@ -43,6 +44,10 @@ for (const width of [1888, 720, 480]) {
           await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
         fixture.installVisualComposerEffortFixture(config);
       }, profile);
+      if (width === 480)
+        await expectCompactComposerTargets(
+          page.locator("form.composer").first(),
+        );
       const trigger = page
         .locator("form.composer")
         .first()

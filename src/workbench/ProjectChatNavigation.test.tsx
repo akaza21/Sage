@@ -436,7 +436,7 @@ it("labels the archived count separately and preserves disclosure semantics", ()
     archivedChats: [{ id: "chat:old", title: "Research" }],
   });
   render(<ProjectChatNavigation projectId="project-a" chats={[]} selected />);
-  const disclosure = screen.getByRole("button", { name: "Archived chats" });
+  const disclosure = screen.getByRole("button", { name: /^Archived chats:/ });
   expect(disclosure).toHaveTextContent("Archived 1");
   expect(disclosure).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(disclosure);
@@ -469,7 +469,7 @@ it("restores an archived chat that belongs to another project folder", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Archived chats" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
   fireEvent.click(screen.getByRole("button", { name: "Restore chat Extra" }));
   expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a");
   expect(

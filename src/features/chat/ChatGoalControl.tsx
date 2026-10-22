@@ -146,6 +146,12 @@ export function ChatGoalControl({
         </summary>
         <div className="chat-goal-strip__details">
           <p>{snapshot.objective}</p>
+          {!canMutate ? (
+            <p>
+              Native Goal actions are unavailable for this session. Reconnect or
+              reload to check availability.
+            </p>
+          ) : null}
           <dl>
             <div>
               <dt>Status</dt>

@@ -63,7 +63,7 @@ it.each(["failed", "cancelled", "declined"] as const)(
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
     const cards = screen.getAllByRole("group", { name: "git status --short" });
-    expect(within(cards[0]).queryByRole("status")).toBeNull();
+    expect(within(cards[0]).getByRole("status")).toHaveTextContent("Completed");
     expect(within(cards[1]).getByRole("status")).toHaveTextContent(
       state === "failed"
         ? "Failed"
@@ -183,10 +183,10 @@ it.each(["execute", "read"] as const)(
       container.querySelector(".acp-tool-rollup__items details"),
     ).toBeNull();
     expect(
-      within(container.querySelector(".acp-tool-rollup__items")!).queryByText(
-        "Completed",
+      within(container.querySelector(".acp-tool-rollup__items")!).getByRole(
+        "status",
       ),
-    ).toBeNull();
+    ).toHaveTextContent("Completed");
     expect(screen.getByLabelText("Command line")).toHaveTextContent(
       kind === "execute" ? "$ git status --short" : "src/example-1.ts",
     );

@@ -81,6 +81,8 @@ it("selects an advertised session mode directly in the Add menu", () => {
   const build = within(menu).getByRole("menuitemradio", { name: "Build" });
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(build).toHaveAttribute("aria-checked", "true");
+  expect(build).not.toHaveAttribute("aria-description");
+  expect(plan).toHaveAccessibleDescription("Plan mode is off");
   expect(build).toHaveFocus();
   fireEvent.keyDown(menu, { key: "End" });
   expect(plan).toHaveFocus();
@@ -92,6 +94,49 @@ it("selects an advertised session mode directly in the Add menu", () => {
   expect(setMode).toHaveBeenCalledExactlyOnceWith("plan-wire");
   expect(screen.queryByRole("menu")).toBeNull();
   expect(trigger).toHaveFocus();
+});
+
+it("describes Plan mode as on when selected", () => {
+  renderActions(true, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "plan",
+        availableModes: [{ id: "plan", name: "Plan" }],
+      },
+      configOptions: [],
+    }),
+  });
+  expect(
+    screen.getByRole("menuitemradio", { name: "Plan mode" }),
+  ).toHaveAccessibleDescription("Plan mode is on");
+});
+
+it("does not enable Add for effort alone while its trigger is visible", () => {
+  renderActions(false, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      configOptions: [
+        {
+          id: "effort",
+          name: "Effort",
+          category: "effort",
+          type: "select",
+          currentValue: "high",
+          options: [{ value: "high", name: "High" }],
+        },
+      ],
+    }),
+  });
+  expect(
+    screen.getByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
+  expect(screen.queryByRole("menuitem", { name: "Thinking level" })).toBeNull();
 });
 
 it("keeps configuration choices on the same surface and project selection outside Add", () => {
@@ -172,7 +217,7 @@ it("gives Add a header and icon rows with truthful one-line Plan and Goal descri
   expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
   expect(within(menu).queryByText("Session mode")).toBeNull();
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
-  expect(plan).toHaveAccessibleDescription("Turn plan mode on");
+  expect(plan).toHaveAccessibleDescription("Plan mode is off");
   expect(plan.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   const goal = within(menu).getByRole("menuitem", { name: "Goal" });
   expect(goal).toHaveAccessibleDescription("View the current goal");

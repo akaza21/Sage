@@ -1,6 +1,11 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+export function capitalizeLabel(value: string): string {
+  const first = [...value][0] ?? "";
+  return first.toLocaleUpperCase() + value.slice(first.length);
+}
+
 export function utf8Bytes(value: string): Uint8Array {
   return encoder.encode(value);
 }

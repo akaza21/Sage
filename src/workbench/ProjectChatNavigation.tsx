@@ -350,7 +350,7 @@ export function ProjectChatNavigation({
           <button
             className="archived-chats__disclosure"
             type="button"
-            aria-label="Archived chats"
+            aria-label={`Archived chats: ${archivedChats.length}`}
             aria-expanded={archivedOpen}
             aria-controls={archivedListId}
             onClick={() => setArchivedOpen((open) => !open)}

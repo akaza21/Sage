@@ -218,33 +218,50 @@ for (const width of [1888, 720, 480]) {
         ),
       ).toHaveText(`${profile.model}${profile.effort ? " Medium" : ""}`);
       await page.keyboard.press("Escape");
-      await composer
-        .getByRole("button", { name: "Composer options", exact: true })
-        .click();
+      const add = composer.getByRole("button", {
+        name: "Composer options",
+        exact: true,
+      });
+      const hasAddActions =
+        profile.goal || profile.modes.length > 0 || width === 480;
       const menu = page.getByRole("menu", { name: "Composer options menu" });
-      await expect(menu.getByText("Add", { exact: true })).toBeVisible();
-      await expect(
-        menu.getByRole("menuitem", { name: "Goal", exact: true }),
-      ).toHaveCount(profile.goal ? 1 : 0);
-      if (profile.modes.includes("Plan")) {
-        const plan = menu.getByRole("menuitemradio", {
-          name: "Plan mode",
-          exact: true,
-        });
-        await expect(plan).toHaveAccessibleDescription("Turn plan mode on");
+      if (hasAddActions) {
+        await add.click();
+        await expect(menu.getByText("Add", { exact: true })).toBeVisible();
         await expect(
-          plan.locator('svg[aria-hidden="true"]').first(),
-        ).toBeVisible();
-      }
-      if (!profile.effort) {
+          menu.getByRole("menuitem", { name: "Goal", exact: true }),
+        ).toHaveCount(profile.goal ? 1 : 0);
         await expect(
           menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
-        ).toHaveCount(0);
+        ).toHaveCount(profile.effort && width === 480 ? 1 : 0);
+        await expect(
+          menu.getByRole("menuitem", { name: /^Project:/ }),
+        ).toHaveCount(width === 480 ? 1 : 0);
+        if (profile.modes.includes("Plan")) {
+          const plan = menu.getByRole("menuitemradio", {
+            name: "Plan mode",
+            exact: true,
+          });
+          await expect(plan).toHaveAccessibleDescription("Plan mode is off");
+          await expect(
+            plan.locator('svg[aria-hidden="true"]').first(),
+          ).toBeVisible();
+        }
+      } else await expect(add).toBeDisabled();
+      if (!profile.effort) {
+        if (hasAddActions) await page.keyboard.press("Escape");
         return;
       }
-      await menu
-        .getByRole("menuitem", { name: "Thinking level", exact: true })
-        .click();
+      const effortAnchor =
+        width === 480 ? add : composer.locator(".composer__effort-picker");
+      if (width === 480) {
+        await menu
+          .getByRole("menuitem", { name: "Thinking level", exact: true })
+          .click();
+      } else {
+        if (hasAddActions) await page.keyboard.press("Escape");
+        await effortAnchor.click();
+      }
       const effort = page.getByRole("dialog", { name: "Thinking level" });
       await expect(effort).toBeVisible();
       await expect(page.getByRole("slider")).toHaveAttribute(
@@ -256,9 +273,7 @@ for (const width of [1888, 720, 480]) {
           element.getAnimations().map((animation) => animation.finished),
         ),
       );
-      const anchor = (await composer
-        .getByRole("button", { name: "Composer options", exact: true })
-        .boundingBox())!;
+      const anchor = (await effortAnchor.boundingBox())!;
       const panel = (await effort.boundingBox())!;
       expect(panel.x).toBeGreaterThanOrEqual(8);
       expect(panel.x + panel.width).toBeLessThanOrEqual(width - 8);
@@ -269,9 +284,7 @@ for (const width of [1888, 720, 480]) {
         ),
       ).toBeLessThanOrEqual(5);
       await page.keyboard.press("Escape");
-      await expect(
-        composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toBeFocused();
+      await expect(effortAnchor).toBeFocused();
     });
   }
 }

@@ -98,6 +98,10 @@ for (const width of [1888, 720, 480]) {
             })),
           };
         });
+        if (source === flowchartSource && width >= 720) {
+          expect(metrics.overflow, `ref-55 flowchart at ${width}`).toBe(false);
+          expect(metrics.width).toBeLessThanOrEqual(metrics.column);
+        }
         if (metrics.column >= metrics.naturalWidth) {
           expect(metrics.width).toBeCloseTo(metrics.naturalWidth, 1);
           expect(metrics.overflow).toBe(false);

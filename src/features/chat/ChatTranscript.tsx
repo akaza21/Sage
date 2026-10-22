@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import type { AcpChatPage } from "../../domain/acp";
-import { ArrowUp } from "../../ui/leanIcons";
+import { ArrowDown } from "../../ui/leanIcons";
 import type { ChatMessage } from "../../domain/chat";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import {
@@ -217,7 +217,7 @@ export function ChatTranscript({
             title="Jump to latest"
             onClick={onJumpToLatest}
           >
-            <ArrowUp size={16} aria-hidden="true" />
+            <ArrowDown size={16} aria-hidden="true" />
           </button>
         </div>
       ) : null}

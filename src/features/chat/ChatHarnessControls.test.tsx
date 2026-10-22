@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  within,
   fireEvent,
   render,
   screen,
@@ -102,6 +103,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialWorkbenchState, true);
 });
 
@@ -163,8 +165,62 @@ describe("last confirmed model label", () => {
   });
 
   it("keeps effort reachable through Add when its compact toolbar control yields", () => {
-    renderControls({ sessionConfig: confirmedModelConfig() });
+    useWorkbenchStore.setState({
+      project: { id: "a", name: "A", roots: [] },
+      projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
+    });
+    const observer = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: (entries: unknown[]) => void) {
+          observer.mockImplementation(callback);
+        }
+        observe() {
+          observer([{ contentRect: { width: 280 } }]);
+        }
+        disconnect() {}
+      },
+    );
+    const host = document.createElement("form");
+    host.className = "composer";
+    document.body.append(host);
+    const view = render(
+      <ChatHarnessControls
+        availableBinding
+        canPrompt
+        discoveryPhase="ready"
+        modelLabelScope="chat"
+        sessionHarnessId="access-test"
+        sessionModelId={null}
+        selectedHarnessId="access-test"
+        selectedModelId={null}
+        projectName="A"
+        turnBusy={false}
+        sessionConfig={confirmedModelConfig()}
+        modePending={false}
+        modeError={null}
+        focused
+        onSetSessionMode={noop}
+        onSetSessionConfigOption={noop}
+        onSelectHarness={noop}
+        onSelectModel={() => {}}
+        onModeRemoved={() => {}}
+      />,
+      { container: host },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    const project = screen.getByRole("menuitem", { name: "Project: A" });
+    expect(
+      host.querySelector(".composer__controls > .project-scope"),
+    ).toBeNull();
+    fireEvent.click(project);
+    const projects = screen.getByRole("combobox", { name: "Project: A" });
+    const candidate = screen.getByRole("option", { name: /^A$/ });
+    fireEvent.pointerDown(candidate);
+    expect(projects).toBeVisible();
+    fireEvent.keyDown(projects, { key: "Escape" });
+    expect(project).toHaveFocus();
     fireEvent.click(screen.getByRole("menuitem", { name: "Thinking level" }));
     expect(
       screen.getByRole("dialog", { name: "Thinking level" }),
@@ -180,6 +236,21 @@ describe("last confirmed model label", () => {
     expect(
       screen.getByRole("button", { name: "Composer options" }),
     ).toHaveFocus();
+    view.unmount();
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not subtitle a draft catalog selection as a confirmed model", () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [{ id: "draft", name: "Draft model" }],
+    });
+    renderControls({ sessionHarnessId: null, selectedModelId: "draft" });
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    expect(
+      within(screen.getByRole("listbox")).queryByText("Draft model"),
+    ).toBeNull();
   });
 
   it.each([null, "previous-harness"])(

@@ -1,4 +1,5 @@
 import { Check, Sparkles, Target } from "../../ui/leanIcons";
+import type { ReactNode } from "react";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -7,6 +8,7 @@ import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 
 export function ComposerAddActions({
   sessionConfig,
+  projectAction,
   pending,
   disabled,
   imageAction,
@@ -17,6 +19,7 @@ export function ComposerAddActions({
   onSetSessionConfigOption,
 }: {
   sessionConfig: AcpSessionConfig | null;
+  projectAction?: ReactNode;
   pending: boolean;
   disabled: boolean;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -37,6 +40,7 @@ export function ComposerAddActions({
       <p className="menu-group-label" aria-hidden="true">
         Add
       </p>
+      {projectAction}
       {imageAction ? (
         <button
           type="button"
@@ -98,10 +102,12 @@ export function ComposerAddActions({
           {modes.map((mode) => {
             const plan = mode.name.toLocaleLowerCase() === "plan";
             const label = plan ? "Plan mode" : mode.name || mode.id;
-            const description =
-              mode.description ||
-              (plan ? "Turn plan mode on" : `Use ${label} mode`);
             const selected = mode.id === sessionConfig?.modes?.currentModeId;
+            const description = plan
+              ? selected
+                ? "Plan mode is on"
+                : "Plan mode is off"
+              : mode.description || undefined;
             return (
               <button
                 key={mode.id}
@@ -118,11 +124,13 @@ export function ComposerAddActions({
                   void onSetSessionMode(mode.id);
                 }}
               >
-                <Sparkles size={14} aria-hidden="true" />
+                {plan ? <Sparkles size={14} aria-hidden="true" /> : null}
                 <span>{label}</span>
-                <span className="composer__action-description">
-                  {description}
-                </span>
+                {description ? (
+                  <span className="composer__action-description">
+                    {description}
+                  </span>
+                ) : null}
                 {selected ? <Check size={14} aria-hidden="true" /> : null}
               </button>
             );

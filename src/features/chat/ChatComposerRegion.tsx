@@ -185,7 +185,7 @@ export function ChatComposerRegion({
       }}
     >
       <div className="composer__body">
-        {goal.kind === "goal" && goalDetails.canMutate ? (
+        {goal.kind === "goal" ? (
           <BoundChatGoalControl
             state={goal}
             chatId={dictationScope}

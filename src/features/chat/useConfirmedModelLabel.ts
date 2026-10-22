@@ -11,7 +11,7 @@ export function useConfirmedModelLabel(
   modelOption: AcpConfigOption | undefined,
   models: readonly { id: string; name: string }[],
   sessionModel: AcpSessionConfig["confirmedModel"],
-): string {
+): string | null {
   const [confirmed, setConfirmed] = useState<{
     scope: string;
     modelId: string | null;
@@ -36,5 +36,5 @@ export function useConfirmedModelLabel(
   ) {
     setConfirmed({ scope, modelId, label });
   }
-  return label ?? "Model";
+  return label;
 }
