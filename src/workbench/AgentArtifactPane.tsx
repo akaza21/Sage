@@ -372,7 +372,7 @@ export function AgentArtifactPane({
             <Suspense fallback={<p role="status">Loading subagent view…</p>}>
               <SubagentSurface
                 page={focusedPage}
-                projectGeneration={String(projectGeneration)}
+                projectGeneration={String(nativeTransitionEpoch)}
                 itemId={subagentTarget.itemId}
                 agentKey={subagentTarget.agentKey}
               />
