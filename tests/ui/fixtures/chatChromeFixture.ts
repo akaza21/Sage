@@ -72,7 +72,9 @@ export function installChatChromeFixture(
       page.sessions = page.sessions.map((session) => ({
         ...session,
         bindingId,
-        modelId,
+        // A live matching session reports Ready/Live by design; sign-in
+        // discovery only surfaces when no session owns the selected model.
+        modelId: signIn ? `${modelId}-previous` : modelId,
         state: "active" as const,
         capabilities: capabilitySetFixture({
           closeSession: false,
@@ -139,7 +141,7 @@ export function installChatChromeFixture(
                   payload: {
                     role: "assistant" as const,
                     text: Array.from(
-                      { length: 24 },
+                      { length: 60 },
                       (_, index) =>
                         `Paragraph ${index + 1}: A bounded transcript exercises scrolling and the latest-turn control.`,
                     ).join("\n\n"),

@@ -15,6 +15,19 @@ it("keeps compact status shapes visible and full harness errors expandable", asy
   expect(css).toMatch(/harness-icon\s*\{[^}]*display:\s*block;/s);
 });
 
+it("drops only the idle status word in a compact pane so the title stays readable", async () => {
+  const css = await readFile("src/styles/agent-task-header.css", "utf8");
+  const compact = css.slice(
+    css.indexOf("@container chat-center (max-width: 400px)"),
+  );
+  expect(compact).toMatch(
+    /\.agent-task-header__status\.agent-chat-chip--idle\s*\{[^}]*display:\s*none;/,
+  );
+  expect(compact).toMatch(
+    /\.agent-task-header__title\s*\{[^}]*min-width:\s*3em;/,
+  );
+});
+
 it("keeps a failed rename readable without adding a compact header row", async () => {
   const css = await readFile("src/styles/agent-task-header.css", "utf8");
   const compact = css.slice(css.indexOf("@container chat-center"));

@@ -175,7 +175,8 @@ async function expectComposerToolbarLaidOut(form: Locator) {
       }),
     };
   });
-  expect(geometry.buttons).toHaveLength(7);
+  // Wave 5: at 280px and below Project folds into the composer options menu.
+  expect(geometry.buttons).toHaveLength(geometry.composerWidth <= 280 ? 6 : 7);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -190,8 +191,9 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     expect(button.contained, button.name ?? "toolbar button").toBe(true);
   }
   const trailing = ["Start dictation", "Send message"];
+  // Wave 5 keeps one toolbar row down to the 182px container rule.
   const rows =
-    geometry.composerWidth <= 280
+    geometry.composerWidth < 182
       ? [
           geometry.buttons.filter(
             (button) => !trailing.includes(String(button.name)),
@@ -371,9 +373,8 @@ test.describe("Tool activity rollup disclosure", () => {
     const summary = rollup.locator("summary");
     const items = rollup.locator(".acp-tool-rollup__items");
 
-    await expect(rollup).not.toHaveAttribute("open", "");
-    await expect(items).toHaveCount(0);
-    await summary.click();
+    // Wave 5 (Codex ref 58): opening Worked on a terminal turn expands its
+    // latest rollup, so the disclosure starts open.
     await expect(rollup).toHaveAttribute("open", "");
     await expect(items).toBeVisible();
 
@@ -425,7 +426,6 @@ test.describe("Tool activity rollup summary containment", () => {
     expect(geometry.summaryHeight).toBeLessThanOrEqual(geometry.lineHeight * 2);
     expect(geometry.cardOverflow).toBeLessThanOrEqual(1);
     expect(geometry.labelOverflow).toBeLessThanOrEqual(1);
-    await rollup.locator("summary").click();
     await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
     await expect(rollup).toContainText(
       "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
@@ -749,11 +749,12 @@ test.describe("V2-4 session mode picker", () => {
     });
     const openListbox = page.getByRole("group", { name: "Session mode" });
     await expect(openListbox.getByRole("menuitemradio")).toHaveCount(2);
+    // Rows show the advertised description beside the name (Codex ref 34).
     await expect(openListbox.getByRole("menuitemradio").nth(0)).toHaveText(
-      "Review changes",
+      "Review changesAnalyze changes without applying them.",
     );
     await expect(openListbox.getByRole("menuitemradio").nth(1)).toHaveText(
-      "Apply changes",
+      "Apply changesApply approved changes to the workspace.",
     );
     await expectOpenPickerContained(page, openInput, openListbox);
     await takeCanonicalScreenshot(openWorkbench, "agent-session-mode-open");
@@ -1111,7 +1112,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const waitingCancel = panes
       .nth(1)
       .getByRole("button", { name: "Cancel turn", exact: true });
-    await expect(waitingGoal).toBeVisible();
+    // Wave 5: the Goal row renders only for an existing goal, so the waiting
+    // pane tabs from its activity straight to Cancel.
+    await expect(waitingGoal).toHaveCount(0);
     await expect(waitingCancel).toBeEnabled();
     await page.keyboard.press("Tab");
     await expect(panes.nth(1)).toHaveClass(/agent-chat-pane--focused/);
@@ -1122,11 +1125,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     ).toBe(true);
     await expect(waitingActivity).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(waitingGoal).toBeFocused();
-    await page.keyboard.press("Tab");
     await expect(waitingCancel).toBeFocused();
     await page.keyboard.press("Shift+Tab");
-    await expect(waitingGoal).toBeFocused();
+    await expect(waitingActivity).toBeFocused();
     await chatSplitter.focus();
     await expect(chatSplitter).toBeFocused();
     await chatSplitter.evaluate((node) => (node as HTMLElement).blur());
@@ -1233,7 +1234,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "Editor consistency pass",
     );
     await page.keyboard.press("Shift+Tab");
-    await expect(waitingGoal).toBeFocused();
+    await expect(waitingActivity).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(waitingCancel).toBeFocused();
     expect(await measurePanes()).toEqual(before);

@@ -171,6 +171,13 @@
   gap: var(--space-3);
 }
 
+/* A stopped turn renders its header after the partial answer, inside the
+   items grid: it must stay in that single column, not open a second one. */
+.acp-turn__items > .acp-turn__header {
+  grid-column: auto;
+  margin-bottom: 0;
+}
+
 .acp-turn__failure {
   display: grid;
   justify-items: start;

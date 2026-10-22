@@ -4,8 +4,32 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
+async function expectProjectInOptionsMenu(composer: Locator) {
+  const page = composer.page();
+  const add = composer.getByRole("button", {
+    name: "Composer options",
+    exact: true,
+  });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(
+    page
+      .getByRole("menu", { name: "Composer options menu", exact: true })
+      .getByRole("menuitem", { name: /^Project: / }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(add).toBeFocused();
+}
+
 async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   const project = composer.getByRole("button", { name: /^Project: / });
+  // Wave 5: at 280px and below the Project control folds into the composer
+  // options menu so the toolbar keeps one row (Codex ref 37).
+  if (await composer.evaluate((element) => element.clientWidth <= 280)) {
+    await expect(project).toHaveCount(0);
+    await expectProjectInOptionsMenu(composer);
+    return expectToolbarGeometry(composer);
+  }
   await expect(project).toBeVisible();
   const name = await project.getAttribute("aria-label");
   await expect(project).toHaveAttribute("title", name!);
@@ -47,8 +71,11 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
     await expect(model.locator(".composer__model-icon")).toBeVisible();
-  } else {
+  } else if (await composer.evaluate((element) => element.clientWidth > 320)) {
     await expect(modelLabel).toBeVisible();
+  } else if (!(await modelLabel.isVisible())) {
+    // Measured compaction may drop the label before the 280px query.
+    await expect(model.locator(".composer__model-icon")).toBeVisible();
   }
   if (compact) {
     await expect(
@@ -61,6 +88,10 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
       "0",
     );
   }
+  await expectToolbarGeometry(composer);
+}
+
+async function expectToolbarGeometry(composer: Locator) {
   const geometry = await composer.evaluate((element) => {
     const toolbar = element.querySelector(".composer__toolbar")!;
     const controls = element.querySelector(".composer__controls")!;
@@ -86,7 +117,8 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
       Number.parseFloat(computed.borderRightWidth) -
       Number.parseFloat(computed.paddingLeft) -
       Number.parseFloat(computed.paddingRight);
-    const secondRow = contentWidth < 180;
+    // Wave 5 keeps one toolbar row down to the 182px container rule.
+    const secondRow = contentWidth < 182;
     return {
       overflow: toolbar.scrollWidth > toolbar.clientWidth,
       disjoint: bounds.every((button, index) =>
@@ -128,7 +160,9 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
           target.top >= row.top &&
           target.bottom <= row.bottom,
       ),
-      actionsAligned: Math.abs(mic.top - send.top) <= 1,
+      // Mic (28px tall) and the 24px compact send share a centre line.
+      actionsAligned:
+        Math.abs(mic.top + mic.height / 2 - send.top - send.height / 2) <= 1,
       identityRow:
         secondRow ||
         targets.every(

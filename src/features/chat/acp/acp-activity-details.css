@@ -56,6 +56,7 @@
 }
 
 .acp-tool-rollup__summary-copy {
+  overflow: hidden;
   align-items: baseline;
 }
 
@@ -67,8 +68,10 @@
 .acp-tool-rollup__label {
   flex: 0 1 auto;
   max-width: 100%;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  /* One line clipped at the column edge (Codex refs 08 and 20). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .acp-live-shimmer {

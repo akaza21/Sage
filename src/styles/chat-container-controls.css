@@ -129,6 +129,13 @@
   .composer .composer__model-group {
     min-width: 28px;
   }
+
+  /* The label may truncate to nothing beside a long effort level; the icon
+     keeps the model trigger identifiable instead of a bare chevron. */
+  .composer__model-icon {
+    display: block;
+    flex: none;
+  }
 }
 
 @container composer (max-width: 280px) {

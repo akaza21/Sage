@@ -123,6 +123,16 @@
     gap: 0;
   }
 
+  /* Like Codex ref 37, an idle pane spends its width on the title; only
+     working, waiting and failed states keep a distinct compact shape. */
+  .agent-task-header__status.agent-chat-chip--idle {
+    display: none;
+  }
+
+  .agent-task-header__title {
+    min-width: 3em;
+  }
+
   .agent-task-header__rename [role="alert"] {
     position: absolute;
     z-index: 1;

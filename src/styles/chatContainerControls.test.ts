@@ -160,10 +160,14 @@ describe("Chat container control breakpoints", () => {
     },
   );
 
+  // Between 281 and 320 a long effort label can squeeze the model label to
+  // nothing; the icon keeps the trigger identifiable instead of a bare chevron.
   it.each([
     [401, "none"],
     [400, "none"],
-    [281, "none"],
+    [321, "none"],
+    [320, "block"],
+    [281, "block"],
     [280, "block"],
     [180, "block"],
   ])(

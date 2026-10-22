@@ -1,8 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
+import os from "node:os";
 import path from "node:path";
 import { build } from "vite";
 
-const output = path.resolve("work/activity-geometry");
+// Build outside the repository so the suite dev server never sees the
+// fixture HTML change and full-reloads pages owned by other workers.
+const output = path.join(
+  os.tmpdir(),
+  `sage-activity-geometry-${process.env.SAGE_UI_PORT ?? "default"}-${process.pid}`,
+);
 
 test.beforeAll(async () => {
   await build({
@@ -39,7 +45,7 @@ for (const width of [1888, 720, 480]) {
   test.describe(`${width}px shared transcript geometry`, () => {
     test.use({ viewport: { width, height: 1048 } });
 
-    test("running command wraps in full with one inline spinner", async ({
+    test("running command stays one line with one inline spinner and no early truncation", async ({
       page,
     }) => {
       await open(page, "running");
@@ -50,19 +56,35 @@ for (const width of [1888, 720, 480]) {
       await expect(
         summary.locator(".acp-tool-rollup__summary-copy .acp-tool-running"),
       ).toHaveCount(1);
+      // Codex refs 08 and 20 keep the running row on one line and clip it only
+      // at the column edge; nothing trailing steals the label's width.
       const geometry = await summary
         .locator(".acp-tool-rollup__label")
-        .evaluate((label) => ({
-          clipped: label.scrollWidth > label.clientWidth,
-          ellipsis: getComputedStyle(label).textOverflow,
-          right: label.getBoundingClientRect().right,
-        }));
-      expect(geometry.clipped).toBe(false);
-      expect(geometry.ellipsis).not.toBe("ellipsis");
+        .evaluate((label) => {
+          const style = getComputedStyle(label);
+          const probe = label.cloneNode() as HTMLElement;
+          probe.textContent = "x";
+          label.after(probe);
+          const line = probe.getBoundingClientRect().height;
+          probe.remove();
+          const box = label.getBoundingClientRect();
+          const row = label.closest("summary")!.getBoundingClientRect();
+          return {
+            clipped: label.scrollWidth > label.clientWidth,
+            ellipsis: style.textOverflow,
+            oneLine: box.height <= line + 1,
+            gapToEdge: row.right - box.right,
+            right: box.right,
+          };
+        });
+      expect(geometry.oneLine).toBe(true);
+      expect(geometry.ellipsis).toBe("ellipsis");
+      // Only the trailing disclosure-chevron slot (<=32px) may follow it.
+      if (geometry.clipped) expect(geometry.gapToEdge).toBeLessThanOrEqual(32);
       expect(geometry.right).toBeLessThanOrEqual(width);
     });
 
-    test("Worked reveals flush per-command Shell cards with a 12-16px answer gap", async ({
+    test("Worked reveals flush per-command Shell cards with an 8-16px answer gap", async ({
       page,
     }) => {
       await open(page, "commands");
@@ -80,7 +102,9 @@ for (const width of [1888, 720, 480]) {
         .locator(".acp-turn__items > .acp-message--assistant")
         .boundingBox();
       expect(Math.abs(first!.x - row!.x)).toBeLessThanOrEqual(1);
-      expect(answer!.y - (last!.y + last!.height)).toBeGreaterThanOrEqual(12);
+      // The answer keeps one item gap (~11px measured on text boxes), not the
+      // former ~45px detached spacing.
+      expect(answer!.y - (last!.y + last!.height)).toBeGreaterThanOrEqual(8);
       expect(answer!.y - (last!.y + last!.height)).toBeLessThanOrEqual(16);
     });
 

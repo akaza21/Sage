@@ -169,6 +169,27 @@ describe("MenuPopover", () => {
     });
   });
 
+  it("dismisses when a resize stops rendering its trigger instead of anchoring to an empty rect", () => {
+    render(<MenuHarness />);
+    const trigger = screen.getByRole("button", { name: "Actions" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Actions" })).toBeInTheDocument();
+    const visibility = vi.fn(() => true);
+    Object.defineProperty(trigger, "checkVisibility", {
+      configurable: true,
+      value: visibility,
+    });
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByRole("menu", { name: "Actions" })).toBeInTheDocument();
+    visibility.mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.queryByRole("menu", { name: "Actions" })).toBeNull();
+  });
+
   it("keeps a left-edge composer menu inside its composer when it fits", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {

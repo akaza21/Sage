@@ -27,14 +27,23 @@ test("capture accessible selectors stay anchored to product controls", () => {
   );
   assert.ok(header.includes('aria-label="Show chat resources"'));
   assert.ok(header.includes('ariaLabel="Chat resources"'));
-  assert.ok(header.includes("aria-label={`Recent subagents working:"));
+  const subagentSummary = readFileSync(
+    new URL("../src/workbench/AgentTaskSubagentSummary.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(header.includes("<AgentTaskSubagentSummary"));
+  assert.ok(subagentSummary.includes("aria-label={`Recent subagents working:"));
   const source = (file) =>
     readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const composer = source("features/chat/ChatHarnessControls.tsx");
   assert.ok(composer.includes('aria-label="Composer options"'));
   assert.ok(composer.includes('ariaLabel="Composer options menu"'));
-  assert.ok(composer.includes('<div role="group" aria-label="Session mode">'));
-  assert.ok(composer.includes('role="menuitemradio"'));
+  assert.ok(composer.includes("<ComposerAddActions"));
+  const addActions = source("features/chat/ComposerAddActions.tsx");
+  assert.ok(
+    addActions.includes('<div role="group" aria-label="Session mode">'),
+  );
+  assert.ok(addActions.includes('role="menuitemradio"'));
   const access = source("features/chat/ComposerAccessControl.tsx");
   assert.ok(access.includes('aria-label="Access options"'));
   assert.ok(access.includes('ariaLabel="Access mode"'));

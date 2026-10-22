@@ -133,10 +133,9 @@ export async function expectRunningComposerReadyToQueue(
 ) {
   const composer = owner.getByRole("textbox", { name: "Message agent" });
   await expect(composer).toBeEnabled();
-  await expect(composer).toHaveAttribute(
-    "placeholder",
-    "Enter to queue a message",
-  );
+  // Wave 5 (Codex): the placeholder stays "Do anything"; queueing is
+  // announced through the accessible description below.
+  await expect(composer).toHaveAttribute("placeholder", "Do anything");
   await expect(composer).toHaveAccessibleDescription(
     /Enter queues a message while this turn runs/,
   );

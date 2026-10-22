@@ -283,26 +283,19 @@ for (const forcedColors of ["none", "active"] as const) {
     const options = page.getByRole("menu", { name: "Composer options menu" });
     const picker = options;
     await expectOverlay(picker, viewports[3]);
-    const project = page.locator("form.composer").getByRole("button", {
+    // At 480 the Project control folds into the composer options menu
+    // (wave 5), so it is reached as a menu item rather than a toolbar chip.
+    await expect(
+      page.locator("form.composer").getByRole("button", {
+        name: "Project: Sage",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    const project = options.getByRole("menuitem", {
       name: "Project: Sage",
       exact: true,
     });
-    const projectBox = await project.boundingBox();
-    const pickerBox = await picker.boundingBox();
-    expect(
-      Math.min(
-        projectBox!.x + projectBox!.width,
-        pickerBox!.x + pickerBox!.width,
-      ) -
-        Math.max(projectBox!.x, pickerBox!.x) <=
-        0 ||
-        Math.min(
-          projectBox!.y + projectBox!.height,
-          pickerBox!.y + pickerBox!.height,
-        ) -
-          Math.max(projectBox!.y, pickerBox!.y) <=
-          0,
-    ).toBe(true);
+    await expect(project).toBeVisible();
     const last = picker.getByRole("menuitemradio").last();
     await last.scrollIntoViewIfNeeded();
     expect(
@@ -319,11 +312,12 @@ for (const forcedColors of ["none", "active"] as const) {
     await last.click();
     await expect(picker).toHaveCount(0);
     await expect(options).toHaveCount(0);
+    await openComposerOptions(page);
     await project.click();
     const projectPicker = page.locator(".searchable-picker__popover");
     await expectOverlay(projectPicker, viewports[3]);
     await page.keyboard.press("Escape");
-    await expect(project).toBeFocused();
+    await expect(projectPicker).toHaveCount(0);
   });
 }
 
@@ -450,8 +444,9 @@ for (const profile of profiles) {
                   exact: true,
                 }),
               ).toBeVisible();
+              // Like Codex refs 36/37, the narrowest composer drops the context meter.
               await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context ? 1 : 0,
+                profile.context && viewport.width > 480 ? 1 : 0,
               );
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
@@ -695,8 +690,8 @@ for (const profile of profiles) {
       await expect(options).toHaveCount(0);
       const picker = page.locator(".searchable-picker__popover");
       await expectOverlay(picker, viewports[2]);
-      await page.setViewportSize(viewports[3]);
-      await expectOverlay(picker, viewports[3]);
+      await page.setViewportSize(viewports[1]);
+      await expectOverlay(picker, viewports[1]);
       await expectNestedPlacement(picker, project);
       expect(
         await project.evaluate((element) => {
@@ -732,8 +727,13 @@ for (const profile of profiles) {
       await page.keyboard.press("Escape");
       await expect(project).toBeFocused();
       await expect(options).toHaveCount(0);
-      await expect(options).toHaveCount(0);
-      await expect(project).toBeFocused();
+      // At 480 the chip folds into the options menu; an open picker closes
+      // with it instead of anchoring to a hidden trigger.
+      await page.keyboard.press("Enter");
+      await expect(picker).toHaveCount(1);
+      await page.setViewportSize(viewports[3]);
+      await expect(picker).toHaveCount(0);
+      await expect(project).toBeHidden();
       await page.setViewportSize(viewports[2]);
       await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
       for (const field of await page.locator("form.composer textarea").all()) {

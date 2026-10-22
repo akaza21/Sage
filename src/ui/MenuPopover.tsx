@@ -121,6 +121,7 @@ export function MenuPopover({
   );
   const positionRef = useRef(position);
   const measureRef = useRef<() => void>(() => {});
+  const hiddenTriggerRef = useRef<() => void>(() => {});
   const placement = useMemo(
     () => ({ originRef, position }),
     [originRef, position],
@@ -155,6 +156,7 @@ export function MenuPopover({
     };
 
     measureRef.current = updatePosition;
+    hiddenTriggerRef.current = () => onDismiss("outside");
     updatePosition();
   });
 
@@ -163,7 +165,13 @@ export function MenuPopover({
     const popover = popoverRef.current;
     const trigger = triggerRef.current;
     if (!popover || !trigger) return;
-    const updatePosition = () => measureRef.current();
+    // A trigger that stops rendering (for example a compacted composer
+    // control) leaves no anchor, so the popover closes instead of drifting.
+    const updatePosition = () =>
+      typeof trigger.checkVisibility === "function" &&
+      !trigger.checkVisibility()
+        ? hiddenTriggerRef.current()
+        : measureRef.current();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null

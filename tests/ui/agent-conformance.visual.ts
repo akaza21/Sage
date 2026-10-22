@@ -828,13 +828,22 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // that it reported `aria-expanded="true"` while staying visually closed —
     // see "Defects found while inventorying" in
     // docs/design/agent-panel-conformance.md.
+    //
+    // Wave 5 (Codex ref 58): opening Worked on a terminal turn auto-expands
+    // its latest rollup, so the row starts open here and the toggle is
+    // proven by collapsing and reopening it.
     expect(
       await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
-      "C19: the activity row starts collapsed",
+      "C19: the latest terminal rollup opens with Worked",
+    ).toBe(true);
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    expect(
+      await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
+      "C19: activating the summary actually collapses the row",
     ).toBe(false);
     await expect(rollup.locator(".acp-tool-rollup__items")).toHaveCount(0);
 
-    await summary.focus();
     await page.keyboard.press("Enter");
     expect(
       await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
@@ -1189,10 +1198,14 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       composer(page).getByRole("button", { name: "Session mode", exact: true }),
     ).toHaveCount(0);
     const menu = await openComposerOptions(page);
-    expect(await menu.getByRole("menuitemradio").allTextContents()).toEqual([
-      "Review changes",
-      "Apply changes",
-    ]);
+    // Rows carry the advertised description beside the name (Codex ref 34).
+    expect(
+      await menu
+        .getByRole("menuitemradio")
+        .evaluateAll((items) =>
+          items.map((item) => item.getAttribute("aria-label")),
+        ),
+    ).toEqual(["Review changes", "Apply changes"]);
     await expect(
       menu.getByRole("menuitemradio", { name: "Review changes", exact: true }),
     ).toHaveAttribute("aria-checked", "true");

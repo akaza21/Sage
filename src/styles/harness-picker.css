@@ -131,7 +131,14 @@
   flex: none;
 }
 
+/* Like Codex ref 34 the action name stays whole; only the muted description
+   truncates when the menu is narrow. */
+.composer__add-action > span:not(.composer__action-description) {
+  flex: none;
+}
+
 .composer__action-description {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--composer-muted-text);

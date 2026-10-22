@@ -122,7 +122,11 @@ async function expectComposerControlsContained(pane: Locator) {
 
 async function expectModelLeadingEdgeContained(model: Locator) {
   const labelEdges = await model.evaluate((element) => {
-    const label = element.firstChild;
+    // The leading rendered child (the icon is display:none while the label
+    // fits) owns the trigger’s leading edge.
+    const label = [...element.children].find(
+      (child) => child.getClientRects().length > 0,
+    );
     if (!label) throw new Error("Model trigger has no label");
     const range = document.createRange();
     range.selectNodeContents(label);
@@ -171,23 +175,26 @@ for (const paneWidth of [360, 384]) {
     const composer = pane.locator(".composer");
     const model = composer.getByRole("button", { name: "Model", exact: true });
     await expect(model).toHaveAccessibleName("Model");
-    const icon = model.locator(".composer__model-icon");
-    await expect(icon).toBeVisible();
-    await expect(icon).toHaveCSS("width", "16px");
-    await expect(icon).toHaveCSS("height", "16px");
-    await expect(model.locator(".composer__model-label")).toBeHidden();
-    await expect(model.locator("svg").last()).toBeHidden();
+    // Wave 5 (Codex ref 36): a composer this wide keeps the model label and
+    // truncates it; icon-only compaction starts at 320px.
+    const label = model.locator(".composer__model-label");
+    await expect(label).toBeVisible();
     const compactBox = await model.boundingBox();
     expect(compactBox!.width).toBeGreaterThanOrEqual(24);
     expect(compactBox!.height).toBeGreaterThanOrEqual(24);
     await expectModelLeadingEdgeContained(model);
     await expectComposerControlsContained(pane);
-    const label = model.locator(".composer__model-label");
     await label.evaluate((element) => {
       element.textContent = "GPT-5 with an extended reasoning model name";
     });
-    await expect(label).toBeHidden();
-    expect(await model.boundingBox()).toEqual(compactBox);
+    await expect(label).toBeVisible();
+    expect(
+      await label.evaluate(
+        (element) =>
+          element.scrollWidth > element.clientWidth &&
+          getComputedStyle(element).textOverflow === "ellipsis",
+      ),
+    ).toBe(true);
     await expectModelLeadingEdgeContained(model);
     await expectComposerControlsContained(pane);
   });

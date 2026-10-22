@@ -68,8 +68,8 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await page.setViewportSize({ width, height: 1096 });
-      expect(await page.evaluate(() => document.compatMode)).toBe("CSS1Compat");
       await openPopoverScenario(page);
+      expect(await page.evaluate(() => document.compatMode)).toBe("CSS1Compat");
       await page.evaluate(
         (modes) => window.popoverWorkbench.access(modes),
         profile.access,
@@ -180,6 +180,12 @@ for (const width of [1888, 720, 480]) {
         ["Harness", ".composer__harness-menu"],
       ]) {
         const trigger = composer.getByRole("button", { name, exact: true });
+        // Without an advertised access mode the composer is blocked
+        // (CP-29d), so the model picker stays disabled rather than inventing one.
+        if (name === "Model" && profile.access.length === 0) {
+          await expect(trigger).toBeDisabled();
+          continue;
+        }
         await trigger.click();
         await contained(page.locator(selector), trigger, pane);
         if (selector === ".composer__effort-menu") {

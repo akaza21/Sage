@@ -44,25 +44,35 @@ async function openChrome(
     },
     { harness, state, status, tone, harnessStatus },
   );
-  await page.getByRole("radio", { name: "Editor", exact: true }).check();
+  await chooseWindowMode(page, "Editor");
   await expect(page.locator(".agent-task-header")).toHaveCount(0);
-  await page.getByRole("radio", { name: "Agent", exact: true }).check();
+  await chooseWindowMode(page, "Agent");
   await settleChatProjections(page);
   const profile =
     popoverProfiles[
       ["codex", "claude-code", "pi", "opencode", "oh-my-pi"].indexOf(harness)
     ];
   const composer = page.locator("form.composer").first();
-  await expect(composer.locator(".composer__model-label")).toHaveText(
-    `${profile.name} confirmed model`,
-  );
-  await expect(composer.locator(".composer__effort-picker")).toHaveCount(
-    profile.effort ? 1 : 0,
-  );
-  await expect(
-    composer.getByRole("button", { name: "Access options" }),
-  ).toHaveCount(profile.access.length ? 1 : 0);
+  // Sign-in discovery has no session owning the model, so no confirmed
+  // model or session controls are advertised yet.
+  if (harnessStatus !== "Sign in required") {
+    await expect(composer.locator(".composer__model-label")).toHaveText(
+      `${profile.name} confirmed model`,
+    );
+    await expect(composer.locator(".composer__effort-picker")).toHaveCount(
+      profile.effort ? 1 : 0,
+    );
+    await expect(
+      composer.getByRole("button", { name: "Access options" }),
+    ).toHaveCount(profile.access.length ? 1 : 0);
+  }
   await page.evaluate(() => document.fonts.ready);
+}
+
+async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
+  const radio = page.getByRole("radio", { name: mode, exact: true });
+  await radio.locator("..").click();
+  await expect(radio).toBeChecked();
 }
 
 async function expectSingleHeaderRow(page: Page, width: number) {
@@ -71,9 +81,9 @@ async function expectSingleHeaderRow(page: Page, width: number) {
   await expect(header).toBeVisible();
   const geometry = await header.evaluate((element) => {
     const headerBox = element.getBoundingClientRect();
-    const children = [...element.children].map((child) =>
-      child.getBoundingClientRect(),
-    );
+    const children = [...element.children]
+      .map((child) => child.getBoundingClientRect())
+      .filter((box) => box.width > 0 && box.height > 0);
     const title = element.querySelector(".agent-task-header__title")!;
     return {
       height: headerBox.height,
@@ -152,7 +162,12 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(
         page.getByRole("region", { name: "Archived chats" }),
       ).toBeVisible();
-      await page.getByRole("button", { name: /^Chat actions for / }).click();
+      await page
+        .getByRole("button", {
+          name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
+          exact: true,
+        })
+        .click();
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
       ).toHaveCount(0);

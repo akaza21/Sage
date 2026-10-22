@@ -233,7 +233,9 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(profile.goal ? 1 : 0);
         await expect(
           menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
-        ).toHaveCount(profile.effort && width === 480 ? 1 : 0);
+        ).toHaveCount(
+          profile.effort && profile.access && width === 480 ? 1 : 0,
+        );
         await expect(
           menu.getByRole("menuitem", { name: /^Project:/ }),
         ).toHaveCount(width === 480 ? 1 : 0);
@@ -250,6 +252,16 @@ for (const width of [1888, 720, 480]) {
       } else await expect(add).toBeDisabled();
       if (!profile.effort) {
         if (hasAddActions) await page.keyboard.press("Escape");
+        return;
+      }
+      if (!profile.access) {
+        // No advertised access mode blocks the composer (CP-29d), so the
+        // effort control is shown but cannot open a panel.
+        if (hasAddActions) await page.keyboard.press("Escape");
+        if (width !== 480)
+          await expect(
+            composer.locator(".composer__effort-picker"),
+          ).toBeDisabled();
         return;
       }
       const effortAnchor =

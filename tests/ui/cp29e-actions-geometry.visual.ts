@@ -40,7 +40,10 @@ for (const width of [1888, 720, 480]) {
         name: "Composer options",
         exact: true,
       });
-      if (profile.modes.length === 0) {
+      // Wave 5: at 480 the Project control folds into this menu, so it opens
+      // even without session modes and leads the item order.
+      const folded = width === 480;
+      if (profile.modes.length === 0 && !folded) {
         await expect(trigger).toBeDisabled();
         await expect(
           page.getByRole("menu", { name: "Composer options menu" }),
@@ -86,9 +89,20 @@ for (const width of [1888, 720, 480]) {
         Math.min(panel!.x + panel!.width, anchor!.x + anchor!.width) -
           Math.max(panel!.x, anchor!.x),
       ).toBeGreaterThan(0);
-      const first = menu.getByRole("menuitemradio").first();
-      const last = menu.getByRole("menuitemradio").last();
-      await expect(first).toHaveAttribute("aria-checked", "true");
+      if (folded)
+        await expect(
+          menu.getByRole("menuitem", { name: /^Project: / }),
+        ).toBeVisible();
+      const items = menu.locator(
+        '[role="menuitem"]:enabled, [role="menuitemradio"]:enabled',
+      );
+      const first = items.first();
+      const last = items.last();
+      if (profile.modes.length > 0)
+        await expect(menu.getByRole("menuitemradio").first()).toHaveAttribute(
+          "aria-checked",
+          "true",
+        );
       await expect(first).toBeFocused();
       await page.keyboard.press("End");
       await expect(last).toBeFocused();
