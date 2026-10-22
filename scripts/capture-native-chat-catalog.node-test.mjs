@@ -87,7 +87,7 @@ test("CP-29d/e composer menus: access is its own menu, plan is a named Session m
     "</div></div>";
   const plan = await observeMarkup(
     menu(
-      '<button role="menuitemradio">Default</button><button role="menuitemradio">Plan</button>',
+      '<button role="menuitemradio">Default</button><button role="menuitemradio" aria-label="Plan mode">Plan mode</button>',
     ),
   );
   assert.equal(plan.visible.addMenu, true);
