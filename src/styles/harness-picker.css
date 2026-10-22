@@ -119,6 +119,7 @@
   margin: 4px 8px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+}
 
 .composer__add-action {
   justify-content: flex-start;
