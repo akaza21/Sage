@@ -115,8 +115,29 @@ impl RuntimeEngine for ChildEngine {
 
 #[tokio::test]
 async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() {
-    let export_path = std::env::var_os("SAGE_CP18D_EXPORT_DB").map(std::path::PathBuf::from);
+    child_ipc_journey(ProjectGeneration::ZERO, ProjectGeneration::ZERO, true).await;
+}
+
+#[tokio::test]
+async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live_generation() {
+    child_ipc_journey(
+        ProjectGeneration::new(3).unwrap(),
+        ProjectGeneration::new(2).unwrap(),
+        false,
+    )
+    .await;
+}
+
+async fn child_ipc_journey(
+    projection_generation: ProjectGeneration,
+    native_generation: ProjectGeneration,
+    export_fixture: bool,
+) {
+    let export_path = std::env::var_os("SAGE_CP18D_EXPORT_DB")
+        .filter(|_| export_fixture)
+        .map(std::path::PathBuf::from);
     let root = std::env::var_os("SAGE_CP18D_PROJECT_ROOT")
+        .filter(|_| export_fixture)
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             std::env::temp_dir().join(format!("sage-cp18d-ipc-{}", uuid::Uuid::new_v4()))
@@ -130,6 +151,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         .active_tab_id
         .unwrap();
     let state = AppState::new(database);
+    *state.project_transitions.lock().await = native_generation.get();
     let project_id = SageProjectId::parse(&project.id).unwrap();
     let chat_id = SageChatId::parse(&chat).unwrap();
     let revision = state
@@ -276,9 +298,9 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
         .unwrap()
         .projection_revision;
-    let request = ChildTranscriptRequest {
+    let mut request = ChildTranscriptRequest {
         project_id,
-        project_generation: ProjectGeneration::ZERO,
+        project_generation: projection_generation,
         chat_id,
         expected_projection_revision: revision,
         session_id: session.session_id,
@@ -286,6 +308,17 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         item_id: SageItemId::parse("item-one").unwrap(),
         agent_key: ExternalId::new("child", "child-one").unwrap(),
     };
+    if projection_generation != native_generation {
+        assert!(matches!(
+            get_acp_child_transcript_inner(&state, request.clone()).await,
+            Err(AcpIpcError::Conflict {
+                resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                ..
+            })
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        request.project_generation = native_generation;
+    }
     let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
         owner: RuntimeOwner {
             project_id: request.project_id.clone(),
@@ -366,6 +399,23 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     let count: i64 = state.database.connection().query_row("SELECT COUNT(*) FROM acp_child_thread_transcripts WHERE native_child_thread_id='child-one'", [], |row| row.get(0)).unwrap();
     assert_eq!(count, 1);
+    if projection_generation != native_generation {
+        *state.project_transitions.lock().await = 4;
+        assert!(matches!(
+            get_acp_child_transcript_inner(&state, request.clone()).await,
+            Err(AcpIpcError::Conflict {
+                resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                ..
+            })
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        request.project_generation = ProjectGeneration::new(4).unwrap();
+        assert!(matches!(
+            get_acp_child_transcript_inner(&state, request.clone()).await,
+            Ok(ChildTranscriptResponse::Current { .. })
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+    }
     let mut foreign_owner = scope.clone();
     foreign_owner.owner.session_id = SageAgentSessionId::parse("foreign-session").unwrap();
     assert!(

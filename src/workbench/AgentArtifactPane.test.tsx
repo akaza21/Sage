@@ -18,6 +18,12 @@ const previewBridge = vi.hoisted(() => ({
   available: vi.fn(),
 }));
 
+const childBridge = vi.hoisted(() => ({ read: vi.fn() }));
+
+vi.mock("../services/acpChildTranscript", () => ({
+  getAcpChildTranscript: childBridge.read,
+}));
+
 vi.mock("../features/preview/previewDesktop", () => ({
   discoverPreviewTargets: previewBridge.discover,
   getPreviewHealth: previewBridge.health,
@@ -171,6 +177,12 @@ function seedFocusedPage(): void {
 }
 
 beforeEach(() => {
+  childBridge.read.mockReset();
+  childBridge.read.mockResolvedValue({
+    kind: "current",
+    retentionLimited: false,
+    turns: [],
+  });
   previewBridge.discover.mockReset();
   previewBridge.health.mockReset();
   previewBridge.start.mockReset();
@@ -369,6 +381,77 @@ describe("Agent artifact file chips", () => {
     expect(
       await screen.findByRole("heading", { name: "Reviewer" }),
     ).toBeVisible();
+  });
+  it("reads a child with the live native epoch when projection generation has drifted", async () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "native-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "Reviewer",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "started",
+        agentKey: "child-a",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as AcpItem;
+    useWorkbenchStore.setState({
+      projectGeneration: 3,
+      nativeTransitionEpoch: 2,
+    });
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = {
+      projectId: "project-a" as SageProjectId,
+      projectGeneration: "3" as ProjectGeneration,
+      chatId: "chat-focused" as SageChatId,
+    };
+    store.getState().activateScope(scope);
+    expect(
+      store.getState().applyAuthoritativePage(scope, {
+        ...base,
+        sessions: [
+          {
+            ...base.sessions[0],
+            capabilities: {
+              ...base.sessions[0].capabilities,
+              childTranscriptRead: true,
+            },
+          },
+        ],
+        turns: [{ ...base.turns[0], items: [child] }],
+      } as AcpChatPage),
+    ).toBe("accepted");
+    useSubagentPaneStore.getState().show({
+      owner: focusedOwner,
+      itemId: child.id,
+      agentKey: "child-a",
+    });
+
+    render(<AgentArtifactPane expanded />);
+
+    await waitFor(() =>
+      expect(childBridge.read).toHaveBeenCalledWith({
+        projectId: "project-a",
+        projectGeneration: "2",
+        chatId: "chat-focused",
+        expectedProjectionRevision: "8",
+        sessionId: "session-a",
+        runtimeEpoch: "3",
+        itemId: "native-child",
+        agentKey: "child-a",
+      }),
+    );
+    expect(store.getState().scope?.projectGeneration).toBe("3");
+    act(() => useWorkbenchStore.setState({ nativeTransitionEpoch: 4 }));
+    await waitFor(() =>
+      expect(childBridge.read).toHaveBeenLastCalledWith(
+        expect.objectContaining({ projectGeneration: "4" }),
+      ),
+    );
   });
   it("does not expose Subagents for conflicting child identities", () => {
     const base = pageWithEdit();
