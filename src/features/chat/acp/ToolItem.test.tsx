@@ -569,8 +569,11 @@ describe("ToolItem", async () => {
         description: "Bounded retained input",
       }),
     ).toHaveTextContent("Normalized fallback");
+    expect(
+      screen.getByRole("status", { name: "Running" }).querySelector("svg"),
+    ).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByRole("status", { name: "Running" })).toHaveTextContent(
-      "Running",
+      "",
     );
 
     rerender(

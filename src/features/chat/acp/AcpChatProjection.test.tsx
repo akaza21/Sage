@@ -574,13 +574,16 @@ describe("AcpChatProjection", () => {
         (label) => label.textContent,
       ),
     ).toEqual(["Ran 1 command, read a file"]);
+    const worked = work as HTMLDetailsElement;
+    worked.open = true;
+    fireEvent(worked, new Event("toggle"));
     const rollup =
       container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(rollup).not.toBeNull();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
     expect(
-      [...rollup!.querySelectorAll(".acp-tool-card")].map((card) =>
+      [...rollup!.querySelectorAll(".acp-tool-compact")].map((card) =>
         card.getAttribute("data-acp-item-id"),
       ),
     ).toEqual(["earlier-command", "later-read"]);
@@ -1033,7 +1036,8 @@ describe("AcpChatProjection", () => {
     expect(attachment?.closest(".acp-turn__attachments")).not.toBeNull();
     expect(bubble).not.toBeNull();
     expect(answer).not.toBeNull();
-    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(screen.getByText("Worked for 0s")).toBeVisible();
     expect(
       attachment!.compareDocumentPosition(bubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2031,6 +2035,12 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
+
+    const worked = document.querySelector<HTMLDetailsElement>(
+      ".chat-transcript-work",
+    )!;
+    worked.open = true;
+    fireEvent(worked, new Event("toggle"));
 
     const readDisclosure = document.querySelector<HTMLDetailsElement>(
       '.acp-tool-rollup[data-activity-kind="read"]',

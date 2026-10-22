@@ -9,11 +9,13 @@ import { CollaborationItem } from "./CollaborationItem";
 export function PrimaryActivities({
   items,
   interactive,
+  expandDetails,
   onOpenResource,
   renderItem,
 }: {
   items: readonly AcpItem[];
   interactive: boolean;
+  expandDetails?: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
   renderItem: (item: AcpItem) => ReactNode;
 }) {
@@ -26,6 +28,7 @@ export function PrimaryActivities({
             key={activity.rollup.items[0]?.id}
             rollup={activity.rollup}
             interactive={interactive}
+            expandDetails={expandDetails}
             onOpenResource={onOpenResource}
           />
         ) : activity.kind === "collaborationRollup" ? (

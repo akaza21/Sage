@@ -5,6 +5,7 @@ import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { getPermissionStatus, terminalTurnStates } from "./acp/statusSemantics";
 import { dayTimeLabel } from "./chatTimestamp";
+import { WorkedActivityVisibility } from "./acp/WorkedActivityVisibility";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
@@ -37,6 +38,12 @@ export function ChatTranscriptTurnSummary({
   children?: ReactNode;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
+  const pendingPermission = turn.items.some(
+    (item) =>
+      item.kind === "permissionRequest" && !getPermissionStatus(item).terminal,
+  );
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const expanded = openOverride ?? pendingPermission;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (terminal) return;
@@ -47,9 +54,28 @@ export function ChatTranscriptTurnSummary({
     ? formatWorkedDuration(turn.createdAt, turn.terminalAt)
     : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
 
-  if (terminal && !hasActivities) return null;
+  if (terminal && !hasActivities) {
+    if (
+      !turn.items.some(
+        (item) =>
+          item.kind === "text" &&
+          item.payload.role === "assistant" &&
+          item.payload.text.trim(),
+      )
+    )
+      return null;
+    return (
+      <div className="chat-transcript-work">
+        <div className="chat-transcript-work__heading">
+          {duration ?? "Worked"}
+        </div>
+      </div>
+    );
+  }
   const groups = children ? (
-    <div className="chat-transcript-work__groups">{children}</div>
+    <WorkedActivityVisibility value={!terminal || expanded}>
+      <div className="chat-transcript-work__groups">{children}</div>
+    </WorkedActivityVisibility>
   ) : null;
 
   if (!terminal) {
@@ -64,11 +90,11 @@ export function ChatTranscriptTurnSummary({
   return (
     <details
       className="chat-transcript-work"
-      open={turn.items.some(
-        (item) =>
-          item.kind === "permissionRequest" &&
-          !getPermissionStatus(item).terminal,
-      )}
+      open={expanded}
+      onToggle={(event) => {
+        if (event.currentTarget.open !== expanded)
+          setOpenOverride(event.currentTarget.open);
+      }}
     >
       <summary>
         {duration ?? "Worked"}
@@ -125,7 +151,7 @@ export function ChatTranscriptFooter({
     ? onRetry
     : undefined;
 
-  if (!hasText && !retryAction) return null;
+  if (!hasText) return null;
 
   async function copyAnswer() {
     const request = ++copyRequest.current;

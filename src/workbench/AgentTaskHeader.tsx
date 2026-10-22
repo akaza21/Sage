@@ -293,7 +293,9 @@ export function AgentTaskHeader({
                 aria-label="Subagents"
                 title="Up to 128 subagents from the latest 128 turns and 256 items total"
               >
-                <strong>Subagents</strong>
+                <strong aria-label={`Subagents: ${recentAgents.length}`}>
+                  Subagents {recentAgents.length}
+                </strong>
                 <div className="agent-task-header__agent-summary">
                   <span
                     className="agent-task-header__agent-metric"

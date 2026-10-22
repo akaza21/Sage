@@ -112,11 +112,12 @@ export function freshRoots(workspace) {
     "sage-disposable-profile-v1\n",
     { flag: "wx" },
   );
-  writeFileSync(
-    path.join(project, "src", "example.ts"),
-    "export const example = 1;\n",
-    { flag: "wx" },
-  );
+  for (const name of ["example", "example-1", "example-2", "example-3"])
+    writeFileSync(
+      path.join(project, "src", `${name}.ts`),
+      "export const example = 1;\n",
+      { flag: "wx" },
+    );
   return { owned, profile, project, proof };
 }
 export function launchOwned(build, fixture, roots, options, port) {

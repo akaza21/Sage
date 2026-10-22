@@ -41,7 +41,8 @@ describe("empty turn activity", () => {
     const answer = { ...textItem(), ordinal: 2 };
     const { container } = renderTurn("completed", [progress, answer]);
     expect(screen.getByText("Normalized answer")).toBeVisible();
-    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
 
   it.each([
@@ -62,7 +63,8 @@ describe("empty turn activity", () => {
       "This project is ready. Choose a harness and begin a persistent chat.";
     const { container } = renderTurn("completed", [answer]);
     expect(screen.getByText(answer.payload.text)).toBeVisible();
-    expect(container.querySelector(".chat-transcript-work")).toBeNull();
+    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
 
   it("keeps Working visible while waiting for the first token", () => {

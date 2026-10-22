@@ -152,12 +152,22 @@
 .acp-subagent-row__glyphs {
   display: inline-flex;
   min-width: 16px;
-  padding-left: 4px;
+  flex: none;
+  gap: 4px;
 }
 
 .acp-subagent-row__glyph {
-  margin-left: -4px;
+  display: inline-flex;
+  width: 16px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
   color: var(--agent-subagent-violet);
+}
+
+.acp-subagent-row > [role="status"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .acp-subagent-row__glyph--1 {

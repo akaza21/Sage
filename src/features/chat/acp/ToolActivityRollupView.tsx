@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   BrainCircuit,
   Circle,
@@ -16,6 +16,8 @@ import {
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
+import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
+import { compactToolLabels } from "./toolCommandContent";
 import {
   toolRollupLabel,
   toolRollupDurationLabel,
@@ -43,13 +45,23 @@ function ActivityKindIcon({ kind }: { kind: ToolRollup["kind"] }) {
 export function ToolActivityRollup({
   rollup,
   interactive,
+  expandDetails = false,
   onOpenResource,
 }: {
   rollup: ToolRollup;
   interactive: boolean;
+  expandDetails?: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const visible = useContext(WorkedActivityVisibility);
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const expanded =
+    openOverride ??
+    (visible &&
+      expandDetails &&
+      rollup.items.every(
+        (item) => compactToolLabels[item.payload.presentation.kind],
+      ));
   const label = toolRollupLabel(
     rollup.kind,
     rollup.items,
@@ -66,11 +78,16 @@ export function ToolActivityRollup({
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
       data-activity-kind={rollup.kind}
       data-activity-state={state}
-      onToggle={(event) => setExpanded(event.currentTarget.open)}
+      open={expanded}
+      onToggle={(event) => {
+        if (event.currentTarget.open !== expanded)
+          setOpenOverride(event.currentTarget.open);
+      }}
     >
       <summary>
         <span className="acp-tool-rollup__summary-copy">
           <ActivityKindIcon kind={rollup.kind} />
+          {running ? <ToolRunningIndicator /> : null}
           {live || state === "completed" ? null : (
             <StateIcon aria-hidden="true" size={14} />
           )}
@@ -81,7 +98,6 @@ export function ToolActivityRollup({
           </span>
         </span>
         <span className="acp-tool-rollup__meta">
-          {running ? <ToolRunningIndicator /> : null}
           {duration ? (
             <span className="acp-tool-rollup__duration">
               <Clock3 aria-hidden="true" size={12} />
@@ -99,12 +115,13 @@ export function ToolActivityRollup({
           />
         </span>
       </summary>
-      {expanded ? (
+      {expanded && visible ? (
         <div className="acp-tool-rollup__items">
           {rollup.items.map((item) => (
             <ToolItem
               key={item.id}
               item={item}
+              compact
               allowBrowse={interactive}
               onOpenResource={interactive ? onOpenResource : undefined}
             />

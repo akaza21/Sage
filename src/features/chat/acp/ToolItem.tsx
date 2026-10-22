@@ -21,6 +21,9 @@ import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 import { toolDurationLabel } from "./toolActivityRollup";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
+import { CompactToolItem } from "./CompactToolItem";
+import { ToolCommandFrame } from "./ToolCommandFrame";
+import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
@@ -50,17 +53,19 @@ function ToolKindIcon({ kind }: { kind: ToolKind }) {
 
 export interface ToolItemProps {
   item: ToolProjectionItem;
+  compact?: boolean;
   allowBrowse?: boolean;
   onOpenResource?: (resource: ResourceRef, target: OpenResourceTarget) => void;
 }
 
 export function ToolItem({
   item,
+  compact = false,
   allowBrowse = true,
   onOpenResource,
 }: ToolItemProps) {
   const descriptionId = useId();
-  const outputSummary = item.payload.outputSummary ?? null;
+  const { commandLine, output: outputSummary } = toolCommandContent(item);
   const inputSummary = item.payload.inputSummary;
   const kind = item.payload.presentation.kind;
   const detail =
@@ -85,12 +90,6 @@ export function ToolItem({
   const duration = terminal
     ? toolDurationLabel(item.createdAt, item.terminalAt ?? null)
     : null;
-  const commandLine =
-    presentation.kind === "execute"
-      ? inputSummary?.trim()
-        ? inputSummary
-        : presentation.summary?.trim() || null
-      : null;
   const browse =
     presentation.kind === "fetch"
       ? (extractAdmittedBrowseUrl(presentation.url ?? "") ??
@@ -98,6 +97,8 @@ export function ToolItem({
         extractAdmittedBrowseUrl(inputSummary ?? "") ??
         extractAdmittedBrowseUrl(outputSummary ?? ""))
       : null;
+  if (compact && compactToolLabels[kind])
+    return <CompactToolItem item={item} onOpenResource={onOpenResource} />;
   return (
     <article
       className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${visualState}`}
@@ -134,30 +135,12 @@ export function ToolItem({
         )}
       </header>
       {kind === "execute" && (commandLine || outputSummary !== null) ? (
-        <div className="acp-tool-command-frame">
-          <p className="acp-tool-command__disclosure" role="note">
-            Shell
-          </p>
-          {commandLine ? (
-            <pre
-              className="acp-tool-command acp-tool-command--line"
-              aria-label="Command line"
-              tabIndex={0}
-            >
-              {`$ ${commandLine}`}
-            </pre>
-          ) : null}
-          {outputSummary !== null ? (
-            <pre
-              id={descriptionId}
-              className="acp-tool-command acp-tool-command--output"
-              aria-label="Command output"
-              tabIndex={0}
-            >
-              {outputSummary || "No output"}
-            </pre>
-          ) : null}
-        </div>
+        <ToolCommandFrame
+          label="Shell"
+          commandLine={commandLine ? `$ ${commandLine}` : null}
+          output={outputSummary}
+          descriptionId={descriptionId}
+        />
       ) : null}
       <ToolItemDetails
         item={item}
