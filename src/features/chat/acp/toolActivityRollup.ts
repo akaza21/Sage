@@ -71,7 +71,7 @@ function distinctResourceCount(
 }
 
 function resourceRollupLabel(
-  activity: "Read" | "Edited" | "Deleted" | "Moved",
+  activity: string,
   items: readonly ToolProjectionItem[],
 ): string {
   const resourceCount = distinctResourceCount(items);
@@ -110,19 +110,18 @@ export function toolRollupLabel(
 ): string {
   if (kind === "execute") return commandRollupLabel(items, commandActivity);
   const live = items.some((item) => item.toolState === "inProgress");
-  if (live && kind === "edit") return "Editing files";
   if (live && kind === "think") return "Thinking";
   switch (kind) {
     case "mixed":
       return mixedToolLabel(items);
     case "read":
-      return resourceRollupLabel("Read", items);
+      return resourceRollupLabel(live ? "Reading" : "Read", items);
     case "edit":
-      return resourceRollupLabel("Edited", items);
+      return resourceRollupLabel(live ? "Editing" : "Edited", items);
     case "delete":
-      return resourceRollupLabel("Deleted", items);
+      return resourceRollupLabel(live ? "Deleting" : "Deleted", items);
     case "move":
-      return resourceRollupLabel("Moved", items);
+      return resourceRollupLabel(live ? "Moving" : "Moved", items);
     case "search":
       return `Search activity · ${countLabel(items.length, "item")}`;
     case "fetch":

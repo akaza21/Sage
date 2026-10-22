@@ -182,13 +182,20 @@ function events(state, { update, finish }) {
       "worked-expanded",
     ].includes(state)
   ) {
-    for (let index = 1; index <= (state === "tool-running" ? 1 : 3); index++) {
+    const count =
+      state === "tools-grouped" || state === "worked-expanded" ? 3 : 1;
+    for (let index = 1; index <= count; index++) {
       const toolCallId = "fixture-tool-" + index;
       steps.push(
         frame("tool_execution_start", {
           toolCallId,
           toolName: "read",
-          args: { path: "$ROOT/src/example.ts" },
+          args: {
+            path:
+              count === 1
+                ? "$ROOT/src/example.ts"
+                : `$ROOT/src/example-${index}.ts`,
+          },
         }),
       );
       if (state !== "tool-running")

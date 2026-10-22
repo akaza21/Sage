@@ -23,6 +23,7 @@ import { HarnessActivity } from "./HarnessActivity";
 import { promptAttachmentItems } from "./acpTurnState";
 import type { OpenResourceTarget } from "./ToolItem";
 import { PrimaryActivities } from "./PrimaryActivities";
+import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
 import { TurnFailure } from "./TurnFailure";
@@ -94,6 +95,7 @@ const Turn = memo(
       [actionOrigin, onOpenResource],
     );
     const terminal = terminalTurnStates.has(turn.state);
+    const stopped = turn.state === "cancelled" || turn.state === "interrupted";
     const promptItems = primary.filter(
       (item) => item.kind === "text" && item.payload.role === "user",
     );
@@ -141,7 +143,7 @@ const Turn = memo(
         data-runtime-epoch={turn.runtimeEpoch}
         data-turn-ordinal={turn.ordinal}
       >
-        <TurnHeader turn={turn} />
+        {!stopped ? <TurnHeader turn={turn} /> : null}
         <div className="acp-turn__items">
           {attachmentItems.length > 0 ? (
             <div
@@ -168,6 +170,7 @@ const Turn = memo(
               <PrimaryActivities
                 items={workingItems}
                 interactive={interactive}
+                expandDetails={terminal}
                 onOpenResource={
                   interactive && onOpenResource ? openForTurn : undefined
                 }
@@ -239,9 +242,11 @@ const Turn = memo(
           ) ? (
             <div className="acp-editing-files acp-tool-rollup__summary-copy">
               <FilePenLine size={14} aria-hidden="true" />
+              <ToolRunningIndicator />
               <span className="acp-live-shimmer">Editing files</span>
             </div>
           ) : null}
+          {stopped ? <TurnHeader turn={turn} /> : null}
           <TurnFailure turn={turn} onRetry={onRetry} />
         </div>
       </section>

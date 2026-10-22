@@ -217,13 +217,19 @@ describe("ToolActivityRollup", () => {
       ).toBeVisible();
       row.open = true;
       fireEvent(row, new Event("toggle"));
-      expect(
-        within(
-          await screen.findByRole("group", {
-            name: item.payload.presentation.label,
-          }),
-        ).getByRole("status", { name: "Running" }),
-      ).toBeVisible();
+      const card = within(
+        await screen.findByRole("group", {
+          name: item.payload.presentation.label,
+        }),
+      );
+      if (["execute", "read", "edit"].includes(kind)) {
+        expect(card.queryByRole("status", { name: "Running" })).toBeNull();
+        expect(
+          row.querySelectorAll('[role="status"][aria-label="Running"]'),
+        ).toHaveLength(1);
+      } else {
+        expect(card.getByRole("status", { name: "Running" })).toBeVisible();
+      }
       for (const state of ["completed", "failed", "cancelled"] as const) {
         rerender(
           <ToolActivityRollup
@@ -305,9 +311,9 @@ describe("ToolActivityRollup", () => {
     expect(screen.getByText("Check build")).toBeVisible();
   });
 
-  it("does not call pending, rejected, cancelled or failed Task tools started or finished", () => {
+  it("names an observed pending Task as started and preserves approval and terminal outcomes", () => {
     for (const [state, wording] of [
-      ["pending", "pending"],
+      ["pending", "started working"],
       ["waitingForApproval", "waiting for approval"],
       ["declined", "declined"],
       ["cancelled", "stopped"],
@@ -883,7 +889,7 @@ describe("ToolActivityRollup", () => {
     );
 
     const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
-    expect(row?.querySelector("summary")).toHaveTextContent("Editing files");
+    expect(row?.querySelector("summary")).toHaveTextContent("Editing 1 file");
     expect(row?.querySelector(".acp-tool-rollup__label")).toHaveClass(
       "acp-live-shimmer",
     );

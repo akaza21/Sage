@@ -10,6 +10,40 @@ import {
   scopeToTurn,
 } from "./capture-native-chat-dom.mjs";
 import { piIdleConfigJourney } from "./acp-native-pi-cases.mjs";
+import { freshRoots } from "./capture-native-chat-process.mjs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+test("Pi grouped read paths exist in the disposable native replay project", () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), "sage-activity-parity-"));
+  try {
+    const roots = freshRoots(workspace);
+    const reads = nativeCases()
+      .find(({ id }) => id === "pi-tools-grouped")
+      .steps.filter(({ frame }) => frame?.type === "tool_execution_start");
+    for (const { frame } of reads) {
+      const file = frame.args.path.replace("$ROOT", roots.project);
+      assert.equal(readFileSync(file, "utf8"), "export const example = 1;\n");
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("Pi grouped reads use three distinct files while tool-finished stays a singleton", () => {
+  const calls = (state) =>
+    nativeCases()
+      .find(({ id }) => id === `pi-${state}`)
+      .steps.filter(({ frame }) => frame?.type === "tool_execution_start")
+      .map(({ frame }) => frame.args.path);
+  assert.deepEqual(calls("tool-finished"), ["$ROOT/src/example.ts"]);
+  assert.deepEqual(calls("tools-grouped"), [
+    "$ROOT/src/example-1.ts",
+    "$ROOT/src/example-2.ts",
+    "$ROOT/src/example-3.ts",
+  ]);
+});
 
 test("Pi curated catalogue derives transport from the same registry that admits its fixture", () => {
   const source = readFileSync(

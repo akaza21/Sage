@@ -142,7 +142,7 @@
 }
 
 .chat-transcript-work {
-  margin-block: var(--space-3);
+  margin-block: var(--space-3) 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -185,7 +185,7 @@
 .chat-transcript-work__groups {
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-1) 0 var(--space-2);
+  padding: var(--space-1) 0 0;
 }
 
 .chat-transcript-work[open] .chat-transcript-work__groups {
@@ -212,7 +212,7 @@
 }
 
 .chat-transcript-work__groups .acp-tool-rollup__items .acp-tool-card {
-  padding: 0 0 0 var(--space-4);
+  padding: 0;
   border: 0;
   background: transparent;
 }

@@ -410,7 +410,7 @@ describe("ChatTranscript Retry", () => {
     ["cancelled", false],
     ["interrupted", false],
   ] as const)(
-    "offers Retry after stopping before the first answer token (%s, prior answer: %s)",
+    "omits orphan Retry after stopping before the first answer token (%s, prior answer: %s)",
     async (state, hasPriorAnswer) => {
       const initial = retryPage();
       if (!hasPriorAnswer) initial.turns = [];
@@ -441,11 +441,9 @@ describe("ChatTranscript Retry", () => {
         if (nextState !== state)
           expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
       }
-      const retry = screen.getByRole("button", { name: "Retry" });
-      expect(retry).toBeVisible();
-      expect(retry.closest(".chat-transcript-actions")).not.toBeNull();
-      fireEvent.click(retry);
-      expect(onRetry).toHaveBeenCalledOnce();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(document.querySelector(".chat-transcript-actions")).toBeNull();
+      expect(onRetry).not.toHaveBeenCalled();
     },
   );
 

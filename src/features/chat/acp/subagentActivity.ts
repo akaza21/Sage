@@ -135,7 +135,7 @@ export function subagentToolSummary(
   items: readonly Extract<AcpItem, { kind: "toolCall" }>[],
 ): string {
   const wording = {
-    pending: "pending",
+    pending: "started working",
     waitingForApproval: "waiting for approval",
     inProgress: "started working",
     completed: "finished",

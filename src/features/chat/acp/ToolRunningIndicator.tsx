@@ -9,7 +9,6 @@ export function ToolRunningIndicator() {
       aria-live="off"
     >
       <LoaderCircle size={12} aria-hidden="true" />
-      Running
     </span>
   );
 }

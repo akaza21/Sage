@@ -75,7 +75,7 @@ function SubagentRow({
             key={agent.key}
             className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
           >
-            {state === "finished" ? "●" : "✦"}
+            {agent.label ? agent.label[0].toUpperCase() : "✦"}
           </span>
         ))}
       </span>

@@ -1,5 +1,11 @@
 import { memo, useState } from "react";
-import { Circle, LoaderCircle, XCircle, Check } from "../../../ui/leanIcons";
+import {
+  Archive,
+  Circle,
+  LoaderCircle,
+  XCircle,
+  Check,
+} from "../../../ui/leanIcons";
 
 import type { AcpItem, TurnState } from "../../../domain/acp";
 import type {
@@ -296,17 +302,21 @@ export function TurnActivityItem({
       if (item.lifecycle === "unsupported") return null;
       return (
         <p
-          className="acp-compaction-notice"
+          className="acp-compaction-notice acp-activity-row"
           data-activity-kind="compactionNotice"
+          data-activity-state={item.lifecycle}
           role="status"
         >
-          {item.lifecycle === "completed"
-            ? "Context automatically compacted"
-            : item.lifecycle === "started" || item.lifecycle === "streaming"
-              ? "Compacting context…"
-              : item.lifecycle === "failed"
-                ? "Context compaction failed"
-                : "Context compaction cancelled"}
+          <Archive size={14} aria-hidden="true" />
+          <span>
+            {item.lifecycle === "completed"
+              ? "Context automatically compacted"
+              : item.lifecycle === "started" || item.lifecycle === "streaming"
+                ? "Compacting context…"
+                : item.lifecycle === "failed"
+                  ? "Context compaction failed"
+                  : "Context compaction cancelled"}
+          </span>
         </p>
       );
     case "error":
