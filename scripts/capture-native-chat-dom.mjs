@@ -24,7 +24,8 @@ const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
 const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
 export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
 /** Kinds whose matching node must also carry this accessible name. */
-export const NAMED_KINDS = Object.freeze({ planEntry: "Plan" });
+// Wave 5 names the plan session mode "Plan mode" (ComposerAddActions.tsx).
+export const NAMED_KINDS = Object.freeze({ planEntry: "Plan mode" });
 export function accessibleName(element) {
   return (
     element.getAttribute("aria-label") ??
