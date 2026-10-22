@@ -148,28 +148,51 @@
 
 @container chat-center (max-width: 400px) {
   .agent-chat-center .agent-task-header__project {
+    display: none;
+  }
+
+  .agent-chat-center .agent-task-header__separator {
+    display: none;
+  }
+
+  .agent-chat-center .agent-task-header {
+    position: relative;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+  }
+
+  .agent-chat-center .agent-task-header__status {
+    width: 12px;
+    height: 12px;
+    gap: 0;
+    font-size: 0;
+  }
+
+  .agent-chat-center
+    .agent-task-header__status:not(:has(.agent-chat-chip__spinner))::before {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-circle);
+    background: currentColor;
+    content: "";
+  }
+
+  .agent-chat-center .agent-task-header__harness-status {
     min-width: 0;
-    max-width: min(128px, 40%);
-    flex: 0 1 auto;
+    max-width: 32px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .agent-chat-center .agent-task-header {
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2);
-  }
-
-  .agent-chat-center .agent-task-header__breadcrumb {
-    flex-basis: 100%;
-  }
-
-  .agent-chat-center .agent-task-header__harness-status,
   .agent-chat-center .agent-task-header__rename [role="alert"] {
-    min-width: 0;
-    max-width: 100%;
+    position: absolute;
+    z-index: 1;
+    inset: 100% var(--space-2) auto;
+    padding: var(--space-2);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    background: var(--color-panel);
     overflow-wrap: anywhere;
     white-space: normal;
   }

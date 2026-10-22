@@ -25,7 +25,7 @@
   margin: var(--space-6) 0 0;
   color: var(--color-text-primary);
   font-size: calc(var(--type-size-chat-title) * 1.2);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-regular);
   line-height: var(--line-height-normal);
   overflow-wrap: anywhere;
 }
@@ -33,7 +33,7 @@
 .chat-home .project-scope {
   display: inline-flex;
   max-width: min(100%, 12rem);
-  margin-top: var(--space-3);
+  margin-top: 0;
   height: auto;
   padding: 0;
   border: 0;
@@ -44,6 +44,11 @@
   box-shadow: none;
   font: inherit;
   vertical-align: bottom;
+}
+
+.chat-home .searchable-picker {
+  display: inline-flex;
+  max-width: 100%;
 }
 
 .chat-home .project-scope__icon,

@@ -9,6 +9,7 @@ describe("Composer Project chip responsive seam", () => {
         [
           "shared-controls.css",
           "agent-chat-panes.css",
+          "split-chat-controls.css",
           "composer-surface.css",
           "harness-picker.css",
         ].map((file) => readFile(`src/styles/${file}`, "utf8")),
@@ -69,7 +70,9 @@ describe("Composer Project chip responsive seam", () => {
       "src/styles/chat-container-controls.css",
       "utf8",
     );
-    const split = await readFile("src/styles/agent-chat-panes.css", "utf8");
+    const split = (
+      await readFile("src/styles/split-chat-controls.css", "utf8")
+    ).replace(/\s+/g, " ");
     const compact = narrow
       .split("@container composer (max-width: 400px)")[1]
       ?.split("@container composer (max-width: 280px)")[0];
@@ -88,12 +91,16 @@ describe("Composer Project chip responsive seam", () => {
         ),
       );
       expect(css).toContain(
-        `${prefix} .project-scope .searchable-picker__trigger-label`,
+        `${target} .project-scope .searchable-picker__trigger-label`,
       );
       expect(css).toContain(
-        `${prefix} .project-scope .searchable-picker__chevron`,
+        `${target} .project-scope .searchable-picker__chevron`,
       );
-      expect(css).toContain(`${prefix} .project-scope__label`);
+      expect(css).toContain(
+        prefix === ".composer"
+          ? `${prefix} .project-scope__label`
+          : `${target} .project-scope .project-scope__label`,
+      );
       expect(css).toMatch(/project-scope__label\s*\{[^}]*display:\s*none;/s);
     }
     expect(split).not.toContain(".composer__controls > .select-control {");
