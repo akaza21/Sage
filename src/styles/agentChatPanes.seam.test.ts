@@ -5,13 +5,15 @@ import { describe, expect, it } from "vitest";
 
 describe("Agent Chat panes stylesheet seam", () => {
   it("owns compact split-pane identity without leaking back into the mode shell", async () => {
-    const [entry, panesCss, modeCss] = await Promise.all([
+    const [entry, panesCss, modeCss, splitControlsCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
       readFile(resolve("src/styles/agent-chat-panes.css"), "utf8"),
       readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
+      readFile(resolve("src/styles/split-chat-controls.css"), "utf8"),
     ]);
 
     expect(entry).toMatch(/import ["']\.\/styles\/agent-chat-panes\.css["'];/);
+    expect(panesCss).toContain('@import "./split-chat-controls.css";');
     expect(modeCss).not.toMatch(/^\.agent-chat-panes\b/m);
     expect(modeCss).not.toMatch(/^\.agent-chat-pane\b/m);
     expect(panesCss).toMatch(
@@ -25,10 +27,10 @@ describe("Agent Chat panes stylesheet seam", () => {
       /\.agent-chat-pane__title\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/s,
     );
     expect(panesCss).toContain(".agent-chat-chip--failed");
-    expect(panesCss).toMatch(
+    expect(splitControlsCss).toMatch(
       /\.agent-chat-panes--split \.composer__shortcut\s*\{[^}]*display:\s*none;/s,
     );
-    expect(panesCss).not.toMatch(
+    expect(panesCss + splitControlsCss).not.toMatch(
       /\.agent-chat-panes--split \.access-mode\s*\{[^}]*display:\s*none;/s,
     );
     expect(modeCss).not.toContain(".composer__shortcut");

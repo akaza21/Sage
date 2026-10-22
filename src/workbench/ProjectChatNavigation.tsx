@@ -360,8 +360,7 @@ export function ProjectChatNavigation({
             ) : (
               <ChevronRight size={14} aria-hidden="true" />
             )}
-            <span>Archived</span>
-            <span>{archivedChats.length}</span>
+            <span>Archived</span> <span>{archivedChats.length}</span>
           </button>
           {archivedOpen ? (
             <div

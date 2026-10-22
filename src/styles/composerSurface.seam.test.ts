@@ -246,6 +246,7 @@ describe("Composer surface stylesheet seam", () => {
       "composer-image.css",
       "composer-context.css",
       "chat-surface.css",
+      "chat-follow-end.css",
       "shared-controls.css",
       "searchable-picker-bounded-popover.css",
       "status-surfaces.css",

@@ -28,8 +28,10 @@ async function renderTranscript(
   acpPage: AcpChatPage | null,
   messages: readonly ChatMessage[] = [],
   useNativeAcp = true,
+  showJumpToLatest = false,
 ) {
   const onRetry = vi.fn();
+  const onJumpToLatest = vi.fn();
   const transcript = (page: AcpChatPage | null, focused = true) => (
     <ChatTranscript
       transcriptRef={{ current: null }}
@@ -50,8 +52,8 @@ async function renderTranscript(
       messages={messages}
       developmentSimulator={false}
       onRetry={onRetry}
-      showJumpToLatest={false}
-      onJumpToLatest={vi.fn()}
+      showJumpToLatest={showJumpToLatest}
+      onJumpToLatest={onJumpToLatest}
     />
   );
   const result = render(transcript(acpPage));
@@ -59,6 +61,7 @@ async function renderTranscript(
   return {
     ...result,
     onRetry,
+    onJumpToLatest,
     async setFocused(focused: boolean) {
       result.rerender(transcript(acpPage, focused));
       await settleLazyModules();
@@ -69,6 +72,26 @@ async function renderTranscript(
     },
   };
 }
+
+it("offers an icon-only, named jump button that follows the latest turn", async () => {
+  const { onJumpToLatest } = await renderTranscript(
+    page("completed"),
+    [],
+    true,
+    true,
+  );
+  const jump = screen.getByRole("button", { name: "Jump to latest" });
+  expect(jump).toHaveAttribute("title", "Jump to latest");
+  expect(jump.textContent).toBe("");
+  expect(jump.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  fireEvent.click(jump);
+  expect(onJumpToLatest).toHaveBeenCalledOnce();
+});
+
+it("does not offer jump to latest while already following the transcript", async () => {
+  await renderTranscript(page("completed"));
+  expect(screen.queryByRole("button", { name: "Jump to latest" })).toBeNull();
+});
 
 function retryPage() {
   const next = page("completed");

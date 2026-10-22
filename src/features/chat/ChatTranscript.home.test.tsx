@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
 
 import type { AcpChatPage } from "../../domain/acp";
 import { useWorkbenchStore } from "../../app/store";
@@ -76,7 +77,7 @@ it("replaces the established empty transcript with the real project home without
   expect(container.querySelector(".chat-transcript-actions")).toBeNull();
 });
 
-it("places the project picker outside a plain home subheading below the chat title", () => {
+it("names the project once in the home heading and keeps its picker usable", () => {
   useWorkbenchStore.setState({
     project: { id: "project-1", name: "Sage", roots: [] },
     projects: [
@@ -89,13 +90,13 @@ it("places the project picker outside a plain home subheading below the chat tit
   const heading = within(home).getByRole("heading", {
     name: "What should we work on in Sage?",
   });
-  expect(heading.children).toHaveLength(0);
   expect(heading.tagName).toBe("H3");
+  expect(home.textContent?.match(/Sage/g)).toHaveLength(1);
   expect(
     screen.getByRole("heading", { name: emptyPage().title, level: 2 }),
   ).toBeInTheDocument();
   const picker = within(home).getByRole("button", { name: "Project: Sage" });
-  expect(picker.closest("h1, h2, h3, h4, h5, h6")).toBeNull();
+  expect(heading).toContainElement(picker);
   fireEvent.click(picker);
   expect(screen.getByRole("combobox", { name: "Project: Sage" })).toBeVisible();
 });
@@ -119,6 +120,35 @@ it.each(["", "   ", "bad\u0000name", "bad\u007fname"])(
         { name: /^Project:/ },
       ),
     ).toBeNull();
+  },
+);
+
+it.each([false, true])(
+  "keeps the home project name visible in a split pane (picker: %s)",
+  async (picker) => {
+    useWorkbenchStore.setState({
+      project: { id: "project-1", name: "Sage", roots: [] },
+      projects: picker
+        ? [{ id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 }]
+        : [],
+    });
+    const style = document.createElement("style");
+    style.textContent = await readFile(
+      "src/styles/split-chat-controls.css",
+      "utf8",
+    );
+    document.head.append(style);
+    try {
+      render(
+        <div className="agent-chat-panes--split">
+          <ChatTranscript {...transcriptProps()} />
+        </div>,
+      );
+      const home = screen.getByRole("region", { name: "New chat" });
+      expect(within(home).getByText("Sage", { exact: true })).toBeVisible();
+    } finally {
+      style.remove();
+    }
   },
 );
 

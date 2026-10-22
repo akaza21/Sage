@@ -51,7 +51,7 @@ describe("Chat container control breakpoints", () => {
     );
   });
 
-  it("keeps the project crumb uncapped at wide widths and caps it only below 400px", async () => {
+  it("keeps the wide project crumb and yields compact space to the chat title", async () => {
     const header = await readFile("src/styles/agent-chat-panes.css", "utf8");
     const compact = await readFile(
       "src/styles/chat-container-controls.css",
@@ -64,7 +64,7 @@ describe("Chat container control breakpoints", () => {
       /\.agent-task-header__project,\s*\.agent-task-header__separator\s*\{[^}]*flex:\s*0 0 auto;/,
     );
     expect(compact).toMatch(
-      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__project\s*\{[^}]*max-width:\s*min\(128px, 40%\);/,
+      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__project\s*\{[^}]*display:\s*none;/,
     );
   });
 
@@ -127,13 +127,13 @@ describe("Chat container control breakpoints", () => {
     },
   );
 
-  it("reflows goal and header chrome with their chat container, not the window", async () => {
+  it("compacts header status and reflows goals with their chat container, not the window", async () => {
     const css = await readFile(
       "src/styles/chat-container-controls.css",
       "utf8",
     );
     expect(css).toMatch(
-      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header\s*\{[^}]*flex-wrap:\s*wrap;/,
+      /@container chat-center \(max-width: 400px\)[\s\S]*\.agent-task-header__status\s*\{[^}]*font-size:\s*0;/,
     );
     expect(css).toMatch(
       /@container composer \(max-width: 280px\)[\s\S]*\.chat-goal-strip__row\s*\{[^}]*height:\s*auto;[^}]*flex-wrap:\s*wrap;/,

@@ -80,7 +80,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("declares borderless assistant messages and capped pill-shaped user bubbles", async () => {
+  it("declares borderless assistant messages and capped rounded-rectangle user bubbles", async () => {
     const [css, tokens] = await Promise.all([
       readFile(resolve("src/features/chat/chat-transcript-polish.css"), "utf8"),
       readFile(resolve("src/styles/global.css"), "utf8"),
@@ -89,9 +89,9 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.message-list__content \.acp-message--assistant,[\s\S]*?\.message-list__content \.acp-message--system\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/,
     );
     expect(css).toMatch(
-      /\.message-list__content \.acp-message--user\s*\{[^}]*max-width:\s*min\(100%, 440px\);[^}]*border-radius:\s*var\(--radius-pill\);[^}]*background:\s*var\(--agent-shell-user-bubble\);/s,
+      /\.message-list__content \.acp-message--user\s*\{[^}]*max-width:\s*min\(100%, 440px\);[^}]*border-radius:\s*var\(--radius-xl\);[^}]*background:\s*var\(--agent-shell-user-bubble\);/s,
     );
-    expect(tokens).toMatch(/--radius-pill:\s*999px;/);
+    expect(tokens).toMatch(/--radius-xl:\s*16px;/);
     expect(tokens).toMatch(/--agent-shell-user-bubble:\s*#2f2f2f;/);
   });
 

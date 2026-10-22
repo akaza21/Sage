@@ -431,6 +431,21 @@ it("pins and moves a chat that belongs to another project folder", () => {
   expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
 });
 
+it("labels the archived count separately and preserves disclosure semantics", () => {
+  useWorkbenchStore.setState({
+    archivedChats: [{ id: "chat:old", title: "Research" }],
+  });
+  render(<ProjectChatNavigation projectId="project-a" chats={[]} selected />);
+  const disclosure = screen.getByRole("button", { name: "Archived chats" });
+  expect(disclosure).toHaveTextContent("Archived 1");
+  expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(disclosure);
+  expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  expect(
+    screen.getByRole("region", { name: "Archived chats" }),
+  ).toHaveAttribute("id", disclosure.getAttribute("aria-controls"));
+});
+
 it("restores an archived chat that belongs to another project folder", () => {
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({

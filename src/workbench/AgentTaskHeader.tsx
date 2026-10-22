@@ -208,6 +208,7 @@ export function AgentTaskHeader({
         className={`agent-task-header__status agent-chat-chip agent-chat-chip--${snapshot?.statusTone ?? "idle"}`}
         role="status"
         aria-label={`Chat status: ${snapshot?.statusLabel ?? "Idle"}`}
+        title={snapshot?.statusLabel ?? "Idle"}
       >
         {snapshot?.statusTone === "working" ? (
           <span className="agent-chat-chip__spinner" aria-hidden="true" />
@@ -218,6 +219,7 @@ export function AgentTaskHeader({
         <span
           className="agent-task-header__harness-status"
           aria-label={`Harness status: ${sessionChrome.harnessStatus}`}
+          title={sessionChrome.harnessStatus}
         >
           {sessionChrome.harnessStatus}
         </span>
