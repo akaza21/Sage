@@ -95,19 +95,35 @@
   color: var(--composer-control-text);
 }
 
+.composer__popover.menu-popover,
+.composer__harness-menu.menu-popover {
+  --menu-focus-edge: var(--color-border-strong);
+  --menu-selected-fill: var(--color-surface-hover);
+}
+
 .composer-access-menu.menu-popover {
   width: min(420px, calc(100vw - 16px));
   max-width: min(420px, calc(100vw - 16px));
 }
 
+.composer-access-menu__heading {
+  margin: 4px 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .composer-access-menu__option {
   display: grid;
-  grid-template-columns: 1fr 14px;
+  grid-template-columns: 14px minmax(0, 1fr) 14px;
   gap: 4px 8px;
 }
 
+.composer-access-menu__option > .lucide-check {
+  grid-column: 3;
+}
+
 .composer-access-menu__description {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   white-space: normal;

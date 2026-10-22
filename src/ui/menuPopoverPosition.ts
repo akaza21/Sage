@@ -16,25 +16,29 @@ export function menuPopoverPosition(
 ): CSSProperties {
   const anchor = trigger.getBoundingClientRect();
   const surface = popover.getBoundingClientRect();
-  const width = Math.max(surface.width, matchTriggerWidth ? anchor.width : 0);
   let leftEdge = GUTTER;
   let rightEdge = window.innerWidth - GUTTER;
-  for (const selector of [".composer", ".agent-chat-pane"]) {
-    const owner = origin.closest(selector)?.getBoundingClientRect();
-    if (!owner) continue;
-    const left = Math.max(GUTTER, owner.left);
-    const right = Math.min(rightEdge, owner.right);
-    if (right - left >= width) {
-      leftEdge = left;
-      rightEdge = right;
-      break;
-    }
+  const pane = origin
+    .closest(".agent-chat-pane, .agent-chat-center")
+    ?.getBoundingClientRect();
+  if (pane) {
+    leftEdge = Math.max(leftEdge, pane.left);
+    rightEdge = Math.min(rightEdge, pane.right);
+  }
+  const maxWidth = Math.max(0, rightEdge - leftEdge);
+  const width = Math.min(
+    maxWidth,
+    Math.max(surface.width, matchTriggerWidth ? anchor.width : 0),
+  );
+  const composer = origin.closest(".composer")?.getBoundingClientRect();
+  if (composer && composer.width >= width) {
+    leftEdge = Math.max(leftEdge, composer.left);
+    rightEdge = Math.min(rightEdge, composer.right);
   }
   const clampLeft = (left: number) =>
     Math.min(Math.max(leftEdge, left), Math.max(leftEdge, rightEdge - width));
   let topEdge = GUTTER;
   let bottomEdge = window.innerHeight - GUTTER;
-  const pane = origin.closest(".agent-chat-pane")?.getBoundingClientRect();
   if (pane) {
     const top = Math.max(topEdge, pane.top);
     const bottom = Math.min(bottomEdge, pane.bottom);
@@ -47,7 +51,8 @@ export function menuPopoverPosition(
     Math.max(topEdge, Math.min(top, bottomEdge - height));
   const parent = trigger.closest(".menu-popover")?.getBoundingClientRect();
   const shared = {
-    minWidth: matchTriggerWidth ? anchor.width : undefined,
+    minWidth: matchTriggerWidth ? Math.min(anchor.width, maxWidth) : undefined,
+    maxWidth,
     visibility: "visible" as const,
   };
   if (parent) {

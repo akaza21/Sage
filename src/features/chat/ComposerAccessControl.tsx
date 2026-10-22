@@ -4,8 +4,19 @@ import {
   SESSION_ACCESS_MODE_SCOPE,
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
-import { Check, ShieldCheck } from "../../ui/leanIcons";
+import {
+  Check,
+  Eye,
+  MessageCircleQuestion,
+  ShieldCheck,
+} from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
+
+const ACCESS_ICONS = {
+  readOnly: Eye,
+  ask: MessageCircleQuestion,
+  workspaceWrite: ShieldCheck,
+};
 
 export function ComposerAccessControl({
   bindingId,
@@ -60,35 +71,42 @@ export function ComposerAccessControl({
         onDismiss={onDismiss}
         gap={8}
       >
-        {candidates.map((candidate) => (
-          <button
-            key={candidate.id}
-            type="button"
-            role="menuitemradio"
-            className="menu-item composer-access-menu__option"
-            aria-label={candidate.label}
-            aria-checked={candidate.id === effective}
-            data-option-id={candidate.id}
-            aria-describedby={`${id}-${candidate.id}`}
-            tabIndex={-1}
-            onClick={() => {
-              setMode(bindingId, candidate.id);
-              onDismiss();
-              trigger.current?.focus();
-            }}
-          >
-            <span>{candidate.label}</span>
-            {candidate.id === effective ? (
-              <Check size={14} aria-hidden="true" />
-            ) : null}
-            <span
-              id={`${id}-${candidate.id}`}
-              className="composer-access-menu__description"
+        <p className="composer-access-menu__heading">
+          How should agent actions be approved?
+        </p>
+        {candidates.map((candidate) => {
+          const Icon = ACCESS_ICONS[candidate.id];
+          return (
+            <button
+              key={candidate.id}
+              type="button"
+              role="menuitemradio"
+              className="menu-item composer-access-menu__option"
+              aria-label={candidate.label}
+              aria-checked={candidate.id === effective}
+              data-option-id={candidate.id}
+              aria-describedby={`${id}-${candidate.id}`}
+              tabIndex={-1}
+              onClick={() => {
+                setMode(bindingId, candidate.id);
+                onDismiss();
+                trigger.current?.focus();
+              }}
             >
-              {candidate.description}
-            </span>
-          </button>
-        ))}
+              <Icon size={14} aria-hidden="true" />
+              <span>{candidate.label}</span>
+              {candidate.id === effective ? (
+                <Check size={14} aria-hidden="true" />
+              ) : null}
+              <span
+                id={`${id}-${candidate.id}`}
+                className="composer-access-menu__description"
+              >
+                {candidate.description}
+              </span>
+            </button>
+          );
+        })}
       </MenuPopover>
       <span id={`${id}-scope`} className="sr-only">
         {selected?.description} {SESSION_ACCESS_MODE_SCOPE}

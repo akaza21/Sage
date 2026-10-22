@@ -127,6 +127,48 @@ function GrowingMenuHarness() {
 }
 
 describe("MenuPopover", () => {
+  it.each(
+    [720, 480].flatMap((viewport) =>
+      ["agent-chat-pane", "agent-chat-center"].map(
+        (ownerClass) => [viewport, ownerClass] as const,
+      ),
+    ),
+  )("shrinks an oversized menu at %ipx into %s", (viewport, ownerClass) => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: viewport,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.classList.contains(ownerClass))
+          return new DOMRect(300, 40, viewport - 300, 700);
+        if (this.classList.contains("composer"))
+          return new DOMRect(316, 600, viewport - 332, 120);
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 420, 140);
+        return new DOMRect(324, 650, 28, 28);
+      },
+    );
+    render(
+      <section className={ownerClass}>
+        {ownerClass === "agent-chat-pane" ? (
+          <form className="composer">
+            <MenuHarness />
+          </form>
+        ) : (
+          <header>
+            <MenuHarness />
+          </header>
+        )}
+      </section>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menu", { name: "Actions" })).toHaveStyle({
+      left: "300px",
+      maxWidth: `${viewport - 308}px`,
+    });
+  });
+
   it("keeps a left-edge composer menu inside its composer when it fits", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
@@ -314,6 +356,8 @@ describe("MenuPopover", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
+        if (this.classList.contains("agent-chat-pane"))
+          return new DOMRect(0, 40, 800, 700);
         return this.getAttribute("role") === "menu"
           ? new DOMRect(0, 0, 160, 40)
           : anchor;

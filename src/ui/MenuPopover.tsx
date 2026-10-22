@@ -143,6 +143,7 @@ export function MenuPopover({
         current.left === next.left &&
         current.top === next.top &&
         current.minWidth === next.minWidth &&
+        current.maxWidth === next.maxWidth &&
         current.maxHeight === next.maxHeight &&
         current.visibility === next.visibility
       )
@@ -166,7 +167,7 @@ export function MenuPopover({
         ? null
         : new ResizeObserver(updatePosition);
     resizeObserver?.observe(popover);
-    const pane = trigger.closest(".agent-chat-pane");
+    const pane = trigger.closest(".agent-chat-pane, .agent-chat-center");
     for (
       let ancestor: HTMLElement | null = trigger;
       ancestor;

@@ -101,11 +101,16 @@ for (const width of [1888, 720, 480]) {
         .locator(".composer-effort__heading")
         .boundingBox())!;
       const anchor = (await trigger.boundingBox())!;
-      expect(box.width).toBe(232);
+      const pane = (await page
+        .locator(".agent-chat-pane")
+        .first()
+        .boundingBox())!;
+      const expectedWidth = Math.min(232, pane.width, width - 8 - pane.x);
+      expect(box.width).toBe(expectedWidth);
       expect(box.height).toBeGreaterThanOrEqual(84);
       expect(box.height).toBeLessThanOrEqual(90);
       expect(rail.height).toBe(24);
-      expect(rail.width).toBe(206);
+      expect(rail.width).toBe(expectedWidth - 26);
       expect(rail.x - box.x).toBe(13);
       expect(rail.y - heading.y - heading.height).toBe(8);
       const centers = await panel
@@ -117,7 +122,10 @@ for (const width of [1888, 720, 480]) {
           }),
         );
       for (const [index, center] of centers.entries()) {
-        expect(center.x - rail.x).toBe(profile.centers[index]);
+        expect(center.x - rail.x).toBeCloseTo(
+          12 + (index * (rail.width - 24)) / (profile.levels.length - 1),
+          1,
+        );
         expect(center.y - rail.y).toBe(12);
       }
       await expect(
@@ -131,8 +139,8 @@ for (const width of [1888, 720, 480]) {
         .locator("form.composer")
         .first()
         .boundingBox())!;
-      // At 480 the 232px panel is wider than the ~186px composer; the plan
-      // keeps 480 product-blocked, so only viewport containment applies there.
+      expect(box.x).toBeGreaterThanOrEqual(pane.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width);
       if (width >= 720) {
         expect(box.x).toBeGreaterThanOrEqual(composer.x);
         expect(box.x + box.width).toBeLessThanOrEqual(

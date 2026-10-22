@@ -38,6 +38,48 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("introduces the approval question and distinct icons only for admitted modes", () => {
+  render(
+    <ComposerAccessControl
+      bindingId="fixture"
+      capabilities={[
+        ...capabilities,
+        {
+          id: "ask",
+          label: "Ask each time",
+          description: "Review each permission request.",
+        },
+      ]}
+      open
+      onToggle={() => {}}
+      onDismiss={() => {}}
+      disabled={false}
+    />,
+  );
+  expect(
+    screen.getByText("How should agent actions be approved?"),
+  ).toBeVisible();
+  const menu = screen.getByRole("menu", { name: "Access mode" });
+  expect(menu.querySelectorAll('[role="menuitemradio"]')).toHaveLength(3);
+  expect(
+    screen
+      .getByRole("menuitemradio", { name: "Read-only" })
+      .querySelector(".lucide-eye"),
+  ).not.toBeNull();
+  expect(
+    screen
+      .getByRole("menuitemradio", { name: "Workspace edits" })
+      .querySelector(".lucide-shield-check"),
+  ).not.toBeNull();
+  expect(
+    screen
+      .getByRole("menuitemradio", { name: "Ask each time" })
+      .querySelector(".lucide-message-circle-question-mark"),
+  ).not.toBeNull();
+  expect(menu.querySelectorAll(".lucide-check")).toHaveLength(1);
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
 it("shows admitted descriptions, checked selection, keyboard navigation and Escape focus return", async () => {
   const dismiss = vi.fn();
   function Control() {
@@ -73,10 +115,10 @@ it("shows admitted descriptions, checked selection, keyboard navigation and Esca
     "Read workspace files; no writes or network. Applies from your next message with this harness.",
   );
   expect(
-    Array.from(screen.getByRole("menu").children).every(
-      (element) => element.getAttribute("role") === "menuitemradio",
+    Array.from(screen.getByRole("menu").children).map((element) =>
+      element.getAttribute("role"),
     ),
-  ).toBe(true);
+  ).toEqual([null, "menuitemradio", "menuitemradio"]);
   expect(screen.queryByText("Ask each time")).toBeNull();
   expect(screen.queryByText("Full access")).toBeNull();
   await waitFor(() => expect(read).toHaveFocus());
