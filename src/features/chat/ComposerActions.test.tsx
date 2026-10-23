@@ -74,10 +74,46 @@ function renderActions(
   };
 }
 
+it("lists every advertised mode, including one whose id is default", () => {
+  const setMode = vi.fn().mockResolvedValue(undefined);
+  renderActions(true, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "default",
+        availableModes: [
+          { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
+        ],
+      },
+      configOptions: [],
+    }),
+    onSetSessionMode: setMode,
+  });
+  const menu = screen.getByRole("menu", { name: "Composer options menu" });
+  expect(within(menu).getByText("Add")).toBeInTheDocument();
+  expect(
+    within(menu)
+      .getAllByRole("menuitemradio")
+      .map((item) => item.getAttribute("aria-label")),
+  ).toEqual(["Default", "Plan mode"]);
+  expect(
+    within(menu).getByRole("menuitemradio", { name: "Default" }),
+  ).toHaveAttribute("aria-checked", "true");
+  const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
+  expect(plan).toHaveAttribute("aria-checked", "false");
+  expect(plan).toHaveAccessibleDescription("Plan mode is off");
+  fireEvent.click(plan);
+  expect(setMode).toHaveBeenCalledExactlyOnceWith("plan");
+});
+
 it("selects an advertised session mode directly in the Add menu", () => {
   const { trigger, setMode } = renderActions();
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
   expect(within(menu).queryByRole("combobox")).toBeNull();
+  expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
   const build = within(menu).getByRole("menuitemradio", { name: "Build" });
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(build).toHaveAttribute("aria-checked", "true");
@@ -112,6 +148,59 @@ it("describes Plan mode as on when selected", () => {
   expect(
     screen.getByRole("menuitemradio", { name: "Plan mode" }),
   ).toHaveAccessibleDescription("Plan mode is on");
+});
+
+it("sends nothing when the current mode is chosen again", () => {
+  const setMode = vi.fn().mockResolvedValue(undefined);
+  const { trigger } = renderActions(true, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "plan",
+        availableModes: [
+          { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
+        ],
+      },
+      configOptions: [],
+    }),
+    onSetSessionMode: setMode,
+  });
+  const plan = screen.getByRole("menuitemradio", { name: "Plan mode" });
+  expect(plan).toHaveAttribute("aria-checked", "true");
+  fireEvent.click(plan);
+  expect(setMode).not.toHaveBeenCalled();
+  expect(screen.queryByRole("menu")).toBeNull();
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Default" }));
+  expect(setMode).toHaveBeenCalledExactlyOnceWith("default");
+});
+
+it("leaves a non-Plan mode only by choosing another advertised mode", () => {
+  const setMode = vi.fn().mockResolvedValue(undefined);
+  const { trigger } = renderActions(true, {
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-a",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "ask",
+        availableModes: [
+          { id: "manual", name: "Manual" },
+          { id: "ask", name: "Ask" },
+        ],
+      },
+      configOptions: [],
+    }),
+    onSetSessionMode: setMode,
+  });
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Ask" }));
+  expect(setMode).not.toHaveBeenCalled();
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Manual" }));
+  expect(setMode).toHaveBeenCalledExactlyOnceWith("manual");
 });
 
 it("does not enable Add for effort alone while its trigger is visible", () => {

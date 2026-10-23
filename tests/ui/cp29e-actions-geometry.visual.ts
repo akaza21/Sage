@@ -59,8 +59,17 @@ for (const width of [1888, 720, 480]) {
       await expect(menu).toBeVisible();
       await expect(page.locator(".menu-popover:visible")).toHaveCount(1);
       await expect(menu.getByRole("combobox")).toHaveCount(0);
-      await expect(menu.getByRole("menuitemradio")).toHaveCount(
-        profile.modes.length,
+      // Add lists every mode the harness advertises; no id is hidden.
+      await expect(
+        menu
+          .getByRole("menuitemradio")
+          .evaluateAll((items) =>
+            items.map((item) => item.getAttribute("aria-label")),
+          ),
+      ).resolves.toEqual(
+        profile.modes.map((mode) =>
+          mode.name === "Plan" ? "Plan mode" : mode.name,
+        ),
       );
       for (const action of ["Files", "Plugins", "Goal", "Add images"]) {
         await expect(
@@ -98,11 +107,17 @@ for (const width of [1888, 720, 480]) {
       );
       const first = items.first();
       const last = items.last();
-      if (profile.modes.length > 0)
+      // The current (first) advertised mode, Default included, is the one
+      // checked row.
+      if (profile.modes.length > 0) {
         await expect(menu.getByRole("menuitemradio").first()).toHaveAttribute(
           "aria-checked",
           "true",
         );
+        await expect(
+          menu.locator('[role="menuitemradio"][aria-checked="true"]'),
+        ).toHaveCount(1);
+      }
       await expect(first).toBeFocused();
       await page.keyboard.press("End");
       await expect(last).toBeFocused();

@@ -83,6 +83,10 @@ export function MarkdownBlocks({
               key: column,
               scope: rowIndex ? undefined : "col",
               style: { textAlign: block.align[column] },
+              // Only a cell holding an unbreakable run may break mid-word.
+              className: /\S{25}/.test(cell)
+                ? "markdown-table__unbroken"
+                : undefined,
             },
             inline(cell, index, rowIndex * block.align.length + column),
           ),

@@ -299,7 +299,8 @@ export function createAcpSessionActions(
             ))) ||
         current.sageAgentSessionId !== config.sageAgentSessionId ||
         current.runtimeEpoch !== config.runtimeEpoch ||
-        current.configRevision !== config.configRevision
+        current.configRevision !== config.configRevision ||
+        (modeId !== null && current.modes?.currentModeId === modeId)
       )
         return "ignoredStale";
       const request = {

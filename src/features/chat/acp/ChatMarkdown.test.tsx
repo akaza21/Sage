@@ -359,6 +359,14 @@ describe("ChatMarkdown code blocks", () => {
     expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
+  it("does not duplicate the answer copy action below a rendered diagram", async () => {
+    render(<ChatMarkdown text={"```mermaid\ngraph TD\nA --> B\n```"} />);
+    await screen.findByRole("img", { name: "Mermaid diagram" });
+    expect(
+      screen.queryByRole("button", { name: "Copy diagram source" }),
+    ).toBeNull();
+  });
+
   it("keeps an unfinished streaming Mermaid fence as receiving source", () => {
     const { rerender } = render(
       <ChatMarkdown text={"```mermaid\ngraph TD\nA -->"} streaming />,

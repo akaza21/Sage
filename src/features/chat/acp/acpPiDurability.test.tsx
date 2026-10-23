@@ -15,6 +15,12 @@ import { settleLazyModules } from "../../../test/settleLazyModules";
 
 afterEach(cleanup);
 
+function openWorked(summary: HTMLElement) {
+  const work = summary.closest("details")!;
+  work.open = true;
+  fireEvent(work, new Event("toggle"));
+}
+
 function retryPage(state: TurnState): AcpChatPage {
   const next = page(
     state,
@@ -102,23 +108,22 @@ describe.each(["codex", "claude-code", "pi", "opencode", "oh-my-pi"])(
         expect(container.querySelectorAll(".acp-turn")).toHaveLength(1);
         const work = container.querySelector(".chat-transcript-work")!;
         if (state !== "running")
-          fireEvent.click(
-            within(work as HTMLElement).getByText("Worked for 5s"),
-          );
+          openWorked(within(work as HTMLElement).getByText("Worked for 5s"));
         expect(screen.getByText("First attempt retained")).toBeVisible();
-        expect(
-          within(work as HTMLElement).getByText("Server unavailable"),
-        ).toBeVisible();
+        const groups = container.querySelector<HTMLElement>(
+          ".chat-transcript-work__groups",
+        )!;
+        expect(within(groups).getByText("Server unavailable")).toBeVisible();
         if (state === "completed" || state === "failed") {
           expect(
             screen
               .getByText("First attempt retained")
-              .closest(".chat-transcript-work"),
-          ).toBe(work);
+              .closest(".chat-transcript-work__groups"),
+          ).toBe(groups);
           expect(
             screen
               .getByText("Last attempt retained")
-              .closest(".chat-transcript-work"),
+              .closest(".chat-transcript-work__groups"),
           ).toBeNull();
         }
         if (state === "failed") {
@@ -190,8 +195,9 @@ it("opens a durable Pi image in only its originating chat pane", async () => {
   await settleLazyModules();
   const first = within(screen.getByRole("region", { name: "Chat one" }));
   const second = within(screen.getByRole("region", { name: "Chat two" }));
-  fireEvent.click(first.getByText("Worked for 5s"));
-  fireEvent.click(second.getByText("Worked for 5s"));
+  openWorked(first.getByText("Worked for 5s"));
+  openWorked(second.getByText("Worked for 5s"));
+  await settleLazyModules();
   expect(first.getByRole("img")).toHaveAttribute(
     "src",
     next.turns[0].items[0].kind === "image"
@@ -222,7 +228,7 @@ it("keeps an earlier automatic attempt cause under Worked when the final cause i
   next.turns[0].terminalReason = { kind: "other" };
   render(presentation(next));
   await settleLazyModules();
-  fireEvent.click(screen.getByText("Worked for 5s"));
+  openWorked(screen.getByText("Worked for 5s"));
   expect(screen.getByText("Server unavailable")).toBeVisible();
   const failure = screen.getByRole("group", { name: "Turn failed" });
   expect(within(failure).getByText("Reason unavailable")).toBeVisible();

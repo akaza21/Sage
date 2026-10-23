@@ -71,10 +71,49 @@ it("replaces the established empty transcript with the real project home without
   expect(
     screen.getByRole("heading", { name: "What should we work on?" }),
   ).toBeVisible();
-  expect(screen.getByText("Sage")).toBeVisible();
+  expect(
+    within(screen.getByRole("region", { name: "New chat" })).getByText("Sage"),
+  ).toBeVisible();
   expect(screen.queryByText("No turns in this chat yet.")).toBeNull();
   expect(container.querySelector(".acp-turn")).toBeNull();
   expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+});
+
+it("shows a project name beyond the compact chip limit in full in both home locations", () => {
+  const name =
+    "Sage parity project with a long but authoritative workspace name";
+  render(
+    <ChatTranscript
+      {...transcriptProps()}
+      project={{ id: "project-1", name }}
+    />,
+  );
+  expect(
+    within(screen.getByRole("region", { name: "New chat" })).getByText(name, {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(
+    within(screen.getByRole("group", { name: "Project scope" })).getByText(
+      name,
+      { exact: true },
+    ),
+  ).toBeVisible();
+});
+
+it("adds the project scope row above the composer only for an established empty chat", () => {
+  const props = transcriptProps();
+  const { rerender, container } = render(<ChatTranscript {...props} />);
+  const row = screen.getByRole("group", { name: "Project scope" });
+  expect(row).toHaveTextContent("Sage");
+  expect(container.querySelector(".chat-edit-summary-zone")).toContainElement(
+    row,
+  );
+  expect(screen.getByRole("region", { name: "New chat" })).not.toContainElement(
+    row,
+  );
+  rerender(<ChatTranscript {...props} page={page("completed")} />);
+  expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
 });
 
 it("names the project once adjacent to the home heading and keeps its picker usable", () => {

@@ -13,9 +13,11 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
   await page.setViewportSize({ width: 720, height: 880 });
   await openScenario(page, "agent-command-rollup", "agent");
   await settleChatProjections(page);
-  const row = page.locator(".acp-tool-rollup");
+  // Expanded rollups nest per-command rows; measure the outer summary.
+  const row = page.locator(".acp-tool-rollup").first();
   await revealWorkedContent(row);
-  const label = row.locator(".acp-tool-rollup__label");
+  await expect(row).toHaveAttribute("open", "");
+  const label = row.locator(":scope > summary .acp-tool-rollup__label");
   await expect(label).toHaveText("Ran 2 commands");
   const typography = await label.evaluate((node) => {
     const element = node as HTMLElement;
@@ -31,7 +33,7 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
   expect(typography.fontWeight).toBe("400");
   expect(typography.color).toBe(typography.muted);
   const summaryTypography = await row
-    .locator(".acp-tool-rollup__summary-copy")
+    .locator(":scope > summary .acp-tool-rollup__summary-copy")
     .evaluate((node) => {
       const style = getComputedStyle(node);
       return { color: style.color, fontWeight: style.fontWeight };

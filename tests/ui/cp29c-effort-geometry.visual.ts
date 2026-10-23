@@ -51,7 +51,7 @@ for (const width of [1888, 720, 480]) {
       const trigger = page
         .locator("form.composer")
         .first()
-        .getByRole("button", { name: "High", exact: true });
+        .getByRole("button", { name: "Thinking level: High", exact: true });
       await trigger.focus();
       await page.keyboard.press("Enter");
       const panel = page.getByRole("dialog", {
@@ -188,7 +188,7 @@ async function openCodexEffort(page: Page) {
   const trigger = page
     .locator("form.composer")
     .first()
-    .getByRole("button", { name: "High", exact: true });
+    .getByRole("button", { name: "Thinking level: High", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
   const panel = page.getByRole("dialog", { name: "Thinking level" });

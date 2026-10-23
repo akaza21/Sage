@@ -115,14 +115,16 @@ export function ToolItem({
         </span>
       ) : null}
       <header className="acp-activity-card__header acp-tool-card__header">
-        <ToolKindIcon kind={kind} />
+        {visualState === "inProgress" ? (
+          <ToolRunningIndicator />
+        ) : (
+          <ToolKindIcon kind={kind} />
+        )}
         <strong>{label}</strong>
         {duration ? (
           <span className="acp-tool-card__duration">{duration}</span>
         ) : null}
-        {visualState === "inProgress" ? (
-          <ToolRunningIndicator />
-        ) : (
+        {visualState !== "inProgress" ? (
           <span
             className="acp-state"
             role="status"
@@ -132,7 +134,7 @@ export function ToolItem({
           >
             {status}
           </span>
-        )}
+        ) : null}
       </header>
       {kind === "execute" && (commandLine || outputSummary !== null) ? (
         <ToolCommandFrame

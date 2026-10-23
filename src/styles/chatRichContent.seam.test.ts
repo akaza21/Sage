@@ -14,14 +14,17 @@ describe("Chat rich content layout", () => {
   it("keeps body-sized Mermaid labels in a neutral figure with filled subtly bordered nodes", () => {
     const figure = rule(".acp-mermaid");
     expect(figure).toContain("max-width: 100%");
-    expect(figure).toContain("overflow: auto");
+    expect(figure).toContain("min-width: 0");
+    expect(figure).not.toContain("overflow: auto");
     expect(figure).not.toMatch(/(?:padding|border|border-radius|background):/u);
-    expect(rule(".acp-mermaid svg")).toContain("max-width: none");
+    expect(rule(".acp-mermaid svg")).toContain("width: 100%");
     expect(rule(".acp-mermaid svg")).toContain(
-      "calc(var(--mermaid-width) * 6 / 7)",
+      "max-width: var(--mermaid-width)",
     );
     expect(rule(".acp-mermaid svg")).toContain("height: auto");
-    expect(rule(".acp-mermaid svg")).not.toContain("min-width:");
+    expect(rule(".acp-mermaid svg")).toContain(
+      "min-width: calc(var(--mermaid-width) * 0.75)",
+    );
     expect(rule(".acp-mermaid text")).toContain(
       "font-size: var(--font-size-md)",
     );

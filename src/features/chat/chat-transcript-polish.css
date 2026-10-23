@@ -188,8 +188,14 @@
   padding: var(--space-1) 0 0;
 }
 
-.chat-transcript-work[open] .chat-transcript-work__groups {
-  animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
+.chat-transcript-work__groups > .acp-message + .acp-thought {
+  margin-top: var(--space-4);
+}
+
+.acp-edited-files {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .chat-transcript-work__groups .acp-tool-rollup {
@@ -256,6 +262,10 @@
 .chat-transcript-work__groups
   .acp-tool-rollup
   > summary:focus-visible
+  .acp-tool-rollup__chevron,
+.chat-transcript-work__groups
+  .acp-tool-rollup[open]
+  > summary
   .acp-tool-rollup__chevron {
   opacity: 1;
 }
@@ -326,7 +336,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-transcript-work[open] .chat-transcript-work__groups,
   .chat-transcript-actions {
     animation: none;
   }

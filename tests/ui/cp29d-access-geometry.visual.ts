@@ -104,6 +104,7 @@ for (const width of [1888, 720, 480]) {
           await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
         fixture.installVisualComposerActionsFixture([
           { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
         ]);
       });
       await composer

@@ -44,7 +44,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
   });
 
-  it("declares muted activity tokens, a persistent Worked SVG and interaction selectors for tool chevrons", async () => {
+  it("declares muted activity tokens and interaction-only tool disclosure chevrons", async () => {
     const transcriptCss = await readFile(
       resolve("src/features/chat/chat-transcript-polish.css"),
       "utf8",

@@ -345,7 +345,7 @@ test("approval capture rejects missing advertised Ask before changing access or 
 });
 
 for (const state of ["approval-approved", "approval-declined"])
-  test(`compact Claude ${state} capture leaves nine timing slots after cleanup`, async () => {
+  test(`compact Claude ${state} capture leaves eleven timing slots after cleanup`, async () => {
     const timing = captureTiming();
     const boundary = captureChatBoundary(720, "claude");
     const deadline = Date.now() + 1000;
@@ -462,11 +462,11 @@ for (const state of ["approval-approved", "approval-declined"])
       ]),
       undefined,
     );
-    assert.equal(timing.steps.length, 55);
+    assert.equal(timing.steps.length, 53);
     const value = probe();
     value.timing.steps = timing.steps;
     assert.doesNotThrow(() => validateProbe(value));
-    for (let remaining = 0; remaining < 9; remaining++)
+    for (let remaining = 0; remaining < 11; remaining++)
       timing.record("reserved-cleanup");
     assert.throws(() => timing.record("extra"), /timing-bound/u);
   });
@@ -806,6 +806,22 @@ test("directory creation rejects linked ancestors before creating descendants", 
   }
 });
 
+test("finished capture cells never open Worked or tool disclosures", () => {
+  for (const state of [
+    "tool-finished",
+    "tools-grouped",
+    "git-finished",
+    "tool-long-label",
+  ])
+    assert.deepEqual(actionsFor(state), []);
+  assert.deepEqual(actionsFor("approval-approved"), [
+    ".acp-turn:last-of-type .acp-permission__actions button:first-child",
+  ]);
+  assert.deepEqual(actionsFor("approval-declined"), [
+    ".acp-turn:last-of-type .acp-permission__actions button:last-child",
+  ]);
+});
+
 test("plan entry requires an offered plan mode, not a permission control", () => {
   const observation = {
     state: "completed",
@@ -820,7 +836,6 @@ test("plan entry requires an offered plan mode, not a permission control", () =>
   );
   assert.deepEqual(actionsFor("approval-approved"), [
     ".acp-turn:last-of-type .acp-permission__actions button:first-child",
-    ".acp-turn:last-of-type .chat-transcript-work > summary",
   ]);
 });
 test("disclosure actions target only the latest turn, not the project welcome turn", () => {

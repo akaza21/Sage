@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import type { AcpChatPage } from "../../domain/acp";
-import { ArrowDown } from "../../ui/leanIcons";
+import { ArrowDown, Folder } from "../../ui/leanIcons";
 import type { ChatMessage } from "../../domain/chat";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import {
@@ -19,6 +19,7 @@ import {
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
 import { ChatHome } from "./ChatHome";
 import { composerWorkspaceName } from "./composerChrome";
+import { isNewProjectChat } from "./newProjectChat";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import {
   AcpAnnouncementRegions,
@@ -120,18 +121,17 @@ export function ChatTranscript({
       useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined,
     [useNativeAcp, page, onRetry],
   );
-  const projectName = composerWorkspaceName(project);
-  const showHome = Boolean(
-    useNativeAcp &&
-    page?.projectId === project?.id &&
-    page?.turns.length === 0 &&
-    !projectTransitioning &&
-    !loadingEarlier &&
-    !historyError &&
-    !hasEarlier &&
-    page.nextCursor === null &&
-    !retentionIncomplete,
-  );
+  const projectName = composerWorkspaceName(project, 1024);
+  const showHome = isNewProjectChat({
+    useNativeAcp,
+    page,
+    project,
+    projectTransitioning,
+    loadingEarlier,
+    historyError,
+    hasEarlier,
+    retentionIncomplete,
+  });
   const historyNotice = historyError ? (
     <div className="composer__notice" role="alert">
       Chat history could not be loaded: {historyError}
@@ -222,7 +222,18 @@ export function ChatTranscript({
         </div>
       ) : null}
       {useNativeAcp && !projectTransitioning ? (
-        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer} />
+        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>
+          {showHome && projectName ? (
+            <div
+              className="chat-home__scope"
+              role="group"
+              aria-label="Project scope"
+            >
+              <Folder size={14} aria-hidden="true" />
+              <span>{projectName}</span>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </>
   );

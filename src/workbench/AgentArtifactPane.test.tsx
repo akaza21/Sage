@@ -323,6 +323,62 @@ describe("Agent artifact file chips", () => {
       expect(onExpandedChange).toHaveBeenCalledWith(true);
     },
   );
+  it("counts distinct grouped subagents in the collapsed header, not the single Subagents tab", () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "grouped",
+      kind: "collaboration",
+      payload: {
+        label: "spawnAgent",
+        summary: "",
+        activityId: null,
+        operation: "spawnAgent",
+        agentKeys: ["child-a", "child-b"],
+        receiverLabels: ["Reviewer", "Builder"],
+        agentStates: [
+          ["child-a", "completed"],
+          ["child-b", "completed"],
+        ],
+      },
+    } as unknown as AcpItem;
+    const native = {
+      ...child,
+      id: "native",
+      payload: {
+        ...child.payload,
+        label: "Reviewer",
+        operation: "completed",
+        agentKey: "child-a",
+        agentKeys: [],
+        receiverLabels: [],
+        agentStates: [],
+      },
+    } as unknown as AcpItem;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope!;
+    store.getState().applyAuthoritativePage(scope, {
+      ...base,
+      turns: [
+        { ...base.turns[0], items: [child, native] },
+        {
+          ...base.turns[0],
+          id: "later-turn",
+          ordinal: 3,
+          items: [],
+        } as unknown as AcpChatPage["turns"][number],
+      ],
+    });
+    render(
+      <AgentArtifactPane expanded={false} headerNode={mountArtifactHeader()} />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Show files and preview \u00b7 Ready \u00b7 2 resources",
+      }),
+    ).toBeVisible();
+  });
+
   it("keeps passive child arrivals collapsed and expands only for explicit selection", async () => {
     const onExpandedChange = vi.fn();
     const base = pageWithEdit();

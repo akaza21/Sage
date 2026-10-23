@@ -368,7 +368,8 @@ test.describe("Tool activity rollup disclosure", () => {
     page,
   }) => {
     await openScenario(page, "agent-declared-test", "agent");
-    const rollup = page.locator(".acp-tool-rollup");
+    // Expanded rollups nest per-command rows; address the outer disclosure.
+    const rollup = page.locator(".acp-tool-rollup").first();
     await revealWorkedContent(rollup);
     const summary = rollup.locator("summary");
     const items = rollup.locator(".acp-tool-rollup__items");
@@ -398,12 +399,18 @@ test.describe("Tool activity rollup summary containment", () => {
     await openScenario(page, "agent-command-rollup", "agent");
     await settleTranscriptAtEnd(page);
 
-    const rollup = page.locator(".acp-tool-rollup");
+    // Expanded rollups nest per-command rows; address the outer disclosure.
+    const rollup = page.locator(".acp-tool-rollup").first();
     await revealWorkedContent(rollup);
-    const label = rollup.locator(".acp-tool-rollup__label");
+    // Measure once Worked has settled on the expanded latest rollup.
+    await expect(rollup).toHaveAttribute("open", "");
+    await expect(
+      rollup.locator(":scope > .acp-tool-rollup__items"),
+    ).toBeVisible();
+    const label = rollup.locator(":scope > summary .acp-tool-rollup__label");
     await expect(label).toHaveText("Ran 2 commands");
     await expect(
-      rollup.locator('[data-activity-icon="execute"]'),
+      rollup.locator(':scope > summary [data-activity-icon="execute"]'),
     ).toBeVisible();
     const geometry = await label.evaluate((node) => {
       const summary = node.closest("summary")!;
@@ -426,7 +433,6 @@ test.describe("Tool activity rollup summary containment", () => {
     expect(geometry.summaryHeight).toBeLessThanOrEqual(geometry.lineHeight * 2);
     expect(geometry.cardOverflow).toBeLessThanOrEqual(1);
     expect(geometry.labelOverflow).toBeLessThanOrEqual(1);
-    await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
     await expect(rollup).toContainText(
       "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
     );

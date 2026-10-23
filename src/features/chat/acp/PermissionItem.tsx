@@ -1,20 +1,30 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useContext, useRef, useState } from "react";
 import { ShieldCheck } from "../../../ui/leanIcons";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { getPermissionStatus } from "./statusSemantics";
+import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
 export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
-  const status = getPermissionStatus(item);
+  const turnEnded = useContext(WorkedTurnTerminal);
   const [resolving, setResolving] = useState(false);
   const [resolutionError, setResolutionError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const awaitingDecision =
+  const openRequest =
     item.toolState === "waitingForApproval" &&
     (item.payload.state === "received" || item.payload.state === "asked");
+  // A terminal Turn cannot hold a pending decision, so it offers none.
+  const awaitingDecision = openRequest && !turnEnded;
+  const status =
+    openRequest && turnEnded
+      ? {
+          visual: "Not answered",
+          accessible: "Permission not answered",
+        }
+      : getPermissionStatus(item);
   const browserPermission = item.payload.source === "browser";
   const offered = item.payload.offeredOptionKinds;
   const canAllowOnce =
@@ -111,23 +121,17 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
       }
       data-activity-state={item.toolState}
       data-acp-item-id={item.id}
-      tabIndex={awaitingDecision ? 0 : undefined}
-      onKeyDown={
-        awaitingDecision
-          ? (event) => {
-              if (event.target !== event.currentTarget) {
-                return;
-              }
-              if (event.key === "Enter" && canAllowOnce) {
-                event.preventDefault();
-                resolve("allowOnce");
-              } else if (event.key === "Escape" && canDeny) {
-                event.preventDefault();
-                resolve("deny");
-              }
-            }
-          : undefined
-      }
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" && canAllowOnce) {
+          event.preventDefault();
+          resolve("allowOnce");
+        } else if (event.key === "Escape" && canDeny) {
+          event.preventDefault();
+          resolve("deny");
+        }
+      }}
     >
       <header>
         <strong>{item.payload.label}</strong>
@@ -146,61 +150,59 @@ export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
           {resolutionError}
         </p>
       ) : null}
-      {awaitingDecision ? (
-        <div className="acp-permission__actions">
-          {browserPermission ? (
-            <button
-              type="button"
-              className="acp-permission__action"
-              disabled={resolving}
-              onClick={() => resolve("allowOnce")}
-            >
-              Allow once
-            </button>
-          ) : (
-            offered
-              ?.filter((kind, index) => offered.indexOf(kind) === index)
-              .map((kind) => {
-                if (kind !== "allow_once" && kind !== "allow_always") {
-                  return null;
-                }
-                const decision =
-                  kind === "allow_once" ? "allowOnce" : "allowAlways";
-                return (
-                  <button
-                    key={kind}
-                    type="button"
-                    className="acp-permission__action"
-                    disabled={resolving}
-                    onClick={() => resolve(decision)}
-                  >
-                    {kind === "allow_once" ? "Approve" : "Always allow"}
-                  </button>
-                );
-              })
-          )}
-          {browserPermission ? (
-            <button
-              type="button"
-              className="acp-permission__action"
-              disabled={resolving}
-              onClick={() => resolve("allowForOriginSession")}
-            >
-              Allow for this tab and origin
-            </button>
-          ) : null}
-          {canDeny ? (
-            <button
-              type="button"
-              className="acp-permission__action"
-              disabled={resolving}
-              onClick={() => resolve("deny")}
-            >
-              Deny
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="acp-permission__actions">
+        {browserPermission ? (
+          <button
+            type="button"
+            className="acp-permission__action"
+            disabled={resolving}
+            onClick={() => resolve("allowOnce")}
+          >
+            Allow once
+          </button>
+        ) : (
+          offered
+            ?.filter((kind, index) => offered.indexOf(kind) === index)
+            .map((kind) => {
+              if (kind !== "allow_once" && kind !== "allow_always") {
+                return null;
+              }
+              const decision =
+                kind === "allow_once" ? "allowOnce" : "allowAlways";
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  className="acp-permission__action"
+                  disabled={resolving}
+                  onClick={() => resolve(decision)}
+                >
+                  {kind === "allow_once" ? "Approve" : "Always allow"}
+                </button>
+              );
+            })
+        )}
+        {browserPermission ? (
+          <button
+            type="button"
+            className="acp-permission__action"
+            disabled={resolving}
+            onClick={() => resolve("allowForOriginSession")}
+          >
+            Allow for this tab and origin
+          </button>
+        ) : null}
+        {canDeny ? (
+          <button
+            type="button"
+            className="acp-permission__action"
+            disabled={resolving}
+            onClick={() => resolve("deny")}
+          >
+            Deny
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }

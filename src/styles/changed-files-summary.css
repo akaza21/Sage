@@ -303,16 +303,6 @@
     max-width: 64px;
   }
 
-  .acp-file-changes--collapsed .acp-file-changes__header {
-    grid-template-columns: 18px minmax(0, 1fr);
-  }
-
-  .acp-file-changes--collapsed .acp-file-changes__totals {
-    grid-column: 2;
-    flex-wrap: wrap;
-    white-space: normal;
-  }
-
   .acp-file-changes__preview-toggle {
     max-width: 100%;
     text-align: left;

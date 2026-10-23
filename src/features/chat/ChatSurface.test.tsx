@@ -281,6 +281,17 @@ afterEach(() => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("retains composer project scope while an empty retained page is not the new-chat home", () => {
+    hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+    });
+    render(<ChatSurface />);
+    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+    expect(
+      document.querySelector("form.composer .project-scope"),
+    ).toHaveTextContent("Sage");
+  });
   it.each(["primary", "focused"] as const)(
     "explains the existing %s turn guard when the empty home's project action is refused",
     (owner) => {

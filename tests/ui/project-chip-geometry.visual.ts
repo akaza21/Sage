@@ -237,7 +237,7 @@ for (const contentWidth of [
     });
     await expect(
       composer.getByRole("button", {
-        name: "Extraordinarily high",
+        name: "Thinking level: Extraordinarily high",
         exact: true,
       }),
     ).toBeVisible();

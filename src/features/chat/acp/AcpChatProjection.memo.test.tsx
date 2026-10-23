@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
@@ -85,6 +85,14 @@ describe("AcpChatProjection", () => {
         editSummaryContainer={document.body}
       />,
     );
+    await screen.findByText("Unchanged sibling 14");
+    for (const work of container.querySelectorAll<HTMLDetailsElement>(
+      "details.chat-transcript-work",
+    )) {
+      expect(work).not.toHaveAttribute("open");
+      work.open = true;
+      fireEvent(work, new Event("toggle"));
+    }
     await screen.findByText("Retained row 14");
     chatMarkdown.mockClear();
     turnHeader.mockClear();

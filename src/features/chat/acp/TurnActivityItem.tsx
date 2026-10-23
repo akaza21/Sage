@@ -93,9 +93,6 @@ export const ItemView = memo(
                   : undefined
               }
             />
-            {partial ? (
-              <p className="acp-message__partial">Partial answer retained</p>
-            ) : null}
           </article>
         );
       }

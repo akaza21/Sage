@@ -215,7 +215,9 @@ export const CollaborationItem = memo(
       leftItems.every(
         (item, index) =>
           item.id === rightItems[index].id &&
-          item.revision === rightItems[index].revision,
+          item.revision === rightItems[index].revision &&
+          item.payload.receiverLabels.join("\0") ===
+            rightItems[index].payload.receiverLabels.join("\0"),
       )
     );
   },

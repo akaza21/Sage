@@ -6,19 +6,19 @@ import { describe, expect, it } from "vitest";
 const css = (path: string) => readFile(resolve(path), "utf8");
 
 describe("Agent motion style seams", () => {
-  it("reveals Worked content by two pixels and brightens its summary without moving layout", async () => {
+  it("opens Worked content without a partial reveal and brightens its summary", async () => {
     const transcript = await css(
       "src/features/chat/chat-transcript-polish.css",
     );
 
-    expect(transcript).toMatch(
-      /\.chat-transcript-work\[open\] \.chat-transcript-work__groups\s*\{[^}]*animation:\s*sage-reveal-two-pixel var\(--motion-duration-normal\) ease-out both;/s,
+    expect(transcript).not.toMatch(
+      /\.chat-transcript-work\[open\] \.chat-transcript-work__groups\s*\{[^}]*animation:/s,
     );
     expect(transcript).toMatch(
       /\.chat-transcript-work > summary\s*\{[^}]*transition:\s*color var\(--motion-duration-fast\) ease;/s,
     );
     expect(transcript).toMatch(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.chat-transcript-work\[open\] \.chat-transcript-work__groups[\s\S]*animation:\s*none;/,
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.chat-transcript-actions[\s\S]*animation:\s*none;/,
     );
   });
 

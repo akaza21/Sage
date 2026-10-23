@@ -293,12 +293,16 @@ export function namedState(options, observation, captureChat) {
     "approval-pending": live && view.pendingApproval,
     "approval-approved":
       terminal &&
-      view.permission &&
+      (view.tool || view.rollup) &&
+      !view.worked &&
+      !view.expanded &&
       !view.pendingApproval &&
       observation.permissionStates?.includes("resolvedAllowed"),
     "approval-declined":
       terminal &&
-      view.permission &&
+      (view.tool || view.rollup) &&
+      !view.worked &&
+      !view.expanded &&
       !view.pendingApproval &&
       observation.permissionStates?.includes("resolvedDeclined"),
     "turn-error":
@@ -397,11 +401,7 @@ export function actionsFor(state, harness) {
   if (
     [
       "worked-expanded",
-      "tool-finished",
       "tool-expanded",
-      "tools-grouped",
-      "tool-long-label",
-      "git-finished",
       "plan-completed",
       "answer-image",
       "compaction-completed",
@@ -422,15 +422,9 @@ export function actionsFor(state, harness) {
       ...(state === "child-opened" ? [LAST_TURN + ".acp-subagent-row"] : []),
     ];
   if (state === "approval-approved")
-    return [
-      LAST_TURN + ".acp-permission__actions button:first-child",
-      LAST_TURN + ".chat-transcript-work > summary",
-    ];
+    return [LAST_TURN + ".acp-permission__actions button:first-child"];
   if (state === "approval-declined")
-    return [
-      LAST_TURN + ".acp-permission__actions button:last-child",
-      LAST_TURN + ".chat-transcript-work > summary",
-    ];
+    return [LAST_TURN + ".acp-permission__actions button:last-child"];
   if (state === "turn-stopped") return ['button[aria-label="Cancel turn"]'];
   if (state === "turn-retry") return [".acp-turn__failure button"];
   if (state === "file-hunk" || state === "file-diff-tab")

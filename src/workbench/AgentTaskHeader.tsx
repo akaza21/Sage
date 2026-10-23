@@ -7,7 +7,10 @@ import {
   useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useStore } from "zustand";
 
@@ -22,12 +25,23 @@ import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { agentChatMoveDestinations } from "./agentChatRail";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 import { MenuPopover } from "../ui/MenuPopover";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
+import {
+  liveAgent,
+  projectTaskResources,
+} from "./agentArtifactTabPresentation";
 import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import "./agent-subagent-summary.css";
 
-import { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 import { AgentTaskStatus } from "./AgentTaskStatus";
+import { loadSubagentSurface } from "./loadSubagentSurface";
+
+// The Subagents region and its rows load with the lazy SubagentSurface chunk;
+// the header renders the counts synchronously and hands them to it.
+const AgentTaskSubagentSummary = lazy(() =>
+  loadSubagentSurface().then((module) => ({
+    default: module.AgentTaskSubagentSummary,
+  })),
+);
 
 export function AgentTaskHeader({
   tab,
@@ -105,13 +119,39 @@ export function AgentTaskHeader({
     generation,
     projectTransitioning,
   );
-  const { workingAgents, doneAgents, recentAgents, outputs, sources } = useMemo(
+  const { recentAgents, outputs, sources } = useMemo(
     () =>
       projectTaskResources(
         resourcesOpen && validPage ? page : null,
         tab?.id ?? null,
       ),
     [page, resourcesOpen, tab?.id, validPage],
+  );
+  // Each retained spawn invocation is one subagent, even when a child thread
+  // id is reused; repeated observations of one spawn share its entry.
+  const workingAgents = recentAgents.filter((agent) =>
+    liveAgent(agent.status),
+  ).length;
+  const doneAgents = recentAgents.filter(
+    (agent) => agent.status === "done",
+  ).length;
+  // The decorative glyphs arrive with the lazy region.
+  const agentCounts = (glyphs?: ReactNode) => (
+    <div className="agent-task-header__agent-summary">
+      <span
+        className="agent-task-header__agent-metric"
+        aria-label={`Recent subagents working: ${workingAgents}`}
+      >
+        {glyphs}
+        {workingAgents} working
+      </span>
+      <span
+        className="agent-task-header__agent-metric"
+        aria-label={`Recent subagents done: ${doneAgents}`}
+      >
+        {doneAgents} done
+      </span>
+    </div>
   );
 
   useEffect(() => {
@@ -269,15 +309,19 @@ export function AgentTaskHeader({
                 </button>
               ))}
             </section>
-            <AgentTaskSubagentSummary
-              recentAgents={recentAgents}
-              workingAgents={workingAgents}
-              doneAgents={doneAgents}
-              onSelect={() => {
-                resourcesTriggerRef.current?.focus();
-                setResourcesOpen(false);
-              }}
-            />
+            {recentAgents.length > 0 ? (
+              <Suspense fallback={agentCounts()}>
+                <AgentTaskSubagentSummary
+                  recentAgents={recentAgents}
+                  working={workingAgents}
+                  counts={agentCounts}
+                  onSelect={() => {
+                    resourcesTriggerRef.current?.focus();
+                    setResourcesOpen(false);
+                  }}
+                />
+              </Suspense>
+            ) : null}
             <section aria-label="Sources">
               <strong>Sources</strong>
               {(showAllSources ? sources : sources.slice(-3)).map(

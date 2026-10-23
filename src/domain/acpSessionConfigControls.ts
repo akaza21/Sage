@@ -4,6 +4,11 @@ import type {
   AcpSessionConfig,
 } from "./acpSessionConfig";
 
+/** Every mode the harness advertises, in its order; no mode id is special. */
+export function sessionModeActions(config: AcpSessionConfig | null) {
+  return config?.removed ? [] : (config?.modes?.availableModes ?? []);
+}
+
 export function flattenChoices(option: AcpConfigOption): AcpConfigChoice[] {
   if (option.type !== "select") return [];
   return option.options.flatMap((entry) =>

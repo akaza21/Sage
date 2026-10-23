@@ -5,6 +5,7 @@ import type {
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { sessionModeActions } from "../../domain/acpSessionConfigControls";
 
 export function ComposerAddActions({
   sessionConfig,
@@ -32,12 +33,10 @@ export function ComposerAddActions({
     value: AcpConfigValue,
   ) => Promise<unknown>;
 }) {
-  const modes = sessionConfig?.removed
-    ? []
-    : (sessionConfig?.modes?.availableModes ?? []);
+  const modes = sessionModeActions(sessionConfig);
   return (
     <>
-      <p className="menu-group-label" aria-hidden="true">
+      <p className="menu-group-label composer__add-heading" aria-hidden="true">
         Add
       </p>
       {projectAction}
@@ -121,7 +120,8 @@ export function ComposerAddActions({
                 tabIndex={-1}
                 onClick={() => {
                   onClose();
-                  void onSetSessionMode(mode.id);
+                  // Modes are exclusive; choosing the current one sends nothing.
+                  if (!selected) void onSetSessionMode(mode.id);
                 }}
               >
                 {plan ? <Sparkles size={14} aria-hidden="true" /> : null}

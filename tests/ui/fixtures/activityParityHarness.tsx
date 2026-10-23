@@ -9,6 +9,7 @@ import {
 import { parityTool } from "../../../src/features/chat/acp/activityParity.fixture";
 import "../../../src/styles/global.css";
 import "../../../src/features/chat/acp/acp-chat.css";
+import "../../../src/features/chat/acp/acp-chat-activities.css";
 import "../../../src/features/chat/acp/acp-activity-cards.css";
 import "../../../src/features/chat/acp/acp-activity-details.css";
 import "../../../src/features/chat/acp/acp-child-activity.css";
@@ -16,7 +17,7 @@ import "../../../src/features/chat/chat-transcript-polish.css";
 
 const scenario = new URLSearchParams(location.search).get("scenario");
 const stopped = scenario === "stopped";
-const running = scenario === "running";
+const running = scenario === "running" || scenario === "thinking";
 const projection = page(
   stopped ? "cancelled" : running ? "running" : "completed",
   stopped ? { kind: "cancelledByUser" } : undefined,
@@ -25,6 +26,14 @@ projection.turns[0].createdAt = 1_000;
 projection.turns[0].terminalAt = running ? null : 6_000;
 const answer = {
   ...textItem(),
+  ...(scenario === "mermaid"
+    ? {
+        payload: {
+          role: "assistant",
+          text: "```mermaid\nflowchart LR\nBinding --> Pump\nPump --> SQLite\n```",
+        },
+      }
+    : {}),
   ordinal: 20,
   lifecycle: stopped ? "cancelled" : "completed",
 } as AcpItem;
@@ -71,17 +80,37 @@ const children = ["Reviewer", "Builder"].map((label, index) => ({
   },
 })) as AcpItem[];
 const activities =
-  scenario === "reads"
-    ? [parityTool("read"), parityTool("read", 2), parityTool("read", 3)]
-    : scenario === "compaction"
-      ? [notice]
-      : scenario === "subagents"
-        ? children
-        : scenario === "commands"
-          ? [command, parityTool("execute", 2), parityTool("execute", 3)]
-          : scenario === "simple" || stopped
-            ? []
-            : [command];
+  scenario === "thinking"
+    ? [
+        {
+          ...textItem(),
+          id: "prose",
+          ordinal: 1,
+          lifecycle: "streaming",
+          payload: { role: "assistant", text: "Checking the project now." },
+        } as AcpItem,
+        {
+          ...textItem(),
+          id: "thought",
+          ordinal: 2,
+          kind: "thoughtSummary",
+          lifecycle: "streaming",
+          payload: { summary: "Inspecting the dependencies." },
+        } as AcpItem,
+      ]
+    : scenario === "mermaid"
+      ? []
+      : scenario === "reads"
+        ? [parityTool("read"), parityTool("read", 2), parityTool("read", 3)]
+        : scenario === "compaction"
+          ? [notice]
+          : scenario === "subagents"
+            ? children
+            : scenario === "commands"
+              ? [command, parityTool("execute", 2), parityTool("execute", 3)]
+              : scenario === "simple" || stopped
+                ? []
+                : [command];
 projection.turns[0].items = [
   prompt,
   ...activities,

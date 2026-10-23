@@ -763,9 +763,10 @@ describe("ToolItem", async () => {
       />,
     );
     expect(container.querySelector(".acp-tool-card__duration")).toBeNull();
+    expect(container.querySelector('[data-tool-kind-icon="read"]')).toBeNull();
     expect(
-      container.querySelector('[data-tool-kind-icon="read"]'),
-    ).not.toBeNull();
+      container.querySelectorAll(".acp-tool-card__header > .acp-tool-running"),
+    ).toHaveLength(1);
   });
 
   it("opens an admitted loopback web tool in the Sage browser", async () => {

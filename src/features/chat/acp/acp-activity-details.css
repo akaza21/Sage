@@ -14,7 +14,7 @@
 }
 
 .acp-tool-card__header > .acp-tool-running {
-  grid-column: 4;
+  grid-column: 1;
 }
 
 .acp-tool-running > svg {
@@ -122,10 +122,17 @@
 
 .acp-tool-rollup__chevron {
   flex: 0 0 auto;
+  opacity: 0;
   transition: transform var(--motion-duration-fast) ease;
 }
 
-.acp-tool-rollup[open] .acp-tool-rollup__chevron {
+.acp-tool-rollup > summary:hover .acp-tool-rollup__chevron,
+.acp-tool-rollup > summary:focus-visible .acp-tool-rollup__chevron,
+.acp-tool-rollup[open] > summary .acp-tool-rollup__chevron {
+  opacity: 1;
+}
+
+.acp-tool-rollup[open] > summary .acp-tool-rollup__chevron {
   transform: rotate(180deg);
 }
 

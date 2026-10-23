@@ -7,7 +7,7 @@ import {
 } from "../services/acpChildTranscript";
 import { projectTaskResources } from "./agentArtifactTabPresentation";
 
-export { SubagentResourceRows } from "./SubagentResourceRows";
+export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;

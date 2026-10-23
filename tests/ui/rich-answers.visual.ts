@@ -59,7 +59,9 @@ for (const width of [1888, 720, 480]) {
       );
       await page.addScriptTag({ content: script });
     });
-    test("rich answers fit or scroll at a readable scale", async ({ page }) => {
+    test("rich answer SVGs fit the column at every intrinsic size", async ({
+      page,
+    }) => {
       for (const source of [
         "flowchart TD\nA --> B",
         flowchartSource,
@@ -85,12 +87,20 @@ for (const width of [1888, 720, 480]) {
             height: box.height,
             naturalWidth: svg.viewBox.baseVal.width,
             naturalHeight: svg.viewBox.baseVal.height,
-            column: element.clientWidth,
-            overflow: element.scrollWidth > element.clientWidth,
+            column: element.querySelector(".acp-mermaid")!.clientWidth,
+            overflow:
+              element.querySelector(".acp-mermaid")!.scrollWidth >
+              element.querySelector(".acp-mermaid")!.clientWidth + 1,
+            figureOverflow: element.scrollWidth > element.clientWidth + 1,
+            figureWidth: element.clientWidth,
+            rootWidth: document.getElementById("root")!.clientWidth,
             labelSizes: [...svg.querySelectorAll("text")].map(
               (text) =>
                 parseFloat(getComputedStyle(text).fontSize) *
                 text.getScreenCTM()!.a,
+            ),
+            labelSize: parseFloat(
+              getComputedStyle(svg.querySelector("text")!).fontSize,
             ),
             fills: [...svg.querySelectorAll("rect, polygon")].map((node) => ({
               fill: getComputedStyle(node).fill,
@@ -102,28 +112,27 @@ for (const width of [1888, 720, 480]) {
           expect(metrics.overflow, `ref-55 flowchart at ${width}`).toBe(false);
           expect(metrics.width).toBeLessThanOrEqual(metrics.column);
         }
-        if (metrics.column >= metrics.naturalWidth) {
-          expect(metrics.width).toBeCloseTo(metrics.naturalWidth, 1);
-          expect(metrics.overflow).toBe(false);
-        } else if (metrics.column >= (metrics.naturalWidth * 6) / 7) {
-          expect(metrics.width).toBeCloseTo(metrics.column, 1);
-          expect(metrics.overflow).toBe(false);
-        } else {
-          expect(metrics.width / metrics.naturalWidth).toBeCloseTo(6 / 7, 3);
-          expect(metrics.overflow).toBe(true);
-          await expect(figure).toHaveAttribute("tabindex", "0");
-          await figure.focus();
-          await page.keyboard.press("ArrowRight");
-          await expect
-            .poll(() => figure.evaluate((element) => element.scrollLeft))
-            .toBeGreaterThan(0);
-        }
+        // Fit the column, but keep at least 75% of natural scale; below that
+        // the diagram scrolls inside its own box and never widens the column.
+        expect(metrics.width).toBeCloseTo(
+          Math.max(
+            Math.min(metrics.naturalWidth, metrics.column),
+            metrics.naturalWidth * 0.75,
+          ),
+          1,
+        );
+        expect(metrics.overflow).toBe(metrics.width > metrics.column + 1);
+        expect(metrics.figureOverflow).toBe(false);
+        expect(metrics.figureWidth).toBeLessThanOrEqual(metrics.rootWidth);
         expect(metrics.height / metrics.naturalHeight).toBeCloseTo(
           metrics.width / metrics.naturalWidth,
           3,
         );
         for (const size of metrics.labelSizes)
-          expect(size).toBeGreaterThanOrEqual(11.99);
+          expect(size).toBeCloseTo(
+            (metrics.labelSize * metrics.width) / metrics.naturalWidth,
+            2,
+          );
         for (const node of metrics.fills) {
           expect(node.fill).toBe("rgb(20, 20, 20)");
           expect(node.stroke).toBe("rgb(42, 42, 42)");

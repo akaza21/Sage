@@ -38,6 +38,18 @@ describe("visual fixture tool presentations", () => {
     for (const { scenario, item } of calls) {
       const kind = item.payload.presentation.kind;
       const view = render(<ToolItem item={item} />);
+      if (item.toolState === "inProgress") {
+        // A running row shows one leading glyph: the spinner replaces the
+        // kind icon until the call settles.
+        expect(
+          view.container.querySelectorAll(
+            ".acp-tool-card__header > .acp-tool-running",
+          ),
+          `${scenario} renders the running ${kind} tool card with one spinner`,
+        ).toHaveLength(1);
+        view.unmount();
+        continue;
+      }
       expect(
         view.container.querySelector(`[data-tool-kind-icon="${kind}"]`),
         `${scenario} renders the ${kind} tool card with a known kind icon`,

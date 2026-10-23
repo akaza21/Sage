@@ -297,6 +297,7 @@ export function composerPromptPlaceholder(
 
 export function composerWorkspaceName(
   project: { name: string } | null | undefined,
+  maxLength = COMPOSER_WORKSPACE_NAME_CAP,
 ): string | null {
   if (!project) return null;
   const name = project.name.trim();
@@ -309,8 +310,8 @@ export function composerWorkspaceName(
   ) {
     return null;
   }
-  if (name.length <= COMPOSER_WORKSPACE_NAME_CAP) return name;
-  return `${name.slice(0, COMPOSER_WORKSPACE_NAME_CAP - 1)}…`;
+  if (name.length <= maxLength) return name;
+  return `${name.slice(0, maxLength - 1)}…`;
 }
 
 export function isComposerFocusChord(event: KeymapChordEvent): boolean {

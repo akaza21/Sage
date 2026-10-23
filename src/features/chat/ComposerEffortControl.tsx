@@ -11,7 +11,7 @@ import type {
   AcpConfigValue,
 } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
-import { ChevronDown, RotateCcw, Sparkles } from "../../ui/leanIcons";
+import { Brain, ChevronDown, RotateCcw } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { capitalizeLabel } from "../../domain/text";
 
@@ -105,7 +105,7 @@ export function ComposerEffortControl({
         type="button"
         className="composer__control-trigger composer__effort-picker"
         title="Select effort"
-        aria-label={levels[index].name}
+        aria-label={`Thinking level: ${levels[index].name}`}
         aria-controls={panelId}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -113,11 +113,7 @@ export function ComposerEffortControl({
         onPointerDown={(event) => event.currentTarget.blur()}
         onClick={onToggle}
       >
-        <Sparkles
-          className="composer__effort-icon"
-          size={14}
-          aria-hidden="true"
-        />
+        <Brain className="composer__effort-icon" size={14} aria-hidden="true" />
         <span className="composer__effort-label">{levels[index].name}</span>
         <ChevronDown size={12} aria-hidden="true" />
       </button>
@@ -131,7 +127,7 @@ export function ComposerEffortControl({
         className="composer__popover composer__effort-menu"
       >
         <div className="composer-effort__heading">
-          <Sparkles size={13} aria-hidden="true" />
+          <Brain size={13} aria-hidden="true" />
           <div className="composer-effort__identity">
             <span className="composer-effort__level">
               {capitalizeLabel(label)}

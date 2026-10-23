@@ -55,9 +55,10 @@ import {
   agentArtifactOwnerKey,
   type AgentArtifactOwner,
 } from "../domain/agentArtifact";
+import { loadSubagentSurface } from "./loadSubagentSurface";
 
 const SubagentSurface = lazy(() =>
-  import("./SubagentSurface").then((module) => ({
+  loadSubagentSurface().then((module) => ({
     default: module.SubagentSurface,
   })),
 );
@@ -261,11 +262,9 @@ export function AgentArtifactPane({
     return (
       <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
         <AgentArtifactCollapsedPane
-          count={
-            artifacts.length +
-            (previewOpen ? 1 : 0) +
-            (subagentAvailable ? 1 : 0)
-          }
+          count={artifacts.length + (previewOpen ? 1 : 0)}
+          subagentPage={subagentAvailable ? focusedPage : null}
+          subagentItemId={subagentTarget?.itemId}
           edgeTriggerRef={edgeTriggerRef}
           onExpand={() => onExpandedChange?.(true)}
           paneId={paneId}

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -149,6 +149,36 @@ for (const width of [480, 720, 1888]) {
   }
 }
 
+/**
+ * The labelled diagram scroller is a keyboard stop exactly when it overflows:
+ * it carries no tabindex, and the browser makes only an overflowing scroller
+ * focusable.
+ */
+async function expectScrollStop(
+  page: Page,
+  figure: Locator,
+  overflowing: boolean,
+) {
+  const scroller = figure.locator(".acp-mermaid");
+  await expect(scroller).not.toHaveAttribute("tabindex");
+  await expect(scroller).toHaveAttribute("role", "region");
+  await expect(scroller).toHaveAttribute("aria-label", /scroll area$/u);
+  await scroller.evaluate((element) => {
+    element.scrollLeft = 0;
+    (document.activeElement as HTMLElement | null)?.blur();
+    (element as HTMLElement).focus();
+  });
+  expect(
+    await scroller.evaluate((element) => document.activeElement === element),
+  ).toBe(overflowing);
+  if (!overflowing) return;
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await scroller.evaluate((element) => (element as HTMLElement).blur());
+}
+
 for (const width of [480, 720, 1888]) {
   for (const direction of ["TD", "LR"]) {
     for (const length of [28, 64]) {
@@ -213,8 +243,11 @@ for (const width of [480, 720, 1888]) {
                 }),
               intrinsicWidth: svg.viewBox.baseVal.width,
               renderedWidth: svgBox.width,
-              hasLocalOverflow: element.scrollWidth > element.clientWidth,
-              clientWidth: element.clientWidth,
+              hasLocalOverflow:
+                element.querySelector(".acp-mermaid")!.scrollWidth >
+                element.querySelector(".acp-mermaid")!.clientWidth + 1,
+              figureOverflow: element.scrollWidth > element.clientWidth + 1,
+              clientWidth: element.querySelector(".acp-mermaid")!.clientWidth,
               paneContained:
                 element.closest(".agent-chat-pane")!.scrollWidth <=
                 element.closest(".agent-chat-pane")!.clientWidth + 1,
@@ -238,28 +271,30 @@ for (const width of [480, 720, 1888]) {
                 (metrics.renderedWidth / metrics.intrinsicWidth),
               1,
             );
-            expect(node.labelSize).toBeGreaterThanOrEqual(11.99);
+            // The legible floor: labels never shrink below 75% of body text.
+            expect(node.labelSize).toBeGreaterThanOrEqual(
+              metrics.bodySize * 0.75 - 0.05,
+            );
           }
           for (const node of metrics.nodes.slice(1, 3)) {
             expect(node.lines.length).toBeGreaterThan(1);
             expect(node.lines.join("")).toBe(label);
           }
+          // Fit the column, but keep at least 75% of natural scale.
           expect(metrics.renderedWidth).toBeCloseTo(
             Math.max(
-              (metrics.intrinsicWidth * 6) / 7,
               Math.min(metrics.intrinsicWidth, metrics.clientWidth),
+              metrics.intrinsicWidth * 0.75,
             ),
             1,
           );
           expect(metrics.hasLocalOverflow).toBe(
-            (metrics.intrinsicWidth * 6) / 7 > metrics.clientWidth,
+            metrics.renderedWidth > metrics.clientWidth + 1,
           );
+          expect(metrics.figureOverflow).toBe(false);
           expect(metrics.paneContained).toBe(true);
-          if (metrics.hasLocalOverflow) {
-            await expect(figure).toHaveAttribute("tabindex", "0");
-          } else {
-            await expect(figure).not.toHaveAttribute("tabindex");
-          }
+          await expect(figure).not.toHaveAttribute("tabindex");
+          await expectScrollStop(page, figure, metrics.hasLocalOverflow);
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth,
@@ -274,7 +309,7 @@ for (const width of [480, 720, 1888]) {
 for (const width of [480, 720, 1888]) {
   for (const scenario of ["agent-single", "agent-dual"] as const) {
     for (const [name, source] of diagrams) {
-      test(`CP-31 ${name} keeps readable labels inside the SVG at ${width}px in ${scenario}`, async ({
+      test(`CP-31 ${name} keeps labels at a legible scale inside the SVG and scrolls only on overflow at ${width}px in ${scenario}`, async ({
         page,
       }) => {
         await page.setViewportSize({ width, height: 1096 });
@@ -321,8 +356,11 @@ for (const width of [480, 720, 1888]) {
                     labelBox.bottom <= svgBox.bottom + 1
                   );
                 }),
-                clientWidth: element.clientWidth,
-                hasLocalOverflow: element.scrollWidth > element.clientWidth,
+                clientWidth: element.querySelector(".acp-mermaid")!.clientWidth,
+                hasLocalOverflow:
+                  element.querySelector(".acp-mermaid")!.scrollWidth >
+                  element.querySelector(".acp-mermaid")!.clientWidth + 1,
+                figureOverflow: element.scrollWidth > element.clientWidth + 1,
                 paneContained:
                   element.closest(".agent-chat-pane")!.scrollWidth <=
                   element.closest(".agent-chat-pane")!.clientWidth + 1,
@@ -342,18 +380,22 @@ for (const width of [480, 720, 1888]) {
                   (metrics.renderedWidth / metrics.intrinsicWidth),
                 1,
               );
-              expect(size).toBeGreaterThanOrEqual(11.99);
+              expect(size).toBeGreaterThanOrEqual(
+                metrics.bodySize * 0.75 - 0.05,
+              );
             }
+            // Fit the column, but keep at least 75% of natural scale.
             expect(metrics.renderedWidth).toBeCloseTo(
               Math.max(
-                (metrics.intrinsicWidth * 6) / 7,
                 Math.min(metrics.intrinsicWidth, metrics.clientWidth),
+                metrics.intrinsicWidth * 0.75,
               ),
               1,
             );
             expect(metrics.hasLocalOverflow).toBe(
-              (metrics.intrinsicWidth * 6) / 7 > metrics.clientWidth,
+              metrics.renderedWidth > metrics.clientWidth + 1,
             );
+            expect(metrics.figureOverflow).toBe(false);
             expect(metrics.labelsInsideSvg).toBe(true);
             expect(metrics.paneContained).toBe(true);
             expect(metrics.background).toBe("rgba(0, 0, 0, 0)");
@@ -361,19 +403,8 @@ for (const width of [480, 720, 1888]) {
             expect(metrics.padding).toBe("0px");
             for (const fill of metrics.nodeFills)
               expect(fill).toBe(metrics.nodeFill);
-            if (metrics.hasLocalOverflow) {
-              await expect(figure).toHaveAttribute("tabindex", "0");
-              await figure.evaluate((element) => {
-                element.scrollLeft = 0;
-              });
-              await figure.focus();
-              await page.keyboard.press("ArrowRight");
-              await expect
-                .poll(() => figure.evaluate((element) => element.scrollLeft))
-                .toBeGreaterThan(0);
-            } else {
-              await expect(figure).not.toHaveAttribute("tabindex");
-            }
+            await expect(figure).not.toHaveAttribute("tabindex");
+            await expectScrollStop(page, figure, metrics.hasLocalOverflow);
           }
         }
         expect(

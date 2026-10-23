@@ -15,6 +15,7 @@ import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { projectChatEditSummary } from "./chatEditSummary";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
+import { FileChangeTotals } from "./FileChangeTotals";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -66,20 +67,6 @@ export const TurnEditSummary = memo(function TurnEditSummary({
     summary.omittedCount > 0 ||
     summary.sourceTruncated ||
     summary.rejectedUnsafeOrStale;
-  const additions = summary.changes.reduce<number | null>(
-    (total, change) =>
-      total === null || change.additions === null
-        ? null
-        : total + change.additions,
-    0,
-  );
-  const deletions = summary.changes.reduce<number | null>(
-    (total, change) =>
-      total === null || change.deletions === null
-        ? null
-        : total + change.deletions,
-    0,
-  );
   const hasInteractiveChanges = summary.changes.some(
     (change) => change.resource.kind === "resource",
   );
@@ -118,17 +105,6 @@ export const TurnEditSummary = memo(function TurnEditSummary({
         .map((change) => change.turn),
     ),
   ].filter((turn) => turn.sessionId === page.currentSessionId);
-  const totals =
-    summary.changes.length > 0 && (additions !== null || deletions !== null) ? (
-      <span className="acp-file-changes__totals" aria-label="Line changes">
-        {additions !== null ? (
-          <span className="acp-file-changes__additions">+{additions}</span>
-        ) : null}
-        {deletions !== null ? (
-          <span className="acp-file-changes__deletions">-{deletions}</span>
-        ) : null}
-      </span>
-    ) : null;
 
   return (
     <section
@@ -150,7 +126,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
         {dispositionError ? (
           <span className="acp-file-changes__error">Needs attention</span>
         ) : null}
-        {totals}
+        <FileChangeTotals changes={summary.changes} />
       </button>
       {expanded && summary.changes.length > 0 ? (
         <ul>

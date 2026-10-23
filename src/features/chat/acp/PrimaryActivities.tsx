@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 
 import type { AcpItem } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolActivityRollup } from "./ToolActivityRollupView";
 import { groupPrimaryActivities } from "./toolActivityRollup";
 import { CollaborationItem } from "./CollaborationItem";
-import { compactToolLabels } from "./toolCommandContent";
+import { withSubagentNames } from "./subagentIdentities";
 
 export function PrimaryActivities({
   items,
@@ -20,16 +21,11 @@ export function PrimaryActivities({
   onOpenResource?: AgentArtifactOpenHandler;
   renderItem: (item: AcpItem) => ReactNode;
 }) {
-  const grouped = groupPrimaryActivities(items);
-  const latestCompact = [...grouped]
+  const visible = useContext(WorkedActivityVisibility);
+  const grouped = groupPrimaryActivities(withSubagentNames(items));
+  const latestTool = [...grouped]
     .reverse()
-    .find(
-      (activity) =>
-        activity.kind === "toolRollup" &&
-        activity.rollup.items.every(
-          (item) => compactToolLabels[item.payload.presentation.kind],
-        ),
-    );
+    .find((activity) => activity.kind === "toolRollup");
   return (
     <>
       {grouped.map((activity) =>
@@ -38,10 +34,10 @@ export function PrimaryActivities({
             key={activity.rollup.items[0]?.id}
             rollup={activity.rollup}
             interactive={interactive}
-            expandDetails={expandDetails && activity === latestCompact}
+            expandDetails={expandDetails && activity === latestTool}
             onOpenResource={onOpenResource}
           />
-        ) : activity.kind === "collaborationRollup" ? (
+        ) : !visible ? null : activity.kind === "collaborationRollup" ? (
           <CollaborationItem
             key={activity.items[0].id}
             item={activity.items[0]}

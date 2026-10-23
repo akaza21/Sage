@@ -293,12 +293,6 @@ export function toolRollupState(
   return "completed";
 }
 
-export function toolRollupStateLabel(
-  state: ToolProjectionItem["toolState"],
-): string {
-  return toolStateLabels[state];
-}
-
 export function toolDurationLabel(
   createdAt: number,
   terminalAt: number | null,

@@ -66,8 +66,8 @@ test("all terminal predicates need rendered content and no chat lazy fallback", 
     ["compaction-failed", { compaction: true }],
     ["compaction-cancelled", { compaction: true }],
     ["cancelled-dialog", { notice: true }],
-    ["approval-approved", { permission: true }],
-    ["approval-declined", { permission: true }],
+    ["approval-approved", { rollup: true }],
+    ["approval-declined", { rollup: true }],
     ["turn-error", { failure: true }, "failed"],
     ["turn-stopped", { stopped: true }, "cancelled"],
     ["turn-stopped", { stopped: true }, "interrupted"],
@@ -102,6 +102,28 @@ test("all terminal predicates need rendered content and no chat lazy fallback", 
       imageLoaded: true,
     };
     assert.equal(dom.namedState(options, observation).namedState, true, state);
+    if (state === "approval-approved" || state === "approval-declined") {
+      for (const changed of [
+        { worked: true },
+        { expanded: true },
+        { pendingApproval: true },
+      ]) {
+        assert.equal(
+          dom.namedState(options, {
+            ...observation,
+            visible: { ...visible, ...changed },
+          }).namedState,
+          false,
+          state + ": " + JSON.stringify(changed),
+        );
+      }
+      assert.equal(
+        dom.namedState(options, { ...observation, permissionStates: [] })
+          .namedState,
+        false,
+        state + ": missing settlement",
+      );
+    }
     assert.equal(
       dom.namedState(options, { ...observation, lazyFallbackVisible: true })
         .namedState,

@@ -50,6 +50,11 @@ function childTarget(
     : undefined;
 }
 
+/** A starting or working child still counts as working. */
+export function liveAgent(status: AgentStatus | undefined) {
+  return status === "starting" || status === "working";
+}
+
 function agentStatus(state: string | undefined): AgentStatus | null {
   if (state === "pendingInit") return "starting";
   if (state === "running") return "working";
@@ -81,8 +86,6 @@ export function projectTaskResources(
   const sources = new Map<string, TaskSource>();
   if (!page || page.chatId !== chatId)
     return {
-      workingAgents: 0,
-      doneAgents: 0,
       recentAgents: [],
       outputs: [],
       sources: [],
@@ -152,6 +155,10 @@ export function projectTaskResources(
             item.payload.agentKey,
           );
           const label = item.payload.label?.trim();
+          const operation = item.payload.operation;
+          const live = liveAgent(agent?.status);
+          // Start and completion only advance a live child; an interrupt
+          // stops it, and nothing but another spawn revives it.
           if (invocation && agent)
             agents.set(invocation, {
               ...agent,
@@ -163,18 +170,17 @@ export function projectTaskResources(
                       item.id,
                     ].slice(-MAX_RESOURCE_DETAILS_PER_ITEM),
                     label:
-                      agent.label === "Subagent" &&
-                      label &&
-                      label !== "Subagent"
-                        ? label
-                        : agent.label,
+                      agent.label === "Subagent" && label ? label : agent.label,
                   }
                 : {}),
               status:
-                item.payload.operation === "completed" &&
-                (agent.status === "starting" || agent.status === "working")
-                  ? "done"
-                  : agent.status,
+                operation === "interrupted"
+                  ? "stopped"
+                  : live && operation === "completed"
+                    ? "done"
+                    : live && operation === "started"
+                      ? "working"
+                      : agent.status,
             });
         }
         const states = (item.payload.agentStates ?? []).slice(
@@ -201,58 +207,26 @@ export function projectTaskResources(
                 ...(target ? { target, observationIds: [item.id] } : {}),
               });
           }
-        } else if (
-          item.payload.operation === "started" &&
-          item.payload.agentKey
-        ) {
-          const key = item.payload.agentKey;
-          const invocation = latestInvocation.get(key);
-          const agent = invocation ? agents.get(invocation) : null;
-          if (
-            invocation &&
-            agent &&
-            (agent.status === "starting" || agent.status === "working")
-          )
-            agents.set(invocation, {
-              ...agent,
-              id: invocation,
-              label: agent.label,
-              status: "working",
-              agentKey: key,
-            });
-        } else if (
-          item.payload.operation === "interrupted" &&
-          item.payload.agentKey
-        ) {
-          const invocation = latestInvocation.get(item.payload.agentKey);
-          if (invocation) {
-            const agent = agents.get(invocation);
-            if (agent) agents.set(invocation, { ...agent, status: "stopped" });
-          }
-        }
-        if (item.payload.operation !== "spawnAgent") {
+        } else {
           for (const [key, state] of states) {
             const invocation = latestInvocation.get(key);
             if (!invocation) continue;
-            const label =
-              item.payload.receiverLabels[
-                (item.payload.agentKeys ?? []).indexOf(key)
-              ]?.trim() ||
-              agents.get(invocation)?.label ||
-              "Subagent";
+            const agent = agents.get(invocation);
             const status = agentStatus(state);
-            const previous = agents.get(invocation)?.status;
+            // A terminal child never returns to working without a new spawn.
             if (
               status &&
-              (!previous ||
-                previous === "starting" ||
-                previous === "working" ||
-                (status !== "starting" && status !== "working"))
+              (!agent || liveAgent(agent.status) || !liveAgent(status))
             )
               agents.set(invocation, {
-                ...agents.get(invocation),
+                ...agent,
                 id: invocation,
-                label,
+                label:
+                  item.payload.receiverLabels[
+                    (item.payload.agentKeys ?? []).indexOf(key)
+                  ]?.trim() ||
+                  agent?.label ||
+                  "Subagent",
                 status,
                 agentKey: key,
               });
@@ -262,15 +236,19 @@ export function projectTaskResources(
         item.kind === "toolCall" &&
         item.payload.presentation.kind === "subagent"
       ) {
-        const label = item.payload.presentation.label;
-        if (
-          ["pending", "inProgress", "waitingForApproval"].includes(
-            item.toolState,
-          )
+        const status = ["pending", "inProgress", "waitingForApproval"].includes(
+          item.toolState,
         )
-          agents.set(item.id, { id: item.id, label, status: "working" });
-        else if (item.toolState === "completed")
-          agents.set(item.id, { id: item.id, label, status: "done" });
+          ? "working"
+          : item.toolState === "completed"
+            ? "done"
+            : null;
+        if (status)
+          agents.set(item.id, {
+            id: item.id,
+            label: item.payload.presentation.label,
+            status,
+          });
       }
       if (
         item.kind === "toolCall" &&
@@ -286,10 +264,6 @@ export function projectTaskResources(
   }
   const recentAgents = [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
   return {
-    workingAgents: recentAgents.filter(
-      (agent) => agent.status === "working" || agent.status === "starting",
-    ).length,
-    doneAgents: recentAgents.filter((agent) => agent.status === "done").length,
     recentAgents,
     outputs: [...outputs.values()],
     sources: [...sources.values()],

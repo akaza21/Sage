@@ -75,24 +75,18 @@ it("reconciles each admitted child without duplicating counts or shuffling rows"
     "b",
   );
   const stages = [
-    { items: [spawn], statuses: ["starting", "starting"], working: 2, done: 0 },
+    { items: [spawn], statuses: ["starting", "starting"] },
     {
       items: [spawn, started],
       statuses: ["working", "starting"],
-      working: 2,
-      done: 0,
     },
     {
       items: [spawn, started, done],
       statuses: ["done", "starting"],
-      working: 1,
-      done: 1,
     },
     {
       items: [spawn, started, done, stopped],
       statuses: ["done", "stopped"],
-      working: 0,
-      done: 1,
     },
   ];
   for (const stage of stages) {
@@ -104,8 +98,6 @@ it("reconciles each admitted child without duplicating counts or shuffling rows"
     expect(result.recentAgents.map((agent) => agent.status)).toEqual(
       stage.statuses,
     );
-    expect(result.workingAgents).toBe(stage.working);
-    expect(result.doneAgents).toBe(stage.done);
   }
 });
 
@@ -136,8 +128,6 @@ it("retains a failed child beside independently completed siblings", () => {
     "done",
     "failed",
   ]);
-  expect(result.workingAgents).toBe(0);
-  expect(result.doneAgents).toBe(1);
 });
 
 it("counts paired spawn and native completion observations as one child", () => {
@@ -159,8 +149,6 @@ it("counts paired spawn and native completion observations as one child", () => 
       agentKey: "child-1",
     },
   ]);
-  expect(result.workingAgents).toBe(0);
-  expect(result.doneAgents).toBe(1);
 });
 
 it.each(["pendingInit", "running"])(
@@ -172,8 +160,6 @@ it.each(["pendingInit", "running"])(
     ]);
     expect(result.recentAgents[0]).toMatchObject({ status: "done" });
     expect(result.recentAgents[0].target).toBeUndefined();
-    expect(result.workingAgents).toBe(0);
-    expect(result.doneAgents).toBe(1);
   },
 );
 

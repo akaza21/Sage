@@ -73,6 +73,17 @@ function effort(
 }
 
 describe("Advertised composer effort", () => {
+  it("distinguishes model and thinking controls when only their icons fit", () => {
+    controls(effort("effort", ["low", "high"], "high"));
+    const model = screen.getByRole("button", { name: "Model" });
+    const thinking = screen.getByRole("button", {
+      name: "Thinking level: high",
+    });
+    expect(model.querySelector(".lucide-sparkles")).not.toBeNull();
+    expect(thinking.querySelector(".lucide-brain")).not.toBeNull();
+    expect(thinking.querySelector(".lucide-sparkles")).toBeNull();
+  });
+
   it.each(["medium", "Balanced thinking"])(
     "uses the %s display label in its heading and retains an advertised reset",
     (label) => {
@@ -163,11 +174,11 @@ describe("Advertised composer effort", () => {
   });
   it("shows the current level on the trigger with Select effort as its description", () => {
     const { rerender, Host } = controls(effort("effort", ["low", "high"]));
-    const trigger = screen.getByRole("button", { name: "low" });
+    const trigger = screen.getByRole("button", { name: "Thinking level: low" });
     expect(trigger).toHaveTextContent("low");
     expect(trigger).toHaveAccessibleDescription("Select effort");
     rerender(<Host effortOption={effort("effort", ["low", "high"], "high")} />);
-    expect(trigger).toHaveAccessibleName("high");
+    expect(trigger).toHaveAccessibleName("Thinking level: high");
     expect(trigger).toHaveTextContent("high");
   });
   it("restores the surviving effort trigger when closing from the model link", async () => {

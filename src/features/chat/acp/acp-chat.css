@@ -232,12 +232,6 @@
   color: var(--color-text-primary);
 }
 
-.acp-message__partial {
-  margin: var(--space-2) 0 0;
-  color: var(--color-warning);
-  font-size: var(--font-size-xs);
-}
-
 .acp-message--assistant,
 .acp-message--system {
   padding: 0;

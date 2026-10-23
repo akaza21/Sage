@@ -15,6 +15,7 @@ import type {
 import {
   flattenChoices,
   sessionConfigControls,
+  sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
@@ -26,6 +27,7 @@ import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import { useComposerCompaction } from "./useComposerCompaction";
+import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
 import {
   harnessPickerCandidates,
@@ -89,6 +91,7 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
+  const keyboardFocus = useHarnessKeyboardFocus();
   const {
     active,
     modelId,
@@ -188,8 +191,8 @@ export function ChatHarnessControls({
           : undefined,
     }),
   );
-  const modeOptions = selectedSessionConfig?.modes?.availableModes ?? [];
-  const hasModes = !selectedSessionConfig?.removed && modeOptions.length > 0;
+  const modeOptions = sessionModeActions(selectedSessionConfig);
+  const hasModes = modeOptions.length > 0;
   const modeCandidates = modeOptions.map((mode) => ({
     id: mode.id,
     label: mode.name || mode.id,
@@ -271,7 +274,10 @@ export function ChatHarnessControls({
           onDismiss={dismiss}
         />
       ) : null}
-      <label className="composer__control-trigger composer__harness">
+      <label
+        className="composer__control-trigger composer__harness"
+        data-keyboard-focus={keyboardFocus}
+      >
         <SearchablePicker
           ariaLabel="Harness"
           open={active === "harness"}

@@ -154,7 +154,11 @@ describe("ToolActivityRollup", () => {
       browserOperationsCollapsed: 0,
     };
     render(
-      <ChatTranscriptTurnSummary turn={turn} hasActivities>
+      <ChatTranscriptTurnSummary
+        turn={turn}
+        hasActivities
+        hasCollapsedActivities
+      >
         <ToolActivityRollup
           rollup={{
             kind: "execute",
@@ -183,7 +187,7 @@ describe("ToolActivityRollup", () => {
       "$ npm run check",
     );
     fireEvent.click(worked.querySelector("summary")!);
-    expect(screen.getByText("Shell")).not.toBeVisible();
+    expect(screen.getByText("Shell")).toBeVisible();
     fireEvent.click(worked.querySelector("summary")!);
     expect(row.open).toBe(true);
     expect(screen.getByText("Shell")).toBeVisible();
@@ -563,6 +567,19 @@ describe("ToolActivityRollup", () => {
     const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
     row.open = true;
     fireEvent(row, new Event("toggle"));
+    const commands = row.querySelectorAll<HTMLDetailsElement>(
+      ".acp-tool-rollup__items > .acp-tool-rollup",
+    );
+    expect(
+      [...commands].map(
+        (command) =>
+          command.querySelector(".acp-tool-rollup__label")?.textContent,
+      ),
+    ).toEqual(["Ran 1 command", "Ran 1 command"]);
+    for (const command of commands) {
+      command.open = true;
+      fireEvent(command, new Event("toggle"));
+    }
     expect(
       [...row.querySelectorAll("[data-acp-item-id]")].map((card) =>
         card.getAttribute("data-acp-item-id"),
@@ -865,9 +882,7 @@ describe("ToolActivityRollup", () => {
     expect(summary).toHaveTextContent(
       "Running powershell -NoProfile -File build.ps1",
     );
-    expect(
-      summary?.querySelectorAll('svg[data-activity-icon="execute"]'),
-    ).toHaveLength(1);
+    expect(summary?.querySelectorAll(".acp-tool-running svg")).toHaveLength(1);
     expect(summary?.querySelector(".acp-tool-rollup__working")).toBeNull();
     expect(screen.queryByText("In progress")).toBeNull();
     fireEvent.click(summary!);
@@ -896,7 +911,10 @@ describe("ToolActivityRollup", () => {
     expect(row?.querySelector("summary .acp-state")).toBeNull();
     expect(
       row?.querySelector("summary svg[data-activity-icon='edit']"),
-    ).not.toBeNull();
+    ).toBeNull();
+    expect(
+      row?.querySelectorAll("summary .acp-tool-rollup__summary-copy svg"),
+    ).toHaveLength(1);
   });
 
   it.each([
@@ -1219,6 +1237,15 @@ describe("ToolActivityRollup", () => {
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
 
+    expect(screen.queryByLabelText("Command line")).toBeNull();
+    const command = document.querySelector<HTMLDetailsElement>(
+      ".acp-tool-rollup__items > .acp-tool-rollup",
+    )!;
+    expect(command.querySelector("summary")).toHaveTextContent(
+      "Ran npm run build",
+    );
+    command.open = true;
+    fireEvent(command, new Event("toggle"));
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "$ npm run build",
     );

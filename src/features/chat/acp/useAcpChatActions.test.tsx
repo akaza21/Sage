@@ -75,7 +75,10 @@ function page(): AcpChatPage {
       configRevision: "1",
       modes: {
         currentModeId: "review",
-        availableModes: [{ id: "review", name: "Review" }],
+        availableModes: [
+          { id: "review", name: "Review" },
+          { id: "apply", name: "Apply" },
+        ],
       },
       configOptions: [],
     },
@@ -179,7 +182,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitemradio", { name: "Review" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Apply" }));
     });
     expect(setSessionMode).toHaveBeenCalledExactlyOnceWith({
       projectId: "project-a",
@@ -187,7 +190,7 @@ describe("useAcpChatActions per-Chat ownership", () => {
       chatId: "chat-a",
       sessionId: "session-a",
       runtimeEpoch: "1",
-      modeId: "review",
+      modeId: "apply",
       expectedProjectionRevision: "1",
       expectedConfigRevision: "1",
       clientIntentId: expect.any(String),

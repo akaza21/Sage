@@ -4,6 +4,7 @@ import { decodeSessionConfig } from "./acpSessionConfig";
 import {
   flattenChoices,
   sessionConfigControls,
+  sessionModeActions,
 } from "./acpSessionConfigControls";
 
 const observedModes = {
@@ -134,5 +135,24 @@ describe("sessionConfigControls", () => {
       "haiku",
     ]);
     expect(flattenChoices(controls[1])).toEqual([]);
+  });
+});
+
+describe("sessionModeActions", () => {
+  it("returns every advertised mode in order, giving no id special meaning", () => {
+    const config = decode(observedModes, []);
+    expect(sessionModeActions(config).map((mode) => mode.id)).toEqual([
+      "default",
+      "acceptEdits",
+      "plan",
+      "auto",
+      "bypassPermissions",
+    ]);
+  });
+
+  it("offers nothing once the session configuration is removed", () => {
+    const config = decode(observedModes, []);
+    expect(sessionModeActions({ ...config!, removed: true })).toEqual([]);
+    expect(sessionModeActions(null)).toEqual([]);
   });
 });

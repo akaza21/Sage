@@ -61,6 +61,39 @@ afterEach(() => {
 });
 
 describe("Subagent activity rows", () => {
+  it("refreshes an already-rendered unnamed group when later lifecycle observations emit names", () => {
+    const spawn = [child("a", ""), child("b", "")];
+    const view = activities(spawn);
+    expect(screen.getByText("2 subagents started working")).toBeVisible();
+    const completed = spawn.map((member, index) => ({
+      ...member,
+      id: `done-${index}`,
+      payload: {
+        ...member.payload,
+        operation: "completed",
+        agentKey: index ? "b" : "a",
+        label: index ? "Builder" : "Reviewer",
+        agentKeys: [],
+        receiverLabels: [],
+        agentStates: [],
+      },
+    })) as unknown as Collaboration[];
+    view.rerender(
+      <PrimaryActivities
+        items={[...spawn, ...completed]}
+        interactive
+        renderItem={(item) =>
+          item.kind === "collaboration" ? (
+            <CollaborationItem key={item.id} item={item} />
+          ) : null
+        }
+      />,
+    );
+    expect(
+      screen.getByText("Reviewer and Builder started working"),
+    ).toBeVisible();
+  });
+
   it("deduplicates spawn and native completion and opens the owner-bearing activity", () => {
     const spawn = child("child-1", "Reviewer", "completed");
     spawn.id = "spawn" as Collaboration["id"];

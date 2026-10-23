@@ -82,8 +82,8 @@ describe("Chat container control breakpoints", () => {
   });
 
   it.each([
-    [580, 22],
-    [521, 22],
+    [580, 24],
+    [521, 24],
     [520, 24],
     [400, 24],
   ])(

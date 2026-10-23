@@ -155,6 +155,75 @@ function replaceItems(items: AcpItem[], updates: Partial<AcpChatPage> = {}) {
   });
 }
 
+it("counts spawn invocations, not repeated spawn, start, finish, or resource observations", async () => {
+  const items = acpProjectionStoreFor(tab.id).getState().page!.turns[0]
+    .items as AcpItem[];
+  const reobservedSpawn = (revision: string) =>
+    ({ ...items[0], revision, updatedAt: Number(revision) }) as AcpItem;
+  const observations = (revision: string) => [
+    reobservedSpawn(revision),
+    items[1],
+    collaboration(
+      "started-a",
+      3,
+      "started",
+      ["private-thread-a"],
+      ["Researcher"],
+      [["private-thread-a", "running"]],
+    ),
+    collaboration(
+      "finished-a",
+      4,
+      "wait",
+      ["private-thread-a"],
+      ["Researcher"],
+      [["private-thread-a", "completed"]],
+    ),
+    {
+      ...items[0],
+      id: "source",
+      kind: "toolCall",
+      toolState: "completed",
+      payload: {
+        presentation: {
+          kind: "fetch",
+          label: "Fetched source",
+          url: "https://example.com",
+        },
+      },
+    } as unknown as AcpItem,
+  ];
+  replaceItems(observations("2"));
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  // The counts are synchronous; only the surrounding region loads lazily.
+  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "Subagents: 2" }),
+  ).toBeVisible();
+  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+  expect(screen.getByText("example.com")).toBeVisible();
+  // A later revision of the same spawn item is a repeated observation.
+  replaceItems(observations("3"));
+  expect(screen.getByRole("heading", { name: "Subagents: 2" })).toBeVisible();
+  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+  // A separate spawn that reuses a child thread id is another subagent.
+  replaceItems([
+    ...observations("3"),
+    collaboration(
+      "spawn-again",
+      5,
+      "spawnAgent",
+      ["private-thread-a"],
+      ["Researcher"],
+      [["private-thread-a", "running"]],
+    ),
+  ]);
+  expect(screen.getByRole("heading", { name: "Subagents: 3" })).toBeVisible();
+  expect(screen.getByLabelText("Recent subagents working: 1")).toBeVisible();
+  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+});
+
 it("makes a lazily loaded child row keyboard reachable and returns Tab focus", async () => {
   replaceItems([
     collaboration(
@@ -228,7 +297,7 @@ it.each([
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
-    const section = screen.getByRole("region", { name: "Subagents" });
+    const section = await screen.findByRole("region", { name: "Subagents" });
     expect(
       within(section).getByLabelText("Recent subagents working: 2"),
     ).toHaveTextContent("2 working");
@@ -279,7 +348,7 @@ it("bounds 300 child observations to 128 selectable rows and truthful retained c
   );
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  const section = screen.getByRole("region", { name: "Subagents" });
+  const section = await screen.findByRole("region", { name: "Subagents" });
   expect(
     within(section).getByRole("heading", { name: "Subagents: 128" }),
   ).toHaveTextContent("128");
@@ -444,7 +513,7 @@ it("keeps Task lifecycle metadata readable without a child selection or transcri
   );
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  const section = screen.getByRole("region", { name: "Subagents" });
+  const section = await screen.findByRole("region", { name: "Subagents" });
   expect(
     await within(section).findByText("Inspect layout"),
   ).toBeInTheDocument();
@@ -636,10 +705,10 @@ it("exposes the full project name when its breadcrumb is ellipsized", () => {
   expect(crumb).toHaveAttribute("title", name);
 });
 
-it("separates recent working and done figures without an inert child-open control", () => {
+it("separates recent working and done figures without an inert child-open control", async () => {
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  const section = screen.getByRole("region", { name: "Subagents" });
+  const section = await screen.findByRole("region", { name: "Subagents" });
   expect(
     within(section).getByRole("heading", { name: "Subagents: 2" }),
   ).toHaveTextContent("2");

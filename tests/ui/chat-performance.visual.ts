@@ -43,9 +43,9 @@ async function expectCapWorkerReachable(
   ordinal: number,
 ) {
   const group = capSubagentGroup(page, turn);
-  await expect(group).toBeAttached();
-  // Completed Turns fold their work under "Worked for"; the grouped
-  // Subagent row is only presented once that disclosure is open.
+  // Completed Turns start collapsed under "Worked for" and do not mount the
+  // grouped Subagent row until that disclosure is opened.
+  await expect(group).not.toBeAttached();
   const work = page
     .locator(`[data-turn-id="turn-${turn}"]`)
     .locator("details.chat-transcript-work");
@@ -140,8 +140,12 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
   await expect(disclosure).toBeVisible();
   // Bring the summary fully into view first so the click's own actionability
   // scroll cannot masquerade as anchor drift caused by the expansion.
+  // Align it to the top: collapsed Turns are short enough that centering the
+  // summary would hand the anchor to an earlier Turn.
   const summary = disclosure.locator(":scope > summary");
-  await summary.scrollIntoViewIfNeeded();
+  await summary.evaluate((element) =>
+    element.scrollIntoView({ block: "start" }),
+  );
   await page.evaluate(
     () =>
       new Promise((resolve) =>
@@ -173,7 +177,11 @@ for (const mode of ["cap", "stress"] as const) {
       mode,
     );
     if (mode === "cap")
-      await expect(capSubagentGroup(page, 100)).toBeAttached();
+      await expect(
+        page
+          .locator('[data-turn-id="turn-100"]')
+          .locator("details.chat-transcript-work"),
+      ).toHaveCount(1);
     await page.waitForTimeout(200);
     const stream = await page.evaluate(() => window.chatPerf.stream(30));
     const ordered = [...stream.durations].sort((left, right) => left - right);

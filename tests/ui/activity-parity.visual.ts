@@ -56,6 +56,9 @@ for (const width of [1888, 720, 480]) {
       await expect(
         summary.locator(".acp-tool-rollup__summary-copy .acp-tool-running"),
       ).toHaveCount(1);
+      await expect(
+        summary.locator(".acp-tool-rollup__summary-copy svg"),
+      ).toHaveCount(1);
       // Codex refs 08 and 20 keep the running row on one line and clip it only
       // at the column edge; nothing trailing steals the label's width.
       const geometry = await summary
@@ -84,18 +87,32 @@ for (const width of [1888, 720, 480]) {
       expect(geometry.right).toBeLessThanOrEqual(width);
     });
 
-    test("Worked reveals flush per-command Shell cards with an 8-16px answer gap", async ({
+    test("Worked reveals per-command Ran rows and opens only the chosen Shell card", async ({
       page,
     }) => {
       await open(page, "commands");
       await page.locator(".chat-transcript-work > summary").click();
+      const commands = page.locator(
+        ".acp-tool-rollup__items > .acp-tool-rollup",
+      );
+      await expect(commands).toHaveCount(3);
+      for (const command of await commands.all()) {
+        await expect(command).not.toHaveAttribute("open");
+        await expect(command.locator(":scope > summary")).toContainText(
+          "Ran git status --short",
+        );
+      }
       const cards = page.locator(".acp-tool-command-frame");
-      await expect(cards).toHaveCount(3);
+      await expect(cards).toHaveCount(0);
+      await commands.last().locator(":scope > summary").click();
+      await expect(cards).toHaveCount(1);
       for (const card of await cards.all()) await expect(card).toBeVisible();
       await expect(page.locator(".acp-tool-rollup__items header")).toHaveCount(
         0,
       );
-      const row = await page.locator(".acp-tool-rollup").boundingBox();
+      const row = await page
+        .locator(".chat-transcript-work__groups > .acp-tool-rollup")
+        .boundingBox();
       const first = await cards.first().boundingBox();
       const last = await cards.last().boundingBox();
       const answer = await page
@@ -135,6 +152,83 @@ for (const width of [1888, 720, 480]) {
         .getByRole("status", { name: "Cancelled by you" })
         .boundingBox();
       expect(notice!.y).toBeGreaterThanOrEqual(answer!.y + answer!.height);
+      await expect(page.getByText("Partial answer retained")).toHaveCount(0);
+    });
+
+    test("Mermaid keeps a legible scale and is a keyboard scroll stop only when it overflows", async ({
+      page,
+    }) => {
+      await open(page, "mermaid");
+      const figure = page.locator(".acp-mermaid");
+      await expect(figure).toHaveAttribute("role", "region");
+      // No forced tabindex: the browser focuses the scroller only on overflow.
+      await expect(figure).not.toHaveAttribute("tabindex");
+      await expect(figure).toHaveAccessibleName(/Diagram:.*scroll area/);
+      await expect(figure.locator("svg")).toBeVisible();
+      const geometry = await figure.evaluate((element) => {
+        const svg = element.querySelector("svg")!;
+        const box = svg.getBoundingClientRect();
+        const region = element.getBoundingClientRect();
+        const column = element
+          .closest(".acp-turn__items")!
+          .getBoundingClientRect();
+        return {
+          svg: { left: box.left, right: box.right, width: box.width },
+          region: { left: region.left, right: region.right },
+          minimumWidth: Number(svg.getAttribute("width")) * 0.75,
+          availableWidth: element.clientWidth,
+          column: {
+            left: column.left,
+            right: column.right,
+            width: column.width,
+          },
+          overflow: element.scrollWidth > element.clientWidth,
+          nodesInside: [...svg.querySelectorAll("g[transform]")].every(
+            (node) => {
+              const nodeBox = node.getBoundingClientRect();
+              return (
+                nodeBox.left >= box.left - 1 && nodeBox.right <= box.right + 1
+              );
+            },
+          ),
+        };
+      });
+      expect(geometry.svg.width).toBeGreaterThan(0);
+      expect(geometry.svg.width).toBeGreaterThanOrEqual(
+        geometry.minimumWidth - 1,
+      );
+      expect(geometry.region.left).toBeGreaterThanOrEqual(geometry.column.left);
+      expect(geometry.region.right).toBeLessThanOrEqual(
+        geometry.column.right + 1,
+      );
+      expect(geometry.overflow).toBe(
+        geometry.minimumWidth > geometry.availableWidth + 1,
+      );
+      expect(geometry.nodesInside).toBe(true);
+      expect(
+        await figure.evaluate((element) => {
+          (element as HTMLElement).focus();
+          return document.activeElement === element;
+        }),
+      ).toBe(geometry.overflow);
+      await expect(
+        page.getByRole("button", { name: "Copy diagram source" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Copy", exact: true }),
+      ).toHaveCount(1);
+    });
+
+    test("thinking after prose has the reference gap", async ({ page }) => {
+      await open(page, "thinking");
+      const prose = await page
+        .getByText("Checking the project now.", { exact: true })
+        .boundingBox();
+      const thinking = await page.locator(".acp-thought").boundingBox();
+      expect(thinking!.y - (prose!.y + prose!.height)).toBeGreaterThanOrEqual(
+        18,
+      );
+      expect(thinking!.y - (prose!.y + prose!.height)).toBeLessThanOrEqual(24);
     });
 
     test("failed compaction uses an icon-led normal row and error tone", async ({

@@ -137,7 +137,7 @@ export function ChatMarkdown({
         renderCode={(block) =>
           block.language.toLowerCase() === "mermaid" &&
           !(streaming && !block.fenceClosed) ? (
-            <MermaidFigureBoundary source={block.text} />
+            <MermaidFigureBoundary source={block.text} copySource={false} />
           ) : (
             <ChatCodeBlock
               language={block.language}

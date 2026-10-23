@@ -15,6 +15,36 @@ import { ToolItem } from "./ToolItem";
 
 afterEach(cleanup);
 
+it("keeps execute members of mixed Worked activity behind individual Ran rows", () => {
+  const { container } = render(
+    <PrimaryActivities
+      items={[
+        parityTool("read"),
+        parityTool("execute", 2),
+        parityTool("execute", 3),
+      ]}
+      interactive
+      expandDetails
+      renderItem={() => null}
+    />,
+  );
+  const rollup = container.querySelector("details")!;
+  expect(rollup).toHaveAttribute("open");
+  expect(screen.getByText("Read")).toBeVisible();
+  expect(screen.queryByText("Shell")).toBeNull();
+  const commands = rollup.querySelectorAll<HTMLDetailsElement>(
+    ".acp-tool-rollup__items > details",
+  );
+  expect(commands).toHaveLength(2);
+  for (const command of commands) {
+    expect(command).toHaveTextContent("Ran git status --short");
+    expect(command).not.toHaveAttribute("open");
+  }
+  commands[0].open = true;
+  fireEvent(commands[0], new Event("toggle"));
+  expect(screen.getAllByText("Shell")).toHaveLength(1);
+});
+
 it("keeps the diff-only live editing row to one label and inline spinner", () => {
   const projection = page("running");
   const turn = projection.turns[0];
@@ -62,6 +92,13 @@ it.each(["failed", "cancelled", "declined"] as const)(
     const disclosure = container.querySelector("details")!;
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
+    const commands = disclosure.querySelectorAll<HTMLDetailsElement>("details");
+    expect(commands).toHaveLength(2);
+    for (const command of commands) {
+      expect(command).not.toHaveAttribute("open");
+      command.open = true;
+      fireEvent(command, new Event("toggle"));
+    }
     const cards = screen.getAllByRole("group", { name: "git status --short" });
     expect(within(cards[0]).getByRole("status")).toHaveTextContent("Completed");
     expect(within(cards[1]).getByRole("status")).toHaveTextContent(
@@ -152,7 +189,10 @@ it("names pending task observations as started working and keeps grouped/header 
   ).toBeVisible();
   expect(screen.queryByText(/pending/)).toBeNull();
   const resources = projectTaskResources(projection, projection.chatId);
-  expect(resources.workingAgents).toBe(2);
+  expect(resources.recentAgents.map((agent) => agent.status)).toEqual([
+    "working",
+    "working",
+  ]);
   expect(resources.recentAgents.map((agent) => agent.label)).toEqual([
     "Reviewer",
     "Builder",
@@ -193,40 +233,80 @@ it.each(["execute", "read"] as const)(
   },
 );
 
-it.each(["execute", "read"] as const)(
-  "expanding Worked shows every %s detail without another disclosure click",
-  (kind) => {
-    const projection = page("completed");
-    projection.turns[0].items = [
-      parityTool(kind),
-      parityTool(kind, 2),
-      parityTool(kind, 3),
-      { ...textItem(), ordinal: 5 },
-    ];
-    render(
-      <AcpChatPresentation
-        page={projection}
-        hasEarlier={false}
-        loadingEarlier={false}
-        historyError={null}
-        projectRoots={[]}
-        retentionIncomplete={false}
-      />,
+it("expanding Worked shows every read detail without another disclosure click", () => {
+  const kind = "read";
+  const projection = page("completed");
+  projection.turns[0].items = [
+    parityTool(kind),
+    parityTool(kind, 2),
+    parityTool(kind, 3),
+    { ...textItem(), ordinal: 5 },
+  ];
+  render(
+    <AcpChatPresentation
+      page={projection}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
+  );
+  const title = "Read";
+  expect(screen.queryByText(title, { exact: true })).toBeNull();
+  const work = screen.getByText(/^Worked for /).closest("details")!;
+  work.open = true;
+  fireEvent(work, new Event("toggle"));
+  expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
+  expect(screen.getAllByLabelText("Command line")).toHaveLength(3);
+  expect(screen.getAllByText("fixture output")).toHaveLength(3);
+  expect(work.nextElementSibling!.querySelector("details")).toHaveAttribute(
+    "open",
+  );
+  work.open = false;
+  fireEvent(work, new Event("toggle"));
+  expect(screen.queryByText(title, { exact: true })).toBeNull();
+  work.open = true;
+  fireEvent(work, new Event("toggle"));
+  expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
+});
+
+it("expanding Worked lists three collapsed per-command Ran rows", () => {
+  const projection = page("completed");
+  projection.turns[0].items = [
+    parityTool(),
+    parityTool("execute", 2),
+    parityTool("execute", 3),
+    { ...textItem(), ordinal: 5 },
+  ];
+  render(
+    <AcpChatPresentation
+      page={projection}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+    />,
+  );
+  const work = screen.getByText(/^Worked for /).closest("details")!;
+  expect(work).not.toHaveAttribute("open");
+  expect(screen.queryByText("Shell")).toBeNull();
+  work.open = true;
+  fireEvent(work, new Event("toggle"));
+  const commands =
+    work.nextElementSibling!.querySelectorAll<HTMLDetailsElement>(
+      ".acp-tool-rollup__items > details",
     );
-    const title = kind === "execute" ? "Shell" : "Read";
-    expect(screen.queryByText(title, { exact: true })).toBeNull();
-    const work = screen.getByText(/^Worked for /).closest("details")!;
-    work.open = true;
-    fireEvent(work, new Event("toggle"));
-    expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
-    expect(screen.getAllByLabelText("Command line")).toHaveLength(3);
-    expect(screen.getAllByText("fixture output")).toHaveLength(3);
-    expect(work.querySelector("details")).toHaveAttribute("open");
-    work.open = false;
-    fireEvent(work, new Event("toggle"));
-    expect(screen.queryByText(title, { exact: true })).toBeNull();
-    work.open = true;
-    fireEvent(work, new Event("toggle"));
-    expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
-  },
-);
+  expect(commands).toHaveLength(3);
+  for (const command of commands) {
+    expect(command).toHaveTextContent("Ran git status --short");
+    expect(command).not.toHaveAttribute("open");
+  }
+  expect(screen.queryByText("Shell")).toBeNull();
+  commands[1].open = true;
+  fireEvent(commands[1], new Event("toggle"));
+  expect(screen.getAllByText("Shell")).toHaveLength(1);
+  expect(screen.getAllByLabelText("Command line")).toHaveLength(1);
+  expect(screen.getAllByText("fixture output")).toHaveLength(1);
+});

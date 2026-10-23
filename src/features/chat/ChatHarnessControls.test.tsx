@@ -153,6 +153,167 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it("shows Pi's wire-confirmed model and effort after interrupt without inventing a reset default", () => {
+    const onSetSessionConfigOption = vi.fn();
+    const view = renderControls({ onSetSessionConfigOption });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Model$/,
+    );
+    expect(
+      screen.queryByRole("button", { description: "Select effort" }),
+    ).toBeNull();
+    const sessionConfig = decodeSessionConfig({
+      sageAgentSessionId: "session-1",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      configOptions: [
+        {
+          id: "pi.model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "openai:fixture-model",
+          options: [
+            { value: "openai:fixture-model", name: "Synthetic replay" },
+            {
+              value: "openai:fixture-model-two",
+              name: "Synthetic alternative",
+            },
+          ],
+        },
+        {
+          id: "pi.thinking",
+          name: "Thinking",
+          category: "effort",
+          type: "select",
+          currentValue: "medium",
+          options: ["off", "low", "medium", "high"].map((value) => ({
+            value,
+            name: value,
+          })),
+        },
+      ],
+    });
+    view.rerenderControls({
+      sessionConfig,
+      turnBusy: true,
+      onSetSessionConfigOption,
+    });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Synthetic replay$/,
+    );
+    expect(
+      screen.getByRole("button", { name: "Thinking level: medium" }),
+    ).toBeDisabled();
+    view.rerenderControls({
+      sessionConfig,
+      turnBusy: false,
+      onSetSessionConfigOption,
+    });
+    const effort = screen.getByRole("button", {
+      name: "Thinking level: medium",
+    });
+    expect(effort).toBeEnabled();
+    fireEvent.click(effort);
+    expect(screen.getByRole("slider")).toHaveAttribute(
+      "aria-valuetext",
+      "medium",
+    );
+    expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
+    expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  it("omits Pi effort when its binding publishes model-only config after unusable or absent levels", () => {
+    const sessionConfig = decodeSessionConfig({
+      sageAgentSessionId: "session-1",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      configOptions: [
+        {
+          id: "pi.model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "openai:fixture-model",
+          options: [
+            { value: "openai:fixture-model", name: "Synthetic replay" },
+          ],
+        },
+      ],
+    });
+    const view = renderControls({ sessionConfig, turnBusy: true });
+    view.rerenderControls({ sessionConfig, turnBusy: false });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Synthetic replay$/,
+    );
+    expect(
+      screen.queryByRole("button", { description: "Select effort" }),
+    ).toBeNull();
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
+  });
+  it.each(["Codex", "Claude Code", "Pi", "OpenCode", "Oh My Pi"])(
+    "keeps %s confirmed idle identity, picker subtitle, effort after interrupt and advertised reset",
+    (name) => {
+      useWorkbenchStore.setState({
+        harnesses: [
+          {
+            id: "access-test",
+            name,
+            description: "",
+            installState: "available",
+            source: "builtIn",
+            transport: "acp",
+            bindingId: "fixture",
+            accountModelDiscovery: false,
+          },
+        ],
+      });
+      const config = confirmedModelConfig()!;
+      config.configOptions[1] = {
+        id: "thinking",
+        category: "effort",
+        name: "Thinking",
+        type: "select",
+        currentValue: "high",
+        defaultValue: "low",
+        options: [
+          { value: "low", name: "Low" },
+          { value: "high", name: "High" },
+        ],
+      };
+      const view = renderControls({ sessionConfig: config });
+      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+        /^Confirmed session model$/,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+      const row = screen.getByRole("option", { name: `${name} — available` });
+      expect(row).toHaveTextContent(`${name}Confirmed session model High`);
+      expect(
+        row.querySelector(".searchable-picker__subtitle"),
+      ).toHaveTextContent("Confirmed session model High");
+      fireEvent.keyDown(row, { key: "Escape" });
+      view.rerenderControls({ sessionConfig: config, turnBusy: true });
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toBeDisabled();
+      view.rerenderControls({ sessionConfig: config, turnBusy: false });
+      const effort = screen.getByRole("button", {
+        name: "Thinking level: High",
+      });
+      expect(effort).toBeEnabled();
+      fireEvent.click(effort);
+      expect(
+        screen.getByRole("button", { name: "Reset effort" }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: "Reset effort" }),
+      ).toBeEnabled();
+    },
+  );
+
   it("shows effort once when a separate effort control is available", () => {
     renderControls({ sessionConfig: confirmedModelConfig() });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(

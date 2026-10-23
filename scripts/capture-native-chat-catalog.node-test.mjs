@@ -32,7 +32,8 @@ test("capture accessible selectors stay anchored to product controls", () => {
     "utf8",
   );
   assert.ok(header.includes("<AgentTaskSubagentSummary"));
-  assert.ok(subagentSummary.includes("aria-label={`Recent subagents working:"));
+  assert.ok(header.includes("aria-label={`Recent subagents working:"));
+  assert.ok(subagentSummary.includes('aria-label="Subagents"'));
   const source = (file) =>
     readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const composer = source("features/chat/ChatHarnessControls.tsx");

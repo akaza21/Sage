@@ -105,6 +105,8 @@ for (const width of [1888, 720, 480]) {
         await trigger.click();
         const menu = page.getByRole("menu", { name: menuName, exact: true });
         await contained(menu, trigger, pane);
+        // Add lists every advertised mode, so the current one is the single
+        // subtly marked selection.
         if (name === "Access options" || profile.modes.length > 0)
           await subtleSelection(menu);
         if (name === "Access options") {
@@ -171,7 +173,7 @@ for (const width of [1888, 720, 480]) {
         ...(profile.effort
           ? [
               [
-                profile.effort.currentValue === "medium" ? "Medium" : "High",
+                `Thinking level: ${profile.effort.currentValue === "medium" ? "Medium" : "High"}`,
                 ".composer__effort-menu",
               ],
             ]

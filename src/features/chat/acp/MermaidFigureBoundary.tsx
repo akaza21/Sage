@@ -5,12 +5,15 @@ const loadMermaidFigure = () =>
     default: MermaidFigure,
   }));
 
-export function MermaidFigureBoundary({ source }: { source: string }) {
+export function MermaidFigureBoundary(props: {
+  source: string;
+  copySource?: boolean;
+}) {
   return (
     <LazyModuleBoundary
       label="Diagram renderer"
       load={loadMermaidFigure}
-      render={(MermaidFigure) => <MermaidFigure source={source} />}
+      render={(MermaidFigure) => <MermaidFigure {...props} />}
     />
   );
 }

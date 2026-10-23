@@ -46,6 +46,16 @@ async function renderProjection(ui: Parameters<typeof render>[0]) {
   return result;
 }
 
+function toggleWorked(work: Element | null | undefined, open = true) {
+  const disclosure = work as HTMLDetailsElement;
+  disclosure.open = open;
+  fireEvent(disclosure, new Event("toggle"));
+}
+
+function workedGroups(work: Element | null | undefined) {
+  return work?.matches("details") ? work.nextElementSibling : work;
+}
+
 const browseOwner = {
   projectId: "project-1",
   projectGeneration: "1",
@@ -75,11 +85,14 @@ it("renders durable browser actions separately from harness tool rows", async ()
     ],
   };
   await renderProjection(<AcpChatProjection page={browserPage} active />);
+  expect(screen.queryByRole("region", { name: "Browser actions" })).toBeNull();
+  toggleWorked(screen.getByText(/^Worked for /).closest("details"));
   const browserActions = screen.getByRole("region", {
     name: "Browser actions",
   });
-  expect(browserActions.closest(".chat-transcript-work")).toBeInTheDocument();
-  fireEvent.click(screen.getByText(/^Worked for /));
+  expect(
+    browserActions.closest(".chat-transcript-work__groups"),
+  ).toBeInTheDocument();
   expect(browserActions).toBeVisible();
   expect(screen.getByText("+3 earlier browser actions")).toBeInTheDocument();
 });
@@ -397,7 +410,8 @@ describe("AcpChatProjection", () => {
     const changedFiles = screen.getByRole("region", {
       name: "Files edited in this chat",
     });
-    const rollup = work?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    const collapsedRollup =
+      turn?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
 
     expect(day).toBeNull();
     expect(turn?.previousElementSibling).toHaveClass("chat-transcript-day");
@@ -419,18 +433,24 @@ describe("AcpChatProjection", () => {
     expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
     expect(within(turn!).getAllByText("Ran tests · npm test")).toHaveLength(1);
     expect(work).not.toHaveAttribute("open");
-    expect(rollup).not.toBeNull();
-    expect(rollup).not.toHaveAttribute("open");
+    expect(collapsedRollup).not.toBeNull();
+    expect(collapsedRollup).not.toHaveAttribute("open");
 
-    fireEvent.click(work!.querySelector("summary")!);
+    toggleWorked(work);
     expect(work).toHaveAttribute("open");
-    expect(within(work!).getByText("Ran tests · npm test")).toBeVisible();
+    const rollup =
+      workedGroups(work)?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
+    expect(
+      within(workedGroups(work) as HTMLElement).getByText(
+        "Ran tests · npm test",
+      ),
+    ).toBeVisible();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
     expect(
       await within(rollup!).findByLabelText("Command line"),
     ).toHaveTextContent("npm test");
-    fireEvent.click(work!.querySelector("summary")!);
+    toggleWorked(work, false);
     expect(work).not.toHaveAttribute("open");
   });
 
@@ -569,19 +589,22 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toBeNull();
+    expect(work).not.toHaveAttribute("open");
+    toggleWorked(work);
     expect(
-      [...work!.querySelectorAll(".acp-tool-rollup__label")].map(
+      [...workedGroups(work)!.querySelectorAll(".acp-tool-rollup__label")].map(
         (label) => label.textContent,
       ),
-    ).toEqual(["Ran 1 command, read a file"]);
-    const worked = work as HTMLDetailsElement;
-    worked.open = true;
-    fireEvent(worked, new Event("toggle"));
+    ).toEqual(["Ran 1 command, read a file", "Ran npm run check"]);
     const rollup =
       container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(rollup).not.toBeNull();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
+    const command = rollup!.querySelector<HTMLDetailsElement>("details")!;
+    expect(command).not.toHaveAttribute("open");
+    command.open = true;
+    fireEvent(command, new Event("toggle"));
     expect(
       [...rollup!.querySelectorAll(".acp-tool-compact")].map((card) =>
         card.getAttribute("data-acp-item-id"),
@@ -648,10 +671,13 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const work = container.querySelector(".chat-transcript-work");
+    toggleWorked(work);
     expect(
-      [...work!.querySelectorAll(".acp-tool-rollup__label")].map((row) =>
-        row.textContent?.trim(),
-      ),
+      [
+        ...workedGroups(work)!.querySelectorAll(
+          ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
+        ),
+      ].map((row) => row.textContent?.trim()),
     ).toEqual(["Edited a file, read files, ran 1 command"]);
   });
 
@@ -699,13 +725,13 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toBeInstanceOf(HTMLDetailsElement);
-    expect(work?.querySelector(":scope > summary")).toBeNull();
+    expect(workedGroups(work)?.querySelector(":scope > summary")).toBeNull();
     expect(
-      work?.querySelector(".chat-transcript-work__heading"),
+      workedGroups(work)?.querySelector(".chat-transcript-work__heading"),
     ).toHaveTextContent(/^Working for /);
     expect(
       [
-        ...work!.querySelectorAll(
+        ...workedGroups(work)!.querySelectorAll(
           ".acp-message--assistant .acp-markdown, .acp-tool-rollup__label",
         ),
       ].map((row) => row.textContent?.trim()),
@@ -762,9 +788,11 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(
-      [...work!.querySelectorAll(".acp-tool-rollup__label, .acp-error")].map(
-        (row) => row.textContent?.trim(),
-      ),
+      [
+        ...workedGroups(work)!.querySelectorAll(
+          ".acp-tool-rollup__label, .acp-error",
+        ),
+      ].map((row) => row.textContent?.trim()),
     ).toEqual([
       "Ran gh --version",
       "TOOL_RETRYRetry availableRetrying command",
@@ -815,12 +843,14 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toHaveAttribute("open");
-    expect(work?.querySelector(".acp-markdown")).toHaveTextContent(
-      "Progress note",
-    );
-    expect(work?.querySelector(".acp-tool-rollup__label")).toHaveTextContent(
-      "Ran gh --version",
-    );
+    expect(workedGroups(work)?.querySelector(".acp-markdown")).toBeNull();
+    toggleWorked(work);
+    expect(
+      workedGroups(work)?.querySelector(".acp-markdown"),
+    ).toHaveTextContent("Progress note");
+    expect(
+      workedGroups(work)?.querySelector(".acp-tool-rollup__label"),
+    ).toHaveTextContent("Ran gh --version");
     expect(work).not.toHaveTextContent("Final answer");
     expect(
       container.querySelector(".acp-turn__items > .acp-message--assistant"),
@@ -910,8 +940,10 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toHaveAttribute("open");
-    expect(work).toHaveTextContent("Trailing progress");
-    expect(work).not.toHaveTextContent("Final answer");
+    expect(work).not.toHaveTextContent("Trailing progress");
+    toggleWorked(work);
+    expect(workedGroups(work)).toHaveTextContent("Trailing progress");
+    expect(workedGroups(work)).not.toHaveTextContent("Final answer");
     expect(
       container.querySelector(".acp-turn__items > .acp-message--assistant"),
     ).toHaveTextContent("Final answer");
@@ -937,9 +969,11 @@ describe("AcpChatProjection", () => {
     const { container } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
+    expect(container.querySelector(".acp-permission--settled")).toBeNull();
+    toggleWorked(container.querySelector(".chat-transcript-work"));
     const permission = container.querySelector(".acp-permission--settled");
     expect(permission).not.toBeNull();
-    expect(permission?.closest(".chat-transcript-work")).not.toBeNull();
+    expect(permission?.closest(".chat-transcript-work__groups")).not.toBeNull();
   });
 
   it("keeps Working time ticking without projection events and freezes on settlement", () => {
@@ -1074,6 +1108,8 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const bubble = container.querySelector(".acp-message--user")!;
+    toggleWorked(container.querySelector(".chat-transcript-work"));
+    await settleLazyModules();
     const generated = container.querySelector(".acp-image")!;
     expect(generated.closest(".acp-turn__attachments")).toBeNull();
     expect(
@@ -1114,6 +1150,7 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     render(<AcpChatProjection page={next} active />);
+    toggleWorked(screen.getByText(/^Worked for /).closest("details"));
     const image = await screen.findByRole("img", {
       name: "Image provided by the agent",
     });
@@ -1166,8 +1203,8 @@ describe("AcpChatProjection", () => {
       await screen.findByRole("img", { name: "Mermaid diagram" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "Copy diagram source" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Copy diagram source" }),
+    ).toBeNull();
     expect(screen.queryByText(/```mermaid/)).toBeNull();
   });
 
@@ -2144,7 +2181,7 @@ describe("AcpChatProjection", () => {
       expect(
         screen.getByRole("status", { name: "Cancelled by you" }),
       ).toBeVisible();
-      expect(screen.getByText("Partial answer retained")).toBeVisible();
+      expect(screen.queryByText("Partial answer retained")).toBeNull();
       expect(screen.queryByText("Completed")).toBeNull();
     },
   );

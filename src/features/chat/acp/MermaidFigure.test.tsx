@@ -1,12 +1,7 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MermaidFigure } from "./MermaidFigure";
+import { readFile } from "node:fs/promises";
 import { flowchartSource as resetFlowchart } from "../../../../tests/ui/fixtures/cp22Answers";
 
 afterEach(() => {
@@ -15,6 +10,25 @@ afterEach(() => {
 });
 
 describe("bounded Mermaid flowchart rendering", () => {
+  it("labels its scroll region but never forces a Tab stop of its own", () => {
+    // The browser makes the scroller keyboard-focusable only while it
+    // actually overflows (verified in cp31-rich-content.visual.ts).
+    render(<MermaidFigure source={"graph LR\nA --> B\nB --> C"} />);
+    const region = screen.getByRole("region", { name: /Diagram:.*scroll/i });
+    expect(region).not.toHaveAttribute("tabindex");
+    expect(region).toContainElement(screen.getByRole("img"));
+  });
+  it("keeps a legible minimum scale that scrolls inside its own box", async () => {
+    const css = await readFile(
+      "src/features/chat/acp/acp-chat-activities.css",
+      "utf8",
+    );
+    expect(css).toMatch(/\.acp-mermaid\s*\{[^}]*overflow-x:\s*auto/s);
+    expect(css).toMatch(/\.acp-mermaid\s*\{[^}]*contain:\s*inline-size/s);
+    expect(css).toMatch(
+      /min-width:\s*calc\(var\(--mermaid-width\)\s*\*\s*0\.75\)/,
+    );
+  });
   it("preserves the natural routing canvas and delegates scaling to CSS", () => {
     render(<MermaidFigure source={"graph TD\nA --> B"} />);
     const svg = screen.getByRole("img");
@@ -183,38 +197,26 @@ describe("bounded Mermaid flowchart rendering", () => {
       );
     },
   );
-  it("only makes an overflowing figure focusable and updates on resize and source replacement", () => {
-    let resize = () => {};
+  it("fits through CSS without resize observers or a redundant scroll focus target", () => {
+    const observe = vi.fn();
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        constructor(callback: () => void) {
-          resize = callback;
-        }
-        observe() {}
+        observe = observe;
         disconnect() {}
       },
     );
-    const scrollWidth = vi
-      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
-      .mockReturnValue(100);
-    const clientWidth = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(100);
-    const { rerender } = render(<MermaidFigure source={"graph TD\nA --> B"} />);
+    const { rerender, container } = render(
+      <MermaidFigure source={"graph TD\nA --> B"} />,
+    );
     const figure = screen.getByRole("figure");
+    const scroller = container.querySelector(".acp-mermaid")!;
     expect(figure).not.toHaveAttribute("tabindex");
-    scrollWidth.mockReturnValue(101);
-    act(() => resize());
-    expect(figure).toHaveAttribute("tabindex", "0");
-    clientWidth.mockReturnValue(101);
-    act(() => resize());
-    expect(figure).not.toHaveAttribute("tabindex");
-    clientWidth.mockReturnValue(100);
+    expect(scroller).not.toHaveAttribute("tabindex");
     rerender(<MermaidFigure source={"graph LR\nA --> B"} />);
-    expect(figure).toHaveAttribute("tabindex", "0");
-    rerender(<MermaidFigure source="unsupported diagram" />);
     expect(figure).not.toHaveAttribute("tabindex");
+    expect(scroller).not.toHaveAttribute("tabindex");
+    expect(observe).not.toHaveBeenCalled();
   });
   it("distinguishes figures even when their leading labels or entire sources match", () => {
     render(
@@ -243,12 +245,6 @@ describe("bounded Mermaid flowchart rendering", () => {
     expect(screen.getByRole("img")).toHaveAccessibleDescription(
       "Nodes: Go; Wait; Done. Connections: Go to Wait: again; Wait to Done: finish; Done to Go.",
     );
-  });
-  it("makes a vertically overflowing figure focusable", () => {
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(101);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(100);
-    render(<MermaidFigure source={"graph TD\nA --> B"} />);
-    expect(screen.getByRole("figure")).toHaveAttribute("tabindex", "0");
   });
   it("reserves unclipped canvas space for an admitted 64-character wide edge label", () => {
     render(<MermaidFigure source={`graph TD\nA -->|${"W".repeat(64)}| B`} />);
@@ -294,7 +290,7 @@ describe("bounded Mermaid flowchart rendering", () => {
       Number(container.querySelector("line")!.getAttribute("y1")),
     ).toBeGreaterThan(84);
   });
-  it("keeps a wide flowchart at intrinsic size rather than shrinking its labels", () => {
+  it("retains the natural flowchart canvas while CSS fits its display to the column", () => {
     render(
       <MermaidFigure
         source={"flowchart LR\nBinding --> Pump\nPump --> SQLite"}

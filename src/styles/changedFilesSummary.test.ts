@@ -12,7 +12,7 @@ it("centres the narrow composer-adjacent pill without a second scrollbar reserva
   );
 });
 
-it("keeps expanded narrow file rows inline while only collapsed totals wrap", async () => {
+it("keeps narrow file rows and collapsed pill counts on one line", async () => {
   const style = document.createElement("style");
   style.textContent = (
     await readFile("src/styles/changed-files-summary.css", "utf8")
@@ -41,7 +41,11 @@ it("keeps expanded narrow file rows inline while only collapsed totals wrap", as
     const totals = summary.querySelector(".acp-file-changes__totals")!;
     expect(getComputedStyle(totals).flexWrap).not.toBe("wrap");
     summary.classList.add("acp-file-changes--collapsed");
-    expect(getComputedStyle(totals).flexWrap).toBe("wrap");
+    expect(getComputedStyle(totals).flexWrap).not.toBe("wrap");
+    expect(getComputedStyle(totals).whiteSpace).toBe("nowrap");
+    expect(
+      getComputedStyle(summary.querySelector("button")!).gridTemplateColumns,
+    ).toBe("18px minmax(0, 1fr) auto");
     const legacy = document.createElement("div");
     legacy.className = "edit-summary";
     legacy.innerHTML =

@@ -779,7 +779,9 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(workedSummary).toBeVisible();
     await expect(workedSummary).toContainText(/^Worked/);
     await expect(worked).not.toHaveAttribute("open", "");
-    await expect(toolRollup(page).locator("summary")).toBeHidden();
+    // Like Codex, the collapsed Turn keeps one closed "Ran …" row in view.
+    await expect(toolRollup(page).locator("summary")).toBeVisible();
+    await expect(toolRollup(page)).not.toHaveAttribute("open", "");
     await revealWorkedContent(toolRollup(page).locator("summary"));
 
     // C24 — `Ran tests` ships off a declared `scripts.test`.
@@ -931,7 +933,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       fixtures.installVisualComposerEffortFixture();
     });
     const thinking = composer(page).getByRole("button", {
-      name: "Medium",
+      name: "Thinking level: Medium",
       exact: true,
     });
     await expect(thinking).toBeVisible();

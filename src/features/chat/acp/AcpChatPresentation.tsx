@@ -1,6 +1,5 @@
 import { Fragment, memo, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { FilePenLine } from "../../../ui/leanIcons";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type {
@@ -18,6 +17,7 @@ import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import { TurnEditSummary } from "./TurnEditSummary";
+import { TurnFileActivity } from "./TurnFileActivity";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
 import { promptAttachmentItems } from "./acpTurnState";
@@ -81,19 +81,22 @@ const Turn = memo(
             sessionId: page.currentSessionId,
           }
         : undefined;
-    const actionOrigin = useMemo(
-      () => ({
+    const openForTurn = useMemo(() => {
+      if (!interactive || !onOpenResource) return undefined;
+      const actionOrigin = {
         projectId: page.projectId,
         chatId: page.chatId,
         sessionId: turn.sessionId,
-      }),
-      [page.chatId, page.projectId, turn.sessionId],
-    );
-    const openForTurn = useCallback(
-      (resource: ResourceRef, target: OpenResourceTarget = "file") =>
-        onOpenResource?.(resource, target, actionOrigin),
-      [actionOrigin, onOpenResource],
-    );
+      };
+      return (resource: ResourceRef, target: OpenResourceTarget = "file") =>
+        onOpenResource(resource, target, actionOrigin);
+    }, [
+      interactive,
+      onOpenResource,
+      page.chatId,
+      page.projectId,
+      turn.sessionId,
+    ]);
     const terminal = terminalTurnStates.has(turn.state);
     const stopped = turn.state === "cancelled" || turn.state === "interrupted";
     const promptItems = primary.filter(
@@ -132,7 +135,9 @@ const Turn = memo(
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" || item.id === liveThought?.id),
     );
-    const contentItems = finalAnswer ? [finalAnswer] : [];
+    const hasCollapsedActivities = workingItems.some(
+      (item) => item.kind === "toolCall",
+    );
     return (
       <section
         className="acp-turn"
@@ -160,6 +165,7 @@ const Turn = memo(
           ))}
           <ChatTranscriptTurnSummary
             turn={turn}
+            hasCollapsedActivities={hasCollapsedActivities}
             hasActivities={
               workingItems.length > 0 ||
               (turn.browserOperations?.length ?? 0) > 0 ||
@@ -171,9 +177,7 @@ const Turn = memo(
                 items={workingItems}
                 interactive={interactive}
                 expandDetails={terminal}
-                onOpenResource={
-                  interactive && onOpenResource ? openForTurn : undefined
-                }
+                onOpenResource={openForTurn}
                 renderItem={(item) => (
                   <ItemView
                     key={item.id}
@@ -181,9 +185,7 @@ const Turn = memo(
                     workingItems={turn.items}
                     interactive={interactive}
                     fileReferenceOwner={fileReferenceOwner}
-                    onOpenResource={
-                      interactive && onOpenResource ? openForTurn : undefined
-                    }
+                    onOpenResource={openForTurn}
                   />
                 )}
               />
@@ -193,26 +195,15 @@ const Turn = memo(
               collapsed={turn.browserOperationsCollapsed ?? 0}
             />
           </ChatTranscriptTurnSummary>
-          <PrimaryActivities
-            items={contentItems}
-            interactive={interactive}
-            onOpenResource={
-              interactive && onOpenResource ? openForTurn : undefined
-            }
-            renderItem={(item) => (
-              <ItemView
-                key={item.id}
-                item={item}
-                turnState={turn.state}
-                workingItems={turn.items}
-                interactive={interactive}
-                fileReferenceOwner={fileReferenceOwner}
-                onOpenResource={
-                  interactive && onOpenResource ? openForTurn : undefined
-                }
-              />
-            )}
-          />
+          {finalAnswer ? (
+            <ItemView
+              key={finalAnswer.id}
+              item={finalAnswer}
+              turnState={turn.state}
+              interactive={interactive}
+              fileReferenceOwner={fileReferenceOwner}
+            />
+          ) : null}
           {roots.map((activity) => (
             <HarnessActivity
               key={activity.id}
@@ -225,9 +216,7 @@ const Turn = memo(
                   turnState={turn.state}
                   interactive={interactive}
                   fileReferenceOwner={fileReferenceOwner}
-                  onOpenResource={
-                    interactive && onOpenResource ? openForTurn : undefined
-                  }
+                  onOpenResource={openForTurn}
                 />
               )}
             />
@@ -241,11 +230,11 @@ const Turn = memo(
               item.payload.presentation.kind === "edit",
           ) ? (
             <div className="acp-editing-files acp-tool-rollup__summary-copy">
-              <FilePenLine size={14} aria-hidden="true" />
               <ToolRunningIndicator />
               <span className="acp-live-shimmer">Editing files</span>
             </div>
           ) : null}
+          {terminal ? <TurnFileActivity page={page} turn={turn} /> : null}
           {stopped ? <TurnHeader turn={turn} /> : null}
           {stopped && !finalAnswer && onRetry ? (
             <button type="button" onClick={onRetry}>

@@ -74,15 +74,38 @@ export async function releasePickerHarnessReadiness(page: Page) {
 }
 
 export async function revealWorkedContent(content: Locator) {
+  // Collapsed completed Turns do not mount their Worked groups; open each
+  // closed Worked disclosure until the requested content mounts.
+  const page = content.page();
+  await expect(
+    content.or(page.locator("details.chat-transcript-work")).first(),
+  ).toBeAttached();
+  if ((await content.count()) === 0) {
+    const closed = page.locator("details.chat-transcript-work:not([open])");
+    for (let opened = 0; opened < 20 && (await content.count()) === 0;) {
+      if ((await closed.count()) === 0) break;
+      await closed.last().locator(":scope > summary").click();
+      opened += 1;
+    }
+  }
   await expect(content).toHaveCount(1);
   const worked = content.locator(
     "xpath=ancestor::details[contains(@class, 'chat-transcript-work')][1]",
   );
-  if (await worked.count()) {
-    if ((await worked.getAttribute("open")) === null) {
-      await worked.locator(":scope > summary").click();
+  // A collapsed completed Turn shows its tool rows beside (not inside) the
+  // Worked disclosure; opening Worked swaps them for the expanded copy.
+  const owner = (await worked.count())
+    ? worked
+    : content
+        .locator(
+          "xpath=ancestor::section[contains(concat(' ', normalize-space(@class), ' '), ' acp-turn ')][1]",
+        )
+        .locator("details.chat-transcript-work");
+  if ((await owner.count()) === 1) {
+    if ((await owner.getAttribute("open")) === null) {
+      await owner.locator(":scope > summary").click();
     }
-    await expect(worked).toHaveAttribute("open", "");
+    await expect(owner).toHaveAttribute("open", "");
   }
   await expect(content).toBeVisible();
 }

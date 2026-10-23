@@ -1,8 +1,6 @@
 import {
   useId,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -23,26 +21,16 @@ import {
   mermaidAccessibility,
 } from "./mermaidAccessibility";
 
-export function MermaidFigure({ source }: { source: string }) {
+export function MermaidFigure({
+  source,
+  copySource = true,
+}: {
+  source: string;
+  copySource?: boolean;
+}) {
   const figureId = useId();
   const diagram = parseMermaidSource(source);
   const accessible = mermaidAccessibility(diagram, source);
-  const figureRef = useRef<HTMLElement>(null);
-  const [overflowing, setOverflowing] = useState(false);
-  useLayoutEffect(() => {
-    const figure = figureRef.current;
-    if (!figure || !diagram.ok) return;
-    const measure = () =>
-      setOverflowing(
-        figure.scrollWidth > figure.clientWidth ||
-          figure.scrollHeight > figure.clientHeight,
-      );
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(figure);
-    return () => observer.disconnect();
-  }, [source, diagram.ok]);
   const identity = useMemo(() => ({ source }), [source]);
   const [copyState, setCopyState] = useState<{
     identity: typeof identity;
@@ -50,49 +38,54 @@ export function MermaidFigure({ source }: { source: string }) {
   } | null>(null);
   const status = copyState?.identity === identity ? copyState.status : "";
   return (
-    <div>
-      <figure
-        className="acp-mermaid"
-        ref={figureRef}
-        tabIndex={diagram.ok && overflowing ? 0 : undefined}
-        aria-label={`${accessible.name} (figure ${figureId})`}
-      >
-        {diagram.ok ? (
-          diagram.kind === "flowchart" ? (
-            <MermaidSvg
-              diagram={diagram}
-              description={accessible.description}
-            />
+    <div className="acp-mermaid-container">
+      <figure aria-label={`${accessible.name} (figure ${figureId})`}>
+        <div
+          className="acp-mermaid"
+          role="region"
+          aria-label={`${accessible.name} (figure ${figureId}) scroll area`}
+          // No tabIndex: the WebView makes an overflowing scroller a keyboard
+          // stop by itself, so a diagram that fits never adds a Tab stop.
+        >
+          {diagram.ok ? (
+            diagram.kind === "flowchart" ? (
+              <MermaidSvg
+                diagram={diagram}
+                description={accessible.description}
+              />
+            ) : (
+              <LaneSvg diagram={diagram} description={accessible.description} />
+            )
           ) : (
-            <LaneSvg diagram={diagram} description={accessible.description} />
-          )
-        ) : (
-          <p className="acp-mermaid__fallback">
-            Diagram source is kept for copy; this mermaid subset could not be
-            drawn.
-          </p>
-        )}
+            <p className="acp-mermaid__fallback">
+              Diagram source is kept for copy; this mermaid subset could not be
+              drawn.
+            </p>
+          )}
+        </div>
       </figure>
-      <button
-        type="button"
-        className="icon-button acp-mermaid__copy"
-        aria-label="Copy diagram source"
-        title="Copy diagram source"
-        onClick={async () => {
-          setCopyState({ identity, status: "" });
-          let status = "Copied";
-          try {
-            await navigator.clipboard.writeText(source);
-          } catch {
-            status = "Copy failed";
-          }
-          setCopyState((current) =>
-            current?.identity === identity ? { identity, status } : current,
-          );
-        }}
-      >
-        <Copy aria-hidden="true" />
-      </button>
+      {copySource || !diagram.ok ? (
+        <button
+          type="button"
+          className="icon-button acp-mermaid__copy"
+          aria-label="Copy diagram source"
+          title="Copy diagram source"
+          onClick={async () => {
+            setCopyState({ identity, status: "" });
+            let status = "Copied";
+            try {
+              await navigator.clipboard.writeText(source);
+            } catch {
+              status = "Copy failed";
+            }
+            setCopyState((current) =>
+              current?.identity === identity ? { identity, status } : current,
+            );
+          }}
+        >
+          <Copy aria-hidden="true" />
+        </button>
+      ) : null}
       <span role="status">{status}</span>
     </div>
   );

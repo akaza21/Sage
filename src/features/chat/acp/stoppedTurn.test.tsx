@@ -41,7 +41,7 @@ it.each([
     await settleLazyModules();
     expect(screen.getAllByText(label)).toHaveLength(1);
     expect(screen.getByRole("status", { name: label })).toBeVisible();
-    expect(screen.getByText("Partial answer retained")).toBeVisible();
+    expect(screen.queryByText("Partial answer retained")).toBeNull();
     expect(
       screen.getByText("Normalized answer").closest(".acp-message"),
     ).toHaveAttribute("data-answer-state", "partial");

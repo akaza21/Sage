@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, TurnProjection } from "../../../domain/acp";
@@ -31,6 +37,52 @@ function renderTurn(state: TurnProjection["state"], items: AcpItem[]) {
 }
 
 describe("empty turn activity", () => {
+  it.each([
+    "received",
+    "resolvedAllowed",
+    "resolvedDeclined",
+    "cancelled",
+  ] as const)(
+    "renders the actual %s permission row only when completed Worked opens",
+    (state) => {
+      const pending = state === "received";
+      const permission = {
+        ...textItem(),
+        id: "permission-row",
+        kind: "permissionRequest",
+        lifecycle: pending ? "streaming" : "completed",
+        toolState: pending ? "waitingForApproval" : "completed",
+        payload: {
+          requestId: "permission-row",
+          state,
+          label: "Read project files",
+          summary: "Permission evidence",
+          offeredOptionKinds: ["allow_once", "reject_once"],
+        },
+      } as unknown as AcpItem;
+      renderTurn("completed", [permission, textItem()]);
+      expect(
+        screen.queryByRole("group", { name: "Permission request" }),
+      ).toBeNull();
+      const worked = screen.getByText("Worked for 0s").closest("details")!;
+      fireEvent.click(worked.querySelector("summary")!);
+      const row = screen.getByRole("group", { name: "Permission request" });
+      expect(row).toBeVisible();
+      expect(row).toHaveAttribute("data-acp-item-id", "permission-row");
+      expect(within(row).getByText("Read project files")).toBeVisible();
+      // A terminal Turn offers no decision, even for a request whose own
+      // state never settled; it says so instead of asking.
+      expect(within(row).queryByRole("button")).toBeNull();
+      if (pending)
+        expect(within(row).getByRole("status")).toHaveAccessibleName(
+          "Permission not answered",
+        );
+      fireEvent.click(worked.querySelector("summary")!);
+      expect(
+        screen.queryByRole("group", { name: "Permission request" }),
+      ).toBeNull();
+    },
+  );
   it("does not disclose blank progress as completed activity", () => {
     const progress = {
       ...textItem(),
@@ -88,13 +140,19 @@ describe("empty turn activity", () => {
     expect(
       container.querySelector("details.chat-transcript-work"),
     ).not.toHaveAttribute("open");
+    expect(screen.queryByText("Context automatically compacted")).toBeNull();
+    const work = container.querySelector<HTMLDetailsElement>(
+      "details.chat-transcript-work",
+    )!;
+    work.open = true;
+    fireEvent(work, new Event("toggle"));
     expect(
       container.querySelector(".chat-transcript-work__groups"),
     ).toHaveTextContent("Context automatically compacted");
   });
 
   it.each(["waitingApproval", "completed"] as const)(
-    "keeps a pending approval visible in a %s turn",
+    "offers a pending approval only while a %s turn can still take it",
     (state) => {
       const permission = {
         ...textItem(),
@@ -110,10 +168,28 @@ describe("empty turn activity", () => {
         },
       } as unknown as AcpItem;
       renderTurn(state, [permission]);
-      expect(
-        screen.getByRole("group", { name: "Permission request" }),
-      ).toBeVisible();
-      expect(screen.getByRole("button", { name: "Approve" })).toBeVisible();
+      if (state === "completed") {
+        const work = screen.getByText("Worked for 0s").closest("details")!;
+        expect(work).not.toHaveAttribute("open");
+        expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+        work.open = true;
+        fireEvent(work, new Event("toggle"));
+      }
+      const row = screen.getByRole("group", { name: "Permission request" });
+      expect(row).toBeVisible();
+      if (state === "completed") {
+        // The runtime never commits a terminal Turn with a pending request,
+        // so a terminal Turn shows the request as unanswered, not actionable.
+        expect(within(row).queryByRole("button")).toBeNull();
+        expect(within(row).getByRole("status")).toHaveAccessibleName(
+          "Permission not answered",
+        );
+      } else {
+        expect(
+          within(row).getByRole("button", { name: "Approve" }),
+        ).toBeVisible();
+        expect(within(row).getByRole("button", { name: "Deny" })).toBeVisible();
+      }
     },
   );
 });

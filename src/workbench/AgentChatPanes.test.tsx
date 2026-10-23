@@ -597,7 +597,7 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
-    const section = screen.getByRole("region", { name: "Subagents" });
+    const section = await screen.findByRole("region", { name: "Subagents" });
     expect(section).toHaveTextContent("1 working");
     expect(section).toHaveTextContent("1 done");
     expect(await within(section).findByText("Researcher")).toBeInTheDocument();

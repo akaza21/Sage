@@ -3,9 +3,12 @@ import { Copy, RotateCcw, Check, ChevronRight } from "../../ui/leanIcons";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
-import { getPermissionStatus, terminalTurnStates } from "./acp/statusSemantics";
+import { terminalTurnStates } from "./acp/statusSemantics";
 import { dayTimeLabel } from "./chatTimestamp";
-import { WorkedActivityVisibility } from "./acp/WorkedActivityVisibility";
+import {
+  WorkedActivityVisibility,
+  WorkedTurnTerminal,
+} from "./acp/WorkedActivityVisibility";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
@@ -32,18 +35,15 @@ export function ChatTranscriptTurnSummary({
   turn,
   hasActivities,
   children,
+  hasCollapsedActivities = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
+  hasCollapsedActivities?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
-  const pendingPermission = turn.items.some(
-    (item) =>
-      item.kind === "permissionRequest" && !getPermissionStatus(item).terminal,
-  );
-  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const expanded = openOverride ?? pendingPermission;
+  const [expanded, setExpanded] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (terminal) return;
@@ -72,11 +72,14 @@ export function ChatTranscriptTurnSummary({
       </div>
     );
   }
-  const groups = children ? (
-    <WorkedActivityVisibility value={!terminal || expanded}>
-      <div className="chat-transcript-work__groups">{children}</div>
-    </WorkedActivityVisibility>
-  ) : null;
+  const groups =
+    children && (!terminal || expanded || hasCollapsedActivities) ? (
+      <WorkedTurnTerminal value={terminal}>
+        <WorkedActivityVisibility value={!terminal || expanded}>
+          <div className="chat-transcript-work__groups">{children}</div>
+        </WorkedActivityVisibility>
+      </WorkedTurnTerminal>
+    ) : null;
 
   if (!terminal) {
     return (
@@ -88,24 +91,31 @@ export function ChatTranscriptTurnSummary({
   }
 
   return (
-    <details
-      className="chat-transcript-work"
-      open={expanded}
-      onToggle={(event) => {
-        if (event.currentTarget.open !== expanded)
-          setOpenOverride(event.currentTarget.open);
-      }}
-    >
-      <summary>
-        {duration ?? "Worked"}
-        <ChevronRight
-          size={12}
-          className="chat-transcript-work__chevron"
-          aria-hidden="true"
-        />
-      </summary>
+    <>
+      <details
+        className="chat-transcript-work"
+        open={expanded}
+        onToggle={(event) => {
+          if (event.currentTarget.open !== expanded)
+            setExpanded(event.currentTarget.open);
+        }}
+      >
+        <summary
+          onClick={(event) => {
+            event.preventDefault();
+            setExpanded(!expanded);
+          }}
+        >
+          {duration ?? "Worked"}
+          <ChevronRight
+            size={12}
+            className="chat-transcript-work__chevron"
+            aria-hidden="true"
+          />
+        </summary>
+      </details>
       {groups}
-    </details>
+    </>
   );
 }
 

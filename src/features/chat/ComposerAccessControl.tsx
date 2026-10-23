@@ -38,6 +38,7 @@ export function ComposerAccessControl({
   const { ready, error, setMode, candidates, effective } =
     useSessionAccessSelection(bindingId, capabilities);
   const selected = candidates.find((candidate) => candidate.id === effective);
+  const Icon = ACCESS_ICONS[effective ?? "workspaceWrite"];
   if (candidates.length === 0) return null;
   return (
     <>
@@ -54,7 +55,7 @@ export function ComposerAccessControl({
         disabled={disabled || !ready}
         onClick={onToggle}
       >
-        <ShieldCheck size={13} aria-hidden="true" />
+        <Icon size={13} aria-hidden="true" />
         <span className="composer__access-text">
           {selected?.label ?? "Choose access"}
         </span>

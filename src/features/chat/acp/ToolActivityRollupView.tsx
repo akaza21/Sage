@@ -17,12 +17,11 @@ import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
-import { compactToolLabels } from "./toolCommandContent";
+import { toolStateLabels } from "./statusSemantics";
 import {
   toolRollupLabel,
   toolRollupDurationLabel,
   toolRollupState,
-  toolRollupStateLabel,
   type ToolRollup,
 } from "./toolActivityRollup";
 
@@ -37,11 +36,6 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
   think: BrainCircuit,
 };
 
-function ActivityKindIcon({ kind }: { kind: ToolRollup["kind"] }) {
-  const Icon = activityIcons[kind] ?? Workflow;
-  return <Icon aria-hidden="true" size={14} data-activity-icon={kind} />;
-}
-
 export function ToolActivityRollup({
   rollup,
   interactive,
@@ -55,13 +49,7 @@ export function ToolActivityRollup({
 }) {
   const visible = useContext(WorkedActivityVisibility);
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const expanded =
-    openOverride ??
-    (visible &&
-      expandDetails &&
-      rollup.items.every(
-        (item) => compactToolLabels[item.payload.presentation.kind],
-      ));
+  const expanded = openOverride ?? (visible && expandDetails);
   const label = toolRollupLabel(
     rollup.kind,
     rollup.items,
@@ -69,7 +57,7 @@ export function ToolActivityRollup({
   );
   const state = toolRollupState(rollup.items);
   const StateIcon = state === "failed" ? X : Circle;
-  const stateLabel = toolRollupStateLabel(state);
+  const ActivityIcon = activityIcons[rollup.kind] ?? Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
   const live = state === "inProgress";
   const running = rollup.items.some((item) => item.toolState === "inProgress");
@@ -86,9 +74,15 @@ export function ToolActivityRollup({
     >
       <summary>
         <span className="acp-tool-rollup__summary-copy">
-          <ActivityKindIcon kind={rollup.kind} />
-          {running ? <ToolRunningIndicator /> : null}
-          {live || state === "completed" ? null : (
+          {running ? (
+            <ToolRunningIndicator />
+          ) : live || state === "completed" ? (
+            <ActivityIcon
+              aria-hidden="true"
+              size={14}
+              data-activity-icon={rollup.kind}
+            />
+          ) : (
             <StateIcon aria-hidden="true" size={14} />
           )}
           <span
@@ -106,7 +100,7 @@ export function ToolActivityRollup({
           ) : null}
           {live ||
           (rollup.kind === "execute" && state !== "completed") ? null : (
-            <span className="acp-state">{stateLabel}</span>
+            <span className="acp-state">{toolStateLabels[state]}</span>
           )}
           <ChevronDown
             className="acp-tool-rollup__chevron"
@@ -115,17 +109,31 @@ export function ToolActivityRollup({
           />
         </span>
       </summary>
-      {expanded && visible ? (
+      {expanded ? (
         <div className="acp-tool-rollup__items">
-          {rollup.items.map((item) => (
-            <ToolItem
-              key={item.id}
-              item={item}
-              compact
-              allowBrowse={interactive}
-              onOpenResource={interactive ? onOpenResource : undefined}
-            />
-          ))}
+          {rollup.items.map((item) =>
+            item.payload.presentation.kind === "execute" &&
+            rollup.items.length > 1 ? (
+              <ToolActivityRollup
+                key={item.id}
+                rollup={{
+                  kind: "execute",
+                  commandActivity: item.payload.presentation.activity,
+                  items: [item],
+                }}
+                interactive={interactive}
+                onOpenResource={onOpenResource}
+              />
+            ) : (
+              <ToolItem
+                key={item.id}
+                item={item}
+                compact
+                allowBrowse={interactive}
+                onOpenResource={interactive ? onOpenResource : undefined}
+              />
+            ),
+          )}
         </div>
       ) : null}
     </details>

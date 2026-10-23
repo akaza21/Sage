@@ -38,6 +38,34 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it.each([
+  ["readOnly", "Read-only", ".lucide-eye"],
+  ["workspaceWrite", "Workspace edits", ".lucide-shield-check"],
+] as const)(
+  "uses the %s icon on both the chip and its selected row",
+  (mode, label, icon) => {
+    useSessionAccessModeStore.setState({ modes: { fixture: mode } });
+    render(
+      <ComposerAccessControl
+        bindingId="fixture"
+        capabilities={capabilities}
+        open
+        onToggle={() => {}}
+        onDismiss={() => {}}
+        disabled={false}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Access options" })
+        .querySelector(icon),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("menuitemradio", { name: label }).querySelector(icon),
+    ).not.toBeNull();
+  },
+);
+
 it("introduces the approval question and distinct icons only for admitted modes", () => {
   render(
     <ComposerAccessControl

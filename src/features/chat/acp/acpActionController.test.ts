@@ -209,6 +209,46 @@ describe("ACP action controller", () => {
     expect(test.states).toHaveLength(0);
   });
 
+  it("never sends a set-mode request for the mode that is already current", async () => {
+    const initial = {
+      ...page("10", session("hot", "2", null)),
+      sessionConfig: {
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "2",
+        configRevision: "3",
+        modes: {
+          currentModeId: "ask",
+          availableModes: [
+            { id: "ask", name: "Ask" },
+            { id: "code", name: "Code" },
+          ],
+        },
+        configOptions: [],
+      },
+    };
+    const test = harness(initial);
+
+    await expect(test.controller.setSessionMode("ask")).resolves.toBe(
+      "ignoredStale",
+    );
+    expect(test.commands.setSessionMode).not.toHaveBeenCalled();
+
+    // A mode that becomes current while queued is also not sent.
+    const pending = test.controller.setSessionMode("code");
+    test.setContext({
+      ...test.getContext()!,
+      page: {
+        ...initial,
+        sessionConfig: {
+          ...initial.sessionConfig,
+          modes: { ...initial.sessionConfig.modes, currentModeId: "code" },
+        },
+      },
+    });
+    await expect(pending).resolves.toBe("ignoredStale");
+    expect(test.commands.setSessionMode).not.toHaveBeenCalled();
+  });
+
   it("revalidates the mode against the live config before dispatch", async () => {
     const initial = {
       ...page("10", session("hot", "2", null)),

@@ -259,17 +259,38 @@
   font-size: var(--font-size-xs);
 }
 
-.acp-mermaid {
+.acp-mermaid-container {
+  min-width: 0;
   max-width: 100%;
+}
+
+.acp-mermaid {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  /* The legible floor scrolls here; it never widens the transcript column. */
+  contain: inline-size;
+}
+
+.acp-mermaid:has(> .acp-mermaid__fallback) {
+  overflow: visible;
+}
+
+.acp-mermaid:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.acp-mermaid-container > figure {
   margin: var(--space-3) 0 0;
-  overflow: auto;
 }
 
 .acp-mermaid svg {
   display: block;
-  width: clamp(calc(var(--mermaid-width) * 6 / 7), 100%, var(--mermaid-width));
+  width: 100%;
+  min-width: calc(var(--mermaid-width) * 0.75);
   height: auto;
-  max-width: none;
+  max-width: var(--mermaid-width);
   margin: 0 auto;
   color: var(--color-text-primary);
 }

@@ -211,16 +211,16 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__model-trigger > svg\s*\{[^}]*width:\s*var\(--icon-size-md\);[^}]*height:\s*var\(--icon-size-md\);[^}]*flex:\s*0 0 auto;/s,
     );
   });
-  it("keeps Add menu action names whole and truncates only their descriptions", async () => {
+  it("keeps Add menu labels on the first row with wrapped secondary descriptions", async () => {
     const css = await readFile(
       resolve("src/styles/harness-picker.css"),
       "utf8",
     );
     expect(css).toMatch(
-      /\.composer__add-action > span:not\(\.composer__action-description\)\s*\{[^}]*flex:\s*none;/s,
+      /\.composer__add-action > span:not\(\.composer__action-description\)\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
     );
     expect(css).toMatch(
-      /\.composer__action-description\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;/s,
+      /\.composer__action-description\s*\{[^}]*grid-column:\s*2 \/ -1;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s,
     );
   });
   it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {

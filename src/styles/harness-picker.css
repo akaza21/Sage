@@ -20,6 +20,11 @@
   background: var(--composer-control-hover);
 }
 
+.composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
+  outline: none;
+  box-shadow: none;
+}
+
 .composer__harness .searchable-picker__trigger > img,
 .composer__harness-menu .searchable-picker__option > img {
   width: 20px;
@@ -121,28 +126,42 @@
   font-size: var(--font-size-xs);
 }
 
-.composer__add-action {
-  justify-content: flex-start;
-  gap: 4px;
-  white-space: nowrap;
+/* Compound selector so the shared flex .menu-item rule cannot win the cascade. */
+.menu-item.composer__add-action {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 14px;
+  gap: 4px 8px;
+  white-space: normal;
 }
 
 .composer__add-action > svg {
   flex: none;
 }
 
-/* Like Codex ref 34 the action name stays whole; only the muted description
-   truncates when the menu is narrow. */
 .composer__add-action > span:not(.composer__action-description) {
-  flex: none;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.composer__add-action > .lucide-check {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* Beats the shared uppercase .menu-group-label wherever the cascade puts it. */
+.menu-group-label.composer__add-heading {
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .composer__action-description {
-  flex: 1 1 auto;
+  grid-column: 2 / -1;
   min-width: 0;
-  overflow: hidden;
   color: var(--composer-muted-text);
-  text-overflow: ellipsis;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .composer-access-menu__option {

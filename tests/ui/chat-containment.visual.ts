@@ -67,18 +67,10 @@ async function expectControls(
       await control.evaluate((element) =>
         element.classList.contains("composer__plus"),
       )
-    ) {
-      const compact = await owner.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return (
-          element.clientWidth -
-            Number.parseFloat(style.paddingLeft) -
-            Number.parseFloat(style.paddingRight) <=
-          520
-        );
-      });
-      expect(box!.width).toBe(compact ? 24 : 22);
-    } else expect(box!.width).toBeGreaterThanOrEqual(24);
+    )
+      // The plus is an exact 24px target at every composer width.
+      expect(box!.width).toBe(24);
+    else expect(box!.width).toBeGreaterThanOrEqual(24);
     expect(box!.height).toBeGreaterThanOrEqual(24);
     expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, boundary!.x));
     expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, boundary!.y));
@@ -638,7 +630,7 @@ for (const profile of profiles) {
       for (const name of [
         "Harness",
         "Model",
-        ...(profile.effort ? ["High"] : []),
+        ...(profile.effort ? ["Thinking level: High"] : []),
         // Add stays disabled here (no capability-backed action); its menu
         // keyboard and resize behaviour is covered with installModeActions.
         "Access options",
@@ -684,8 +676,12 @@ for (const profile of profiles) {
       const options = page.getByRole("menu", {
         name: "Composer options menu",
       });
-      // The fixture renames the project, so match the chip by its prefix.
-      const project = composer.getByRole("button", { name: /^Project: / });
+      // The fixture renames the project, so match the picker by its prefix.
+      // A new chat scopes its project from the heading caption, not the composer.
+      const project = page
+        .getByRole("region", { name: "New chat", exact: true })
+        .first()
+        .getByRole("button", { name: /^Project: / });
       await project.click();
       await expect(options).toHaveCount(0);
       const picker = page.locator(".searchable-picker__popover");
@@ -727,13 +723,15 @@ for (const profile of profiles) {
       await page.keyboard.press("Escape");
       await expect(project).toBeFocused();
       await expect(options).toHaveCount(0);
-      // At 480 the chip folds into the options menu; an open picker closes
-      // with it instead of anchoring to a hidden trigger.
+      // The new-chat caption picker does not fold at 480 (only the composer
+      // chip does); its open picker stays contained across the resize.
       await page.keyboard.press("Enter");
       await expect(picker).toHaveCount(1);
       await page.setViewportSize(viewports[3]);
+      await expect(project).toBeVisible();
+      await expectOverlay(picker, viewports[3]);
+      await page.keyboard.press("Escape");
       await expect(picker).toHaveCount(0);
-      await expect(project).toBeHidden();
       await page.setViewportSize(viewports[2]);
       await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
       for (const field of await page.locator("form.composer textarea").all()) {

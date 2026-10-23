@@ -28,6 +28,7 @@ import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
 import { bindingNoticeAllowed } from "./composerBindingNotice";
+import { isNewProjectChat } from "./newProjectChat";
 export function ChatSurface({
   chatId,
   paneHeader,
@@ -66,9 +67,7 @@ export function ChatSurface({
     setQueuedTurnBarrier,
     rememberTurnOrder,
   } = useBoundChatComposer(chatId);
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
+  const projectTransitioning = useWorkbenchStore((s) => s.projectTransitioning);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   const project = useWorkbenchStore((state) => state.project);
   const error = useWorkbenchStore((state) => state.error);
@@ -157,11 +156,7 @@ export function ChatSurface({
     focusComposer: () => composerRef.current?.focus(),
   });
   useEffect(() => {
-    sessionActions.current = {
-      closeSession,
-      endSession,
-      focusComposer: () => composerRef.current?.focus(),
-    };
+    Object.assign(sessionActions.current, { closeSession, endSession });
   }, [closeSession, endSession]);
   useEffect(() => {
     if (!setAgentSessionChrome || !chatId || !focused) return;
@@ -274,7 +269,6 @@ export function ChatSurface({
               <button
                 className="button button--compact"
                 type="button"
-                aria-label="Close session"
                 disabled={actionBusy || projectTransitioning}
                 onClick={closeSession}
               >
@@ -285,7 +279,6 @@ export function ChatSurface({
               <button
                 className="button button--compact"
                 type="button"
-                aria-label="End session"
                 disabled={actionBusy || projectTransitioning}
                 onClick={endSession}
               >
@@ -384,7 +377,18 @@ export function ChatSurface({
         }
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={project}
+        project={
+          isNewProjectChat({
+            useNativeAcp,
+            page: acpPage,
+            project,
+            projectTransitioning,
+            ...acpHistory,
+            retentionIncomplete: acpRetentionIncomplete,
+          })
+            ? null
+            : project
+        }
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
