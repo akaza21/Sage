@@ -994,6 +994,13 @@ describe("AcpChatProjection", () => {
         <ChatTranscriptTurnSummary turn={running} hasActivities />,
       );
       expect(screen.getByText("Working for 3s")).toBeInTheDocument();
+      // Codex s8: the live header stays muted; only row labels shimmer.
+      expect(screen.getByText("Working for 3s")).not.toHaveClass(
+        "acp-live-shimmer",
+      );
+      expect(
+        screen.getByText("Working for 3s").querySelector(".acp-live-shimmer"),
+      ).toBeNull();
       act(() => vi.advanceTimersByTime(2_000));
       expect(screen.getByText("Working for 5s")).toBeInTheDocument();
       const settled = {

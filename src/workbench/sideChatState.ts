@@ -17,7 +17,17 @@ export const useSideChatState = create<{
   sides: readonly SideChatEntry[];
   pendingClose: string | null;
   split: number;
-}>(() => ({ sides: [], pendingClose: null, split: SIDE_CHAT_SPLIT }));
+  /**
+   * A Chat the Agent center shows alone until another Chat is selected: a
+   * just-opened fork replaces its parent pane instead of pairing with it.
+   */
+  soloChatId: string | null;
+}>(() => ({
+  sides: [],
+  pendingClose: null,
+  split: SIDE_CHAT_SPLIT,
+  soloChatId: null,
+}));
 
 /** Rust (and the visual fixture) mint temporary Chat ids with this prefix. */
 export const isSideChatId = (id: string | null | undefined) =>

@@ -73,6 +73,7 @@ impl SessionCoordinator {
             chat_id: owner.chat_id.clone(),
             session_id: owner.session_id.clone(),
             projection_revision: revision,
+            child_projection_epoch: 0,
         }) {
             Ok(disposition) => disposition,
             Err(error) => return Err((error.into(), proof)),
@@ -222,6 +223,7 @@ impl SessionCoordinator {
             chat_id: chat_id.clone(),
             session_id: mutation.session_id.clone(),
             projection_revision: mutation.projection_revision,
+            child_projection_epoch: 0,
         })?;
         if matches!(
             disposition,

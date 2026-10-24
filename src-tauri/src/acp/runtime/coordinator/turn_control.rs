@@ -228,6 +228,7 @@ impl ActiveDispatch {
             chat_id: command.chat_id.clone(),
             session_id: command.session_id.clone(),
             projection_revision: self.accepted_projection_revision,
+            child_projection_epoch: 0,
         })?;
         if matches!(
             disposition,

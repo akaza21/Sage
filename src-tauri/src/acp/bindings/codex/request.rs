@@ -56,6 +56,11 @@ pub(crate) enum RequestKind {
     Resume,
     Read,
     ChildRead,
+    Fork,
+    /// `thread/unsubscribe` of a thread this runtime forked, never its own.
+    ForkRelease,
+    /// `thread/delete` of a refused fork: unloads it and removes its rollout.
+    ForkDelete,
     Models,
     TurnStart,
     Steer,
@@ -91,11 +96,13 @@ impl OutgoingRequest {
             RequestKind::Resume => "thread/resume",
             RequestKind::Read => "thread/read",
             RequestKind::ChildRead => "thread/read",
+            RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
             RequestKind::Steer => "turn/steer",
             RequestKind::Interrupt => "turn/interrupt",
-            RequestKind::Unsubscribe => "thread/unsubscribe",
+            RequestKind::Unsubscribe | RequestKind::ForkRelease => "thread/unsubscribe",
+            RequestKind::ForkDelete => "thread/delete",
             RequestKind::GoalGet => "thread/goal/get",
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
@@ -179,6 +186,17 @@ impl OutgoingRequest {
             id,
             RequestKind::ChildRead,
             json!({"threadId": thread_id.as_str(), "includeTurns": true}),
+        )
+    }
+
+    /// `thread/fork` through the latest Turn. The pinned 0.146 schema
+    /// requires only `threadId`; omitted overrides inherit the source thread,
+    /// and `lastTurnId` is left out because Sage forks only between Turns.
+    pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
+        Self::build(
+            id,
+            RequestKind::Fork,
+            json!({"threadId": thread_id.as_str()}),
         )
     }
 
@@ -294,6 +312,19 @@ impl OutgoingRequest {
                 "input": [{"type": "text", "text": prompt.as_str()}]
             }),
         )
+    }
+
+    pub(crate) fn fork_release(
+        id: u64,
+        thread_id: &str,
+        delete: bool,
+    ) -> Result<Self, RequestError> {
+        let kind = if delete {
+            RequestKind::ForkDelete
+        } else {
+            RequestKind::ForkRelease
+        };
+        Self::build(id, kind, json!({"threadId": thread_id}))
     }
 
     pub(crate) fn unsubscribe(

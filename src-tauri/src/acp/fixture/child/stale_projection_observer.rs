@@ -85,6 +85,7 @@ pub(crate) fn execute(case: &FrozenCase) -> Value {
                 chat_id: SageChatId::parse("chat-a").unwrap(),
                 session_id: SageAgentSessionId::parse("session-a").unwrap(),
                 projection_revision: mutation.projection_revision,
+                child_projection_epoch: 0,
             })
             .unwrap();
         tokio::task::yield_now().await;

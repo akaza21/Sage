@@ -5,6 +5,7 @@ import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { terminalTurnStates } from "./acp/statusSemantics";
 import { dayTimeLabel } from "./chatTimestamp";
+import { ForkPart } from "./lazyParts";
 import {
   WorkedActivityVisibility,
   WorkedTurnTerminal,
@@ -14,19 +15,21 @@ import {
   formatWorkingDuration,
 } from "./transcriptSummary";
 
+const isAssistantText = (
+  item: AcpItem,
+): item is Extract<AcpItem, { kind: "text" }> =>
+  item.kind === "text" &&
+  item.payload.role === "assistant" &&
+  !!item.payload.text.trim();
+
 function lastAssistantItem(
   page: AcpChatPage | null,
 ): Extract<AcpItem, { kind: "text" }> | null {
   const turn = page?.turns.at(-1);
   if (!turn || !terminalTurnStates.has(turn.state)) return null;
-  for (let index = turn.items.length - 1; index >= 0; index--) {
+  for (let index = turn.items.length; index--;) {
     const item = turn.items[index];
-    if (
-      item.kind === "text" &&
-      item.payload.role === "assistant" &&
-      item.payload.text.trim()
-    )
-      return item;
+    if (isAssistantText(item)) return item;
   }
   return null;
 }
@@ -54,24 +57,14 @@ export function ChatTranscriptTurnSummary({
     return () => window.clearInterval(timer);
   }, [terminal, turn.id]);
   const duration = terminal
-    ? formatWorkedDuration(turn.createdAt, turn.terminalAt)
+    ? (formatWorkedDuration(turn.createdAt, turn.terminalAt) ?? "Worked")
     : (formatWorkingDuration(turn.createdAt, nowMs) ?? "Working");
 
   if (terminal && !hasActivities) {
-    if (
-      !turn.items.some(
-        (item) =>
-          item.kind === "text" &&
-          item.payload.role === "assistant" &&
-          item.payload.text.trim(),
-      )
-    )
-      return null;
+    if (!turn.items.some(isAssistantText)) return null;
     return (
       <div className="chat-transcript-work">
-        <div className="chat-transcript-work__heading">
-          {duration ?? "Worked"}
-        </div>
+        <div className="chat-transcript-work__heading">{duration}</div>
       </div>
     );
   }
@@ -115,7 +108,7 @@ export function ChatTranscriptTurnSummary({
             setExpanded(!expanded);
           }}
         >
-          {duration ?? "Worked"}
+          {duration}
           <ChevronRight
             size={12}
             className="chat-transcript-work__chevron"
@@ -198,15 +191,17 @@ export function ChatTranscriptFooter({
         </div>
       ) : null}
       <div className="chat-transcript-actions" aria-label="Message actions">
-        {hasText ? (
-          <button
-            type="button"
-            aria-label={copied ? "Copied" : "Copy"}
-            title={copied ? "Copied" : "Copy"}
-            onClick={() => void copyAnswer()}
-          >
-            <CopyIcon size={14} aria-hidden="true" />
-          </button>
+        {/* Text is guaranteed here: the footer returns early without it. */}
+        <button
+          type="button"
+          aria-label={copied ? "Copied" : "Copy"}
+          title={copied ? "Copied" : "Copy"}
+          onClick={() => void copyAnswer()}
+        >
+          <CopyIcon size={14} aria-hidden="true" />
+        </button>
+        {page && latestTurn?.state === "completed" ? (
+          <ForkPart part="AnswerMoreActions" page={page} />
         ) : null}
         {retryAction ? (
           <button

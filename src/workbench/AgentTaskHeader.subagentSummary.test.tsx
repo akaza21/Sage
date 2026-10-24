@@ -22,6 +22,7 @@ import { AgentTaskHeader } from "./AgentTaskHeader";
 const readChild = vi.hoisted(() => vi.fn());
 vi.mock("../services/acpChildTranscript", () => ({
   getAcpChildTranscript: readChild,
+  subscribeChildProjectionChanges: async () => () => undefined,
 }));
 
 const initialState = useWorkbenchStore.getState();
@@ -199,13 +200,19 @@ it("counts spawn invocations, not repeated spawn, start, finish, or resource obs
   // The counts are synchronous; only the surrounding region loads lazily.
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
   expect(
-    await screen.findByRole("heading", { name: "Subagents: 2" }),
+    await screen.findByRole("heading", { name: "Subagents" }),
   ).toBeVisible();
+  expect(
+    document.querySelector(".agent-task-header__agent-list")?.children,
+  ).toHaveLength(2);
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
   expect(screen.getByText("example.com")).toBeVisible();
   // A later revision of the same spawn item is a repeated observation.
   replaceItems(observations("3"));
-  expect(screen.getByRole("heading", { name: "Subagents: 2" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Subagents" })).toBeVisible();
+  expect(
+    document.querySelector(".agent-task-header__agent-list")?.children,
+  ).toHaveLength(2);
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
   // A separate spawn that reuses a child thread id is another subagent.
   replaceItems([
@@ -219,7 +226,10 @@ it("counts spawn invocations, not repeated spawn, start, finish, or resource obs
       [["private-thread-a", "running"]],
     ),
   ]);
-  expect(screen.getByRole("heading", { name: "Subagents: 3" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Subagents" })).toBeVisible();
+  expect(
+    document.querySelector(".agent-task-header__agent-list")?.children,
+  ).toHaveLength(3);
   expect(screen.getByLabelText("Recent subagents working: 1")).toBeVisible();
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
 });
@@ -304,13 +314,7 @@ it.each([
     expect(
       within(section).getByLabelText("Recent subagents done: 1"),
     ).toHaveTextContent("1 done");
-    for (const state of [
-      "Starting when observed",
-      "Working when observed",
-      "done",
-      "stopped",
-      "failed",
-    ]) {
+    for (const state of ["Starting", "Working", "Done", "Stopped", "Failed"]) {
       expect(
         await within(section).findByText(state, { exact: true }),
       ).toBeInTheDocument();
@@ -350,8 +354,8 @@ it("bounds 300 child observations to 128 selectable rows and truthful retained c
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const section = await screen.findByRole("region", { name: "Subagents" });
   expect(
-    within(section).getByRole("heading", { name: "Subagents: 128" }),
-  ).toHaveTextContent("128");
+    within(section).getByRole("heading", { name: "Subagents" }),
+  ).toBeVisible();
   const rows = await within(section).findAllByRole("button");
   expect(rows).toHaveLength(128);
   expect(rows[0]).toHaveAccessibleName("Open subagent Agent 172");
@@ -367,7 +371,7 @@ it("bounds 300 child observations to 128 selectable rows and truthful retained c
   ).toHaveLength(3);
   expect(section).toHaveAttribute(
     "title",
-    "Up to 128 subagents from the latest 128 turns and 256 items total",
+    "The latest 128 subagents found in the latest 256 items of the latest 128 turns",
   );
   expect(section).not.toHaveTextContent("private-");
   expect(readChild).not.toHaveBeenCalled();
@@ -624,8 +628,8 @@ it("moves a retained running child to done on its native terminal observation", 
 });
 
 it.each([
-  ["interrupted", "stopped"],
-  ["errored", "failed"],
+  ["interrupted", "Stopped"],
+  ["errored", "Failed"],
 ])(
   "preserves %s child state after native completion",
   async (state, status) => {
@@ -709,9 +713,11 @@ it("separates recent working and done figures without an inert child-open contro
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const section = await screen.findByRole("region", { name: "Subagents" });
+  // A plain "Subagents" heading, then the count row; "1 working" once (P1).
   expect(
-    within(section).getByRole("heading", { name: "Subagents: 2" }),
-  ).toHaveTextContent("2");
+    within(section).getByRole("heading", { name: "Subagents" }),
+  ).toHaveTextContent(/^Subagents$/);
+  expect(within(section).getAllByText(/1 working/)).toHaveLength(1);
   expect(
     within(section).getByLabelText("Recent subagents working: 1"),
   ).toHaveTextContent("1 working");
@@ -723,7 +729,7 @@ it("separates recent working and done figures without an inert child-open contro
   ).toHaveLength(1);
   expect(section).not.toHaveTextContent("private-thread");
   expect(within(section).queryByRole("button")).toBeNull();
-  expect(section).toHaveTextContent("Latest retained observations; not live.");
+  expect(section).not.toHaveTextContent("not live");
 });
 
 it("portals chat resources outside the header and returns Escape focus to the trigger", () => {

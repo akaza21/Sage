@@ -61,6 +61,7 @@ pub(crate) use read_text_file::{DiskAllowedState, ReadTextClassification, ReadTe
 pub(crate) use read_text_file::{
     ReadTextBegin, ReadTextFileService, ReadTextFlushAck, ReadTextNextAction, ReadTextOwner,
 };
+mod chat_fork;
 mod child_transcript;
 mod goal;
 pub(crate) use child_transcript::{ChildTranscriptRead, ChildTranscriptReadError};

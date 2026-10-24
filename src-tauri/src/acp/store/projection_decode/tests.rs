@@ -38,6 +38,8 @@ fn root_collaboration_item_without_activity_loads_from_history() {
         agent_key: Some(SafeText::new("agentKey", "child-1").unwrap()),
         agent_keys: BoundedVec::new("agentKeys", vec![]).unwrap(),
         agent_states: BoundedVec::new("agentStates", vec![]).unwrap(),
+        model: None,
+        reasoning_effort: None,
     };
     assert!(
         content(
@@ -61,6 +63,8 @@ fn activity_origin_collaboration_without_activity_is_rejected() {
         agent_key: Some(SafeText::new("agentKey", "child-1").unwrap()),
         agent_keys: BoundedVec::new("agentKeys", vec![]).unwrap(),
         agent_states: BoundedVec::new("agentStates", vec![]).unwrap(),
+        model: None,
+        reasoning_effort: None,
     };
     let payload_json = serde_json::to_string(&payload).unwrap();
     let row = ItemRow {

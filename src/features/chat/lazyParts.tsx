@@ -10,6 +10,9 @@ import type * as ChatNavigationChunk from "./ChatNavigation";
 import type * as PermissionPromptChunk from "./acp/PermissionPrompt";
 import type * as TranscriptChunk from "./TranscriptInteractions";
 import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
+import type * as ForkChunk from "./ForkChat";
+import type * as HandoffChunk from "./ChatHandoffDialog";
+import type * as QueuedChunk from "./ComposerQueuedPrompts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -75,3 +78,21 @@ export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
 export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
   () => import("../chatSearch/ChatSearchControl"),
 );
+/** Answer "…" menu, fork dialog and "Continued from chat" (ForkChat.tsx). */
+export const ForkPart = lazyParts<typeof ForkChunk>(() => import("./ForkChat"));
+/** The "Hand off this Chat" dialog (ChatHandoffDialog.tsx). */
+export const HandoffPart = lazyParts<typeof HandoffChunk>(
+  () => import("./ChatHandoffDialog"),
+);
+/** The queued-message rows above the composer (ComposerQueuedPrompts.tsx). */
+export const QueuedPart = lazyParts<typeof QueuedChunk>(
+  () => import("./ComposerQueuedPrompts"),
+);
+/** Queued rows, loaded with the first queued message (nothing before). */
+export function QueuedRows(
+  props: ComponentProps<typeof QueuedChunk.ComposerQueuedPrompts>,
+) {
+  return props.prompts?.length ? (
+    <QueuedPart part="ComposerQueuedPrompts" {...props} />
+  ) : null;
+}

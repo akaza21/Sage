@@ -31,12 +31,15 @@ function distanceFromEnd(
 export function useFollowEnd({
   ownerKey,
   revision,
+  running = false,
   transcriptRef,
   contentRef,
   endRef,
 }: {
   ownerKey: string;
   revision: string | number | undefined;
+  /** A live turn: growth below a paused reader shows the activity pill. */
+  running?: boolean;
   transcriptRef: RefObject<HTMLElement | null>;
   contentRef: RefObject<HTMLElement | null>;
   endRef: RefObject<HTMLElement | null>;
@@ -44,7 +47,11 @@ export function useFollowEnd({
   const [followState, setFollowState] = useState({ ownerKey, following: true });
   const followingEnd =
     followState.ownerKey === ownerKey ? followState.following : true;
-  const [jumpState, setJumpState] = useState({ ownerKey, visible: false });
+  // "activity": new rows landed below a paused reader (Codex s6/f0200).
+  const [jumpState, setJumpState] = useState<{
+    ownerKey: string;
+    visible: boolean | "activity";
+  }>({ ownerKey, visible: false });
   const showJumpToLatest = jumpState.ownerKey === ownerKey && jumpState.visible;
   const frameRef = useRef<number | null>(null);
   const jumpingRef = useRef(false);
@@ -54,6 +61,18 @@ export function useFollowEnd({
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
   const navigationPausedRef = useRef(false);
+  // Content height while the reader last followed the end.
+  const followedHeightRef = useRef(Infinity);
+  const jumpFor = useCallback(
+    (transcript: HTMLElement) => ({
+      ownerKey,
+      visible:
+        running && transcript.scrollHeight > followedHeightRef.current
+          ? ("activity" as const)
+          : distanceFromEnd(transcript) > transcript.clientHeight,
+    }),
+    [ownerKey, running],
+  );
 
   useEffect(() => {
     followingEndRef.current = followingEnd;
@@ -99,12 +118,9 @@ export function useFollowEnd({
     const transcript = transcriptRef.current;
     if (transcript) {
       transcript.scrollTo({ behavior: "auto", top: transcript.scrollTop });
-      setJumpState({
-        ownerKey,
-        visible: distanceFromEnd(transcript) > transcript.clientHeight,
-      });
+      setJumpState(jumpFor(transcript));
     }
-  }, [cancelFrame, ownerKey, transcriptRef]);
+  }, [cancelFrame, ownerKey, jumpFor, transcriptRef]);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
@@ -120,14 +136,32 @@ export function useFollowEnd({
       followingEndRef.current = false;
       setFollowState({ ownerKey, following: false });
     };
+    // An upward wheel that will move the transcript leaves the end at once:
+    // its smooth scroll can still be inside the follow threshold when new
+    // activity lands, and anchoring then would pull the reader back down
+    // (cp47 paused-reader pill). A short chat, or a nested scroller that
+    // takes the wheel itself, keeps following.
+    const movesTranscriptUp = (event: WheelEvent) => {
+      // A synthetic wheel without a deltaY is reader input, not navigation.
+      if (!(event.deltaY < 0 && transcript.scrollTop > 0)) return false;
+      for (
+        let node = event.target instanceof Element ? event.target : null;
+        node && node !== transcript;
+        node = node.parentElement
+      )
+        if (node.scrollTop > 0) return false;
+      return true;
+    };
+    const wheel = (event: WheelEvent) =>
+      movesTranscriptUp(event) ? navigate() : readerInput();
     // Any pointerdown inside the transcript counts, including child controls.
-    transcript.addEventListener("wheel", readerInput);
+    transcript.addEventListener("wheel", wheel);
     transcript.addEventListener("pointerdown", readerInput);
     transcript.addEventListener("touchstart", readerInput);
     transcript.addEventListener("keydown", readerInput);
     transcript.addEventListener("sage-chat-navigation", navigate);
     return () => {
-      transcript.removeEventListener("wheel", readerInput);
+      transcript.removeEventListener("wheel", wheel);
       transcript.removeEventListener("pointerdown", readerInput);
       transcript.removeEventListener("touchstart", readerInput);
       transcript.removeEventListener("keydown", readerInput);
@@ -153,12 +187,10 @@ export function useFollowEnd({
         return;
       }
       if (!followingEndRef.current) {
-        setJumpState({
-          ownerKey,
-          visible: distanceFromEnd(current) > current.clientHeight,
-        });
+        setJumpState(jumpFor(current));
         return;
       }
+      followedHeightRef.current = current.scrollHeight;
       // Keep stale smooth steps protected until the anchor actually lands.
       if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
       if (transcriptIsAtEnd(current)) return;
@@ -169,7 +201,7 @@ export function useFollowEnd({
     if (content) observer.observe(content);
 
     return () => observer.disconnect();
-  }, [anchorToEnd, contentRef, ownerKey, transcriptRef]);
+  }, [anchorToEnd, contentRef, jumpFor, transcriptRef]);
 
   const updateFollowEnd = useCallback(() => {
     const current = transcriptRef.current;
@@ -191,23 +223,22 @@ export function useFollowEnd({
       frameRef.current = null;
       const transcript = transcriptRef.current;
       if (transcript) {
+        const atEnd = transcriptIsAtEnd(transcript);
+        // Nothing is below the fold at the end, including where a jump lands.
+        if (atEnd) followedHeightRef.current = transcript.scrollHeight;
         if (jumpingRef.current || anchoringRef.current) {
-          if (transcriptIsAtEnd(transcript)) jumpingRef.current = false;
+          if (atEnd) jumpingRef.current = false;
           if (distanceFromEnd(transcript) <= 1) anchoringRef.current = false;
           return;
         }
         setFollowState({
           ownerKey,
-          following:
-            !navigationPausedRef.current && transcriptIsAtEnd(transcript),
+          following: !navigationPausedRef.current && atEnd,
         });
-        setJumpState({
-          ownerKey,
-          visible: distanceFromEnd(transcript) > transcript.clientHeight,
-        });
+        setJumpState(jumpFor(transcript));
       }
     });
-  }, [ownerKey, transcriptRef]);
+  }, [ownerKey, jumpFor, transcriptRef]);
 
   const jumpToLatest = useCallback(() => {
     navigationPausedRef.current = false;

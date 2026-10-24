@@ -213,7 +213,7 @@ impl Database {
     }
 }
 
-fn insert_new_chat(
+pub(crate) fn insert_new_chat(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,
     source_is_active: bool,

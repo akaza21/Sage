@@ -9,13 +9,37 @@ import type {
 import { SubagentSurface } from "./SubagentSurface";
 
 const readChild = vi.hoisted(() => vi.fn());
+const desktop = vi.hoisted(() => ({ runtime: false }));
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   invokeNative: readChild,
+  isTauriRuntime: () => desktop.runtime,
+}));
+const childNotices = vi.hoisted(
+  () => new Map<string, (epoch: number) => void>(),
+);
+// Holds the child-notice subscription open until a test releases it.
+const subscribeGate = vi.hoisted(() => ({
+  wait: null as Promise<void> | null,
+}));
+vi.mock("../services/acpChildTranscript", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
+  subscribeChildProjectionChanges: async (
+    projectId: string,
+    chatId: string,
+    onEpoch: (epoch: number) => void,
+  ) => {
+    if (subscribeGate.wait) await subscribeGate.wait;
+    childNotices.set(projectId + "/" + chatId, onEpoch);
+    return () => childNotices.delete(projectId + "/" + chatId);
+  },
 }));
 afterEach(() => {
   cleanup();
   readChild.mockReset();
+  childNotices.clear();
+  subscribeGate.wait = null;
+  desktop.runtime = false;
 });
 
 function childPage(): AcpChatPage {
@@ -110,7 +134,7 @@ it.each([
   );
   expect(await screen.findByText(message)).toBeVisible();
   expect(screen.queryByText("private wire details")).toBeNull();
-  expect(screen.queryByText("Current child transcript")).toBeNull();
+  expect(screen.queryByText("No child activity was captured.")).toBeNull();
   expect(readChild).toHaveBeenCalledTimes(1);
 });
 
@@ -151,7 +175,7 @@ it.each(["capability", "epoch", "child", "session"])(
   },
 );
 
-it.each(["project", "chat", "generation", "revision", "epoch", "session"])(
+it.each(["project", "chat", "generation", "epoch", "session"])(
   "discards late success and failure after %s changes",
   async (ownerPart) => {
     let finish!: (value: unknown) => void;
@@ -203,18 +227,25 @@ it.each(["project", "chat", "generation", "revision", "epoch", "session"])(
       />,
     );
     await act(async () => finish(current));
-    expect(screen.queryByText("Current child transcript")).toBeNull();
+    expect(screen.queryByText("No child activity was captured.")).toBeNull();
+    // The changed owner reads at once, as soon as the stale read settles.
+    await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2));
     view.rerender(
       <SubagentSurface
-        page={{ ...changed, projectionRevision: "10" as ProjectionRevision }}
+        page={{ ...changed, childProjectionEpoch: 10 }}
         projectGeneration={generation}
         itemId="spawn"
         agentKey="child"
       />,
     );
-    expect(await screen.findByText(/too large to display/)).toBeVisible();
     await act(async () => reject({ kind: "rejected" }));
-    expect(screen.queryByText(/read was rejected/)).toBeNull();
+    // The same child refreshes after its epoch is quiet, never beside the
+    // read already in flight.
+    expect(
+      await screen.findByText(/too large to display/, undefined, {
+        timeout: 3_000,
+      }),
+    ).toBeVisible();
     expect(readChild).toHaveBeenCalledTimes(3);
   },
 );
@@ -249,10 +280,351 @@ it("drops a pending read when the Session is superseded", async () => {
   );
   await act(async () => finish(current));
   await waitFor(() =>
-    expect(screen.queryByText("Current child transcript")).toBeNull(),
+    expect(screen.queryByText("No child activity was captured.")).toBeNull(),
   );
   expect(
     screen.getByText(/earlier session and isn’t available here/),
   ).toBeVisible();
+  expect(readChild).toHaveBeenCalledTimes(1);
+});
+
+function spawnPage(state: string, revision = "7"): AcpChatPage {
+  const page = childPage();
+  return {
+    ...page,
+    projectionRevision: revision as ProjectionRevision,
+    childProjectionEpoch: Number(revision),
+    sessionConfig: {
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "gpt-6-astra",
+          options: [{ value: "gpt-6-astra", name: "GPT-6 Astra" }],
+        },
+        {
+          id: "effort",
+          name: "Effort",
+          category: "thought_level",
+          type: "select",
+          currentValue: "medium",
+          options: [{ value: "medium", name: "Medium" }],
+        },
+      ],
+    },
+    turns: [
+      {
+        ...page.turns[0],
+        items: [
+          {
+            id: "spawn",
+            kind: "collaboration",
+            createdAt: 1_000,
+            updatedAt: 26_000,
+            payload: {
+              operation: "spawnAgent",
+              agentKeys: ["child"],
+              agentStates: [["child", state]],
+              receiverLabels: ["Count readme"],
+            },
+          },
+        ],
+      },
+    ],
+  } as unknown as AcpChatPage;
+}
+
+const text = (id: string, value: string, role = "assistant") => ({
+  id,
+  role,
+  lifecycle: "completed",
+  tool_state: null,
+  payload: { kind: "text", payload: { text: value } },
+});
+
+function childRead(
+  turns: { status: string; items: unknown[] }[],
+  spawnModel?: unknown,
+) {
+  return {
+    kind: "current",
+    ...(spawnModel ? { spawnModel } : {}),
+    snapshot: {
+      childThreadId: "child",
+      parentThreadId: "parent",
+      retentionLimited: false,
+      turns: turns.map((turn, index) => ({
+        id: `child-turn-${index}`,
+        ...turn,
+      })),
+    },
+  };
+}
+
+it("refreshes an open live child on each invalidation epoch without losing or duplicating rows", async () => {
+  let finish!: (value: unknown) => void;
+  readChild.mockResolvedValueOnce(
+    childRead([
+      {
+        status: "inProgress",
+        items: [
+          text("prompt", "Count the README lines", "user"),
+          text("a", "Step A"),
+        ],
+      },
+    ]),
+  );
+  readChild.mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  );
+  const view = render(
+    <SubagentSurface
+      page={spawnPage("running")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  expect(await screen.findByText("Step A")).toBeVisible();
+  expect(screen.queryByText("Count the README lines")).toBeNull();
+  view.rerender(
+    <SubagentSurface
+      page={spawnPage("running", "8")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2), {
+    timeout: 3_000,
+  });
+  // Child reads carry no projection revision: they key off the child epoch.
+  expect(readChild.mock.lastCall?.[1].request).not.toHaveProperty(
+    "expectedProjectionRevision",
+  );
+  expect(screen.getByText("Step A")).toBeVisible();
+  expect(screen.queryByText(/Loading child transcript/)).toBeNull();
+  await act(async () =>
+    finish(
+      childRead([
+        {
+          status: "completed",
+          items: [text("a", "Step A"), text("b", "Step B")],
+        },
+        { status: "inProgress", items: [text("b", "Step B")] },
+      ]),
+    ),
+  );
+  expect(screen.getAllByText("Step B")).toHaveLength(1);
+  expect(screen.getByText("Step A")).toBeVisible();
+});
+
+it("keeps a finished child readable and stops refreshing once it settles", async () => {
+  readChild.mockResolvedValueOnce(
+    childRead([
+      { status: "completed", items: [text("a", "Both counts done")] },
+    ]),
+  );
+  readChild.mockRejectedValue({
+    kind: "conflict",
+    resource: "projectionRevision",
+  });
+  const view = render(
+    <SubagentSurface
+      page={spawnPage("completed")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  expect(await screen.findByText("Both counts done")).toBeVisible();
+  view.rerender(
+    <SubagentSurface
+      page={spawnPage("completed", "9")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1_200));
+  expect(readChild).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("Both counts done")).toBeVisible();
+  expect(screen.getByText("Worked for 25s")).toBeVisible();
+});
+
+it("keeps the last full read when a later refresh is stale", async () => {
+  readChild.mockResolvedValueOnce(
+    childRead([{ status: "inProgress", items: [text("a", "Still counting")] }]),
+  );
+  readChild.mockRejectedValue({
+    kind: "conflict",
+    resource: "projectionRevision",
+  });
+  const view = render(
+    <SubagentSurface
+      page={spawnPage("running")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  expect(await screen.findByText("Still counting")).toBeVisible();
+  view.rerender(
+    <SubagentSurface
+      page={spawnPage("running", "8")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2), {
+    timeout: 3_000,
+  });
+  await act(async () => undefined);
+  expect(screen.getByText("Still counting")).toBeVisible();
+  expect(screen.queryByText(/read is stale/)).toBeNull();
+});
+
+const live = (epoch: string) => (
+  <SubagentSurface
+    page={spawnPage("running", epoch)}
+    projectGeneration="3"
+    itemId="spawn"
+    agentKey="child"
+  />
+);
+const sleep = (ms: number) =>
+  act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+
+it("continuous child activity reads about once a second, one read at a time", async () => {
+  let inFlight = 0;
+  let overlapped = false;
+  const starts: number[] = [];
+  readChild.mockImplementation(async () => {
+    starts.push(performance.now());
+    inFlight += 1;
+    overlapped ||= inFlight > 1;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    inFlight -= 1;
+    return childRead([
+      { status: "inProgress", items: [text("a", `Step ${starts.length}`)] },
+    ]);
+  });
+  const view = render(live("7"));
+  expect(await screen.findByText("Step 1")).toBeVisible();
+  // A new epoch every 200 ms for 3.6 s never lets the child go quiet.
+  for (let epoch = 8; epoch < 26; epoch += 1) {
+    view.rerender(live(String(epoch)));
+    await sleep(200);
+  }
+  // A trailing debounce would read once at the end; the 1 s max wait reads
+  // throughout, never twice in one window and never two at once.
+  expect(starts.length).toBeGreaterThanOrEqual(4);
+  expect(starts.length).toBeLessThanOrEqual(6);
+  for (let index = 1; index < starts.length; index += 1)
+    expect(starts[index] - starts[index - 1]).toBeGreaterThanOrEqual(950);
+  expect(overlapped).toBe(false);
+  // Once activity stops, one trailing read settles the last epoch.
+  const before = starts.length;
+  await sleep(1_300);
+  expect(starts.length).toBeLessThanOrEqual(before + 1);
+  await sleep(1_200);
+  expect(starts.length).toBeLessThanOrEqual(before + 1);
+}, 15_000);
+
+it("a fast failure after a slow good read never discards it", async () => {
+  let finish!: (value: unknown) => void;
+  readChild.mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)),
+  );
+  readChild.mockRejectedValue({ kind: "rejected" });
+  const view = render(live("7"));
+  view.rerender(live("8"));
+  await sleep(1_200);
+  // The failing refresh waits for the slow read instead of racing it.
+  expect(readChild).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    finish(childRead([{ status: "inProgress", items: [text("a", "Slow")] }])),
+  );
+  expect(screen.getByText("Slow")).toBeVisible();
+  await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2), {
+    timeout: 2_000,
+  });
+  await act(async () => undefined);
+  expect(screen.getByText("Slow")).toBeVisible();
+  expect(screen.queryByText(/read was rejected/)).toBeNull();
+}, 10_000);
+
+it.each([
+  [{ model: "gpt-6-astra", reasoningEffort: "medium" }, "GPT-6 Astra · Medium"],
+  [{ model: "unlisted-model" }, "unlisted-model"],
+  [undefined, null],
+  [{ model: "bad\nmodel" }, null],
+])(
+  "labels the child header with only the wire's model %#",
+  async (spawnModel, label) => {
+    readChild.mockResolvedValue(
+      childRead(
+        [{ status: "completed", items: [text("a", "Done")] }],
+        spawnModel,
+      ),
+    );
+    const { container } = render(
+      <SubagentSurface
+        page={spawnPage("completed")}
+        projectGeneration="3"
+        itemId="spawn"
+        agentKey="child"
+      />,
+    );
+    expect(await screen.findByText("Done")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Count readme" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Back to subagents" }),
+    ).toBeVisible();
+    const model = container.querySelector(".subagent-surface__model");
+    if (label) expect(model).toHaveTextContent(label);
+    else expect(model).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  },
+);
+
+it("a child-only notice re-reads the open child without a parent page change", async () => {
+  readChild.mockResolvedValueOnce(
+    childRead([{ status: "inProgress", items: [text("a", "Step A")] }]),
+  );
+  readChild.mockResolvedValue(
+    childRead([{ status: "inProgress", items: [text("b", "Step B")] }]),
+  );
+  render(live("7"));
+  expect(await screen.findByText("Step A")).toBeVisible();
+  await waitFor(() => expect(childNotices.has("project/chat")).toBe(true));
+  // The same page object stays mounted; only the child notice arrives.
+  act(() => childNotices.get("project/chat")!(1_000));
+  expect(
+    await screen.findByText("Step B", undefined, { timeout: 2_000 }),
+  ).toBeVisible();
+  expect(readChild).toHaveBeenCalledTimes(2);
+}, 10_000);
+
+it("the first child read waits until child notices are subscribed", async () => {
+  let open!: () => void;
+  desktop.runtime = true;
+  subscribeGate.wait = new Promise((resolve) => (open = resolve));
+  readChild.mockResolvedValue(
+    childRead([{ status: "inProgress", items: [text("a", "Step A")] }]),
+  );
+  render(live("7"));
+  await act(async () => {});
+  // A notice published before the listener exists would be lost, so no
+  // read starts until the subscription is attached.
+  expect(readChild).not.toHaveBeenCalled();
+  await act(async () => open());
+  expect(await screen.findByText("Step A")).toBeVisible();
+  expect(childNotices.has("project/chat")).toBe(true);
   expect(readChild).toHaveBeenCalledTimes(1);
 });

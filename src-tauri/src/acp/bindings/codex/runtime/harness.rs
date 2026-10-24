@@ -1,8 +1,8 @@
 use super::*;
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-        EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress, AdapterRuntimeError,
+        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     intent::ExternalId,
     lifecycle::ServerRequestState,
@@ -61,11 +61,29 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn native_rpc_pending(&self) -> bool {
-        self.inner.goal_mutation_pending() || self.inner.child_read_pending()
+        self.inner.goal_mutation_pending()
+            || self.inner.child_read_pending()
+            || self.inner.fork_rpc_pending()
     }
 
+    /// A child read or a fork may answer with an oversize frame (both carry
+    /// native Turns), so either keeps the decoder in recoverable mode.
     fn child_read_pending(&self) -> bool {
-        self.inner.child_read_pending()
+        self.inner.child_read_pending() || self.inner.fork_pending().is_some()
+    }
+
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.fork_request()
+    }
+
+    fn release_fork(&mut self, fork: &ExternalId, done: bool) -> AdapterOptionalEgress {
+        self.release_fork_request(fork, done)
+    }
+    fn defer_fork_release(&mut self, fork: &ExternalId, done: bool) -> bool {
+        self.defer_fork_release_request(fork, done)
+    }
+    fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
+        self.deferred_fork_release_request()
     }
 
     fn read_child(
@@ -78,6 +96,13 @@ impl HarnessAdapter for CodexRuntime {
     }
 
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        if self.inner.fork_pending() == Some(id) {
+            // The native fork happened, but its new thread id is beyond the
+            // frame bound; Sage creates no Chat for it.
+            self.inner.complete_fork(id).map_err(map_adapter)?;
+            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
+            return Ok(());
+        }
         if self
             .inner
             .oversized_child_response(id)

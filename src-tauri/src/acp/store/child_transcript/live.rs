@@ -14,7 +14,37 @@ use super::{
     write_snapshot_in,
 };
 
+/// A changed child snapshot advances the chat's child projection epoch (its
+/// newest live `updated_at`, see `child_projection_epoch`). It never moves
+/// the parent projection revision, the optimistic-concurrency token of user
+/// actions, nor `chats.updated_at`. Duplicates stay silent.
 pub(crate) fn persist_live_item_in(
+    transaction: &Transaction<'_>,
+    owner: &AdapterStoreOwner,
+    command: &ChildLiveItemCommand,
+) -> Result<bool, StoreError> {
+    store_live_item_in(transaction, owner, command)
+}
+
+pub(crate) fn persist_turn_status_in(
+    transaction: &Transaction<'_>,
+    owner: &AdapterStoreOwner,
+    child_thread_id: &ExternalId,
+    child_turn_id: &ExternalId,
+    status: TurnState,
+    now_millis: i64,
+) -> Result<bool, StoreError> {
+    store_turn_status_in(
+        transaction,
+        owner,
+        child_thread_id,
+        child_turn_id,
+        status,
+        now_millis,
+    )
+}
+
+fn store_live_item_in(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
     command: &ChildLiveItemCommand,
@@ -74,14 +104,14 @@ pub(crate) fn persist_live_item_in(
     }
     match apply_live_item(&mut candidate, command) {
         Ok(true) => {
-            write_snapshot_in(transaction, &scope, &candidate, command.now_millis)
+            write_snapshot_in(transaction, &scope, &candidate, command.now_millis, true)
                 .map_err(store_error)?;
             Ok(true)
         }
         Ok(false) => Ok(false),
         Err(StoreError::Capacity { .. }) if !snapshot.retention_limited => {
             snapshot.retention_limited = true;
-            write_snapshot_in(transaction, &scope, &snapshot, command.now_millis)
+            write_snapshot_in(transaction, &scope, &snapshot, command.now_millis, true)
                 .map_err(store_error)?;
             Ok(true)
         }
@@ -156,7 +186,7 @@ fn apply_live_item(
     Ok(changed)
 }
 
-pub(crate) fn persist_turn_status_in(
+fn store_turn_status_in(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
     child_thread_id: &ExternalId,
@@ -236,7 +266,8 @@ pub(crate) fn persist_turn_status_in(
         }
         if snapshot.turns.len() == MAX_TURNS {
             snapshot.retention_limited = true;
-            write_snapshot_in(transaction, &scope, &snapshot, now_millis).map_err(store_error)?;
+            write_snapshot_in(transaction, &scope, &snapshot, now_millis, true)
+                .map_err(store_error)?;
             return Ok(true);
         }
         snapshot.turns.push(ChildTurn {
@@ -245,12 +276,13 @@ pub(crate) fn persist_turn_status_in(
             items: Vec::new(),
         });
     }
-    match write_snapshot_in(transaction, &scope, &snapshot, now_millis) {
+    match write_snapshot_in(transaction, &scope, &snapshot, now_millis, true) {
         Ok(()) => Ok(true),
         Err(ChildTranscriptStoreError::Capacity) if !retained.retention_limited => {
             let mut limited = retained;
             limited.retention_limited = true;
-            write_snapshot_in(transaction, &scope, &limited, now_millis).map_err(store_error)?;
+            write_snapshot_in(transaction, &scope, &limited, now_millis, true)
+                .map_err(store_error)?;
             Ok(true)
         }
         Err(ChildTranscriptStoreError::Capacity) => Ok(false),

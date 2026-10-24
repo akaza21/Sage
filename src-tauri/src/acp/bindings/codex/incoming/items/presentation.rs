@@ -254,8 +254,24 @@ pub(super) fn collaboration(item: &Map<String, Value>) -> Result<ItemNormalizati
             agent_key,
             agent_keys: BoundedVec::new("agentKeys", receiver_ids).map_err(content)?,
             agent_states: BoundedVec::new("agentStates", agent_states).map_err(content)?,
+            model: spawn_text(item, is_call, "model"),
+            reasoning_effort: spawn_text(item, is_call, "reasoningEffort"),
         },
         None,
         None,
     ))
+}
+
+/// A spawn's requested model or effort, kept only when bounded and printable.
+fn spawn_text<const N: usize>(
+    item: &Map<String, Value>,
+    is_call: bool,
+    field: &'static str,
+) -> Option<SafeText<N>> {
+    item.get(field)
+        .and_then(Value::as_str)
+        .filter(|value| {
+            is_call && !value.is_empty() && value.len() <= N && !value.chars().any(char::is_control)
+        })
+        .and_then(|value| SafeText::new(field, value).ok())
 }

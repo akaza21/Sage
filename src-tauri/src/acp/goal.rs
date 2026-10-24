@@ -27,6 +27,16 @@ pub(crate) enum NativeRpcRequest {
         child_thread_id: String,
         parent_thread_id: String,
     },
+    /// Forks the runtime's own native session through its latest turn. Only
+    /// an idle runtime whose negotiated capabilities admit
+    /// `nativeSessionFork` accepts it.
+    ForkSession,
+    /// Releases a fork this runtime created once its fork Chat was committed
+    /// or refused. Best effort: the fork Chat never depends on it.
+    ReleaseFork {
+        fork: crate::acp::intent::ExternalId,
+        committed: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +45,10 @@ pub(crate) enum NativeRpcReply {
     ChildTranscript(crate::acp::bindings::codex::ChildTranscriptSnapshot),
     TooLarge,
     Rejected,
+    /// The harness created a new native session holding the forked history.
+    Forked(crate::acp::intent::ExternalId),
+    /// The harness let go of a fork this runtime created.
+    Released,
 }
 
 impl NativeRpcIntent {
@@ -49,6 +63,8 @@ impl NativeRpcIntent {
                     child_thread_id,
                     parent_thread_id,
                 } => child_thread_id.len() + parent_thread_id.len() + 1,
+                NativeRpcRequest::ForkSession => 1,
+                NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
             }
     }
 }

@@ -204,8 +204,8 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(jump.locator('svg[aria-hidden="true"]')).toHaveCount(1);
       await expect(jump).toHaveCSS("border-radius", "50%");
       const jumpBox = await jump.boundingBox();
-      expect(jumpBox!.width).toBe(32);
-      expect(jumpBox!.height).toBe(32);
+      expect(jumpBox!.width).toBe(28);
+      expect(jumpBox!.height).toBe(28);
       const surfaceBox = await page.locator(".chat-surface").boundingBox();
       expect(jumpBox!.x).toBeGreaterThanOrEqual(surfaceBox!.x);
       expect(jumpBox!.x + jumpBox!.width).toBeLessThanOrEqual(

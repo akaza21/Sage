@@ -234,6 +234,15 @@ export interface ChatPort {
     request: PinChatRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /** Browser fixtures only; the desktop forks through the Rust `fork_chat`. */
+  forkChat?(request: ForkChatRequest): Promise<ProjectTransitionResult>;
+}
+
+export interface ForkChatRequest {
+  currentLayout: ProjectLayoutRequest;
+  chatId: string;
+  turnId: string;
+  expectedTransitionEpoch: number;
 }
 
 export interface AgentPort {

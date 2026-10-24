@@ -164,7 +164,7 @@ impl AppState {
             .map_or(0, |recovery| recovery.transition_epoch);
         let acp = AcpService::new_with_notification_sink_and_registry(
             database.clone(),
-            std::sync::Arc::new(DesktopProjectionSink(app.clone())),
+            std::sync::Arc::new(DesktopProjectionSink(app.clone(), Default::default())),
             registry.clone(),
         )
         .map_err(|_| {
@@ -216,7 +216,7 @@ impl AppState {
         let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_characterization_sink(
             database.clone(),
-            std::sync::Arc::new(DesktopProjectionSink(app.clone())),
+            std::sync::Arc::new(DesktopProjectionSink(app.clone(), Default::default())),
             binding,
             registry.clone(),
         )
@@ -277,16 +277,26 @@ impl AppState {
     }
 }
 
-struct DesktopProjectionSink(tauri::AppHandle);
+/// Emits committed projection notices, routing child-only changes per
+/// (project, chat, session) through a bounded LRU of last revisions.
+struct DesktopProjectionSink(
+    tauri::AppHandle,
+    std::sync::Mutex<crate::acp::intent::ProjectionNoticeRoutes>,
+);
 
 impl NotificationSink for DesktopProjectionSink {
     fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
         Box::pin(async move {
             use tauri::Emitter;
-
-            self.0
-                .emit(ACP_PROJECTION_CHANGED_EVENT, event)
-                .map_err(|_| NotificationError::SinkUnavailable)
+            let mut routes = self.1.lock().unwrap_or_else(|error| error.into_inner());
+            match crate::acp::intent::route_projection_notice(&mut routes, event) {
+                Ok(event) => self.0.emit(ACP_PROJECTION_CHANGED_EVENT, event),
+                Err(child) => self.0.emit(
+                    crate::acp::intent::ACP_CHILD_PROJECTION_CHANGED_EVENT,
+                    child,
+                ),
+            }
+            .map_err(|_| NotificationError::SinkUnavailable)
         })
     }
 }

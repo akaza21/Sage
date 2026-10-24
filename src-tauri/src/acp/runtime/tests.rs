@@ -527,6 +527,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
                 chat_id: SageChatId::parse("chat-foreign").unwrap(),
                 session_id: SageAgentSessionId::parse("session-foreign").unwrap(),
                 projection_revision: ProjectionRevision::new(1).unwrap(),
+                child_projection_epoch: 0,
             })
             .unwrap();
         let coordinator =
@@ -683,12 +684,14 @@ fn mailbox_contention_requests_bootstrap_without_undoing_commits() {
         chat_id: SageChatId::parse("chat-one").unwrap(),
         session_id: SageAgentSessionId::parse("session-one").unwrap(),
         projection_revision: ProjectionRevision::new(1).unwrap(),
+        child_projection_epoch: 0,
     };
     let other = crate::acp::intent::ProjectionChangedV1 {
         project_id: SageProjectId::parse("two").unwrap(),
         chat_id: SageChatId::parse("chat-two").unwrap(),
         session_id: SageAgentSessionId::parse("session-two").unwrap(),
         projection_revision: ProjectionRevision::new(1).unwrap(),
+        child_projection_epoch: 0,
     };
     assert_eq!(
         mailbox.publish_committed(first).unwrap(),

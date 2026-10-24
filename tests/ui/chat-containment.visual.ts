@@ -45,6 +45,12 @@ async function prepare(
   await expect(
     page.locator("form.composer").first().getByRole("textbox"),
   ).toHaveValue("Draft survives resizing");
+  // The queued rows are a lazy chunk that loads with the first queued
+  // message (lazyParts.tsx), so geometry waits for the live queue to mount.
+  if (live)
+    await expect(
+      page.locator("form.composer .composer__queued-row").first(),
+    ).toBeVisible();
 }
 
 async function expectControls(

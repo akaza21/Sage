@@ -1,10 +1,56 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 
+import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
-import { SubagentResourceRows } from "./SubagentResourceRows";
+import { SubagentResourceRows, useChildEpoch } from "./SubagentResourceRows";
 
-afterEach(cleanup);
+vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
+  isTauriRuntime: () => true,
+}));
+const childNotices = vi.hoisted(
+  () => new Map<string, (epoch: number) => void>(),
+);
+vi.mock("../services/acpChildTranscript", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
+  subscribeChildProjectionChanges: async (
+    projectId: string,
+    chatId: string,
+    onEpoch: (epoch: number) => void,
+  ) => {
+    childNotices.set(projectId + "/" + chatId, onEpoch);
+    return () => undefined;
+  },
+}));
+
+afterEach(() => {
+  cleanup();
+  childNotices.clear();
+});
+
+it("ignores a late child notice from a torn-down chat listener", async () => {
+  const page = (chatId: string) =>
+    ({ projectId: "project", chatId, turns: [] }) as unknown as AcpChatPage;
+  const view = renderHook(({ chat }) => useChildEpoch(page(chat)), {
+    initialProps: { chat: "a" },
+  });
+  await waitFor(() => expect(view.result.current).toBe(0));
+  const staleNotice = childNotices.get("project/a")!;
+  view.rerender({ chat: "b" });
+  await waitFor(() => expect(view.result.current).toBe(0));
+  act(() => childNotices.get("project/b")!(4));
+  expect(view.result.current).toBe(4);
+  act(() => staleNotice(9));
+  expect(view.result.current).toBe(4);
+});
 
 const agents = [
   {

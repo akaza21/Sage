@@ -154,6 +154,7 @@ pub(super) fn publish(
         chat_id: chat_id.clone(),
         session_id: session_id.clone(),
         projection_revision,
+        child_projection_epoch: 0,
     })?;
     if matches!(
         disposition,

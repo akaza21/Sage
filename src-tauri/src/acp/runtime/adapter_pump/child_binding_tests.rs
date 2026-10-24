@@ -255,6 +255,112 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
     });
 }
 
+/// B2: idle child activity publishes the child epoch on the existing
+/// projection-changed event and leaves the projection revision (the token a
+/// next send, start or close presents) where the WebView last saw it.
+#[test]
+fn an_idle_child_item_publishes_its_epoch_without_moving_the_revision() {
+    runtime().block_on(async {
+        let database = super::sign_in_tests::migrated_database();
+        let mut adapter = ready_codex_parent();
+        adapter.enable_observed_goal_for_test();
+        let intent = session_intent().bind_turn(ActiveTurnIntent {
+            turn_id: turn("one"),
+            external_turn_id: Some(ExternalId::new("turn", "turn-1").unwrap()),
+            client_message_id: message(),
+        });
+        let prompt = adapter.command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").unwrap(),
+            client_message_id: message(),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }).unwrap();
+        let prompt_id = codex_request_id(&prompt);
+        adapter.ingest(&codex_frame(serde_json::json!({
+            "id":prompt_id,"result":{"turn":{"id":"turn-1"}}
+        })), &Mapper).unwrap();
+        adapter.ingest(&codex_frame(serde_json::json!({
+            "method":"turn/started","params":{"threadId":"external-session","turn":{"id":"turn-1"}}
+        })), &Mapper).unwrap();
+        let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+        let task = runner.spawn();
+        let mailbox = Arc::new(ProjectionMailbox::default());
+        let mut pump = AdapterPump::new(
+            adapter,
+            SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()),
+            Mapper,
+            mailbox.clone(),
+            intent,
+        ).unwrap();
+        let spawn = concat!(
+            r#"{"method":"item/completed","params":{"threadId":"external-session","turnId":"turn-1","item":{"id":"activity-native","type":"subAgentActivity","agentThreadId":"child-native","agentPath":"Worker","kind":"completed"}}}"#,
+            "\n",
+        );
+        assert!(pump.push_stdout_chunk(spawn.as_bytes(), 9).await.unwrap());
+        let parent_done = concat!(r#"{"method":"turn/completed","params":{"threadId":"external-session","turn":{"id":"turn-1","status":"completed"}}}"#, "\n");
+        assert!(pump.push_stdout_chunk(parent_done.as_bytes(), 10).await.unwrap());
+        let mut idle = pump.try_into_completed_parts().ok().expect("terminal handoff");
+        let revision = |database: &crate::persistence::Database| -> (i64, i64) {
+            database.connection().query_row(
+                "SELECT projection_revision,updated_at FROM chats WHERE id='chat-one'",
+                [], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).unwrap()
+        };
+        let before = revision(&database);
+        let settled = mailbox.take().expect("the parent terminal was published");
+        assert_eq!(settled.projection_revision.get() as i64, before.0);
+        assert_eq!(settled.child_projection_epoch, 0);
+
+        for (index, now) in [(1, 20), (2, 21)] {
+            let child = format!(
+                "{}\n",
+                serde_json::json!({"method":"item/completed","params":{
+                    "threadId":"child-native","turnId":"native-turn-1",
+                    "item":{"id":format!("idle-{index}"),"type":"commandExecution",
+                        "status":"completed","command":"rg idle","aggregatedOutput":"ok","exitCode":0}
+                }})
+            );
+            idle.accept_idle_stdout_chunk(child.as_bytes(), now, &mut CaptureTransport(Vec::new()))
+                .await
+                .unwrap();
+            let event = mailbox.take().expect("an idle child change is published");
+            assert_eq!(event.projection_revision, settled.projection_revision);
+            assert_eq!(event.child_projection_epoch, now as u64);
+            // Steady child activity: the user's next action still matches.
+            assert_eq!(revision(&database), before);
+        }
+        // A duplicate child observation publishes nothing.
+        let duplicate = format!(
+            "{}\n",
+            serde_json::json!({"method":"item/completed","params":{
+                "threadId":"child-native","turnId":"native-turn-1",
+                "item":{"id":"idle-2","type":"commandExecution",
+                    "status":"completed","command":"rg idle","aggregatedOutput":"ok","exitCode":0}
+            }})
+        );
+        idle.accept_idle_stdout_chunk(duplicate.as_bytes(), 22, &mut CaptureTransport(Vec::new()))
+            .await
+            .unwrap();
+        assert!(mailbox.take().is_none());
+        let page = crate::acp::store::load_chat_page(
+            &database.connection(),
+            SageProjectId::parse("project-one").unwrap(),
+            SageChatId::parse("chat-one").unwrap(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(page.child_projection_epoch, 21);
+        assert_eq!(page.projection_revision, settled.projection_revision);
+        // The idle parts still hand off to the next Turn.
+        assert!(idle.bind_turn(ActiveTurnIntent {
+            turn_id: turn("two"),
+            external_turn_id: None,
+            client_message_id: message(),
+        }).is_ok());
+        handle.close_when_drained();
+        task.await.unwrap();
+    });
+}
+
 fn ready_codex_parent() -> CodexRuntime {
     ready_codex_parent_for_thread("external-session")
 }

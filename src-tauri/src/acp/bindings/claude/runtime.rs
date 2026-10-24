@@ -6,8 +6,9 @@ use crate::acp::{
     bindings::{
         adapter::{
             AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
-            AdapterEvent as SharedEvent, AdapterModel, AdapterRuntimeError, EgressResolution,
-            EgressToken, HarnessAdapter, RefusalDetail, ResourceMapper as SharedResourceMapper,
+            AdapterEvent as SharedEvent, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError,
+            EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
+            ResourceMapper as SharedResourceMapper,
         },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
         standard_acp::{
@@ -34,6 +35,7 @@ use super::{
 mod browse_host;
 mod commands;
 mod egress;
+mod fork;
 mod ingress;
 mod session_config;
 mod support;
@@ -61,6 +63,10 @@ pub(crate) struct ClaudeRuntime {
     delivery_unknown: Option<DeliveryUnknown>,
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<AdapterEvent>,
+    session_root: Option<String>,
+    native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
+    /// Recent sessions this runtime forked (bounded; see `fork.rs`).
+    forks: Vec<fork::TrackedFork>,
 }
 
 struct ActiveSession {
@@ -85,6 +91,9 @@ enum PendingRequest {
     SetMode,
     SetConfig,
     Prompt,
+    Fork(ExternalId),
+    /// `true` for a deferred (background) delete nobody waits for.
+    DeleteFork(bool, ExternalId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -185,6 +194,9 @@ impl ClaudeRuntime {
             delivery_unknown: None,
             refusal_detail: None,
             deferred: Vec::new(),
+            session_root: None,
+            native_rpc_reply: None,
+            forks: Vec::new(),
         }
     }
 
@@ -343,6 +355,24 @@ impl HarnessAdapter for ClaudeRuntime {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.capabilities.clone()
     }
+    fn native_rpc_pending(&self) -> bool {
+        self.fork_pending()
+    }
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.fork_command()
+    }
+    fn release_fork(&mut self, fork: &ExternalId, done: bool) -> AdapterOptionalEgress {
+        self.release_fork_command(fork, done)
+    }
+    fn defer_fork_release(&mut self, fork: &ExternalId, done: bool) -> bool {
+        self.defer_fork_release_command(fork, done)
+    }
+    fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
+        self.deferred_fork_delete()
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.native_rpc_reply.take()
+    }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.command_inner(command)
@@ -387,5 +417,7 @@ mod browser_mcp_tests;
 mod config_tests;
 #[cfg(test)]
 mod durable_turn_tests;
+#[cfg(test)]
+mod fork_tests;
 #[cfg(test)]
 mod tests;

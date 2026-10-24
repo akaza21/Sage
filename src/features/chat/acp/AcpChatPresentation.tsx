@@ -55,9 +55,12 @@ const Turn = memo(
     hasProjectRoot,
     onOpenResource,
     onRetry,
+    inherited = false,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
+    /** A fork's read-only parent Turn: never interactive or quotable. */
+    inherited?: boolean;
     hasProjectRoot: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
     onRetry?: () => void;
@@ -75,7 +78,7 @@ const Turn = memo(
         !activityIds.has(activity.parentActivityId) ||
         itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
     );
-    const interactive = turn.sessionId === page.currentSessionId;
+    const interactive = !inherited && turn.sessionId === page.currentSessionId;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
       hasProjectRoot && page.projectId && page.chatId && page.currentSessionId
         ? {
@@ -210,7 +213,7 @@ const Turn = memo(
             <ItemView
               key={finalAnswer.id}
               item={finalAnswer}
-              selectableTurnId={turn.id}
+              selectableTurnId={inherited ? undefined : turn.id}
               turnState={turn.state}
               interactive={interactive}
               fileReferenceOwner={fileReferenceOwner}
@@ -267,6 +270,7 @@ const Turn = memo(
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
+    // `inherited` is fixed per mount: only InheritedTurns passes it.
     left.hasProjectRoot === right.hasProjectRoot &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
@@ -393,4 +397,19 @@ export function AcpChatPresentation({
         : null}
     </>
   );
+}
+
+/**
+ * A fork's inherited parent history: turns only. It mounts no navigator,
+ * find controller, virtual list or edit summary, so the fork's own
+ * transcript keeps the only ones on its message list.
+ */
+export function InheritedTurns({ page }: { page: AcpChatPage }) {
+  const dayTimestamps = useTurnDayTimestamps(page.turns);
+  return page.turns.map((turn, index) => (
+    <Fragment key={turn.id}>
+      <TurnDaySeparator timestamp={dayTimestamps[index]} />
+      <Turn page={page} turn={turn} hasProjectRoot={false} inherited />
+    </Fragment>
+  ));
 }

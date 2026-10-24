@@ -91,7 +91,7 @@ export function ComposerQueuedPrompts({
         <div className="composer__queued-row" key={prompt.id}>
           <QueuedAttachmentPreview contexts={prompt.attachedContext} />
           <span className="composer__queued-text" title={prompt.text}>
-            {prompt.text}
+            {prompt.text || "Attached context"}
           </span>
           <span className="composer__queued-state">
             {prompt.status === "saving"

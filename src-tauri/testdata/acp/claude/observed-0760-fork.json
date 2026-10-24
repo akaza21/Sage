@@ -1,0 +1,39 @@
+{
+  "adapter": "@agentclientprotocol/claude-agent-acp",
+  "adapterVersion": "0.76.0",
+  "acpSdkVersion": "1.4.0",
+  "sourceFiles": {
+    "dist/fork-session.js": "70da6567b5d9f76dedef4aa02dc1c53e4bdb5e7f4bc28e374d1ad680e6287c2a",
+    "dist/acp-agent.js": "c1635f643ceff71c906011b85f33f1b135a4a07aeaa5546d44fb6c5fad11c96d",
+    "node_modules/@agentclientprotocol/sdk/dist/schema/types.gen.d.ts": "dba720be2e59558fbcbad17e80f8d42d5dab6488a0371311a91667dce204cdbd"
+  },
+  "advertisedIn": "tests/fixtures/harness-traces/claude-code/smoke/frames.jsonl (initialize result agentCapabilities.sessionCapabilities.fork)",
+  "method": "session/fork",
+  "stability": "unstable ACP method (SDK name unstable_forkSession)",
+  "request": {
+    "required": ["cwd", "sessionId"],
+    "optional": ["_meta", "additionalDirectories", "mcpServers"]
+  },
+  "response": {
+    "required": ["sessionId"],
+    "optional": ["_meta", "configOptions", "modes"]
+  },
+  "forkPoint": "Without a vendor _meta fork point the adapter forks the stored session through its latest message (fork-session.js resolution=latest).",
+  "fixtureExchange": {
+    "note": "Schema-conforming exchange for replay tests; not a live capture (no live session/fork was recorded).",
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "session/fork",
+      "params": {
+        "sessionId": "06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+        "cwd": "C:\\fixture-workspace"
+      }
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": { "sessionId": "5b1f7c0e-9d2a-4c8e-8f61-0a3d2e7b9c14" }
+    }
+  }
+}

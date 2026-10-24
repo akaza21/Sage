@@ -22,8 +22,21 @@ export function completeSideChatFixture() {
   completeSide();
 }
 
-export function installTranscriptSelectionFixture(longAnswer = false) {
+export function installTranscriptSelectionFixture(
+  longAnswer = false,
+  forkable = false,
+) {
   const source = buildVisualScenario("rich").pages[0];
+  if (forkable)
+    source.sessions = source.sessions.map((session) =>
+      session.id === source.currentSessionId
+        ? {
+            ...session,
+            residency: "hot",
+            capabilities: { ...session.capabilities, nativeSessionFork: true },
+          }
+        : session,
+    );
   const turn = source.turns[0];
   const answer = turn.items.find(
     (item) => item.kind === "text" && item.payload.role === "assistant",
@@ -134,6 +147,49 @@ export function installTranscriptSelectionFixture(longAnswer = false) {
       snapshot: {
         ...snapshot(expected + 1),
         tabs: [...layout.tabs, tab],
+        activeTabId: id,
+      },
+    };
+  };
+  // A browser stand-in for Rust `fork_chat`: the fork sits above its parent,
+  // is titled "<parent> (2)" and carries the lineage the divider reads.
+  ports.chat.forkChat = async ({
+    currentLayout,
+    chatId,
+    turnId,
+    expectedTransitionEpoch,
+  }) => {
+    const parent = currentLayout.tabs.find((tab) => tab.id === chatId);
+    if (!parent) throw new Error("Unknown fixture parent");
+    const id = "fork-fixture-1" as SageChatId;
+    const title = `${parent.title} (2)`;
+    pages.set(id, {
+      ...structuredClone(source),
+      chatId: id,
+      title,
+      turns: [],
+      forkedFrom: chatId as SageChatId,
+      forkedFromTurnId: turnId as SageTurnId,
+    });
+    const tabs = currentLayout.tabs.flatMap((tab) =>
+      tab.id === chatId
+        ? [
+            { ...tab, id, title },
+            { ...tab, position: tab.position + 1 },
+          ]
+        : [
+            tab.position > parent.position
+              ? { ...tab, position: tab.position + 1 }
+              : tab,
+          ],
+    );
+    return {
+      committed: true,
+      transitionEpoch: expectedTransitionEpoch + 1,
+      recoveryError: null,
+      snapshot: {
+        ...snapshot(expectedTransitionEpoch + 1),
+        tabs,
         activeTabId: id,
       },
     };

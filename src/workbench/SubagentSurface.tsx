@@ -1,16 +1,46 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
+import {
+  formatWorkedDuration,
+  formatWorkingDuration,
+} from "../features/chat/transcriptSummary";
 import {
   getAcpChildTranscript,
   type ChildTranscript,
 } from "../services/acpChildTranscript";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { ArrowLeft } from "../ui/leanIcons";
+import {
+  liveAgent,
+  projectTaskResources,
+} from "./agentArtifactTabPresentation";
+import {
+  childRefresh,
+  useChildEpoch,
+  scheduleChildRefresh,
+  choiceName,
+  invocationOf,
+  SubagentAvatar,
+  SubagentList,
+  subagentTimes,
+  useNow,
+} from "./SubagentResourceRows";
 
 export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
+const MAX_STALE_RETRIES = 3;
+
+type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
+type ReadState = {
+  key: string;
+  value: ChildTranscript | "error";
+  /** The latest full read for this child, kept across later failures. */
+  good?: ChildRead;
+  stale: number;
+};
 
 function childActivityLabel(item: AcpItem): string {
   if (item.kind === "toolCall") return item.payload.presentation.label;
@@ -21,7 +51,41 @@ function childActivityLabel(item: AcpItem): string {
   return item.kind === "text" ? "Message" : "Activity";
 }
 
-export function SubagentSurface({
+/** One deduplicated run of child items without the spawn prompt bubble. */
+function childRows(read: ChildRead | undefined) {
+  const seen = new Set<string>();
+  const rows: AcpItem[] = [];
+  for (const [turnIndex, childTurn] of (read?.turns ?? []).entries())
+    for (const [index, child] of childTurn.items.entries()) {
+      const prompt =
+        turnIndex === 0 &&
+        index === 0 &&
+        child.kind === "text" &&
+        child.payload.role === "user";
+      if (prompt || seen.has(child.id)) continue;
+      seen.add(child.id);
+      rows.push(child);
+    }
+  return rows;
+}
+
+export function SubagentSurface(props: {
+  page: AcpChatPage;
+  projectGeneration?: string;
+  itemId: string;
+  agentKey?: string;
+}) {
+  const list = useSubagentPaneStore((state) => state.list);
+  return list ? (
+    <section className="subagent-surface" aria-label="Subagents">
+      <SubagentList page={props.page} />
+    </section>
+  ) : (
+    <SubagentChild {...props} />
+  );
+}
+
+function SubagentChild({
   page,
   projectGeneration,
   itemId,
@@ -65,79 +129,129 @@ export function SubagentSurface({
     attributedKey === agentKey &&
     (session.runtimeEpoch === null ||
       session.runtimeEpoch === turn.runtimeEpoch);
-  const requestKey = canRead
+  // The child identity; the child projection epoch is its invalidation token.
+  const identity = canRead
     ? [
         page.projectId,
         projectGeneration,
         page.chatId,
-        page.projectionRevision,
         turn.sessionId,
         turn.runtimeEpoch,
         itemId,
         agentKey,
       ].join("\u0000")
     : "";
-  const [read, setRead] = useState<{
-    key: string;
-    value: ChildTranscript | "loading" | "error";
-  } | null>(null);
+  const epoch = useChildEpoch(page);
+  const recent = agentKey
+    ? projectTaskResources(page, page.chatId).recentAgents
+    : [];
+  const invocation =
+    agentKey && !superseded ? invocationOf(page, itemId, agentKey) : null;
+  const observed = invocation
+    ? recent.find((agent) => agent.id === invocation)
+    : null;
+  const live = liveAgent(observed?.status);
+  const [read, setRead] = useState<ReadState | null>(null);
+  const sync = useRef(childRefresh());
+  const current = read?.key === identity ? read : null;
+  const good = current?.good;
+  const settled =
+    !!good &&
+    !live &&
+    good.turns.every((child) => child.status !== "inProgress");
+  const staleRetry =
+    current &&
+    typeof current.value === "object" &&
+    current.value.kind === "stale"
+      ? Math.min(current.stale, MAX_STALE_RETRIES)
+      : 0;
   useEffect(() => {
     if (
+      epoch === null ||
       !canRead ||
+      settled ||
+      staleRetry >= MAX_STALE_RETRIES ||
       !sessionId ||
       !runtimeEpoch ||
       !projectGeneration ||
       !agentKey
     )
       return;
-    let active = true;
-    getAcpChildTranscript({
-      projectId: page.projectId,
-      projectGeneration,
-      chatId: page.chatId,
-      expectedProjectionRevision: page.projectionRevision,
-      sessionId,
-      runtimeEpoch,
-      itemId,
-      agentKey,
-    })
-      .then((value) => {
-        if (active) setRead({ key: requestKey, value });
+    const state = sync.current;
+    const fresh = state.identity !== identity;
+    state.identity = identity;
+    // Throttled to about once a second (scheduleChildRefresh), never
+    // beside another read. A
+    // user config, goal or fork command that meets a read in flight waits
+    // for it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
+    const schedule = () => scheduleChildRefresh(state);
+    state.send = () => {
+      state.timer = undefined;
+      if (state.inFlight) {
+        state.again = true;
+        return;
+      }
+      state.inFlight = true;
+      state.startedAt = performance.now();
+      void getAcpChildTranscript({
+        projectId: page.projectId,
+        projectGeneration,
+        chatId: page.chatId,
+        sessionId,
+        runtimeEpoch,
+        itemId,
+        agentKey,
       })
-      .catch(() => {
         // Only malformed successful responses throw; request failures are typed.
-        if (active) setRead({ key: requestKey, value: "error" });
-      });
+        .catch(() => "error" as const)
+        .then((value) => {
+          state.inFlight = false;
+          if (state.identity === identity)
+            setRead((previous) => {
+              const prior = previous?.key === identity ? previous : null;
+              const stale = typeof value === "object" && value.kind === "stale";
+              return {
+                key: identity,
+                value,
+                // A failure never replaces the last full read.
+                good:
+                  typeof value === "object" && "turns" in value
+                    ? value
+                    : prior?.good,
+                stale: stale ? (prior?.stale ?? 0) + 1 : 0,
+              };
+            });
+          if (state.again) {
+            state.again = false;
+            if (state.identity === identity) schedule();
+            else state.send();
+          }
+        });
+    };
+    if (fresh) state.send();
+    else schedule();
     return () => {
-      active = false;
+      clearTimeout(state.timer);
+      state.timer = undefined;
+      state.send = () => undefined;
     };
   }, [
-    requestKey,
+    identity,
+    epoch,
+    settled,
+    staleRetry,
     canRead,
     page.projectId,
     page.chatId,
-    page.projectionRevision,
     projectGeneration,
     sessionId,
     runtimeEpoch,
     itemId,
     agentKey,
   ]);
+  const now = useNow(live);
   if (!turn || item?.kind !== "collaboration") return null;
 
-  const states = item.payload.agentStates ?? [];
-  const recent = agentKey
-    ? projectTaskResources(page, page.chatId).recentAgents
-    : [];
-  const observed =
-    agentKey && !superseded
-      ? recent.find(
-          (agent) =>
-            agent.id === `${itemId}:${agentKey}` ||
-            (agent.observationIds?.includes(itemId) &&
-              agent.agentKey === agentKey),
-        )
-      : null;
   const label =
     observed?.label ??
     (item.payload.receiverLabels.length === 1
@@ -145,24 +259,22 @@ export function SubagentSurface({
       : item.payload.operation === "started"
         ? item.payload.label
         : "Subagent");
-  const latest = observed?.status;
-  const status = latest
-    ? latest === "starting"
-      ? "Starting when observed"
-      : latest === "working"
-        ? "Working when observed"
-        : latest === "done"
-          ? "Done"
-          : latest === "stopped"
-            ? "Stopped"
-            : "Failed"
-    : states.some(([, state]) => state === "running" || state === "pendingInit")
-      ? "Working when observed"
-      : states.length > 0 && states.every(([, state]) => state === "completed")
-        ? "Done"
-        : item.payload.operation === "interrupted"
-          ? "Stopped"
-          : "Observed";
+  const time = observed ? subagentTimes(page, recent).get(observed.id) : null;
+  const duration = time
+    ? live
+      ? formatWorkingDuration(time.startedAt, Math.max(now, time.startedAt))
+      : formatWorkedDuration(time.startedAt, time.updatedAt)
+    : null;
+  const spawn = good?.spawnModel;
+  const model = spawn
+    ? [
+        choiceName(page, "model", spawn.model),
+        spawn.reasoningEffort &&
+          choiceName(page, "thought_level", spawn.reasoningEffort),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
 
   const childIds = new Set<string>();
   for (const activity of turn.activities) {
@@ -182,36 +294,33 @@ export function SubagentSurface({
         childIds.has(candidate.activityId),
     )
     .slice(0, MAX_CHILD_ACTIVITIES);
-  const state = read?.key === requestKey ? read.value : "loading";
-  const retainedTurns =
-    typeof state === "object" && "turns" in state ? state.turns : [];
-  const { visibleTurns, visibleCount } = retainedTurns.reduce(
-    (result, childTurn) => {
-      const items = childTurn.items.slice(
-        0,
-        Math.max(0, MAX_VISIBLE_CHILD_ITEMS - result.visibleCount),
-      );
-      return {
-        visibleTurns: [...result.visibleTurns, { ...childTurn, items }],
-        visibleCount: result.visibleCount + items.length,
-      };
-    },
-    { visibleTurns: [] as typeof retainedTurns, visibleCount: 0 },
-  );
-  const retainedCount = retainedTurns.reduce(
-    (count, childTurn) => count + childTurn.items.length,
-    0,
-  );
+  const state = good ?? (current ? current.value : "loading");
+  const rows = childRows(good);
+  const visible = rows.slice(0, MAX_VISIBLE_CHILD_ITEMS);
   return (
     <section className="subagent-surface" aria-label="Subagent activity">
       <header>
-        <span className="subagent-surface__avatar" aria-hidden="true">
-          ✦
-        </span>
-        <div>
+        <div className="subagent-surface__bar">
+          <button
+            type="button"
+            aria-label="Back to subagents"
+            onClick={() => useSubagentPaneStore.setState({ list: true })}
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+          </button>
+          <SubagentAvatar agentKey={agentKey ?? itemId} label={label} />
           <h1>{label}</h1>
-          <span role="status">{status}</span>
+          {model ? (
+            <span className="subagent-surface__model">{model}</span>
+          ) : null}
         </div>
+        {duration ? (
+          <p
+            className={`subagent-surface__duration${live ? " acp-live-shimmer" : ""}`}
+          >
+            {duration}
+          </p>
+        ) : null}
       </header>
       {superseded ? (
         <p>
@@ -243,49 +352,33 @@ export function SubagentSurface({
           ) : null}
           {typeof state === "object" && "turns" in state ? (
             <>
-              <p>
-                {state.kind === "current"
-                  ? "Current child transcript"
-                  : "From an earlier session"}
-              </p>
+              {state.kind === "fromEarlierSession" ? (
+                <p>From an earlier session</p>
+              ) : null}
               {state.retentionLimited ? (
                 <p>Some later child activity was not retained.</p>
               ) : null}
-              {retainedCount > visibleCount ? (
+              {rows.length > visible.length ? (
                 <p>
                   Showing the first {MAX_VISIBLE_CHILD_ITEMS} retained child
                   items.
                 </p>
               ) : null}
-              {visibleTurns.every(
-                (childTurn) => childTurn.items.length === 0,
-              ) ? (
+              {visible.length === 0 ? (
                 <p>No child activity was captured.</p>
               ) : (
-                visibleTurns.map((childTurn, index) => (
-                  <section
-                    key={childTurn.id}
-                    className="acp-turn"
-                    aria-label={`Child Turn ${index + 1}`}
-                  >
-                    <p>
-                      Turn {index + 1} · {childTurn.status}
-                    </p>
-                    <div className="acp-turn__items">
-                      {childTurn.items.map((child) => (
-                        <ItemView
-                          key={child.id}
-                          item={child}
-                          interactive={false}
-                          neutralTextRole={
-                            child.kind === "text" &&
-                            child.payload.role === "system"
-                          }
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))
+                <div className="acp-turn__items" aria-label="Child transcript">
+                  {visible.map((child) => (
+                    <ItemView
+                      key={child.id}
+                      item={child}
+                      interactive={false}
+                      neutralTextRole={
+                        child.kind === "text" && child.payload.role === "system"
+                      }
+                    />
+                  ))}
+                </div>
               )}
             </>
           ) : null}

@@ -319,6 +319,11 @@ pub enum NormalizedPayload {
         agent_keys: BoundedVec<SafeText<512>, 32>,
         #[serde(default)]
         agent_states: BoundedVec<(SafeText<512>, SafeText<32>), 32>,
+        /// Model and effort a spawn requested, only as the wire supplied them.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<SafeText<256>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reasoning_effort: Option<SafeText<32>>,
     },
 }
 

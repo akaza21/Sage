@@ -1,3 +1,52 @@
+/*
+ * Streamed answers (Codex s5/f0299-f0309): each block or list/table row that
+ * mounts while the turn runs fades in once. Earlier DOM nodes keep their
+ * finished animation across re-renders, so only new content moves; opacity
+ * never shifts layout.
+ */
+.acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+  .acp-message--assistant
+  .acp-markdown
+  > :not(ul, ol, .markdown-table),
+.acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+  .acp-message--assistant
+  .acp-markdown
+  :is(li, tr) {
+  animation: acp-stream-in var(--motion-duration-stream) ease-out both;
+}
+
+@keyframes acp-stream-in {
+  from {
+    opacity: 0.15;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-markdown
+    > :not(ul, ol, .markdown-table),
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-markdown
+    :is(li, tr) {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-markdown
+    > :not(ul, ol, .markdown-table),
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-markdown
+    :is(li, tr) {
+    animation: none;
+  }
+}
+
 .acp-markdown {
   font-size: var(--font-size-md);
   line-height: var(--line-height-relaxed);

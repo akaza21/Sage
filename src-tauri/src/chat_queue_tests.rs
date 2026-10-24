@@ -246,3 +246,24 @@ fn outcome_unknown_queue_status_survives_database_reopen() {
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn an_attachment_only_prompt_queues_with_empty_text_and_a_blank_one_does_not() {
+    let prompt = |text: &str, context: serde_json::Value| -> DurableQueuedPrompt {
+        serde_json::from_value(serde_json::json!({
+            "id": "queue-1",
+            "text": text,
+            "attachedContext": context,
+            "bindingId": "binding",
+            "modelId": null,
+            "status": "queued"
+        }))
+        .unwrap()
+    };
+    let quote = serde_json::json!([{
+        "kind": "transcriptQuote", "ordinal": 1, "sourceTurnId": "t",
+        "sourceItemId": "i", "text": "quote", "startOffset": 0, "endOffset": 5
+    }]);
+    assert!(admitted_prompts(&[prompt("  ", quote)]).is_ok());
+    assert!(admitted_prompts(&[prompt("  ", serde_json::json!([]))]).is_err());
+}

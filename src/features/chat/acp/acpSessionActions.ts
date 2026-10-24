@@ -84,7 +84,10 @@ export function createAcpSessionActions(
     } catch {
       return Promise.resolve("rejected");
     }
-    const normalizedPrompt = prompt.trim();
+    // An attachment-only (queued) steer carries the idle-send prompt.
+    const normalizedPrompt =
+      prompt.trim() ||
+      (boundedContext.length ? "Please respond to the attached context." : "");
     const active = currentNonterminalTurn(captured.page);
     const session = currentSession(captured.page);
     if (

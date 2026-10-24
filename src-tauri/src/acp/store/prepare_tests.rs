@@ -1,7 +1,5 @@
-use super::{
-    MutationDisposition, prepare_turn,
-    tests::{command, setup},
-};
+use super::super::{MutationDisposition, prepare_turn};
+use super::{command, setup};
 
 #[test]
 fn prepare_commits_turn_user_item_and_send_intent_atomically() {

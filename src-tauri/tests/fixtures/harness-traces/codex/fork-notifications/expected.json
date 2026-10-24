@@ -1,0 +1,13 @@
+{
+  "scenario": "fork-notifications",
+  "harness": "codex",
+  "handshake": "noInitializeResponse",
+  "events": [],
+  "blocker": "codex app-server speaks its own JSON-RPC, not ACP, so the standard translator cannot replay it; codex/runtime/tests/fork_tests.rs replays these frames through the Codex binding and asserts every post-fork frame is absorbed.",
+  "notes": [
+    "Live capture against the pinned codex-cli 0.146.0 app-server with no prompt sent: initialize, thread/start, thread/name/set (it persists the rollout; thread/fork of a thread with no rollout is refused with 'no rollout found'), thread/fork, five seconds of frames, then thread/unsubscribe of the fork and of the parent.",
+    "Codex announces the fork thread on the parent connection: mcpServer/startupStatus/updated for the fork thread arrives before the thread/fork answer, thread/started for it right after, and a further startup status about a second later.",
+    "thread/unsubscribe of the fork answers { status: unsubscribed }; Sage releases a committed fork that way. A separate run (local-evidence/w8-fork-capture/raw-codex-delete.jsonl) answered thread/delete of a fork with {}, followed by thread/status/changed notLoaded and thread/deleted for it, and left only the parent rollout on disk; Sage deletes a refused fork that way.",
+    "CODEX_HOME was a scratch copy of the user's config.toml and model catalog with no sessions, so no stored history was read or written."
+  ]
+}

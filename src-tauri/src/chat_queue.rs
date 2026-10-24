@@ -53,7 +53,8 @@ fn admitted_prompts(prompts: &[DurableQueuedPrompt]) -> AppResult<String> {
                 .model_id
                 .as_deref()
                 .is_some_and(|value| !valid_id(value))
-            || prompt.text.trim().is_empty()
+            // An attachment-only prompt queues with empty text.
+            || (prompt.text.trim().is_empty() && prompt.attached_context.as_slice().is_empty())
             || prompt.text.len() > MAX_PROMPT_BYTES
             || !ids.insert(prompt.id.as_str())
         {

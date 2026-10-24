@@ -559,7 +559,7 @@ test("subagents-popover opens header counts without selecting a child pane", () 
   }
   assert.ok(
     actionsFor("child-opened", "codex").includes(
-      ".acp-turn:last-of-type .acp-subagent-row",
+      ".acp-turn:last-of-type .acp-subagent-row .acp-subagent-name",
     ),
   );
 });

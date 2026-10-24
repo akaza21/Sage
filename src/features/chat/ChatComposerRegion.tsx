@@ -17,7 +17,6 @@ import { ChatHarnessControls } from "./ChatHarnessControls";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
 import { useBoundGoalDetails } from "./useBoundGoalDetails";
 import type { AcpGoalState } from "../../domain/acpGoal";
-import { ComposerQueuedPrompts } from "./ComposerQueuedPrompts";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
@@ -26,6 +25,7 @@ import {
 } from "./composerChrome";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { TranscriptPart } from "./transcriptLazy";
+import { QueuedRows } from "./lazyParts";
 import { ComposerContext } from "./ComposerContext";
 import { ClaudeAuthActions } from "./ClaudeAuthActions";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -210,7 +210,7 @@ export function ChatComposerRegion({
             canMutate={goalDetails.canMutate}
           />
         ) : null}
-        <ComposerQueuedPrompts
+        <QueuedRows
           composerRef={composerRef}
           prompts={queuedPrompts}
           steerAvailable={steerAvailable}
@@ -394,7 +394,7 @@ export function ChatComposerRegion({
           queueing={Boolean(activeTurn && queueAvailable)}
           sendDisabled={
             composerDisabled ||
-            (!text.trim() && otherContext.length === attachedContext.length) ||
+            (!text.trim() && !attachedContext.length) ||
             imageUploading ||
             imageInput.sendBlocked
           }

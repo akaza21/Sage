@@ -340,6 +340,15 @@
   --motion-duration-normal: 160ms;
   --motion-duration-pulse: 1.4s;
   --motion-duration-spin: 900ms;
+  /* Codex live recordings, parity spec section 10 (frame cadence 60-157 ms). */
+  --motion-duration-shimmer: 4s; /* s8/f0124, f0149, f0174 sweep starts */
+  --motion-duration-stream: 300ms; /* s5/f0299-f0309 word fade */
+  --motion-duration-chevron: 120ms; /* s2/f0039-f0041 */
+  --motion-duration-row: 200ms; /* s2/f0012-f0015 row fade */
+  --motion-stagger: 80ms; /* s2/f0012-f0015: about one row per frame */
+  --motion-duration-exit: 50ms; /* s3/f0004-f0005: closed within one 60 ms frame */
+  --motion-duration-fade: 150ms; /* s3/f0021-f0024 send; s2/f0048 jump */
+  --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
 
   /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
@@ -644,6 +653,14 @@ textarea:disabled,
     --motion-duration-normal: 0ms;
     --motion-duration-pulse: 0ms;
     --motion-duration-spin: 0ms;
+    --motion-duration-shimmer: 0ms;
+    --motion-duration-stream: 0ms;
+    --motion-duration-chevron: 0ms;
+    --motion-duration-row: 0ms;
+    --motion-stagger: 0ms;
+    --motion-duration-exit: 0ms;
+    --motion-duration-fade: 0ms;
+    --motion-duration-bounce: 0ms;
   }
 
   *,
@@ -749,6 +766,33 @@ textarea:disabled,
     --diff-delete: CanvasText;
     --diff-delete-muted: Canvas;
   }
+}
+
+/* Staggered rows: the Nth child waits N-1 steps; later rows share step 5. */
+@keyframes sage-row-in {
+  from {
+    opacity: 0.3;
+  }
+}
+
+:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(1) {
+  --sage-row: 0;
+}
+
+:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(2) {
+  --sage-row: 1;
+}
+
+:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(3) {
+  --sage-row: 2;
+}
+
+:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(4) {
+  --sage-row: 3;
+}
+
+:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(5) {
+  --sage-row: 4;
 }
 
 @keyframes sage-working-pulse {

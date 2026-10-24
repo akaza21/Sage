@@ -361,7 +361,7 @@ describe("AgentTaskHeader working status", () => {
     expect(endSession).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the handoff dialog mounted after the header menu closes", () => {
+  it("keeps the handoff dialog mounted after the header menu closes", async () => {
     const chrome: AgentSessionChrome = {
       chatId: "chat:a",
       harnessStatus: "Live",
@@ -394,7 +394,7 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Hand off chat" }));
     expect(
-      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+      await screen.findByRole("dialog", { name: "Hand off this Chat" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Chat actions for/ }),
@@ -962,6 +962,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
       sides: [],
       pendingClose: null,
       split: SIDE_CHAT_SPLIT,
+      soloChatId: null,
     }),
   );
 
@@ -994,5 +995,30 @@ describe("AgentChatPanes temporary side chat routing", () => {
       "aria-valuenow",
       "50",
     );
+  });
+
+  it("shows a just-opened fork alone until the user selects another Chat (P3)", async () => {
+    useSideChatState.setState({ sides: [] });
+    await act(async () => {
+      await useWorkbenchStore.getState().activateTab("chat:a");
+    });
+    render(<AgentChatPanes />);
+    reportCenterWidth(1_000);
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+    // The fork commit activates the fork and marks it solo.
+    await act(async () => {
+      await useWorkbenchStore.getState().activateTab("chat:b");
+      useSideChatState.setState({ soloChatId: "chat:b" });
+    });
+    expect(
+      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+    ).toEqual(["chat-pane-chat:b"]);
+    expect(screen.queryByRole("separator")).toBeNull();
+    // Selecting another Chat is the user's own choice; pairing resumes.
+    await act(async () => {
+      await useWorkbenchStore.getState().activateTab("chat:a");
+    });
+    expect(useSideChatState.getState().soloChatId).toBeNull();
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
   });
 });

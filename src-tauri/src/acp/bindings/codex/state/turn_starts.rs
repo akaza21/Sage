@@ -75,7 +75,7 @@ impl CodexAdapter {
         {
             return false;
         }
-        if self.is_child_thread(thread) {
+        if self.is_child_thread(thread) || self.is_fork_thread(thread) {
             return true;
         }
         if self.child_threads.is_empty() {

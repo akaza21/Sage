@@ -107,6 +107,17 @@ where
                     idle.idle_decoder.enable_recoverable_oversize();
                     Ok(())
                 }
+                crate::acp::goal::NativeRpcRequest::ForkSession => {
+                    if !idle.idle_decoder.is_frame_aligned() {
+                        return Err(HostError::State);
+                    }
+                    idle.parts.write_fork(&mut idle.transport)?;
+                    idle.idle_decoder.enable_recoverable_oversize();
+                    Ok(())
+                }
+                crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => idle
+                    .parts
+                    .write_release_fork(&mut idle.transport, fork, *committed),
             },
             Self::Reusable(parts) => match &intent.request {
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
@@ -120,6 +131,12 @@ where
                     child_thread_id,
                     parent_thread_id,
                 ),
+                crate::acp::goal::NativeRpcRequest::ForkSession => {
+                    parts.completed.write_fork(&mut parts.transport)
+                }
+                crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => parts
+                    .completed
+                    .write_release_fork(&mut parts.transport, fork, *committed),
             },
             Self::Active(active) if active.stdout_allowed() => {
                 active.turn.driver.begin_native_rpc(intent)

@@ -19,6 +19,7 @@ struct OptionalCapabilities {
     child_conversation_projection: bool,
     child_transcript_read: bool,
     collaboration_event_projection: bool,
+    native_session_fork: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +41,9 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             child_conversation_projection: false,
             child_transcript_read: true,
             collaboration_event_projection: false,
+            // `thread/fork` params and response are pinned from the 0.146
+            // generated schema (testdata/acp/codex/observed-0146-fork-schema.json).
+            native_session_fork: true,
         },
     }];
 
@@ -88,6 +92,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         child_conversation_projection: ceiling.child_conversation_projection,
         child_transcript_read: true,
         collaboration_event_projection: ceiling.collaboration_event_projection,
+        native_session_fork: ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY,
     }
 }
 
@@ -120,7 +125,7 @@ pub(crate) fn projected_capabilities(
         load_session: optional.load_session,
         child_conversation_projection: optional.child_conversation_projection,
         collaboration_event_projection: optional.collaboration_event_projection,
-        native_session_fork: false,
+        native_session_fork: optional.native_session_fork,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
@@ -263,7 +268,32 @@ mod tests {
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
         assert!(snapshot.child_transcript_read);
+        assert!(snapshot.native_session_fork);
         assert!(models);
+    }
+
+    #[test]
+    fn native_fork_is_admitted_only_for_the_pinned_or_characterised_0146_build() {
+        let (managed, _) = projected_capabilities(&pinned(), None).unwrap();
+        assert!(managed.native_session_fork);
+        let mut other = pinned();
+        other.protocol_identity = "codex-app-server-0.147.0-00000000".into();
+        let (unpinned, _) = projected_capabilities(&other, None).unwrap();
+        assert!(!unpinned.native_session_fork);
+        for (reported, characterisation) in [
+            ("codex-cli 0.146.0", Characterisation::Uncharacterised),
+            ("codex-cli 0.147.0", Characterisation::Characterised),
+        ] {
+            let (observed, _) = projected_capabilities(
+                &pinned(),
+                Some(ObservedBuild {
+                    reported_version: reported,
+                    characterisation,
+                }),
+            )
+            .unwrap();
+            assert!(!observed.native_session_fork, "{reported}");
+        }
     }
 
     #[test]
@@ -285,6 +315,7 @@ mod tests {
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
         assert!(!snapshot.child_transcript_read);
+        assert!(!snapshot.native_session_fork);
         assert!(!models);
     }
 

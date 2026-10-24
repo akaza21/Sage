@@ -31,7 +31,10 @@ pub(super) fn capabilities(
         close_session: true,
         prompt: true,
         cancel: true,
-        native_session_fork: false,
+        // Characterised from the claude-agent-acp 0.76.0 / SDK 1.4.0 pair
+        // (testdata/acp/claude/observed-0760-fork.json); the live offer and
+        // the characterised-binding gate still intersect it.
+        native_session_fork: true,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,

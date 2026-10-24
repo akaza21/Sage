@@ -122,8 +122,16 @@ export function AgentChatPanes({
     sidePanes
       ? useSideChatState.setState({ split: percent })
       : setStoredPercent(percent);
+  // A just-opened fork takes over the current pane (Codex s2/f0064-f0066)
+  // until the user selects another Chat; it never pairs itself.
+  const soloId = useSideChatState((state) => state.soloChatId);
+  const solo = soloId && soloId === activeTabId && chatIds.includes(soloId);
+  useEffect(() => {
+    if (soloId && !solo) useSideChatState.setState({ soloChatId: null });
+  }, [soloId, solo]);
   const nextVisibleIds =
     sidePanes ??
+    (solo ? [soloId] : null) ??
     (activeTabId && chatIds.includes(activeTabId)
       ? selectVisibleChatIds(chatIds, visibleIds, activeTabId)
       : reconcileVisibleChatIds(chatIds, visibleIds, null));

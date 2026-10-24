@@ -56,6 +56,18 @@ where
             } => self
                 .pump
                 .write_child(&mut self.transport, child_thread_id, parent_thread_id),
+            // A fork is taken only between Turns, so the forked history ends
+            // at the latest completed Turn and never at a moving one.
+            crate::acp::goal::NativeRpcRequest::ForkSession => Err(HostError::State),
+            // A Turn started before the release reached the runtime: it is
+            // deferred and written once the runtime is idle again.
+            crate::acp::goal::NativeRpcRequest::ReleaseFork { fork, committed } => {
+                if self.pump.defer_fork_release(fork, *committed) {
+                    Ok(())
+                } else {
+                    Err(HostError::State)
+                }
+            }
         }
     }
 }

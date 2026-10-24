@@ -73,7 +73,7 @@ struct State {
     lifecycle: Lifecycle,
     active_project: Option<crate::acp::contract::SageProjectId>,
     active_key: Option<ProjectionKey>,
-    greatest_revision: Option<ProjectionRevision>,
+    greatest_revision: Option<(ProjectionRevision, u64)>,
     pending: Option<ProjectionChangedV1>,
     in_flight: bool,
     bootstrap_ack_pending: bool,
@@ -168,11 +168,15 @@ impl ProjectionNotifier {
                 Lifecycle::Running => {
                     state.active_key.get_or_insert(key);
                     let outcome = match state.greatest_revision {
-                        Some(revision) if event.projection_revision <= revision => {
+                        Some(revision)
+                            if (event.projection_revision, event.child_projection_epoch)
+                                <= revision =>
+                        {
                             PublishOutcome::Coalesced
                         }
                         _ => {
-                            state.greatest_revision = Some(event.projection_revision);
+                            state.greatest_revision =
+                                Some((event.projection_revision, event.child_projection_epoch));
                             let replacing_pending = state.pending.replace(event).is_some();
                             if replacing_pending {
                                 PublishOutcome::Coalesced

@@ -34,7 +34,6 @@ type RecentAgent = {
   status: AgentStatus;
   agentKey?: string;
   target?: SubagentPaneTarget;
-  observationIds?: readonly string[];
 };
 
 function childTarget(
@@ -165,10 +164,6 @@ export function projectTaskResources(
               ...(target
                 ? {
                     target,
-                    observationIds: [
-                      ...(agent.observationIds ?? []),
-                      item.id,
-                    ].slice(-MAX_RESOURCE_DETAILS_PER_ITEM),
                     label:
                       agent.label === "Subagent" && label ? label : agent.label,
                   }
@@ -204,7 +199,7 @@ export function projectTaskResources(
                 label,
                 status,
                 agentKey: key,
-                ...(target ? { target, observationIds: [item.id] } : {}),
+                ...(target ? { target } : {}),
               });
           }
         } else {

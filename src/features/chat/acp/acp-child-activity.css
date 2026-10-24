@@ -135,42 +135,48 @@
   font-size: var(--font-size-xs);
   width: 100%;
   padding: 0;
-  border: 0;
-  background: transparent;
   text-align: left;
+}
+
+/* Codex: a finished row reads muted; only its names light up on hover. */
+.acp-subagent-row:not([data-state="started working"]) {
+  color: var(--color-text-muted);
+}
+
+.acp-subagent-name {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  font: inherit;
   cursor: pointer;
 }
 
-.acp-subagent-row:hover {
+.acp-subagent-name:hover,
+.acp-subagent-name:focus-visible {
   color: var(--color-text-primary);
 }
-.acp-subagent-row:focus-visible {
+
+.acp-subagent-name:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
 
 .acp-subagent-row__glyphs {
   display: inline-flex;
-  min-width: 16px;
+  min-width: 14px;
   flex: none;
   gap: 4px;
 }
 
 .acp-subagent-row__glyph {
-  position: relative;
   display: inline-flex;
-  width: 16px;
+  width: 14px;
   height: 20px;
   align-items: center;
   justify-content: center;
   color: var(--agent-subagent-violet);
-}
-
-.acp-subagent-row__done {
-  position: absolute;
-  right: -4px;
-  bottom: -2px;
-  font-size: 10px;
 }
 
 .acp-subagent-row > [role="status"] {

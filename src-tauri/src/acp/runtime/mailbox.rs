@@ -42,7 +42,9 @@ impl ProjectionMailbox {
                     && current.chat_id == event.chat_id
                     && current.session_id == event.session_id =>
             {
-                if event.projection_revision > current.projection_revision {
+                if (event.projection_revision, event.child_projection_epoch)
+                    > (current.projection_revision, current.child_projection_epoch)
+                {
                     *current = event;
                 }
                 Ok(PublishDisposition::Coalesced)

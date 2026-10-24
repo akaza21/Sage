@@ -7,12 +7,20 @@ export const PopoverPlacementContext = createContext<{
   position: CSSProperties;
 } | null>(null);
 
+/**
+ * Where a top-level menu prefers to open: below its trigger and right-aligned
+ * (the default), or above it and left-aligned (Codex's answer "…" menu,
+ * s2/f0053). Either side flips when the other has more room.
+ */
+export type MenuPlacement = "below-end" | "above-start";
+
 export function menuPopoverPosition(
   trigger: HTMLElement,
   popover: HTMLElement,
   origin: HTMLElement,
   gap: number,
   matchTriggerWidth: boolean,
+  placement: MenuPlacement = "below-end",
 ): CSSProperties {
   const anchor = trigger.getBoundingClientRect();
   const surface = popover.getBoundingClientRect();
@@ -93,10 +101,13 @@ export function menuPopoverPosition(
   }
   const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
   const roomAbove = anchor.top - gap - GUTTER;
-  const placeAbove = surface.height > roomBelow && roomAbove > roomBelow;
+  const aboveStart = placement === "above-start";
+  const placeAbove = aboveStart
+    ? surface.height <= roomAbove || roomAbove > roomBelow
+    : surface.height > roomBelow && roomAbove > roomBelow;
   return {
     ...shared,
-    left: clampLeft(anchor.right - width),
+    left: clampLeft(aboveStart ? anchor.left : anchor.right - width),
     top: clampTop(
       placeAbove ? anchor.top - surface.height - gap : anchor.bottom + gap,
     ),

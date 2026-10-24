@@ -326,6 +326,32 @@ describe("composer image input", () => {
     expect(onRemoveContext).toHaveBeenCalledWith(image);
   });
 
+  it("enables Send with only an attachment and no text (Codex s2/f0095)", () => {
+    const image = {
+      kind: "image" as const,
+      artifactId: "00000000-0000-4000-8000-000000000000",
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      sha256: "a".repeat(64),
+      label: "sample.png",
+    };
+    const { rerenderComposer } = renderComposer({
+      text: "",
+      imageInputAvailable: true,
+      attachedContext: [],
+    });
+    const send = screen.getByRole("button", { name: "Send message" });
+    expect(send).toBeDisabled();
+    rerenderComposer({
+      text: "  ",
+      imageInputAvailable: true,
+      attachedContext: [image],
+    });
+    expect(send).toBeEnabled();
+  });
+
   it("does not submit with an unsupported image or while upload is pending", () => {
     const onSubmit = vi.fn((event) => event.preventDefault());
     const image = {

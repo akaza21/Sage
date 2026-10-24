@@ -1,0 +1,21 @@
+{
+  "scenario": "fork",
+  "harness": "claude-code",
+  "handshake": "session",
+  "events": [
+    { "event": "sessionReady", "loaded": false },
+    { "event": "unsupported", "externalKind": "_auth/status_update" },
+    {
+      "event": "refused",
+      "method": "session/update",
+      "error": "ForeignId"
+    }
+  ],
+  "notes": [
+    "Live capture against claude-agent-acp 0.76.0 with no prompt sent: initialize, session/new, session/fork of that fresh session, session/resume of a stored session, session/fork of the stored session, then session/close of the fork, the stored session and the fresh session.",
+    "A session with no stored transcript cannot be forked: the fork of the fresh session is refused with 'Session ... not found in project directory'. Sage forks only after a completed Turn.",
+    "The fork of the stored session answers only { sessionId } and nothing else arrives for the fork id in the five seconds recorded: 0.76.0 copies the stored transcript (fork-session.js) and keeps no live fork session, so session/close of the fork answers 'Session not found'.",
+    "The standard translator here is bound to the session/new id, so the resumed session's available_commands_update is refused as foreign; the Claude binding replays the fork frames itself in claude/runtime/fork_tests.rs.",
+    "A separate local run (local-evidence/w8-fork-capture/raw-claude-delete.jsonl) answered session/delete of a fresh fork with {} and left no copy on disk; Sage deletes a refused fork that way."
+  ]
+}

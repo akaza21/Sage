@@ -13,7 +13,7 @@
     },
     "webTotalJsGzipBytes": 461000,
     "webTerminalLazyJsGzipBytes": 89500,
-    "webSubagentLazyJsGzipBytes": 4000,
+    "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/ChatNavigation.tsx",
@@ -37,6 +37,22 @@
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
         "maxGzipBytes": 3800,
         "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."
+      },
+      {
+        "entry": "src/features/chat/ForkChat.tsx",
+        "maxGzipBytes": 2387,
+        "maxCssGzipBytes": 732,
+        "reason": "Answer More actions menu, Fork chat from here dialog, Continued from chat link and the fork's inherited parent history; loads once a forkable answer or a fork is shown."
+      },
+      {
+        "entry": "src/features/chat/ChatHandoffDialog.tsx",
+        "maxGzipBytes": 1033,
+        "reason": "Hand off this Chat dialog (target picker, prompt review, placement); loads on the first Hand off."
+      },
+      {
+        "entry": "src/features/chat/ComposerQueuedPrompts.tsx",
+        "maxGzipBytes": 1430,
+        "reason": "Queued-message rows above the composer (status, Steer, delete and More options); loads with the first queued message."
       }
     ],
     "windowsInstallerMb": 45,

@@ -16,6 +16,7 @@ import {
   focusPopoverDialog,
 } from "./menuPopoverDialogFocus";
 import {
+  type MenuPlacement,
   menuPopoverPosition,
   PopoverPlacementContext,
 } from "./menuPopoverPosition";
@@ -83,6 +84,7 @@ export function MenuPopover({
   gap = POPOVER_GAP,
   onDismiss,
   open,
+  placement: preferredPlacement = "below-end",
   portalTarget = "document",
   restoreFocusOnTab = false,
   role = "menu",
@@ -102,6 +104,8 @@ export function MenuPopover({
   gap?: number;
   onDismiss: (reason: MenuDismissReason) => void;
   open: boolean;
+  /** Top-level menus only; nested menus follow their parent. */
+  placement?: MenuPlacement;
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
   role?: PopoverRole;
@@ -140,6 +144,7 @@ export function MenuPopover({
         originRef.current ?? trigger,
         gap,
         matchTriggerWidth,
+        preferredPlacement,
       );
       const current = positionRef.current;
       if (

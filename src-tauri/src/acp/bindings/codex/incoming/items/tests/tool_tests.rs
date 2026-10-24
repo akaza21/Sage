@@ -404,3 +404,50 @@ fn file_change_multi_resource_is_typed_unsupported() {
     assert_eq!(lifecycle, Some(ItemLifecycle::Unsupported));
     assert!(matches!(payload, NormalizedPayload::Unsupported { .. }));
 }
+
+#[test]
+fn spawn_keeps_only_the_wire_supplied_bounded_model_and_effort() {
+    let spawn = |model: serde_json::Value, effort: serde_json::Value| {
+        let call = item(json!({
+            "type": "collabAgentToolCall", "id": "spawn-1", "tool": "spawnAgent",
+            "status": "completed", "senderThreadId": "parent",
+            "receiverThreadIds": ["child-1"],
+            "agentsStates": {"child-1": {"status": "running"}},
+            "model": model, "reasoningEffort": effort
+        }));
+        let (payload, _, _) = normalize_item(&call, ItemLifecycle::Completed, &UnusedMapper)
+            .unwrap()
+            .unwrap();
+        let NormalizedPayload::Collaboration {
+            model,
+            reasoning_effort,
+            ..
+        } = payload
+        else {
+            panic!("spawn collaboration");
+        };
+        (
+            model.map(|value| value.as_str().to_owned()),
+            reasoning_effort.map(|value| value.as_str().to_owned()),
+        )
+    };
+    assert_eq!(
+        spawn(json!("gpt-6-astra"), json!("medium")),
+        (Some("gpt-6-astra".into()), Some("medium".into()))
+    );
+    assert_eq!(spawn(json!(null), json!(null)), (None, None));
+    assert_eq!(
+        spawn(json!("bad\nmodel"), json!("x".repeat(33))),
+        (None, None)
+    );
+    assert_eq!(spawn(json!("m".repeat(257)), json!("")), (None, None));
+    let activity = item(json!({"type": "subAgentActivity", "id": "a-1",
+        "agentThreadId": "child-1", "kind": "started", "model": "gpt-6-astra"}));
+    let (payload, _, _) = normalize_item(&activity, ItemLifecycle::Completed, &UnusedMapper)
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        payload,
+        NormalizedPayload::Collaboration { model: None, .. }
+    ));
+}

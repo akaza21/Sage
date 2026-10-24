@@ -22,6 +22,7 @@ const childBridge = vi.hoisted(() => ({ read: vi.fn() }));
 
 vi.mock("../services/acpChildTranscript", () => ({
   getAcpChildTranscript: childBridge.read,
+  subscribeChildProjectionChanges: async () => () => undefined,
 }));
 
 vi.mock("../features/preview/previewDesktop", () => ({
@@ -196,7 +197,7 @@ beforeEach(() => {
   previewBridge.subscribe.mockResolvedValue(vi.fn());
   previewBridge.available.mockReturnValue(true);
   useAgentArtifactFollowStore.getState().clear();
-  useSubagentPaneStore.getState().clear();
+  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
   seedFocusedPage();
   pinAgentChatOwner(focusedOwner.chatId);
   setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
@@ -243,7 +244,7 @@ afterEach(() => {
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
-  useSubagentPaneStore.getState().clear();
+  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -494,7 +495,6 @@ describe("Agent artifact file chips", () => {
         projectId: "project-a",
         projectGeneration: "2",
         chatId: "chat-focused",
-        expectedProjectionRevision: "8",
         sessionId: "session-a",
         runtimeEpoch: "3",
         itemId: "native-child",
@@ -569,6 +569,14 @@ describe("Agent artifact file chips", () => {
     expect(tab).toHaveAttribute("aria-selected", "false");
     fireEvent.click(tab);
     expect(tab).toHaveAttribute("aria-selected", "true");
+    // The plural tab opens on its Active / Done list.
+    const active = await screen.findByRole("region", {
+      name: "Active subagents",
+    });
+    expect(active).toHaveTextContent("Active · 1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
+    );
     expect(
       await screen.findByRole("heading", { name: "Reviewer" }),
     ).toBeVisible();

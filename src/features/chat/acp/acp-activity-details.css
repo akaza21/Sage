@@ -109,22 +109,39 @@
   white-space: nowrap;
 }
 
+/*
+ * Codex s8/f0123-f0128: a bright band crosses the label left to right in
+ * about 600 ms, then the label idles until the next 4 s period. The band is
+ * a 300% image moved from 100% to 0. Cost: background-position is not
+ * compositable, so the running animation is ticked on the main thread for
+ * the whole period and each ~600 ms sweep repaints the label's text every
+ * frame; during the idle 85% the value is constant, so there is style work
+ * but nothing to repaint. A composited variant (transform on a masked
+ * overlay) needs a second, text-clipped copy of every live label that stays
+ * aligned under ellipsis, which costs more DOM and layout than the few short
+ * labels this paints, so the background sweep stays.
+ */
 .acp-live-shimmer {
   background: linear-gradient(
       90deg,
-      var(--color-text-muted),
-      var(--color-text-secondary),
-      var(--color-text-muted)
+      var(--color-text-muted) 44%,
+      var(--color-text-primary) 50%,
+      var(--color-text-muted) 56%
     )
-    0 / 200%;
+    100% 0 / 300% 100%;
   background-clip: text;
   color: transparent;
-  animation: acp-live-shimmer 1.8s linear infinite;
+  animation: acp-live-shimmer var(--motion-duration-shimmer) linear infinite;
 }
 
 @keyframes acp-live-shimmer {
-  to {
-    background-position: 100%;
+  0% {
+    background-position: 100% 0;
+  }
+
+  15%,
+  100% {
+    background-position: 0 0;
   }
 }
 
@@ -158,7 +175,13 @@
 .acp-tool-rollup__chevron {
   flex: 0 0 auto;
   opacity: 0;
-  transition: transform var(--motion-duration-fast) ease;
+  transition: transform var(--motion-duration-chevron) ease-out;
+}
+
+/* Group open (Codex s2/f0018-f0021): rows fade in top to bottom. */
+.acp-tool-rollup__items > * {
+  animation: sage-row-in var(--motion-duration-row) ease-out both;
+  animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
 }
 
 .acp-tool-rollup > summary:hover .acp-tool-rollup__chevron,
@@ -301,6 +324,10 @@
   .acp-tool-rollup__chevron {
     transition: none;
   }
+
+  .acp-tool-rollup__items > * {
+    animation: none;
+  }
 }
 
 @media (forced-colors: active) {
@@ -308,5 +335,9 @@
   .acp-live-shimmer {
     background: none;
     color: CanvasText;
+  }
+
+  .acp-tool-rollup__items > * {
+    animation: none;
   }
 }

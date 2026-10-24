@@ -168,6 +168,8 @@ pub(crate) struct AdapterBatchMutation {
     pub projection_revision: ProjectionRevision,
     pub disposition: MutationDisposition,
     turn_cursor: AdapterTurnCursor,
+    /// The chat's child projection epoch when this batch advanced it.
+    pub child_projection_epoch: Option<u64>,
 }
 
 impl AdapterBatchMutation {
@@ -189,6 +191,7 @@ impl AdapterBatchMutation {
             projection_revision,
             disposition,
             turn_cursor,
+            child_projection_epoch: None,
         }
     }
 }
@@ -230,6 +233,24 @@ pub(super) fn apply_adapter_inbound_batch_ref(
     let transaction = connection.transaction()?;
     scope::verify_owner(&transaction, &command.owner)?;
     let initial = scope::current_projection(&transaction, &command.owner)?;
+    let child_epoch = || {
+        super::child_transcript::child_projection_epoch(
+            &transaction,
+            command.owner.project_id.as_str(),
+            command.owner.chat_id.as_str(),
+        )
+    };
+    let has_child_changes = command.events.iter().any(|event| {
+        matches!(
+            event,
+            AdapterInboundEvent::ChildLiveItem(_) | AdapterInboundEvent::ChildTurnStatus { .. }
+        )
+    });
+    let initial_child_epoch = if has_child_changes {
+        Some(child_epoch()?)
+    } else {
+        None
+    };
     let user_cancelled = contains_user_cancel_terminal(&command.events)
         && scope::has_durable_user_cancel_intent(&transaction, &command.owner)?;
     let mut applied = file_pairs::apply_events(&transaction, &command.owner, &command.events)?;
@@ -247,6 +268,10 @@ pub(super) fn apply_adapter_inbound_batch_ref(
         )?;
     }
     let projection = turn_cursor.projection_revision();
+    let child_projection_epoch = match initial_child_epoch {
+        Some(before) => Some(child_epoch()?).filter(|after| *after != before),
+        None => None,
+    };
     transaction
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;
@@ -258,6 +283,7 @@ pub(super) fn apply_adapter_inbound_batch_ref(
             MutationDisposition::Duplicate
         },
         turn_cursor,
+        child_projection_epoch,
     })
 }
 

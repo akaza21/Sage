@@ -97,12 +97,23 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     fn publish(&mut self, receipt: JournalReceipt) -> Result<(), AdapterPumpError> {
-        self.publish_revision(receipt.projection_revision)
+        self.publish_projection(
+            receipt.projection_revision,
+            receipt.child_projection_epoch.unwrap_or(0),
+        )
     }
 
     pub(super) fn publish_revision(
         &mut self,
         projection_revision: ProjectionRevision,
+    ) -> Result<(), AdapterPumpError> {
+        self.publish_projection(projection_revision, 0)
+    }
+
+    fn publish_projection(
+        &mut self,
+        projection_revision: ProjectionRevision,
+        child_projection_epoch: u64,
     ) -> Result<(), AdapterPumpError> {
         let disposition = self
             .publisher
@@ -111,6 +122,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 chat_id: self.intent.chat_id.clone(),
                 session_id: self.intent.session_id.clone(),
                 projection_revision,
+                child_projection_epoch,
             })
             .map_err(|_| {
                 self.projection_recovery_required = true;

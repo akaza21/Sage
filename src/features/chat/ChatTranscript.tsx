@@ -28,6 +28,7 @@ import {
 import "./chat-transcript-polish.css";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
+import { ForkPart } from "./lazyParts";
 
 export function ChatTranscript({
   transcriptRef,
@@ -81,7 +82,8 @@ export function ChatTranscript({
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
-  showJumpToLatest: boolean;
+  /** "activity": follow is paused and a running turn grew below (Codex s6/f0200). */
+  showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
 }) {
   const copySequence = useRef(0);
@@ -130,16 +132,23 @@ export function ChatTranscript({
     [useNativeAcp, page, onRetry],
   );
   const projectName = composerWorkspaceName(project, 1024);
-  const showHome = isNewProjectChat({
-    useNativeAcp,
-    page,
-    project,
-    projectTransitioning,
-    loadingEarlier,
-    historyError,
-    hasEarlier,
-    retentionIncomplete,
-  });
+  const jumpLabel =
+    showJumpToLatest === "activity"
+      ? "New activity below. Jump to latest"
+      : "Jump to latest";
+  const forkedFrom = useNativeAcp ? page?.forkedFrom : undefined;
+  const showHome =
+    !forkedFrom &&
+    isNewProjectChat({
+      useNativeAcp,
+      page,
+      project,
+      projectTransitioning,
+      loadingEarlier,
+      historyError,
+      hasEarlier,
+      retentionIncomplete,
+    });
   const historyNotice = historyError ? (
     <div className="composer__notice" role="alert">
       Chat history could not be loaded: {historyError}
@@ -164,36 +173,45 @@ export function ChatTranscript({
           ) : useNativeAcp && !page && (historyLoading || historyError) ? (
             historyNotice
           ) : useNativeAcp && page ? (
-            <AcpChatProjection
-              page={page}
-              editSummaryContainer={editSummaryContainer}
-              active
-              focused={focused}
-              projectRoots={projectRoots}
-              retentionIncomplete={retentionIncomplete}
-              onOpenResource={onOpenResource}
-              hasEarlier={hasEarlier}
-              loadingEarlier={loadingEarlier}
-              historyError={historyError}
-              onLoadEarlier={onLoadEarlier}
-              onRetry={retryAction}
-              feedback={feedback}
-              onFeedbackQueued={forgetCopyFeedback}
-              emptyState={
-                showHome ? (
-                  isSideChatId(page.chatId) ? (
-                    <TranscriptPart part="SideChatHome" />
-                  ) : (
-                    <ChatHome projectName={projectName} />
-                  )
-                ) : !hasEarlier &&
-                  page.nextCursor === null &&
-                  !retentionIncomplete &&
-                  historyError ? (
-                  historyNotice
-                ) : undefined
-              }
-            />
+            <>
+              {forkedFrom && !hasEarlier ? (
+                <ForkPart
+                  part="ForkDivider"
+                  parentChatId={forkedFrom}
+                  forkTurnId={page.forkedFromTurnId}
+                />
+              ) : null}
+              <AcpChatProjection
+                page={page}
+                editSummaryContainer={editSummaryContainer}
+                active
+                focused={focused}
+                projectRoots={projectRoots}
+                retentionIncomplete={retentionIncomplete}
+                onOpenResource={onOpenResource}
+                hasEarlier={hasEarlier}
+                loadingEarlier={loadingEarlier}
+                historyError={historyError}
+                onLoadEarlier={onLoadEarlier}
+                onRetry={retryAction}
+                feedback={feedback}
+                onFeedbackQueued={forgetCopyFeedback}
+                emptyState={
+                  showHome ? (
+                    isSideChatId(page.chatId) ? (
+                      <TranscriptPart part="SideChatHome" />
+                    ) : (
+                      <ChatHome projectName={projectName} />
+                    )
+                  ) : !hasEarlier &&
+                    page.nextCursor === null &&
+                    !retentionIncomplete &&
+                    historyError ? (
+                    historyNotice
+                  ) : undefined
+                }
+              />
+            </>
           ) : (
             <ChatLegacyTranscript
               messages={messages}
@@ -228,19 +246,21 @@ export function ChatTranscript({
           />
         ) : null}
       </div>
-      {showJumpToLatest ? (
-        <div className="chat-follow-end-zone">
-          <button
-            className="chat-follow-end"
-            type="button"
-            aria-label="Jump to latest"
-            title="Jump to latest"
-            onClick={onJumpToLatest}
-          >
-            <ArrowDown size={16} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
+      {/* It overlays the transcript and stays mounted while hidden so CSS
+          can fade it out (Codex s2/f0048). */}
+      <button
+        className="chat-follow-end"
+        type="button"
+        hidden={!showJumpToLatest}
+        // data-mode="activity" restyles the arrow into the middle of three
+        // dots (chat-follow-end.css, Codex s6/f0200).
+        data-mode={showJumpToLatest === "activity" ? "activity" : undefined}
+        aria-label={jumpLabel}
+        title={jumpLabel}
+        onClick={onJumpToLatest}
+      >
+        <ArrowDown size={14} aria-hidden="true" />
+      </button>
       {useNativeAcp && !projectTransitioning ? (
         <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>
           {showHome && projectName ? (

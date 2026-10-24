@@ -126,6 +126,7 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
             }
             #[cfg(feature = "acp-fixture")]
             let applied = result.disposition == crate::acp::store::MutationDisposition::Applied;
+            let child_projection_epoch = result.child_projection_epoch;
             let cursor = result.into_turn_cursor();
             #[cfg(feature = "acp-fixture")]
             if has_cancelled_turn
@@ -141,7 +142,8 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                     crate::acp::characterization_observation::CharacterizationObservationEvent::CancelTerminalCommitted,
                 );
             }
-            Ok(JournalReceipt::committed(projection_revision, cursor))
+            Ok(JournalReceipt::committed(projection_revision, cursor)
+                .with_child_projection_epoch(child_projection_epoch))
         })
     }
 

@@ -13,6 +13,17 @@ import { useWorkbenchStore } from "../../../app/store";
 import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
 import { ChatCodeBlock } from "./ChatCodeBlock";
 
+/**
+ * The stream fade (chat-markdown.css) belongs to blocks appended after this
+ * answer mounted. A remount (pane switch, scroll restore) finishes the fade
+ * of every block already present, so settled text never flashes again.
+ */
+function settleMountedStream(element: HTMLDivElement | null) {
+  for (const animation of element?.getAnimations?.({ subtree: true }) ?? [])
+    if ((animation as CSSAnimation).animationName === "acp-stream-in")
+      animation.finish();
+}
+
 export function ChatMarkdown({
   text,
   streaming = false,
@@ -126,6 +137,7 @@ export function ChatMarkdown({
   };
   return (
     <div
+      ref={settleMountedStream}
       className="acp-markdown"
       style={
         { "--chat-list-marker-width": `${listMarkerWidth}ch` } as CSSProperties

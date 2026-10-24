@@ -43,7 +43,7 @@ function measure(
   }
 }
 
-function mountFollowEnd() {
+function mountFollowEnd(running = false) {
   const transcript = document.createElement("div");
   const content = document.createElement("div");
   const end = document.createElement("div");
@@ -61,15 +61,30 @@ function mountFollowEnd() {
   const endRef = { current: end as HTMLElement | null };
 
   const view = renderHook(
-    ({ revision, ownerKey }: { revision: number; ownerKey: string }) =>
+    ({
+      revision,
+      ownerKey,
+      live = running,
+    }: {
+      revision: number;
+      ownerKey: string;
+      live?: boolean;
+    }) =>
       useFollowEnd({
         ownerKey,
         revision,
+        running: live,
         transcriptRef,
         contentRef,
         endRef,
       }),
-    { initialProps: { revision: 1, ownerKey: "chat-1" } },
+    {
+      initialProps: { revision: 1, ownerKey: "chat-1" } as {
+        revision: number;
+        ownerKey: string;
+        live?: boolean;
+      },
+    },
   );
 
   return { content, end, scrollIntoView, scrollTo, transcript, view };
@@ -343,6 +358,102 @@ describe("useFollowEnd", () => {
       expect(view.result.current.showJumpToLatest).toBe(true);
     },
   );
+
+  it("leaves the end on an upward wheel before its scroll moves past the threshold", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { scrollTo, transcript, view } = mountFollowEnd(true);
+    // At the end of a transcript that can still scroll up.
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1000,
+      scrollTop: 600,
+    });
+    act(() =>
+      transcript.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -240, bubbles: true }),
+      ),
+    );
+    // The smooth wheel scroll has barely moved when activity lands.
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(false);
+    scrollTo.mockClear();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1500,
+      scrollTop: 600,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    act(() => growTranscript());
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(view.result.current.showJumpToLatest).toBe("activity");
+    // A downward wheel back at the end resumes following.
+    act(() =>
+      transcript.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: 240, bubbles: true }),
+      ),
+    );
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1500,
+      scrollTop: 1100,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(view.result.current.followingEnd).toBe(true);
+  });
+
+  it("keeps following when an upward wheel scrolls a nested scroller instead", () => {
+    const { content, scrollTo, transcript, view } = mountFollowEnd(true);
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1000,
+      scrollTop: 600,
+    });
+    const rollup = document.createElement("div");
+    rollup.className = "acp-tool-rollup__items";
+    const row = document.createElement("div");
+    rollup.append(row);
+    content.append(rollup);
+    measure(rollup, { clientHeight: 100, scrollHeight: 300, scrollTop: 50 });
+    act(() =>
+      row.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -120, bubbles: true }),
+      ),
+    );
+    expect(view.result.current.followingEnd).toBe(true);
+    scrollTo.mockClear();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1500,
+      scrollTop: 600,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    expect(scrollTo).toHaveBeenCalled();
+  });
+
+  it("keeps following when an upward wheel meets a short chat", () => {
+    const { scrollTo, transcript, view } = mountFollowEnd(true);
+    measure(transcript, { clientHeight: 400, scrollHeight: 400, scrollTop: 0 });
+    act(() =>
+      transcript.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -240, bubbles: true }),
+      ),
+    );
+    expect(view.result.current.followingEnd).toBe(true);
+    scrollTo.mockClear();
+    measure(transcript, { clientHeight: 400, scrollHeight: 900, scrollTop: 0 });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    expect(scrollTo).toHaveBeenCalled();
+  });
 
   it("keeps following when its own anchor scroll steps through a stale target", () => {
     const frames: FrameRequestCallback[] = [];
@@ -703,5 +814,103 @@ describe("useFollowEnd", () => {
     expect(
       getComputedStyle(transcript).getPropertyValue("overflow-anchor"),
     ).toBe("none");
+  });
+  /** Follows a 1000 px transcript, then the reader scrolls 100 px up. */
+  function pauseNearEnd(running: boolean) {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const mounted = mountFollowEnd(running);
+    const at = (scrollTop: number, scrollHeight: number) =>
+      measure(mounted.transcript, {
+        clientHeight: 400,
+        scrollHeight,
+        scrollTop,
+      });
+    const readerScroll = (scrollTop: number, scrollHeight: number) => {
+      at(scrollTop, scrollHeight);
+      act(() => {
+        mounted.view.result.current.updateFollowEnd();
+        for (const frame of frames.splice(0)) frame(0);
+      });
+    };
+    const grow = (scrollTop: number, scrollHeight: number) => {
+      at(scrollTop, scrollHeight);
+      act(() => growTranscript());
+    };
+    grow(600, 1000);
+    readerScroll(500, 1000);
+    expect(mounted.view.result.current.followingEnd).toBe(false);
+    expect(mounted.view.result.current.showJumpToLatest).toBe(false);
+    return { ...mounted, grow, readerScroll };
+  }
+
+  it("shows the new-activity pill when a running turn grows below a paused reader", () => {
+    const { grow, view, scrollTo } = pauseNearEnd(true);
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
+    scrollTo.mockClear();
+
+    grow(500, 1100);
+
+    expect(view.result.current.showJumpToLatest).toBe("activity");
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("keeps the pill through reader scrolls and clears it on jump to latest", () => {
+    const { grow, readerScroll, view, scrollTo } = pauseNearEnd(true);
+    grow(500, 1100);
+    readerScroll(450, 1100);
+    expect(view.result.current.showJumpToLatest).toBe("activity");
+
+    scrollTo.mockClear();
+    act(() => view.result.current.jumpToLatest());
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ top: 700 }),
+    );
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
+    expect(view.result.current.showJumpToLatest).toBe(false);
+  });
+
+  it("does not show the pill for growth outside a running turn", () => {
+    const { grow, view } = pauseNearEnd(false);
+    grow(500, 1100);
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
+    expect(view.result.current.showJumpToLatest).toBe(false);
+  });
+
+  it("stops showing the pill once the turn ends", () => {
+    const { grow, view } = pauseNearEnd(true);
+    view.rerender({ revision: 2, ownerKey: "chat-1", live: false });
+    grow(500, 1100);
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
+  });
+
+  it("does not show the pill while the reader still follows the end", () => {
+    const { transcript, view } = mountFollowEnd(true);
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1000,
+      scrollTop: 600,
+    });
+    act(() => growTranscript());
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1100,
+      scrollTop: 700,
+    });
+    act(() => growTranscript());
+    expect(view.result.current.followingEnd).toBe(true);
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
+  });
+
+  it("clears the pill when the reader scrolls back to the end", () => {
+    const { grow, readerScroll, view } = pauseNearEnd(true);
+    grow(500, 1100);
+    expect(view.result.current.showJumpToLatest).toBe("activity");
+    readerScroll(700, 1100);
+    expect(view.result.current.followingEnd).toBe(true);
+    expect(view.result.current.showJumpToLatest).not.toBe("activity");
   });
 });

@@ -244,6 +244,51 @@ describe("MenuPopover", () => {
   );
 
   it.each([
+    [452, 411],
+    [20, 50],
+  ])(
+    "opens an above-start menu left-aligned above a trigger at y=%i, flipping below without room (top=%i)",
+    (triggerTop, top) => {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 768,
+      });
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 148, 39);
+        return new DOMRect(100, triggerTop, 22, 28);
+      });
+      function AboveHarness() {
+        const triggerRef = useRef<HTMLButtonElement>(null);
+        return (
+          <>
+            <button ref={triggerRef}>More actions</button>
+            <MenuPopover
+              ariaLabel="Answer actions"
+              id="above"
+              open
+              gap={2}
+              placement="above-start"
+              triggerRef={triggerRef}
+              onDismiss={() => {}}
+            >
+              <button role="menuitem">Branch in new chat</button>
+            </MenuPopover>
+          </>
+        );
+      }
+      render(<AboveHarness />);
+      expect(screen.getByRole("menu", { name: "Answer actions" })).toHaveStyle({
+        left: "100px",
+        top: top + "px",
+      });
+    },
+  );
+
+  it.each([
     [100, 244, 308],
     [200, 344, 208],
     [260, 8, 248],

@@ -13,6 +13,20 @@ pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
     let _ = adapter.resolve_egress(egress.into_token(), resolution);
 }
 
+/// Writes one deferred fork release while the runtime is idle. It is
+/// background work: nothing waits for it, so a failed write only leaves the
+/// release wanted for the next idle moment.
+pub(crate) fn write_deferred_fork_release<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) {
+    let Ok(Some(egress)) = adapter.deferred_fork_release() else {
+        return;
+    };
+    let resolution = EgressResolution::from(transport.write(egress.frame()));
+    let _ = adapter.resolve_egress(egress.into_token(), resolution);
+}
+
 pub(crate) fn write_goal<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -20,6 +34,57 @@ pub(crate) fn write_goal<A: HarnessAdapter>(
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
     let egress = adapter.mutate_goal(action).map_err(|_| HostError::Intent)?;
+    let outcome = transport.write(egress.frame());
+    let resolution = EgressResolution::from(outcome);
+    adapter
+        .resolve_egress(egress.into_token(), resolution)
+        .map_err(|_| HostError::RecoveryRequired)?;
+    match outcome {
+        FrameWriteOutcome::Complete => Ok(()),
+        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
+        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
+    }
+}
+
+/// Writes the native fork request. The fork response can carry the whole
+/// forked history, so the decoder may need to tolerate an oversize frame.
+pub(crate) fn write_fork<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+) -> Result<(), crate::acp::runtime::HostError> {
+    use crate::acp::runtime::HostError;
+    // A full fork ledger is a capacity refusal the user can act on.
+    let egress = adapter.fork_session().map_err(|error| match error {
+        AdapterRuntimeError::BatchCount => HostError::Capacity,
+        _ => HostError::Intent,
+    })?;
+    let outcome = transport.write(egress.frame());
+    let resolution = EgressResolution::from(outcome);
+    adapter
+        .resolve_egress(egress.into_token(), resolution)
+        .map_err(|_| HostError::RecoveryRequired)?;
+    match outcome {
+        FrameWriteOutcome::Complete => Ok(()),
+        FrameWriteOutcome::ZeroByteFailure => Err(HostError::Unavailable),
+        FrameWriteOutcome::DeliveryUnknown { .. } => Err(HostError::DeliveryUnknown),
+    }
+}
+
+/// Writes the release of a fork this runtime created. A harness that holds
+/// nothing for the fork answers synchronously and writes no frame.
+pub(crate) fn write_release_fork<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+    fork: &crate::acp::intent::ExternalId,
+    committed: bool,
+) -> Result<(), crate::acp::runtime::HostError> {
+    use crate::acp::runtime::HostError;
+    let Some(egress) = adapter
+        .release_fork(fork, committed)
+        .map_err(|_| HostError::Intent)?
+    else {
+        return Ok(());
+    };
     let outcome = transport.write(egress.frame());
     let resolution = EgressResolution::from(outcome);
     adapter
@@ -88,6 +153,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) fn config_pending(&self) -> bool {
         self.adapter.config_pending()
     }
+    /// A Turn is running: the fork release is deferred to the next idle.
+    pub(crate) fn defer_fork_release(
+        &mut self,
+        fork: &crate::acp::intent::ExternalId,
+        committed: bool,
+    ) -> bool {
+        self.adapter.defer_fork_release(fork, committed)
+    }
     pub(crate) fn goal_pending(&self) -> bool {
         self.adapter.goal_pending()
     }
@@ -130,6 +203,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
     pub(crate) fn hydrate_model_config(&mut self, transport: &mut impl EgressTransport) {
         hydrate_model_config(&mut self.adapter, transport);
+        if self.idle_decoder.is_frame_aligned() {
+            write_deferred_fork_release(&mut self.adapter, transport);
+        }
     }
 
     pub(crate) fn write_session_config(
@@ -175,5 +251,24 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         )?;
         self.idle_decoder.enable_recoverable_oversize();
         Ok(())
+    }
+    pub(crate) fn write_fork(
+        &mut self,
+        transport: &mut impl EgressTransport,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        if !self.idle_decoder.is_frame_aligned() {
+            return Err(crate::acp::runtime::HostError::State);
+        }
+        write_fork(&mut self.adapter, transport)?;
+        self.idle_decoder.enable_recoverable_oversize();
+        Ok(())
+    }
+    pub(crate) fn write_release_fork(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        fork: &crate::acp::intent::ExternalId,
+        committed: bool,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        write_release_fork(&mut self.adapter, transport, fork, committed)
     }
 }

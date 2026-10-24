@@ -164,7 +164,10 @@ export async function persistQueuedChatPrompt(
   const text = (entry?.composerText ?? state.composerText).trim();
   const context = entry?.attachedContext ?? [];
   const queue = entry?.queuedPrompts ?? [];
-  if (!text || queue.length >= MAX_QUEUED_CHAT_PROMPTS) return false;
+  // An attachment-only draft queues with empty text; Send and Steer give it
+  // the attached-context prompt.
+  if ((!text && !context.length) || queue.length >= MAX_QUEUED_CHAT_PROMPTS)
+    return false;
   validateChatComposerText(text);
   const ownerKey = `${intent.projectId}:${intent.chatId}:${intent.ownershipEpoch}`;
   if (queueMutations.has(ownerKey)) return false;

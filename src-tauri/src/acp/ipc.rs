@@ -14,8 +14,23 @@ pub use intent_validation::{
 };
 
 pub use super::projection::AcpChatPage;
+#[cfg(test)]
+pub(crate) use super::runtime::notice_routes::MAX_PROJECTION_NOTICE_ROUTES;
+pub(crate) use super::runtime::notice_routes::{ProjectionNoticeRoutes, route_projection_notice};
 
 pub(crate) const ACP_PROJECTION_CHANGED_EVENT: &str = "acp-projection-changed-v1";
+/// Only child transcripts changed: open Subagent views re-read, and the
+/// parent page, whose projection revision did not move, is not reloaded.
+pub(crate) const ACP_CHILD_PROJECTION_CHANGED_EVENT: &str = "acp-child-projection-changed-v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChildProjectionChangedV1 {
+    pub project_id: SageProjectId,
+    pub chat_id: SageChatId,
+    pub session_id: SageAgentSessionId,
+    pub child_projection_epoch: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -248,6 +263,14 @@ pub struct ProjectionChangedV1 {
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
     pub projection_revision: ProjectionRevision,
+    /// Child-transcript invalidation epoch (see `AcpChatPage`). It never
+    /// moves `projection_revision`, the optimistic-concurrency token.
+    #[serde(default, skip_serializing_if = "is_zero_epoch")]
+    pub child_projection_epoch: u64,
+}
+
+fn is_zero_epoch(epoch: &u64) -> bool {
+    *epoch == 0
 }
 
 impl ProjectionChangedV1 {

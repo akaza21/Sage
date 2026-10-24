@@ -1,0 +1,48 @@
+{
+  "command": "codex.exe",
+  "args": [
+    "app-server"
+  ],
+  "entrypoint": "C:\\fixture-workspace\\profiles\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe",
+  "version": "codex-cli 0.146.0",
+  "env": {
+    "CODEX_HOME": "C:\\fixture-workspace\\codex-home (copy of the user config.toml and model catalog; no sessions, no auth)"
+  },
+  "capturedAt": "2026-10-24",
+  "reason": "complete",
+  "promptsSent": 0,
+  "sanitization": [
+    "Home, scratch and CODEX_HOME paths are rewritten under the fixture workspace root",
+    "remoteControl installationId and serverName, and any _auth/status_update account identity, are redacted.",
+    "availableCommands is truncated to its first two entries.",
+    "Raw originals are retained locally under ignored local-evidence/."
+  ],
+  "timeline": [
+    "     0ms out initialize",
+    "   158ms in result#1",
+    "   158ms out initialized",
+    "   158ms out thread/start",
+    "   158ms in remoteControl/status/changed",
+    "   207ms in result#2 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "   207ms in thread/started 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "   207ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "   207ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "   221ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "  1460ms in mcpServer/startupStatus/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "  1715ms out thread/name/set 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "  3593ms in result#3",
+    "  3593ms in thread/name/updated 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "  4103ms out thread/fork 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  4196ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  4198ms in result#4 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  4198ms in thread/started 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  5106ms in mcpServer/startupStatus/updated 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  9208ms out thread/unsubscribe 01a16b24-3b97-7dc3-8cc6-bf79c587a204",
+    "  9208ms in result#5",
+    " 10721ms out thread/unsubscribe 01a16b24-2c2c-7cc0-8f64-09d61ef125e6",
+    " 10722ms in result#6"
+  ],
+  "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir \"C:\\fixture-workspace\\profiles\" (codex_home: AbsolutePathBuf(\"C:\\fixture-workspace\\profiles\"))\n"
+}

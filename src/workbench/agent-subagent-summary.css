@@ -59,3 +59,76 @@
 .agent-task-header__agent-summary + [role="status"] {
   grid-column: 1 / -1;
 }
+
+/* Subagents tab: Active · N / Done · N; 56 px live rows, 40 px settled rows. */
+.subagent-list {
+  padding-top: var(--space-4);
+}
+
+.subagent-list section + section {
+  margin-top: var(--space-4);
+}
+
+.subagent-list h2 {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+}
+
+.subagent-list__row {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+button.subagent-list__row {
+  cursor: pointer;
+}
+
+button.subagent-list__row:hover,
+button.subagent-list__row:focus-visible {
+  background: var(--agent-shell-hover);
+}
+
+.subagent-list [aria-label="Active subagents"] .subagent-list__row {
+  min-height: 56px;
+}
+
+.subagent-list__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.subagent-list__text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-list__text > span + span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.subagent-list__row time {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.subagent-avatar {
+  width: 20px;
+  flex: none;
+}

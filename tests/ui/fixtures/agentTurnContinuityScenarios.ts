@@ -83,7 +83,7 @@ export function registerAgentTurnContinuityScenarios() {
     await alpha.getByRole("button", { name: "Jump to latest" }).click();
     await expect(
       alpha.getByRole("button", { name: "Jump to latest" }),
-    ).toHaveCount(0);
+    ).toBeHidden();
     await expect(latestMessage).toBeInViewport();
     await expect
       .poll(() =>

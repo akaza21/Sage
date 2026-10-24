@@ -13,23 +13,50 @@ export type SubagentActivityRow = {
   entries: SubagentEntry[];
 };
 
+/** A child's stable glyph colour, shared by the row, list and child header. */
+export function avatarColor(key: string): number {
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1)
+    hash = (hash * 31 + key.charCodeAt(index)) | 0;
+  return Math.abs(hash % 3);
+}
+
+/** One run of row text; `index` names a label's own target, `more` the rest. */
+export type SubagentSegment = { text: string; index?: number; more?: true };
+
+/** `A`, `A and B`, `A, B and C`, `A, B and N more`, then the verb. */
+export function subagentSegments(
+  labels: readonly string[],
+  state: string,
+): SubagentSegment[] {
+  const parts: SubagentSegment[] = labels
+    .flatMap((text, index) => (text ? [{ text, index }] : []))
+    .slice(0, labels.length > 3 ? 2 : 3);
+  const remaining = labels.length - parts.length;
+  if (!parts.length)
+    parts.push(
+      labels.length === 1
+        ? { text: "Subagent", index: 0 }
+        : { text: `${labels.length} subagents` },
+    );
+  else if (remaining) parts.push({ text: `${remaining} more`, more: true });
+  return [
+    ...parts.flatMap((part, index) =>
+      index
+        ? [{ text: index < parts.length - 1 ? ", " : " and " }, part]
+        : [part],
+    ),
+    { text: ` ${state}` },
+  ];
+}
+
 export function subagentSummary(
   labels: readonly string[],
   state: string,
 ): string {
-  const names = labels.filter(Boolean);
-  const shown = names.slice(0, labels.length > 3 ? 2 : 3);
-  const remaining = labels.length - shown.length;
-  if (remaining && shown.length) shown.push(`${remaining} more`);
-  const identity =
-    shown.length === 0
-      ? labels.length === 1
-        ? "Subagent"
-        : `${labels.length} subagents`
-      : shown.length === 1
-        ? shown[0]
-        : `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}`;
-  return `${identity} ${state}`;
+  return subagentSegments(labels, state)
+    .map((segment) => segment.text)
+    .join("");
 }
 
 export function collaborationRows(

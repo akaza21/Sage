@@ -1598,6 +1598,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
                     chat_id: chat_a.clone(),
                     session_id: started.session_id.clone(),
                     projection_revision: receipt.projection_revision,
+                    child_projection_epoch: 0,
                 })
                 .unwrap(),
             PublishOutcome::SuppressedInactive

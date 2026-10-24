@@ -73,6 +73,13 @@ pub(crate) fn load_chat_page(
     .map_err(|_| StoreError::Corrupt("projection revision"))?;
     let sessions = BoundedVec::new("sessions", sessions)
         .map_err(|_| StoreError::Corrupt("session page bound"))?;
+    let (forked_from, forked_from_turn_id) =
+        super::chat_fork::forked_from(connection, &project_id, &chat_id)?.unzip();
+    let child_projection_epoch = super::child_transcript::child_projection_epoch(
+        connection,
+        project_id.as_str(),
+        chat_id.as_str(),
+    )?;
     let empty_page = AcpChatPage {
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
@@ -85,6 +92,9 @@ pub(crate) fn load_chat_page(
         turns: BoundedVec::new("turns", Vec::new())
             .map_err(|_| StoreError::Corrupt("turn page bound"))?,
         next_cursor: None,
+        forked_from: forked_from.clone(),
+        forked_from_turn_id: forked_from_turn_id.clone(),
+        child_projection_epoch,
     };
     let base_page_bytes = serde_json::to_vec(&empty_page)
         .map_err(|_| StoreError::Corrupt("chat page serialization"))?
@@ -111,6 +121,9 @@ pub(crate) fn load_chat_page(
         turns: BoundedVec::new("turns", slice.turns)
             .map_err(|_| StoreError::Corrupt("turn page bound"))?,
         next_cursor: slice.next_cursor,
+        forked_from,
+        forked_from_turn_id,
+        child_projection_epoch,
     };
     page.validate_page_bounds()
         .map_err(|_| StoreError::Corrupt("chat page ownership"))?;

@@ -88,10 +88,15 @@
   background: var(--color-surface);
   box-shadow: var(--elevation-popover);
   animation: menu-popover-enter var(--motion-duration-fast) ease-out;
+  transition:
+    opacity var(--motion-duration-exit) ease-in,
+    display var(--motion-duration-exit) allow-discrete;
 }
 
 .menu-popover[hidden] {
   display: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .menu-popover[role="dialog"] {
@@ -276,12 +281,6 @@
 @keyframes menu-popover-enter {
   from {
     opacity: 0;
-    transform: translateY(-2px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -294,6 +293,8 @@
     color: ButtonText;
     background: Canvas;
     box-shadow: none;
+    animation: none;
+    transition: none;
   }
 
   .menu-item {
@@ -332,6 +333,7 @@
 
   .menu-popover {
     animation: none;
+    transition: none;
   }
 
   .searchable-picker__trigger,

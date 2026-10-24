@@ -205,11 +205,40 @@ describe("ACP action controller", () => {
     ).resolves.toBe("applied");
     expect(test.commands.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: "Please respond to the attached annotations.",
+        prompt: "Please respond to the attached context.",
         attachedContext: [quote],
       }),
     );
     expect(test.cleared).toEqual([{ prompt: "", attachedContext: [quote] }]);
+  });
+  it("sends attachment-only context and still refuses an empty send", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("11", session("hot", "2", null)),
+    });
+    await expect(
+      test.controller.submit("  ", [], bindingId, modelId),
+    ).resolves.toBe("rejected");
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+    const image = {
+      kind: "image" as const,
+      artifactId: "00000000-0000-4000-8000-000000000000",
+      mediaType: "image/png" as const,
+      width: 1,
+      height: 1,
+      byteLength: 1,
+      sha256: "a".repeat(64),
+      label: "sample.png",
+    };
+    await expect(
+      test.controller.submit("", [image], bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Please respond to the attached context.",
+        attachedContext: [image],
+      }),
+    );
   });
   it("rejects a mode that is no longer advertised before enqueueing", async () => {
     const initial = {
@@ -1017,6 +1046,36 @@ describe("ACP action controller", () => {
       expectedTurnRevision: "7",
       prompt: "Change direction",
     });
+  });
+
+  it("steers a queued attachment-only message with the attached-context prompt", async () => {
+    const activeTurn = turn("turn-active", 2, "running");
+    const activeSession = agentSessionFixture({
+      ...session("hot", "1", null),
+      capabilities: capabilitySetFixture({ activeTurnSteer: true }),
+    });
+    const test = harness(page("8", activeSession, [activeTurn]));
+    vi.mocked(test.commands.steerTurn!).mockResolvedValue({
+      projection: page("9", activeSession, [activeTurn]),
+    });
+    const quote = {
+      kind: "transcriptQuote" as const,
+      ordinal: 1,
+      sourceTurnId: "t",
+      sourceItemId: "i",
+      text: "quote",
+      startOffset: 0,
+      endOffset: 5,
+    };
+    await expect(test.controller.steer("  ", [])).resolves.toBe("rejected");
+    // A queued attachment-only message has empty text.
+    await expect(test.controller.steer("", [quote])).resolves.toBe("applied");
+    expect(test.commands.steerTurn).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        prompt: "Please respond to the attached context.",
+        attachedContext: [quote],
+      }),
+    );
   });
 
   it("rejects an unavailable or changed Steer target without dispatching", async () => {

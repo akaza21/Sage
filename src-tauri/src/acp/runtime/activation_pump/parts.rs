@@ -121,6 +121,25 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             parent_thread_id,
         )
     }
+    pub(crate) fn write_release_fork(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        fork: &crate::acp::intent::ExternalId,
+        committed: bool,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_release_fork(
+            &mut self.adapter,
+            transport,
+            fork,
+            committed,
+        )
+    }
+    pub(crate) fn write_fork(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_fork(&mut self.adapter, transport)
+    }
     pub(crate) fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
         self.adapter.accept_oversized_response(id)
     }

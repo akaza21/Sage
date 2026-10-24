@@ -55,6 +55,9 @@ function activities(items: AcpItem[]) {
   );
 }
 
+const row = (name: string) => screen.getByRole("status", { name });
+const queryRow = (name: string) => screen.queryByRole("status", { name });
+
 afterEach(() => {
   cleanup();
   useSubagentPaneStore.getState().clear();
@@ -64,7 +67,7 @@ describe("Subagent activity rows", () => {
   it("refreshes an already-rendered unnamed group when later lifecycle observations emit names", () => {
     const spawn = [child("a", ""), child("b", "")];
     const view = activities(spawn);
-    expect(screen.getByText("2 subagents started working")).toBeVisible();
+    expect(row("2 subagents started working")).toBeVisible();
     const completed = spawn.map((member, index) => ({
       ...member,
       id: `done-${index}`,
@@ -89,9 +92,7 @@ describe("Subagent activity rows", () => {
         }
       />,
     );
-    expect(
-      screen.getByText("Reviewer and Builder started working"),
-    ).toBeVisible();
+    expect(row("Reviewer and Builder started working")).toBeVisible();
   });
 
   it("deduplicates spawn and native completion and opens the owner-bearing activity", () => {
@@ -112,9 +113,9 @@ describe("Subagent activity rows", () => {
     };
     activities([spawn, completion]);
     expect(screen.getAllByRole("status")).toHaveLength(1);
-    expect(screen.queryByText("2 subagents finished")).toBeNull();
+    expect(queryRow("2 subagents finished")).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Reviewer finished. Open Subagent" }),
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
     );
     expect(useSubagentPaneStore.getState().open).toEqual({
       owner: { projectId: "project", chatId: "chat", sessionId: "session" },
@@ -124,7 +125,7 @@ describe("Subagent activity rows", () => {
   });
 
   it("does not rebuild 300 unchanged members on streaming ticks but updates revised membership", () => {
-    const summary = vi.spyOn(subagentActivity, "subagentSummary");
+    const summary = vi.spyOn(subagentActivity, "subagentSegments");
     const members = Array.from({ length: 300 }, (_, index) =>
       child(`child-${index}`, `Reviewer ${index}`),
     );
@@ -157,7 +158,7 @@ describe("Subagent activity rows", () => {
     revised[1].payload.receiverLabels = ["Builder"];
     view.rerender(content(revised, "Next tick"));
     expect(
-      screen.getByText("Reviewer 0, Builder and 298 more started working"),
+      row("Reviewer 0, Builder and 298 more started working"),
     ).toBeVisible();
     expect(summary).toHaveBeenCalledOnce();
     summary.mockClear();
@@ -168,38 +169,35 @@ describe("Subagent activity rows", () => {
     };
     view.rerender(content(revised, "Next tick"));
     expect(
-      screen.getByText("Reviewer 0, Replacement and 298 more started working"),
+      row("Reviewer 0, Replacement and 298 more started working"),
     ).toBeVisible();
     expect(summary).toHaveBeenCalledOnce();
     summary.mockClear();
 
     view.rerender(content(revised.slice(0, -1), "Next tick"));
     expect(
-      screen.getByText("Reviewer 0, Replacement and 297 more started working"),
+      row("Reviewer 0, Replacement and 297 more started working"),
     ).toBeVisible();
     expect(summary).toHaveBeenCalledOnce();
   });
 
   it("keeps both adjacent verified children individually openable from their group", () => {
-    activities([child("a", "Reviewer"), child("b", "Builder")]);
-    const summary = screen
-      .getByText("Reviewer and Builder started working")
-      .closest("summary");
-    expect(summary).not.toBeNull();
-    expect(summary).toHaveAccessibleName(
-      "Reviewer and Builder started working. Show Subagents",
+    const { container } = activities([
+      child("a", "Reviewer"),
+      child("b", "Builder"),
+    ]);
+    expect(row("Reviewer and Builder started working")).toHaveTextContent(
+      "Reviewer and Builder started working",
     );
-    expect(screen.queryByRole("button", { name: /Open Subagent/ })).toBeNull();
-    const group = summary!.parentElement as HTMLDetailsElement;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
+    expect(container.querySelector("details, summary")).toBeNull();
     for (const [name, key] of [
       ["Reviewer", "a"],
       ["Builder", "b"],
     ]) {
       const button = screen.getByRole("button", {
-        name: `${name} started working. Open Subagent`,
+        name: `Open subagent ${name}`,
       });
+      expect(button).toHaveTextContent(name);
       button.focus();
       expect(button).toHaveFocus();
       fireEvent.click(button);
@@ -222,10 +220,8 @@ describe("Subagent activity rows", () => {
       item.payload.label = "Subagent";
     }
     activities([first, second]);
-    expect(screen.getByText("2 subagents started working")).toBeVisible();
-    expect(
-      screen.queryByText("Subagent and Subagent started working"),
-    ).toBeNull();
+    expect(row("2 subagents started working")).toBeVisible();
+    expect(queryRow("Subagent and Subagent started working")).toBeNull();
   });
 
   it("opens each of three adjacent completed children using its own event and child key", () => {
@@ -238,15 +234,9 @@ describe("Subagent activity rows", () => {
       id: `event-${item.id}` as Collaboration["id"],
     }));
     activities(items);
-    const summary = screen
-      .getByText("Reviewer, Builder and Tester finished")
-      .closest("summary");
-    expect(summary).not.toBeNull();
-    const group = summary!.parentElement as HTMLDetailsElement;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
+    expect(row("Reviewer, Builder and Tester finished")).toBeVisible();
     expect(
-      screen.getAllByRole("button", { name: /Open Subagent/ }),
+      screen.getAllByRole("button", { name: /^Open subagent / }),
     ).toHaveLength(3);
     for (const [name, key] of [
       ["Reviewer", "a"],
@@ -254,7 +244,7 @@ describe("Subagent activity rows", () => {
       ["Tester", "c"],
     ]) {
       fireEvent.click(
-        screen.getByRole("button", { name: `${name} finished. Open Subagent` }),
+        screen.getByRole("button", { name: `Open subagent ${name}` }),
       );
       expect(useSubagentPaneStore.getState().open).toEqual({
         owner: { projectId: "project", chatId: "chat", sessionId: "session" },
@@ -268,22 +258,11 @@ describe("Subagent activity rows", () => {
     const unverified = child("b", "Builder");
     unverified.payload.agentKey = "mismatched-key";
     activities([child("a", "Reviewer"), unverified]);
-    const summary = screen
-      .getByText("Reviewer and Builder started working")
-      .closest("summary");
-    expect(summary).not.toBeNull();
-    const group = summary!.parentElement as HTMLDetailsElement;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
-    expect(screen.getByText("Builder started working")).toBeVisible();
+    expect(row("Reviewer and Builder started working")).toBeVisible();
     expect(screen.queryByRole("button", { name: /Builder/ })).toBeNull();
-    expect(
-      screen.getAllByRole("button", { name: /Open Subagent/ }),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Reviewer started working. Open Subagent",
-      }),
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
     );
     expect(useSubagentPaneStore.getState().open).toEqual({
       owner: { projectId: "project", chatId: "chat", sessionId: "session" },
@@ -293,43 +272,46 @@ describe("Subagent activity rows", () => {
     expect(screen.queryByText(/mismatched-key/)).toBeNull();
   });
 
-  it("keeps all 300 children individually reachable and unmounts their actions when collapsed", () => {
+  it("names two leading children and sends the rest to the Subagents list", () => {
     activities(
       Array.from({ length: 300 }, (_, index) =>
         child(`id-${index}`, `Reviewer ${index}`),
       ),
     );
-    const summary = screen
-      .getByText("Reviewer 0, Reviewer 1 and 298 more started working")
-      .closest("summary");
-    expect(summary).not.toBeNull();
-    expect(screen.queryByRole("button", { name: /Open Subagent/ })).toBeNull();
-    const group = summary!.parentElement as HTMLDetailsElement;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
-    const buttons = screen.getAllByRole("button", { name: /Open Subagent/ });
-    expect(buttons).toHaveLength(300);
-    for (const [index, button] of buttons.entries()) {
-      expect(button).toHaveAccessibleName(
-        `Reviewer ${index} started working. Open Subagent`,
-      );
-      fireEvent.click(button);
-      expect(useSubagentPaneStore.getState().open).toEqual({
-        owner: { projectId: "project", chatId: "chat", sessionId: "session" },
-        itemId: `id-${index}`,
-        agentKey: `id-${index}`,
-      });
-    }
-    group.open = false;
-    fireEvent(group, new Event("toggle"));
-    expect(screen.queryByRole("button", { name: /Open Subagent/ })).toBeNull();
+    expect(
+      row("Reviewer 0, Reviewer 1 and 298 more started working"),
+    ).toBeVisible();
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Open subagent Reviewer 0",
+      "Open subagent Reviewer 1",
+      "Show 298 more subagents",
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open subagent Reviewer 1" }),
+    );
+    expect(useSubagentPaneStore.getState()).toMatchObject({
+      open: { itemId: "id-1", agentKey: "id-1" },
+      list: false,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show 298 more subagents" }),
+    );
+    expect(useSubagentPaneStore.getState()).toMatchObject({
+      open: { agentKey: "id-0" },
+      selected: true,
+      list: true,
+    });
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       3,
     );
   });
 
-  it("admits a later verified unnamed observation without making other grouped children clickable", () => {
+  it("never fabricates per-name targets for an unnamed group", () => {
     const ambiguous = child("a", "");
     ambiguous.payload.agentKeys = ["a", "b"];
     ambiguous.payload.receiverLabels = ["", ""];
@@ -342,23 +324,10 @@ describe("Subagent activity rows", () => {
       id: "verified-event" as Collaboration["id"],
     };
     activities([ambiguous, verified]);
-    const summary = screen
-      .getByText("2 subagents started working")
-      .closest("summary");
-    expect(summary).not.toBeNull();
-    const group = summary!.parentElement as HTMLDetailsElement;
-    group.open = true;
-    fireEvent(group, new Event("toggle"));
-    const buttons = screen.getAllByRole("button", {
-      name: "Subagent started working. Open Subagent",
-    });
-    expect(buttons).toHaveLength(1);
-    fireEvent.click(buttons[0]);
-    expect(useSubagentPaneStore.getState().open).toEqual({
-      owner: { projectId: "project", chatId: "chat", sessionId: "session" },
-      itemId: "verified-event",
-      agentKey: "a",
-    });
+    expect(row("2 subagents started working")).toHaveTextContent(
+      "2 subagents started working",
+    );
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("merges compatible spawn and start observations and selects the native source with its supplied name", () => {
@@ -375,9 +344,7 @@ describe("Subagent activity rows", () => {
     activities([spawn, started]);
     expect(screen.getAllByRole("status")).toHaveLength(1);
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Reviewer started working. Open Subagent",
-      }),
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
     );
     expect(useSubagentPaneStore.getState().open).toEqual({
       owner: { projectId: "project", chatId: "chat", sessionId: "session" },
@@ -399,7 +366,7 @@ describe("Subagent activity rows", () => {
       ["foreign", "completed"],
     ];
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("A finished")).toBeVisible();
+    expect(row("A finished")).toBeVisible();
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       1,
     );
@@ -413,7 +380,7 @@ describe("Subagent activity rows", () => {
       ),
     );
     expect(
-      screen.getByText("Reviewer 0, Reviewer 1 and 298 more started working"),
+      row("Reviewer 0, Reviewer 1 and 298 more started working"),
     ).toBeVisible();
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
@@ -424,13 +391,13 @@ describe("Subagent activity rows", () => {
     const failed = child("a", "Reviewer", "errored");
     failed.payload.operation = "wait";
     activities([failed, child("b", "Builder", "interrupted")]);
-    expect(screen.getByText("Reviewer failed")).toBeVisible();
-    expect(screen.getByText("Builder stopped")).toBeVisible();
+    expect(row("Reviewer failed")).toBeVisible();
+    expect(row("Builder stopped")).toBeVisible();
     expect(screen.queryByText(/failed to start/)).toBeNull();
     expect(screen.queryByRole("button", { name: /Reviewer/ })).toBeNull();
   });
 
-  it("does not shimmer a finished row when the same event also contains a running child", () => {
+  it("does not shimmer live or finished subagent rows", () => {
     const item = child("a", "A");
     item.payload.agentKeys = ["a", "b"];
     item.payload.receiverLabels = ["A", "B"];
@@ -438,11 +405,13 @@ describe("Subagent activity rows", () => {
       ["a", "running"],
       ["b", "completed"],
     ];
-    render(<CollaborationItem item={item} />);
-    expect(screen.getByText("B finished")).not.toHaveClass("acp-live-shimmer");
-    expect(screen.getByText("A started working")).toHaveClass(
-      "acp-live-shimmer",
-    );
+    const { container } = render(<CollaborationItem item={item} />);
+    expect(row("B finished")).toBeVisible();
+    expect(row("A started working")).toBeVisible();
+    expect(container.querySelector(".acp-live-shimmer")).toBeNull();
+    expect(
+      container.querySelector('[data-state="started working"]'),
+    ).toContainElement(row("A started working"));
   });
   it("shows both named started and finished children in a mixed spawn event", () => {
     const item = child("a", "A");
@@ -453,9 +422,14 @@ describe("Subagent activity rows", () => {
       ["b", "completed"],
     ];
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("A started working")).toBeVisible();
-    expect(screen.getByText("B finished")).toBeVisible();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(row("A started working")).toBeVisible();
+    expect(row("B finished")).toBeVisible();
+    // One grouped event: each declared key routes to its own spawn.
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Open subagent A", "Open subagent B"]);
   });
 
   it("groups adjacent starts and completions separately without merging across prose", () => {
@@ -467,18 +441,16 @@ describe("Subagent activity rows", () => {
       { ...child("prose", ""), kind: "text" } as unknown as AcpItem,
       child("e", "E", "completed"),
     ]);
-    expect(screen.getByText("A and B started working")).toBeVisible();
-    expect(screen.getByText("C and D finished")).toBeVisible();
-    expect(screen.getByText("E finished")).toBeVisible();
+    expect(row("A and B started working")).toBeVisible();
+    expect(row("C and D finished")).toBeVisible();
+    expect(row("E finished")).toBeVisible();
     expect(screen.getAllByRole("status")).toHaveLength(3);
-    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(5);
   });
 
   it("retains known names beside unnamed children without exposing identity keys", () => {
     activities([child("secret-a", "Reviewer"), child("secret-b", "")]);
-    expect(
-      screen.getByText("Reviewer and 1 more started working"),
-    ).toBeVisible();
+    expect(row("Reviewer and 1 more started working")).toBeVisible();
     expect(screen.queryByText(/secret-/)).toBeNull();
   });
 
@@ -490,7 +462,7 @@ describe("Subagent activity rows", () => {
         id: "duplicate-event" as Collaboration["id"],
       },
     ]);
-    expect(screen.getByText("A finished")).toBeVisible();
+    expect(row("A finished")).toBeVisible();
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
@@ -498,8 +470,8 @@ describe("Subagent activity rows", () => {
     activities(
       Array.from({ length: 301 }, (_, index) => child(`child-${index}`, "")),
     );
-    expect(screen.getByText("300 subagents started working")).toBeVisible();
-    expect(screen.getByText("Subagent started working")).toBeVisible();
+    expect(row("300 subagents started working")).toBeVisible();
+    expect(row("Subagent started working")).toBeVisible();
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       4,
     );
@@ -516,10 +488,51 @@ describe("Subagent activity rows", () => {
         child("a", "A"),
         { ...child("b", "B"), ...change } as Collaboration,
       ]);
-      expect(screen.getByText("A started working")).toBeVisible();
-      expect(screen.getByText("B started working")).toBeVisible();
+      expect(row("A started working")).toBeVisible();
+      expect(row("B started working")).toBeVisible();
       expect(screen.getAllByRole("status")).toHaveLength(2);
       view.unmount();
     }
+  });
+});
+
+describe("subagentSegments", () => {
+  const states = [
+    "started working",
+    "finished",
+    "failed to start",
+    "failed",
+    "stopped",
+  ];
+  const render = (labels: string[], state: string) =>
+    subagentActivity
+      .subagentSegments(labels, state)
+      .map((segment) =>
+        segment.index !== undefined
+          ? `[${segment.index}:${segment.text}]`
+          : segment.more
+            ? `{${segment.text}}`
+            : segment.text,
+      )
+      .join("");
+
+  it.each(states)("joins 1, 2, 3 and 5 names for %s", (state) => {
+    expect(render(["A"], state)).toBe(`[0:A] ${state}`);
+    expect(render(["A", "B"], state)).toBe(`[0:A] and [1:B] ${state}`);
+    expect(render(["A", "B", "C"], state)).toBe(
+      `[0:A], [1:B] and [2:C] ${state}`,
+    );
+    expect(render(["A", "B", "C", "D", "E"], state)).toBe(
+      `[0:A], [1:B] and {3 more} ${state}`,
+    );
+    expect(
+      subagentActivity.subagentSummary(["A", "B", "C", "D", "E"], state),
+    ).toBe(`A, B and 3 more ${state}`);
+  });
+
+  it("keeps each name's own index past unnamed children and never names them", () => {
+    expect(render(["", "B"], "finished")).toBe("[1:B] and {1 more} finished");
+    expect(render([""], "finished")).toBe("[0:Subagent] finished");
+    expect(render(["", ""], "finished")).toBe("2 subagents finished");
   });
 });

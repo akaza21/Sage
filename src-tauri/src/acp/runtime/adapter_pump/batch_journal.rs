@@ -11,6 +11,8 @@ use super::{DurableAdapterEvent, PumpIntent};
 pub(crate) struct JournalReceipt {
     pub projection_revision: ProjectionRevision,
     turn_cursor: AdapterTurnCursor,
+    /// Set when the batch advanced the chat's child projection epoch.
+    pub child_projection_epoch: Option<u64>,
 }
 
 impl JournalReceipt {
@@ -21,7 +23,16 @@ impl JournalReceipt {
         Self {
             projection_revision,
             turn_cursor,
+            child_projection_epoch: None,
         }
+    }
+
+    pub(in crate::acp::runtime) fn with_child_projection_epoch(
+        mut self,
+        epoch: Option<u64>,
+    ) -> Self {
+        self.child_projection_epoch = epoch;
+        self
     }
 
     pub(crate) fn turn_cursor(&self) -> &AdapterTurnCursor {

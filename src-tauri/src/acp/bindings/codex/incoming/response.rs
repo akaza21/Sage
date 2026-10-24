@@ -204,7 +204,10 @@ pub(super) fn response(
         | RequestKind::GoalGet
         | RequestKind::GoalPause
         | RequestKind::GoalClear
-        | RequestKind::ChildRead => {
+        | RequestKind::ChildRead
+        | RequestKind::Fork
+        | RequestKind::ForkRelease
+        | RequestKind::ForkDelete => {
             unreachable!("handled above")
         }
     };

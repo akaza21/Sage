@@ -453,31 +453,64 @@
   flex: 0 0 auto;
 }
 .subagent-surface {
-  padding: var(--space-4);
+  padding: 0 0 var(--space-4);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
   overflow: auto;
   height: 100%;
 }
+.subagent-surface > :not(header) {
+  max-width: 690px;
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
 .subagent-surface header {
+  margin-bottom: var(--space-3);
+}
+/* Codex child header: back, avatar, name, and the model at the far right. */
+.subagent-surface__bar {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  min-height: 44px;
+  gap: var(--space-2);
+  padding-inline: var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.subagent-surface__bar button {
+  display: inline-grid;
+  place-items: center;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.subagent-surface__bar button:hover,
+.subagent-surface__bar button:focus-visible {
+  color: var(--color-text-primary);
 }
 .subagent-surface h1 {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: var(--color-text-primary);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.subagent-surface__avatar {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-pill);
-  background: var(--agent-subagent-violet);
-  color: white;
+.subagent-surface__model {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+.subagent-surface__duration {
+  max-width: 690px;
+  margin: var(--space-4) auto 0;
+  padding: 0 var(--space-4) var(--space-2);
+  color: var(--color-text-muted);
 }
 .subagent-surface ol {
   display: grid;

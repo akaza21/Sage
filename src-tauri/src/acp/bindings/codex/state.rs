@@ -1,5 +1,9 @@
 pub(crate) mod capabilities;
 mod child_read;
+mod fork;
+#[cfg(test)]
+pub(crate) use fork::MAX_FORK_RELEASE_ATTEMPTS;
+pub(crate) use fork::{MAX_UNRELEASED_FORKS, fork_reply};
 pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
@@ -169,6 +173,8 @@ pub(crate) struct CodexAdapter {
     goal_mutation_fence: Option<(u64, u64)>,
     pending_child_read: Option<(u64, String, String)>,
     child_read_tombstone: Option<u64>,
+    pending_fork: Option<u64>,
+    forks: fork::ForkLedger,
 }
 
 impl CodexAdapter {
@@ -216,6 +222,12 @@ impl CodexAdapter {
         }
         if kind == RequestKind::ChildRead {
             self.pending_child_read = None;
+        }
+        if kind == RequestKind::Fork {
+            self.pending_fork = None;
+        }
+        if matches!(kind, RequestKind::ForkRelease | RequestKind::ForkDelete) {
+            self.forks.release_unwritten(id);
         }
         let removed = self.remove_pending(id);
         debug_assert_eq!(removed, Some(kind));

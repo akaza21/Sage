@@ -1,5 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 
+use super::chat_fork::resumable_capabilities as resumable;
+
 use crate::acp::{
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
@@ -59,6 +61,13 @@ struct ActivationRow {
     latest_epoch: i64,
 }
 
+/// The same native session, with capabilities equal up to the tolerated
+/// `nativeSessionFork` upgrade.
+fn resumes(row: &ActivationRow, command: &CompleteActivationCommand) -> bool {
+    row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
+        && resumable(&row.capabilities_json, &command.capabilities_json)
+}
+
 pub(crate) fn complete_activation(
     connection: &mut rusqlite::Connection,
     command: CompleteActivationCommand,
@@ -74,9 +83,7 @@ pub(crate) fn complete_activation(
     )?;
     verify_digests(&row, &command.binding_digest, &command.artifact_digest)?;
     if row.epoch_state == "running" && matches!(row.session_state.as_str(), "ready" | "active") {
-        if row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
-            && row.capabilities_json == command.capabilities_json
-        {
+        if resumes(&row, &command) {
             return duplicate(&command.session_id, command.runtime_epoch, &row);
         }
         return Err(StoreError::Conflict {
@@ -97,9 +104,7 @@ pub(crate) fn complete_activation(
                 resource: "activationFill",
             });
         }
-    } else if row.external_session_id.as_deref() != Some(command.external_session_id.as_str())
-        || row.capabilities_json != command.capabilities_json
-    {
+    } else if !resumes(&row, &command) {
         return Err(StoreError::Conflict {
             resource: "activationResume",
         });

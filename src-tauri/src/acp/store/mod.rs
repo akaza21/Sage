@@ -7,6 +7,7 @@ pub(crate) mod browser_operations;
 #[cfg(test)]
 mod browser_permission_tests;
 mod cancel;
+pub(crate) mod chat_fork;
 pub(crate) mod child_transcript;
 mod commands;
 mod database_store;
@@ -422,8 +423,6 @@ mod extended_tests;
 mod ingress_tests;
 #[cfg(test)]
 mod journal_store_tests;
-#[cfg(test)]
-mod prepare_tests;
 #[cfg(test)]
 mod terminal_reason_tests;
 #[cfg(test)]

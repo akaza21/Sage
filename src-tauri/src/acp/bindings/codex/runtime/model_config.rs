@@ -13,6 +13,13 @@ impl CodexRuntime {
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
         let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
             .ok_or(AdapterRuntimeError::Frame)?;
+        if self.inner.fork_pending() == Some(id) {
+            // A fork answer beyond the structural bound is also beyond what
+            // `thread/resume` could later load, so no Chat is made for it.
+            self.inner.complete_fork(id).map_err(super::map_adapter)?;
+            self.native_rpc_reply = Some(crate::acp::goal::NativeRpcReply::TooLarge);
+            return super::support::one(AdapterEvent::IgnoredLate);
+        }
         if self.inner.pending_kind(id) != Some(super::super::request::RequestKind::Models) {
             return Err(AdapterRuntimeError::Frame);
         }

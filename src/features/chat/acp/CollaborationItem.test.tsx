@@ -9,7 +9,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { safeItem } from "../../../services/acpDesktopResponseItems";
-import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
+import {
+  subagentPaneForPage,
+  type SubagentPaneTarget,
+  useSubagentPaneStore,
+} from "../../../app/subagentPaneStore";
 import { CollaborationItem } from "./CollaborationItem";
 
 afterEach(cleanup);
@@ -35,11 +39,9 @@ describe("CollaborationItem", () => {
       expect(
         container.querySelector(".acp-subagent-row__glyph"),
       ).toHaveTextContent("𐐀");
-      expect(
-        container.querySelector(".acp-subagent-row__glyph"),
-      ).toHaveAttribute(
+      expect(container.querySelector(".acp-subagent-row")).toHaveAttribute(
         "data-state",
-        state === "running" ? "working" : "finished",
+        state === "running" ? "started working" : "finished",
       );
     },
   );
@@ -102,7 +104,7 @@ describe("CollaborationItem", () => {
     if (item?.kind !== "collaboration") throw new Error("Rejected fixture");
     render(<CollaborationItem item={item} />);
     fireEvent.click(
-      screen.getByRole("button", { name: /Reviewer started working/ }),
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
     );
     expect(useSubagentPaneStore.getState().open).toEqual({
       owner: {
@@ -130,7 +132,9 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("Subagent started working")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Subagent started working" }),
+    ).toHaveTextContent("Subagent started working");
     expect(screen.queryByText(/secret-thread-id/)).toBeNull();
   });
 
@@ -176,7 +180,9 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("Code review stopped")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Code review stopped" }),
+    ).toBeVisible();
   });
 
   it("shows an emitted completed child activity by its supplied name", () => {
@@ -195,7 +201,9 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("Reviewer finished")).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "Reviewer finished" }),
+    ).toBeVisible();
     expect(screen.queryByText(/started working/)).toBeNull();
   });
 
@@ -234,11 +242,15 @@ describe("CollaborationItem", () => {
     if (item?.kind !== "collaboration")
       throw new Error("Projected completion was rejected.");
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("A, B and C finished")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /A, B and C finished/ }),
     ).toBeNull();
-    expect(screen.getByText("A, B and C finished")).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "A, B and C finished" }),
+    ).toHaveTextContent("A, B and C finished");
+    expect(
+      screen.getAllByRole("button", { name: /^Open subagent [ABC]$/ }),
+    ).toHaveLength(3);
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(
       3,
     );
@@ -289,7 +301,9 @@ describe("CollaborationItem", () => {
       },
     } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
     render(<CollaborationItem item={item} />);
-    expect(screen.getByText("B and C finished")).toBeVisible();
+    expect(
+      screen.getByRole("status", { name: "B and C finished" }),
+    ).toBeVisible();
     const dots = document.querySelectorAll(".acp-subagent-row__glyph");
     expect(dots).toHaveLength(2);
     expect(dots[0]).toHaveClass("acp-subagent-row__glyph--0");
@@ -350,5 +364,174 @@ describe("CollaborationItem", () => {
       "streaming",
     );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("gives each grouped name its own target and opens that specific child", () => {
+    useSubagentPaneStore.getState().clear();
+    const spawn = (id: string, name: string) =>
+      safeItem({
+        id: `spawn-${id}`,
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "1",
+        ordinal: 1,
+        origin: "primary",
+        activityId: null,
+        lifecycle: "completed",
+        revision: "1",
+        createdAt: 1,
+        updatedAt: 2,
+        terminalAt: 2,
+        kind: "collaboration",
+        toolState: null,
+        payload: {
+          activityId: "activity-1",
+          label: "spawnAgent",
+          summary: "",
+          receiverLabels: [name],
+          operation: "spawnAgent",
+          agentKeys: [id],
+          agentStates: [[id, "running"]],
+        },
+      }) as Extract<AcpItem, { kind: "collaboration" }>;
+    const items = [
+      spawn("math", "Count math"),
+      spawn("readme", "Count readme"),
+    ];
+    const { container } = render(
+      <CollaborationItem item={items[0]} items={items} />,
+    );
+    expect(
+      screen.getByRole("status", {
+        name: "Count math and Count readme started working",
+      }),
+    ).toHaveTextContent("Count math and Count readme started working");
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Open subagent Count math",
+      "Open subagent Count readme",
+    ]);
+    expect(container.querySelector("details, summary")).toBeNull();
+    expect(container.querySelector(".acp-live-shimmer")).toBeNull();
+    expect(container.querySelector(".acp-subagent-row__done")).toBeNull();
+    fireEvent.click(buttons[1]);
+    expect(useSubagentPaneStore.getState()).toMatchObject({
+      open: {
+        owner: {
+          projectId: "project-1",
+          chatId: "chat-1",
+          sessionId: "session-1",
+        },
+        itemId: "spawn-readme",
+        agentKey: "readme",
+      },
+      selected: true,
+      list: false,
+    });
+  });
+
+  it("resolves a grouped event's key to that child's own spawn in the same session", () => {
+    const owner = {
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+    } as unknown as SubagentPaneTarget["owner"];
+    const collaboration = (id: string, payload: object) => ({
+      ...owner,
+      id,
+      kind: "collaboration",
+      payload: { receiverLabels: [], agentStates: [], ...payload },
+    });
+    const page = {
+      projectId: "project-1",
+      chatId: "chat-1",
+      turns: [
+        {
+          sessionId: "session-1",
+          items: [
+            collaboration("spawn-a", {
+              operation: "spawnAgent",
+              agentKeys: ["id-a"],
+            }),
+            collaboration("spawn-b", {
+              operation: "spawnAgent",
+              agentKeys: ["id-b"],
+            }),
+            collaboration("wait", {
+              operation: "wait",
+              agentKeys: ["id-a", "id-b"],
+            }),
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof subagentPaneForPage>[1];
+    const target = { owner, itemId: "wait", agentKey: "id-b" };
+    expect(subagentPaneForPage(target, page)).toEqual({
+      owner,
+      itemId: "spawn-b",
+      agentKey: "id-b",
+    });
+    expect(
+      subagentPaneForPage({ ...target, agentKey: "id-unknown" }, page),
+    ).toBeNull();
+    expect(
+      subagentPaneForPage(
+        {
+          ...target,
+          owner: { ...owner, sessionId: "session-2" as typeof owner.sessionId },
+        },
+        page,
+      ),
+    ).toBeNull();
+  });
+
+  it("routes each named child of one grouped completion by its own key", () => {
+    useSubagentPaneStore.getState().clear();
+    const item = safeItem({
+      id: "wait-2",
+      projectId: "project-1",
+      chatId: "chat-1",
+      sessionId: "session-1",
+      turnId: "turn-1",
+      runtimeEpoch: "1",
+      ordinal: 1,
+      origin: "primary",
+      activityId: null,
+      lifecycle: "completed",
+      revision: "1",
+      createdAt: 1,
+      updatedAt: 2,
+      terminalAt: 2,
+      kind: "collaboration",
+      toolState: null,
+      payload: {
+        activityId: "activity-2",
+        label: "wait",
+        summary: "",
+        receiverLabels: ["A", "B", "C", "D", "E"],
+        operation: "wait",
+        agentKeys: ["id-a", "id-b", "id-c", "id-d", "id-e"],
+        agentStates: ["a", "b", "c", "d", "e"].map((key) => [
+          `id-${key}`,
+          "completed",
+        ]),
+      },
+    });
+    if (item?.kind !== "collaboration") throw new Error("Rejected fixture");
+    render(<CollaborationItem item={item} />);
+    expect(
+      screen.getByRole("status", { name: "A, B and 3 more finished" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Open subagent B" }));
+    expect(useSubagentPaneStore.getState().open?.agentKey).toBe("id-b");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show 3 more subagents" }),
+    );
+    expect(useSubagentPaneStore.getState()).toMatchObject({
+      selected: true,
+      list: true,
+    });
   });
 });

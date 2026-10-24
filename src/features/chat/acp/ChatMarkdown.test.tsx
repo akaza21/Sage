@@ -31,6 +31,31 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("ChatMarkdown stream fade", () => {
+  it("finishes the fade of blocks present at mount and leaves later blocks to animate", () => {
+    const finished: string[] = [];
+    const fake = (name: string) =>
+      ({
+        animationName: name,
+        finish: () => finished.push(name),
+      }) as unknown as Animation;
+    const original = Element.prototype.getAnimations;
+    Element.prototype.getAnimations = function () {
+      return [fake("acp-stream-in"), fake("sage-dot-bounce")];
+    };
+    try {
+      const view = render(<ChatMarkdown text={"one\n\ntwo"} streaming />);
+      // Only the stream fade of the remounted answer is settled.
+      expect(finished).toEqual(["acp-stream-in"]);
+      view.rerender(<ChatMarkdown text={"one\n\ntwo\n\nthree"} streaming />);
+      // Appending a block after mount settles nothing.
+      expect(finished).toEqual(["acp-stream-in"]);
+    } finally {
+      Element.prototype.getAnimations = original;
+    }
+  });
+});
+
 describe("ChatMarkdown code blocks", () => {
   it("normalizes CRLF lists and fenced source in both Chat and Editor", async () => {
     const { FileMarkdownPreview } =

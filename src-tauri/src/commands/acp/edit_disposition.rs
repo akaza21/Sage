@@ -85,6 +85,7 @@ fn projection_changed(
         chat_id,
         session_id,
         projection_revision: response.projection.projection_revision,
+        child_projection_epoch: 0,
     }
 }
 

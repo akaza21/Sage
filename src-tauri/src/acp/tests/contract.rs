@@ -844,6 +844,9 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         sessions: BoundedVec::new("sessions", vec![session]).unwrap(),
         turns: BoundedVec::new("turns", vec![turn]).unwrap(),
         next_cursor: None,
+        forked_from: None,
+        forked_from_turn_id: None,
+        child_projection_epoch: 0,
     };
     assert_eq!(page.validate_page_bounds(), Ok(()));
 

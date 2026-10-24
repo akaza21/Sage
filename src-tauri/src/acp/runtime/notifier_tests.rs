@@ -105,6 +105,7 @@ fn event(project: &str, chat: &str, session: &str, revision: u64) -> ProjectionC
         chat_id: SageChatId::parse(chat).unwrap(),
         session_id: SageAgentSessionId::parse(session).unwrap(),
         projection_revision: ProjectionRevision::new(revision).unwrap(),
+        child_projection_epoch: 0,
     }
 }
 
@@ -143,6 +144,40 @@ fn committed_event_is_observed_only_after_commit_and_drained_once() {
 
         assert!(!sink.observed_before_commit.load(Ordering::SeqCst));
         assert_eq!(*lock(&sink.revisions), vec![1]);
+        notifier.shutdown().await;
+    });
+}
+
+#[test]
+fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
+    runtime().block_on(async {
+        let committed = Arc::new(AtomicBool::new(true));
+        let sink = Arc::new(GateSink::new(committed));
+        let notifier = ProjectionNotifier::start(sink.clone());
+        let child = |epoch| ProjectionChangedV1 {
+            child_projection_epoch: epoch,
+            ..event("p", "c", "s", 4)
+        };
+        assert_eq!(
+            notifier.publish_committed(event("p", "c", "s", 4)),
+            Ok(PublishOutcome::Scheduled)
+        );
+        sink.wait_for_entries(1).await;
+        sink.release(1);
+        tokio::task::yield_now().await;
+        // Only the child epoch moved; the revision is the same.
+        assert_eq!(
+            notifier.publish_committed(child(7)),
+            Ok(PublishOutcome::Scheduled)
+        );
+        sink.wait_for_entries(2).await;
+        sink.release(1);
+        tokio::task::yield_now().await;
+        assert_eq!(
+            notifier.publish_committed(child(7)),
+            Ok(PublishOutcome::Coalesced)
+        );
+        assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
 }
@@ -334,4 +369,65 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[test]
+fn a_child_only_notice_is_routed_away_from_the_parent_page_reload() {
+    use crate::acp::intent::{ProjectionNoticeRoutes, route_projection_notice};
+    let mut last = ProjectionNoticeRoutes::default();
+    let child = |revision, epoch| ProjectionChangedV1 {
+        child_projection_epoch: epoch,
+        ..event("p", "c", "s", revision)
+    };
+    // Nothing published yet: even a child change reloads the page once.
+    assert!(route_projection_notice(&mut last, child(4, 7)).is_ok());
+    // Same revision, new child epoch: a child notice only.
+    let routed = route_projection_notice(&mut last, child(4, 8)).unwrap_err();
+    assert_eq!(routed.child_projection_epoch, 8);
+    assert_eq!(routed.chat_id.as_str(), "c");
+    // A moved revision is a parent change again.
+    assert!(route_projection_notice(&mut last, child(5, 9)).is_ok());
+    assert!(route_projection_notice(&mut last, event("p", "c", "s", 6)).is_ok());
+    // Another chat at the same revision is a parent change for that chat.
+    let other = ProjectionChangedV1 {
+        child_projection_epoch: 10,
+        ..event("p", "other", "s", 6)
+    };
+    assert!(route_projection_notice(&mut last, other).is_ok());
+}
+
+#[test]
+fn interleaved_chats_keep_their_own_child_only_routing() {
+    use crate::acp::intent::{
+        MAX_PROJECTION_NOTICE_ROUTES, ProjectionNoticeRoutes, route_projection_notice,
+    };
+    let mut routes = ProjectionNoticeRoutes::default();
+    let child = |chat: &str, revision, epoch| ProjectionChangedV1 {
+        child_projection_epoch: epoch,
+        ..event("p", chat, "s", revision)
+    };
+    assert!(route_projection_notice(&mut routes, child("a", 4, 1)).is_ok());
+    assert!(route_projection_notice(&mut routes, child("b", 9, 1)).is_ok());
+    // Chat b's notice in between does not make a's child change a reload.
+    assert!(route_projection_notice(&mut routes, child("a", 4, 2)).is_err());
+    assert!(route_projection_notice(&mut routes, child("b", 9, 2)).is_err());
+    // Another session of the same chat is its own route.
+    let other_session = ProjectionChangedV1 {
+        child_projection_epoch: 3,
+        ..event("p", "a", "s2", 4)
+    };
+    assert!(route_projection_notice(&mut routes, other_session).is_ok());
+    // The routes are a bounded LRU: touching a keeps it, b is evicted first.
+    for index in 0..MAX_PROJECTION_NOTICE_ROUTES - 2 {
+        let chat = format!("chat-{index}");
+        assert!(route_projection_notice(&mut routes, child(&chat, 1, 1)).is_ok());
+        if index == 0 {
+            assert!(route_projection_notice(&mut routes, child("a", 4, 4)).is_err());
+        }
+    }
+    assert!(route_projection_notice(&mut routes, child("a", 4, 5)).is_err());
+    assert!(
+        route_projection_notice(&mut routes, child("b", 9, 3)).is_ok(),
+        "an evicted route reloads the parent page once"
+    );
 }

@@ -420,7 +420,9 @@ export function actionsFor(state, harness) {
       ...(state === "tool-expanded"
         ? [LAST_TURN + ".acp-tool-rollup > summary"]
         : []),
-      ...(state === "child-opened" ? [LAST_TURN + ".acp-subagent-row"] : []),
+      ...(state === "child-opened"
+        ? [LAST_TURN + ".acp-subagent-row .acp-subagent-name"]
+        : []),
     ];
   if (state === "approval-approved")
     return [LAST_TURN + ".acp-permission__actions button:first-child"];

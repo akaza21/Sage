@@ -13,6 +13,7 @@ import {
   MAX_CHAT_OWNERSHIP_ENTRIES,
 } from "../domain/chatOwnership";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { persistQueuedChatPrompt } from "./chatAttachedContextState";
 import { useWorkbenchStore } from "./store";
 
 const projectPort = getWorkbenchPorts().project;
@@ -221,6 +222,42 @@ describe("per-Chat disposable ownership", () => {
       }),
     ]);
     expect(useWorkbenchStore.getState().chatUiById.foreign).toBeUndefined();
+  });
+
+  it("queues an attachment-only draft with empty text for the fallback prompt (S4)", async () => {
+    const replace = vi
+      .spyOn(projectPort, "replaceChatQueuedPrompts")
+      .mockResolvedValue(undefined);
+    const owner = useWorkbenchStore.getState().captureChatOwnership(chatA.id)!;
+    const quote = {
+      kind: "transcriptQuote" as const,
+      ordinal: 1,
+      sourceTurnId: "t",
+      sourceItemId: "i",
+      text: "quote",
+      startOffset: 0,
+      endOffset: 5,
+    };
+    useWorkbenchStore.getState().setComposerText("   ");
+    expect(
+      await persistQueuedChatPrompt(useWorkbenchStore, chatA.id, "b", null),
+    ).toBe(false);
+    expect(useWorkbenchStore.getState().attachChatContext(owner, quote)).toBe(
+      true,
+    );
+    expect(
+      await persistQueuedChatPrompt(useWorkbenchStore, chatA.id, "b", null),
+    ).toBe(true);
+    expect(replace).toHaveBeenCalledWith("project-a", chatA.id, [
+      expect.objectContaining({
+        text: "",
+        attachedContext: [quote],
+        status: "queued",
+      }),
+    ]);
+    expect(useWorkbenchStore.getState().chatUiById[chatA.id]).toMatchObject({
+      attachedContext: [],
+    });
   });
 
   it("preserves Chat ownership through a same-Project root projection", async () => {

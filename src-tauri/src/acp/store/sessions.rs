@@ -251,7 +251,7 @@ pub(super) fn validate_chat_revision(
     Ok(())
 }
 
-fn ensure_session_capacity(
+pub(super) fn ensure_session_capacity(
     transaction: &Transaction<'_>,
     project: &SageProjectId,
     chat: &SageChatId,
@@ -286,7 +286,10 @@ fn ensure_session_capacity(
     check_add(global, 1, LIMITS.durable.sessions_global, "globalSessions")
 }
 
-fn increment_session_usage(transaction: &Transaction<'_>, project: &str) -> Result<(), StoreError> {
+pub(super) fn increment_session_usage(
+    transaction: &Transaction<'_>,
+    project: &str,
+) -> Result<(), StoreError> {
     ensure_one(transaction.execute("UPDATE acp_project_usage SET session_count=session_count+1,revision=revision+1 WHERE project_id=?1",[project])?,"project usage")?;
     ensure_one(transaction.execute("UPDATE acp_store_usage SET session_count=session_count+1,revision=revision+1 WHERE singleton=1",[])?,"global usage")
 }

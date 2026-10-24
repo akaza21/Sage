@@ -540,6 +540,7 @@ mod tests {
                     chat_id: chat("foreign"),
                     session_id: session_id("foreign"),
                     projection_revision: revision(1),
+                    child_projection_epoch: 0,
                 })
                 .unwrap();
             let mut failure = h
@@ -848,6 +849,7 @@ mod tests {
                     chat_id: chat("foreign"),
                     session_id: session_id("foreign"),
                     projection_revision: revision(1),
+                    child_projection_epoch: 0,
                 })
                 .unwrap();
             let proof = ZeroProcessProof::confirmed(owner("one", 1));

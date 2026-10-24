@@ -10,7 +10,7 @@ import {
 
 test.afterEach(async ({ page }) => disposeJourney(page));
 
-test("CP-17(c) refs 15/17: Jump to latest uses a reserved 560 px pane zone", async ({
+test("CP-17(c) refs 15/17: Jump to latest floats over a 560 px pane column", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1936, height: 1048 });
@@ -49,30 +49,32 @@ test("CP-17(c) refs 15/17: Jump to latest uses a reserved 560 px pane zone", asy
   });
   await settleScroll();
   await expect(button).toBeVisible();
-  const zone = alpha.locator(".chat-follow-end-zone");
   const composer = alpha.locator("form.composer");
-  const [transcriptBox, zoneBox, buttonBox, composerBox] = await Promise.all([
+  const [transcriptBox, buttonBox, composerBox] = await Promise.all([
     transcript.boundingBox(),
-    zone.boundingBox(),
     button.boundingBox(),
     composer.boundingBox(),
   ]);
-  expect(transcriptBox && zoneBox && buttonBox && composerBox).toBeTruthy();
-  if (transcriptBox && zoneBox && buttonBox && composerBox) {
-    expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(
-      zoneBox.y,
+  expect(transcriptBox && buttonBox && composerBox).toBeTruthy();
+  if (transcriptBox && buttonBox && composerBox) {
+    // CP-47 (Codex s2/f0001): the control overlays the transcript's bottom
+    // edge instead of reserving a row, centred on the reading column.
+    expect(buttonBox.y).toBeGreaterThanOrEqual(transcriptBox.y);
+    expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(
+      transcriptBox.y + transcriptBox.height - 16,
     );
-    expect(buttonBox.y).toBeGreaterThanOrEqual(zoneBox.y);
-    expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(composerBox.y);
-    expect(buttonBox.x + buttonBox.width / 2).toBeCloseTo(
-      zoneBox.x + zoneBox.width / 2,
-      0,
-    );
+    expect(buttonBox.y + buttonBox.height).toBeLessThan(composerBox.y);
+    const column = await alpha.locator(".message-list__content").boundingBox();
+    expect(
+      Math.abs(
+        buttonBox.x + buttonBox.width / 2 - (column!.x + column!.width / 2),
+      ),
+    ).toBeLessThanOrEqual(2);
   }
   await expect(alpha).toHaveScreenshot("cp17-jump-560.png");
 
   await button.click();
-  await expect(button).toHaveCount(0);
+  await expect(button).toBeHidden();
   await expect
     .poll(() =>
       transcript.evaluate(

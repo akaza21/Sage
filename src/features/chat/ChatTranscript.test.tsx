@@ -28,7 +28,7 @@ async function renderTranscript(
   acpPage: AcpChatPage | null,
   messages: readonly ChatMessage[] = [],
   useNativeAcp = true,
-  showJumpToLatest = false,
+  showJumpToLatest: boolean | "activity" = false,
 ) {
   const onRetry = vi.fn();
   const onJumpToLatest = vi.fn();
@@ -91,6 +91,31 @@ it("offers an icon-only, named jump button that follows the latest turn", async 
 it("does not offer jump to latest while already following the transcript", async () => {
   await renderTranscript(page("completed"));
   expect(screen.queryByRole("button", { name: "Jump to latest" })).toBeNull();
+  // It stays mounted but hidden so CSS can fade it out (Codex s2/f0048).
+  const jump = document.querySelector<HTMLButtonElement>(".chat-follow-end");
+  expect(jump).not.toBeNull();
+  expect(jump).toHaveAttribute("hidden");
+});
+
+it("shows three bouncing dots and a new-activity name while follow is paused", async () => {
+  const { onJumpToLatest } = await renderTranscript(
+    page("running"),
+    [],
+    true,
+    "activity",
+  );
+  const pill = screen.getByRole("button", {
+    name: "New activity below. Jump to latest",
+  });
+  expect(pill).not.toHaveAttribute("hidden");
+  // The mode is a data attribute (N2) and the tooltip says the same as the name.
+  expect(pill).toHaveAttribute("data-mode", "activity");
+  expect(pill).toHaveAttribute("title", "New activity below. Jump to latest");
+  // CSS turns the hidden arrow into the middle dot and draws the outer two.
+  expect(pill.textContent).toBe("");
+  expect(pill.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+  fireEvent.click(pill);
+  expect(onJumpToLatest).toHaveBeenCalledOnce();
 });
 
 function retryPage() {
@@ -563,6 +588,24 @@ describe("ChatTranscript side chats", () => {
       />
     );
   }
+
+  it("starts a fork with Continued from chat instead of the new-chat home", async () => {
+    const fork = page("completed");
+    fork.turns = [];
+    const project = { id: "project-1", name: "Sage" };
+    const { unmount } = render(view(fork, project, false));
+    await settleLazyModules();
+    expect(screen.getByRole("region", { name: "New chat" })).toBeVisible();
+    unmount();
+    render(
+      view({ ...fork, forkedFrom: "chat-parent" as never }, project, false),
+    );
+    await settleLazyModules();
+    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+    expect(
+      screen.getByText("Continued from an archived chat"),
+    ).toBeInTheDocument();
+  });
 
   it("offers no Retry in a side chat", async () => {
     const side = retryPage();

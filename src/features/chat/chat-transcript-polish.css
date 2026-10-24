@@ -175,7 +175,7 @@
 .chat-transcript-work__chevron {
   display: block;
   flex-shrink: 0;
-  transition: transform var(--motion-duration-fast) ease;
+  transition: transform var(--motion-duration-chevron) ease-out;
 }
 
 .chat-transcript-work[open] > summary > .chat-transcript-work__chevron {
@@ -186,6 +186,18 @@
   display: grid;
   gap: var(--space-1);
   padding: var(--space-1) 0 0;
+}
+
+/*
+ * Worked open (Codex s2/f0011-f0015): the rows that mount on expand fade in
+ * top to bottom. Tool rows already show while collapsed, so they stay put.
+ * Collapse is instant (s2/f0040).
+ */
+.chat-transcript-work[open]
+  + .chat-transcript-work__groups
+  > :not(.acp-tool-rollup) {
+  animation: sage-row-in var(--motion-duration-row) ease-out both;
+  animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
 }
 
 .chat-transcript-work__groups > .acp-message + .acp-thought {
@@ -345,9 +357,21 @@
   .chat-transcript-work__groups .acp-tool-rollup__chevron {
     transition: none;
   }
+
+  .chat-transcript-work[open]
+    + .chat-transcript-work__groups
+    > :not(.acp-tool-rollup) {
+    animation: none;
+  }
 }
 
 @media (forced-colors: active) {
+  .chat-transcript-work[open]
+    + .chat-transcript-work__groups
+    > :not(.acp-tool-rollup) {
+    animation: none;
+  }
+
   .chat-transcript-day::before,
   .chat-transcript-day::after {
     background: CanvasText;

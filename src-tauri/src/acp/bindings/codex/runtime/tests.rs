@@ -24,6 +24,7 @@ use crate::project_registry::ProjectRootAuthority;
 use crate::{error::AppError, persistence::Database, state::AppState};
 
 mod browser_mcp_tests;
+mod fork_tests;
 mod model_identity;
 
 struct Mapper;

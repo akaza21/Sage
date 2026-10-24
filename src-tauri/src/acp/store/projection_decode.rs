@@ -310,6 +310,7 @@ fn content(
             agent_key,
             agent_keys,
             agent_states,
+            ..
         } => ItemContent::Collaboration {
             activity_id: activity.cloned(),
             label,

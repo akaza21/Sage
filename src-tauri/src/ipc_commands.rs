@@ -73,6 +73,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         crate::side_chat::close_side_chat,
         crate::side_chat::get_confirm_close_side_chat,
         crate::side_chat::list_side_chats,
+        crate::chat_fork::fork_chat,
         chat_commands::move_chat,
         chat_commands::pin_chat,
         chat_commands::activate_chat,

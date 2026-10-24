@@ -109,7 +109,9 @@ fn goal_reply(
         Ok(
             NativeRpcReply::ChildTranscript(_)
             | NativeRpcReply::TooLarge
-            | NativeRpcReply::Rejected,
+            | NativeRpcReply::Rejected
+            | NativeRpcReply::Forked(_)
+            | NativeRpcReply::Released,
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }
@@ -177,6 +179,9 @@ mod tests {
             sessions: BoundedVec::default(),
             turns: BoundedVec::default(),
             next_cursor: None,
+            forked_from: None,
+            forked_from_turn_id: None,
+            child_projection_epoch: 0,
         };
         let existing_turns = page.turns.clone();
         let full_goal = page.goal.clone();

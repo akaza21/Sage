@@ -307,7 +307,7 @@ export function AgentArtifactPane({
               subagentSelected={subagentSelected}
               onSelectSubagent={() => {
                 if (subagentTarget)
-                  useSubagentPaneStore.getState().show(subagentTarget);
+                  useSubagentPaneStore.getState().show(subagentTarget, true);
               }}
               record={record}
               availableTargets={availableTargets}

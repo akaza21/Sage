@@ -59,7 +59,7 @@ describe("Composer surface stylesheet seam", () => {
   it("caps the composer row to leave transcript space and scrolls upper content at every width", async () => {
     const surface = await composerRules();
     expect(surface).toMatch(
-      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+auto\s+minmax\(0,\s*auto\)\s+fit-content\(\s*60%\s*\);/s,
+      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+minmax\(0,\s*auto\)\s+fit-content\(\s*60%\s*\);/s,
     );
     expect(surface).toMatch(
       /\.composer\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*flex-direction:\s*column;/s,
@@ -108,7 +108,9 @@ describe("Composer surface stylesheet seam", () => {
 
   it("keeps transcript and composer in their named rows when notices and follow controls mount", async () => {
     const style = document.createElement("style");
-    style.textContent = await readFile("src/styles/chat-surface.css", "utf8");
+    style.textContent =
+      (await readFile("src/styles/chat-follow-end.css", "utf8")) +
+      (await readFile("src/styles/chat-surface.css", "utf8"));
     const surface = document.createElement("section");
     surface.className = "chat-surface chat-surface--agent";
     document.head.append(style);
@@ -121,7 +123,7 @@ describe("Composer surface stylesheet seam", () => {
             : "") +
           '<div class="message-list">Transcript</div>' +
           (extraRows
-            ? '<div class="chat-follow-end-zone">Jump to latest</div>'
+            ? '<button class="chat-follow-end">Jump to latest</button>'
             : "") +
           '<form class="composer"></form>';
         expect(
@@ -135,10 +137,12 @@ describe("Composer surface stylesheet seam", () => {
             getComputedStyle(surface.querySelector(".composer__notice")!)
               .gridArea,
           ).toBe("notice");
-          expect(
-            getComputedStyle(surface.querySelector(".chat-follow-end-zone")!)
-              .gridArea,
-          ).toBe("follow");
+          // Jump to latest overlays the transcript instead of taking a row.
+          const jump = getComputedStyle(
+            surface.querySelector(".chat-follow-end")!,
+          );
+          expect(jump.gridArea).toBe("transcript");
+          expect(jump.alignSelf).toBe("end");
         }
       }
     } finally {

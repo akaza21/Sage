@@ -53,6 +53,9 @@ pub(crate) enum AdapterRuntimeError {
     EgressIntent,
 }
 
+/// An optional frame a command may need to write.
+pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
+
 pub(crate) trait HarnessAdapter {
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
@@ -82,6 +85,34 @@ pub(crate) trait HarnessAdapter {
         _parent_thread_id: &str,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// Requests a native fork of the bound session through its latest turn.
+    /// Harnesses without a characterised fork method fail closed.
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// Lets go of a native fork this runtime created once its fork Chat is
+    /// committed (`committed`) or refused. `Ok(None)` means the harness holds
+    /// nothing to release, and the reply is already available.
+    fn release_fork(
+        &mut self,
+        _fork: &crate::acp::intent::ExternalId,
+        _committed: bool,
+    ) -> AdapterOptionalEgress {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// A Turn is running: remember the release for the next idle moment and
+    /// answer the RPC now. False when the harness cannot defer it.
+    fn defer_fork_release(
+        &mut self,
+        _fork: &crate::acp::intent::ExternalId,
+        _committed: bool,
+    ) -> bool {
+        false
+    }
+    /// The next deferred fork release, written while the runtime is idle.
+    fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
+        Ok(None)
     }
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)

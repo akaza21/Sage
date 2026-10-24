@@ -55,6 +55,10 @@ impl ClaudeRuntime {
             PendingRequest::Prompt => self.prompt_response(value),
             PendingRequest::SetMode => self.config_response(value, false),
             PendingRequest::SetConfig => self.config_response(value, true),
+            PendingRequest::Fork(source) => self.fork_response(&value, &source),
+            PendingRequest::DeleteFork(background, _) => {
+                self.delete_fork_response(&value, background)
+            }
         };
         if result.is_ok() && self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
             self.delivery_unknown = None;
@@ -88,6 +92,7 @@ impl ClaudeRuntime {
         capabilities.model_count = u16::from(!models.is_empty());
         if !self.binding_is_characterised() {
             capabilities.resume_session = false;
+            capabilities.native_session_fork = false;
             capabilities.child_conversation_projection = false;
             capabilities.collaboration_event_projection = false;
         }
@@ -197,6 +202,9 @@ impl ClaudeRuntime {
                 vec![SharedEvent::Unsupported(unsupported(method)?)],
                 Vec::new(),
             );
+        }
+        if self.absorbs_fork_update(&value) {
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
         if self.config_notification(&value)? {
             return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());

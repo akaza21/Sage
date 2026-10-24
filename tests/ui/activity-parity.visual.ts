@@ -277,7 +277,9 @@ for (const width of [1888, 720, 480]) {
           }),
         );
       expect(avatars).toHaveLength(2);
-      expect(avatars[0].width).toBeGreaterThanOrEqual(16);
+      // Codex s4/f0485 (parity spec section 7): 14 px glyphs, one per child.
+      expect(avatars[0].width).toBe(14);
+      expect(avatars[1].width).toBe(14);
       expect(avatars[1].left - avatars[0].right).toBeGreaterThanOrEqual(4);
     });
 

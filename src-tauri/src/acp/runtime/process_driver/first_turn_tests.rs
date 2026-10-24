@@ -1503,6 +1503,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
                     chat_id: SageChatId::parse("chat-foreign").unwrap(),
                     session_id: started.session_id.clone(),
                     projection_revision: ProjectionRevision::new(1).unwrap(),
+                    child_projection_epoch: 0,
                 })
                 .unwrap();
         }

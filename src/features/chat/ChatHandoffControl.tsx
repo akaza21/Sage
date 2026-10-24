@@ -1,26 +1,16 @@
 import { ArrowRightLeft } from "../../ui/leanIcons";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type RefObject,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import {
-  MAX_HANDOFF_DRAFT_BYTES,
   buildChatHandoffDraft,
   type ChatHandoffContextEntry,
   type ChatHandoffIntent,
 } from "../../domain/chatHandoff";
 import { chatDisplayTitle } from "../../domain/chatTitle";
 import type { ChatMessage } from "../../domain/workbench";
-import { ModalDialog } from "../../ui/ModalDialog";
-import { SearchablePicker } from "../../ui/SearchablePicker";
+import { HandoffPart } from "./lazyParts";
 
 interface ChatHandoffControlProps {
   acpPage: AcpChatPage | null;
@@ -48,6 +38,10 @@ function sourceContext(
   );
 }
 
+/**
+ * The Hand off trigger and its intent. The dialog itself loads in its own
+ * lazy chunk (ChatHandoffDialog.tsx) on the first open.
+ */
 export function ChatHandoffControl({
   acpPage,
   messages,
@@ -69,9 +63,7 @@ export function ChatHandoffControl({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const handoffChat = useWorkbenchStore((state) => state.handoffChat);
   const [intent, setIntent] = useState<ChatHandoffIntent | null>(null);
-  const [saving, setSaving] = useState(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const sourceTab = tabs.find(
@@ -80,14 +72,6 @@ export function ChatHandoffControl({
   const targets = useMemo(
     () => tabs.filter((tab) => tab.kind === "chat" && tab.id !== sourceTab?.id),
     [sourceTab?.id, tabs],
-  );
-  const targetCandidates = useMemo(
-    () =>
-      targets.map((target) => ({
-        id: target.id,
-        label: chatDisplayTitle(target.title),
-      })),
-    [targets],
   );
   const disabled = busy || projectTransitioning || !sourceTab || !project;
   const currentIntent =
@@ -99,6 +83,10 @@ export function ChatHandoffControl({
     activeTabId === intent.sourceChatId
       ? intent
       : null;
+  const restoreFocus = () =>
+    queueMicrotask(() =>
+      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+    );
   useEffect(() => {
     if (!intent) return;
     return useWorkbenchStore.subscribe((state) => {
@@ -110,7 +98,6 @@ export function ChatHandoffControl({
         state.activeTabId !== intent.sourceChatId
       ) {
         setIntent(null);
-        setSaving(false);
         setHandoffError(null);
         queueMicrotask(() =>
           (returnFocusRef?.current ?? triggerRef.current)?.focus(),
@@ -121,19 +108,9 @@ export function ChatHandoffControl({
 
   const close = () => {
     setIntent(null);
-    setSaving(false);
     setHandoffError(null);
-    queueMicrotask(() =>
-      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
-    );
+    restoreFocus();
   };
-  const chooseTarget = useCallback(
-    (targetChatId: string) => {
-      if (!currentIntent) return;
-      setIntent({ ...currentIntent, targetChatId });
-    },
-    [currentIntent],
-  );
 
   const open = () => {
     if (disabled || !sourceTab || !project || targets.length === 0) return;
@@ -156,33 +133,6 @@ export function ChatHandoffControl({
     }
   };
 
-  const confirm = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!currentIntent || saving) return;
-    setSaving(true);
-    setHandoffError(null);
-    try {
-      const committed = await handoffChat(currentIntent);
-      setSaving(false);
-      setIntent(null);
-      if (committed) {
-        onCommitted();
-        return;
-      }
-      setHandoffError(
-        useWorkbenchStore.getState().error ??
-          "Chat Handoff could not be placed",
-      );
-    } catch (error) {
-      setSaving(false);
-      setIntent(null);
-      setHandoffError(error instanceof Error ? error.message : String(error));
-    }
-    queueMicrotask(() =>
-      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
-    );
-  };
-
   return (
     <div className="handoff-control">
       <button
@@ -203,74 +153,17 @@ export function ChatHandoffControl({
         </div>
       ) : null}
       {currentIntent ? (
-        <ModalDialog
-          className="handoff-dialog"
-          labelledBy="handoff-dialog-title"
-          onDismiss={() => {
-            if (!saving) close();
-          }}
-        >
-          <form
-            className="handoff-dialog__form"
-            aria-labelledby="handoff-dialog-title"
-            onSubmit={(event) => void confirm(event)}
-          >
-            <h2 id="handoff-dialog-title">Hand off this Chat</h2>
-            <p>
-              Review the bounded context as an ordinary prompt. It will be
-              placed in the target composer and will not be sent automatically.
-            </p>
-            <label className="handoff-dialog__field">
-              <span>Target Chat</span>
-              <SearchablePicker
-                ariaLabel="Target Chat"
-                candidates={targetCandidates}
-                disabled={saving || projectTransitioning}
-                onSelect={chooseTarget}
-                portalTarget="closest-dialog"
-                selectedId={currentIntent.targetChatId}
-              />
-            </label>
-            <label className="handoff-dialog__field">
-              <span>Handoff prompt</span>
-              <textarea
-                aria-label="Handoff prompt"
-                autoFocus
-                disabled={saving || projectTransitioning}
-                maxLength={MAX_HANDOFF_DRAFT_BYTES}
-                rows={10}
-                value={currentIntent.draft}
-                onChange={(event) =>
-                  setIntent({ ...currentIntent, draft: event.target.value })
-                }
-              />
-            </label>
-            {handoffError ? (
-              <div className="composer__error" role="alert">
-                {handoffError}
-              </div>
-            ) : null}
-            <div className="dirty-dialog__actions">
-              <button
-                className="button"
-                type="button"
-                disabled={saving || projectTransitioning}
-                onClick={close}
-              >
-                Cancel
-              </button>
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={
-                  saving || projectTransitioning || !currentIntent.draft.trim()
-                }
-              >
-                Place in target
-              </button>
-            </div>
-          </form>
-        </ModalDialog>
+        <HandoffPart
+          part="ChatHandoffDialog"
+          intent={currentIntent}
+          targets={targets}
+          error={handoffError}
+          onIntentChange={setIntent}
+          onError={setHandoffError}
+          onClose={close}
+          onCommitted={onCommitted}
+          restoreFocus={restoreFocus}
+        />
       ) : null}
     </div>
   );

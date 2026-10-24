@@ -2228,6 +2228,8 @@ fn collaboration_payload() -> NormalizedPayload {
         agent_key: None,
         agent_keys: Default::default(),
         agent_states: Default::default(),
+        model: None,
+        reasoning_effort: None,
     }
 }
 

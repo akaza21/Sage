@@ -1,0 +1,38 @@
+{
+  "command": "node",
+  "args": [
+    "C:\\fixture-workspace\\profiles\\AppData\\Roaming\\npm\\node_modules\\@agentclientprotocol\\claude-agent-acp\\dist\\index.js"
+  ],
+  "version": "0.76.0",
+  "capturedAt": "2026-10-24",
+  "reason": "complete",
+  "promptsSent": 0,
+  "sanitization": [
+    "Home, scratch and CODEX_HOME paths are rewritten under the fixture workspace root",
+    "remoteControl installationId and serverName, and any _auth/status_update account identity, are redacted.",
+    "availableCommands is truncated to its first two entries.",
+    "Raw originals are retained locally under ignored local-evidence/."
+  ],
+  "timeline": [
+    "     0ms out initialize",
+    "   330ms in result#1",
+    "   330ms out session/new",
+    "   556ms in _auth/status_update",
+    "   979ms in result#2 8c77ec7d-4e39-4f9b-872b-9cc71daa6eef",
+    "   989ms in session/update 8c77ec7d-4e39-4f9b-872b-9cc71daa6eef",
+    "  2490ms out session/fork 8c77ec7d-4e39-4f9b-872b-9cc71daa6eef",
+    "  2591ms in error#3",
+    "  3603ms out session/resume 06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+    "  4273ms in result#4 06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+    "  4274ms in session/update 06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+    "  5777ms out session/fork 06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+    "  5783ms in result#5 a84469cf-bbc7-44cb-817f-63ec2725969d",
+    " 10787ms out session/close a84469cf-bbc7-44cb-817f-63ec2725969d",
+    " 10788ms in error#6",
+    " 12290ms out session/close 06511af0-f6d1-4ac4-9b4a-81ddbcb007e2",
+    " 12294ms in result#7",
+    " 12294ms out session/close 8c77ec7d-4e39-4f9b-872b-9cc71daa6eef",
+    " 12296ms in result#8"
+  ],
+  "stderr": "[session/models] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=read-transcript durationMs=3 totalMs=3 messages=2 model=claude-opus-5\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=validate-cwd durationMs=0 totalMs=0\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=settings durationMs=3 totalMs=3\n[session/query] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 resume=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 apiType=native baseUrl=native\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=prepare-query durationMs=11 totalMs=14\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=sdk-initialize durationMs=651 totalMs=665\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=models durationMs=1 totalMs=666\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=modes durationMs=0 totalMs=666\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=agents durationMs=0 totalMs=666\n[session/create] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=register durationMs=0 totalMs=666\n[session/fork] sessionId=06511af0-f6d1-4ac4-9b4a-81ddbcb007e2 phase=sdk-fork durationMs=5 totalMs=5 resolution=latest\n"
+}

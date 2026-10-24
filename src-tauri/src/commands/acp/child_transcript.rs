@@ -6,15 +6,15 @@ use crate::{
     acp::{
         bindings::codex::ChildTranscriptSnapshot,
         contract::{
-            ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId,
-            SageItemId, SageProjectId,
+            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId,
+            SageProjectId,
         },
         intent::{
             AcpIpcError, AcpUnavailableReason, ExternalId, IntentError, validate_base_intent,
         },
         scheduler::RuntimeOwner,
         service::{ChildTranscriptRead, ChildTranscriptReadError},
-        store::child_transcript::ChildTranscriptScope,
+        store::child_transcript::{ChildTranscriptScope, SpawnModel, load_spawn_model},
     },
     state::AppState,
 };
@@ -27,7 +27,6 @@ pub(crate) struct ChildTranscriptRequest {
     project_id: SageProjectId,
     project_generation: ProjectGeneration,
     chat_id: SageChatId,
-    expected_projection_revision: ProjectionRevision,
     session_id: SageAgentSessionId,
     runtime_epoch: RuntimeEpoch,
     item_id: SageItemId,
@@ -35,10 +34,22 @@ pub(crate) struct ChildTranscriptRequest {
 }
 
 #[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum ChildTranscriptResponse {
-    Current { snapshot: ChildTranscriptSnapshot },
-    FromEarlierSession { snapshot: ChildTranscriptSnapshot },
+    Current {
+        snapshot: ChildTranscriptSnapshot,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spawn_model: Option<SpawnModel>,
+    },
+    FromEarlierSession {
+        snapshot: ChildTranscriptSnapshot,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spawn_model: Option<SpawnModel>,
+    },
     TooLarge,
 }
 
@@ -65,7 +76,8 @@ pub(crate) async fn get_acp_child_transcript_inner(
         &request.project_id,
         request.project_generation,
         &request.chat_id,
-        request.expected_projection_revision,
+        // Child reads key off the child projection epoch, not the revision.
+        snapshot.projection_revision,
         &snapshot,
     )
     .map_err(intent_error)?;
@@ -114,13 +126,32 @@ pub(crate) async fn get_acp_child_transcript_inner(
         child_thread_id: request.agent_key.as_str().to_owned(),
         parent_thread_id: parent_thread_id.as_str().to_owned(),
     };
-    match state.acp.read_child_transcript(scope).map_err(read_error)? {
-        ChildTranscriptRead::Current(snapshot) => Ok(ChildTranscriptResponse::Current { snapshot }),
+    let owner = scope.owner.clone();
+    let read = state.acp.read_child_transcript(scope).map_err(read_error)?;
+    // The header's model label is optional chrome: an unreadable spawn row
+    // never fails an otherwise verified transcript read.
+    let spawn_model = || {
+        load_spawn_model(
+            &state.database.connection(),
+            &owner,
+            request.agent_key.as_str(),
+        )
+        .ok()
+        .flatten()
+    };
+    Ok(match read {
+        ChildTranscriptRead::Current(snapshot) => ChildTranscriptResponse::Current {
+            snapshot,
+            spawn_model: spawn_model(),
+        },
         ChildTranscriptRead::FromEarlierSession(snapshot) => {
-            Ok(ChildTranscriptResponse::FromEarlierSession { snapshot })
+            ChildTranscriptResponse::FromEarlierSession {
+                snapshot,
+                spawn_model: spawn_model(),
+            }
         }
-        ChildTranscriptRead::TooLarge => Ok(ChildTranscriptResponse::TooLarge),
-    }
+        ChildTranscriptRead::TooLarge => ChildTranscriptResponse::TooLarge,
+    })
 }
 
 #[cfg(test)]

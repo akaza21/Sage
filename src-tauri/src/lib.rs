@@ -5,6 +5,7 @@ mod browser;
 mod chat_archive;
 mod chat_archive_commands;
 mod chat_commands;
+mod chat_fork;
 mod chat_lifecycle;
 mod chat_move;
 mod chat_pin;

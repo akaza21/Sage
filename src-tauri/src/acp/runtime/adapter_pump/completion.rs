@@ -74,7 +74,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         turn_id: self.terminal_cursor.turn_id().clone(),
                                         binding_digest: hex(&self.session_intent.binding_digest),
                                     };
-                                    self.journal
+                                    let receipt = self
+                                        .journal
                                         .commit(
                                             vec![DurableAdapterEvent::ChildLiveItem {
                                                 scope,
@@ -92,6 +93,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         )
                                         .await
                                         .map_err(AdapterPumpError::Journal)?;
+                                    self.publish_child_epoch(&receipt);
                                 }
                                 AdapterEvent::ChildTurnStatus {
                                     child_thread_id,
@@ -106,7 +108,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         turn_id: self.terminal_cursor.turn_id().clone(),
                                         binding_digest: hex(&self.session_intent.binding_digest),
                                     };
-                                    self.journal
+                                    let receipt = self
+                                        .journal
                                         .commit(
                                             vec![DurableAdapterEvent::ChildTurnStatus {
                                                 scope,
@@ -119,6 +122,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         )
                                         .await
                                         .map_err(AdapterPumpError::Journal)?;
+                                    self.publish_child_epoch(&receipt);
                                 }
                                 AdapterEvent::IgnoredLate
                                 | AdapterEvent::IgnoredDuplicate
@@ -143,6 +147,24 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .map_err(|_| AdapterPumpError::Frame)?;
         }
         nonfatal_refusal.map_or(Ok(()), Err)
+    }
+    /// Publishes an idle child change through the projection-changed event.
+    /// Only the child epoch moves; the projection revision is unchanged, so
+    /// a user action keyed to it stays current. A dropped notice is
+    /// recovered by the next page load, which carries the epoch.
+    fn publish_child_epoch(&self, receipt: &super::JournalReceipt) {
+        let Some(child_projection_epoch) = receipt.child_projection_epoch else {
+            return;
+        };
+        let _ = self
+            .publisher
+            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                project_id: self.session_intent.project_id.clone(),
+                chat_id: self.session_intent.chat_id.clone(),
+                session_id: self.session_intent.session_id.clone(),
+                projection_revision: receipt.projection_revision,
+                child_projection_epoch,
+            });
     }
     pub(crate) fn idle_frame_aligned(&self) -> bool {
         self.idle_decoder.is_frame_aligned()

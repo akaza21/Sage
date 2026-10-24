@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { decodeAcpGoal } from "../domain/acpGoal";
 import { safeAcpMutationResponse } from "./acpDesktopResponses";
+import { safeProjectionChanged } from "./acpDesktopProjection";
 
 function session(index = 0, overrides: Record<string, unknown> = {}): object {
   return {
@@ -232,6 +233,56 @@ describe("safeAcpMutationResponse", () => {
     expect(
       safeAcpMutationResponse(mutation({ goal }))?.projection.goal,
     ).toBeUndefined();
+  });
+
+  it("carries a bounded fork parent and rejects a malformed one", () => {
+    expect(
+      safeAcpMutationResponse(mutation({ forkedFrom: "chat-parent" }))
+        ?.projection.forkedFrom,
+    ).toBe("chat-parent");
+    expect(safeAcpMutationResponse(mutation())?.projection).not.toHaveProperty(
+      "forkedFrom",
+    );
+    for (const forkedFrom of ["", 7, null, "x".repeat(513)])
+      expect(safeAcpMutationResponse(mutation({ forkedFrom }))).toBeNull();
+  });
+
+  it("carries the fork Turn and the child projection epoch, bounded", () => {
+    const projection = safeAcpMutationResponse(
+      mutation({
+        forkedFrom: "chat-parent",
+        forkedFromTurnId: "turn-fork",
+        childProjectionEpoch: 1_792_798_848_091,
+      }),
+    )?.projection;
+    expect(projection?.forkedFromTurnId).toBe("turn-fork");
+    expect(projection?.childProjectionEpoch).toBe(1_792_798_848_091);
+    expect(safeAcpMutationResponse(mutation())?.projection).not.toHaveProperty(
+      "childProjectionEpoch",
+    );
+    // Both are display-only: an unsafe value is dropped, never trusted.
+    for (const childProjectionEpoch of [-1, 0, 1.5, "7", 2 ** 60])
+      expect(
+        safeAcpMutationResponse(mutation({ childProjectionEpoch }))?.projection,
+      ).not.toHaveProperty("childProjectionEpoch");
+    for (const forkedFromTurnId of ["", 7, "x".repeat(513)])
+      expect(
+        safeAcpMutationResponse(mutation({ forkedFromTurnId }))?.projection,
+      ).not.toHaveProperty("forkedFromTurnId");
+  });
+
+  it("accepts a child-epoch projection notice as an ordinary page wake-up", () => {
+    const notice = {
+      projectId: "project-0",
+      chatId: "chat-0",
+      sessionId: "session-0",
+      projectionRevision: "4",
+    };
+    // Rust coalesces on the epoch; the WebView only reloads, and the page
+    // it loads carries childProjectionEpoch.
+    expect(
+      safeProjectionChanged({ ...notice, childProjectionEpoch: 9 }),
+    ).toEqual(notice);
   });
 
   it("returns a well-bounded mutation projection", () => {

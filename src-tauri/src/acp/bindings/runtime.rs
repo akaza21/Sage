@@ -93,6 +93,43 @@ impl HarnessAdapter for NativeRuntime {
     fn goal_pending(&self) -> bool {
         self.0.goal_pending()
     }
+    // Native RPCs (child reads, forks) must reach the concrete adapter: the
+    // trait defaults would report no pending call and never a typed reply.
+    fn native_rpc_pending(&self) -> bool {
+        self.0.native_rpc_pending()
+    }
+    fn child_read_pending(&self) -> bool {
+        self.0.child_read_pending()
+    }
+    fn read_child(
+        &mut self,
+        child_thread_id: &str,
+        parent_thread_id: &str,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.read_child(child_thread_id, parent_thread_id)
+    }
+    fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.fork_session()
+    }
+    fn release_fork(
+        &mut self,
+        fork: &crate::acp::intent::ExternalId,
+        committed: bool,
+    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.0.release_fork(fork, committed)
+    }
+    fn defer_fork_release(&mut self, fork: &crate::acp::intent::ExternalId, done: bool) -> bool {
+        self.0.defer_fork_release(fork, done)
+    }
+    fn deferred_fork_release(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        self.0.deferred_fork_release()
+    }
+    fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
+        self.0.accept_oversized_response(id)
+    }
+    fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
+        self.0.take_native_rpc_reply()
+    }
     fn mutate_goal(
         &mut self,
         action: crate::acp::goal::GoalAction,

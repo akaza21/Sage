@@ -312,6 +312,7 @@ test("committed path caps pin lane-base measurements with only a 0.5 percent mar
     ),
   );
   assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
-  assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 4000);
+  // Codex §7 Subagents (w8sub): measured 5,101 B + 10%.
+  assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5612);
   assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89500);
 });

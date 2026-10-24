@@ -1,12 +1,13 @@
-import { memo, useId, useState } from "react";
+import { memo, useId } from "react";
 
 import {
   attributedSubagentKey,
   useSubagentPaneStore,
 } from "../../../app/subagentPaneStore";
-import { ChevronDown } from "../../../ui/leanIcons";
 import {
+  avatarColor,
   collaborationRows,
+  subagentSegments,
   subagentSummary,
   type CollaborationProjectionItem,
   type SubagentEntry,
@@ -22,17 +23,11 @@ const collaborationStateLabels = {
   unsupported: "Unsupported",
 } as const;
 
-function avatarColor(key: string): number {
-  let hash = 0;
-  for (let index = 0; index < key.length; index += 1)
-    hash = (hash * 31 + key.charCodeAt(index)) | 0;
-  return Math.abs(hash % 3);
-}
-
 type SubagentRowEntry = SubagentEntry & {
   source?: CollaborationProjectionItem;
 };
 
+/** Each name opens its own child; "N more" opens the Subagents list. */
 function SubagentRow({
   agents,
   state,
@@ -40,81 +35,59 @@ function SubagentRow({
   agents: SubagentRowEntry[];
   state: SubagentRowState;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const text = subagentSummary(
-    agents.map((agent) => agent.label),
-    state,
-  );
-  const source = agents.length === 1 ? agents[0].source : undefined;
-  const grouped = agents.length > 1 && agents.some((agent) => agent.source);
-  const Row = grouped ? "summary" : source ? "button" : "div";
-  const row = (
-    <Row
-      className="acp-subagent-row"
-      aria-label={grouped ? `${text}. Show Subagents` : undefined}
-      {...(source
-        ? {
-            type: "button" as const,
-            "aria-label": `${text}. Open Subagent`,
-            onClick: () =>
-              useSubagentPaneStore.getState().show({
-                owner: {
-                  projectId: source.projectId,
-                  chatId: source.chatId,
-                  sessionId: source.sessionId,
-                },
-                itemId: source.id,
-                agentKey: agents[0].key,
-              }),
-          }
-        : {})}
-    >
+  const labels = agents.map((agent) => agent.label);
+  const segments = subagentSegments(labels, state);
+  const target = (agent?: SubagentRowEntry) =>
+    agent?.source && {
+      owner: {
+        projectId: agent.source.projectId,
+        chatId: agent.source.chatId,
+        sessionId: agent.source.sessionId,
+      },
+      itemId: agent.source.id,
+      agentKey: agent.key,
+    };
+  return (
+    <div className="acp-subagent-row" data-state={state}>
       <span className="acp-subagent-row__glyphs" aria-hidden="true">
         {agents.slice(0, 3).map((agent) => (
           <span
             key={agent.key}
             className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
-            data-state={state === "started working" ? "working" : state}
           >
             {agent.label ? [...agent.label][0].toUpperCase() : "✦"}
-            {state === "finished" ? (
-              <span className="acp-subagent-row__done">✓</span>
-            ) : null}
           </span>
         ))}
       </span>
-      <span
-        role="status"
-        aria-label={text}
-        className={state === "started working" ? "acp-live-shimmer" : undefined}
-      >
-        {text}
+      <span role="status" aria-label={subagentSummary(labels, state)}>
+        {segments.map((segment, index) => {
+          const open = target(
+            segment.more
+              ? agents.find((agent) => agent.source)
+              : agents[segment.index ?? -1],
+          );
+          return open ? (
+            <button
+              key={index}
+              type="button"
+              className="acp-subagent-name"
+              aria-label={
+                segment.more
+                  ? `Show ${segment.text} subagents`
+                  : `Open subagent ${segment.text}`
+              }
+              onClick={() =>
+                useSubagentPaneStore.getState().show(open, segment.more)
+              }
+            >
+              {segment.text}
+            </button>
+          ) : (
+            segment.text
+          );
+        })}
       </span>
-      {grouped ? (
-        <ChevronDown
-          className="acp-tool-rollup__chevron"
-          aria-hidden="true"
-          size={14}
-        />
-      ) : null}
-    </Row>
-  );
-  return grouped ? (
-    <details
-      className="acp-tool-rollup"
-      onToggle={(event) => setExpanded(event.currentTarget.open)}
-    >
-      {row}
-      {expanded ? (
-        <div className="acp-tool-rollup__items">
-          {agents.map((agent) => (
-            <SubagentRow key={agent.key} agents={[agent]} state={state} />
-          ))}
-        </div>
-      ) : null}
-    </details>
-  ) : (
-    row
+    </div>
   );
 }
 
@@ -136,9 +109,15 @@ function CollaborationItemContent({
       const entries = rows.get(row.state) ?? new Map();
       for (const entry of row.entries) {
         const previous = entries.get(entry.key);
-        const source = attributedSubagentKey(member, [entry.key])
-          ? member
-          : undefined;
+        // A grouped event without its own child identity still names each
+        // declared key; the pane routes that key to the child's own spawn.
+        const source =
+          attributedSubagentKey(member, [entry.key]) ||
+          (!member.payload.agentKey &&
+            !row.state.startsWith("failed") &&
+            member.payload.agentKeys?.includes(entry.key))
+            ? member
+            : undefined;
         entries.set(entry.key, {
           ...(entry.label || !previous ? entry : previous),
           source:

@@ -83,7 +83,8 @@ it("styles Archived as a spaced, transparent sidebar disclosure", async () => {
 it("gives the jump control a fixed round icon target", async () => {
   const css = await readFile("src/styles/chat-follow-end.css", "utf8");
   const jump = css.match(/\.chat-follow-end\s*\{([^}]+)\}/)![1];
-  expect(jump).toMatch(/width:\s*var\(--control-height-default\)/);
-  expect(jump).toMatch(/height:\s*var\(--control-height-default\)/);
+  // Codex s2/f0001: a 28 px circle.
+  expect(jump).toMatch(/width:\s*var\(--control-height-compact\)/);
+  expect(jump).toMatch(/height:\s*var\(--control-height-compact\)/);
   expect(jump).toMatch(/border-radius:\s*var\(--radius-circle\)/);
 });

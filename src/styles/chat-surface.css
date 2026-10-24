@@ -16,18 +16,16 @@
 }
 
 .chat-surface--agent {
-  grid-template-areas: "notice" "transcript" "follow" "edits" "composer";
-  grid-template-rows: auto minmax(120px, 1fr) auto minmax(0, auto) fit-content(
-      60%
-    );
+  grid-template-areas: "notice" "transcript" "edits" "composer";
+  grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) fit-content(60%);
 }
 
 /* A side chat keeps its own tab strip above the chat (Codex s2/f0244: 45px; 44 on the 4px scale). */
 .chat-surface--agent.chat-surface--side-chat {
-  grid-template-areas: "header" "notice" "transcript" "follow" "edits" "composer";
-  grid-template-rows:
-    auto auto minmax(120px, 1fr) auto minmax(0, auto)
-    fit-content(60%);
+  grid-template-areas: "header" "notice" "transcript" "edits" "composer";
+  grid-template-rows: auto auto minmax(120px, 1fr) minmax(0, auto) fit-content(
+      60%
+    );
 }
 
 .chat-surface--side-chat > .chat-surface__side-header {
@@ -46,10 +44,6 @@
 
 .chat-surface--agent > .message-list {
   grid-area: transcript;
-}
-
-.chat-surface--agent > .chat-follow-end-zone {
-  grid-area: follow;
 }
 
 .chat-surface--agent > .composer {

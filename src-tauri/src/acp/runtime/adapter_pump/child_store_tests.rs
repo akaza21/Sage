@@ -479,3 +479,184 @@ fn child_turn_status_beyond_turn_cap_marks_retention_limited() {
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+fn live_owner() -> crate::acp::store::AdapterStoreOwner {
+    let scope = scope();
+    crate::acp::store::AdapterStoreOwner {
+        project_id: scope.owner.project_id,
+        chat_id: scope.owner.chat_id,
+        session_id: scope.owner.session_id,
+        runtime_epoch: scope.owner.runtime_epoch,
+        turn_id: SageTurnId::parse("turn-one").unwrap(),
+        binding_digest: "a".repeat(64),
+        external_session_id: ExternalId::new("parent", "thread-1").unwrap(),
+    }
+}
+
+fn projection_state(connection: &rusqlite::Connection) -> (i64, i64, i64, u64) {
+    let (chat, session, updated): (i64, i64, i64) = connection
+        .query_row(
+            "SELECT (SELECT projection_revision FROM chats WHERE id='chat-one'),
+                    (SELECT projection_revision FROM agent_sessions WHERE id='session-one'),
+                    (SELECT updated_at FROM chats WHERE id='chat-one')",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    let epoch = crate::acp::store::child_transcript::child_projection_epoch(
+        connection,
+        "project-one",
+        "chat-one",
+    )
+    .unwrap();
+    (chat, session, updated, epoch)
+}
+
+#[test]
+fn a_changed_live_child_item_advances_only_the_child_projection_epoch() {
+    use crate::acp::{lifecycle::ItemLifecycle, store::ChildLiveItemCommand};
+
+    let directory = std::env::temp_dir().join(format!("sage-w8sub-epoch-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut connection = sqlite_child_owner(&directory.join("sage.db"));
+    let owner = live_owner();
+    let command = |lifecycle, now_millis| ChildLiveItemCommand {
+        child_thread_id: ExternalId::new("child", "child-one").unwrap(),
+        child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
+        item_id: ExternalId::new("item", "command-1").unwrap(),
+        role: None,
+        lifecycle,
+        tool_state: None,
+        payload: NormalizedPayload::ThoughtSummary {
+            summary: SafeText::new("summary", "Checking files").unwrap(),
+        },
+        now_millis,
+    };
+    let apply = |connection: &mut rusqlite::Connection, command: &ChildLiveItemCommand| {
+        let transaction = connection.transaction().unwrap();
+        let changed = crate::acp::store::child_transcript::persist_live_item_in(
+            &transaction,
+            &owner,
+            command,
+        )
+        .unwrap();
+        transaction.commit().unwrap();
+        changed
+    };
+    // The revision (the user-action concurrency token) and chats.updated_at
+    // never move for child items; only the child epoch does (B2/N4).
+    assert_eq!(projection_state(&connection), (0, 0, 1, 0));
+    assert!(apply(&mut connection, &command(ItemLifecycle::Started, 2)));
+    assert_eq!(projection_state(&connection), (0, 0, 1, 2));
+    assert!(!apply(&mut connection, &command(ItemLifecycle::Started, 3)));
+    assert_eq!(
+        projection_state(&connection),
+        (0, 0, 1, 2),
+        "a duplicate child observation must not wake the parent"
+    );
+    // A change in the same millisecond still advances the epoch strictly.
+    assert!(apply(
+        &mut connection,
+        &command(ItemLifecycle::Completed, 2)
+    ));
+    assert_eq!(projection_state(&connection), (0, 0, 1, 3));
+    let transaction = connection.transaction().unwrap();
+    for _ in 0..2 {
+        crate::acp::store::child_transcript::persist_turn_status_in(
+            &transaction,
+            &owner,
+            &ExternalId::new("child", "child-one").unwrap(),
+            &ExternalId::new("turn", "child-turn-1").unwrap(),
+            TurnState::Completed,
+            5,
+        )
+        .unwrap();
+    }
+    transaction.commit().unwrap();
+    assert_eq!(projection_state(&connection), (0, 0, 1, 5));
+    // A native re-read merges into the snapshot without waking the reader.
+    let scope = scope();
+    let read = load_snapshot(&connection, &scope).unwrap().unwrap();
+    persist_snapshot(&mut connection, &scope, &read, 99).unwrap();
+    assert_eq!(projection_state(&connection), (0, 0, 1, 5));
+    let parent: (String, i64) = connection
+        .query_row(
+            "SELECT state,revision FROM turns WHERE id='turn-one'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(parent, ("running".into(), 0));
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn the_latest_spawn_for_a_child_supplies_only_its_wire_model() {
+    use sha2::Digest;
+
+    let directory = std::env::temp_dir().join(format!("sage-w8sub-model-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let connection = sqlite_child_owner(&directory.join("sage.db"));
+    let insert = |id: &str, child: &str, model: Option<&str>, effort: Option<&str>| {
+        let payload = NormalizedPayload::Collaboration {
+            label: SafeText::new("label", "spawnAgent").unwrap(),
+            message: None,
+            receiver_labels: Default::default(),
+            operation: Some(SafeText::new("operation", "spawnAgent").unwrap()),
+            agent_key: None,
+            agent_keys: crate::acp::contract::BoundedVec::new(
+                "agentKeys",
+                vec![SafeText::new("agentKey", child).unwrap()],
+            )
+            .unwrap(),
+            agent_states: Default::default(),
+            model: model.map(|value| SafeText::new("model", value).unwrap()),
+            reasoning_effort: effort.map(|value| SafeText::new("effort", value).unwrap()),
+        };
+        let encoded = serde_json::to_string(&payload).unwrap();
+        let digest = format!("{:x}", sha2::Sha256::digest(encoded.as_bytes()));
+        connection.execute(
+            "INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,activity_id,kind,lifecycle,tool_state,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES(?1,'project-one','chat-one','session-one','turn-one',1,(SELECT COUNT(*) FROM items),'primary',NULL,'collaboration','started',NULL,?1,?2,?3,?4,0,1,1,NULL)",
+            rusqlite::params![id, encoded, encoded.len() as i64, digest],
+        ).unwrap();
+    };
+    let owner = scope().owner;
+    let read = |child: &str| {
+        crate::acp::store::child_transcript::load_spawn_model(&connection, &owner, child)
+            .unwrap()
+            .map(|model| (model.model, model.reasoning_effort))
+    };
+    assert_eq!(read("child-one"), None);
+    insert("spawn-old", "child-one", Some("gpt-old"), None);
+    insert("spawn-other", "child-two", Some("gpt-other"), Some("low"));
+    assert_eq!(read("child-one"), Some(("gpt-old".into(), None)));
+    insert(
+        "spawn-new",
+        "child-one",
+        Some("gpt-6-astra"),
+        Some("medium"),
+    );
+    assert_eq!(
+        read("child-one"),
+        Some(("gpt-6-astra".into(), Some("medium".into())))
+    );
+    insert("spawn-unstated", "child-two", None, Some("high"));
+    assert_eq!(
+        read("child-two"),
+        None,
+        "the latest spawn's absent model is never filled from an older spawn"
+    );
+    connection
+        .execute(
+            "UPDATE items SET payload_digest=printf('%064d', 0) WHERE id='spawn-new'",
+            [],
+        )
+        .unwrap();
+    assert!(
+        crate::acp::store::child_transcript::load_spawn_model(&connection, &owner, "child-one")
+            .is_err()
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}

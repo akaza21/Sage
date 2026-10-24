@@ -21,6 +21,8 @@ pub(crate) struct ClaudeCapabilityOffer {
     pub resume_session: bool,
     pub load_session: bool,
     pub close_session: bool,
+    /// Unstable ACP `session/fork`, advertised as `sessionCapabilities.fork`.
+    pub fork_session: bool,
     pub prompt: bool,
     pub cancel: bool,
     pub models: Vec<ClaudeModel>,
@@ -63,6 +65,8 @@ impl ClaudeCapabilityOffer {
             .is_some_and(|value| value.get("resume").is_some_and(Value::is_object));
         let close_session = session_capabilities
             .is_some_and(|value| value.get("close").is_some_and(Value::is_object));
+        let fork_session = session_capabilities
+            .is_some_and(|value| value.get("fork").is_some_and(Value::is_object));
 
         let mut models = Vec::new();
         let mut model_bytes = 0_usize;
@@ -100,6 +104,7 @@ impl ClaudeCapabilityOffer {
             resume_session,
             load_session,
             close_session,
+            fork_session,
             // new_session, prompt, and cancel are the admitted ACP core surface.
             // Separate booleans make a future schema downgrade fail closed.
             prompt: true,
@@ -127,7 +132,7 @@ pub(crate) fn negotiate_capabilities(
         close_session: offer.close_session,
         prompt: offer.prompt,
         cancel: offer.cancel,
-        native_session_fork: false,
+        native_session_fork: offer.fork_session,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,

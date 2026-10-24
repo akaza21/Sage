@@ -32,9 +32,13 @@ declare global {
 function capSubagentGroup(page: Page, turn: number) {
   return page
     .locator(`[data-turn-id="turn-${turn}"]`)
-    .locator(
-      `summary[aria-label="Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working. Show Subagents"]`,
-    );
+    .locator(".acp-subagent-row")
+    .filter({
+      has: page.getByRole("status", {
+        name: `Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working`,
+        exact: true,
+      }),
+    });
 }
 
 async function expectCapWorkerReachable(
@@ -57,13 +61,11 @@ async function expectCapWorkerReachable(
   await expect(group.getByRole("status")).toHaveText(
     `Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working`,
   );
-  await group.click();
-  const worker = page
-    .locator(`[data-turn-id="turn-${turn}"]`)
-    .getByRole("button", {
-      name: `Worker ${turn}-${ordinal} started working. Open Subagent`,
-      exact: true,
-    });
+  // Each grouped name is its own target; there is no disclosure to open.
+  const worker = group.getByRole("button", {
+    name: `Open subagent Worker ${turn}-${ordinal}`,
+    exact: true,
+  });
   await expect(worker).toBeVisible();
   await expect(worker).toBeEnabled();
   await worker.click();
@@ -78,8 +80,6 @@ async function expectCapWorkerReachable(
       itemId: `item-${turn}-${ordinal}`,
       agentKey: `worker-${turn}-${ordinal}`,
     });
-  await group.click();
-  await expect(worker).not.toBeAttached();
   await work.locator(":scope > summary").click();
   await expect(work).not.toHaveAttribute("open", "");
 }

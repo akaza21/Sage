@@ -616,7 +616,7 @@ describe("ChatSurface ACP resource integration", () => {
         screen.getByRole("textbox", { name: "Message agent" }),
       ).toHaveValue(""),
     );
-    expect(screen.getByText("Follow up")).toBeInTheDocument();
+    expect(await screen.findByText("Follow up")).toBeInTheDocument();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
 
     setTurnState("completed");
@@ -2740,7 +2740,10 @@ describe("ChatSurface ACP resource integration", () => {
 
     const trigger = screen.getByRole("button", { name: "Hand off chat" });
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    // The dialog loads in its own lazy chunk on the first Hand off.
+    const dialog = await screen.findByRole("dialog", {
+      name: "Hand off this Chat",
+    });
     expect(
       screen.getByRole("button", { name: "Target Chat" }),
     ).toHaveTextContent("Testing");
@@ -2818,7 +2821,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(hooks.actions.submit).not.toHaveBeenCalled();
   });
 
-  it("includes only primary ACP text in the Chat Handoff preview", () => {
+  it("includes only primary ACP text in the Chat Handoff preview", async () => {
     const base = projection();
     hooks.page = {
       ...base,
@@ -2875,7 +2878,9 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     fireEvent.click(screen.getByRole("button", { name: "Hand off chat" }));
-    const preview = screen.getByRole("textbox", { name: "Handoff prompt" });
+    const preview = await screen.findByRole("textbox", {
+      name: "Handoff prompt",
+    });
     expect((preview as HTMLTextAreaElement).value).toContain(
       "Primary response",
     );
@@ -2917,7 +2922,9 @@ describe("ChatSurface ACP resource integration", () => {
 
     const trigger = screen.getByRole("button", { name: "Hand off chat" });
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Hand off this Chat" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Hand off this Chat",
+    });
     const first = screen.getByRole("button", { name: "Target Chat" });
     const last = screen.getByRole("button", { name: "Place in target" });
     fireEvent.click(first);
@@ -3048,7 +3055,9 @@ describe("ChatSurface ACP resource integration", () => {
       }),
     );
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("button", { name: "Place in target" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Place in target" }),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(

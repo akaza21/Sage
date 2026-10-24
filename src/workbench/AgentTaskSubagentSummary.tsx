@@ -16,14 +16,12 @@ export function AgentTaskSubagentSummary({
   return (
     <section
       aria-label="Subagents"
-      title="Up to 128 subagents from the latest 128 turns and 256 items total"
+      title="The latest 128 subagents found in the latest 256 items of the latest 128 turns"
     >
-      <strong
-        role="heading"
-        aria-level={3}
-        aria-label={`Subagents: ${recentAgents.length}`}
-      >
-        Subagents {recentAgents.length}
+      {/* A plain heading; the count row below says how many are working
+          (Codex s4/f0111). */}
+      <strong role="heading" aria-level={3}>
+        Subagents
       </strong>
       {counts(
         <span className="agent-task-header__agent-glyphs" aria-hidden="true">
@@ -37,8 +35,9 @@ export function AgentTaskSubagentSummary({
           ))}
         </span>,
       )}
+      {/* Rows come from the parent page's subagent states and re-render with
+          every page load, so they move as the parent projection changes. */}
       <SubagentResourceRows agents={recentAgents} onSelect={onSelect} />
-      <small>Latest retained observations; not live.</small>
     </section>
   );
 }

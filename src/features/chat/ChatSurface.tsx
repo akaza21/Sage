@@ -179,6 +179,7 @@ export function ChatSurface({
   const { showJumpToLatest, updateFollowEnd, jumpToLatest } = useFollowEnd({
     ownerKey: chatId ?? "primary",
     revision: `${messages.length}:${acpPage?.projectionRevision ?? ""}`,
+    running: Boolean(activeAcpTurn),
     transcriptRef: messageListRef,
     contentRef: transcriptContentRef,
     endRef,

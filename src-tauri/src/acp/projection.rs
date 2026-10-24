@@ -374,6 +374,21 @@ pub struct AcpChatPage {
     pub sessions: BoundedVec<SessionProjection, 32>,
     pub turns: BoundedVec<TurnProjection, 20>,
     pub next_cursor: Option<PageCursor>,
+    /// The Chat this one was natively forked from (durable `chat_lineage`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) forked_from: Option<SageChatId>,
+    /// The parent Turn the fork carries history through, inclusive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) forked_from_turn_id: Option<SageTurnId>,
+    /// Child-transcript invalidation epoch: advances on every live child
+    /// change and never moves `projection_revision` (see
+    /// `store::child_transcript::child_projection_epoch`).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub(crate) child_projection_epoch: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 mod validation;

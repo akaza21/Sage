@@ -75,6 +75,8 @@ test("CP-44 dashes widen, preview and jump with the measured gutter geometry", a
     );
   expect(inset).toBeLessThanOrEqual(16);
   await expect(tooltip).toBeVisible();
+  // The pointer now rests on the first dash, so its preview follows it.
+  await expect(tooltip).toContainText("Navigator prompt 1");
   await expect(alpha).toHaveScreenshot("turn-navigator-jump.png");
   await buttons.nth(2).focus();
   await page.keyboard.press("ArrowDown");

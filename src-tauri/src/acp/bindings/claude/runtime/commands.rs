@@ -29,6 +29,7 @@ impl ClaudeRuntime {
                 }
                 let root = RequiredText::<16_384>::new("nativeRoot", native_root)
                     .map_err(|_| AdapterRuntimeError::Operation)?;
+                self.session_root = Some(root.as_str().to_owned());
                 self.reserve(PendingRequest::NewSession, "session/new", json!({"cwd":root.as_str(),"mcpServers":self.mcp.wire(self.mcp_capabilities)}))
             }
             AdapterCommand::ResumeSession { external_session_id, native_root, model } => {
@@ -38,6 +39,7 @@ impl ClaudeRuntime {
                 }
                 let root = RequiredText::<16_384>::new("nativeRoot", native_root)
                     .map_err(|_| AdapterRuntimeError::Operation)?;
+                self.session_root = Some(root.as_str().to_owned());
                 self.reserve(PendingRequest::ResumeSession(external_session_id.clone()), "session/resume", json!({"sessionId":external_session_id.as_str(),"cwd":root.as_str(),"mcpServers":self.mcp.wire(self.mcp_capabilities)}))
             }
             AdapterCommand::LoadSession { .. } => Err(AdapterRuntimeError::UnsupportedCommand),

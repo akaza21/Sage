@@ -209,7 +209,15 @@ export function safeAcpMutationResponse(
     projection.nextCursor === null
       ? null
       : safeIdentifier(projection.nextCursor);
+  const forkedFrom =
+    projection.forkedFrom === undefined
+      ? undefined
+      : safeIdentifier(projection.forkedFrom);
+  // Display-only extras: an unsafe value is dropped, never trusted.
+  const forkedFromTurnId = safeIdentifier(projection.forkedFromTurnId);
+  const epoch = projection.childProjectionEpoch as number;
   if (
+    forkedFrom === null ||
     !projectId ||
     !chatId ||
     title === null ||
@@ -301,6 +309,14 @@ export function safeAcpMutationResponse(
       ...(goal ? { goal } : {}),
       turns: safeTurns,
       nextCursor: nextCursor as AcpChatPage["nextCursor"],
+      ...(forkedFrom
+        ? { forkedFrom: forkedFrom as AcpChatPage["chatId"] }
+        : {}),
+      ...(forkedFromTurnId && {
+        forkedFromTurnId: forkedFromTurnId as AcpChatPage["forkedFromTurnId"],
+      }),
+      ...(Number.isSafeInteger(epoch) &&
+        epoch > 0 && { childProjectionEpoch: epoch }),
     },
   };
 }

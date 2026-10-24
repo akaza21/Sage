@@ -75,7 +75,11 @@ const REQUIRED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
   "src/features/browser/BrowserSurface.tsx",
+  "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
+  // Queued-message rows load with the first queued message.
+  "src/features/chat/ComposerQueuedPrompts.tsx",
+  "src/features/chat/ForkChat.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
@@ -433,8 +437,11 @@ describe("desktop-native chunk topology", () => {
         ).toBe(false);
     }
     const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
+    // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
-      (id) => !id.endsWith("chatEditSummary.ts"),
+      (id) =>
+        !id.endsWith("chatEditSummary.ts") &&
+        !id.endsWith("ComposerQueuedPrompts.tsx"),
     ))
       expect(
         chat.some((id) => id.endsWith(module)),
@@ -547,6 +554,16 @@ describe("desktop-native chunk topology", () => {
     }
     expect(searchFile).not.toBe(agentFile);
     expect(searchFile).not.toBe(sharedFile);
+    // The Hand off dialog loads on the first Hand off; the trigger stays eager.
+    const handoffFile = groupedGraph.moduleFiles.get(
+      "src/features/chat/ChatHandoffDialog.tsx",
+    );
+    expect(handoffFile).toBeDefined();
+    expect(handoffFile).not.toBe(agentFile);
+    expect(handoffFile).not.toBe(sharedFile);
+    expect(
+      groupedGraph.moduleFiles.get("src/features/chat/ChatHandoffControl.tsx"),
+    ).toBe(agentFile);
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
     expect(new Set(groupedGraph.allModules).size).toBe(

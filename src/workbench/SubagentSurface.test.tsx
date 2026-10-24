@@ -1,7 +1,19 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  type SubagentPaneTarget,
+  useSubagentPaneStore,
+} from "../app/subagentPaneStore";
 import type { AcpChatPage } from "../domain/acp";
+import { subagentAge } from "./SubagentResourceRows";
 import { SubagentSurface } from "./SubagentSurface";
 
 const readChild = vi.hoisted(() => vi.fn());
@@ -10,7 +22,157 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   invokeNative: readChild,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
+});
+
+describe("Subagents list", () => {
+  const owner = {
+    projectId: "project",
+    chatId: "chat",
+    sessionId: "session",
+  } as unknown as SubagentPaneTarget["owner"];
+  const spawn = (id: string, name: string, state: string, at: number) => ({
+    ...owner,
+    id: `spawn-${id}`,
+    kind: "collaboration",
+    createdAt: at,
+    updatedAt: at,
+    payload: {
+      operation: "spawnAgent",
+      receiverLabels: [name],
+      agentKeys: [id],
+      agentStates: [[id, state]],
+    },
+  });
+  const finish = (id: string, at: number) => ({
+    ...owner,
+    id: `done-${id}`,
+    kind: "collaboration",
+    createdAt: at,
+    updatedAt: at,
+    payload: {
+      operation: "completed",
+      label: "Subagent",
+      receiverLabels: [],
+      agentKey: id,
+      agentKeys: [],
+      agentStates: [],
+    },
+  });
+  const page = (items: unknown[]) =>
+    ({
+      ...owner,
+      currentSessionId: "session",
+      sessions: [],
+      turns: [{ id: "turn", sessionId: "session", activities: [], items }],
+    }) as unknown as AcpChatPage;
+
+  it("formats active seconds, settled `just now`, then minutes, hours and days", () => {
+    expect(subagentAge(10_000, 10_400, true)).toBe("0s");
+    expect(subagentAge(10_000, 69_000, true)).toBe("59s");
+    expect(subagentAge(10_000, 20_000, false)).toBe("just now");
+    expect(subagentAge(0, 5 * 60_000, false)).toBe("5m");
+    expect(subagentAge(0, 5 * 60_000, true)).toBe("5m");
+    expect(subagentAge(0, 3 * 3_600_000, false)).toBe("3h");
+    expect(subagentAge(0, 49 * 3_600_000, false)).toBe("2d");
+    expect(subagentAge(5_000, 1_000, true)).toBe("0s");
+  });
+
+  it("splits Active · N from Done · N and moves a row when its child finishes", () => {
+    vi.useFakeTimers({ now: 100_000 });
+    useSubagentPaneStore
+      .getState()
+      .show({ owner, itemId: "spawn-readme", agentKey: "readme" }, true);
+    const started = [
+      spawn("math", "Count math", "running", 100_000),
+      spawn("readme", "Count readme", "running", 100_000),
+    ];
+    const view = render(
+      <SubagentSurface page={page(started)} itemId="spawn-readme" />,
+    );
+    const active = screen.getByRole("region", { name: "Active subagents" });
+    expect(within(active).getByRole("heading")).toHaveTextContent("Active · 2");
+    expect(screen.queryByRole("region", { name: "Done subagents" })).toBeNull();
+    expect(within(active).getAllByText("Working")).toHaveLength(2);
+    expect(within(active).getAllByText("0s")).toHaveLength(2);
+
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(within(active).getAllByText("5s")).toHaveLength(2);
+    view.rerender(
+      <SubagentSurface
+        page={page([...started, finish("math", 105_000)])}
+        itemId="spawn-readme"
+      />,
+    );
+    expect(
+      within(
+        screen.getByRole("region", { name: "Active subagents" }),
+      ).getByRole("heading"),
+    ).toHaveTextContent("Active · 1");
+    const done = screen.getByRole("region", { name: "Done subagents" });
+    expect(within(done).getByRole("heading")).toHaveTextContent("Done · 1");
+    const row = within(done).getByRole("button", {
+      name: "Open subagent Count math",
+    });
+    expect(row).toHaveTextContent("Count math");
+    expect(row).toHaveTextContent("just now");
+    expect(row).not.toHaveTextContent("Working");
+    act(() => vi.advanceTimersByTime(5 * 60_000));
+    expect(row).toHaveTextContent("5m");
+
+    fireEvent.click(row);
+    expect(useSubagentPaneStore.getState()).toMatchObject({
+      open: { itemId: "done-math", agentKey: "math" },
+      list: false,
+    });
+  });
+
+  it("labels stopped and failed children and keeps unverified rows inert", () => {
+    useSubagentPaneStore
+      .getState()
+      .show({ owner, itemId: "spawn-a", agentKey: "a" }, true);
+    render(
+      <SubagentSurface
+        page={page([
+          spawn("a", "Stopper", "interrupted", 1),
+          spawn("b", "Breaker", "errored", 1),
+        ])}
+        itemId="spawn-a"
+      />,
+    );
+    const done = screen.getByRole("region", { name: "Done subagents" });
+    expect(within(done).getByRole("heading")).toHaveTextContent("Done · 2");
+    expect(done).toHaveTextContent("Stopped");
+    expect(done).toHaveTextContent("Failed");
+    expect(within(done).queryByRole("button", { name: /Breaker/ })).toBeNull();
+    expect(screen.queryByText(/^a$|^b$/)).toBeNull();
+  });
+
+  it("returns from a child to the list with the back arrow", () => {
+    useSubagentPaneStore.getState().show({
+      owner,
+      itemId: "spawn-math",
+      agentKey: "math",
+    });
+    const current = page([spawn("math", "Count math", "running", 1)]);
+    const view = render(
+      <SubagentSurface page={current} itemId="spawn-math" agentKey="math" />,
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Count math" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to subagents" }));
+    view.rerender(
+      <SubagentSurface page={current} itemId="spawn-math" agentKey="math" />,
+    );
+    expect(
+      screen.getByRole("region", { name: "Active subagents" }),
+    ).toHaveTextContent("Count math");
+  });
+});
 
 describe("SubagentSurface", () => {
   it.each(["session", "invocation"])(
@@ -90,7 +252,7 @@ describe("SubagentSurface", () => {
       expect(screen.getByRole("heading", { name: "Reviewer" })).toBeVisible();
       if (scope === "session")
         expect(screen.getByText(/from an earlier session/)).toBeVisible();
-      else expect(screen.getByRole("status")).toHaveTextContent("Done");
+      else expect(screen.queryByText(/^Working for/)).toBeNull();
       expect(readChild).not.toHaveBeenCalled();
     },
   );
@@ -143,7 +305,8 @@ describe("SubagentSurface", () => {
       <SubagentSurface page={page} itemId="native" agentKey="private-child" />,
     );
     expect(screen.getByRole("heading", { name: "Reviewer" })).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("Done");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/^Working for/)).toBeNull();
     expect(readChild).not.toHaveBeenCalled();
   });
   it("uses the generic role for an explicitly selected unnamed child without reading", () => {
@@ -252,13 +415,11 @@ describe("SubagentSurface", () => {
     expect(screen.getByText(/Loading child transcript/)).toBeVisible();
     expect(await screen.findByText("Child answer")).toBeVisible();
     expect(screen.getByText("Context automatically compacted")).toBeVisible();
-    expect(screen.getByText("Current child transcript")).toBeVisible();
     expect(screen.getByText(/Some later child activity/)).toBeVisible();
     expect(readChild).toHaveBeenCalledWith("get_acp_child_transcript", {
       request: expect.objectContaining({
         itemId: "spawn",
         agentKey: "secret",
-        expectedProjectionRevision: "7",
       }),
     });
   });
@@ -453,7 +614,9 @@ describe("SubagentSurface", () => {
         agentKey="b"
       />,
     );
-    expect(await screen.findByText(/too large to display/)).toBeVisible();
+    // The new child reads as soon as the previous child's read settles,
+    // never beside it, and that late read is never shown for the new child.
+    expect(readChild).toHaveBeenCalledTimes(1);
     complete({
       kind: "current",
       snapshot: {
@@ -463,9 +626,9 @@ describe("SubagentSurface", () => {
         turns: [],
       },
     });
-    await waitFor(() =>
-      expect(screen.queryByText("Current child transcript")).toBeNull(),
-    );
+    expect(await screen.findByText(/too large to display/)).toBeVisible();
+    expect(readChild).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("No child activity was captured.")).toBeNull();
   });
 
   it("does not read a superseded Session", () => {
@@ -625,7 +788,8 @@ describe("SubagentSurface", () => {
       ],
     } as unknown as AcpChatPage;
     render(<SubagentSurface page={page} itemId="spawn" agentKey="secret" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Done");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/^Working for/)).toBeNull();
     expect(screen.getByText("Review files")).toBeVisible();
     expect(screen.getByText(/Bounded activity recorded/)).toBeVisible();
   });
@@ -679,7 +843,8 @@ describe("SubagentSurface", () => {
       ],
     } as unknown as AcpChatPage;
     render(<SubagentSurface page={page} itemId="started" agentKey="secret" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Done");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/^Working for/)).toBeNull();
   });
   it("does not call a mixed running/completed group done", () => {
     const page = {
@@ -704,9 +869,8 @@ describe("SubagentSurface", () => {
       ],
     } as unknown as AcpChatPage;
     render(<SubagentSurface page={page} itemId="spawn" />);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Working when observed",
-    );
+    expect(screen.queryByText(/^Worked for/)).toBeNull();
+    expect(screen.queryByText(/when observed/)).toBeNull();
   });
   it("shows only bounded, parented activity and does not imply a full transcript", () => {
     const page = {

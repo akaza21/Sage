@@ -17,21 +17,16 @@ export function attributedSubagentKey(
   item: Extract<AcpItem, { kind: "collaboration" }>,
   candidates: readonly (string | null | undefined)[],
 ): string | null {
-  if (candidates.length !== 1 || (item.payload.agentKeys?.length ?? 0) > 1)
-    return null;
-  const key = candidates[0];
-  if (
-    item.payload.agentKey &&
-    item.payload.agentKeys?.length === 1 &&
-    item.payload.agentKey !== item.payload.agentKeys[0]
-  )
-    return null;
-  const state = item.payload.agentStates?.find(([id]) => id === key)?.[1];
-  if (state === "errored" || state === "notFound") return null;
+  // One declared key (or the event's own key alone), never two conflicting.
+  const { agentKey, agentKeys = [], agentStates } = item.payload;
+  const key = candidates.length === 1 ? candidates[0] : null;
+  const state = agentStates?.find(([id]) => id === key)?.[1];
   return key &&
-    (item.payload.agentKey === key ||
-      (item.payload.agentKeys?.length === 1 &&
-        item.payload.agentKeys[0] === key))
+    agentKeys.length < 2 &&
+    key === (agentKeys[0] ?? agentKey) &&
+    (!agentKey || agentKey === key) &&
+    state !== "errored" &&
+    state !== "notFound"
     ? key
     : null;
 }
@@ -78,7 +73,9 @@ export function ownerFromFocusedPage(
 interface SubagentPaneStore {
   open: SubagentPaneTarget | null;
   selected: boolean;
-  show: (target: SubagentPaneTarget) => void;
+  /** The plural tab shows its Active / Done list rather than one child. */
+  list?: boolean;
+  show: (target: SubagentPaneTarget, list?: boolean) => void;
   select: (selected: boolean) => void;
   clear: () => void;
 }
@@ -105,11 +102,15 @@ export function subagentPaneForPage(
           attributedSubagentKey(item, [target.agentKey]) === target.agentKey,
       ),
   );
-  return found ? target : null;
+  if (found) return target;
+  // A grouped event names several children; route a key to its own spawn.
+  const keyed = latestSubagentForPage(page, target.agentKey);
+  return keyed?.owner.sessionId === target.owner.sessionId ? keyed : null;
 }
 
 export function latestSubagentForPage(
   page: AcpChatPage | null,
+  only?: string,
 ): SubagentPaneTarget | null {
   if (!page) return null;
   let remaining = 256;
@@ -121,7 +122,7 @@ export function latestSubagentForPage(
       const agentKey = attributedSubagentKey(item, [
         keys.length === 1 ? keys[0] : item.payload.agentKey,
       ]);
-      if (!agentKey) continue;
+      if (!agentKey || (only && agentKey !== only)) continue;
       return {
         owner: {
           projectId: page.projectId,
@@ -140,14 +141,14 @@ export function latestSubagentForPage(
 export const useSubagentPaneStore = create<SubagentPaneStore>((set) => ({
   open: null,
   selected: false,
-  show: (target) => {
+  show: (target, list = false) => {
     if (
       !validAgentArtifactOwner(target.owner) ||
       !target.itemId ||
       !target.agentKey
     )
       return;
-    set({ open: { ...target }, selected: true });
+    set({ open: { ...target }, selected: true, list });
   },
   select: (selected) => set({ selected }),
   clear: () => set({ open: null, selected: false }),

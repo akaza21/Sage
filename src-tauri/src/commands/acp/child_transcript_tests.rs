@@ -245,6 +245,8 @@ async fn child_ipc_journey(
             agent_key: None,
             agent_keys: Default::default(),
             agent_states: Default::default(),
+            model: None,
+            reasoning_effort: None,
         };
         let encoded = serde_json::to_string(&payload).unwrap();
         let digest = format!("{:x}", sha2::Sha256::digest(encoded.as_bytes()));
@@ -293,16 +295,10 @@ async fn child_ipc_journey(
     state
         .acp
         .install_goal_test_runtime(owner, host, GoalState::Unsupported);
-    let revision = state
-        .acp
-        .load_chat_page(project_id.clone(), chat_id.clone(), None)
-        .unwrap()
-        .projection_revision;
     let mut request = ChildTranscriptRequest {
         project_id,
         project_generation: projection_generation,
         chat_id,
-        expected_projection_revision: revision,
         session_id: session.session_id,
         runtime_epoch: epoch,
         item_id: SageItemId::parse("item-one").unwrap(),
@@ -345,15 +341,8 @@ async fn child_ipc_journey(
             .is_err()
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    let mut stale = request.clone();
-    stale.expected_projection_revision = ProjectionRevision::new(revision.get() + 1).unwrap();
-    assert!(matches!(
-        get_acp_child_transcript_inner(&state, stale).await,
-        Err(AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::ProjectionRevision,
-            ..
-        })
-    ));
+    // A child read carries no projection revision: steady parent activity
+    // never makes it stale (B2), and the read never moves the revision.
     let mut foreign_session = request.clone();
     foreign_session.session_id = SageAgentSessionId::parse("foreign-session").unwrap();
     assert!(matches!(
@@ -394,7 +383,7 @@ async fn child_ipc_journey(
         .await
         .unwrap();
     assert!(
-        matches!(result, ChildTranscriptResponse::Current { snapshot: stored } if stored == snapshot)
+        matches!(result, ChildTranscriptResponse::Current { snapshot: stored, spawn_model: None } if stored == snapshot)
     );
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     let count: i64 = state.database.connection().query_row("SELECT COUNT(*) FROM acp_child_thread_transcripts WHERE native_child_thread_id='child-one'", [], |row| row.get(0)).unwrap();
@@ -473,4 +462,33 @@ async fn child_ipc_journey(
     if export_path.is_none() {
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[test]
+fn child_reply_names_a_spawn_model_only_when_one_was_supplied() {
+    let snapshot = ChildTranscriptSnapshot {
+        child_thread_id: "child-one".into(),
+        parent_thread_id: "parent".into(),
+        turns: Vec::new(),
+        retention_limited: false,
+    };
+    let with = serde_json::to_value(ChildTranscriptResponse::Current {
+        snapshot: snapshot.clone(),
+        spawn_model: Some(SpawnModel {
+            model: "gpt-6-astra".into(),
+            reasoning_effort: Some("medium".into()),
+        }),
+    })
+    .unwrap();
+    assert_eq!(
+        with["spawnModel"],
+        serde_json::json!({"model": "gpt-6-astra", "reasoningEffort": "medium"})
+    );
+    let without = serde_json::to_value(ChildTranscriptResponse::FromEarlierSession {
+        snapshot,
+        spawn_model: None,
+    })
+    .unwrap();
+    assert_eq!(without["kind"], "fromEarlierSession");
+    assert!(without.get("spawnModel").is_none());
 }

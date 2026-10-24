@@ -10,6 +10,8 @@ fn child_item(owner: &AdapterStoreOwner, external: &str, child: &str) -> Adapter
         agent_key: None,
         agent_keys: Default::default(),
         agent_states: Default::default(),
+        model: None,
+        reasoning_effort: None,
     };
     item.payload_digest =
         facts::hex_digest(serde_json::to_string(&item.payload).unwrap().as_bytes());

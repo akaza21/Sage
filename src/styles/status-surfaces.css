@@ -174,6 +174,8 @@
 }
 
 .send-button {
+  position: relative;
+  isolation: isolate;
   display: grid;
   width: 28px;
   height: 28px;
@@ -185,10 +187,18 @@
   color: var(--composer-send-text);
   background: var(--color-status-foreground);
   cursor: pointer;
-  transition:
-    color var(--motion-duration-fast) ease,
-    background-color var(--motion-duration-fast) ease,
-    box-shadow var(--motion-duration-fast) ease;
+}
+
+/* The disabled fill cross-fades over the white one on opacity alone. */
+.send-button::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: var(--radius-circle);
+  background: var(--color-plane-raised);
+  content: "";
+  opacity: 0;
+  transition: opacity var(--motion-duration-fade) ease-out;
 }
 
 .send-button:hover:not(:disabled) {
@@ -197,8 +207,12 @@
 
 .send-button:disabled {
   color: var(--composer-send-disabled-text);
-  background: var(--color-plane-raised);
   cursor: not-allowed;
+  opacity: 1;
+}
+
+.send-button:disabled::before {
+  background: var(--color-plane-raised);
   opacity: 1;
 }
 
@@ -249,5 +263,17 @@
 @media (forced-colors: active) {
   .send-button {
     border: 1px solid CanvasText;
+  }
+
+  /* System colours own the fill; the disabled state shows as GrayText. */
+  .send-button::before {
+    display: none;
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send-button::before {
+    transition: none;
   }
 }

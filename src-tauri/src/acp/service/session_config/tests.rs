@@ -168,6 +168,9 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         .unwrap(),
         turns: BoundedVec::default(),
         next_cursor: None,
+        forked_from: None,
+        forked_from_turn_id: None,
+        child_projection_epoch: 0,
     };
     service.compose_session_config(&mut page).unwrap();
     assert!(page.session_config.is_some());

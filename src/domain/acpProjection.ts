@@ -281,4 +281,13 @@ export interface AcpChatPage {
   sessions: readonly AgentSessionProjection[];
   turns: readonly TurnProjection[];
   nextCursor: AcpPageCursor | null;
+  /** The Chat this one was natively forked from (Rust `chat_lineage`). */
+  forkedFrom?: SageChatId;
+  /** The parent Turn the fork carries history through, inclusive. */
+  forkedFromTurnId?: SageTurnId;
+  /**
+   * Child-transcript invalidation epoch (opaque). It moves without the
+   * projection revision, so child activity never stales a user action.
+   */
+  childProjectionEpoch?: number;
 }

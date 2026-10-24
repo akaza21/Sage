@@ -14,7 +14,9 @@ mod egress_resolution;
 mod invalid_response;
 pub(crate) use invalid_response::response_id_for_discard;
 mod model;
-pub(crate) use model::{AdapterIdentity, AdapterModel, AdapterRuntimeError, HarnessAdapter};
+pub(crate) use model::{
+    AdapterIdentity, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError, HarnessAdapter,
+};
 
 /// Native-only command input. This type deliberately has no `Debug` or
 /// serialization implementation because it can contain a canonical absolute

@@ -1,30 +1,131 @@
-.chat-follow-end-zone {
-  display: flex;
-  min-width: 0;
-  justify-content: center;
-  padding: 0 var(--space-4) var(--space-2);
-}
-
+/*
+ * Jump to latest floats over the transcript, centred on its column (Codex
+ * s2/f0001: a 28 px circle about 23 px above the composer). It shares the
+ * transcript grid area instead of taking a row, so showing it never changes
+ * the transcript height. The right margin skips the stable scrollbar gutter
+ * so the centre matches the reading column. It stays mounted while hidden:
+ * the opacity fades over 150 ms and display flips only after the fade
+ * (Codex s2/f0046-f0049 and s6/f0699).
+ */
 .chat-follow-end {
+  position: relative;
+  z-index: 2;
   display: grid;
-  width: var(--control-height-default);
-  height: var(--control-height-default);
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
   place-items: center;
   padding: 0;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-circle);
   color: var(--color-text-primary);
-  background: var(--color-surface);
+  background: var(--color-canvas);
   box-shadow: var(--elevation-floating);
   cursor: pointer;
+  transition:
+    opacity var(--motion-duration-fade) ease-out,
+    display var(--motion-duration-fade) allow-discrete;
+}
+
+.chat-surface--agent > .chat-follow-end {
+  grid-area: transcript;
+  align-self: end;
+  justify-self: center;
+  margin: 0 var(--scrollbar-size) var(--space-6) 0;
+}
+
+.chat-follow-end[hidden] {
+  display: none;
+  opacity: 0;
+}
+
+@starting-style {
+  .chat-follow-end {
+    opacity: 0;
+  }
 }
 
 .chat-follow-end:hover {
   background: var(--color-surface-hover);
 }
 
+/*
+ * New activity below a paused reader (Codex s6/f0051-f0128): three 4 px dots
+ * dip one at a time, left to right, about 125 ms apart, on a 1 s cycle. The
+ * data-mode="activity" selects this mode: the arrow icon becomes the middle dot
+ * and the button's ::before and ::after are the outer dots, laid out as three
+ * grid columns so each moves on its own.
+ */
+.chat-follow-end[data-mode="activity"] {
+  grid-auto-flow: column;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.chat-follow-end[data-mode="activity"]::before,
+.chat-follow-end[data-mode="activity"]::after {
+  content: "";
+}
+
+.chat-follow-end[data-mode="activity"]::before,
+.chat-follow-end[data-mode="activity"] > svg,
+.chat-follow-end[data-mode="activity"]::after {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-circle);
+  background: currentColor;
+  stroke: none;
+  animation: sage-dot-bounce var(--motion-duration-bounce) ease-in-out infinite;
+}
+
+.chat-follow-end[data-mode="activity"] > svg {
+  animation-delay: 125ms;
+}
+
+.chat-follow-end[data-mode="activity"]::after {
+  animation-delay: 250ms;
+}
+
+@keyframes sage-dot-bounce {
+  0%,
+  37.5%,
+  100% {
+    transform: translateY(0);
+  }
+
+  12.5% {
+    transform: translateY(1px);
+  }
+
+  25% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-follow-end {
+    transition: none;
+  }
+
+  .chat-follow-end[data-mode="activity"]::before,
+  .chat-follow-end[data-mode="activity"] > svg,
+  .chat-follow-end[data-mode="activity"]::after {
+    animation: none;
+  }
+}
+
 @media (forced-colors: active) {
   .chat-follow-end {
     border-color: CanvasText;
+    transition: none;
+  }
+
+  .chat-follow-end[data-mode="activity"] {
+    color: CanvasText;
+  }
+
+  .chat-follow-end[data-mode="activity"]::before,
+  .chat-follow-end[data-mode="activity"] > svg,
+  .chat-follow-end[data-mode="activity"]::after {
+    animation: none;
   }
 }

@@ -148,6 +148,8 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             agent_key: None,
             agent_keys: BoundedVec::default(),
             agent_states: BoundedVec::default(),
+            model: None,
+            reasoning_effort: None,
         },
         NormalizerInput::Unknown {
             external_kind,

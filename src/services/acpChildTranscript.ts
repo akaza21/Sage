@@ -1,14 +1,36 @@
 import type { AcpItem } from "../domain/acp";
-import { truncateUtf8 } from "../domain/text";
+import { truncateUtf8, utf8ByteLength } from "../domain/text";
 import { isRecord, safeIdentifier } from "./acpDesktopResponses";
 import { safeItem } from "./acpDesktopResponseItems";
-import { invokeNative } from "../ports/nativeInvoke";
+import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
+
+/**
+ * Child-only projection notices (Rust `ACP_CHILD_PROJECTION_CHANGED_EVENT`):
+ * a child transcript changed while the parent page did not, so only open
+ * Subagent views re-read and the parent page is not reloaded.
+ */
+export async function subscribeChildProjectionChanges(
+  projectId: string,
+  chatId: string,
+  onEpoch: (epoch: number) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) return () => undefined;
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>("acp-child-projection-changed-v1", ({ payload }) => {
+    if (
+      isRecord(payload) &&
+      payload.projectId === projectId &&
+      payload.chatId === chatId &&
+      Number.isSafeInteger(payload.childProjectionEpoch)
+    )
+      onEpoch(payload.childProjectionEpoch as number);
+  });
+}
 
 export interface ChildTranscriptRequest {
   projectId: string;
   projectGeneration: string;
   chatId: string;
-  expectedProjectionRevision: string;
   sessionId: string;
   runtimeEpoch: string;
   itemId: string;
@@ -20,6 +42,8 @@ export type ChildTranscript =
       kind: "current" | "fromEarlierSession";
       retentionLimited: boolean;
       turns: { id: string; status: string; items: AcpItem[] }[];
+      /** The spawn's requested model, only when the harness wire named it. */
+      spawnModel?: { model: string; reasoningEffort?: string };
     }
   | {
       kind:
@@ -275,9 +299,31 @@ export async function getAcpChildTranscript(
       items: admittedItems,
     });
   }
+  const spawn = isRecord(value.spawnModel) ? value.spawnModel : {};
+  const model = printable(spawn.model, 256);
+  const reasoningEffort = printable(spawn.reasoningEffort, 32);
   return {
     kind: value.kind,
     retentionLimited: snapshot.retentionLimited,
     turns,
+    ...(model
+      ? {
+          spawnModel: {
+            model,
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+          },
+        }
+      : {}),
   };
+}
+
+/** Optional header chrome: malformed text is dropped, never displayed. */
+function printable(value: unknown, maximumBytes: number): string | null {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    utf8ByteLength(value) <= maximumBytes &&
+    // eslint-disable-next-line no-control-regex
+    !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : null;
 }
