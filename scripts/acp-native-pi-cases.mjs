@@ -330,10 +330,11 @@ export function piNativeCases() {
         frame("auto_retry_end", { success: true, attempt: 1 }),
         ...finish("stop", "Synthetic retry completed."),
       );
+    // Pi discovers thinking levels once per activation, never per prompt,
+    // so the second Turn awaits only its prompt.
     if (parityTurns(id) === 2)
       steps.push(
         wait("piPrompt"),
-        wait("piThinkingLevels"),
         ...start(),
         update("text_delta", SECOND_PROMPT_ANSWER),
         ...finish("stop", SECOND_PROMPT_ANSWER),

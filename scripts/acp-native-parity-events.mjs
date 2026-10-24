@@ -18,9 +18,9 @@ export const PARITY_BASE = Object.freeze({
   "fork-dialog": "turn-completed",
   "fork-thread": "turn-completed",
   "approval-card": "approval-pending",
-  "subagents-name-hover": "subagents-grouped",
   "subagent-child-header": "child-opened",
-  "motion-thinking-shimmer": "thinking-live",
+  // The cited live frames (s8/f0130, f0175) shimmer a running tool label.
+  "motion-thinking-shimmer": "tool-running",
   "motion-worked-expand": "worked-expanded",
   "motion-jump-pill": "jump-to-latest",
 });
@@ -217,6 +217,43 @@ function streamed(harness) {
   );
 }
 
+/**
+ * Two named, finished children (s4/f0485 "Count math and Count readme
+ * finished"): each spawn, then the child's own completed activity naming it
+ * by `agentPath`, so every name is a button bound to its child.
+ */
+function codexNamedChildren() {
+  return [
+    ["fixture-child-1", "Count math"],
+    ["fixture-child-2", "Count readme"],
+  ].flatMap(([child, agentPath], index) => [
+    codexFrame("item/completed", {
+      threadId: "$SESSION",
+      item: {
+        type: "collabAgentToolCall",
+        id: "fixture-delegate-" + (index + 1),
+        tool: "spawnAgent",
+        status: "completed",
+        senderThreadId: "$SESSION",
+        receiverThreadIds: [child],
+        agentsStates: {
+          [child]: { status: "completed", message: "Synthetic child summary" },
+        },
+      },
+    }),
+    codexFrame("item/completed", {
+      threadId: "$SESSION",
+      item: {
+        id: "fixture-child-activity-" + (index + 1),
+        type: "subAgentActivity",
+        agentThreadId: child,
+        agentPath,
+        kind: "completed",
+      },
+    }),
+  ]);
+}
+
 /** First-Turn events for parity states with their own wire shapes. */
 export function parityOwnEvents(harness, state) {
   if (state === "motion-stream-fade") return streamed(harness);
@@ -239,6 +276,14 @@ export function parityOwnEvents(harness, state) {
         ...codexCommand("fixture-tool-1", "Inspect synthetic example 1"),
         ...codexWebSearch("fixture-web-1"),
         ...codexMcp("fixture-mcp-1", "search_fixture_docs", "result"),
+      ];
+    if (state === "subagents-name-hover")
+      return [
+        ...codexNamedChildren(),
+        codexFrame("item/agentMessage/delta", {
+          itemId: "fixture-answer",
+          delta: "Both synthetic subagents finished.",
+        }),
       ];
     if (state === "subagents-tab-active-done")
       return [...codexChild(1, true), ...codexChild(2, false)];

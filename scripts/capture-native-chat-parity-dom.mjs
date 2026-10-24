@@ -135,7 +135,10 @@ export function parityRules(
     "fork-menu": terminal && view.forkMenuItem,
     "fork-dialog": terminal && view.forkDialog,
     "fork-thread": view.forkDivider && Boolean(observation.forkedFrom),
-    "motion-thinking-shimmer": live && view.thought && view.shimmer,
+    // Codex shimmers live labels (s8: a "Running …" row); Sage's live
+    // reasoning prose never shimmers, so the witness is a live tool label.
+    "motion-thinking-shimmer":
+      live && view.shimmer && (view.tool || view.rollup),
     "motion-stream-fade":
       live && assistantRendered && observation.streamAnimations > 0,
     "motion-worked-expand": terminal && view.workedClosed,
@@ -256,6 +259,7 @@ export function parityStepsFor(state) {
         focus: 'textarea[aria-label="Message agent"]',
         key: "f",
         ctrl: true,
+        expect: '.chat-find input[aria-label="Search chat"]',
       },
       {
         op: "fill",

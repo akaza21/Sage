@@ -296,3 +296,71 @@ fn codex_subagent_list_case_keeps_one_child_done_and_one_running() {
         "the parent Turn stays live until Stop"
     );
 }
+
+#[test]
+fn pi_second_turn_cases_answer_a_bare_second_prompt() {
+    // Pi discovers thinking levels once per activation; the second prompt
+    // arrives alone and the replay must not wait for another discovery.
+    for case in ["pi-annotation-sent", "pi-turn-navigator-hover"] {
+        let frames = replay_native(
+            case,
+            &lines(&[
+                json!({"type":"get_state","id":"pi-1"}),
+                json!({"type":"get_available_models","id":"pi-2"}),
+                json!({"type":"new_session","id":"pi-3"}),
+                json!({"type":"prompt","id":"pi-4","message":"Inspect"}),
+                json!({"type":"get_available_thinking_levels","id":"pi-5"}),
+                json!({"type":"prompt","id":"pi-6","message":"Again"}),
+            ]),
+        );
+        assert_eq!(
+            frames
+                .iter()
+                .filter(|frame| frame["type"] == "agent_settled")
+                .count(),
+            2,
+            "{case}"
+        );
+        assert!(
+            frames
+                .iter()
+                .any(|frame| frame["id"] == "pi-6" && frame["success"] == true),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn codex_name_hover_case_names_each_finished_child() {
+    let frames = replay_native(
+        "codex-subagents-name-hover",
+        &codex_requests(&[json!({"id":5,"method":"thread/unsubscribe"})]),
+    );
+    let named: Vec<_> = frames
+        .iter()
+        .filter(|frame| frame["params"]["item"]["type"] == "subAgentActivity")
+        .map(|frame| {
+            let item = &frame["params"]["item"];
+            (
+                item["agentThreadId"].clone(),
+                item["agentPath"].clone(),
+                item["kind"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        named,
+        [
+            (
+                json!("fixture-child-1"),
+                json!("Count math"),
+                json!("completed")
+            ),
+            (
+                json!("fixture-child-2"),
+                json!("Count readme"),
+                json!("completed")
+            ),
+        ]
+    );
+}

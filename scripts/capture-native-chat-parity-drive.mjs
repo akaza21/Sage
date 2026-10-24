@@ -16,6 +16,8 @@ import {
 
 const SCOPES = new Set(["pane", "document", "owner"]);
 const DRAG_STEPS = 8;
+const KEY_ATTEMPTS = 4;
+const KEY_SETTLE_MS = 750;
 
 function nodesExpression(selector, scope, chatId) {
   if (!SCOPES.has(scope)) throw new Error("parity-scope");
@@ -41,6 +43,11 @@ export function fillExpression(selector, scope, text, chatId) {
 /** The centre of the single visible match, for real pointer input. */
 export function centerExpression(selector, scope, chatId) {
   return `(()=>{const nodes=${nodesExpression(selector, scope, chatId)};if(nodes.length!==1)return false;nodes[0].scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});const box=nodes[0].getBoundingClientRect();if(!(box.width>0&&box.height>0)||box.x<0||box.y<0||box.x+box.width>innerWidth||box.y+box.height>innerHeight)return false;return {x:box.x+box.width/2,y:box.y+box.height/2}})()`;
+}
+
+/** True once exactly one match is owned by the focused pane. */
+export function presentExpression(selector, chatId) {
+  return `(()=>${nodesExpression(selector, "pane", chatId)}.length===1)()`;
 }
 
 export function focusExpression(selector, chatId) {
@@ -97,12 +104,16 @@ export async function driveParitySteps({
   record,
 }) {
   let turnId = submittedTurnId;
+  // Settled is terminal with the lazy transcript mounted: pane-owned
+  // handlers (Ctrl+F) do not exist while its fallback shows.
   const settled = async () => {
     let latest;
     await waitForState(async () => {
       latest = await observe();
       return (
-        latest.turnId === turnId && SETTLED_TURN_STATES.includes(latest.state)
+        latest.turnId === turnId &&
+        SETTLED_TURN_STATES.includes(latest.state) &&
+        latest.lazyFallbackVisible !== true
       );
     }, deadline);
     return latest;
@@ -150,13 +161,29 @@ export async function driveParitySteps({
       await cdp.mouse({ type: "mouseMoved", x: 0, y: 0 }, at);
       await cdp.mouse({ type: "mouseMoved", ...center }, at);
     } else if (step.op === "key") {
-      await waitForState(
-        () => evaluate(focusExpression(step.focus, captureChat.chatId)),
-        deadline,
-      );
-      const at = Math.min(deadline, Date.now() + 5000);
-      await cdp.key({ type: "rawKeyDown", key: step.key, ctrl: step.ctrl }, at);
-      await cdp.key({ type: "keyUp", key: step.key, ctrl: step.ctrl }, at);
+      // A chord pressed before its handler subscribes is lost; press again
+      // (bounded) until the surface it opens is present.
+      for (let attempt = 0; attempt < KEY_ATTEMPTS; attempt++) {
+        await waitForState(
+          () => evaluate(focusExpression(step.focus, captureChat.chatId)),
+          deadline,
+        );
+        const at = Math.min(deadline, Date.now() + 5000);
+        await cdp.key({ type: "rawKeyDown", key: step.key, ctrl: step.ctrl }, at);
+        await cdp.key({ type: "keyUp", key: step.key, ctrl: step.ctrl }, at);
+        if (!step.expect) break;
+        const opened = await waitForState(
+          () => evaluate(presentExpression(step.expect, captureChat.chatId)),
+          Math.min(deadline, Date.now() + KEY_SETTLE_MS),
+        ).then(
+          () => true,
+          (error) => {
+            if (error.message !== "state-timeout") throw error;
+            return false;
+          },
+        );
+        if (opened) break;
+      }
     } else throw new Error("parity-step");
     // One bounded step per action: probes hold at most 64 timestamps.
     record("parity-" + step.op, await observe());

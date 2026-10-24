@@ -40,6 +40,7 @@ import {
   centerExpression,
   driveParitySteps,
   fillExpression,
+  presentExpression,
   scopedClickExpression,
 } from "./capture-native-chat-parity-drive.mjs";
 import {
@@ -334,6 +335,43 @@ test("parity replays reuse their base events and add only pinned wire shapes", (
       ),
     );
   }
+  // Named children: each spawn is followed by its own activity naming it.
+  const named = items("codex-subagents-name-hover");
+  assert.deepEqual(
+    named.map(({ type, agentPath }) => type + ":" + (agentPath ?? "")),
+    [
+      "collabAgentToolCall:",
+      "subAgentActivity:Count math",
+      "collabAgentToolCall:",
+      "subAgentActivity:Count readme",
+    ],
+  );
+  // The shimmer replay holds a running tool live until Stop.
+  for (const harness of HARNESSES) {
+    const steps = cases.get(harness + "-motion-thinking-shimmer");
+    assert.ok(
+      steps.some(({ kind }) =>
+        ["codexInterrupt", "acpCancel", "piAbort"].includes(kind),
+      ),
+      harness,
+    );
+  }
+  assert.ok(
+    items("codex-motion-thinking-shimmer").some(
+      ({ type, status }) =>
+        type === "commandExecution" && status === "inProgress",
+    ),
+  );
+  // Pi discovers thinking levels once per activation, not per prompt.
+  for (const state of ["annotation-sent", "turn-navigator-hover"]) {
+    const kinds = cases
+      .get("pi-" + state)
+      .map(({ kind }) => kind)
+      .filter(Boolean);
+    const second = kinds.lastIndexOf("piPrompt");
+    assert.ok(second > kinds.indexOf("piPrompt"), state);
+    assert.ok(!kinds.slice(second).includes("piThinkingLevels"), state);
+  }
   const subagents = items("codex-subagents-tab-active-done").filter(
     ({ type }) => type === "collabAgentToolCall",
   );
@@ -417,7 +455,7 @@ const ready = {
   "fork-thread": { visible: { forkDivider: true } },
   "motion-thinking-shimmer": {
     state: "running",
-    visible: { thought: true, shimmer: true },
+    visible: { rollup: true, shimmer: true },
   },
   "motion-stream-fade": { state: "running", streamAnimations: 4 },
   "motion-worked-expand": { visible: { workedClosed: true } },
@@ -515,6 +553,19 @@ test("each parity state has a positive and a missing-witness named state", () =>
       view({ approvalPrompt: true, composerInput: true }, { state: "running" }),
     )["approval-card"],
     false,
+  );
+  // Live reasoning prose never shimmers; only a live label (s8 "Running …").
+  assert.equal(
+    rules(view({ thought: true, shimmer: false }, { state: "running" }))[
+      "motion-thinking-shimmer"
+    ],
+    false,
+  );
+  assert.equal(
+    rules(view({ tool: true, shimmer: true }, { state: "running" }))[
+      "motion-thinking-shimmer"
+    ],
+    true,
   );
   assert.equal(
     rules(view({ toolResult: true }, { toolStates: ["failed"] }))[
@@ -824,6 +875,51 @@ test("parity steps pin Turn selectors and drive with real pointer and key input"
         expression.includes("Back to subagents") &&
         expression.includes('"capture-chat"'),
     ),
+  );
+});
+
+test("parity settle waits out the lazy transcript and Ctrl+F retries until the bar opens", async () => {
+  const keys = [];
+  let observation = {
+    ...baseObservation,
+    turnId: "turn-1",
+    lazyFallbackVisible: true,
+  };
+  let observed = 0;
+  const run = driveParitySteps({
+    cdp: { mouse: async () => {}, key: async (event) => keys.push(event) },
+    evaluate: async (expression) => {
+      // The find bar appears only after the second press.
+      if (expression.endsWith(".length===1)()"))
+        return keys.length >= 4;
+      return true;
+    },
+    observe: async () => {
+      // The transcript mounts after a few polls.
+      if (++observed === 3)
+        observation = { ...observation, lazyFallbackVisible: false };
+      return observation;
+    },
+    state: "find-in-chat",
+    captureChat: { chatId: "capture-chat", projectId: "project" },
+    submittedTurnId: "turn-1",
+    submit: async () => "turn-2",
+    deadline: Date.now() + 10000,
+    record: () => {},
+  });
+  await run;
+  assert.ok(observed >= 3);
+  assert.deepEqual(
+    keys.map(({ type }) => type),
+    ["rawKeyDown", "keyUp", "rawKeyDown", "keyUp"],
+  );
+  assert.match(
+    presentExpression('.chat-find input[aria-label="Search chat"]'),
+    /Search chat/u,
+  );
+  assert.equal(
+    parityStepsFor("find-in-chat").find(({ op }) => op === "key").expect,
+    '.chat-find input[aria-label="Search chat"]',
   );
 });
 

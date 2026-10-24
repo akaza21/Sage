@@ -160,6 +160,9 @@ export const PARITY_STATES = Object.freeze([
     owner: "fork",
   },
   {
+    // §10.1 shimmers live labels; the cited frames sweep a running tool
+    // label ("Running …"), which the replay holds live; Sage's live
+    // reasoning prose is not a label and does not shimmer.
     state: "motion-thinking-shimmer",
     live: ["s8/f0130", "s8/f0175"],
     spec: "10.1",
