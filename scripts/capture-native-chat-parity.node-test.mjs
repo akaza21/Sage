@@ -28,6 +28,7 @@ import {
   scopeToTurn,
 } from "./capture-native-chat-dom.mjs";
 import {
+  FORK_QUIET_MS,
   PARITY_DOCUMENT_SELECTORS,
   PARITY_PANE_SELECTORS,
   parityChatPredicates,
@@ -773,6 +774,7 @@ test("parity steps pin Turn selectors and drive with real pointer and key input"
           "select",
           "hover",
           "key",
+          "forked",
         ].includes(step.op),
         state,
       );
@@ -890,8 +892,7 @@ test("parity settle waits out the lazy transcript and Ctrl+F retries until the b
     cdp: { mouse: async () => {}, key: async (event) => keys.push(event) },
     evaluate: async (expression) => {
       // The find bar appears only after the second press.
-      if (expression.endsWith(".length===1)()"))
-        return keys.length >= 4;
+      if (expression.endsWith(".length===1)()")) return keys.length >= 4;
       return true;
     },
     observe: async () => {
@@ -921,6 +922,37 @@ test("parity settle waits out the lazy transcript and Ctrl+F retries until the b
     parityStepsFor("find-in-chat").find(({ op }) => op === "key").expect,
     '.chat-find input[aria-label="Search chat"]',
   );
+});
+
+test("fork-thread observes the fork Chat only after its reload fallback passes", async () => {
+  assert.equal(parityStepsFor("fork-thread").at(-1).op, "forked");
+  // Native trace: fork rendered, a ~300 ms lazy fallback, rendered again.
+  const fork = {
+    ...baseObservation,
+    chatId: "fork-chat",
+    forkedFrom: "capture-chat",
+  };
+  const timeline = [
+    { ...baseObservation, lazyFallbackVisible: true },
+    fork,
+    { ...fork, lazyFallbackVisible: true },
+    { ...fork, lazyFallbackVisible: true },
+  ];
+  let polls = 0;
+  const started = Date.now();
+  await driveParitySteps({
+    cdp: { mouse: async () => {}, key: async () => {} },
+    evaluate: async () => true,
+    observe: async () => ({ ...(timeline[polls++] ?? fork), turnId: "turn-1" }),
+    state: "fork-thread",
+    captureChat: { chatId: "capture-chat", projectId: "project" },
+    submittedTurnId: "turn-1",
+    submit: async () => "turn-2",
+    deadline: Date.now() + 10000,
+    record: () => {},
+  });
+  assert.ok(Date.now() - started >= FORK_QUIET_MS);
+  assert.ok(polls > timeline.length);
 });
 
 test("CDP input shapes are closed", () => {

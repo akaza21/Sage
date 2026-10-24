@@ -118,10 +118,26 @@ export async function driveParitySteps({
     }, deadline);
     return latest;
   };
+  // The fork Chat, rendered without a lazy fallback for `quietMs` in a row.
+  const forkQuiet = async (quietMs) => {
+    if (!Number.isSafeInteger(quietMs) || quietMs < 1 || quietMs > 5000)
+      throw new Error("parity-fork-quiet");
+    let since = null;
+    await waitForState(async () => {
+      const latest = await observe();
+      const rendered =
+        latest.forkedFrom === captureChat.chatId &&
+        latest.chatId !== captureChat.chatId &&
+        latest.lazyFallbackVisible !== true;
+      since = rendered ? (since ?? Date.now()) : null;
+      return since !== null && Date.now() - since >= quietMs;
+    }, deadline);
+  };
   for (const step of parityStepsFor(state)) {
     const scope = step.scope ?? "pane";
     const selector = step.selector ? scopeToTurn(step.selector, turnId) : null;
     if (step.op === "settle") await settled();
+    else if (step.op === "forked") await forkQuiet(step.quietMs);
     else if (step.op === "submit") turnId = await submit();
     else if (step.op === "open") {
       await settled();
@@ -169,7 +185,10 @@ export async function driveParitySteps({
           deadline,
         );
         const at = Math.min(deadline, Date.now() + 5000);
-        await cdp.key({ type: "rawKeyDown", key: step.key, ctrl: step.ctrl }, at);
+        await cdp.key(
+          { type: "rawKeyDown", key: step.key, ctrl: step.ctrl },
+          at,
+        );
         await cdp.key({ type: "keyUp", key: step.key, ctrl: step.ctrl }, at);
         if (!step.expect) break;
         const opened = await waitForState(

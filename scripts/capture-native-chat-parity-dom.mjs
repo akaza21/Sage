@@ -189,6 +189,7 @@ const POPOVER = ".chat-selection-popover";
 export const SELECTED_PHRASE = "synthetic example";
 export const FIND_QUERY = "synthetic";
 export const ANNOTATION_COMMENT = "Does this hold for every harness?";
+export const FORK_QUIET_MS = 600;
 
 const select = { op: "select", phrase: SELECTED_PHRASE };
 const add = {
@@ -224,6 +225,7 @@ const branch = {
 /**
  * Ordered drive steps after the first Turn was submitted. `settle` waits for
  * the observed Turn to settle; `open` opens a disclosure idempotently;
+ * `forked` waits for the fork Chat to stay rendered for `quietMs`;
  * `select`/`hover` use real CDP pointer input; `submit` sends a second Turn.
  */
 export function parityStepsFor(state) {
@@ -311,6 +313,9 @@ export function parityStepsFor(state) {
         scope: "document",
         selector: 'dialog.fork-chat-dialog [role="menuitem"]',
       },
+      // The committed fork Chat activates, then reloads its projection once
+      // (~300 ms of lazy fallback in WebView2); observe it after that.
+      { op: "forked", quietMs: FORK_QUIET_MS },
     ],
     "motion-worked-expand": [{ op: "settle" }],
   };
