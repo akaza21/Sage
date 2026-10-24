@@ -815,10 +815,10 @@ test("finished capture cells never open Worked or tool disclosures", () => {
   ])
     assert.deepEqual(actionsFor(state), []);
   assert.deepEqual(actionsFor("approval-approved"), [
-    ".acp-turn:last-of-type .acp-permission__actions button:first-child",
+    ".acp-permission-prompt__split > button:first-child",
   ]);
   assert.deepEqual(actionsFor("approval-declined"), [
-    ".acp-turn:last-of-type .acp-permission__actions button:last-child",
+    ".acp-permission-prompt__actions > button:not(.acp-permission-prompt__stop)",
   ]);
 });
 
@@ -835,7 +835,7 @@ test("plan entry requires an offered plan mode, not a permission control", () =>
     false,
   );
   assert.deepEqual(actionsFor("approval-approved"), [
-    ".acp-turn:last-of-type .acp-permission__actions button:first-child",
+    ".acp-permission-prompt__split > button:first-child",
   ]);
 });
 test("disclosure actions target only the latest turn, not the project welcome turn", () => {

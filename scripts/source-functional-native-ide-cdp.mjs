@@ -158,6 +158,56 @@ function remoteValue(result) {
   return remote.value;
 }
 
+const MOUSE_TYPES = new Set(["mouseMoved", "mousePressed", "mouseReleased"]);
+const KEY_TYPES = new Set(["rawKeyDown", "keyUp"]);
+
+/**
+ * A closed `Input.dispatchMouseEvent` shape: viewport CSS pixels, the left
+ * button only, no wheel, no modifiers. Pointer hover and drag selection need
+ * real input; synthetic DOM events cannot set :hover or a native selection.
+ */
+export function mouseParams({ type, x, y, button = "none" } = {}) {
+  if (
+    !MOUSE_TYPES.has(type) ||
+    ![x, y].every((value) => Number.isFinite(value) && value >= 0) ||
+    x > 16384 ||
+    y > 16384 ||
+    !["none", "left"].includes(button) ||
+    (type !== "mouseMoved" && button !== "left")
+  )
+    throw fail("input-invalid");
+  return {
+    type,
+    x,
+    y,
+    button,
+    buttons: button === "left" && type !== "mouseReleased" ? 1 : 0,
+    clickCount: type === "mouseMoved" ? 0 : 1,
+  };
+}
+
+/** A closed `Input.dispatchKeyEvent` shape: one ASCII letter, optional Ctrl. */
+export function keyParams({ type, key, ctrl = false } = {}) {
+  if (
+    !KEY_TYPES.has(type) ||
+    !/^[a-z]$/u.test(key) ||
+    typeof ctrl !== "boolean"
+  )
+    throw fail("input-invalid");
+  return {
+    type,
+    key,
+    code: "Key" + key.toUpperCase(),
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+    modifiers: ctrl ? 2 : 0,
+  };
+}
+
+function inputValue(result) {
+  if (!exactKeys(result, [])) throw fail("input-invalid");
+  return true;
+}
+
 function screenshotValue(result) {
   if (!exactKeys(result, ["data"])) throw fail("screenshot-invalid");
   return canonicalBase64Png(result.data);
@@ -372,6 +422,22 @@ export async function connectCdp({
         await command(
           "Page.captureScreenshot",
           { format: "png", fromSurface: true },
+          operationDeadline,
+        ),
+      ),
+    mouse: async (event, operationDeadline) =>
+      inputValue(
+        await command(
+          "Input.dispatchMouseEvent",
+          mouseParams(event),
+          operationDeadline,
+        ),
+      ),
+    key: async (event, operationDeadline) =>
+      inputValue(
+        await command(
+          "Input.dispatchKeyEvent",
+          keyParams(event),
           operationDeadline,
         ),
       ),

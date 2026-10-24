@@ -164,6 +164,8 @@ export async function openOwnedCapture(
         evaluate: (...args) => monitor.run(() => connection.evaluate(...args)),
         screenshot: (...args) =>
           monitor.run(() => connection.screenshot(...args)),
+        mouse: (...args) => monitor.run(() => connection.mouse(...args)),
+        key: (...args) => monitor.run(() => connection.key(...args)),
       },
       nativeBounds: { outer: bounds.outer, client: bounds.client },
       webviewVersion: bounds.webviewVersion,

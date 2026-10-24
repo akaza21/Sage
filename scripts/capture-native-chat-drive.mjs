@@ -26,6 +26,14 @@ import {
   expandExpression,
   COMPOSER_IDLE_CONTROL,
 } from "./capture-native-chat-dom.mjs";
+import { PARITY_STATE_NAMES } from "./capture-native-chat-parity.mjs";
+import { driveParitySteps } from "./capture-native-chat-parity-drive.mjs";
+
+/** States that scroll a long completed transcript back to its start. */
+const SCROLL_BACK_STATES = Object.freeze([
+  "jump-to-latest",
+  "motion-jump-pill",
+]);
 
 export async function captureStep(record, step, action) {
   record(step + "-start");
@@ -119,14 +127,14 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
   );
   let submittedTurnId;
   const submit = async () => {
-    submittedTurnId = await submitTurn(
+    return (submittedTurnId = await submitTurn(
       evaluate,
       OBSERVATION,
       clickCapture,
       HARNESS[options.harness].binding,
       deadline,
       record,
-    );
+    ));
   };
   if (options.state.startsWith("approval-")) {
     const mode = (await evaluate(OBSERVATION)).accessModes?.find(
@@ -142,7 +150,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
     );
   }
   if (!IDLE_CAPTURE_STATES.includes(options.state)) await submit();
-  if (options.state === "jump-to-latest")
+  if (SCROLL_BACK_STATES.includes(options.state))
     await scrollCaptureTranscript(
       evaluate,
       OBSERVATION,
@@ -160,6 +168,20 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       record,
       COMPOSER_IDLE_CONTROL[options.state],
     );
+  if (PARITY_STATE_NAMES.includes(options.state)) {
+    await driveParitySteps({
+      cdp,
+      evaluate,
+      observe: () => evaluate(OBSERVATION),
+      state: options.state,
+      captureChat,
+      submittedTurnId,
+      submit,
+      deadline,
+      record,
+    });
+    return captureChat;
+  }
   for (const action of actionsFor(options.state, options.harness)) {
     let latest = await evaluate(OBSERVATION);
     if (isLiveTurnAction(action)) {

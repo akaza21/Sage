@@ -10,10 +10,12 @@ import {
   nativeCaptureProductGaps,
 } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
+import { parityWidths } from "./capture-native-chat-parity.mjs";
 
 export const STATES = new Set([
   ...nativeCases().map(({ id }) => id.replace(/^(codex|claude|pi)-/u, "")),
   ...Object.values(truthfulAbsentStates).flat(),
+  ...Object.values(nativeCaptureProductGaps).flat(),
 ]);
 const CASE_IDS = new Set(nativeCases().map(({ id }) => id));
 export function requireNativeCase(harness, state) {
@@ -88,6 +90,8 @@ export function parseArgs(args) {
   }[state];
   if (responsiveWidth && responsiveWidth !== width)
     fail("responsive-width-mismatch");
+  // A surface the product hides below a pane width is not captured there.
+  if (!parityWidths(state).includes(width)) fail("state-width-unsupported");
   return {
     harness,
     state,

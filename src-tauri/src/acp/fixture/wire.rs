@@ -22,6 +22,9 @@ mod pi_tests;
 #[path = "wire_child_opened_tests.rs"]
 mod child_opened_tests;
 #[cfg(test)]
+#[path = "wire_parity_tests.rs"]
+mod parity_tests;
+#[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
 
 #[path = "wire_acp.rs"]
@@ -139,6 +142,7 @@ fn await_client_kind(
         "codexGoalGet" => Some("thread/goal/get"),
         "codexTurnStart" => Some("turn/start"),
         "codexSteer" => Some("turn/steer"),
+        "codexFork" => Some("thread/fork"),
         "codexInterrupt" => Some("turn/interrupt"),
         "codexUnsubscribe" => Some("thread/unsubscribe"),
         _ => None,
@@ -219,6 +223,7 @@ fn emit_known(
             return codex::emit_response("goalMethodNotFound", state, output);
         }
         "codexTurnResult" => return codex::emit_response("turn", state, output),
+        "codexForkResult" => return codex::emit_response("fork", state, output),
         "codexStarted" => return codex::emit_notification("started", state, output),
         "codexAck" => return codex::emit_response("ack", state, output),
         "codexDelta" => return codex::emit_notification("delta", state, output),
