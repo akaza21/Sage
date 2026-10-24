@@ -628,3 +628,217 @@ test("source fingerprint traversal has exact limits and rejects the next file, d
     await rm(root, { recursive: true, force: true });
   }
 });
+
+const featureKey = "src/features/chat/Feature.tsx";
+
+async function lazyFeatureCandidate() {
+  const root = await candidate();
+  const manifestPath = path.join(root, "dist/.vite/manifest.json");
+  const budgetPath = path.join(root, "docs/performance/budgets.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const budgets = JSON.parse(await readFile(budgetPath, "utf8"));
+  manifest["index.html"].dynamicImports.push(featureKey);
+  manifest[featureKey] = {
+    file: "assets/feature.js",
+    src: featureKey,
+    isDynamicEntry: true,
+    imports: ["index.html", "_feature-only.js", "_imported.js"],
+  };
+  manifest["_feature-only.js"] = { file: "assets/feature-only.js" };
+  await writeFile(
+    path.join(root, "dist/assets/feature.js"),
+    "feature chunk ".repeat(40),
+  );
+  await writeFile(
+    path.join(root, "dist/assets/feature-only.js"),
+    "feature helper ".repeat(40),
+  );
+  budgets.bundle.lazyFeatureChunks = [
+    { entry: featureKey, maxGzipBytes: 1000, reason: "Test feature." },
+  ];
+  const write = async () => {
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeFile(budgetPath, JSON.stringify(budgets));
+    await writeFile(
+      path.join(root, "dist/.sage-web-build-receipt.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        target: desktopTarget,
+        gzip: "node:zlib.gzipSync defaults",
+        source: webBuildSourceFingerprint(root),
+      }),
+    );
+  };
+  await write();
+  return { root, manifest, budgets, write };
+}
+
+test("a lazy feature budget counts only its exclusive files and leaves the core", async () => {
+  const { root } = await lazyFeatureCandidate();
+  try {
+    const result = verifyWebBundle(root);
+    const feature = result.lazyFeatureChunks[featureKey];
+    // The shared static import stays in the core; the feature's own chunk and
+    // its exclusive helper move out of it.
+    assert.deepEqual(feature.files, [
+      "assets/feature-only.js",
+      "assets/feature.js",
+    ]);
+    const exclusive = await Promise.all(
+      ["feature.js", "feature-only.js"].map((file) =>
+        readFile(path.join(root, "dist/assets", file)),
+      ),
+    );
+    assert.equal(
+      feature.gzipBytes,
+      exclusive.reduce((sum, contents) => sum + gzipSync(contents).length, 0),
+    );
+    assert.equal(
+      result.coreTotalGzipBytes,
+      result.totalGzipBytes - feature.gzipBytes,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lazy feature fails at one byte over its own cap", async () => {
+  const { root, budgets, write } = await lazyFeatureCandidate();
+  try {
+    const measured =
+      verifyWebBundle(root).lazyFeatureChunks[featureKey].gzipBytes;
+    budgets.bundle.lazyFeatureChunks[0].maxGzipBytes = measured;
+    await write();
+    assert.doesNotThrow(() => verifyWebBundle(root));
+    budgets.bundle.lazyFeatureChunks[0].maxGzipBytes = measured - 1;
+    await write();
+    assert.throws(
+      () => verifyWebBundle(root),
+      new RegExp(`${featureKey} lazy gzip ${measured} exceeds ${measured - 1}`),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lazy feature must be a reachable dynamic entry", async () => {
+  const { root, manifest, write } = await lazyFeatureCandidate();
+  try {
+    manifest[featureKey].isDynamicEntry = false;
+    await write();
+    assert.throws(() => verifyWebBundle(root), /reachable dynamic entry/);
+    manifest[featureKey].isDynamicEntry = true;
+    manifest["index.html"].dynamicImports = manifest[
+      "index.html"
+    ].dynamicImports.filter((key) => key !== featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /reachable dynamic entry/);
+    delete manifest[featureKey];
+    await write();
+    assert.throws(() => verifyWebBundle(root), /reachable dynamic entry/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lazy feature rejects initial and eager imports", async () => {
+  const { root, manifest, write } = await lazyFeatureCandidate();
+  try {
+    manifest["index.html"].imports.push(featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /initial static closure/);
+    manifest["index.html"].imports.pop();
+    manifest["_dynamic.js"].imports = [featureKey];
+    await write();
+    assert.throws(() => verifyWebBundle(root), /statically imported/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lazy feature rejects a chunk shared with another entry", async () => {
+  const { root, manifest, write } = await lazyFeatureCandidate();
+  try {
+    manifest._other = { file: "assets/feature.js" };
+    await write();
+    assert.throws(() => verifyWebBundle(root), /shared with another/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lazy feature budgets reject malformed, duplicate and reserved entries", async () => {
+  const { root, budgets, write } = await lazyFeatureCandidate();
+  const valid = budgets.bundle.lazyFeatureChunks[0];
+  try {
+    for (const lazyFeatureChunks of [
+      {},
+      [{ ...valid, reason: "" }],
+      [{ ...valid, maxGzipBytes: 0 }],
+      [{ ...valid, extra: true }],
+      [{ entry: valid.entry, maxGzipBytes: 1000 }],
+      [{ ...valid, entry: "src/../outside.ts" }],
+      [valid, valid],
+      [{ ...valid, entry: "src/workbench/SubagentSurface.tsx" }],
+    ]) {
+      budgets.bundle.lazyFeatureChunks = lazyFeatureChunks;
+      await write();
+      assert.throws(
+        () => verifyWebBundle(root),
+        /lazy feature chunk budgets are missing or invalid/,
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function lazyFeatureWithCss() {
+  const candidateFiles = await lazyFeatureCandidate();
+  const { root, manifest, budgets, write } = candidateFiles;
+  manifest[featureKey].css = ["assets/feature.css"];
+  await writeFile(
+    path.join(root, "dist/assets/feature.css"),
+    ".feature{color:red}".repeat(20),
+  );
+  budgets.bundle.lazyFeatureChunks[0].maxCssGzipBytes = 1000;
+  await write();
+  return candidateFiles;
+}
+
+test("a lazy feature budgets its own CSS against its own cap", async () => {
+  const { root, budgets, write } = await lazyFeatureWithCss();
+  try {
+    const feature = verifyWebBundle(root).lazyFeatureChunks[featureKey];
+    const css = await readFile(path.join(root, "dist/assets/feature.css"));
+    assert.deepEqual(feature.cssFiles, ["assets/feature.css"]);
+    assert.equal(feature.cssGzipBytes, gzipSync(css).length);
+    budgets.bundle.lazyFeatureChunks[0].maxCssGzipBytes =
+      feature.cssGzipBytes - 1;
+    await write();
+    assert.throws(
+      () => verifyWebBundle(root),
+      new RegExp(`${featureKey} lazy CSS gzip ${feature.cssGzipBytes} exceeds`),
+    );
+    delete budgets.bundle.lazyFeatureChunks[0].maxCssGzipBytes;
+    await write();
+    assert.throws(() => verifyWebBundle(root), /must budget its lazy CSS/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lazy feature CSS never leaks into the initial CSS", async () => {
+  const { root, manifest, write } = await lazyFeatureWithCss();
+  try {
+    manifest["index.html"].css = ["assets/feature.css"];
+    await write();
+    assert.throws(() => verifyWebBundle(root), /CSS entered the initial CSS/);
+    delete manifest["index.html"].css;
+    manifest["_dynamic.js"].css = ["assets/feature.css"];
+    await write();
+    assert.throws(() => verifyWebBundle(root), /CSS is shared/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

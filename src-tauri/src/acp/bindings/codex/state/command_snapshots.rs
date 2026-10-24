@@ -16,7 +16,11 @@ use crate::acp::{
     limits::LIMITS,
 };
 
-use super::{super::incoming::IngressError, CodexAdapter};
+use super::{
+    super::incoming::IngressError,
+    CodexAdapter,
+    command_explore::{CommandExplore, classify},
+};
 
 type CommandLocations = BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>;
 
@@ -52,12 +56,18 @@ struct CommandSnapshot {
     cwd: Option<SafeResourceLocation>,
     exit_code: Option<i32>,
     activity: CommandActivity,
+    explore: Option<CommandExplore>,
 }
 
 impl CommandSnapshot {
     fn retained_bytes(&self) -> usize {
         self.stream
             .retained_bytes()
+            .saturating_add(
+                self.explore
+                    .as_ref()
+                    .map_or(0, CommandExplore::retained_bytes),
+            )
             .saturating_add(self.command.as_ref().map_or(0, String::len))
             .saturating_add(location_bytes(self.location.as_ref()))
             .saturating_add(location_bytes(self.cwd.as_ref()))
@@ -83,6 +93,7 @@ pub(crate) struct MaterializedCommandItem {
     pub(crate) cwd: Option<SafeResourceLocation>,
     pub(crate) exit_code: Option<i32>,
     pub(crate) activity: CommandActivity,
+    pub(crate) explore: Option<CommandExplore>,
 }
 
 #[derive(Debug, Default)]
@@ -138,6 +149,7 @@ impl CommandItemSnapshots {
         }
         if let Some(actions) = item.get("commandActions") {
             next.location = parse_location(actions, mapper);
+            next.explore = classify(actions);
         }
         if item.contains_key("cwd") {
             next.cwd = command_cwd(item, mapper);
@@ -151,6 +163,7 @@ impl CommandItemSnapshots {
         let command = next.command.clone();
         let cwd = next.cwd.clone();
         let exit_code = next.exit_code;
+        let explore = next.explore.clone();
         Ok(MaterializedCommandItem {
             next,
             status,
@@ -160,6 +173,7 @@ impl CommandItemSnapshots {
             cwd,
             exit_code,
             activity,
+            explore,
         })
     }
 
@@ -183,6 +197,7 @@ impl CommandItemSnapshots {
         let exit_code = next.exit_code;
         Ok(MaterializedCommandItem {
             activity: next.activity,
+            explore: next.explore.clone(),
             next,
             status: CommandStatus::InProgress,
             command,

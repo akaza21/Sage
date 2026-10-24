@@ -5,13 +5,21 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { Profiler, useRef, type ProfilerOnRenderCallback } from "react";
+import {
+  Profiler,
+  useCallback,
+  useRef,
+  useState,
+  type ProfilerOnRenderCallback,
+} from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { TurnProjection } from "../../../domain/acp";
 import { useFollowEnd } from "../useFollowEnd";
 import { page } from "./acpProjection.fixture";
 import { VirtualTurnList } from "./VirtualTurnList";
+import type { TurnListHost } from "../chatScroll";
+import { useTurnListNavigation } from "../useTurnListNavigation";
 
 const rowHeights = new Map<string, number>();
 const observers = new Set<ResizeObserverCallback>();
@@ -119,6 +127,14 @@ function History({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<TurnListHost | null>(null);
+  const [scrollport, setScrollport] = useState<HTMLDivElement | null>(null);
+  const bindTranscript = useCallback((node: HTMLDivElement | null) => {
+    transcriptRef.current = node;
+    setScrollport(node);
+  }, []);
+  // The lazy ChatNavigation chunk owns jump anchoring over the list's host.
+  const navigationRef = useTurnListNavigation(scrollport, hostRef, turns);
   const { jumpToLatest, updateFollowEnd } = useFollowEnd({
     ownerKey: "chat-1",
     revision: "1",
@@ -129,13 +145,14 @@ function History({
   return (
     <>
       <div
-        ref={transcriptRef}
+        ref={bindTranscript}
         className="message-list"
         onScroll={updateFollowEnd}
       >
         <div ref={contentRef}>
           <Profiler id="turn-list" onRender={onCommit ?? (() => {})}>
             <VirtualTurnList
+              navigationRef={hostRef}
               turns={turns}
               renderTurn={(turn) => (
                 <article className="acp-turn" data-turn-id={turn.id}>
@@ -147,6 +164,11 @@ function History({
           <div ref={endRef} />
         </div>
       </div>
+      <button
+        onClick={() => navigationRef.current?.scrollToTurn("turn-12", "auto")}
+      >
+        Go to retained turn
+      </button>
       <button
         onClick={() => {
           jumpToLatest();
@@ -165,6 +187,26 @@ function visibleAnchor() {
   )!;
   return { id: row.dataset.turnId, top: row.getBoundingClientRect().top };
 }
+
+it("mounts a requested retained Turn at 12px and preserves it through resize and prepend", () => {
+  const current = turns();
+  const view = render(<History turns={current} />);
+  scrollTo(scrollHeight());
+  expect(document.querySelector('[data-turn-id="turn-12"]')).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Go to retained turn" }));
+  act(() => vi.advanceTimersByTime(50));
+  expect(visibleAnchor()).toEqual({ id: "turn-12", top: 12 });
+  act(() => fireEvent.scroll(document.querySelector(".message-list")!));
+  rowHeights.set("turn-11", 240);
+  act(() => {
+    for (const observer of observers) observer([], {} as ResizeObserver);
+  });
+  view.rerender(<History turns={[...turns(-9, 10), ...current]} />);
+  act(() => vi.advanceTimersByTime(50));
+  expect(visibleAnchor()).toEqual({ id: "turn-12", top: 12 });
+  scrollTo(0);
+  expect(visibleAnchor().id).not.toBe("turn-12");
+});
 
 function scrollTo(top: number) {
   const transcript = document.querySelector<HTMLElement>(".message-list")!;

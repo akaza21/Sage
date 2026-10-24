@@ -4,11 +4,17 @@ import {
   type KeymapScope,
 } from "../../domain/keymapRegistry";
 
-const SCOPES: readonly KeymapScope[] = ["Global", "Agent", "Editor"];
+const SCOPES: readonly KeymapScope[] = [
+  "Global",
+  "Agent",
+  "Agent chat",
+  "Editor",
+];
 
 const SCOPE_COPY: Record<KeymapScope, string> = {
   Global: "Available anywhere in Sage.",
   Agent: "Available while the Agents view is open.",
+  "Agent chat": "Available in the focused chat pane, including its composer.",
   Editor: "Available while a file is open in the Editor.",
 };
 
@@ -31,7 +37,7 @@ export function SettingsKeyboardPage({ visible }: { visible: Set<string> }) {
           (binding) => binding.scope === scope && visible.has(binding.id),
         );
         if (bindings.length === 0) return null;
-        const headingId = `keyboard-${scope.toLowerCase()}-heading`;
+        const headingId = `keyboard-${scope.toLowerCase().replaceAll(" ", "-")}-heading`;
         return (
           <section
             className="settings-surface__group"

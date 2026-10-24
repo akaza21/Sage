@@ -363,6 +363,7 @@ fn local_intent(
         category: ToolCategory::Mcp,
         summary,
         offered_option_kinds: None,
+        reason: None,
     })
     .ok()?;
     let normalized_payload_digest = hex_digest(normalized_payload_json.as_bytes());

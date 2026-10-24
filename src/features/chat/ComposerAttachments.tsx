@@ -41,6 +41,8 @@ export function QueuedAttachmentPreview({
 }
 
 export function attachmentLabel(context: AttachedContext): string {
+  if (context.kind === "transcriptQuote")
+    return `Annotation ${context.ordinal}`;
   if (context.kind === "browserPage")
     return `Page · ${context.title || new URL(context.url).host}`;
   if (context.kind === "image") return `Image · ${context.label}`;
@@ -87,7 +89,9 @@ export function ComposerAttachments({
                   ? context.url
                   : context.kind === "image"
                     ? `${context.width} × ${context.height}`
-                    : context.note
+                    : context.kind === "transcriptQuote"
+                      ? context.comment
+                      : context.note
               }
             >
               {label}

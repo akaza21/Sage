@@ -186,6 +186,31 @@ function harness(
 }
 
 describe("ACP action controller", () => {
+  it("sends annotation-only context while clearing the original empty draft", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("11", session("hot", "2", null)),
+    });
+    const quote = {
+      kind: "transcriptQuote" as const,
+      ordinal: 1,
+      sourceTurnId: "t",
+      sourceItemId: "i",
+      text: "quote",
+      startOffset: 0,
+      endOffset: 5,
+    };
+    await expect(
+      test.controller.submit("", [quote], bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Please respond to the attached annotations.",
+        attachedContext: [quote],
+      }),
+    );
+    expect(test.cleared).toEqual([{ prompt: "", attachedContext: [quote] }]);
+  });
   it("rejects a mode that is no longer advertised before enqueueing", async () => {
     const initial = {
       ...page("10", session("hot", "2", null)),

@@ -1,8 +1,15 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import {
   resetAgentRailViewPrefs,
@@ -79,6 +86,28 @@ function seedChats() {
 function currentChats() {
   return useWorkbenchStore.getState().tabs.filter((tab) => tab.kind === "chat");
 }
+
+it("shows a green Awaiting approval pill only for a chat whose surface awaits approval", () => {
+  seedChats();
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  expect(screen.queryByText("Awaiting approval")).toBeNull();
+  act(() => setChatAwaitingApproval("chat:b", true));
+  const pill = screen.getByText("Awaiting approval");
+  expect(pill).toHaveClass("rail-pill", "rail-pill--approval");
+  expect(screen.getByTitle("Open chat Beta")).toContainElement(pill);
+  expect(screen.getByTitle("Open chat Beta")).toHaveAccessibleName(
+    "Open chat Beta, Awaiting approval",
+  );
+  expect(screen.getAllByText("Awaiting approval")).toHaveLength(1);
+  act(() => setChatAwaitingApproval("chat:b", false));
+  expect(screen.queryByText("Awaiting approval")).toBeNull();
+});
 
 function openChatActions(title: string) {
   fireEvent.click(

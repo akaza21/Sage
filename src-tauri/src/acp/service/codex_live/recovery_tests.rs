@@ -275,7 +275,25 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
-    let chat_id = SageChatId::parse(bootstrap.active_tab_id.unwrap()).unwrap();
+    let parent = bootstrap.active_tab_id.unwrap();
+    let chat = if label.starts_with("side-") {
+        database
+            .create_chat_with_parent(
+                project_id.as_str(),
+                &crate::domain::ProjectLayoutRequest {
+                    project_id: project_id.as_str().to_owned(),
+                    tabs: bootstrap.tabs,
+                    active_tab_id: Some(parent.clone()),
+                    selected_root_id: bootstrap.selected_root_id,
+                    selected_resource: bootstrap.selected_resource,
+                },
+                Some(&parent),
+            )
+            .unwrap()
+    } else {
+        parent
+    };
+    let chat_id = SageChatId::parse(chat).unwrap();
     let service = AcpService::new(database).unwrap();
     let revision = service
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -420,6 +438,71 @@ fn native_end_proves_zero_process_and_terminalizes_the_exact_runtime() {
     assert!(service.codex_recovery.lock().unwrap().is_none());
     assert!(service.scheduler.active().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn temporary_disposal_retries_supervisor_shutdown_without_protocol_close() {
+    let (service, owner) = tauri::async_runtime::block_on(ready_runtime_fixture("side-disposal"));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::default(),
+            Arc::new(RetryingShutdownRecovery {
+                attempts: Arc::clone(&attempts),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+    let mut command = prepare_turn(&owner);
+    command.expected_projection_revision = service
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    service.database.acp_prepare_turn(command).unwrap();
+    assert!(
+        service
+            .dispose_temporary_runtime(&owner.project_id, &owner.chat_id)
+            .is_err()
+    );
+    assert_eq!(attempts.load(Ordering::Acquire), 1);
+    service
+        .dispose_temporary_runtime(&owner.project_id, &owner.chat_id)
+        .unwrap();
+    assert_eq!(attempts.load(Ordering::Acquire), 2);
+    assert!(service.scheduler.active().is_none());
+    assert_recovered_runtime_is_cold(&service, &owner);
+    let page = service
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap();
+    assert_eq!(page.turns.as_slice().len(), 1);
+    assert!(matches!(
+        page.turns.as_slice()[0].state,
+        crate::acp::lifecycle::TurnState::Interrupted | crate::acp::lifecycle::TurnState::Cancelled
+    ));
+    service
+        .database
+        .remove_side_chat(owner.project_id.as_str(), owner.chat_id.as_str())
+        .unwrap();
+    let usage: (i64, i64, i64, i64) = service.database.connection().query_row(
+        "SELECT session_count,turn_count,item_count,fact_count FROM acp_store_usage WHERE singleton=1",
+        [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
+    ).unwrap();
+    assert_eq!(usage, (0, 0, 0, 0));
+    assert!(
+        service
+            .database
+            .project_list()
+            .unwrap()
+            .iter()
+            .all(|project| project
+                .rail_chats
+                .iter()
+                .all(|chat| chat.id != owner.chat_id.as_str()))
+    );
     service.shutdown_blocking().unwrap();
 }
 

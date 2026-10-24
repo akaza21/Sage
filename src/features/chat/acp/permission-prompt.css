@@ -1,0 +1,178 @@
+/* Pending approval in the composer slot (Codex live parity s6/f0526). */
+.chat-surface--agent > .acp-permission-prompt {
+  grid-area: composer;
+}
+
+.acp-permission-prompt {
+  display: grid;
+  gap: var(--space-3);
+  width: min(
+    var(--reading-measure),
+    calc(
+      100% - var(--chat-column-gutter) - var(--chat-column-gutter) -
+        var(--chat-column-trailing)
+    )
+  );
+  max-width: var(--reading-measure);
+  margin-inline-start: max(
+    var(--chat-column-gutter),
+    calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
+  );
+  padding: var(--space-4);
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xl);
+  background: var(--approval-card-fill);
+  color: var(--color-text-primary);
+}
+
+.acp-permission-prompt__kind {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--approval-kind-text);
+  font-size: var(--font-size-sm);
+}
+
+.acp-permission-prompt__kind > span {
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.acp-permission-prompt__question {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.acp-permission-prompt__detail {
+  max-height: 120px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--approval-detail-fill);
+  color: var(--approval-detail-text);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.acp-permission-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* A narrow column wraps whole buttons, never the letters inside them. */
+.acp-permission-prompt__actions button {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap;
+  height: 28px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--approval-control-edge);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+}
+
+.acp-permission-prompt__actions kbd {
+  display: inline-grid;
+  height: 20px;
+  min-width: 20px;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--approval-key-fill);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.acp-permission-prompt__split {
+  display: inline-flex;
+}
+
+.acp-permission-prompt__split > button {
+  border-color: var(--approval-primary-fill);
+  color: var(--approval-primary-text);
+  background: var(--approval-primary-fill);
+}
+
+.acp-permission-prompt__split > button:first-child:not(:only-child) {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.acp-permission-prompt__split > button + button {
+  padding: 0 var(--space-2);
+  border-inline-start-color: var(--approval-split-fill);
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  background: var(--approval-split-fill);
+}
+
+.acp-permission-prompt__split kbd {
+  background: var(--approval-split-fill);
+  color: var(--approval-primary-text);
+}
+
+.acp-permission-prompt__actions button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.acp-permission-prompt__actions button:disabled {
+  opacity: 0.6;
+}
+
+.acp-permission-prompt__menu {
+  width: 168px;
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
+}
+
+.acp-permission-prompt__menu > [role="menuitem"] {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: transparent;
+  font-size: var(--font-size-sm);
+  text-align: start;
+}
+
+.acp-permission-prompt__menu > [role="menuitem"]:hover,
+.acp-permission-prompt__menu > [role="menuitem"]:focus-visible {
+  background: var(--approval-menu-hover);
+}
+
+/* The model's own explanation stays secondary: muted and clipped. */
+.acp-permission-prompt__reason {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Stop leads the row so the Turn can always be ended from the card. */
+.acp-permission-prompt__actions .acp-permission-prompt__stop {
+  margin-inline-end: auto;
+  border-color: transparent;
+  color: var(--color-text-muted);
+}

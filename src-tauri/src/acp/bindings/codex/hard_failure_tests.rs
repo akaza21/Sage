@@ -355,7 +355,7 @@ fn reasoning_summary_deltas_coalesce_into_one_thought_and_complete() {
 }
 
 #[test]
-fn reasoning_content_deltas_stream_as_thinking_instead_of_unsupported_noise() {
+fn raw_reasoning_content_deltas_are_accepted_but_never_projected() {
     let mut adapter = adapter();
     ready(&mut adapter);
     running_turn(&mut adapter);
@@ -363,18 +363,12 @@ fn reasoning_content_deltas_stream_as_thinking_instead_of_unsupported_noise() {
         "threadId":"thread-1","turnId":"turn-1","itemId":"reason-2",
         "contentIndex":0,"delta":"weighing the options"
     }});
-    let IngressDisposition::Events(events) = ingest(&mut adapter, &frame) else {
-        panic!("raw reasoning text must stream");
-    };
     assert!(
         matches!(
-            events.as_slice(),
-            [IncomingEvent::Item {
-                payload: NormalizedPayload::ThoughtSummary { .. },
-                ..
-            }]
+            ingest(&mut adapter, &frame),
+            IngressDisposition::DroppedRawReasoning
         ),
-        "item/reasoning/textDelta must become thinking, got {events:?}"
+        "Codex shows the reasoning summary only; the drop is deliberate, not late"
     );
 }
 

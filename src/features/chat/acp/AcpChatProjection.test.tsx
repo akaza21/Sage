@@ -595,16 +595,23 @@ describe("AcpChatProjection", () => {
       [...workedGroups(work)!.querySelectorAll(".acp-tool-rollup__label")].map(
         (label) => label.textContent,
       ),
-    ).toEqual(["Ran 1 command, read a file", "Ran npm run check"]);
+    ).toEqual([
+      "Ran a command, read a file",
+      "Ran npm run check",
+      "Read main.ts",
+    ]);
     const rollup =
       container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(rollup).not.toBeNull();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
-    const command = rollup!.querySelector<HTMLDetailsElement>("details")!;
-    expect(command).not.toHaveAttribute("open");
-    command.open = true;
-    fireEvent(command, new Event("toggle"));
+    for (const member of rollup!.querySelectorAll<HTMLDetailsElement>(
+      ".acp-tool-rollup__items > details",
+    )) {
+      expect(member).not.toHaveAttribute("open");
+      member.open = true;
+      fireEvent(member, new Event("toggle"));
+    }
     expect(
       [...rollup!.querySelectorAll(".acp-tool-compact")].map((card) =>
         card.getAttribute("data-acp-item-id"),
@@ -678,7 +685,7 @@ describe("AcpChatProjection", () => {
           ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
       ].map((row) => row.textContent?.trim()),
-    ).toEqual(["Edited a file, read files, ran 1 command"]);
+    ).toEqual(["Edited a file, read files, ran a command"]);
   });
 
   it("interleaves running assistant prose and activity rows in transcript order", async () => {

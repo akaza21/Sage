@@ -28,6 +28,50 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
+import { safeTurn } from "./acpDesktopResponseTurns";
+
+it("decodes persisted quote context only within the eight-entry UTF-8 bounds", () => {
+  const quote = {
+    kind: "transcriptQuote",
+    ordinal: 1,
+    sourceTurnId: "source-turn",
+    sourceItemId: "source-item",
+    text: "quoted",
+    comment: "Why?",
+    startOffset: 0,
+    endOffset: 6,
+  };
+  const turn = {
+    id: "turn",
+    sessionId: "session",
+    runtimeEpoch: "1",
+    ordinal: 0,
+    revision: "0",
+    state: "completed",
+    createdAt: 1,
+    updatedAt: 2,
+    terminalAt: 2,
+    items: [],
+    activities: [],
+    attachedContext: [quote],
+  };
+  expect(safeTurn(turn)?.attachedContext).toEqual([quote]);
+  expect(
+    safeTurn({
+      ...turn,
+      attachedContext: Array.from({ length: 9 }, () => quote),
+    }),
+  ).toBeNull();
+  expect(
+    safeTurn({
+      ...turn,
+      attachedContext: [{ ...quote, text: "\u6c34".repeat(1366) }],
+    }),
+  ).toBeNull();
+  expect(
+    safeTurn({ ...turn, attachedContext: [{ ...quote, kind: "unknown" }] }),
+  ).toBeNull();
+});
 
 const request: StartAcpSessionRequest = {
   projectId: "project-a" as SageProjectId,

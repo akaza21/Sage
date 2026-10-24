@@ -119,11 +119,17 @@ it.each<ToolPresentation>([
         container.querySelector(".chat-transcript-work > summary")!,
       );
       expect(latest).toHaveAttribute("open");
-      expect(latest.querySelector('[data-acp-item-id="tool-2"]')).toBeVisible();
-      if (withRead) expect(rows[0]).not.toHaveAttribute("open");
-      expect(
-        container.querySelectorAll(".acp-tool-rollup")[rows.length - 1],
-      ).toBe(latest);
+      if (withRead) {
+        // Adjacent tools share one row; its members are nested, closed rows.
+        expect(rows).toHaveLength(1);
+        expect(
+          latest.querySelectorAll(".acp-tool-rollup__items > .acp-tool-rollup"),
+        ).toHaveLength(2);
+      } else {
+        expect(
+          latest.querySelector('[data-acp-item-id="tool-2"]'),
+        ).toBeVisible();
+      }
       unmount();
     }
   },
@@ -146,7 +152,7 @@ it("keeps no padded activity group for a closed browser-only Worked", () => {
   expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
 });
 
-it("keeps one leading spinner when a read group mixes running and failed calls", () => {
+it("keeps one leading kind icon and no spinner when a read group mixes running and failed calls", () => {
   const { container } = render(
     <ToolActivityRollup
       interactive
@@ -162,7 +168,8 @@ it("keeps one leading spinner when a read group mixes running and failed calls",
   );
   const lead = container.querySelector(".acp-tool-rollup__summary-copy")!;
   expect(lead.querySelectorAll("svg")).toHaveLength(1);
-  expect(lead.querySelector(".acp-tool-running")).not.toBeNull();
+  expect(lead.querySelector(".acp-tool-running")).toBeNull();
+  expect(lead.querySelector(".acp-live-shimmer")).not.toBeNull();
 });
 
 it("never auto-opens a completed turn for an unresolved retained permission", () => {
@@ -385,7 +392,7 @@ it("opens only the latest compact rollup when Worked is opened", () => {
 });
 
 it.each(["execute", "read", "edit"] as const)(
-  "uses only the spinner as the leading glyph for a running %s row",
+  "uses only the kind icon and the shimmer for a running %s row",
   (kind) => {
     const projection = page("running");
     projection.turns[0].items = [parityTool(kind, 1, "inProgress")];
@@ -401,7 +408,8 @@ it.each(["execute", "read", "edit"] as const)(
     );
     const lead = container.querySelector(".acp-tool-rollup__summary-copy")!;
     expect(lead.querySelectorAll("svg")).toHaveLength(1);
-    expect(lead.querySelector(".acp-tool-running")).not.toBeNull();
+    expect(lead.querySelector(".acp-tool-running")).toBeNull();
+    expect(lead.querySelector(".acp-live-shimmer")).not.toBeNull();
   },
 );
 
@@ -414,7 +422,7 @@ it.each(["completed", "failed"] as const)(
     const frame = container.querySelector(".acp-tool-command-frame")!;
     expect(frame.lastElementChild).toHaveAttribute("role", "status");
     expect(frame.lastElementChild).toHaveTextContent(
-      state === "completed" ? "Completed" : "Failed",
+      state === "completed" ? "✓ Success" : "Failed",
     );
   },
 );

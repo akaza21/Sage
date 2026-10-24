@@ -9,6 +9,7 @@ import type {
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import type { AttachedContext } from "../../domain/attachedContext";
+import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
@@ -24,6 +25,7 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerAttachments } from "./ComposerAttachments";
+import { TranscriptPart } from "./transcriptLazy";
 import { ComposerContext } from "./ComposerContext";
 import { ClaudeAuthActions } from "./ClaudeAuthActions";
 import { useComposerImageInput } from "./useComposerImageInput";
@@ -32,6 +34,7 @@ import { ComposerTurnControl } from "./ComposerTurnControl";
 import "../../styles/queued-messages.css";
 
 export function ChatComposerRegion({
+  hidden = false,
   composerRef,
   fieldId,
   dictationScope,
@@ -86,6 +89,8 @@ export function ChatComposerRegion({
   onRetryQueuedPrompt,
   onSteerQueuedPrompt,
 }: {
+  /** Kept mounted while an approval holds the slot, so the draft survives. */
+  hidden?: boolean;
   composerRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   dictationScope: string;
@@ -150,6 +155,8 @@ export function ChatComposerRegion({
     dictationScope,
     availableBinding && sessionHarnessId === selectedHarnessId,
   );
+  // Transcript quotes render in their own lazy chip row above the textarea.
+  const otherContext = attachedContext.filter((c) => !isTranscriptQuote(c));
   const imageInput = useComposerImageInput({
     contexts: attachedContext,
     available: imageInputAvailable,
@@ -171,6 +178,7 @@ export function ChatComposerRegion({
     <form
       className="composer"
       role="form"
+      hidden={hidden}
       aria-busy={projectTransitioning || imageUploading}
       onDragOver={imageInput.onDragOver}
       onDrop={imageInput.onDrop}
@@ -184,6 +192,15 @@ export function ChatComposerRegion({
         onSubmit(event);
       }}
     >
+      {otherContext.length < attachedContext.length ? (
+        <TranscriptPart
+          part="ComposerAnnotations"
+          contexts={attachedContext}
+          disabled={actionBusy || projectTransitioning}
+          onRemove={onRemoveContext}
+          chatId={dictationScope}
+        />
+      ) : null}
       <div className="composer__body">
         {goal.kind === "goal" ? (
           <BoundChatGoalControl
@@ -292,10 +309,10 @@ export function ChatComposerRegion({
             ) : null}
           </p>
         ) : null}
-        {attachedContext.length > 0 ? (
+        {otherContext.length > 0 ? (
           <div className="composer__attachment-row">
             <ComposerAttachments
-              contexts={attachedContext}
+              contexts={otherContext}
               imagePreviews={imagePreviews}
               disabled={actionBusy || projectTransitioning}
               onRemove={onRemoveContext}
@@ -377,7 +394,7 @@ export function ChatComposerRegion({
           queueing={Boolean(activeTurn && queueAvailable)}
           sendDisabled={
             composerDisabled ||
-            !text.trim() ||
+            (!text.trim() && otherContext.length === attachedContext.length) ||
             imageUploading ||
             imageInput.sendBlocked
           }

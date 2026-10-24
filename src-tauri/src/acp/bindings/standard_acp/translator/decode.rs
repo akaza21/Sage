@@ -235,6 +235,8 @@ pub(super) fn category_label(
         ToolCategory::Execute => "Command tool",
         ToolCategory::Search => "Search tool",
         ToolCategory::Fetch => "Web tool",
+        ToolCategory::WebSearch => "Web search",
+        ToolCategory::ImageView => "Image view",
         ToolCategory::Think => "Thinking tool",
         ToolCategory::SwitchMode => "Mode switch",
         ToolCategory::Mcp => "MCP tool",

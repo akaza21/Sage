@@ -5,11 +5,11 @@ import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
   MAX_CHAT_SEARCH_FANOUT_FOLDERS,
   chatSearchFanoutFolderIds,
+  chatSearchFolderOptions,
   chatSearchResultFolderName,
   isChatSearchFanout,
   mergeChatSearchFanout,
 } from "./chatSearchFanout";
-import { chatSearchFolderOptions } from "./chatSearchScope";
 
 describe("Chat search folder fan-out", () => {
   it("lists All folders and visits at most eight real folders", () => {

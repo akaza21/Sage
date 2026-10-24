@@ -26,6 +26,8 @@ import {
   type Announcement,
 } from "./acp/AcpAnnouncementRegions";
 import "./chat-transcript-polish.css";
+import { isSideChatId } from "../../workbench/sideChatState";
+import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
 export function ChatTranscript({
   transcriptRef,
@@ -118,7 +120,13 @@ export function ChatTranscript({
   }, []);
   const retryAction = useMemo(
     () =>
-      useNativeAcp && page && latestRetryPrompt(page) ? onRetry : undefined,
+      // A side chat is temporary: nothing in it offers Retry (Codex s2/f0352).
+      useNativeAcp &&
+      page &&
+      !isSideChatId(page.chatId) &&
+      latestRetryPrompt(page)
+        ? onRetry
+        : undefined,
     [useNativeAcp, page, onRetry],
   );
   const projectName = composerWorkspaceName(project, 1024);
@@ -173,7 +181,11 @@ export function ChatTranscript({
               onFeedbackQueued={forgetCopyFeedback}
               emptyState={
                 showHome ? (
-                  <ChatHome projectName={projectName} />
+                  isSideChatId(page.chatId) ? (
+                    <TranscriptPart part="SideChatHome" />
+                  ) : (
+                    <ChatHome projectName={projectName} />
+                  )
                 ) : !hasEarlier &&
                   page.nextCursor === null &&
                   !retentionIncomplete &&
@@ -207,6 +219,14 @@ export function ChatTranscript({
           ) : null}
         </div>
         <div ref={endRef} />
+        {useNativeAcp && page && !projectTransitioning ? (
+          <TranscriptInteractionsGate
+            key={page.chatId}
+            chatId={page.chatId}
+            focused={focused}
+            contentRef={contentRef}
+          />
+        ) : null}
       </div>
       {showJumpToLatest ? (
         <div className="chat-follow-end-zone">

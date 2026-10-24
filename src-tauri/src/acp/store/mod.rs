@@ -22,6 +22,7 @@ mod mutations;
 mod paging;
 mod permission_item;
 mod projection_decode;
+pub(crate) use projection_decode::parse_legacy_text;
 mod request_identity;
 mod request_terminal;
 mod requests;

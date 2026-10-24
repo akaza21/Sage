@@ -151,6 +151,22 @@
   color: var(--color-accent);
 }
 
+/* Codex live parity s6/f0526: the title truncates before the pill. */
+.rail-pill {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.rail-pill--approval {
+  color: var(--rail-approval-text);
+  background: var(--rail-approval-fill);
+}
+
 .project-chat__title-label {
   min-width: 0;
   overflow: hidden;

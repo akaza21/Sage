@@ -198,8 +198,12 @@ pub(super) fn notification<M: ResourceMapper>(
         ),
         "item/commandExecution/outputDelta" => command_output_delta(adapter, params),
         "item/agentMessage/delta" => delta_event(adapter, params, DeltaKind::Text, None),
-        "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
-            delta_event(adapter, params, DeltaKind::Thought, None)
+        "item/reasoning/summaryTextDelta" => delta_event(adapter, params, DeltaKind::Thought, None),
+        // Codex shows the reasoning summary only; raw reasoning text is
+        // validated for identity and never projected.
+        "item/reasoning/textDelta" => {
+            expect_thread_and_turn(adapter, params)?;
+            Ok(IngressDisposition::DroppedRawReasoning)
         }
         "item/reasoning/summaryPartAdded" => summary_part_added(adapter, params),
         "item/plan/delta" => delta_event(adapter, params, DeltaKind::Plan, None),

@@ -220,3 +220,80 @@ fn an_updated_payload_still_projects_the_updated_operation() {
     };
     assert_eq!(changes.as_slice()[0].operation, FileOperation::Updated);
 }
+
+#[test]
+fn a_permission_projects_its_tool_category_and_only_a_harness_reason() {
+    use crate::acp::{contract::SageServerRequestId, lifecycle::ServerRequestState};
+    for reason in [Some("May I retry outside the sandbox?"), None] {
+        let projected = content(
+            NormalizedPayload::PermissionRequest {
+                category: crate::acp::intent::ToolCategory::Execute,
+                summary: SafeText::new("summary", "Run a command").unwrap(),
+                offered_option_kinds: None,
+                reason: reason.map(|value| SafeText::new("reason", value).unwrap()),
+            },
+            crate::acp::lifecycle::ItemLifecycle::Streaming,
+            None,
+            None,
+            Some((
+                SageServerRequestId::parse("string:approval-1").unwrap(),
+                ServerRequestState::Received,
+                PermissionRequestSource::Harness,
+            )),
+        )
+        .unwrap();
+        let wire = serde_json::to_value(&projected).unwrap();
+        assert_eq!(wire["payload"]["category"], "execute");
+        assert_eq!(wire["payload"]["label"], "Permission request");
+        match reason {
+            Some(reason) => assert_eq!(wire["payload"]["reason"], reason),
+            None => assert!(wire["payload"].get("reason").is_none()),
+        }
+    }
+}
+
+#[test]
+fn tool_kinds_project_mcp_server_identity_web_search_and_image_view() {
+    use crate::acp::intent::{ToolCategory, ToolExecution};
+    let tool = |category, execution| {
+        let projected = content(
+            NormalizedPayload::ToolCall {
+                category,
+                label: SafeText::new("label", "search_openai_docs").unwrap(),
+                input_summary: None,
+                output_summary: Some(SafeText::new("output", "{}").unwrap()),
+                locations: Default::default(),
+                command_activity: Default::default(),
+                execution,
+            },
+            crate::acp::lifecycle::ItemLifecycle::Completed,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        serde_json::to_value(&projected).unwrap()["payload"].clone()
+    };
+    let named = tool(
+        ToolCategory::Mcp,
+        ToolExecution {
+            mcp_server: Some(Box::new(
+                SafeText::new("server", "openaiDeveloperDocs").unwrap(),
+            )),
+            ..Default::default()
+        },
+    );
+    assert_eq!(named["presentation"]["kind"], "mcp");
+    assert_eq!(named["presentation"]["serverLabel"], "openaiDeveloperDocs");
+    assert_eq!(named["presentation"]["toolLabel"], "search_openai_docs");
+    assert_eq!(named["outputSummary"], "{}");
+    let unnamed = tool(ToolCategory::Mcp, ToolExecution::default());
+    assert_eq!(unnamed["presentation"]["serverLabel"], "MCP");
+    assert_eq!(
+        tool(ToolCategory::WebSearch, ToolExecution::default())["presentation"],
+        serde_json::json!({"kind": "webSearch", "label": "search_openai_docs"})
+    );
+    let image = tool(ToolCategory::ImageView, ToolExecution::default());
+    assert_eq!(image["presentation"]["kind"], "imageView");
+    assert_eq!(image["presentation"]["resources"], serde_json::json!([]));
+}

@@ -2,6 +2,51 @@ use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
 impl AcpService {
+    pub(crate) fn dispose_temporary_runtime(
+        &self,
+        project: &crate::acp::contract::SageProjectId,
+        chat: &crate::acp::contract::SageChatId,
+    ) -> Result<(), CodexSessionError> {
+        if !chat.as_str().starts_with("side-") {
+            return Err(CodexSessionError::Intent);
+        }
+        self.revoke_browser_chat(project, chat);
+        let Some(allocation) = self.scheduler.active() else {
+            return Ok(());
+        };
+        let owner = allocation.tree;
+        if &owner.project_id != project || &owner.chat_id != chat {
+            return Ok(());
+        }
+        let deadline = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close);
+        if self.has_runtime_recovery_for(&owner) {
+            return self
+                .shutdown_codex_recovery(deadline)
+                .map(|_| ())
+                .map_err(|_| CodexSessionError::Recovery);
+        }
+        let host = match self.runtime.for_owner(&owner) {
+            Ok(host) => host,
+            Err(crate::acp::service::runtime_slot::RuntimeSlotError::Recovery) => {
+                return self
+                    .shutdown_codex_recovery(deadline)
+                    .map(|_| ())
+                    .map_err(|_| CodexSessionError::Recovery);
+            }
+            Err(error) => return Err(map_slot_error(error)),
+        };
+        if !host.has_shutdown_recovery() {
+            return Err(CodexSessionError::Recovery);
+        }
+        self.runtime.mark_recovery(&owner).map_err(map_slot_error)?;
+        self.retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+            owner: owner.clone(),
+            host,
+            phase: LiveHostRecoveryPhase::NativeEnd,
+        }));
+        self.end_session_natively(owner)
+    }
+
     pub(crate) fn park_idle_runtime_for_replacement(
         &self,
         deadline: std::time::Instant,

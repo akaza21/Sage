@@ -10,6 +10,8 @@ import {
 } from "../features/chat/acp/chatUnread";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import { renderRegisteredCanvas } from "./surfaceRegistry";
+import { isSideChatId } from "./sideChatState";
+import { TranscriptPart } from "../features/chat/transcriptLazy";
 
 export function AgentChatPane({
   tab,
@@ -48,7 +50,13 @@ export function AgentChatPane({
       onFocus={handleFocus}
     >
       {renderRegisteredCanvas("chat", tab, {
-        paneHeader: (
+        paneHeader: isSideChatId(tab.id) ? (
+          <TranscriptPart
+            part="SideChatHeader"
+            chatId={tab.id}
+            running={snapshot.working}
+          />
+        ) : (
           <div className="agent-chat-pane__identity">
             <button
               className="agent-chat-pane__focus"

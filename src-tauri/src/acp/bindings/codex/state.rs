@@ -1,5 +1,6 @@
 pub(crate) mod capabilities;
 mod child_read;
+pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
 mod construction;

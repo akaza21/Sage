@@ -209,6 +209,7 @@ fn approval_wire_projects_nonempty_setup_and_correlates_permission_only_to_secon
                                 category: ToolCategory::Execute,
                                 summary,
                                 offered_option_kinds: Some(options),
+                                ..
                             },
                     },
                 ] = cards.as_slice()

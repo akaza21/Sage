@@ -1,4 +1,6 @@
-export const MAX_CHAT_SEARCH_QUERY_BYTES = 256;
+import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchScope";
+
+export { MAX_CHAT_SEARCH_QUERY_BYTES };
 export const MAX_CHAT_SEARCH_RESULTS = 64;
 export const MAX_CHAT_SEARCH_SNIPPET_BYTES = 2 * 1024;
 export const MAX_CHAT_SEARCH_RESPONSE_BYTES = 64 * 1024;

@@ -528,3 +528,66 @@ describe("ChatTranscript Retry", () => {
     ).not.toContainElement(retry);
   });
 });
+
+describe("ChatTranscript side chats", () => {
+  const SIDE = "side-00000000-0000-4000-8000-000000000001";
+  function view(
+    acpPage: AcpChatPage,
+    project: { id: string; name: string },
+    projectTransitioning: boolean,
+    onRetry = vi.fn(),
+  ) {
+    return (
+      <ChatTranscript
+        transcriptRef={{ current: null }}
+        contentRef={{ current: null }}
+        endRef={{ current: null }}
+        onScroll={vi.fn()}
+        projectTransitioning={projectTransitioning}
+        project={project}
+        useNativeAcp
+        page={acpPage}
+        focused
+        projectRoots={[]}
+        retentionIncomplete={false}
+        onOpenResource={vi.fn()}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        onLoadEarlier={vi.fn()}
+        messages={[]}
+        developmentSimulator={false}
+        onRetry={onRetry}
+        showJumpToLatest={false}
+        onJumpToLatest={vi.fn()}
+      />
+    );
+  }
+
+  it("offers no Retry in a side chat", async () => {
+    const side = retryPage();
+    side.chatId = SIDE as never;
+    render(view(side, { id: "project-1", name: "Sage" }, false));
+    await settleLazyModules();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows Thinking, not a Working header, while a side chat has only started", async () => {
+    const side = page("running");
+    side.chatId = SIDE as never;
+    side.turns[0].items = [
+      {
+        ...textItem(),
+        id: "prompt" as never,
+        payload: { role: "user", text: "Explain" },
+      },
+    ];
+    const { container } = render(
+      view(side, { id: "project-1", name: "Sage" }, false),
+    );
+    await settleLazyModules();
+    expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+    expect(container.textContent).not.toMatch(/Working/);
+  });
+});

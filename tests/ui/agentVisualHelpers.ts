@@ -299,20 +299,32 @@ export async function runAgentCanonicalTest(
   await assertAgentLandmarks(page);
   await settleTranscriptAtEnd(page);
   if (name === "agent-activity-family") {
+    // Codex live parity §8 (s1/f0423): consecutive tools share one row named
+    // by the live child; the plan, error and unsupported cards stay apart.
     const cards = page.locator(".acp-activity-card");
-    await expect(cards).toHaveCount(8);
-    await expect(page.locator('[data-activity-kind="execute"]')).toBeVisible();
-    const execution = page.locator(
-      '.acp-tool-rollup[data-activity-kind="execute"]',
+    await expect(cards).toHaveCount(4);
+    const group = page.locator(".acp-tool-rollup");
+    await expect(group).toHaveCount(1);
+    await expect(group).toHaveAttribute("data-activity-state", "inProgress");
+    await expect(
+      group.locator(":scope > summary .acp-tool-rollup__label"),
+    ).toHaveText("Search workspace");
+    await group.locator(":scope > summary").click();
+    await expect(group).toHaveAttribute("open", "");
+    const members = group.locator(
+      ":scope > .acp-tool-rollup__items > .acp-tool-rollup",
     );
-    await execution.locator("summary").click();
+    await expect(members).toHaveCount(5);
+    const execution = members.and(
+      page.locator('[data-activity-kind="execute"]'),
+    );
+    await execution.locator(":scope > summary").click();
     await expect(execution).toHaveAttribute("open", "");
-    await expect(page.locator('[data-activity-kind="search"]')).toHaveAttribute(
-      "data-activity-state",
-      "inProgress",
-    );
-    const fetch = page.locator('.acp-tool-rollup[data-activity-kind="fetch"]');
-    await fetch.locator("summary").click();
+    await expect(
+      members.and(page.locator('[data-activity-kind="search"]')),
+    ).toHaveAttribute("data-activity-state", "inProgress");
+    const fetch = members.and(page.locator('[data-activity-kind="fetch"]'));
+    await fetch.locator(":scope > summary").click();
     await expect(fetch).toHaveAttribute("open", "");
     await expect(fetch).toContainText("Review preview");
     await expect(

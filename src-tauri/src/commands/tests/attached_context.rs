@@ -21,6 +21,8 @@ struct Fixture {
     owner: RuntimeOwner,
     context: DiffLineCommentContext,
     root: std::path::PathBuf,
+    /// The durable assistant answer (turn id, item id) the fixture ingested.
+    answer: (String, String),
 }
 
 impl Drop for Fixture {
@@ -88,6 +90,7 @@ impl Fixture {
             .acp
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
             .unwrap();
+        let answer: (String, String);
         let context = {
             let mut connection = state.database.connection();
             let root_id: String = connection
@@ -182,6 +185,27 @@ impl Fixture {
                 new_text: NEW.into(),
                 now_millis: 12,
             };
+            // A native assistant answer, written exactly as ingress writes it.
+            let answer_payload = NormalizedPayload::Text {
+                text: SafeText::new("text", "Durable answer text").unwrap(),
+            };
+            let answer_item = ItemIngressCommand {
+                project_id: project_id.clone(),
+                chat_id: chat_id.clone(),
+                session_id: session_id.clone(),
+                turn_id: prepared.turn_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                external_item_id: ExternalId::new("external", "attachment-answer").unwrap(),
+                activity_id: None,
+                payload_digest: format!(
+                    "{:x}",
+                    Sha256::digest(serde_json::to_vec(&answer_payload).unwrap())
+                ),
+                payload: answer_payload,
+                lifecycle: ItemLifecycle::Completed,
+                tool_state: None,
+                now_millis: 12,
+            };
             apply_adapter_inbound_batch(
                 &mut connection,
                 AdapterInboundBatchCommand::new(
@@ -195,6 +219,7 @@ impl Fixture {
                         },
                         AdapterInboundEvent::Item(item),
                         AdapterInboundEvent::FilePair(pair),
+                        AdapterInboundEvent::Item(answer_item),
                         AdapterInboundEvent::Turn {
                             state: TurnState::Completed,
                             now_millis: 13,
@@ -209,6 +234,16 @@ impl Fixture {
                     row.get(0)
                 })
                 .unwrap();
+            answer = (
+                prepared.turn_id.as_str().to_owned(),
+                connection
+                    .query_row(
+                        "SELECT id FROM items WHERE kind='text' AND external_item_id IS NOT NULL",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap(),
+            );
             serde_json::from_value(serde_json::json!({
                 "kind":"diffLineComment", "diffRef": {
                     "projectId":project_id.as_str(), "chatId":chat_id.as_str(), "sessionId":session_id.as_str(),
@@ -223,6 +258,7 @@ impl Fixture {
             owner,
             context,
             root,
+            answer,
         }
     }
 
@@ -482,6 +518,42 @@ fn attached_context_missing_runtime_and_binding_drift_prove_non_dispatch() {
                 "{failure:?}"
             );
             assert_eq!(fixture.counts(), before);
+        }
+    });
+}
+
+#[test]
+fn an_annotation_on_a_durable_native_answer_is_admitted_and_a_stale_range_is_refused() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        for (end, admitted) in [(19_u64, true), (20, false)] {
+            let mut fixture = Fixture::new().await;
+            {
+                let connection = fixture.state.database.connection();
+                connection.execute("UPDATE session_runtime_epochs SET state='exited',terminal_at=14 WHERE session_id=?1", [fixture.owner.session_id.as_str()]).unwrap();
+                connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) SELECT project_id,chat_id,session_id,2,'running',artifact_digest,15 FROM session_runtime_epochs WHERE session_id=?1 AND runtime_epoch=1", [fixture.owner.session_id.as_str()]).unwrap();
+            }
+            fixture.owner.runtime_epoch = RuntimeEpoch::new(2).unwrap();
+            let (calls, prompts) = fixture.install_host();
+            let quote = serde_json::from_value(serde_json::json!({
+                "kind": "transcriptQuote", "ordinal": 1,
+                "sourceTurnId": fixture.answer.0, "sourceItemId": fixture.answer.1,
+                "text": "answer", "startOffset": 8, "endOffset": end
+            }))
+            .unwrap();
+            let mut request = fixture.request(false);
+            if let SendAcpTurnRequest::Session { attached_context, .. } = &mut request {
+                *attached_context = AttachedContexts::new("attachedContext", vec![quote]).unwrap();
+            }
+            let result = send_acp_turn_inner(&fixture.state, request).await;
+            if admitted {
+                result.unwrap();
+                assert!(prompts.lock().unwrap()[0].contains("- Annotation 1"));
+            } else {
+                let failure = result.unwrap_err();
+                assert!(matches!(failure.failure, AcpIpcError::InvalidRequest { .. }), "{failure:?}");
+                assert_eq!(failure.prompt_dispatch, PromptDispatch::NotStarted);
+                assert!(calls.lock().unwrap().is_empty());
+            }
         }
     });
 }

@@ -1,6 +1,6 @@
 export type KeymapModifier = "forbidden" | "allowed" | "required";
 
-export type KeymapScope = "Global" | "Agent" | "Editor";
+export type KeymapScope = "Global" | "Agent" | "Agent chat" | "Editor";
 
 export interface KeymapBinding {
   id: string;
@@ -48,6 +48,16 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     description: "Focuses the title bar chat search.",
     scope: "Agent",
     key: "k",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
+    id: "chat.findInChat",
+    label: "Find in chat",
+    description: "Search the visible chat's messages.",
+    scope: "Agent chat",
+    key: "f",
     ctrlOrMeta: "required",
     shift: "forbidden",
     alt: "forbidden",

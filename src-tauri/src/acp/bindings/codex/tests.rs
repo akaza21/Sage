@@ -2056,6 +2056,62 @@ fn command_approval_receipt_never_projects_untrusted_command_text() {
 }
 
 #[test]
+fn command_approval_carries_codex_reason_sanitized_and_only_when_given() {
+    for (index, (reason, expected)) in [
+        (
+            Some("May I retry the network check outside the sandbox?"),
+            Some("May I retry the network check outside the sandbox?"),
+        ),
+        (
+            Some("Use sk-abc123 to call it"),
+            Some("Use [redacted] to call it"),
+        ),
+        (Some("   "), None),
+        (None, None),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut adapter = adapter();
+        ready(&mut adapter);
+        arm_turn(&mut adapter, 2, "client-permission");
+        let turn = json!({"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}}});
+        adapter
+            .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+            .unwrap();
+        let mut params = json!({
+            "threadId":"thread-1","turnId":"turn-1","itemId":"item-1","command":"curl.exe -s"
+        });
+        if let Some(reason) = reason {
+            params["reason"] = json!(reason);
+        }
+        let request = json!({"id":format!("approval-{index}"),"method":"item/commandExecution/requestApproval","params":params});
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&serde_json::to_vec(&request).unwrap(), &Mapper)
+            .unwrap()
+        else {
+            panic!("events")
+        };
+        let IncomingEvent::Permission {
+            payload:
+                NormalizedPayload::PermissionRequest {
+                    summary,
+                    reason: projected,
+                    category,
+                    ..
+                },
+            ..
+        } = &events[0]
+        else {
+            panic!("permission")
+        };
+        assert_eq!(summary.as_str(), "Run a command");
+        assert_eq!(*category, crate::acp::intent::ToolCategory::Execute);
+        assert_eq!(projected.as_ref().map(|value| value.as_str()), expected);
+    }
+}
+
+#[test]
 fn unresolved_permission_requests_are_bounded_at_exact_and_plus_one() {
     let mut adapter = adapter();
     ready(&mut adapter);

@@ -115,9 +115,21 @@ impl Database {
         project_id: &str,
         current_layout: &ProjectLayoutRequest,
     ) -> AppResult<String> {
+        self.create_chat_with_parent(project_id, current_layout, None)
+    }
+
+    pub(crate) fn create_chat_with_parent(
+        &self,
+        project_id: &str,
+        current_layout: &ProjectLayoutRequest,
+        parent: Option<&str>,
+    ) -> AppResult<String> {
         validate_chat_identifier("Project ID", project_id)?;
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
+        if let Some(parent) = parent {
+            crate::side_chat_storage::validate_parent(&transaction, project_id, parent)?;
+        }
         let active_project_id = transaction.query_row(
             "SELECT active_project_id FROM app_state WHERE singleton=1",
             [],
@@ -158,12 +170,13 @@ impl Database {
                 )));
             }
         }
-        let chat_id = insert_new_chat(&transaction, project_id, source_is_active)?;
+        let chat_id = insert_new_chat(&transaction, project_id, source_is_active, parent)?;
         transaction.commit()?;
         Ok(chat_id)
     }
 
     pub(crate) fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()> {
+        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let title = canonical_chat_title(&request.title)?;
@@ -204,6 +217,7 @@ fn insert_new_chat(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,
     source_is_active: bool,
+    parent: Option<&str>,
 ) -> AppResult<String> {
     let chat_count: i64 = transaction.query_row(
         "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",
@@ -237,8 +251,16 @@ fn insert_new_chat(
         [project_id],
         |row| row.get(0),
     )?;
-    let chat_id = Uuid::new_v4().to_string();
-    let title = format!("Chat: New chat {}", ordinal + 1);
+    let chat_id = if parent.is_some() {
+        format!("side-{}", Uuid::new_v4())
+    } else {
+        Uuid::new_v4().to_string()
+    };
+    let title = if parent.is_some() {
+        "Chat: Side chat".to_owned()
+    } else {
+        format!("Chat: New chat {}", ordinal + 1)
+    };
     let now = now_millis();
     transaction.execute(
         "INSERT INTO chats(
@@ -287,6 +309,15 @@ fn insert_new_chat(
         )?,
         "global Chat capacity changed during Chat creation",
     )?;
+    if let Some(parent) = parent {
+        transaction.execute(
+            "UPDATE workbench_tabs SET metadata_json=?2 WHERE id=?1",
+            params![
+                chat_id,
+                serde_json::json!({"ephemeral":true,"parentChatId":parent}).to_string()
+            ],
+        )?;
+    }
     Ok(chat_id)
 }
 

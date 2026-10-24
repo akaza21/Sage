@@ -45,7 +45,7 @@ for (const width of [1888, 720, 480]) {
   test.describe(`${width}px shared transcript geometry`, () => {
     test.use({ viewport: { width, height: 1048 } });
 
-    test("running command stays one line with one inline spinner and no early truncation", async ({
+    test("running command stays one line as a shimmering label and no early truncation", async ({
       page,
     }) => {
       await open(page, "running");
@@ -53,9 +53,8 @@ for (const width of [1888, 720, 480]) {
       await expect(summary).toHaveText(
         "Running git diff --stat -- src/features/chat/acp/ToolActivityRollupView.tsx",
       );
-      await expect(
-        summary.locator(".acp-tool-rollup__summary-copy .acp-tool-running"),
-      ).toHaveCount(1);
+      await expect(summary.locator(".acp-tool-running")).toHaveCount(0);
+      await expect(summary.locator(".acp-live-shimmer")).toHaveCount(1);
       await expect(
         summary.locator(".acp-tool-rollup__summary-copy svg"),
       ).toHaveCount(1);
@@ -110,37 +109,45 @@ for (const width of [1888, 720, 480]) {
       await expect(page.locator(".acp-tool-rollup__items header")).toHaveCount(
         0,
       );
-      const row = await page
-        .locator(".chat-transcript-work__groups > .acp-tool-rollup")
-        .boundingBox();
+      const group = page.locator(
+        ".chat-transcript-work__groups > .acp-tool-rollup",
+      );
+      const row = await group.boundingBox();
       const first = await cards.first().boundingBox();
-      const last = await cards.last().boundingBox();
       const answer = await page
         .locator(".acp-turn__items > .acp-message--assistant")
         .boundingBox();
       expect(Math.abs(first!.x - row!.x)).toBeLessThanOrEqual(1);
-      // The answer keeps one item gap (~11px measured on text boxes), not the
-      // former ~45px detached spacing.
-      expect(answer!.y - (last!.y + last!.height)).toBeGreaterThanOrEqual(8);
-      expect(answer!.y - (last!.y + last!.height)).toBeLessThanOrEqual(16);
+      // Codex s5/f0405: an open child stays inside the group's nested
+      // scroll area (max 220px), so the card may be clipped by it.
+      const scroller = group.locator(":scope > .acp-tool-rollup__items");
+      expect(
+        await scroller.evaluate((node) => node.clientHeight),
+      ).toBeLessThanOrEqual(220);
+      // The answer keeps one item gap (~11px measured on text boxes) below
+      // the group, not the former ~45px detached spacing.
+      expect(answer!.y - (row!.y + row!.height)).toBeGreaterThanOrEqual(8);
+      expect(answer!.y - (row!.y + row!.height)).toBeLessThanOrEqual(16);
     });
 
-    test("grouped reads count files and expose compact Read cards", async ({
+    test("grouped reads read Read files and open one nested row per file", async ({
       page,
     }) => {
       await open(page, "reads");
       await page.locator(".chat-transcript-work > summary").click();
-      await expect(page.locator(".acp-tool-rollup__label")).toHaveText(
-        "Read 3 files",
-      );
-      await expect(page.locator(".acp-tool-command-frame")).toHaveCount(3);
-      for (const card of await page.locator(".acp-tool-command-frame").all())
-        await expect(card).toBeVisible();
       await expect(
         page.locator(
-          ".acp-tool-rollup__items details, .acp-tool-rollup__items header",
+          ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
-      ).toHaveCount(0);
+      ).toHaveText("Read files");
+      const rows = page.locator(".acp-tool-rollup__items > .acp-tool-rollup");
+      await expect(rows).toHaveCount(3);
+      await expect(page.locator(".acp-tool-command-frame")).toHaveCount(0);
+      await rows.first().locator(":scope > summary").click();
+      await expect(page.locator(".acp-tool-command-frame")).toHaveCount(1);
+      await expect(page.locator(".acp-tool-rollup__items header")).toHaveCount(
+        0,
+      );
     });
 
     test("stopped notice follows the partial answer", async ({ page }) => {

@@ -228,9 +228,12 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
   const label = safeText(value.label, 512);
   if (label === null) return null;
   switch (value.kind) {
+    case "webSearch":
+      return { kind: "webSearch", label };
     case "read":
     case "edit":
-    case "delete": {
+    case "delete":
+    case "imageView": {
       const resources = safeToolResources(value.resources, MAX_TOOL_RESOURCES);
       return resources === undefined
         ? null

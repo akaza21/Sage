@@ -1,4 +1,4 @@
-import type { AcpItem, AcpItemIdentity } from "../domain/acp";
+import type { AcpItem, AcpItemIdentity, ToolPresentation } from "../domain/acp";
 import {
   isOneOf,
   isRecord,
@@ -271,6 +271,11 @@ export function safeItem(value: unknown): AcpItem | null {
               summary,
               source,
               offeredOptionKinds,
+              category:
+                typeof payload.category === "string"
+                  ? (payload.category as ToolPresentation["kind"])
+                  : undefined,
+              reason: safeNullableText(payload.reason ?? null, 2048) ?? null,
             },
           };
     }

@@ -18,7 +18,7 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
   await revealWorkedContent(row);
   await expect(row).toHaveAttribute("open", "");
   const label = row.locator(":scope > summary .acp-tool-rollup__label");
-  await expect(label).toHaveText("Ran 2 commands");
+  await expect(label).toHaveText("Ran commands");
   const typography = await label.evaluate((node) => {
     const element = node as HTMLElement;
     const style = getComputedStyle(element);

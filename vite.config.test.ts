@@ -75,7 +75,13 @@ const REQUIRED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
   "src/features/browser/BrowserSurface.tsx",
+  "src/features/chat/ChatNavigation.tsx",
+  "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
+  // The pending-approval card loads only when a request awaits a decision.
+  "src/features/chat/acp/PermissionPrompt.tsx",
+  // The Chat search dialog loads on the first Search chats request.
+  "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
   "src/features/files/FileSurface.tsx",
@@ -106,8 +112,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/features/chat/acp/chatLiveSnapshot.ts",
   "src/features/chat/acp/useAcpChatLiveSnapshot.ts",
   "src/features/chat/composerChrome.ts",
-  "src/features/chatSearch/ChatSearchControl.tsx",
-  "src/features/chatSearch/chatSearchDesktop.ts",
   "src/features/preview/AgentPreviewSurface.tsx",
   "src/features/preview/previewDesktop.ts",
   "src/features/preview/previewPresentation.ts",
@@ -530,6 +534,19 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
+    const searchFile = groupedGraph.moduleFiles.get(
+      "src/features/chatSearch/ChatSearchControl.tsx",
+    );
+    for (const module of [
+      "src/features/chatSearch/chatSearchDesktop.ts",
+      "src/features/chatSearch/chatSearchDomain.ts",
+      "src/features/chatSearch/chatSearchFanout.ts",
+    ]) {
+      expect(groupedGraph.moduleFiles.get(module), module).toBe(searchFile);
+    }
+    expect(searchFile).not.toBe(agentFile);
+    expect(searchFile).not.toBe(sharedFile);
     expect(groupedGraph.allModules).toEqual(baselineGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(baselineGraph.initialModules);
     expect(new Set(groupedGraph.allModules).size).toBe(

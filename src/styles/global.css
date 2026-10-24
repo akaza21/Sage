@@ -1,4 +1,24 @@
 :root {
+  /* Codex live parity §0: raised popovers, selection, annotations, side chat */
+  --color-panel-raised: #2d2d2d;
+  --color-panel-raised-hover: #3e3e3e;
+  --chat-selection-bg: #626262;
+  --chat-selection-border: #393939;
+  --chat-annotation-accent: #3a83f7;
+  --chat-annotation-highlight: #154674;
+  --chat-annotation-placeholder: #7a7a7a;
+  --chat-annotation-muted: #999;
+  --chat-annotation-icon: #969696;
+  --chat-annotation-danger: #ff6764;
+  --chat-annotation-danger-bg: #403030;
+  --chat-annotation-scrim: rgb(0 0 0 / 12%);
+  --chat-annotation-shadow: 0 4px 18px #0004;
+  --radius-annotation-badge: 12px 12px 12px 3px;
+  --radius-annotation-comment: 22px;
+  --radius-annotation-card: 10px;
+  --radius-annotation-sent: 15px;
+  --radius-side-chat-dialog: 14px;
+  --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
   /* Color roles */
@@ -45,6 +65,23 @@
     var(--color-danger) 12%,
     var(--color-panel)
   );
+  /* Tool failure box (Codex live parity: #280b0a fill, #7c211f edge). */
+  --color-danger-surface: #280b0a;
+  --color-danger-border: #7c211f;
+  --color-danger-surface-text: #dbd6d6;
+  /* Approval card in the composer slot (Codex live parity s6/f0526). */
+  --approval-card-fill: #2d2d2d;
+  --approval-kind-text: #b6b6b6;
+  --approval-detail-fill: #282828;
+  --approval-detail-text: #939393;
+  --approval-control-edge: #3a3a3a;
+  --approval-key-fill: #494949;
+  --approval-primary-fill: #ffffff;
+  --approval-primary-text: #181818;
+  --approval-split-fill: #d5d5d5;
+  --approval-menu-hover: #3e3e3e;
+  --rail-approval-text: #40c977;
+  --rail-approval-fill: #314c3c;
   --color-overlay: rgb(0 0 0 / 0.52);
   --color-diff-add: var(--color-success);
   --color-diff-add-muted: color-mix(
@@ -88,6 +125,21 @@
   --agent-subagent-violet: #a879df;
   --agent-subagent-teal: #61bfaa;
   --agent-subagent-coral: #df8f76;
+  /* Codex turn navigator and find-in-chat (live parity spec sections 5-6). */
+  --agent-nav-dash: #464646;
+  --agent-nav-dash-visible: #a3a3a3;
+  --agent-nav-preview-muted: #969696;
+  /* Measured Codex geometry: 9 px dash pitch, 290 x 99 card, 10/12 inset. */
+  --turn-nav-pitch: 9px;
+  --turn-nav-preview-height: 99px;
+  --turn-nav-preview-padding: 10px 12px;
+  --agent-find-icon: #bfbfbf;
+  --agent-find-text: #e8e8e8;
+  --agent-find-placeholder: #7a7a7a;
+  --agent-find-status: #898989;
+  --agent-find-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+  --agent-find-match: #ffd240;
+  --agent-find-current: #fb6a22;
   --search-dialog-fill: rgb(43 43 43 / 0.9);
   --search-dialog-scrim: rgb(0 0 0 / 0.25);
   --search-dialog-control-fill: #1e1e1e;
@@ -224,6 +276,8 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-composer-menu: 12px;
+  --radius-chat-find: 14px;
+  --radius-turn-preview: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
   --radius-circle: 50%;
@@ -639,6 +693,15 @@ textarea:disabled,
     --color-warning-muted: Canvas;
     --color-danger: CanvasText;
     --color-danger-muted: Canvas;
+    --color-danger-surface: Canvas;
+    --color-danger-border: CanvasText;
+    --color-danger-surface-text: CanvasText;
+    --approval-card-fill: Canvas;
+    --approval-detail-fill: Canvas;
+    --approval-primary-fill: ButtonText;
+    --approval-primary-text: ButtonFace;
+    --rail-approval-text: CanvasText;
+    --rail-approval-fill: Canvas;
     --color-diff-add: CanvasText;
     --color-diff-add-muted: Canvas;
     --color-diff-delete: CanvasText;

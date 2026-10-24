@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "status": "implemented-unit-and-rust-tested-visuals-pending",
+  "source": "Codex live parity sections 0-3, 2026-10-23",
+  "attachedContext": {
+    "kind": "transcriptQuote",
+    "maxEntriesPerDraft": 8,
+    "quoteUtf8Bytes": 4096,
+    "commentUtf8Bytes": 4096,
+    "sourceIdUtf8Bytes": 512,
+    "offsetUnit": "UTF-16 code units in the bounded assistant text-node projection (meta header, code-block chrome and buttons excluded)",
+    "prompt": "Appended after the user's text as 'Annotations on earlier assistant output (quoted context; cite as \"Annotation N\")' with JSON-quoted selections and plain-text comments or '(none)'",
+    "durableUserItem": "Annotation turns store the user's own text plus the bounded contexts; turns without annotations keep durable text equal to the dispatched prompt",
+    "retention": "Queue admission charges effective text, original text and attached contexts"
+  },
+  "selection": {
+    "actions": ["Add to chat", "Ask in side chat"],
+    "keyboard": ["Shift+Arrow", "ContextMenu", "Shift+F10", "Escape"],
+    "projectionBounds": {
+      "textNodesPerAnswer": 20000,
+      "utf16UnitsPerAnswer": 1000000
+    },
+    "loading": "One lazy chunk; a core trigger performs a cheap selection check on pointer-up, Shift+Arrow or the menu key and detaches once armed",
+    "overlays": "Visible pane badges survive focus changes; selection tools belong only to the focused pane"
+  },
+  "sideChat": {
+    "identity": "Reserved side- UUID; Rust-owned ephemeral and parentChatId tab metadata",
+    "maxPerProject": 1,
+    "maxGlobal": 8,
+    "maxVisiblePanes": 2,
+    "temporarySplitPercent": 43,
+    "inheritance": [
+      "project",
+      "harness binding",
+      "model",
+      "binding-scoped access mode"
+    ],
+    "capability": "new session on first send, like any new Chat; never a native fork",
+    "teardown": "Supervisor zero-process proof and exact-owner retained recovery precede deletion; no protocol close capability required",
+    "cleanup": "Scoped deletion and accounting in one exclusive transaction; immutable delete guards restored before commit; rollback restores guards on failure",
+    "images": "Only deleted Chat artifact IDs are removed; post-commit file removal is best effort; startup reclaims orphan files",
+    "cleanupImageIdBound": 10000,
+    "restore": "Purged after runtime shutdown on app exit and before startup bootstrap",
+    "navigation": "Excluded from rail, archive, project search and persistence actions"
+  },
+  "commands": [
+    "open_side_chat",
+    "close_side_chat",
+    "list_side_chats",
+    "get_confirm_close_side_chat"
+  ],
+  "preference": {
+    "owner": "Rust settings SQLite",
+    "key": "confirmCloseSideChat",
+    "default": true,
+    "optOut": "Persist false only on confirmed close with the checkbox checked"
+  },
+  "nativeModules": [
+    "src-tauri/src/acp/transcript_quote.rs",
+    "src-tauri/src/side_chat.rs",
+    "src-tauri/src/side_chat_storage.rs",
+    "src-tauri/src/settings_store/side_chat.rs"
+  ],
+  "verification": {
+    "executed": [
+      "Vitest units for touched folders",
+      "cargo clippy --all-targets --features acp-fixture -D warnings",
+      "cargo test --features acp-fixture --lib"
+    ],
+    "authoredNotExecuted": ["CP-40/41/42 Playwright visuals"],
+    "baselines": "No baselines regenerated",
+    "bundle": "Desktop-native build: one lazy chunk of about 7.7 KB gzip plus about 1.4 KB gzip in core chunks; core total and Agent-one-chat exceed the unchanged budgets, so delivery needs a budget decision or offsetting reductions"
+  }
+}

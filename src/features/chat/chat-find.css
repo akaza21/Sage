@@ -1,0 +1,127 @@
+.chat-find {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  width: min(314px, calc(100% - 16px));
+  border: 1px solid var(--agent-shell-divider);
+  border-radius: var(--radius-chat-find);
+  background: var(--color-canvas);
+  color: var(--agent-find-icon);
+  box-shadow: var(--agent-find-shadow);
+}
+.chat-find__input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px 0 12px;
+}
+.chat-find__input input {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--agent-find-text);
+  font-size: 13px;
+}
+.chat-find__input input::-webkit-search-cancel-button {
+  display: none;
+}
+.chat-find__input input::placeholder {
+  color: var(--agent-find-placeholder);
+}
+.chat-find button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.chat-find__input button {
+  border-left: 1px solid var(--agent-shell-divider);
+  border-radius: var(--radius-none);
+}
+.chat-find button:disabled {
+  opacity: 0.4;
+}
+.chat-find button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.chat-find__results {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px;
+  border-top: 1px solid var(--agent-shell-divider);
+}
+.chat-find__results [role="status"] {
+  margin-left: auto;
+  color: var(--agent-find-status);
+  font-size: 12px;
+}
+.chat-find__scope {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--agent-shell-divider);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.chat-find__icon,
+.chat-find__spinner {
+  flex: none;
+  color: var(--agent-find-icon);
+}
+.chat-find__spinner {
+  animation: chat-find-spin 1s linear infinite;
+}
+::highlight(sage-find) {
+  background: var(--agent-find-match);
+  color: var(--agent-shell-center);
+}
+::highlight(sage-find-current) {
+  background: var(--agent-find-current);
+  color: var(--color-status-foreground);
+}
+@keyframes chat-find-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-find__spinner {
+    animation: none;
+  }
+}
+@media (forced-colors: active) {
+  .chat-find {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .chat-find__input:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .chat-find__input input,
+  .chat-find__results [role="status"],
+  .chat-find__scope {
+    color: CanvasText;
+  }
+  ::highlight(sage-find) {
+    background: Mark;
+    color: MarkText;
+  }
+  ::highlight(sage-find-current) {
+    background: Highlight;
+    color: HighlightText;
+  }
+}

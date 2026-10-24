@@ -91,6 +91,23 @@ describe("useFollowEnd", () => {
     document.body.replaceChildren();
   });
 
+  it("keeps reader navigation paused even when the selected match is already at the end", () => {
+    const { transcript, view, scrollTo } = mountFollowEnd();
+    act(() => transcript.dispatchEvent(new Event("sage-chat-navigation")));
+    act(() => view.result.current.updateFollowEnd());
+    expect(view.result.current.followingEnd).toBe(false);
+    scrollTo.mockClear();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 1000,
+      scrollTop: 0,
+    });
+    view.rerender({ revision: 2, ownerKey: "chat-1" });
+    expect(scrollTo).not.toHaveBeenCalled();
+    act(() => view.result.current.jumpToLatest());
+    expect(view.result.current.followingEnd).toBe(true);
+  });
+
   it("scrolls the transcript to its last scrollable pixel rather than the end marker", () => {
     const { scrollIntoView, scrollTo, transcript, view } = mountFollowEnd();
     scrollTo.mockClear();

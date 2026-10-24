@@ -77,15 +77,21 @@ impl Database {
                     .join("image-artifacts"),
             )
         });
-        if let Some(root) = &image_artifact_root {
-            crate::image_artifacts::reconcile_image_artifacts(&connection, root)?;
-        }
-        Ok(Self {
+        let database = Self {
             connection: Arc::new(Mutex::new(connection)),
             physical_storage,
             _live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
-        })
+        };
+        // Like the exit path: a failed purge never blocks startup; the
+        // temporary Chats stay hidden and the purge retries next time.
+        if let Err(error) = database.purge_side_chats() {
+            tracing::warn!(?error, "temporary Chat cleanup will retry later");
+        }
+        if let Ok(root) = database.image_artifact_root() {
+            crate::image_artifacts::reconcile_image_artifacts(&database.connection(), root)?;
+        }
+        Ok(database)
     }
 
     pub(crate) fn image_artifact_root(&self) -> AppResult<&Path> {

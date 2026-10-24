@@ -18,7 +18,7 @@ use super::decode::{
     transition_tool,
 };
 use super::diff_records::{DiffObservation, FrameState};
-use super::tool_input::command_input_patch;
+use super::tool_input::{command_input_patch, web_search_query};
 use super::tool_snapshots::{
     CommandPatch, command_update_payload, content_update_payload, path_locations,
 };
@@ -56,6 +56,8 @@ impl StandardAcpTranslator {
             ToolCategory::Execute
         } else if category == ToolCategory::Other && verified_write_file(update, resources) {
             ToolCategory::Edit
+        } else if category == ToolCategory::Fetch && web_search_query(update).is_some() {
+            ToolCategory::WebSearch
         } else {
             category
         };

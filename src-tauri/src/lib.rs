@@ -81,6 +81,8 @@ mod resource_trash_commands;
 mod session_events;
 mod settings_commands;
 mod settings_store;
+mod side_chat;
+mod side_chat_storage;
 mod state;
 #[cfg(test)]
 mod test_wait;

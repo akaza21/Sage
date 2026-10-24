@@ -9,6 +9,10 @@ import {
   validateWebBundleManifest,
   verifyWebBundlePathBudgets,
 } from "./web-bundle-paths.mjs";
+import {
+  measureLazyFeatures,
+  parseLazyFeatureBudgets,
+} from "./web-bundle-lazy-features.mjs";
 
 const DESKTOP_NATIVE_TARGET = "desktop-native";
 const BROWSER_FIXTURE_SENTINEL =
@@ -85,6 +89,14 @@ export function verifyWebBundle(root) {
       (!Number.isInteger(subagentLimit) || subagentLimit < 1))
   )
     fail("web bundle limits are missing or invalid");
+  const lazyFeatures = parseLazyFeatureBudgets(
+    budgets.bundle?.lazyFeatureChunks,
+    [
+      "src/workbench/TerminalDock.tsx",
+      "src/workbench/TerminalDockShell.tsx",
+      "src/workbench/SubagentSurface.tsx",
+    ],
+  );
   const receipt = json(
     path.join(root, "dist/.sage-web-build-receipt.json"),
     "build receipt",
@@ -324,6 +336,17 @@ export function verifyWebBundle(root) {
       fail("desktop artifact contains a browser fixture sentinel");
     }
   }
+  const lazyFeatureChunks = measureLazyFeatures({
+    manifest,
+    entryKey: entries[0][0],
+    reachable,
+    initial,
+    isInitialCss: (css) => initialCss.has(assetPath(root, css)),
+    features: lazyFeatures,
+    gzipFile: (file) => gzipBytes(assetPath(root, file)),
+  });
+  for (const feature of Object.values(lazyFeatureChunks))
+    coreTotalGzipBytes -= feature.gzipBytes;
   const exceeded = [];
   if (entryGzipBytes > entryLimit)
     exceeded.push(`entry gzip ${entryGzipBytes} exceeds ${entryLimit}`);
@@ -334,7 +357,7 @@ export function verifyWebBundle(root) {
   }
   if (coreTotalGzipBytes > totalLimit)
     exceeded.push(
-      `core total gzip excluding lazy terminal chunks ${coreTotalGzipBytes} exceeds ${totalLimit}`,
+      `core total gzip excluding budgeted lazy chunks ${coreTotalGzipBytes} exceeds ${totalLimit}`,
     );
   if (terminalLimit !== undefined && terminalLazyGzipBytes > terminalLimit)
     exceeded.push(
@@ -354,6 +377,7 @@ export function verifyWebBundle(root) {
     totalGzipBytes,
     terminalLazyGzipBytes,
     subagentLazyGzipBytes,
+    lazyFeatureChunks,
     coreTotalGzipBytes,
     initialFiles: [...initial].sort(),
     jsFiles: jsFiles.sort(),

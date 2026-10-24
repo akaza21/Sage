@@ -148,3 +148,29 @@ it("switches access by next-send binding and preserves each explicit preference"
     "binding-a": "workspaceWrite",
   });
 });
+
+it("refuses a send whose annotations would overflow the prompt, with a clear reason", () => {
+  const input = args();
+  const quote = (ordinal: number) => ({
+    kind: "transcriptQuote" as const,
+    ordinal,
+    sourceTurnId: "t",
+    sourceItemId: `i${ordinal}`,
+    text: '"'.repeat(4000),
+    comment: '"'.repeat(4000),
+    startOffset: 0,
+    endOffset: 4000,
+  });
+  const { result } = renderHook(() =>
+    useChatSurfaceModel({
+      ...input,
+      composerText: "x".repeat(16_000),
+      attachedContext: [1, 2, 3, 4, 5, 6, 7, 8].map(quote),
+    }),
+  );
+  expect(result.current.disabledReason).toMatch(
+    /^This message and its attached context are too large to send/,
+  );
+  act(() => result.current.submit({ preventDefault() {} } as FormEvent));
+  expect(input.acpActions.submit).not.toHaveBeenCalled();
+});

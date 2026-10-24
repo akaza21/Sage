@@ -250,13 +250,17 @@ export function projectTaskResources(
             status,
           });
       }
-      if (
-        item.kind === "toolCall" &&
-        item.payload.presentation.kind === "fetch"
-      ) {
+      if (item.kind === "toolCall") {
+        // Web pages by host; integrations by the harness's own server name.
+        const source = item.payload.presentation;
         const label =
-          item.payload.presentation.url &&
-          httpHost(item.payload.presentation.url);
+          source.kind === "fetch"
+            ? source.url && httpHost(source.url)
+            : source.kind === "webSearch"
+              ? "Search Service"
+              : source.kind === "mcp" && source.serverLabel !== "MCP"
+                ? source.serverLabel
+                : null;
         if (label && sources.size < MAX_RESOURCE_ENTRIES && !sources.has(label))
           sources.set(label, { label, tabId: null });
       }

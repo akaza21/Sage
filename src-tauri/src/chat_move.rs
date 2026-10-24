@@ -14,6 +14,7 @@ mod legacy_welcome;
 
 impl Database {
     pub(crate) fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
+        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         validate_chat_identifier("Target Project ID", &request.target_project_id)?;
@@ -24,6 +25,11 @@ impl Database {
         }
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
+        crate::side_chat_storage::refuse_parent_removal(
+            &transaction,
+            &request.project_id,
+            &request.chat_id,
+        )?;
         let active: Option<String> = transaction.query_row(
             "SELECT active_project_id FROM app_state WHERE singleton=1",
             [],

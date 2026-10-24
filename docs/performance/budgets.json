@@ -14,6 +14,31 @@
     "webTotalJsGzipBytes": 461000,
     "webTerminalLazyJsGzipBytes": 89500,
     "webSubagentLazyJsGzipBytes": 4000,
+    "lazyFeatureChunks": [
+      {
+        "entry": "src/features/chat/ChatNavigation.tsx",
+        "maxGzipBytes": 7000,
+        "maxCssGzipBytes": 1300,
+        "reason": "Turn navigator and Ctrl+F find in chat; loads after a Chat has Turns."
+      },
+      {
+        "entry": "src/features/chat/TranscriptInteractions.tsx",
+        "maxGzipBytes": 8600,
+        "maxCssGzipBytes": 1800,
+        "reason": "Transcript selection popover, annotations and side chat; loads with a native Chat transcript."
+      },
+      {
+        "entry": "src/features/chat/acp/PermissionPrompt.tsx",
+        "maxGzipBytes": 1800,
+        "maxCssGzipBytes": 1000,
+        "reason": "Composer-slot approval card; loads only while a live Turn awaits a permission decision."
+      },
+      {
+        "entry": "src/features/chatSearch/ChatSearchControl.tsx",
+        "maxGzipBytes": 3800,
+        "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."
+      }
+    ],
     "windowsInstallerMb": 45,
     "macosSingleArchitectureMb": 45,
     "macosUniversalMb": 80,

@@ -279,6 +279,7 @@ fn project_turn(
     let (browser_operations, browser_operations_collapsed) =
         super::browser_operations::load(connection, row)?;
     Ok(TurnProjection {
+        attached_context: super::super::transcript_quote::load_context(connection, &row.id)?,
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
             .map_err(|_| StoreError::Corrupt("session id"))?,

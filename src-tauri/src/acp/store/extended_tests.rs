@@ -664,6 +664,7 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     })
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());
@@ -700,6 +701,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     })
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());
@@ -733,6 +735,7 @@ pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     })
     .unwrap();
     let payload_digest = super::facts::hex_digest(normalized_payload_json.as_bytes());
@@ -813,6 +816,7 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
             category: ToolCategory::Execute,
             summary: crate::acp::contract::SafeText::new("summary", "Different command").unwrap(),
             offered_option_kinds: None,
+            reason: None,
         })
         .unwrap();
     changed.normalized_payload_digest =

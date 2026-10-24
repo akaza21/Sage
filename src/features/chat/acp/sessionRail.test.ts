@@ -28,6 +28,12 @@ describe("sessionRailStatusLabel", () => {
     expect(sessionRailStatusLabel("working")).toBe("Working…");
     expect(sessionRailStatusLabel("waiting")).toBe("Waiting");
     expect(sessionRailStatusLabel("complete")).toBe("Done");
+  });
+
+  it("names a chat waiting on a permission Awaiting approval", () => {
+    expect(sessionRailStatusLabel("waiting", true)).toBe("Awaiting approval");
+    expect(sessionRailStatusLabel("working", true)).toBe("Awaiting approval");
+    expect(sessionRailStatusLabel("waiting", false)).toBe("Waiting");
     expect(sessionRailStatusLabel("failed")).toBe("Failed");
     expect(sessionRailStatusLabel("idle")).toBe("");
     expect(sessionRailStatusLabel(undefined)).toBe("");

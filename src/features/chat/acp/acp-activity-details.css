@@ -1,7 +1,42 @@
 .acp-tool-rollup__items {
   display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  gap: var(--space-1);
+  max-height: 220px;
+  margin-top: var(--space-1);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* Codex rows (33px / 22px measured) on the 4px scale; 13px muted. */
+.acp-tool-rollup > summary {
+  min-height: 32px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.acp-tool-rollup__items .acp-tool-rollup > summary {
+  min-height: 24px;
+}
+
+.acp-tool-result .acp-code-block pre {
+  max-height: 148px;
+  overflow: auto;
+}
+
+.acp-tool-error {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-surface);
+  color: var(--color-danger-surface-text);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.acp-tool-command__outcome--danger {
+  color: var(--color-danger);
 }
 
 .acp-tool-running {

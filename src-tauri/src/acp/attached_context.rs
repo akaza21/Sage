@@ -28,6 +28,7 @@ pub(crate) fn has_unsafe_display_character(character: char) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AttachedContext {
+    TranscriptQuote(super::transcript_quote::TranscriptQuoteContext),
     DiffLineComment(DiffLineCommentContext),
     BrowserPage(BrowserPageContext),
     Image(ImageAttachedContext),
@@ -275,13 +276,40 @@ pub(crate) fn effective_prompt(
                     AttachedContext::BrowserPage(page) => {
                         page.url.len() + page.title.len() + page.text.len() + 96
                     }
+                    AttachedContext::TranscriptQuote(quote) => {
+                        quote.text.len() + quote.comment.as_ref().map_or(0, String::len) + 256
+                    }
                     AttachedContext::Image(_) => 0,
                 })
                 .sum::<usize>(),
     );
     rendered.push_str(prompt.as_str());
+    let mut annotation = 0;
     for context in contexts.as_slice() {
         match context {
+            // Every annotation renders under one header, at the first one's
+            // place, even when other context kinds interleave in the draft.
+            AttachedContext::TranscriptQuote(_) if annotation > 0 => {}
+            AttachedContext::TranscriptQuote(_) => {
+                rendered.push_str("\n\nAnnotations on earlier assistant output (quoted context; cite as \"Annotation N\"):");
+                let json = |text: &str| serde_json::to_string(text).expect("string serialization");
+                for quote in contexts
+                    .as_slice()
+                    .iter()
+                    .filter_map(|context| match context {
+                        AttachedContext::TranscriptQuote(quote) => Some(quote),
+                        _ => None,
+                    })
+                {
+                    annotation += 1;
+                    let comment = quote
+                        .comment
+                        .as_deref()
+                        .filter(|text| !text.is_empty())
+                        .map_or_else(|| "(none)".to_owned(), json);
+                    rendered.push_str(&format!("\n- Annotation {annotation}\n  Selected text (JSON-quoted): {}\n  User comment (JSON-quoted): {comment}", json(&quote.text)));
+                }
+            }
             AttachedContext::DiffLineComment(diff) => {
                 let side = match diff.side {
                     DiffLineSide::Old => "old",
@@ -309,7 +337,14 @@ pub(crate) fn effective_prompt(
             AttachedContext::Image(_) => unreachable!(),
         }
     }
-    Prompt::new("promptWithAttachedContext", rendered)
+    let effective = Prompt::new("promptWithAttachedContext", rendered)?;
+    // Annotation turns keep the user's own text durable and project the quotes
+    // as chips; other context keeps the durable text equal to the dispatched one.
+    Ok(if annotation > 0 {
+        effective.with_context(prompt, contexts)
+    } else {
+        effective
+    })
 }
 
 #[cfg(test)]
@@ -487,5 +522,8 @@ mod tests {
             rendered.as_str(),
             "Review it\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:27-31 (new side): Keep this branch explicit\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:32 (new side): Explain the fallback"
         );
+        // Diff-only turns keep the durable user text equal to the dispatched prompt.
+        assert_eq!(rendered.user_payload()["text"], rendered.as_str());
+        assert!(rendered.user_payload().get("attachedContext").is_none());
     }
 }

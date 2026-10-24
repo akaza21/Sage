@@ -3,11 +3,11 @@ use crate::acp::bindings::codex::state::SubagentLabels;
 
 #[test]
 fn mcp_tool_call_names_only_bounded_safe_server_and_tool_fields() {
-    for (server, tool_name, expected) in [
-        ("sage-browser", "openTab", "sage-browser · openTab"),
-        ("C:\\private\\server", "openTab", "MCP tool"),
-        ("sage-browser", "openTab\nsecret", "MCP tool"),
-        ("x", "a", "x · a"),
+    for (server, tool_name, expected, expected_server) in [
+        ("sage-browser", "openTab", "openTab", Some("sage-browser")),
+        ("C:\\private\\server", "openTab", "openTab", None),
+        ("sage-browser", "openTab\nsecret", "MCP tool", None),
+        ("x", "a", "a", Some("x")),
     ] {
         let call = item(json!({
             "type": "mcpToolCall", "status": "completed",
@@ -18,8 +18,21 @@ fn mcp_tool_call_names_only_bounded_safe_server_and_tool_fields() {
         let (payload, _, _) = normalize_item(&call, ItemLifecycle::Completed, &UnusedMapper)
             .expect("MCP call")
             .expect("item");
-        assert!(matches!(payload, NormalizedPayload::ToolCall { label, .. }
-            if label.as_str() == expected && !label.as_str().contains("do-not-label")));
+        let NormalizedPayload::ToolCall {
+            label,
+            execution,
+            output_summary,
+            ..
+        } = payload
+        else {
+            panic!("MCP tool");
+        };
+        assert_eq!(label.as_str(), expected);
+        assert_eq!(
+            execution.mcp_server.as_ref().map(|server| server.as_str()),
+            expected_server
+        );
+        assert!(output_summary.is_none(), "a non-object result is not shown");
     }
     let oversized = item(json!({
         "type": "mcpToolCall", "status": "completed",
@@ -28,8 +41,11 @@ fn mcp_tool_call_names_only_bounded_safe_server_and_tool_fields() {
     let (payload, _, _) = normalize_item(&oversized, ItemLifecycle::Completed, &UnusedMapper)
         .expect("MCP call")
         .expect("item");
-    assert!(matches!(payload, NormalizedPayload::ToolCall { label, .. }
-        if label.as_str() == "MCP tool"));
+    assert!(
+        matches!(payload, NormalizedPayload::ToolCall { label, execution, .. }
+        if label.as_str() == "openTab" && execution.mcp_server.is_none()),
+        "an unsafe server name is dropped, never shown"
+    );
 }
 
 #[test]
@@ -247,14 +263,14 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
     assert!(matches!(
         started,
         NormalizedPayload::ToolCall {
-            category: ToolCategory::Execute,
+            category: ToolCategory::Read,
             label,
             input_summary: Some(command_line),
             output_summary: Some(output),
             ..
         } if output.as_str() == "Bearer [redacted]\nsecond\n"
             && command_line.as_str() == "cat [path]"
-            && label.as_str() == "cat [path]"
+            && label.as_str() == "Read read package"
     ));
 
     let (payload, state, lifecycle) =
@@ -272,7 +288,7 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
     else {
         panic!("expected command update");
     };
-    assert_eq!(category, ToolCategory::Execute);
+    assert_eq!(category, ToolCategory::Read, "a typed read is a read");
     assert_eq!(
         output_summary.expect("output").as_str(),
         "Bearer [redacted]\nsecond\n"

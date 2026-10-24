@@ -136,7 +136,7 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("opens Chat search from the search chord and shows it on the control", () => {
+  it("opens Chat search from the search chord and shows it on the control", async () => {
     seedChats();
     render(
       <>
@@ -153,7 +153,9 @@ describe("TitleBar center chrome", () => {
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 
-    expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Search Chats" }),
+    ).toBeTruthy();
   });
 
   it("opens the durable Settings tab from Editor chrome", async () => {

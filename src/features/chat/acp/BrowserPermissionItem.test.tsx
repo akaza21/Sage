@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { PermissionItem } from "./PermissionItem";
+import { PermissionPrompt } from "./PermissionPrompt";
+import { clearApprovalDecisions } from "../useApprovalSlot";
 
 afterEach(() => {
+  clearApprovalDecisions();
   cleanup();
   vi.restoreAllMocks();
 });
@@ -50,14 +52,14 @@ describe("local browser permission card", () => {
         decision: "deny",
         state: "resolvedDeclined",
       });
-    render(<PermissionItem item={browserItem} />);
+    render(<PermissionPrompt items={[browserItem]} />);
     expect(
       screen.getByRole("group", { name: "Browser permission" }),
     ).toBeTruthy();
     expect(
       screen.getByText("Browser fill on https://example.com"),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
     expect(resolve).toHaveBeenCalledWith({
       projectId: "project-1",
       chatId: "chat-1",
@@ -82,14 +84,15 @@ describe("local browser permission card", () => {
         decision: "allowForOriginSession",
         state: "resolvedAllowed",
       });
-    render(<PermissionItem item={browserItem} />);
+    render(<PermissionPrompt items={[browserItem]} />);
     expect(
       screen.getByText("Browser fill on https://example.com"),
     ).toBeTruthy();
     expect(screen.queryByText(/do-not-leak/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Allow once/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Allow for this tab and origin" }),
+      screen.getByRole("menuitem", { name: "Allow for this tab and origin" }),
     );
     expect(resolve).toHaveBeenCalledWith(
       expect.objectContaining({

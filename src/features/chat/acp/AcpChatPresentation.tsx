@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useMemo } from "react";
+import { Fragment, memo, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
@@ -30,6 +30,9 @@ import { TurnFailure } from "./TurnFailure";
 import { BrowserOperations } from "./BrowserOperations";
 import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
 import { VirtualTurnList } from "./VirtualTurnList";
+import type { TurnListHost } from "../chatScroll";
+import { NavigationPart, TranscriptPart } from "../lazyParts";
+import { isSideChatId } from "../../../workbench/sideChatState";
 import "./browser-operations.css";
 
 export type AcpChatPresentationProps = {
@@ -150,6 +153,13 @@ const Turn = memo(
       >
         {!stopped ? <TurnHeader turn={turn} /> : null}
         <div className="acp-turn__items">
+          {turn.attachedContext ? (
+            <TranscriptPart
+              part="SentAnnotations"
+              contexts={turn.attachedContext}
+              chatId={page.chatId}
+            />
+          ) : null}
           {attachmentItems.length > 0 ? (
             <div
               className="acp-turn__attachments"
@@ -165,6 +175,7 @@ const Turn = memo(
           ))}
           <ChatTranscriptTurnSummary
             turn={turn}
+            thinkingPlaceholder={isSideChatId(page.chatId)}
             hasCollapsedActivities={hasCollapsedActivities}
             hasActivities={
               workingItems.length > 0 ||
@@ -199,6 +210,7 @@ const Turn = memo(
             <ItemView
               key={finalAnswer.id}
               item={finalAnswer}
+              selectableTurnId={turn.id}
               turnState={turn.state}
               interactive={interactive}
               fileReferenceOwner={fileReferenceOwner}
@@ -272,6 +284,7 @@ export function AcpChatPresentation({
   onRetry,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
+  const navigationRef = useRef<TurnListHost | null>(null);
   const countIncomplete = page.nextCursor !== null || retentionIncomplete;
   const dayTimestamps = useTurnDayTimestamps(page.turns);
   const labelsKey = projectRootLabelKey(projectRoots);
@@ -328,6 +341,16 @@ export function AcpChatPresentation({
   };
   return (
     <>
+      <NavigationPart
+        part="ChatNavigation"
+        // Distinct from the VirtualTurnList sibling's key: a shared key makes
+        // React drop one of them and remount the other (closing find).
+        key={`navigation:${page.projectId}:${page.chatId}`}
+        turns={page.turns}
+        chatId={page.chatId}
+        hostRef={navigationRef}
+        incomplete={hasEarlier || countIncomplete}
+      />
       {hasEarlier && onLoadEarlier ? (
         <button
           type="button"
@@ -357,9 +380,10 @@ export function AcpChatPresentation({
       ) : null}
       {page.turns.length > 40 ? (
         <VirtualTurnList
-          key={`${page.projectId}:${page.chatId}`}
+          key={`turns:${page.projectId}:${page.chatId}`}
           turns={page.turns}
           renderTurn={renderTurn}
+          navigationRef={navigationRef}
         />
       ) : (
         page.turns.map(renderTurn)

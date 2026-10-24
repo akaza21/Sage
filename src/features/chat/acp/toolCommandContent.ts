@@ -8,6 +8,9 @@ export const compactToolLabels: Partial<
   edit: "Edit",
   delete: "Delete",
   move: "Move",
+  // Integration results render bare, without a command frame.
+  mcp: "",
+  webSearch: "",
 };
 
 export function toolCommandContent(

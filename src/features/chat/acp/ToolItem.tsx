@@ -7,6 +7,7 @@ import {
   FileSymlink,
   FileText,
   Globe,
+  Image,
   Plug,
   Search,
   Terminal,
@@ -39,6 +40,8 @@ const toolKindIcons: Record<ToolKind, typeof FileText> = {
   search: Search,
   execute: Terminal,
   fetch: Globe,
+  webSearch: Plug,
+  imageView: Image,
   think: Brain,
   switchMode: ArrowRightLeft,
   mcp: Plug,
@@ -46,7 +49,7 @@ const toolKindIcons: Record<ToolKind, typeof FileText> = {
   other: Wrench,
 };
 
-function ToolKindIcon({ kind }: { kind: ToolKind }) {
+export function ToolKindIcon({ kind }: { kind: ToolKind }) {
   const Icon = toolKindIcons[kind];
   return <Icon aria-hidden="true" size={14} data-tool-kind-icon={kind} />;
 }
@@ -69,7 +72,7 @@ export function ToolItem({
   const inputSummary = item.payload.inputSummary;
   const kind = item.payload.presentation.kind;
   const detail =
-    kind === "mcp"
+    kind === "mcp" || kind === "webSearch"
       ? null
       : kind === "execute"
         ? outputSummary
@@ -85,7 +88,9 @@ export function ToolItem({
   const status = toolStateLabels[visualState];
   const terminal = terminalToolStates.has(visualState);
   const toolOutput =
-    kind === "execute" || kind === "fetch" ? null : outputSummary;
+    kind === "execute" || kind === "fetch" || detail === null
+      ? null
+      : outputSummary;
   const inlineOutput = kind === "fetch" ? false : outputSummary !== null;
   const duration = terminal
     ? toolDurationLabel(item.createdAt, item.terminalAt ?? null)
@@ -97,7 +102,7 @@ export function ToolItem({
         extractAdmittedBrowseUrl(inputSummary ?? "") ??
         extractAdmittedBrowseUrl(outputSummary ?? ""))
       : null;
-  if (compact && compactToolLabels[kind])
+  if (compact && compactToolLabels[kind] !== undefined)
     return <CompactToolItem item={item} onOpenResource={onOpenResource} />;
   return (
     <article

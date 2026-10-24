@@ -201,6 +201,7 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
                 offered_option_kinds: Some(
                     crate::acp::contract::BoundedVec::new("offered", offered).unwrap(),
                 ),
+                reason: None,
             })
             .unwrap();
         connection

@@ -179,6 +179,7 @@ impl OmpTranslator {
                     category,
                     summary,
                     offered_option_kinds: None,
+                    reason: None,
                 },
                 update_mode: ItemUpdateMode::Replace,
             },

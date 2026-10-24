@@ -11,12 +11,28 @@ pub(super) fn command_input_patch(
     category: ToolCategory,
     update: &Map<String, Value>,
 ) -> Option<Option<SafeText<65536>>> {
+    if category == ToolCategory::WebSearch {
+        return web_search_query(update).map(sanitized_command_input);
+    }
     if category != ToolCategory::Execute {
         return None;
     }
     let field = profile.command_input_field?;
     let command = update.get("rawInput")?.as_object()?.get(field)?;
     Some(command.as_str().and_then(sanitized_command_input))
+}
+
+/// A standard ACP `fetch` tool whose raw input carries a query and no URL is
+/// a web search. Only protocol fields decide this, never the harness name.
+pub(super) fn web_search_query(update: &Map<String, Value>) -> Option<&str> {
+    let input = update.get("rawInput")?.as_object()?;
+    if input.contains_key("url") {
+        return None;
+    }
+    input
+        .get("query")?
+        .as_str()
+        .filter(|query| !query.trim().is_empty())
 }
 
 impl StandardAcpTranslator {

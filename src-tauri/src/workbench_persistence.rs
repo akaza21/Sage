@@ -176,6 +176,7 @@ pub(crate) fn persist_layout_in(
     request: &ProjectLayoutRequest,
 ) -> AppResult<()> {
     validate_layout(transaction, request)?;
+    crate::side_chat_storage::validate_layout(transaction, request)?;
     let now = now_millis();
     for tab in &request.tabs {
         let title = if tab.kind == "chat" {
@@ -211,7 +212,7 @@ pub(crate) fn persist_layout_in(
                pinned = excluded.pinned,
                dirty = excluded.dirty,
                status = excluded.status,
-               metadata_json = excluded.metadata_json,
+               metadata_json = CASE WHEN workbench_tabs.id GLOB 'side-*' THEN workbench_tabs.metadata_json ELSE excluded.metadata_json END,
                updated_at = excluded.updated_at",
             params![
                 tab.id,

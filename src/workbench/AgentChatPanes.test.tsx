@@ -23,6 +23,8 @@ import type {
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
+import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import {
   applyBrowseIntent,
@@ -48,6 +50,10 @@ vi.mock("./AgentChatPane", () => ({
       {tab.title}
     </button>
   ),
+}));
+
+vi.mock("../features/chat/transcriptLazy", () => ({
+  TranscriptPart: () => null,
 }));
 
 vi.mock("../app/openAgentArtifact", () => ({
@@ -925,5 +931,68 @@ describe("AgentTaskHeader working status", () => {
 
     expect(status).toHaveTextContent("Idle");
     expect(status.querySelector(".agent-chat-chip__spinner")).toBeNull();
+  });
+});
+
+describe("AgentChatPanes temporary side chat routing", () => {
+  const sideTabs: WorkbenchTab[] = [
+    ...tabs,
+    {
+      id: "side-x",
+      kind: "chat",
+      title: "Chat: Side chat",
+      position: 2,
+      pinned: false,
+      dirty: false,
+    },
+  ];
+  beforeEach(() => {
+    useWorkbenchStore.setState({
+      tabs: sideTabs,
+      activeTabId: "side-x",
+      project: { id: "project-a", name: "A" } as never,
+    });
+    useSideChatState.setState({
+      sides: [{ id: "side-x", projectId: "project-a", parentChatId: "chat:a" }],
+      split: SIDE_CHAT_SPLIT,
+    });
+  });
+  afterEach(() =>
+    useSideChatState.setState({
+      sides: [],
+      pendingClose: null,
+      split: SIDE_CHAT_SPLIT,
+    }),
+  );
+
+  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", () => {
+    render(<AgentChatPanes />);
+    reportCenterWidth(1_000);
+    expect(
+      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+    ).toEqual(["chat-pane-chat:a", "chat-pane-side-x"]);
+    const splitter = screen.getByRole("separator", {
+      name: "Resize chat panes",
+    });
+    expect(splitter).toHaveAttribute("aria-valuenow", "43");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "48");
+    expect(
+      localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY) ?? "",
+    ).not.toContain("48");
+  });
+
+  it("falls back to the ordinary two-pane policy when another Chat takes focus", async () => {
+    render(<AgentChatPanes />);
+    reportCenterWidth(1_000);
+    await act(async () => {
+      await useWorkbenchStore.getState().activateTab("chat:b");
+    });
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+    expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
+    expect(screen.getByRole("separator")).toHaveAttribute(
+      "aria-valuenow",
+      "50",
+    );
   });
 });

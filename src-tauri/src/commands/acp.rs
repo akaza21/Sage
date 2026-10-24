@@ -348,6 +348,7 @@ fn validate_attached_context(
         return Ok(());
     }
     let connection = state.database.connection();
+    crate::acp::transcript_quote::validate_quote_sources(&connection, project_id, contexts)?;
     let mut statement = connection
         .prepare("SELECT id FROM project_roots WHERE project_id=?1 ORDER BY ordinal,id LIMIT 9")
         .map_err(|_| internal_error())?;

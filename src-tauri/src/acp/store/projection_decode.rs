@@ -258,9 +258,10 @@ fn content(
             return Err(StoreError::Corrupt("usage transcript item"));
         }
         NormalizedPayload::PermissionRequest {
+            category,
             summary,
             offered_option_kinds,
-            ..
+            reason,
         } => {
             let (request_id, state, source) =
                 permission.ok_or(StoreError::Corrupt("permission request projection"))?;
@@ -278,6 +279,8 @@ fn content(
                 summary,
                 source,
                 offered_option_kinds,
+                category,
+                reason,
             }
         }
         NormalizedPayload::Error {
@@ -333,7 +336,7 @@ mod tool_presentation;
 use file_pair::admitted_pair_view;
 use tool_presentation::presentation;
 
-fn parse_legacy_text(
+pub(crate) fn parse_legacy_text(
     value: &str,
 ) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
     #[derive(Debug, serde::Deserialize)]
@@ -341,6 +344,8 @@ fn parse_legacy_text(
     struct Wire {
         role: String,
         text: SafeText<262144>,
+        #[serde(default, rename = "attachedContext")]
+        _attached_context: crate::acp::attached_context::AttachedContexts,
     }
     #[derive(Debug, serde::Deserialize)]
     #[serde(deny_unknown_fields)]

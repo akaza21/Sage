@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { composerDisabledReason } from "./composerDisabledReason";
+import {
+  composerDisabledReason,
+  effectivePromptBytes,
+  sizeReason,
+} from "./composerDisabledReason";
 
 const healthy = {
   actionBusy: false,
@@ -64,4 +68,56 @@ describe("composerDisabledReason", () => {
       }),
     ).toBe("Wait for the active Turn to finish, or cancel it when available.");
   });
+});
+
+describe("effectivePromptBytes", () => {
+  const quote = {
+    kind: "transcriptQuote" as const,
+    ordinal: 1,
+    sourceTurnId: "t",
+    sourceItemId: "i",
+    text: 'a "quote"',
+    comment: "Why?",
+    startOffset: 0,
+    endOffset: 9,
+  };
+  it("is the prompt alone without context", () => {
+    expect(effectivePromptBytes("Explain", [])).toBe(7);
+  });
+  it("never undercounts the Rust rendering of escaped quotes and comments", () => {
+    const rendered =
+      'Explain\n\nAnnotations on earlier assistant output (quoted context; cite as "Annotation N"):' +
+      "\n- Annotation 1\n  Selected text (JSON-quoted): " +
+      JSON.stringify(quote.text) +
+      "\n  User comment (JSON-quoted): " +
+      JSON.stringify(quote.comment);
+    expect(effectivePromptBytes("Explain", [quote])).toBeGreaterThanOrEqual(
+      new TextEncoder().encode(rendered).length,
+    );
+    expect(
+      effectivePromptBytes("Explain", [{ ...quote, text: '"'.repeat(4000) }]),
+    ).toBeGreaterThan(8000);
+  });
+});
+
+it("measures a draft once until its text or context changes", () => {
+  const contexts = [
+    {
+      kind: "transcriptQuote" as const,
+      ordinal: 1,
+      sourceTurnId: "t",
+      sourceItemId: "i",
+      text: "x".repeat(4000),
+      startOffset: 0,
+      endOffset: 4000,
+    },
+  ];
+  const stringify = vi.spyOn(JSON, "stringify");
+  expect(sizeReason("short", contexts)).toBeNull();
+  const once = stringify.mock.calls.length;
+  expect(sizeReason("short", contexts)).toBeNull();
+  expect(stringify.mock.calls.length).toBe(once);
+  expect(sizeReason("x".repeat(100_000), contexts)).toMatch(/too large/);
+  expect(stringify.mock.calls.length).toBeGreaterThan(once);
+  stringify.mockRestore();
 });

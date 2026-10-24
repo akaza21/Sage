@@ -1,6 +1,10 @@
 import type { AgentDiffRef } from "./agentDiff";
 import { decimalU64Counter, isRecord } from "./guards";
 import { utf8ByteLength } from "./text";
+import {
+  parseTranscriptQuoteContext,
+  type TranscriptQuoteContext,
+} from "./transcriptQuote";
 
 /** One turn may carry only a small review set, not an unbounded file annotation log. */
 export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
@@ -55,7 +59,10 @@ export interface ImageAttachedContext {
 }
 
 export type AttachedContext =
-  DiffLineCommentContext | BrowserPageContext | ImageAttachedContext;
+  | DiffLineCommentContext
+  | BrowserPageContext
+  | ImageAttachedContext
+  | TranscriptQuoteContext;
 
 export function parseImageAttachedContext(
   value: unknown,
@@ -143,6 +150,7 @@ export function parseBrowserPageContext(
 
 export function parseAttachedContext(value: unknown): AttachedContext | null {
   return (
+    parseTranscriptQuoteContext(value) ??
     parseBrowserPageContext(value) ??
     parseDiffLineCommentContext(value) ??
     parseImageAttachedContext(value)
@@ -240,6 +248,8 @@ export function queuedAttachmentCue(context: AttachedContext): {
   kind: "file" | "page" | "image";
   label: string;
 } {
+  if (context.kind === "transcriptQuote")
+    return { kind: "file", label: "Annotation" };
   if (context.kind === "browserPage") {
     const parsed = parseBrowserPageContext(context);
     return {
@@ -294,6 +304,8 @@ export function diffLineCommentContext(
 }
 
 export function attachedContextKey(context: AttachedContext): string {
+  if (context.kind === "transcriptQuote")
+    return `quote:${context.sourceItemId}:${context.startOffset}-${context.endOffset}`;
   if (context.kind === "browserPage") {
     return JSON.stringify([
       context.kind,
@@ -337,4 +349,19 @@ export function attachedContextsEqual(
         attachedContextKey(context) === attachedContextKey(right[index]),
     )
   );
+}
+
+export function attachContextToDraft(
+  contexts: readonly AttachedContext[],
+  context: AttachedContext,
+): readonly AttachedContext[] {
+  const key = attachedContextKey(context);
+  const index = contexts.findIndex(
+    (candidate) => attachedContextKey(candidate) === key,
+  );
+  if (index >= 0 && context.kind !== "transcriptQuote") return contexts;
+  const next = [...contexts];
+  if (index < 0) next.push(context);
+  else next[index] = context;
+  return validateAttachedContexts(next);
 }

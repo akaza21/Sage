@@ -1,5 +1,5 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { terminalToolStates, toolStateLabels } from "./statusSemantics";
+import { terminalToolStates } from "./statusSemantics";
 import {
   collaborationRun,
   subagentToolSummary,
@@ -7,11 +7,15 @@ import {
 } from "./subagentActivity";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
+type ToolKind = ToolPresentation["kind"];
 
 const MAX_TOOL_ROLLUP_ITEMS = 64;
+const COMPACTED = "Context automatically compacted";
+/** Web search is presented as an integration, as the harness UI names it. */
+const WEB_SEARCH_INTEGRATION = "Search Service";
 
 export type ToolRollup = {
-  kind: ToolPresentation["kind"] | "mixed";
+  kind: ToolKind | "mixed";
   /** Commands only; non-command groups use ordinary. */
   commandActivity: "ordinary" | "declaredTest";
   items: readonly ToolProjectionItem[];
@@ -36,183 +40,115 @@ function commandActivity(
   return presentation.kind === "execute" ? presentation.activity : "ordinary";
 }
 
-function countLabel(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
+/** Live verb, finished verb, then the singular and plural clause. */
+const fileVerbs: Partial<Record<ToolKind, readonly string[]>> = {
+  read: ["Reading", "Read", "read a file", "read files"],
+  edit: ["Editing", "Edited", "edited a file", "edited files"],
+  delete: ["Deleting", "Deleted", "deleted a file", "deleted files"],
+  move: ["Moving", "Moved", "moved a file", "moved files"],
+};
+
+const clauses: Partial<Record<ToolKind, readonly string[]>> = {
+  execute: ["ran a command", "ran commands"],
+  imageView: ["viewed an image", "viewed images"],
+  search: ["explored files", "explored files"],
+  fetch: ["fetched a page", "fetched pages"],
+};
+
+function itemFile(presentation: ToolPresentation): string | null {
+  const location =
+    "resources" in presentation ? presentation.resources[0] : undefined;
+  return location?.kind === "resource"
+    ? (location.resource.relativePath.split(/[\\/]/).pop() ?? null)
+    : null;
 }
 
-function distinctResourceCount(
-  items: readonly ToolProjectionItem[],
-): number | null {
-  const pathsByRoot = new Map<string, Set<string>>();
-  for (const item of items) {
-    const presentation = item.payload.presentation;
-    if (
-      (presentation.kind !== "read" &&
-        presentation.kind !== "edit" &&
-        presentation.kind !== "delete" &&
-        presentation.kind !== "move") ||
-      presentation.resources.length === 0 ||
-      presentation.resources.some((location) => location.kind === "unavailable")
-    ) {
-      return null;
-    }
-    for (const location of presentation.resources) {
-      if (location.kind !== "resource") continue;
-      const paths =
-        pathsByRoot.get(location.resource.rootId) ?? new Set<string>();
-      paths.add(location.resource.relativePath);
-      pathsByRoot.set(location.resource.rootId, paths);
-    }
-  }
-  return [...pathsByRoot.values()].reduce(
-    (count, paths) => count + paths.size,
-    0,
-  );
-}
-
-function resourceRollupLabel(
-  activity: string,
-  items: readonly ToolProjectionItem[],
+/** One tool's own row label, in the live or finished form. */
+export function toolItemLabel(
+  item: ToolProjectionItem,
+  live = item.toolState === "inProgress",
+  tests = commandActivity(item) === "declaredTest",
 ): string {
-  const resourceCount = distinctResourceCount(items);
-  return `${activity} ${
-    resourceCount === null
-      ? countLabel(items.length, "item")
-      : countLabel(resourceCount, "file")
-  }`;
+  const presentation = item.payload.presentation;
+  const verbs = fileVerbs[presentation.kind];
+  if (verbs) {
+    const file = itemFile(presentation);
+    return file ? `${verbs[live ? 0 : 1]} ${file}` : presentation.label;
+  }
+  switch (presentation.kind) {
+    case "execute": {
+      const command = toolCommandLine(item);
+      const verb = live ? "Running" : "Ran";
+      return tests
+        ? `${verb} tests${command ? ` · ${command}` : ""}`
+        : `${verb} ${command ?? "a command"}`;
+    }
+    case "imageView":
+      return live ? "Viewing an image" : "Viewed an image";
+    case "webSearch":
+      return "Web run";
+    case "mcp":
+      return presentation.toolLabel;
+    case "think":
+      return live ? "Thinking" : "Thought";
+    default:
+      return presentation.label;
+  }
 }
 
-function mixedToolLabel(items: readonly ToolProjectionItem[]): string {
-  const kinds = [
-    ...new Set(items.map((item) => item.payload.presentation.kind)),
-  ];
-  return kinds
-    .map((kind, index) => {
-      const matching = items.filter(
-        (item) => item.payload.presentation.kind === kind,
-      );
-      const file = distinctResourceCount(matching) === 1 ? "a file" : "files";
-      const phrase =
-        kind === "edit"
-          ? `edited ${file}`
-          : kind === "read"
-            ? `read ${file}`
-            : `ran ${countLabel(matching.length, "command")}`;
-      return index === 0 ? phrase[0].toUpperCase() + phrase.slice(1) : phrase;
+/** Clauses in first-occurrence order, joined with ", ". */
+function mixedClauses(items: readonly ToolProjectionItem[]): string {
+  const counts = new Map<string, number>();
+  const integrations = new Set<string>();
+  for (const { payload } of items) {
+    const presentation = payload.presentation;
+    const integration =
+      presentation.kind === "mcp"
+        ? presentation.serverLabel
+        : presentation.kind === "webSearch"
+          ? WEB_SEARCH_INTEGRATION
+          : null;
+    if (integration) integrations.add(integration);
+    const key = integration ? "" : presentation.kind;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const names = [...integrations];
+  const text = [...counts]
+    .map(([kind, count]) => {
+      if (!kind)
+        return names.length === 1
+          ? `used ${names[0]} integration`
+          : `used ${names.slice(0, -1).join(", ")} and ${names.at(-1)} integrations`;
+      const forms = clauses[kind as ToolKind] ??
+        fileVerbs[kind as ToolKind]?.slice(2) ?? ["used a tool", "used tools"];
+      return forms[count === 1 ? 0 : 1];
     })
     .join(", ");
+  return text[0].toUpperCase() + text.slice(1);
 }
 
 export function toolRollupLabel(
   kind: ToolRollup["kind"],
   items: readonly ToolProjectionItem[],
-  commandActivity: ToolRollup["commandActivity"] = "ordinary",
+  activity: ToolRollup["commandActivity"] = "ordinary",
 ): string {
-  if (kind === "execute") return commandRollupLabel(items, commandActivity);
-  const live = items.some((item) => item.toolState === "inProgress");
-  if (live && kind === "think") return "Thinking";
-  switch (kind) {
-    case "mixed":
-      return mixedToolLabel(items);
-    case "read":
-      return resourceRollupLabel(live ? "Reading" : "Read", items);
-    case "edit":
-      return resourceRollupLabel(live ? "Editing" : "Edited", items);
-    case "delete":
-      return resourceRollupLabel(live ? "Deleting" : "Deleted", items);
-    case "move":
-      return resourceRollupLabel(live ? "Moving" : "Moved", items);
-    case "search":
-      return `Search activity · ${countLabel(items.length, "item")}`;
-    case "fetch":
-      return `Fetch activity · ${countLabel(items.length, "item")}`;
-    case "think":
-      return `Thinking · ${countLabel(items.length, "item")}`;
-    case "switchMode":
-      return `Mode activity · ${countLabel(items.length, "item")}`;
-    case "mcp":
-      if (items.length === 1) {
-        const presentation = items[0]?.payload.presentation;
-        if (presentation?.kind === "mcp") {
-          return presentation.serverLabel === "MCP"
-            ? presentation.toolLabel
-            : `${presentation.serverLabel} · ${presentation.toolLabel}`;
-        }
-      }
-      return `MCP activity · ${countLabel(items.length, "tool")}`;
-    case "subagent":
-      return items.every(
-        (item) =>
-          item.payload.presentation.kind === "subagent" &&
-          item.payload.presentation.taskLifecycle === true,
-      )
-        ? subagentToolSummary(items)
-        : `Subagent activity · ${countLabel(items.length, "item")}`;
-    case "other":
-      if (
-        items.length === 1 &&
-        items[0]?.payload.presentation.label ===
-          "Context automatically compacted"
-      ) {
-        return "Context automatically compacted";
-      }
-      return `Tool activity · ${countLabel(items.length, "item")}`;
-  }
-}
-
-function commandRollupLabel(
-  items: readonly ToolProjectionItem[],
-  activity: ToolRollup["commandActivity"],
-): string {
-  const state = toolRollupState(items);
-  const stateCount = items.filter((item) => item.toolState === state).length;
-  if (stateCount < items.length) {
-    const stateCounts = (
-      [
-        "inProgress",
-        "failed",
-        "declined",
-        "cancelled",
-        "waitingForApproval",
-        "pending",
-      ] as const
-    ).flatMap((toolState) => {
-      const count = items.filter((item) => item.toolState === toolState).length;
-      if (count === 0) return [];
-      const label =
-        toolState === "inProgress"
-          ? "running"
-          : toolState === "waitingForApproval"
-            ? "awaiting approval"
-            : toolStateLabels[toolState].toLowerCase();
-      return [`${count} ${label}`];
-    });
-    const noun = activity === "declaredTest" ? "test command" : "command";
-    return `${countLabel(items.length, noun)} \u00b7 ${stateCounts.join(", ")}`;
-  }
-  const action =
-    state === "completed"
-      ? "Ran"
-      : state === "inProgress"
-        ? "Running"
-        : toolStateLabels[state];
-  const command = items.length === 1 ? toolCommandLine(items[0]) : null;
-  const count = countLabel(items.length, "command");
-  if (activity === "declaredTest") {
-    const testCommand = items.length === 1 ? "Test command" : "Test commands";
-    const label =
-      state === "completed" || state === "inProgress"
-        ? state === "inProgress" && items.length === 1
-          ? "Running test command"
-          : `${action} tests`
-        : state === "waitingForApproval"
-          ? `${testCommand} awaiting approval`
-          : `${testCommand} ${action.toLowerCase()}`;
-    return `${label} \u00b7 ${command || count}`;
-  }
-  const label =
-    state === "waitingForApproval" ? "Awaiting approval \u00b7" : action;
-  return `${label} ${command || (state === "inProgress" && items.length === 1 ? "command" : count)}`;
+  if (kind === "subagent")
+    return items.every(
+      (item) =>
+        item.payload.presentation.kind === "subagent" &&
+        item.payload.presentation.taskLifecycle === true,
+    )
+      ? subagentToolSummary(items)
+      : items.length === 1
+        ? items[0].payload.presentation.label
+        : `Ran ${items.length} subagents`;
+  const tests = activity === "declaredTest";
+  if (items.length === 1) return toolItemLabel(items[0], undefined, tests);
+  const current = [...items]
+    .reverse()
+    .find((item) => item.toolState === "inProgress");
+  if (current) return toolItemLabel(current, true, tests);
+  return tests ? `Ran tests · ${items.length} commands` : mixedClauses(items);
 }
 
 export function toolCommandLine(item: ToolProjectionItem): string | null {
@@ -229,46 +165,12 @@ export function toolCommandLine(item: ToolProjectionItem): string | null {
     : `${command
         .slice(0, 511)
         .replace(/[\uD800-\uDBFF]$/, "")
-        .trimEnd()}\u2026`;
+        .trimEnd()}…`;
 }
 
-function canJoinMixed(item: ToolProjectionItem): boolean {
-  return (
-    item.toolState === "completed" &&
-    commandActivity(item) === "ordinary" &&
-    (item.payload.presentation.kind === "edit" ||
-      item.payload.presentation.kind === "read" ||
-      item.payload.presentation.kind === "execute")
-  );
-}
-
-function presentationDetail(presentation: ToolPresentation): string {
-  switch (presentation.kind) {
-    case "execute":
-    case "other":
-    case "fetch":
-    case "think":
-      return presentation.summary ?? presentation.label;
-    case "search":
-      return presentation.querySummary || presentation.label;
-    case "mcp":
-      return presentation.serverLabel === "MCP"
-        ? presentation.toolLabel
-        : `${presentation.serverLabel} · ${presentation.toolLabel}`;
-    default:
-      return presentation.label;
-  }
-}
-
-export function toolRollupLeadDetail(
-  rollupLabel: string,
-  items: readonly ToolProjectionItem[],
-): string | null {
-  const first = items[0];
-  if (!first) return null;
-  const detail = presentationDetail(first.payload.presentation).trim();
-  if (detail.length === 0 || detail === rollupLabel.trim()) return null;
-  return detail;
+function joinable(item: ToolProjectionItem): boolean {
+  const presentation = item.payload.presentation;
+  return presentation.kind !== "subagent" && presentation.label !== COMPACTED;
 }
 
 export function toolRollupState(
@@ -342,6 +244,8 @@ export function groupPrimaryActivities(
 
     // Result linking can later alter a call's effective state; until bindings
     // admit callItemId, the projection's own toolState is the only authority.
+    // Consecutive tools share one row; subagent tasks group only with their
+    // own lifecycle kind.
     const toolKind = item.payload.presentation.kind;
     const activity = commandActivity(item);
     const tools = [item];
@@ -351,15 +255,13 @@ export function groupPrimaryActivities(
       if (
         !candidate ||
         !isToolItem(candidate) ||
-        !(
-          (canJoinMixed(item) && canJoinMixed(candidate)) ||
-          (candidate.payload.presentation.kind === toolKind &&
-            commandActivity(candidate) === activity &&
-            (item.payload.presentation.kind !== "subagent" ||
-              (candidate.payload.presentation.kind === "subagent" &&
-                candidate.payload.presentation.taskLifecycle ===
-                  item.payload.presentation.taskLifecycle)))
-        )
+        commandActivity(candidate) !== activity ||
+        !(joinable(item) && joinable(candidate)
+          ? true
+          : toolKind === "subagent" &&
+            candidate.payload.presentation.kind === "subagent" &&
+            candidate.payload.presentation.taskLifecycle ===
+              item.payload.presentation.taskLifecycle)
       )
         break;
       tools.push(candidate);

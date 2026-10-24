@@ -37,6 +37,7 @@ export const ItemView = memo(
     turnState,
     fileReferenceOwner,
     onOpenResource,
+    selectableTurnId,
   }: {
     item: AcpItem;
     workingItems?: readonly AcpItem[];
@@ -45,10 +46,14 @@ export const ItemView = memo(
     turnState?: TurnState;
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
+    selectableTurnId?: string;
   }) {
     switch (item.kind) {
       case "text": {
         const timestamp = chatTimestamp(item.createdAt);
+        // Final assistant prose is quotable (and focusable for the menu key).
+        const answerTurn =
+          item.payload.role === "assistant" && selectableTurnId;
         const partial =
           item.payload.role === "assistant" &&
           (turnState === "interrupted" || turnState === "cancelled") &&
@@ -58,6 +63,8 @@ export const ItemView = memo(
           <article
             className={`acp-message acp-message--${item.payload.role}`}
             data-item-id={item.id}
+            data-selectable-answer={answerTurn || undefined}
+            tabIndex={answerTurn ? 0 : undefined}
             data-message-role={item.payload.role}
             data-answer-state={partial ? "partial" : undefined}
           >

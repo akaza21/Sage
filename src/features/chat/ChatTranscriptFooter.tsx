@@ -36,11 +36,14 @@ export function ChatTranscriptTurnSummary({
   hasActivities,
   children,
   hasCollapsedActivities = false,
+  thinkingPlaceholder = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
   hasCollapsedActivities?: boolean;
+  /** Side chats show Codex's shimmering Thinking, not a header, before any work. */
+  thinkingPlaceholder?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
   const [expanded, setExpanded] = useState(false);
@@ -81,6 +84,12 @@ export function ChatTranscriptTurnSummary({
       </WorkedTurnTerminal>
     ) : null;
 
+  if (!terminal && !hasActivities && thinkingPlaceholder)
+    return (
+      <p className="acp-thought acp-live-shimmer" data-activity-kind="thought">
+        Thinking
+      </p>
+    );
   if (!terminal) {
     return (
       <div className="chat-transcript-work chat-transcript-work--running">

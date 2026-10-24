@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { PermissionItem } from "./PermissionItem";
+import { PermissionPrompt } from "./PermissionPrompt";
 
 const acpDirectory = path.resolve(import.meta.dirname);
 
@@ -59,10 +59,10 @@ describe("permission decision seam", () => {
         state: "declinePending",
       });
 
-    render(createElement(PermissionItem, { item: waitingPermission() }));
+    render(createElement(PermissionPrompt, { items: [waitingPermission()] }));
 
     expect(screen.queryByRole("note")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith({
       projectId: "project-1",
@@ -79,6 +79,7 @@ describe("permission decision seam", () => {
     const sources = await Promise.all(
       [
         "PermissionItem.tsx",
+        "PermissionPrompt.tsx",
         path.join(
           "..",
           "..",

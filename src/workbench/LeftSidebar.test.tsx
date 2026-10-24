@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,7 +9,11 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
+import {
+  clearChatSearchFolderRequest,
+  hasChatSearchFolderRequest,
+  requestChatSearchInFolder,
+} from "../features/chatSearch/chatSearchScope";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import {
@@ -402,7 +407,7 @@ it("creates a chat on a foreign folder without switching first", () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("opens Chat search on a truncated foreign folder without switching", () => {
+it("opens Chat search on a truncated foreign folder without switching", async () => {
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -442,10 +447,32 @@ it("opens Chat search on a truncated foreign folder without switching", () => {
   render(<LeftSidebar />);
   fireEvent.click(screen.getByRole("button", { name: "Show more" }));
   expect(switchProject).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", { name: "Search in" })).toHaveTextContent(
-    "Cross",
-  );
+  expect(
+    await screen.findByRole("button", { name: "Search in" }),
+  ).toHaveTextContent("Cross");
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
+});
+
+it("mounts the lazy Chat search dialog only for a folder request, including one made before the rail", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "sage", name: "Sage", roots: [] },
+    projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  const { unmount } = render(<LeftSidebar />);
+  await Promise.resolve();
+  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  unmount();
+
+  requestChatSearchInFolder("sage");
+  render(<LeftSidebar />);
+  const dialog = await screen.findByRole("dialog", { name: "Search Chats" });
+  expect(within(dialog).getByRole("searchbox")).toHaveFocus();
+  expect(hasChatSearchFolderRequest()).toBe(false);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  act(() => requestChatSearchInFolder("sage"));
+  expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
 });
 
 it("keeps folder grouping by default and omits Cursor-only rail fields", () => {

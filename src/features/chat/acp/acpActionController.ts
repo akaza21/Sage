@@ -251,7 +251,10 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       );
       return Promise.resolve("rejected");
     }
-    if (!normalizedPrompt) {
+    if (
+      !normalizedPrompt &&
+      !boundedContext.some((context) => context.kind === "transcriptQuote")
+    ) {
       emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
@@ -347,7 +350,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           clientIntentId: nextIntentId(),
           sessionId: session.id,
           runtimeEpoch: session.runtimeEpoch,
-          prompt: normalizedPrompt,
+          prompt:
+            normalizedPrompt || "Please respond to the attached annotations.",
           ...(boundedContext.length > 0
             ? { attachedContext: boundedContext }
             : {}),

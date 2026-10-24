@@ -152,7 +152,7 @@ describe("empty turn activity", () => {
   });
 
   it.each(["waitingApproval", "completed"] as const)(
-    "offers a pending approval only while a %s turn can still take it",
+    "keeps a pending approval out of a %s turn's transcript actions",
     (state) => {
       const permission = {
         ...textItem(),
@@ -175,21 +175,25 @@ describe("empty turn activity", () => {
         work.open = true;
         fireEvent(work, new Event("toggle"));
       }
-      const row = screen.getByRole("group", { name: "Permission request" });
-      expect(row).toBeVisible();
       if (state === "completed") {
         // The runtime never commits a terminal Turn with a pending request,
         // so a terminal Turn shows the request as unanswered, not actionable.
+        const row = screen.getByRole("group", { name: "Permission request" });
+        expect(row).toBeVisible();
         expect(within(row).queryByRole("button")).toBeNull();
         expect(within(row).getByRole("status")).toHaveAccessibleName(
           "Permission not answered",
         );
       } else {
+        // A live Turn answers the request in the composer slot, so the
+        // transcript keeps no card.
         expect(
-          within(row).getByRole("button", { name: "Approve" }),
-        ).toBeVisible();
-        expect(within(row).getByRole("button", { name: "Deny" })).toBeVisible();
+          screen.queryByRole("group", { name: "Permission request" }),
+        ).toBeNull();
       }
+      expect(
+        screen.queryByRole("button", { name: /Approve|Allow/ }),
+      ).toBeNull();
     },
   );
 });

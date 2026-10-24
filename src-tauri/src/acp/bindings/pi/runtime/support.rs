@@ -355,6 +355,7 @@ impl PiRuntime {
                             )
                             .map_err(|_| AdapterRuntimeError::Frame)?,
                             offered_option_kinds: None,
+                            reason: None,
                         },
                         request_payload_digest: request_digest,
                     }),

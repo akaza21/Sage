@@ -23,19 +23,26 @@ use super::{
 type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifecycle>);
 
 mod presentation;
+mod tool_kinds;
+
+use tool_kinds::{explore_presentation, mcp_tool, web_search};
 
 use presentation::{
     ToolPresentationInput, bounded_label, bounded_summary, context_compaction, declared_tool_state,
-    lenient_tool_state, mcp_tool_label, parse_tool_state, tool, tool_with_summary,
-    tool_with_summary_status,
+    lenient_tool_state, parse_tool_state, tool, tool_with_summary, tool_with_summary_status,
 };
 
 pub(super) fn normalize_materialized_command(
     command: &MaterializedCommandItem,
 ) -> Result<ItemNormalization, IngressError> {
+    let (category, label) = explore_presentation(
+        command.explore.as_ref(),
+        command.activity,
+        command.command.as_deref(),
+    );
     let (payload, tool_state, terminal) = tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::Execute,
-        label: &bounded_label(command.command.as_deref(), "Command"),
+        category,
+        label: &label,
         tool_state: parse_tool_state(command.status.as_str()).ok_or(IngressError::Malformed)?,
         input_summary: command.command.clone(),
         output_summary: command.output.clone(),
@@ -79,10 +86,10 @@ pub(super) fn normalize_item<M: ResourceMapper>(
         ))),
         "reasoning" => reasoning(item),
         "commandExecution" => command_execution(item, mapper).map(Some),
-        "mcpToolCall" => tool(item, ToolCategory::Mcp, &mcp_tool_label(item)).map(Some),
+        "mcpToolCall" => mcp_tool(item).map(Some),
         "contextCompaction" => context_compaction(item, lifecycle).map(Some),
         "dynamicToolCall" => dynamic_tool(item).map(Some),
-        "webSearch" => tool(item, ToolCategory::Fetch, "Web search").map(Some),
+        "webSearch" => web_search(item, lifecycle).map(Some),
         "collabAgentToolCall" | "subAgentActivity" => presentation::collaboration(item).map(Some),
         "fileChange" if !lifecycle.is_terminal() => Ok(None),
         "fileChange" => file_change(item, mapper).map(Some),
@@ -109,8 +116,8 @@ fn image_view<M: ResourceMapper>(
         .map_err(content)?
         .unwrap_or_default();
     tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::Read,
-        label: "Image view",
+        category: ToolCategory::ImageView,
+        label: "Viewed an image",
         tool_state: lenient_tool_state(item, lifecycle),
         input_summary: None,
         output_summary: None,
@@ -164,10 +171,13 @@ fn other_item(
     })
 }
 
+/// Codex shows the reasoning summary only; raw reasoning `content` is never
+/// projected into the transcript.
 fn reasoning(item: &Map<String, Value>) -> Result<Option<ItemNormalization>, IngressError> {
-    let parts = ["summary", "content"]
+    let parts = item
+        .get("summary")
+        .and_then(Value::as_array)
         .into_iter()
-        .filter_map(|field| item.get(field).and_then(Value::as_array))
         .flatten()
         .map(|entry| entry.as_str().ok_or(IngressError::Malformed))
         .collect::<Result<Vec<_>, IngressError>>()?;
@@ -234,6 +244,14 @@ fn command_execution<M: ResourceMapper>(
             })
         })
         .transpose()?;
+    let explore = item
+        .get("commandActions")
+        .and_then(crate::acp::bindings::codex::state::command_explore::classify);
+    let (category, label) = explore_presentation(
+        explore.as_ref(),
+        CommandActivity::Ordinary,
+        command.as_deref(),
+    );
     let locations = item
         .get("commandActions")
         .and_then(Value::as_array)
@@ -248,8 +266,8 @@ fn command_execution<M: ResourceMapper>(
         .map_err(content)?
         .unwrap_or_default();
     tool_with_summary_status(ToolPresentationInput {
-        category: ToolCategory::Execute,
-        label: &bounded_label(command.as_deref(), "Command"),
+        category,
+        label: &label,
         tool_state: declared_tool_state(item)?,
         input_summary: command,
         output_summary: output,

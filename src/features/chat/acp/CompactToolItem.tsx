@@ -8,9 +8,14 @@ export function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
   const presentation = item.payload.presentation;
   const kind = presentation.kind;
   const label = compactToolLabels[kind];
-  if (!label) return null;
+  if (label === undefined) return null;
   const { commandLine, output } = toolCommandContent(item);
-  const outcome = toolStateLabels[item.toolState];
+  const exit = presentation.kind === "execute" ? presentation.exitCode : null;
+  const outcome = exit
+    ? `✕ Exit code ${exit}`
+    : item.toolState === "completed"
+      ? "✓ Success"
+      : toolStateLabels[item.toolState];
   return (
     <article
       className="acp-activity-card acp-tool-compact"
@@ -20,14 +25,17 @@ export function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
       role="group"
       aria-label={presentation.label}
     >
-      <ToolCommandFrame
-        label={label}
-        commandLine={
-          commandLine && kind === "execute" ? `$ ${commandLine}` : commandLine
-        }
-        output={output}
-        outcome={outcome}
-      />
+      {label ? (
+        <ToolCommandFrame
+          label={label}
+          commandLine={
+            commandLine && kind === "execute" ? `$ ${commandLine}` : commandLine
+          }
+          output={output}
+          outcome={outcome}
+          danger={Boolean(exit)}
+        />
+      ) : null}
       <ToolItemDetails
         item={item}
         browse={null}

@@ -27,6 +27,8 @@ This directory makes the C0-S proposal mechanically reviewable:
   binding.
 - `performance-budgets-v1.json` fixes proposed C0-S latency, resource,
   persistence, package-delta, and sampling ceilings before C1 measurement.
+- `transcript-side-chat-v1.json` records bounded transcript annotations, temporary
+  Chat ownership, supervisor teardown, preferences, and unexecuted checks.
 - `protocol-contract-v1.json` owns lifecycle transitions, digest version 1,
   revision-only notification, IPC intent, and dormant native-thread semantics.
 - `evidence-policy-v1.json` owns the ADE-wide Package/C0-B admission lock,

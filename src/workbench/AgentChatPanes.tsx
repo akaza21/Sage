@@ -30,6 +30,8 @@ import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnaps
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPane } from "./AgentChatPane";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { isSideChatId, useSideChatState } from "./sideChatState";
+import { TranscriptPart } from "../features/chat/transcriptLazy";
 import {
   AGENT_CHAT_SPLIT_MAX,
   AGENT_CHAT_SPLIT_MIN,
@@ -89,7 +91,7 @@ export function AgentChatPanes({
     },
     [],
   );
-  const [splitPercent, setSplitPercent] = useState(
+  const [storedPercent, setStoredPercent] = useState(
     () => readWorkbenchLayout().agentChatSplitPercent,
   );
   const [resizing, setResizing] = useState(false);
@@ -97,10 +99,34 @@ export function AgentChatPanes({
   const panesRef = useRef<HTMLDivElement>(null);
   const previousFocusedId = usePinnedAgentChatOwner();
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
+  // A side chat pairs with its parent (parent left) while either has focus;
+  // its 43 / 57 split lives in the side-chat store and is never persisted.
+  const side = useSideChatState((state) =>
+    state.sides.find(
+      (entry) =>
+        entry.projectId === project?.id &&
+        chatIds.includes(entry.id) &&
+        chatIds.includes(entry.parentChatId),
+    ),
+  );
+  const sideSplit = useSideChatState((state) => state.split);
+  const sidePanes =
+    side &&
+    (!activeTabId ||
+      activeTabId === side.id ||
+      activeTabId === side.parentChatId)
+      ? [side.parentChatId, side.id]
+      : null;
+  const splitPercent = sidePanes ? sideSplit : storedPercent;
+  const setSplitPercent = (percent: number) =>
+    sidePanes
+      ? useSideChatState.setState({ split: percent })
+      : setStoredPercent(percent);
   const nextVisibleIds =
-    activeTabId && chatIds.includes(activeTabId)
+    sidePanes ??
+    (activeTabId && chatIds.includes(activeTabId)
       ? selectVisibleChatIds(chatIds, visibleIds, activeTabId)
-      : reconcileVisibleChatIds(chatIds, visibleIds, null);
+      : reconcileVisibleChatIds(chatIds, visibleIds, null));
   if (!sameVisibleIds(nextVisibleIds, visibleIds)) {
     setVisibleIds(nextVisibleIds);
   }
@@ -205,8 +231,8 @@ export function AgentChatPanes({
   }, [hasVisibleChats]);
 
   useEffect(() => {
-    writeWorkbenchLayout({ agentChatSplitPercent: splitPercent });
-  }, [splitPercent]);
+    writeWorkbenchLayout({ agentChatSplitPercent: storedPercent });
+  }, [storedPercent]);
 
   if (nextVisibleIds.length === 0) {
     return (
@@ -332,6 +358,9 @@ export function AgentChatPanes({
           })}
         </div>
       </div>
+      {chatIds.some(isSideChatId) ? (
+        <TranscriptPart part="SideChatDialogs" />
+      ) : null}
     </AgentSessionChromeContext.Provider>
   );
 }

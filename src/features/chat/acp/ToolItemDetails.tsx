@@ -6,6 +6,33 @@ import { ChatFileChip } from "./FileChip";
 import { chatFileChipBasename } from "./chatFileChip";
 import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 import type { ToolItemProps, OpenResourceTarget } from "./ToolItem";
+import { ChatCodeBlock } from "./ChatCodeBlock";
+
+/**
+ * An integration result: a failure shows only the harness's message; a
+ * result shows as a bounded code block, `json` when it parses as JSON.
+ */
+function ToolResult({ item }: Pick<ToolItemProps, "item">) {
+  const output = item.payload.outputSummary;
+  if (!output) return null;
+  if (item.toolState === "failed")
+    return (
+      <div className="acp-tool-error" role="alert">
+        {output}
+      </div>
+    );
+  let language = "plaintext";
+  try {
+    if (/^[[{]/.test(output.trim()) && JSON.parse(output)) language = "json";
+  } catch {
+    // Not JSON (or clipped); shown as plain text.
+  }
+  return (
+    <div className="acp-tool-result">
+      <ChatCodeBlock language={language} source={output} />
+    </div>
+  );
+}
 function ResourceLocations({
   locations,
   target,
@@ -64,6 +91,7 @@ export function ToolItemDetails({
   switch (presentation.kind) {
     case "execute":
     case "read":
+    case "imageView":
     case "edit":
     case "delete":
     case "move":
@@ -85,8 +113,17 @@ export function ToolItemDetails({
           />
         </>
       );
+    case "webSearch":
+      return (
+        <>
+          {item.payload.inputSummary ? (
+            <p>{item.payload.inputSummary}</p>
+          ) : null}
+          <ToolResult item={item} />
+        </>
+      );
     case "mcp":
-      return null;
+      return <ToolResult item={item} />;
     case "subagent":
       return <p>Harness-owned activity</p>;
     case "fetch": {

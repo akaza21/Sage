@@ -30,11 +30,14 @@ it("keeps execute members of mixed Worked activity behind individual Ran rows", 
   );
   const rollup = container.querySelector("details")!;
   expect(rollup).toHaveAttribute("open");
-  expect(screen.getByText("Read")).toBeVisible();
+  expect(rollup.querySelector("summary")).toHaveTextContent(
+    "Read a file, ran commands",
+  );
   expect(screen.queryByText("Shell")).toBeNull();
-  const commands = rollup.querySelectorAll<HTMLDetailsElement>(
+  const [read, ...commands] = rollup.querySelectorAll<HTMLDetailsElement>(
     ".acp-tool-rollup__items > details",
   );
+  expect(read).toHaveTextContent("Read example-1.ts");
   expect(commands).toHaveLength(2);
   for (const command of commands) {
     expect(command).toHaveTextContent("Ran git status --short");
@@ -100,7 +103,7 @@ it.each(["failed", "cancelled", "declined"] as const)(
       fireEvent(command, new Event("toggle"));
     }
     const cards = screen.getAllByRole("group", { name: "git status --short" });
-    expect(within(cards[0]).getByRole("status")).toHaveTextContent("Completed");
+    expect(within(cards[0]).getByRole("status")).toHaveTextContent("✓ Success");
     expect(within(cards[1]).getByRole("status")).toHaveTextContent(
       state === "failed"
         ? "Failed"
@@ -132,10 +135,10 @@ it("preserves the same emitted command and output fallback inside and outside ro
 
 it.each([
   ["execute", "Running git status --short"],
-  ["read", "Reading 1 file"],
-  ["edit", "Editing 1 file"],
+  ["read", "Reading example-1.ts"],
+  ["edit", "Editing example-1.ts"],
 ] as const)(
-  "renders one present-tense %s label with an inline spinner",
+  "renders one present-tense %s label as a shimmer without a spinner",
   (kind, label) => {
     const { container } = render(
       <PrimaryActivities
@@ -147,14 +150,13 @@ it.each([
     const summary = container.querySelector("summary")!;
     expect(within(summary).getByText(label)).toBeVisible();
     expect(within(summary).queryByText("Running", { exact: true })).toBeNull();
-    expect(
-      summary.querySelector(".acp-tool-rollup__summary-copy .acp-tool-running"),
-    ).not.toBeNull();
-    expect(screen.getByRole("status", { name: "Running" })).toBeInTheDocument();
+    expect(summary.querySelector(".acp-tool-running")).toBeNull();
+    expect(summary.querySelector(".acp-live-shimmer")).toHaveTextContent(label);
+    expect(summary).toHaveAttribute("aria-label", `${label}, In progress`);
   },
 );
 
-it("counts three distinct read members instead of repeating singleton labels", () => {
+it("names a group of reads without counting its members", () => {
   render(
     <PrimaryActivities
       items={[parityTool("read"), parityTool("read", 2), parityTool("read", 3)]}
@@ -162,8 +164,8 @@ it("counts three distinct read members instead of repeating singleton labels", (
       renderItem={() => null}
     />,
   );
-  expect(screen.getByText("Read 3 files")).toBeVisible();
-  expect(screen.queryByText("Read 1 file")).toBeNull();
+  expect(screen.getByText("Read files")).toBeVisible();
+  expect(screen.queryByText(/Read \d/)).toBeNull();
 });
 
 it("names pending task observations as started working and keeps grouped/header counts consistent", () => {
@@ -226,14 +228,14 @@ it.each(["execute", "read"] as const)(
       within(container.querySelector(".acp-tool-rollup__items")!).getByRole(
         "status",
       ),
-    ).toHaveTextContent("Completed");
+    ).toHaveTextContent("✓ Success");
     expect(screen.getByLabelText("Command line")).toHaveTextContent(
       kind === "execute" ? "$ git status --short" : "src/example-1.ts",
     );
   },
 );
 
-it("expanding Worked shows every read detail without another disclosure click", () => {
+it("expanding Worked opens the read group as one collapsed row per file", () => {
   const kind = "read";
   const projection = page("completed");
   projection.turns[0].items = [
@@ -252,23 +254,31 @@ it("expanding Worked shows every read detail without another disclosure click", 
       retentionIncomplete={false}
     />,
   );
-  const title = "Read";
-  expect(screen.queryByText(title, { exact: true })).toBeNull();
+  const rowLabels = () =>
+    [
+      ...document.querySelectorAll(
+        ".acp-tool-rollup__items > details .acp-tool-rollup__label",
+      ),
+    ].map((label) => label.textContent);
+  expect(rowLabels()).toEqual([]);
   const work = screen.getByText(/^Worked for /).closest("details")!;
   work.open = true;
   fireEvent(work, new Event("toggle"));
-  expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
-  expect(screen.getAllByLabelText("Command line")).toHaveLength(3);
-  expect(screen.getAllByText("fixture output")).toHaveLength(3);
   expect(work.nextElementSibling!.querySelector("details")).toHaveAttribute(
     "open",
   );
+  expect(rowLabels()).toEqual([
+    "Read example-1.ts",
+    "Read example-2.ts",
+    "Read example-3.ts",
+  ]);
+  expect(screen.queryByLabelText("Command line")).toBeNull();
   work.open = false;
   fireEvent(work, new Event("toggle"));
-  expect(screen.queryByText(title, { exact: true })).toBeNull();
+  expect(rowLabels()).toEqual([]);
   work.open = true;
   fireEvent(work, new Event("toggle"));
-  expect(screen.getAllByText(title, { exact: true })).toHaveLength(3);
+  expect(rowLabels()).toHaveLength(3);
 });
 
 it("expanding Worked lists three collapsed per-command Ran rows", () => {

@@ -27,8 +27,11 @@ import {
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { isSideChatId } from "../../workbench/sideChatState";
 import { bindingNoticeAllowed } from "./composerBindingNotice";
 import { isNewProjectChat } from "./newProjectChat";
+import { useApprovalSlot } from "./useApprovalSlot";
+import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 export function ChatSurface({
   chatId,
   paneHeader,
@@ -150,41 +153,27 @@ export function ChatSurface({
     setQueuedTurnBarrier,
     rememberTurnOrder,
   });
-  const sessionActions = useRef({
-    closeSession,
-    endSession,
-    focusComposer: () => composerRef.current?.focus(),
-  });
-  useEffect(() => {
-    Object.assign(sessionActions.current, { closeSession, endSession });
-  }, [closeSession, endSession]);
-  useEffect(() => {
-    if (!setAgentSessionChrome || !chatId || !focused) return;
-    setAgentSessionChrome({
-      chatId,
+  useAgentSessionChromePublisher(
+    setAgentSessionChrome,
+    chatId,
+    focused,
+    {
       harnessStatus,
       canCloseSession,
       canEndSession,
       busy: actionBusy || Boolean(activeAcpTurn) || projectTransitioning,
-      acpPage: useNativeAcp ? acpPage : null,
+      acpPage: useNativeAcp ? (acpPage ?? null) : null,
       messages,
-      actions: sessionActions,
-    });
-    return () => setAgentSessionChrome(null);
-  }, [
-    setAgentSessionChrome,
-    chatId,
-    focused,
-    harnessStatus,
-    canCloseSession,
-    canEndSession,
-    actionBusy,
+    },
+    { closeSession, endSession },
+    composerRef,
+  );
+  const approval = useApprovalSlot(
     activeAcpTurn,
-    projectTransitioning,
-    useNativeAcp,
-    acpPage,
-    messages,
-  ]);
+    chatId ?? activeTabId,
+    composerRef,
+    { focused, onCancelTurn: cancelTurn ?? undefined },
+  );
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
   const { showJumpToLatest, updateFollowEnd, jumpToLatest } = useFollowEnd({
@@ -243,10 +232,13 @@ export function ChatSurface({
     projectTransitioning,
   ]);
 
+  const sideChatHeader = Boolean(
+    setAgentSessionChrome && paneHeader && isSideChatId(chatId),
+  );
   return (
     <section
       ref={surfaceRef}
-      className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
+      className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}${sideChatHeader ? " chat-surface--side-chat" : ""}`}
       aria-label="Agent chat"
     >
       {!setAgentSessionChrome ? (
@@ -257,14 +249,16 @@ export function ChatSurface({
             hidden={projectTransitioning}
           />
           <div className="session-controls">
-            <ChatHandoffControl
-              acpPage={useNativeAcp ? acpPage : null}
-              messages={messages}
-              busy={actionBusy || Boolean(activeAcpTurn)}
-              onCommitted={() =>
-                queueMicrotask(() => composerRef.current?.focus())
-              }
-            />
+            {isSideChatId(chatId) ? null : (
+              <ChatHandoffControl
+                acpPage={useNativeAcp ? acpPage : null}
+                messages={messages}
+                busy={actionBusy || Boolean(activeAcpTurn)}
+                onCommitted={() =>
+                  queueMicrotask(() => composerRef.current?.focus())
+                }
+              />
+            )}
             {canCloseSession ? (
               <button
                 className="button button--compact"
@@ -296,6 +290,10 @@ export function ChatSurface({
             </div>
           </div>
         </header>
+      ) : sideChatHeader ? (
+        // Agent chrome moved chat headers to the task bar; a side chat keeps
+        // its own tab (title, spinner, close) as Codex's split does.
+        <header className="chat-surface__side-header">{paneHeader}</header>
       ) : null}
       <HarnessDiscoveryNotice
         harness={selectedHarnessDefinition}
@@ -327,7 +325,9 @@ export function ChatSurface({
         onJumpToLatest={jumpToLatest}
       />
 
+      {approval.slot}
       <ChatComposerRegion
+        hidden={approval.awaiting}
         composerRef={composerRef}
         fieldId={composerFieldId}
         dictationScope={chatId ?? activeTabId ?? ""}

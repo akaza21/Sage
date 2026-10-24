@@ -1,21 +1,18 @@
 import { useContext, useState } from "react";
 import {
   BrainCircuit,
-  Circle,
-  Clock3,
   FilePenLine,
-  FolderOpen,
-  Globe2,
+  FileText,
+  Image,
+  Plug,
   Search,
   Terminal,
   Workflow,
   ChevronDown,
-  X,
 } from "../../../ui/leanIcons";
 
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 import { toolStateLabels } from "./statusSemantics";
 import {
@@ -30,12 +27,19 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
   delete: FilePenLine,
   move: FilePenLine,
   execute: Terminal,
-  read: FolderOpen,
+  read: FileText,
+  imageView: Image,
   search: Search,
-  fetch: Globe2,
+  fetch: Plug,
+  webSearch: Plug,
+  mcp: Plug,
   think: BrainCircuit,
 };
 
+/**
+ * One activity row: a muted kind icon and label. A live row shows only the
+ * shimmer; state and duration stay in the accessible name and the detail.
+ */
 export function ToolActivityRollup({
   rollup,
   interactive,
@@ -56,11 +60,15 @@ export function ToolActivityRollup({
     rollup.commandActivity,
   );
   const state = toolRollupState(rollup.items);
-  const StateIcon = state === "failed" ? X : Circle;
-  const ActivityIcon = activityIcons[rollup.kind] ?? Workflow;
+  // The latest live child names the row (toolRollupLabel); its icon must
+  // describe that same child.
+  const current = [...rollup.items]
+    .reverse()
+    .find((item) => item.toolState === "inProgress");
+  const live = Boolean(current) || state === "inProgress";
+  const iconKind = (current ?? rollup.items[0])?.payload.presentation.kind;
+  const ActivityIcon = (iconKind && activityIcons[iconKind]) || Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
-  const live = state === "inProgress";
-  const running = rollup.items.some((item) => item.toolState === "inProgress");
   return (
     <details
       className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
@@ -72,19 +80,17 @@ export function ToolActivityRollup({
           setOpenOverride(event.currentTarget.open);
       }}
     >
-      <summary>
+      <summary
+        aria-label={[label, toolStateLabels[state], duration]
+          .filter(Boolean)
+          .join(", ")}
+      >
         <span className="acp-tool-rollup__summary-copy">
-          {running ? (
-            <ToolRunningIndicator />
-          ) : live || state === "completed" ? (
-            <ActivityIcon
-              aria-hidden="true"
-              size={14}
-              data-activity-icon={rollup.kind}
-            />
-          ) : (
-            <StateIcon aria-hidden="true" size={14} />
-          )}
+          <ActivityIcon
+            aria-hidden="true"
+            size={14}
+            data-activity-icon={iconKind}
+          />
           <span
             className={`acp-tool-rollup__label${live ? " acp-live-shimmer" : ""}`}
           >
@@ -92,16 +98,6 @@ export function ToolActivityRollup({
           </span>
         </span>
         <span className="acp-tool-rollup__meta">
-          {duration ? (
-            <span className="acp-tool-rollup__duration">
-              <Clock3 aria-hidden="true" size={12} />
-              {duration}
-            </span>
-          ) : null}
-          {live ||
-          (rollup.kind === "execute" && state !== "completed") ? null : (
-            <span className="acp-state">{toolStateLabels[state]}</span>
-          )}
           <ChevronDown
             className="acp-tool-rollup__chevron"
             aria-hidden="true"
@@ -112,13 +108,15 @@ export function ToolActivityRollup({
       {expanded ? (
         <div className="acp-tool-rollup__items">
           {rollup.items.map((item) =>
-            item.payload.presentation.kind === "execute" &&
-            rollup.items.length > 1 ? (
+            rollup.items.length > 1 && rollup.kind !== "subagent" ? (
               <ToolActivityRollup
                 key={item.id}
                 rollup={{
-                  kind: "execute",
-                  commandActivity: item.payload.presentation.activity,
+                  kind: item.payload.presentation.kind,
+                  commandActivity:
+                    item.payload.presentation.kind === "execute"
+                      ? item.payload.presentation.activity
+                      : "ordinary",
                   items: [item],
                 }}
                 interactive={interactive}

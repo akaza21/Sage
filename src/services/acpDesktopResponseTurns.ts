@@ -16,6 +16,7 @@ import {
   safeTimestamp,
 } from "./acpDesktopResponses";
 import { safeItem } from "./acpDesktopResponseItems";
+import { validateAttachedContexts } from "../domain/attachedContext";
 
 function safeBrowserOperation(
   value: unknown,
@@ -222,6 +223,15 @@ export function safeTurn(value: unknown): TurnProjection | null {
   )
     return null;
   const id = safeIdentifier(value.id);
+  const rawContext = value.attachedContext ?? [];
+  if (!Array.isArray(rawContext)) return null;
+  let attachedContext: TurnProjection["attachedContext"];
+  try {
+    // Bounded like the composer: at most eight entries, each UTF-8 bounded.
+    attachedContext = validateAttachedContexts(rawContext);
+  } catch {
+    return null;
+  }
   const sessionId = safeIdentifier(value.sessionId);
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const revision = safeCounter(value.revision, true);
@@ -275,6 +285,7 @@ export function safeTurn(value: unknown): TurnProjection | null {
     browserOperationsCollapsed === null
     ? null
     : {
+        ...(attachedContext.length ? { attachedContext } : {}),
         id: id as TurnProjection["id"],
         sessionId: sessionId as TurnProjection["sessionId"],
         runtimeEpoch: runtimeEpoch as TurnProjection["runtimeEpoch"],

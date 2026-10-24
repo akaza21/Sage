@@ -122,6 +122,7 @@ impl CodexRuntime {
                 Ok(batch.finish())
             }
             IngressDisposition::IgnoredLate => one(AdapterEvent::IgnoredLate),
+            IngressDisposition::DroppedRawReasoning => one(AdapterEvent::Absorbed),
             IngressDisposition::GoalMutationRejected => {
                 Err(AdapterRuntimeError::GoalMutationRejected)
             }

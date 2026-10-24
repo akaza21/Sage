@@ -115,6 +115,7 @@ impl StandardAcpTranslator {
                 category,
                 summary,
                 offered_option_kinds,
+                reason: None,
             },
         });
         Ok(events)
@@ -219,6 +220,8 @@ impl StandardAcpTranslator {
             ToolCategory::Search,
             ToolCategory::Execute,
             ToolCategory::Fetch,
+            ToolCategory::WebSearch,
+            ToolCategory::ImageView,
             ToolCategory::Think,
             ToolCategory::SwitchMode,
             ToolCategory::Mcp,

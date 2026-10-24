@@ -2329,6 +2329,7 @@ fn permission() -> NormalizedPayload {
         category: ToolCategory::Other,
         summary: SafeText::new("summary", "denied by policy").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     }
 }
 

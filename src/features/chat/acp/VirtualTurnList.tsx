@@ -1,13 +1,16 @@
 import {
   useCallback,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import type { TurnProjection } from "../../../domain/acp";
+import type { TurnListHost, VirtualTurnTarget } from "../chatScroll";
 
 const ESTIMATED_ROW_HEIGHT = 264;
 const ROW_GAP = 24;
@@ -79,9 +82,12 @@ function MeasuredTurnRow({
 export function VirtualTurnList({
   turns,
   renderTurn,
+  navigationRef,
 }: {
   turns: readonly TurnProjection[];
   renderTurn: (turn: TurnProjection, index: number) => ReactNode;
+  /** Host for the lazy turn navigator, which owns jump and find anchoring. */
+  navigationRef?: RefObject<TurnListHost | null>;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState(() => new Map<string, number>());
@@ -90,6 +96,7 @@ export function VirtualTurnList({
   const anchor = useRef<{ id: string; inset: number } | null>(null);
   const pinnedAnchor = useRef<{ id: string; inset: number } | null>(null);
   const pinnedEnd = useRef(false);
+  const navigationAnchor = useRef<VirtualTurnTarget | null>(null);
   const releaseFrame = useRef<number | null>(null);
   const [viewport, setViewport] = useState({ top: Infinity, height: 700 });
   const latestViewport = useRef(viewport);
@@ -127,7 +134,7 @@ export function VirtualTurnList({
     const list = listRef.current;
     const scrollport = list?.closest<HTMLElement>(".message-list");
     if (!list || !scrollport) return;
-    if (event) {
+    if (event && !navigationAnchor.current) {
       pinnedAnchor.current = null;
       pinnedEnd.current =
         scrollport.scrollHeight -
@@ -151,6 +158,27 @@ export function VirtualTurnList({
     }
   }, []);
 
+  const refreshNavigation = useCallback(() => {
+    readViewport();
+    setViewport((current) => ({ ...current }));
+  }, [readViewport]);
+  const clearPins = useCallback(() => {
+    pinnedAnchor.current = null;
+    pinnedEnd.current = false;
+  }, []);
+  useImperativeHandle(
+    navigationRef,
+    () => ({
+      turns,
+      offsets,
+      list: listRef,
+      target: navigationAnchor,
+      refresh: refreshNavigation,
+      clearPins,
+    }),
+    [turns, offsets, refreshNavigation, clearPins],
+  );
+
   useLayoutEffect(() => {
     const scrollport = listRef.current?.closest<HTMLElement>(".message-list");
     if (!scrollport) return;
@@ -171,7 +199,7 @@ export function VirtualTurnList({
     const first = turns[0]?.id;
     const previous = previousFirst.current;
     previousFirst.current = first;
-    if (first && previous && first !== previous)
+    if (first && previous && first !== previous && !navigationAnchor.current)
       pinnedAnchor.current ??= anchor.current;
   }, [turns]);
 
@@ -185,6 +213,10 @@ export function VirtualTurnList({
       readViewport();
       return;
     }
+    // A jump or find target is aligned by the lazy navigator that set it.
+    const navigation = navigationAnchor.current;
+    if (navigation)
+      return navigation.align(list, scrollport, turns, offsets, readViewport);
     if (!saved) return;
     const row = [...list.querySelectorAll<HTMLElement>(".acp-turn")].find(
       (element) => element.dataset.turnId === saved.id,
@@ -217,7 +249,7 @@ export function VirtualTurnList({
         releaseFrame.current = null;
       });
     });
-  }, [end, measured, offsets, readViewport, start, turns]);
+  }, [end, measured, offsets, readViewport, start, turns, viewport]);
 
   useLayoutEffect(
     () => () => {
@@ -248,13 +280,18 @@ export function VirtualTurnList({
       const scrollport = list?.closest<HTMLElement>(".message-list");
       if (list && scrollport) {
         if (
+          !navigationAnchor.current &&
           scrollport.scrollHeight -
             scrollport.scrollTop -
             scrollport.clientHeight <=
-          1
+            1
         )
           pinnedEnd.current = true;
-        if (!pinnedEnd.current && !pinnedAnchor.current)
+        if (
+          !navigationAnchor.current &&
+          !pinnedEnd.current &&
+          !pinnedAnchor.current
+        )
           pinnedAnchor.current =
             anchor.current ?? visibleAnchor(list, scrollport);
       }

@@ -844,7 +844,7 @@ describe("compact Workbench project tools", () => {
     expect(globalSearch).toHaveFocus();
     fireEvent.click(globalSearch);
     expect(
-      screen.getByRole("dialog", { name: "Search Chats" }),
+      await screen.findByRole("dialog", { name: "Search Chats" }),
     ).toBeInTheDocument();
   });
 

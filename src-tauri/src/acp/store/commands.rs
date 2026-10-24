@@ -326,8 +326,10 @@ fn duplicate_turn(
 }
 
 fn user_item_payload(command: &PrepareTurnCommand) -> Result<String, StoreError> {
-    serde_json::to_string(&serde_json::json!({"kind":"text","payload":{"role":"user","text":command.prompt.as_str()}}))
-        .map_err(|_|StoreError::Corrupt("user item serialization"))
+    serde_json::to_string(
+        &serde_json::json!({"kind":"text","payload":command.prompt.user_payload()}),
+    )
+    .map_err(|_| StoreError::Corrupt("user item serialization"))
 }
 
 fn ensure_turn_capacity(

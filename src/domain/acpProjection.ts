@@ -1,3 +1,4 @@
+import type { AttachedContext } from "./attachedContext";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
 import type { AcpSessionConfig } from "./acpSessionConfig";
@@ -45,10 +46,12 @@ export type SafeResourceLocation =
 
 export type ToolPresentation =
   | {
-      kind: "read" | "edit" | "delete";
+      kind: "read" | "edit" | "delete" | "imageView";
       label: string;
       resources: readonly SafeResourceLocation[];
     }
+  /** The query, when the harness carried one, is the item's inputSummary. */
+  | { kind: "webSearch"; label: string }
   | {
       kind: "move";
       label: string;
@@ -177,6 +180,10 @@ export type AcpItem =
         offeredOptionKinds?: Array<
           "allow_once" | "allow_always" | "reject_once" | "reject_always"
         > | null;
+        /** The kind of tool the request gates, when the projection names it. */
+        category?: ToolPresentation["kind"];
+        /** The harness's own explanation; absent when it gave none. */
+        reason?: string | null;
       }
     >
   | PlainItem<
@@ -220,6 +227,7 @@ export interface HarnessActivityProjection {
 }
 
 export interface TurnProjection {
+  attachedContext?: readonly AttachedContext[];
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;

@@ -15,12 +15,14 @@ import { agentChatMoveDestinations } from "./agentChatRail";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
+import { isSideChatId, useParentChatStatus } from "./sideChatState";
 import {
   ackSessionRailUnread,
   seenSessionRailFingerprint,
   sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
+  sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import {
@@ -29,6 +31,7 @@ import {
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatRailGlyph } from "./ProjectChatRailGlyph";
+import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 
 export function ProjectChatNavigation({
@@ -96,7 +99,10 @@ export function ProjectChatNavigation({
         : undefined,
     ),
   );
-  const chatTabs = chats;
+  // Temporary side chats never list; a parent shows working while one runs.
+  const parentChatStatus = useParentChatStatus();
+  const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
+  const awaitingApprovalIds = useChatsAwaitingApproval();
   const moveDestinations = agentChatMoveDestinations(projects, projectId);
 
   useEffect(() => {
@@ -194,7 +200,8 @@ export function ProjectChatNavigation({
           );
         }
         const focused = !suppressActive && selected && tab.id === activeTabId;
-        const fingerprint = sessionRailFingerprint(tab.status);
+        const status = parentChatStatus(tab.id, tab.status);
+        const fingerprint = sessionRailFingerprint(status);
         if (focused && fingerprint.length > 0) {
           ackSessionRailUnread(tab.id, fingerprint);
         }
@@ -207,15 +214,18 @@ export function ProjectChatNavigation({
         const stamp = showUpdated
           ? agentRailAgeStamp({
               updatedAt: tab.updatedAt,
-              live: sessionRailLive(tab.status),
+              live: sessionRailLive(status),
               nowMs: agentRailClockMs(),
             })
           : "";
         const trailingState = agentRailTrailingState({
-          status: tab.status,
+          status,
           unread,
           stamp,
         });
+        const approvalLabel = awaitingApprovalIds.has(tab.id)
+          ? sessionRailStatusLabel(tab.status, true)
+          : "";
         const updatedDateTime =
           tab.updatedAt && Number.isFinite(tab.updatedAt)
             ? new Date(tab.updatedAt).toISOString()
@@ -231,7 +241,7 @@ export function ProjectChatNavigation({
               }`}
               type="button"
               title={`${showActions ? "Open chat" : "Open recent chat"} ${displayTitle}`}
-              aria-label={`${showActions ? "Open chat" : "Open recent chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}`}
+              aria-label={`${showActions ? "Open chat" : "Open recent chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
@@ -259,6 +269,11 @@ export function ProjectChatNavigation({
                       size={10}
                       aria-hidden="true"
                     />
+                  ) : null}
+                  {approvalLabel ? (
+                    <span className="rail-pill rail-pill--approval">
+                      {approvalLabel}
+                    </span>
                   ) : null}
                 </span>
               </span>

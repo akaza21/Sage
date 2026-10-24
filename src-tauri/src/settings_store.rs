@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod side_chat;
 pub use access::SessionAccessModes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

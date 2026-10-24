@@ -15,7 +15,7 @@ use super::super::state::{
 };
 use super::{
     DenyResponse, IncomingEvent, IngressDisposition, IngressError, record_unprojected,
-    support::{identity, is_browse_alias, permission, request_id_text, text},
+    support::{identity, is_browse_alias, permission, request_id_text, sanitize, text},
 };
 
 pub(super) fn server_request(
@@ -94,6 +94,7 @@ pub(super) fn server_request(
                 crate::acp::contract::BoundedVec::new("permissionOptionKinds", offered)
                     .expect("fixed permission choices"),
             ),
+            reason: approval_reason(params),
         },
         denial: Box::new(denial),
     };
@@ -135,6 +136,20 @@ fn offered_approval_kinds(
         return vec![AllowOnce, AllowAlways, RejectOnce];
     }
     vec![AllowOnce, RejectOnce]
+}
+
+/// Codex's own `reason` for the approval, sanitized and clipped to the
+/// projection bound. Absent or blank reasons project nothing.
+fn approval_reason(params: &Map<String, Value>) -> Option<SafeText<2048>> {
+    let reason = sanitize(params.get("reason")?.as_str()?.trim());
+    let mut end = reason.len().min(2048);
+    while !reason.is_char_boundary(end) {
+        end -= 1;
+    }
+    let reason = reason[..end].trim();
+    (!reason.is_empty())
+        .then(|| SafeText::new("permissionReason", reason).ok())
+        .flatten()
 }
 
 pub(in crate::acp::bindings::codex) fn approval_category(method: &str) -> Option<ToolCategory> {

@@ -28,6 +28,7 @@ fn browser_local_permission_is_durable_and_projects_as_the_existing_card() {
         category: ToolCategory::Mcp,
         summary: SafeText::new("summary", "Browser snapshotPage on https://example.com").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     })
     .unwrap();
     let digest = super::facts::hex_digest(body.as_bytes());

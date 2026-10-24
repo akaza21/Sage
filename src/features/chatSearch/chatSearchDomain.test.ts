@@ -9,7 +9,7 @@ import {
   admitChatSearchFolder,
   chatSearchAttachment,
   chatSearchFolderOptions,
-} from "./chatSearchScope";
+} from "./chatSearchFanout";
 
 const valid: ProjectChatSearchResponse = {
   projectId: "project-a",

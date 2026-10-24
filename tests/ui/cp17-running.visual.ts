@@ -59,7 +59,7 @@ test("CP-17(b) refs 08/15/17/19: running header and chronological rows fit a 560
     ".acp-tool-rollup__label, .acp-message--assistant .acp-markdown",
   );
   await expect(rows).toHaveText([
-    "Search activity · 1 item",
+    "Search workspace",
     "Progress follows the live tool row.",
   ]);
   const headingBox = await work

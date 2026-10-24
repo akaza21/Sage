@@ -860,7 +860,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
         build_driver(Vec::new(), VecDeque::from([FrameWriteOutcome::Complete]));
     let progress = complete
         .dispatch_prompt(
-            RequiredText::new("prompt", "hello").expect("prompt"),
+            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         )
         .expect("written prompt");
@@ -870,7 +870,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
     let (mut foreign, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
     assert_eq!(
         foreign.dispatch_prompt(
-            RequiredText::new("prompt", "hello").expect("prompt"),
+            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "foreign-message").expect("message"),
         ),
         Err(DriverError::RejectedIntent)
@@ -883,7 +883,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
     );
     assert_eq!(
         unknown.dispatch_prompt(
-            RequiredText::new("prompt", "hello").expect("prompt"),
+            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         ),
         Err(DriverError::TeardownRequired(
@@ -906,7 +906,7 @@ fn signed_out_prompt_refusal_does_not_teardown_the_driver() {
 
     assert_eq!(
         driver.dispatch_prompt(
-            RequiredText::new("prompt", "hello").expect("prompt"),
+            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         ),
         Err(DriverError::Refused(NonfatalRefusal::SignIn))
@@ -924,7 +924,7 @@ fn prompt_crosses_the_bounded_driver_mailbox_and_returns_exact_write_evidence() 
         let mailbox = DriverMailbox::new().expect("mailbox");
         let response = mailbox
             .submit_prompt(
-                RequiredText::new("prompt", "hello").expect("prompt"),
+                crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
                 RequiredText::new("message", "message-one").expect("message"),
             )
             .expect("bounded prompt");
@@ -949,6 +949,7 @@ fn permission_write_settles_the_durable_decision() {
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
+                reason: None,
             },
             request_payload_digest: [3; 32],
         };
@@ -1010,6 +1011,7 @@ fn raw_external_permission_id_tears_down_without_writing_a_decision() {
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
+                reason: None,
             },
             request_payload_digest: [3; 32],
         };
@@ -1434,7 +1436,7 @@ fn prepared_write_prompt_is_refused_after_process_exit() {
 
         assert_eq!(
             driver.dispatch_prompt(
-                RequiredText::new("prompt", "hello").expect("prompt"),
+                crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
                 RequiredText::new("message", "message-one").expect("message"),
             ),
             Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
@@ -1641,6 +1643,7 @@ fn permission_resolution_after_process_exit_never_writes_to_dead_stdin() {
                 category: crate::acp::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
+                reason: None,
             },
             request_payload_digest: [3; 32],
         };

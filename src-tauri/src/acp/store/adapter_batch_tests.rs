@@ -612,6 +612,7 @@ fn permission(owner: &AdapterStoreOwner) -> PermissionIntent {
         category: ToolCategory::Execute,
         summary: SafeText::new("summary", "Run command?").unwrap(),
         offered_option_kinds: None,
+        reason: None,
     };
     let json = serde_json::to_string(&payload).unwrap();
     PermissionIntent {

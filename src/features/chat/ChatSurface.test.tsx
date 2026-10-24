@@ -280,6 +280,97 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("ChatSurface approval slot", () => {
+  function withPermission(state: "received" | "declinePending") {
+    const page = projection();
+    hooks.page = {
+      ...page,
+      turns: [
+        {
+          ...page.turns[0],
+          items: [
+            ...page.turns[0].items,
+            {
+              ...itemBase("item-permission"),
+              kind: "permissionRequest",
+              lifecycle: "streaming",
+              terminalAt: null,
+              toolState: "waitingForApproval",
+              payload: {
+                requestId: "request-a",
+                state,
+                label: "Permission request",
+                summary: "curl.exe https://example.com",
+                offeredOptionKinds: [
+                  "allow_once",
+                  "allow_always",
+                  "reject_once",
+                ],
+                category: "execute",
+                reason: "May I retry the network check outside the sandbox?",
+              },
+            } as unknown as AcpItem,
+          ],
+        },
+      ],
+    };
+  }
+
+  it("replaces the composer with the pending approval and returns the draft after it settles", async () => {
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const { rerender } = render(<ChatSurface chatId="chat-a" />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Message agent" }), {
+      target: { value: "keep this draft" },
+    });
+    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+      "keep this draft",
+    );
+    withPermission("received");
+    rerender(<ChatSurface chatId="chat-a" />);
+    await settleLazyModules();
+    const prompt = await screen.findByRole("group", {
+      name: "Permission request",
+    });
+    expect(within(prompt).getByRole("button", { name: /Deny/ })).toBeVisible();
+    // The composer held focus, so the card announces itself instead of
+    // taking focus (an Enter meant for the draft must never approve).
+    expect(
+      within(prompt).getByRole("button", { name: /Allow once/ }),
+    ).not.toHaveFocus();
+    expect(within(prompt).getByRole("status")).toHaveTextContent(
+      "Approval needed: Allow this command?",
+    );
+    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    expect(document.querySelector("form.composer")).toHaveAttribute("hidden");
+    expect(
+      document.querySelector(
+        ".message-list [data-acp-item-id='item-permission']",
+      ),
+    ).toBeNull();
+
+    withPermission("declinePending");
+    rerender(<ChatSurface chatId="chat-a" />);
+    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
+    const composer = screen.getByRole("textbox", { name: "Message agent" });
+    expect(composer).toHaveValue("keep this draft");
+    expect(composer).toHaveFocus();
+  });
+});
+
 describe("ChatSurface ACP resource integration", () => {
   it("retains composer project scope while an empty retained page is not the new-chat home", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
@@ -1337,6 +1428,31 @@ describe("ChatSurface ACP resource integration", () => {
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: "chat-a" }),
     );
+  });
+
+  it("keeps a side chat's own tab under Agent chrome and no other pane header", () => {
+    const publish = vi.fn();
+    const header = <button type="button">Close side chat</button>;
+    const view = render(
+      <AgentSessionChromeContext.Provider value={publish}>
+        <ChatSurface chatId="side-chat-a" paneHeader={header} />
+      </AgentSessionChromeContext.Provider>,
+    );
+    expect(
+      document.querySelector(
+        ".chat-surface--side-chat > .chat-surface__side-header",
+      ),
+    ).toContainElement(screen.getByRole("button", { name: "Close side chat" }));
+    view.unmount();
+    render(
+      <AgentSessionChromeContext.Provider value={publish}>
+        <ChatSurface chatId="chat-a" paneHeader={header} />
+      </AgentSessionChromeContext.Provider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Close side chat" }),
+    ).toBeNull();
+    expect(document.querySelector(".chat-surface--side-chat")).toBeNull();
   });
 
   it("renders only provider-advertised session modes and preserves their order", () => {

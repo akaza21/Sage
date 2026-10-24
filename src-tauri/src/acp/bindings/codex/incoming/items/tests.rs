@@ -257,7 +257,7 @@ fn an_untitled_unknown_item_falls_back_to_its_raw_type_and_stays_pending_until_t
 }
 
 #[test]
-fn image_view_is_a_read_that_keeps_its_clickable_path() {
+fn image_view_is_its_own_kind_that_keeps_its_clickable_path() {
     let view = item(json!({
         "type": "imageView",
         "id": "view-1",
@@ -277,8 +277,8 @@ fn image_view_is_a_read_that_keeps_its_clickable_path() {
     else {
         panic!("expected a read tool");
     };
-    assert_eq!(category, ToolCategory::Read);
-    assert_eq!(label.as_str(), "Image view");
+    assert_eq!(category, ToolCategory::ImageView);
+    assert_eq!(label.as_str(), "Viewed an image");
     assert!(
         matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
             if resource.relative_path.as_str() == "package.json")
@@ -337,4 +337,5 @@ fn user_message_echo_is_ignored_after_sage_persists_the_prompt() {
     );
 }
 
+mod integration_tests;
 mod tool_tests;

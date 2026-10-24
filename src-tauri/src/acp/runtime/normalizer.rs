@@ -116,6 +116,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             category,
             summary: SafeText::new("permissionSummary", summary)?,
             offered_option_kinds: None,
+            reason: None,
         },
         NormalizerInput::Error {
             code,

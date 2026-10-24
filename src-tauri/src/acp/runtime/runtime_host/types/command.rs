@@ -59,14 +59,14 @@ impl HostCommand {
             Self::PreparePrompt(intent) => {
                 owner_bytes(&intent.owner())
                     + intent.command.client_intent_id.as_str().len()
-                    + intent.command.prompt.as_str().len()
+                    + intent.command.prompt.retained_bytes()
                     + std::mem::size_of::<u64>() * 2
             }
             Self::DispatchPrompt { owner, turn_id } => owner_bytes(owner) + turn_id.as_str().len(),
             Self::Steer(intent) => {
                 owner_bytes(&intent.owner)
                     + intent.turn_id.as_str().len()
-                    + intent.prompt.as_str().len()
+                    + intent.prompt.retained_bytes()
                     + intent.client_message_id.as_str().len()
             }
             Self::Cancel(intent) => {

@@ -22,6 +22,7 @@ pub(crate) fn archived_chats_in(
         "SELECT c.id,c.title
          FROM chats c
          WHERE c.project_id=?1
+           AND c.id NOT GLOB 'side-*'
            AND NOT EXISTS(
              SELECT 1 FROM chat_tabs a
              WHERE a.project_id=c.project_id AND a.chat_id=c.id
@@ -65,10 +66,16 @@ pub(crate) fn archived_chats_in(
 
 impl Database {
     pub(crate) fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
+        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
+        crate::side_chat_storage::refuse_parent_removal(
+            &transaction,
+            &request.project_id,
+            &request.chat_id,
+        )?;
         if source_is_active(&transaction, &request.project_id)? {
             validate_request(request)?;
             let attached = require_exact_attached_chats(&transaction, &request.current_layout)?;

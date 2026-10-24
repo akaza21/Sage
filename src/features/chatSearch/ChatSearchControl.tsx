@@ -13,20 +13,20 @@ import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
-import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchDomain";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
+  admitChatSearchFolder,
+  chatSearchAttachment,
+  chatSearchFolderOptions,
   chatSearchResultFolderName,
   isChatSearchFanout,
+  matchesChatSearchScope,
   runScopedChatSearch,
   type ChatSearchFanoutPick,
   type ChatSearchFanoutView,
 } from "./chatSearchFanout";
 import {
-  admitChatSearchFolder,
-  chatSearchAttachment,
-  chatSearchFolderOptions,
-  matchesChatSearchScope,
+  MAX_CHAT_SEARCH_QUERY_BYTES,
   requestChatSearchInFolder,
   subscribeChatSearchFolderRequest,
   takeChatSearchFocusReturn,

@@ -1,13 +1,17 @@
 import { Search, Settings, SquarePen, X } from "../ui/leanIcons";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { MAX_CHAT_SEARCH_QUERY_BYTES } from "../features/chatSearch/chatSearchDomain";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
-import { ChatSearchControl } from "../features/chatSearch/ChatSearchControl";
-import { CHAT_SEARCH_ALL_FOLDERS_ID } from "../features/chatSearch/chatSearchFanout";
-import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
+import { ChatSearchPart } from "../features/chat/lazyParts";
+import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
+  hasChatSearchFolderRequest,
+  MAX_CHAT_SEARCH_QUERY_BYTES,
+  requestChatSearchInFolder,
+  subscribeChatSearchFolderRequest,
+} from "../features/chatSearch/chatSearchScope";
 import {
   ackSessionRailUnread,
   pinSessionRailIds,
@@ -28,6 +32,33 @@ import {
   syncAgentRailClock,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
+
+/**
+ * Tiny core trigger for the Chat search dialog. The first folder request
+ * (rail, title bar or shortcut) loads the dialog chunk once; the dialog then
+ * takes that pending request on mount and owns every later one.
+ */
+function ChatSearchGate({
+  triggerRef,
+}: {
+  triggerRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const [armed, setArmed] = useState(hasChatSearchFolderRequest);
+  useEffect(() => {
+    if (armed) return;
+    const arm = () => setArmed(true);
+    if (hasChatSearchFolderRequest()) arm();
+    return subscribeChatSearchFolderRequest(arm);
+  }, [armed]);
+  return armed ? (
+    <ChatSearchPart
+      part="ChatSearchControl"
+      showTrigger={false}
+      triggerRef={triggerRef}
+    />
+  ) : null;
+}
+
 export function LeftSidebar({
   inert = false,
   onOpenSettings,
@@ -314,7 +345,7 @@ export function LeftSidebar({
       inert={inert}
       aria-hidden={inert || undefined}
     >
-      <ChatSearchControl showTrigger={false} triggerRef={searchTriggerRef} />
+      <ChatSearchGate triggerRef={searchTriggerRef} />
       <AgentPrimaryNavigation
         onNewChat={() => void createChat()}
         onSearch={() => {

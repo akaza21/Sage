@@ -408,7 +408,7 @@ test.describe("Tool activity rollup summary containment", () => {
       rollup.locator(":scope > .acp-tool-rollup__items"),
     ).toBeVisible();
     const label = rollup.locator(":scope > summary .acp-tool-rollup__label");
-    await expect(label).toHaveText("Ran 2 commands");
+    await expect(label).toHaveText("Ran commands");
     await expect(
       rollup.locator(':scope > summary [data-activity-icon="execute"]'),
     ).toBeVisible();

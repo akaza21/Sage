@@ -8,7 +8,7 @@ use super::{
     declared_test::CommandActivity,
     intent::{
         BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ImageSource, ModelId, PageCursor,
-        PermissionOptionKind,
+        PermissionOptionKind, ToolCategory,
     },
 };
 
@@ -98,6 +98,13 @@ pub enum ToolPresentation {
         label: SafeText<512>,
         url: Option<SafeText<4096>>,
         summary: Option<SafeText<16384>>,
+    },
+    WebSearch {
+        label: SafeText<512>,
+    },
+    ImageView {
+        label: SafeText<512>,
+        resources: BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>,
     },
     Think {
         label: SafeText<512>,
@@ -211,6 +218,9 @@ pub enum ItemContent {
         source: PermissionRequestSource,
         #[serde(skip_serializing_if = "Option::is_none")]
         offered_option_kinds: Option<BoundedVec<PermissionOptionKind, 8>>,
+        category: ToolCategory,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<SafeText<2048>>,
     },
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,6 +300,8 @@ pub struct ActivityProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnProjection {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attached_context: Vec<super::attached_context::AttachedContext>,
     pub id: SageTurnId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,

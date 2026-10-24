@@ -33,6 +33,7 @@ import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import "./agent-subagent-summary.css";
 
 import { AgentTaskStatus } from "./AgentTaskStatus";
+import { isSideChatId } from "./sideChatState";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 
 // The Subagents region and its rows load with the lazy SubagentSurface chunk;
@@ -243,23 +244,25 @@ export function AgentTaskHeader({
         snapshot={snapshot}
         harnessStatus={sessionChrome?.harnessStatus}
       />
-      <ProjectChatActionMenu
-        chatTitle={`${title} task`}
-        pinned={currentTab.pinned}
-        open={menuOpen}
-        disabled={projectTransitioning || renaming}
-        archiveDisabled={projectTransitioning || chatCount <= 1}
-        destinations={destinations}
-        onOpenChange={setMenuOpen}
-        onPin={() => void pinChat(currentTab.id, currentProject.id)}
-        onRename={beginRename}
-        onMove={(targetProjectId) =>
-          void moveChat(currentTab.id, targetProjectId, currentProject.id)
-        }
-        onArchive={() => void archiveChat(currentTab.id, currentProject.id)}
-        triggerRef={() => undefined}
-        sessionChrome={sessionChrome}
-      />
+      {isSideChatId(tab?.id) ? null : (
+        <ProjectChatActionMenu
+          chatTitle={`${title} task`}
+          pinned={currentTab.pinned}
+          open={menuOpen}
+          disabled={projectTransitioning || renaming}
+          archiveDisabled={projectTransitioning || chatCount <= 1}
+          destinations={destinations}
+          onOpenChange={setMenuOpen}
+          onPin={() => void pinChat(currentTab.id, currentProject.id)}
+          onRename={beginRename}
+          onMove={(targetProjectId) =>
+            void moveChat(currentTab.id, targetProjectId, currentProject.id)
+          }
+          onArchive={() => void archiveChat(currentTab.id, currentProject.id)}
+          triggerRef={() => undefined}
+          sessionChrome={sessionChrome}
+        />
+      )}
       <div className="agent-task-header__resources">
         <button
           ref={resourcesTriggerRef}

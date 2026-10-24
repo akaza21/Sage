@@ -225,6 +225,14 @@ export async function runJourneyEvent(
   return disposition;
 }
 
+/**
+ * Publishes a whole page through the fixture backend, so later reloads (a
+ * pane gaining focus re-reads its projection) return the same history.
+ */
+export function publishJourneyPage(page: AcpChatPage): string {
+  return publish(requireFixture(), page);
+}
+
 export function journeyAudit() {
   const state = requireFixture();
   const workbench = useWorkbenchStore.getState();

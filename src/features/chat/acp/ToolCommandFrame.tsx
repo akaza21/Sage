@@ -4,12 +4,14 @@ export function ToolCommandFrame({
   output,
   descriptionId,
   outcome,
+  danger = false,
 }: {
   label: string;
   commandLine: string | null;
   output: string | null;
   descriptionId?: string;
   outcome?: string | null;
+  danger?: boolean;
 }) {
   return (
     <div className="acp-tool-command-frame">
@@ -36,7 +38,11 @@ export function ToolCommandFrame({
         </pre>
       ) : null}
       {outcome ? (
-        <p className="acp-tool-command__outcome" role="status" aria-live="off">
+        <p
+          className={`acp-tool-command__outcome${danger ? " acp-tool-command__outcome--danger" : ""}`}
+          role="status"
+          aria-live="off"
+        >
           {outcome}
         </p>
       ) : null}

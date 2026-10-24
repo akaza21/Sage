@@ -154,7 +154,7 @@ for (const width of [1888, 720, 480]) {
       const buttons = page
         .getByRole("group", { name: "Permission request" })
         .getByRole("button");
-      await expect(buttons).toHaveText(["Approve", "Always allow", "Deny"]);
+      await expect(buttons).toHaveText(["Deny Esc", "Allow once ⏎", ""]);
       for (const button of await buttons.all()) {
         const metrics = await button.evaluate((element) => {
           const range = document.createRange();
@@ -162,10 +162,19 @@ for (const width of [1888, 720, 480]) {
           const lines = [...range.getClientRects()];
           const box = element.getBoundingClientRect();
           const card = element
-            .closest(".acp-permission")!
+            .closest(".acp-permission-prompt")!
             .getBoundingClientRect();
+          // A label and its key cap are separate boxes on one row; count
+          // rows of vertically overlapping boxes, not boxes.
+          const rows: Array<{ top: number; bottom: number }> = [];
+          for (const rect of [...lines].sort((a, b) => a.top - b.top)) {
+            const row = rows.at(-1);
+            if (row && rect.top < row.bottom - 1)
+              row.bottom = Math.max(row.bottom, rect.bottom);
+            else rows.push({ top: rect.top, bottom: rect.bottom });
+          }
           return {
-            lines: lines.length,
+            lines: rows.length,
             inside: box.left >= card.left && box.right <= card.right,
             cardInsideViewport: card.left >= 0 && card.right <= innerWidth,
             labelInside: lines.every(
@@ -192,7 +201,7 @@ for (const width of [1888, 720, 480]) {
         }),
       ).toBe(true);
       await render(page, flowchartSource, ["reject_once"]);
-      await expect(buttons).toHaveText(["Deny"]);
+      await expect(buttons).toHaveText(["Deny Esc"]);
       await render(page, flowchartSource, []);
       await expect(buttons).toHaveCount(0);
       expect(

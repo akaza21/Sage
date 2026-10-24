@@ -9,18 +9,20 @@ mod capability;
 mod error_kind;
 mod file_change;
 mod tool_category;
+mod tool_execution;
 
 pub use capability::CapabilitySnapshotV1;
 pub use error_kind::ErrorKind;
 pub(crate) use file_change::FileChangeFacts;
 pub use file_change::FileChangeOperation;
 pub use tool_category::ToolCategory;
+pub use tool_execution::ToolExecution;
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
 pub type ExternalId = RequiredText<512>;
 pub type PageCursor = RequiredText<512>;
-pub type Prompt = RequiredText<100000>;
+pub use super::transcript_quote::Prompt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -189,17 +191,6 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ToolExecution {
-    pub cwd: Option<SafeResourceLocation>,
-    pub exit_code: Option<i32>,
-    pub output_tail: Option<SafeText<16384>>,
-    pub output_truncated: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub task_lifecycle: Option<bool>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NormalizedPlanState {
@@ -296,6 +287,10 @@ pub enum NormalizedPayload {
         summary: SafeText<65536>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         offered_option_kinds: Option<BoundedVec<PermissionOptionKind, 8>>,
+        /// The harness's own explanation for the request, when its protocol
+        /// carries one. Absent means the harness gave none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<SafeText<2048>>,
     },
     Error {
         #[serde(

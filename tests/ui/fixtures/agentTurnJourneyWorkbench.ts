@@ -74,6 +74,7 @@ export async function createJourneyFixtureState(): Promise<FixtureState> {
   }
   const emptyChatUi = {
     composerText: "",
+    attachedContext: [],
     sending: false,
     error: null,
     requestGeneration: 0,

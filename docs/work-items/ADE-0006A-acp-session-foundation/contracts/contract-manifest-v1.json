@@ -4,13 +4,13 @@
   "hashAlgorithm": "sha256",
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
-  "fileCount": 15,
-  "logicalBytes": 231680,
+  "fileCount": 16,
+  "logicalBytes": 238467,
   "files": [
     {
       "relativePath": "README.md",
-      "bytes": 3331,
-      "sha256": "264159cc0bbe7d8037a5b30fe6f85fccfa695995e2f7318ae2414e86ed4c0f2f"
+      "bytes": 3489,
+      "sha256": "ea3259d0c816f6ffa2a81ca578aaaf30e645aa505445eb8f85a6084d5103dfc6"
     },
     {
       "relativePath": "c1-characterization-v1.json",
@@ -49,8 +49,8 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 19526,
-      "sha256": "81890204e13dbf9bf4c5dd6fcf7b2558b3cccec940f9d6e3605bf2da655bffe4"
+      "bytes": 22585,
+      "sha256": "049c5a7b9d95dcb1bf9e9abf4abcbbe96f713362dbfb30dd14fff35272ec422a"
     },
     {
       "relativePath": "package-contract-v1.json",
@@ -81,6 +81,11 @@
       "relativePath": "schema-005.sql",
       "bytes": 32836,
       "sha256": "ff7dc34d088b786954a5255fcb13cc44e6c9ca1447eb2a2bb7e274b2a0e8572d"
+    },
+    {
+      "relativePath": "transcript-side-chat-v1.json",
+      "bytes": 3570,
+      "sha256": "896c4e71d3a76f11fa09997842110ed70b3d0be02b1d95ad781b1fd3cc7e98f7"
     }
   ]
 }

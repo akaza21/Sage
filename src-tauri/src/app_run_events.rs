@@ -48,6 +48,19 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         if let Err(error) = app_handle.state::<AppState>().terminals.shutdown() {
             warn!(?error, "terminal app-exit cleanup remains unsettled");
         }
+        if matches!(&event, RunEvent::Exit)
+            && app_handle
+                .state::<AppState>()
+                .acp
+                .shutdown_blocking()
+                .is_ok()
+            && let Err(error) = app_handle.state::<AppState>().database.purge_side_chats()
+        {
+            warn!(
+                ?error,
+                "temporary Chat cleanup will retry before next startup"
+            );
+        }
         app_handle
             .state::<BrowserState>()
             .clear_teardown_after_window_destroy();

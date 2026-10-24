@@ -145,7 +145,7 @@ impl WorkerCommand {
                 .checked_add(1),
             Self::PreparePrompt(intent) => owner_bytes(&intent.owner())
                 .checked_add(intent.command.client_intent_id.as_str().len())?
-                .checked_add(intent.command.prompt.as_str().len())?
+                .checked_add(intent.command.prompt.retained_bytes())?
                 .checked_add(std::mem::size_of::<u64>() * 2),
             Self::DispatchPrompt { owner, turn_id } | Self::ObserveSend { owner, turn_id, .. } => {
                 owner_bytes(owner)
@@ -154,7 +154,7 @@ impl WorkerCommand {
             }
             Self::Steer { intent, .. } => owner_bytes(&intent.owner)
                 .checked_add(intent.turn_id.as_str().len())?
-                .checked_add(intent.prompt.as_str().len())?
+                .checked_add(intent.prompt.retained_bytes())?
                 .checked_add(intent.client_message_id.as_str().len()),
             Self::BeginCancel(intent) | Self::DispatchCancel(intent) => owner_bytes(&intent.owner)
                 .checked_add(intent.turn_id.as_str().len())?

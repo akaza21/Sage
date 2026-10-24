@@ -23,6 +23,7 @@ pub(crate) mod process;
 pub mod projection;
 pub(crate) mod recovery;
 pub(crate) mod redaction;
+pub(crate) mod transcript_quote;
 // The admitted runtime host constructs this snapshot; keep the independently
 // reviewable packet warning-clean until that host integration lands.
 #[allow(dead_code)]

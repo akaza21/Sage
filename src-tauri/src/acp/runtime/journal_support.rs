@@ -11,7 +11,7 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
                 + command.chat_id.as_str().len()
                 + command.session_id.as_str().len()
                 + command.client_intent_id.as_str().len()
-                + command.prompt.as_str().len()
+                + command.prompt.retained_bytes()
         }
         StoreMutation::LookupActiveTurn(command) => {
             command.project_id.as_str().len()

@@ -15,7 +15,7 @@ import type {
 } from "../../domain/acp";
 import type { AcpChatPage } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
-import { composerDisabledReason } from "./composerDisabledReason";
+import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { currentChatUsage } from "./acp/chatUsage";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
@@ -233,7 +233,8 @@ export function useChatSurfaceModel({
   const canPrompt = protocolCanPrompt && !accessReason;
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
-  const imageSendBlocked =
+  const sendBlocked =
+    sizeReason(composerText, attachedContext) !== null ||
     imageUploading ||
     (attachedContext.some((context) => context.kind === "image") &&
       !imageInputAvailable);
@@ -258,6 +259,7 @@ export function useChatSurfaceModel({
   );
   const disabledReason =
     accessReason ??
+    sizeReason(composerText, attachedContext) ??
     (legacyAttachments
       ? "Attached context requires an ACP harness. Remove it or select an ACP harness."
       : queueSavePending
@@ -281,7 +283,7 @@ export function useChatSurfaceModel({
   const submit = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
-      if (imageSendBlocked) return;
+      if (sendBlocked) return;
       if (activeAcpTurn) {
         if (queueAvailable && model.bindingId)
           void queuePrompt?.(model.bindingId, model.selectedModelId);
@@ -314,7 +316,7 @@ export function useChatSurfaceModel({
       composerEnabled,
       composerText,
       legacyAttachments,
-      imageSendBlocked,
+      sendBlocked,
       model.bindingId,
       model.selectedModelId,
       model.useNativeAcp,

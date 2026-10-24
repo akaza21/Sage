@@ -2,10 +2,10 @@ import type { StoreApi } from "zustand";
 
 import {
   attachedContextKey,
+  attachContextToDraft,
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   type AttachedContext,
   parseAttachedContext,
-  validateAttachedContexts,
 } from "../domain/attachedContext";
 import {
   boundedChatError,
@@ -47,18 +47,11 @@ export function createAttachedContextActions({
       const entry = normalizeEntry(state.chatUiById[intent.chatId]);
       if (entry.sending) return false;
       try {
-        if (
-          entry.attachedContext.some(
-            (candidate) =>
-              attachedContextKey(candidate) === attachedContextKey(context),
-          )
-        ) {
-          return true;
-        }
-        const attachedContext = validateAttachedContexts([
-          ...entry.attachedContext,
+        const attachedContext = attachContextToDraft(
+          entry.attachedContext,
           context,
-        ]);
+        );
+        if (attachedContext === entry.attachedContext) return true;
         set({
           chatUiById: {
             ...state.chatUiById,

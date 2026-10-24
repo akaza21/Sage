@@ -47,23 +47,6 @@ pub(super) fn bounded_label(value: Option<&str>, fallback: &str) -> String {
     label
 }
 
-pub(super) fn mcp_tool_label(item: &Map<String, Value>) -> String {
-    fn safe_name(value: Option<&Value>) -> Option<&str> {
-        let name = value?.as_str()?;
-        (!name.is_empty()
-            && name.len() <= 128
-            && name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')))
-        .then_some(name)
-    }
-
-    match (safe_name(item.get("server")), safe_name(item.get("tool"))) {
-        (Some(server), Some(tool)) => format!("{server} · {tool}"),
-        _ => "MCP tool".to_owned(),
-    }
-}
-
 pub(super) fn context_compaction(
     _item: &Map<String, Value>,
     _lifecycle: ItemLifecycle,

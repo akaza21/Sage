@@ -74,6 +74,15 @@ export const toolStateLabels: Record<ToolState, string> = {
 
 type PermissionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
+/** A harness or browser permission that still awaits the person's decision. */
+export function awaitingPermission(item: AcpItem): item is PermissionItem {
+  return (
+    item.kind === "permissionRequest" &&
+    item.toolState === "waitingForApproval" &&
+    (item.payload.state === "received" || item.payload.state === "asked")
+  );
+}
+
 export function getPermissionStatus(item: PermissionItem) {
   const failedClosed =
     item.lifecycle === "failed" && item.toolState === "failed";

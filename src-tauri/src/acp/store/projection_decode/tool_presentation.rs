@@ -58,6 +58,11 @@ pub(super) fn presentation(
             url: None,
             summary: None,
         },
+        ToolCategory::WebSearch => ToolPresentation::WebSearch { label },
+        ToolCategory::ImageView => ToolPresentation::ImageView {
+            label,
+            resources: locations,
+        },
         ToolCategory::Think => ToolPresentation::Think {
             label,
             summary: None,
@@ -68,7 +73,14 @@ pub(super) fn presentation(
             mode_label: None,
         },
         ToolCategory::Mcp => ToolPresentation::Mcp {
-            server_label: SafeText::new("server", "MCP").map_err(contract)?,
+            server_label: SafeText::new(
+                "server",
+                execution
+                    .mcp_server
+                    .as_ref()
+                    .map_or("MCP", |server| server.as_str()),
+            )
+            .map_err(contract)?,
             tool_label: label.clone(),
             label,
             arguments_summary: None,

@@ -168,7 +168,7 @@ describe("visual scenario surface ownership", () => {
     ]);
   });
 
-  it("omits completed thinking from the eight activity-family cards", async () => {
+  it("omits completed thinking and rolls the adjacent tools into one activity row", async () => {
     const next = buildAgentPages("agent-activity-family")![0];
     expect(next.turns[0].items[0]).toMatchObject({
       kind: "thoughtSummary",
@@ -180,9 +180,16 @@ describe("visual scenario surface ownership", () => {
     expect(
       container.querySelector('[data-activity-kind="thought"]'),
     ).toBeNull();
+    // Consecutive tools share one row (Codex live parity §8); the plan,
+    // error and unsupported cards stay separate. The live search names the row.
     await waitFor(() =>
-      expect(container.querySelectorAll(".acp-activity-card")).toHaveLength(8),
+      expect(
+        container.querySelectorAll(".acp-activity-card--tool-rollup"),
+      ).toHaveLength(1),
     );
+    expect(
+      container.querySelector(".acp-tool-rollup__label")?.textContent,
+    ).toBe("Search workspace");
   });
 
   it("renders the live-thinking scenario as one bounded plain-text line", async () => {

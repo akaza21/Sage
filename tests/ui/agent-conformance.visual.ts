@@ -807,14 +807,18 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       "Ran tests",
     );
     await expect(
+      summary,
+      "C21: the row's accessible name reports how long the activity took",
+    ).toHaveAttribute("aria-label", /, Completed, \S+$/);
+    await expect(
       summary.locator(".acp-tool-rollup__duration"),
-      "C21: the row reports how long the activity took",
-    ).not.toBeEmpty();
+      "Codex rows carry no visible duration",
+    ).toHaveCount(0);
     await expect(
       summary.locator(".acp-tool-rollup__chevron"),
       "C22: the row ends on a disclosure chevron",
     ).toHaveCount(1);
-    await expect(summary.locator(".acp-state")).toHaveText("Completed");
+    await expect(summary.locator(".acp-state")).toHaveCount(0);
     await expect(
       summary.locator("time"),
       "C20: elapsed duration is not a wall-clock timestamp",
@@ -867,15 +871,18 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       /acp-live-shimmer/,
     );
     await expect(liveRow.locator("summary .acp-state")).toHaveCount(0);
-    const running = liveRow.getByRole("status", { name: "Running" });
-    await expect(running).toBeVisible();
-    const spinner = running.locator("svg");
-    expect(
-      await spinner.evaluate((node) => getComputedStyle(node).animationName),
-    ).toBe("acp-tool-spin");
-    await expect(
-      liveRow.locator("summary .acp-tool-rollup__chevron"),
-    ).toBeVisible();
+    // Codex live parity §8: the shimmer alone shows a running row; no
+    // spinner or state chip. The state stays in the accessible name.
+    await expect(liveRow.locator("summary .acp-tool-running")).toHaveCount(0);
+    await expect(liveRow.locator(":scope > summary")).toHaveAttribute(
+      "aria-label",
+      /, In progress(, |$)/,
+    );
+    // The chevron appears only on hover, focus or open.
+    const chevron = liveRow.locator("summary .acp-tool-rollup__chevron");
+    await expect(chevron).toHaveCSS("opacity", "0");
+    await liveRow.locator(":scope > summary").hover();
+    await expect(chevron).toHaveCSS("opacity", "1");
     const label = liveRow.locator(".acp-tool-rollup__label");
     expect(
       await label.evaluate((node) => getComputedStyle(node).backgroundImage),
@@ -891,9 +898,6 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     expect(
       await label.evaluate((node) => getComputedStyle(node).animationDuration),
     ).toBe("0s");
-    expect(
-      await spinner.evaluate((node) => getComputedStyle(node).animationName),
-    ).toBe("none");
     expect(
       await label.evaluate((node) => getComputedStyle(node).backgroundImage),
     ).toBe("none");

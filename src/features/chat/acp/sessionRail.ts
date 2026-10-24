@@ -172,7 +172,9 @@ export function sessionRailCardTime(input: {
 
 export function sessionRailStatusLabel(
   status: SessionStatus | undefined,
+  awaitingApproval = false,
 ): string {
+  if (awaitingApproval) return "Awaiting approval";
   switch (status) {
     case "working":
       return "Working…";

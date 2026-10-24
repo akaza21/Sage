@@ -53,6 +53,7 @@ export function useFollowEnd({
   const anchoringRef = useRef(false);
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
+  const navigationPausedRef = useRef(false);
 
   useEffect(() => {
     followingEndRef.current = followingEnd;
@@ -66,6 +67,7 @@ export function useFollowEnd({
   useEffect(() => {
     jumpingRef.current = false;
     anchoringRef.current = false;
+    navigationPausedRef.current = false;
     lastScrollTopRef.current = transcriptRef.current?.scrollTop ?? 0;
     return cancelFrame;
   }, [cancelFrame, ownerKey, transcriptRef]);
@@ -108,19 +110,28 @@ export function useFollowEnd({
     const transcript = transcriptRef.current;
     if (!transcript) return;
     const readerInput = () => {
+      navigationPausedRef.current = false;
       anchoringRef.current = false;
       interruptJump();
+    };
+    const navigate = () => {
+      readerInput();
+      navigationPausedRef.current = true;
+      followingEndRef.current = false;
+      setFollowState({ ownerKey, following: false });
     };
     // Any pointerdown inside the transcript counts, including child controls.
     transcript.addEventListener("wheel", readerInput);
     transcript.addEventListener("pointerdown", readerInput);
     transcript.addEventListener("touchstart", readerInput);
     transcript.addEventListener("keydown", readerInput);
+    transcript.addEventListener("sage-chat-navigation", navigate);
     return () => {
       transcript.removeEventListener("wheel", readerInput);
       transcript.removeEventListener("pointerdown", readerInput);
       transcript.removeEventListener("touchstart", readerInput);
       transcript.removeEventListener("keydown", readerInput);
+      transcript.removeEventListener("sage-chat-navigation", navigate);
     };
   }, [interruptJump, ownerKey, transcriptRef]);
 
@@ -171,7 +182,7 @@ export function useFollowEnd({
       if (
         !jumpingRef.current &&
         !anchoringRef.current &&
-        !transcriptIsAtEnd(current)
+        (!transcriptIsAtEnd(current) || navigationPausedRef.current)
       )
         followingEndRef.current = false;
     }
@@ -187,7 +198,8 @@ export function useFollowEnd({
         }
         setFollowState({
           ownerKey,
-          following: transcriptIsAtEnd(transcript),
+          following:
+            !navigationPausedRef.current && transcriptIsAtEnd(transcript),
         });
         setJumpState({
           ownerKey,
@@ -198,6 +210,7 @@ export function useFollowEnd({
   }, [ownerKey, transcriptRef]);
 
   const jumpToLatest = useCallback(() => {
+    navigationPausedRef.current = false;
     cancelFrame();
     jumpingRef.current = true;
     setFollowState({ ownerKey, following: true });

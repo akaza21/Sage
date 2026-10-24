@@ -1,0 +1,104 @@
+.turn-navigator {
+  position: absolute;
+  left: 13px;
+  z-index: 6;
+  transform: translateY(-50%);
+}
+.turn-navigator ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.turn-navigator li {
+  height: var(--turn-nav-pitch);
+}
+.turn-navigator button {
+  display: flex;
+  align-items: center;
+  width: 24px;
+  height: var(--turn-nav-pitch);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
+}
+.turn-navigator button::before {
+  content: "";
+  width: var(--w);
+  height: var(--dash-height);
+  background: var(--agent-nav-dash);
+  transition:
+    width 200ms ease-out,
+    background-color 200ms;
+}
+.turn-navigator button[data-visible="true"]::before {
+  background: var(--agent-nav-dash-visible);
+}
+.turn-navigator button[data-active="true"]::before {
+  background: var(--color-status-foreground);
+}
+.turn-navigator button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.turn-navigator__preview {
+  position: absolute;
+  left: 34px;
+  width: 290px;
+  height: var(--turn-nav-preview-height);
+  box-sizing: border-box;
+  padding: var(--turn-nav-preview-padding);
+  border-radius: var(--radius-turn-preview);
+  transform: translateY(-50%);
+  background: var(--agent-shell-selected);
+  color: var(--color-status-foreground);
+  pointer-events: none;
+}
+.turn-navigator__preview strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.turn-navigator__preview p {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--agent-nav-preview-muted);
+}
+@container chat (width < 720px) {
+  .turn-navigator {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-navigator button::before {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .turn-navigator button::before {
+    background: GrayText;
+  }
+  .turn-navigator button[data-visible="true"]::before {
+    background: CanvasText;
+  }
+  .turn-navigator button[data-active="true"]::before {
+    background: Highlight;
+  }
+  .turn-navigator__preview {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .turn-navigator__preview p {
+    color: CanvasText;
+  }
+}
