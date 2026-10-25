@@ -73,6 +73,12 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
     uiRuleErrors("rules.json", { rules: [rule] }, references),
     [],
   );
+  assert.deepEqual(
+    uiRuleErrors("rules.json", { rules: [{ ...rule, ref: "reference/59a" }] }, [
+      "59a-browser-annotate-hover-link.png",
+    ]),
+    [],
+  );
   for (const broken of [
     { ...rule, ref: "reference/99" },
     { ...rule, ref: "somewhere" },

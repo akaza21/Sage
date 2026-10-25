@@ -105,7 +105,7 @@ export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
   for (const rule of ruleSet.rules ?? []) {
     if (ids.has(rule.id)) fail(rule, "is repeated.");
     ids.add(rule.id);
-    const reference = /^reference\/(\d{2})$/u.exec(rule.ref ?? "")?.[1];
+    const reference = /^reference\/(\d{2}[a-z]?)$/u.exec(rule.ref ?? "")?.[1];
     if (
       !reference ||
       !referenceNames.some((name) => name.startsWith(`${reference}-`))
