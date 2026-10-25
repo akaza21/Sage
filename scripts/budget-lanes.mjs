@@ -71,6 +71,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "lane.node-test.mjs",
   "q02-shared-helpers-policy.node-test.mjs",
   "validate-ade0006a-c0b.node-test.mjs",
+  "synthetic-tree.node-test.mjs",
   "ui-test-port.node-test.mjs",
   "validate-performance-budgets.node-test.mjs",
   "verify-web-bundle.node-test.mjs",
@@ -389,6 +390,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "ui-test-port.node-test.mjs",
     reason:
       "Portable VS-2 checks of shared UI test port resolution and validation; no Vite, browser, or subprocess launch.",
+  },
+  {
+    file: "synthetic-tree.node-test.mjs",
+    reason:
+      "Portable EDIT-0005 EP-00 checks that the seeded synthetic workspace is deterministic and bounded; writes only a temporary tree.",
   },
   {
     file: "chat-performance-budget.node-test.mjs",
