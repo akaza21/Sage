@@ -1,4 +1,5 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { Text } from "@codemirror/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
@@ -174,14 +175,18 @@ describe("StatusBar repository truth", () => {
     expect(screen.queryByText("Ln 12, Col 4")).toBeNull();
 
     act(() => {
-      useEditorCaretStore.getState().publish("one\ntwo\nthree", 9);
+      useEditorCaretStore
+        .getState()
+        .publish(Text.of(["one", "two", "three"]), 9);
     });
     expect(screen.getByTitle("Caret position")).toHaveTextContent(
       "Ln 3, Col 2",
     );
 
     act(() => {
-      useEditorCaretStore.getState().publish("one\ntwo\nthree", -1);
+      useEditorCaretStore
+        .getState()
+        .publish(Text.of(["one", "two", "three"]), -1);
     });
     expect(screen.queryByTitle("Caret position")).toBeNull();
   });

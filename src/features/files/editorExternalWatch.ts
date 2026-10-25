@@ -13,6 +13,7 @@ import type {
   EditorStateBridge,
 } from "./fileEditorController";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { sameContent } from "./editorContent";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
@@ -163,7 +164,7 @@ export async function applyEditorExternalWatchNotice(
     snapshot !== null &&
     (current.revision !== snapshot.revision ||
       current.persistedRevision !== snapshot.persistedRevision ||
-      current.content !== snapshot.content ||
+      !sameContent(current.content, snapshot.content) ||
       current.document.buffer.fingerprint !== snapshot.fingerprint ||
       current.revision > current.persistedRevision)
   ) {
@@ -173,7 +174,7 @@ export async function applyEditorExternalWatchNotice(
       !current.document.dirty &&
       current.document.conflict === null &&
       current.revision === current.persistedRevision &&
-      current.content === document.buffer.content &&
+      sameContent(current.content, document.buffer.content) &&
       current.document.buffer.fingerprint === document.buffer.fingerprint &&
       current.document.disk.fingerprint === document.disk.fingerprint &&
       current.document.lineEnding === document.lineEnding;

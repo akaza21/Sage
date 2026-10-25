@@ -1,3 +1,4 @@
+import type { Text } from "@codemirror/state";
 import { useEffect } from "react";
 import { create } from "zustand";
 
@@ -8,23 +9,28 @@ import {
 
 interface EditorCaretStore {
   caret: EditorCaret | null;
-  publish: (content: string, offset: number) => void;
+  publish: (document: Text, offset: number) => void;
   clear: () => void;
 }
 
 export const useEditorCaretStore = create<EditorCaretStore>((set) => ({
   caret: null,
-  publish: (content, offset) =>
-    set({ caret: admitCaretStatus(content, offset) }),
+  publish: (document, offset) =>
+    set({ caret: admitCaretStatus(document, offset) }),
   clear: () => set({ caret: null }),
 }));
 
-export function useEditorCaretPublisher(content: string | null) {
+/**
+ * `active` says whether a caret applies. The editor passes its own document
+ * with each offset, so the caret never pairs a new offset with the text of an
+ * earlier render.
+ */
+export function useEditorCaretPublisher(active: boolean) {
   useEffect(() => {
-    if (content === null) {
+    if (!active) {
       useEditorCaretStore.getState().clear();
     }
-  }, [content]);
+  }, [active]);
 
   useEffect(
     () => () => {
@@ -33,11 +39,11 @@ export function useEditorCaretPublisher(content: string | null) {
     [],
   );
 
-  return (offset: number) => {
-    if (content === null) {
+  return (offset: number, document: Text) => {
+    if (!active) {
       useEditorCaretStore.getState().clear();
       return;
     }
-    useEditorCaretStore.getState().publish(content, offset);
+    useEditorCaretStore.getState().publish(document, offset);
   };
 }

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
+import { tabsWithEditorUpdate } from "../../app/editorSlice";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
+import { contentText } from "./editorContent";
 import { useEditorExternalWatch } from "./editorExternalWatch";
 import type { EditorAdapterHandle } from "./EditorAdapter";
 import { fileNavigationSelection } from "./fileNavigation";
@@ -57,22 +59,7 @@ export function useFileSurfaceModel(
       setActiveEditor: (next, update) => {
         useWorkbenchStore.setState((state) => ({
           activeEditor: next,
-          tabs:
-            update?.dirty === undefined && update?.tabStatus === undefined
-              ? state.tabs
-              : state.tabs.map((candidate) =>
-                  sameResource(candidate.resource, next.resource)
-                    ? {
-                        ...candidate,
-                        ...(update?.dirty === undefined
-                          ? {}
-                          : { dirty: update.dirty }),
-                        ...(update?.tabStatus === undefined
-                          ? {}
-                          : { status: update.tabStatus ?? undefined }),
-                      }
-                    : candidate,
-                ),
+          tabs: tabsWithEditorUpdate(state.tabs, next.resource, update),
         }));
       },
     }),
@@ -103,7 +90,7 @@ export function useFileSurfaceModel(
   const findMatches = useMemo(
     () =>
       findOpen
-        ? findLiteralMatches(content, findQuery, caseSensitive)
+        ? findLiteralMatches(contentText(content), findQuery, caseSensitive)
         : { offsets: [], truncated: false, contentLimitExceeded: false },
     [caseSensitive, content, findOpen, findQuery],
   );
@@ -162,7 +149,7 @@ export function useFileSurfaceModel(
       return;
     }
     const selection = fileNavigationSelection(
-      editor.content,
+      contentText(editor.content),
       fileNavigationTarget,
     );
     input.focus();

@@ -1,3 +1,5 @@
+import type { Text } from "@codemirror/state";
+
 import { MAX_GOTO_LINE_POSITION } from "./goToLine";
 
 export interface EditorCaret {
@@ -6,28 +8,19 @@ export interface EditorCaret {
 }
 
 export function admitCaretStatus(
-  content: string,
+  document: Text,
   offset: number,
 ): EditorCaret | null {
-  if (!Number.isSafeInteger(offset) || offset < 0 || offset > content.length) {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > document.length) {
     return null;
   }
-  let line = 1;
-  let lineStart = 0;
-  for (let index = 0; index < offset; index += 1) {
-    if (content.charCodeAt(index) === 10) {
-      line += 1;
-      lineStart = index + 1;
-      if (line > MAX_GOTO_LINE_POSITION) {
-        return null;
-      }
-    }
-  }
-  const column = offset - lineStart + 1;
-  if (column < 1 || column > MAX_GOTO_LINE_POSITION) {
+  // The editor's document finds the line in its tree, without a scan.
+  const line = document.lineAt(offset);
+  const column = offset - line.from + 1;
+  if (line.number > MAX_GOTO_LINE_POSITION || column > MAX_GOTO_LINE_POSITION) {
     return null;
   }
-  return { line, column };
+  return { line: line.number, column };
 }
 
 export function caretStatusLabel(caret: EditorCaret | null): string | null {

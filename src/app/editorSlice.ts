@@ -6,6 +6,10 @@ import {
   sameResource,
 } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
+import type {
+  EditorContent,
+  EditorContentBase,
+} from "../features/files/editorContent";
 import {
   getFileEditorController,
   type ActiveEditorState,
@@ -32,7 +36,10 @@ export interface EditorSlice {
   saveAndCloseTab: () => Promise<void>;
   discardAndCloseTab: () => Promise<void>;
   loadEditor: (resource: ResourceRef) => Promise<void>;
-  updateEditorContent: (content: string) => void;
+  updateEditorContent: (
+    content: EditorContent,
+    base?: EditorContentBase | null,
+  ) => void;
   flushActiveEditor: () => Promise<void>;
   saveActiveEditor: () => Promise<boolean>;
   discardActiveEditor: () => Promise<boolean>;
@@ -50,22 +57,7 @@ export const createEditorSlice: StateCreator<
     setActiveEditor: (editor, update) => {
       set((state) => ({
         activeEditor: editor,
-        tabs:
-          update?.dirty === undefined && update?.tabStatus === undefined
-            ? state.tabs
-            : state.tabs.map((tab) =>
-                sameResource(tab.resource, editor.resource)
-                  ? {
-                      ...tab,
-                      ...(update?.dirty === undefined
-                        ? {}
-                        : { dirty: update.dirty }),
-                      ...(update?.tabStatus === undefined
-                        ? {}
-                        : { status: update.tabStatus ?? undefined }),
-                    }
-                  : tab,
-              ),
+        tabs: tabsWithEditorUpdate(state.tabs, editor.resource, update),
       }));
     },
   };
@@ -155,7 +147,7 @@ export const createEditorSlice: StateCreator<
       }
     },
 
-    updateEditorContent: (content) => {
+    updateEditorContent: (content, base) => {
       const state = get();
       const editor = state.activeEditor;
       if (
@@ -166,7 +158,7 @@ export const createEditorSlice: StateCreator<
       ) {
         return;
       }
-      editorController.updateContent(editorState, content);
+      editorController.updateContent(editorState, content, base);
     },
 
     flushActiveEditor: () =>
@@ -265,3 +257,29 @@ export const createEditorSlice: StateCreator<
     },
   };
 };
+
+/**
+ * Applies a dirty or status change to the editor's tab. The tabs array keeps
+ * its identity when nothing changes, so a keystroke that leaves the tab dirty
+ * does not re-render every tabs subscriber (EP-01).
+ */
+export function tabsWithEditorUpdate(
+  tabs: WorkbenchState["tabs"],
+  resource: ResourceRef,
+  update?: { dirty?: boolean; tabStatus?: "failed" | null },
+): WorkbenchState["tabs"] {
+  if (!update) return tabs;
+  // Every tab on the resource, since a File and its Diff can both be open.
+  const next = tabs.map((tab) => {
+    if (!sameResource(tab.resource, resource)) return tab;
+    const dirty = update.dirty ?? tab.dirty;
+    const status =
+      update.tabStatus === undefined
+        ? tab.status
+        : (update.tabStatus ?? undefined);
+    return dirty === tab.dirty && status === tab.status
+      ? tab
+      : { ...tab, dirty, status };
+  });
+  return next.some((tab, index) => tab !== tabs[index]) ? next : tabs;
+}

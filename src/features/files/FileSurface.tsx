@@ -5,6 +5,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { EditorAdapterHandle } from "./EditorAdapter";
+import { contentText, sameContent } from "./editorContent";
 import {
   FileSurfaceContent,
   FileSurfaceResourceState,
@@ -62,10 +63,8 @@ export function FileSurface({
   const onCaretOffset = useEditorCaretPublisher(
     !previewing &&
       editor?.phase === "ready" &&
-      resource &&
-      sameResource(editor.resource, resource)
-      ? editor.content
-      : null,
+      !!resource &&
+      sameResource(editor.resource, resource),
   );
 
   useEffect(() => {
@@ -110,7 +109,7 @@ export function FileSurface({
   }, [openFind, previewing, readOnly]);
 
   function submitGoToLine() {
-    const selection = goToLineSelection(findContent, goToQuery);
+    const selection = goToLineSelection(contentText(findContent), goToQuery);
     if (!selection) {
       setGoToError(true);
       return;
@@ -129,16 +128,17 @@ export function FileSurface({
     const { content } = readyEditor;
     const selection = input.selection();
     const { syntaxOutline } = await import("../outline/syntaxOutline");
-    const outline = await syntaxOutline(resource.relativePath, content);
+    const text = contentText(content);
+    const outline = await syntaxOutline(resource.relativePath, text);
     const stillCurrent = useWorkbenchStore.getState().activeEditor;
     if (
       stillCurrent?.phase !== "ready" ||
       !sameResource(stillCurrent.resource, resource) ||
-      stillCurrent.content !== content
+      !sameContent(stillCurrent.content, content)
     ) {
       return;
     }
-    const target = localSymbolNavigation(content, selection, outline);
+    const target = localSymbolNavigation(text, selection, outline);
     if (!target) {
       setLanguageNavigationStatus("No declaration in this File for that name.");
       return;

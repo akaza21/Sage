@@ -13,6 +13,7 @@ import { useEditorCaretStore } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { contentText } from "./editorContent";
 import { FileSurface } from "./FileSurface";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
@@ -52,6 +53,12 @@ function viewForEditor(editor: HTMLElement) {
     throw new Error("Expected a mounted CodeMirror editor");
   }
   return view;
+}
+
+/** The store holds the editor's document after an edit, not a string. */
+function activeEditorText() {
+  const editor = useWorkbenchStore.getState().activeEditor;
+  return editor?.phase === "ready" ? contentText(editor.content) : null;
 }
 
 function replaceEditorContent(editor: HTMLElement, content: string) {
@@ -170,9 +177,9 @@ describe("FileSurface durability cadence", () => {
     replaceEditorContent(editor, "edited\n");
     expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
       phase: "ready",
-      content: "edited\n",
       revision: 1,
     });
+    expect(activeEditorText()).toBe("edited\n");
     expect(screen.getByRole("alert")).toHaveTextContent(
       "External change detected. Disk content changed",
     );
@@ -197,10 +204,7 @@ describe("FileSurface durability cadence", () => {
 
     fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
 
-    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
-      phase: "ready",
-      content: document.buffer.content,
-    });
+    expect(activeEditorText()).toBe(document.buffer.content);
     expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(false);
   });
 
@@ -662,6 +666,27 @@ describe("FileSurface in-file find", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 0, end: 5 });
+  });
+});
+
+describe("FileSurface caret status", () => {
+  it("keeps Ln and Col while typing at the end of the File", async () => {
+    setReadyEditor(tab, "one\ntwo");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    const view = viewForEditor(editor);
+    act(() => {
+      view.dispatch({ selection: { anchor: 7 } });
+      view.dispatch(view.state.replaceSelection("!"));
+    });
+    // The caret now sits past the end of the text the last render saw; the
+    // status must come from the edited document, not that render.
+    expect(useEditorCaretStore.getState().caret).toEqual({
+      line: 2,
+      column: 5,
+    });
   });
 });
 

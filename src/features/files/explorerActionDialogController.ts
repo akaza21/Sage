@@ -22,8 +22,8 @@ export type ExplorerSelectionAction =
 
 type ExplorerSelectionState = Pick<
   WorkbenchState,
-  "activeEditor" | "directoryListings" | "selectedResource" | "tabs"
->;
+  "directoryListings" | "selectedResource" | "tabs"
+> & { activeEditor: { resource: ResourceRef } | null };
 
 export function explorerSelectionAction(
   state: ExplorerSelectionState,

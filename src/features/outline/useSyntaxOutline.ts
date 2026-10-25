@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import type { ResourceRef } from "../../domain/resource";
 import { sameResource } from "../../domain/resourceIdentity";
+import { contentText, type EditorContent } from "../files/editorContent";
 import { outlineAvailability } from "./outlineAvailability";
 import type { SyntaxOutline } from "./syntaxOutline";
 
@@ -24,7 +25,7 @@ export function useSyntaxOutline(): ActiveOutline | null {
   useEffect(() => {
     let request = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let seenContent: string | null = null;
+    let seenContent: EditorContent | null = null;
     let seenResource: ResourceRef | null = null;
 
     const schedule = () => {
@@ -77,7 +78,7 @@ export function useSyntaxOutline(): ActiveOutline | null {
             .then(({ syntaxOutline }) =>
               syntaxOutline(
                 resource.relativePath,
-                content,
+                contentText(content),
                 () => current === request,
               ),
             )

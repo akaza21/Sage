@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { Text } from "@codemirror/state";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EditorDocument } from "../../domain/workbench";
@@ -105,6 +106,61 @@ describe("file editor controller seam", () => {
     await vi.advanceTimersByTimeAsync(750);
     expect(editor.snapshotEditorBuffer).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+
+  it("takes the editor's answer for dirty state and builds text only for snapshots", async () => {
+    const editor = fakeEditorPort();
+    vi.mocked(editor.snapshotEditorBuffer).mockImplementation(
+      async (request) => ({
+        revision: request.revision,
+        persistedAt: 1,
+        dirty: true,
+      }),
+    );
+    const controller = bindFileEditorController(editor);
+    let activeEditor = controller.ready(document);
+    const dirtyUpdates: (boolean | undefined)[] = [];
+    const editorState: EditorStateBridge = {
+      getActiveEditor: () => activeEditor,
+      setActiveEditor: (next, update) => {
+        activeEditor = next;
+        if (update?.dirty !== undefined) dirtyUpdates.push(update.dirty);
+      },
+    };
+    // Same length as the buffer: only the editor's answer avoids a string.
+    const sameLength = Text.of(["bass", ""]);
+    const toString = vi.spyOn(Text.prototype, "toString");
+    controller.updateContent(editorState, sameLength, {
+      content: "base\n",
+      unchanged: false,
+    });
+    const typedBack = Text.of(["base", ""]);
+    controller.updateContent(editorState, typedBack, {
+      content: "base\n",
+      unchanged: true,
+    });
+    expect(dirtyUpdates).toEqual([true, false]);
+    expect(toString).not.toHaveBeenCalled();
+
+    // An answer about some other text is ignored; the text is compared.
+    controller.updateContent(editorState, sameLength, {
+      content: "other",
+      unchanged: true,
+    });
+    expect(dirtyUpdates.at(-1)).toBe(true);
+
+    // Without an answer, a length change is enough to call the File dirty.
+    toString.mockClear();
+    controller.updateContent(editorState, Text.of(["base", "x"]));
+    expect(dirtyUpdates.at(-1)).toBe(true);
+    expect(toString).not.toHaveBeenCalled();
+    controller.updateContent(editorState, sameLength);
+
+    await controller.flush(editorState);
+    expect(editor.snapshotEditorBuffer).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "bass\n", revision: 5 }),
+    );
+    toString.mockRestore();
   });
 
   it("keeps FileSurface independent of desktop and EditorPort runtime imports", () => {

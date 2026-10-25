@@ -6,7 +6,7 @@ import {
   syntaxTree,
   type TagStyle,
 } from "@codemirror/language";
-import type { Extension } from "@codemirror/state";
+import { Text, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -253,9 +253,9 @@ describe("CodeMirrorEditorRuntime caret", () => {
       onChange: vi.fn(),
       onCaretOffset,
     });
-    expect(onCaretOffset).toHaveBeenCalledWith(0);
+    expect(onCaretOffset).toHaveBeenCalledWith(0, expect.any(Text));
     runtime.setSelection(6, 6);
-    expect(onCaretOffset).toHaveBeenLastCalledWith(6);
+    expect(onCaretOffset).toHaveBeenLastCalledWith(6, expect.any(Text));
     runtime.destroy();
   });
 });

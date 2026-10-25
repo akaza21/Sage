@@ -13,6 +13,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument } from "../domain/workbench";
+import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 import {
@@ -156,7 +157,7 @@ describe("D0 workbench window mode seam", () => {
     const flushActiveEditor = vi.fn(async () => {
       const editor = useWorkbenchStore.getState().activeEditor;
       const activeContent =
-        editor?.phase === "ready" ? editor.content : undefined;
+        editor?.phase === "ready" ? contentText(editor.content) : undefined;
       if (activeContent !== undefined) flushedContents.push(activeContent);
     });
     useWorkbenchStore.setState({

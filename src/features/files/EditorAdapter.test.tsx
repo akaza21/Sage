@@ -175,15 +175,15 @@ describe("EditorAdapter", () => {
       view.dispatch({ changes: { from: 0, to: 3, insert: "two" } });
     });
     expect(view.state.doc.toString()).toBe("two");
-    expect(onChange).toHaveBeenLastCalledWith("two");
+    expect(String(onChange.mock.lastCall?.[0])).toBe("two");
 
     fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
     expect(view.state.doc.toString()).toBe("one");
-    expect(onChange).toHaveBeenLastCalledWith("one");
+    expect(String(onChange.mock.lastCall?.[0])).toBe("one");
 
     fireEvent.keyDown(editor, { key: "y", ctrlKey: true });
     expect(view.state.doc.toString()).toBe("two");
-    expect(onChange).toHaveBeenLastCalledWith("two");
+    expect(String(onChange.mock.lastCall?.[0])).toBe("two");
   });
 
   it("preserves composition edits and rejects content beyond the UTF-8 byte ceiling", async () => {
@@ -212,7 +212,7 @@ describe("EditorAdapter", () => {
     });
     fireEvent.compositionEnd(editor);
     expect(view.state.doc.toString()).toBe("ok🙂");
-    expect(onChange).toHaveBeenLastCalledWith("ok🙂");
+    expect(String(onChange.mock.lastCall?.[0])).toBe("ok🙂");
 
     const acceptedCallCount = onChange.mock.calls.length;
     act(() => {

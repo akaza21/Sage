@@ -1,8 +1,14 @@
 import type { KeyboardEventHandler, RefObject } from "react";
+import type { Text } from "@codemirror/state";
 
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import type { ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
+import {
+  contentText,
+  type EditorContent,
+  type EditorContentBase,
+} from "./editorContent";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { FileFindBar } from "./FileFindBar";
@@ -91,8 +97,11 @@ export function FileSurfaceContent({
   transitioning: boolean;
   readOnly?: boolean;
   agentMarkdown?: boolean;
-  onCaretOffset: (offset: number) => void;
-  onEditorChange: (content: string) => void;
+  onCaretOffset: (offset: number, document: Text) => void;
+  onEditorChange: (
+    content: EditorContent,
+    base?: EditorContentBase | null,
+  ) => void;
   onSurfaceKeyDown: KeyboardEventHandler<HTMLElement>;
   onTogglePreview: () => void;
 }) {
@@ -138,7 +147,7 @@ export function FileSurfaceContent({
       ) : null}
       {previewing ? (
         <FileMarkdownPreview
-          source={editor.content}
+          source={contentText(editor.content)}
           asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
         />
       ) : (

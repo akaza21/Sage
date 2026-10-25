@@ -10,6 +10,7 @@ import type {
 } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import type { EditorPort } from "../../ports/workbenchPorts";
+import type { EditorContent, EditorContentBase } from "./editorContent";
 
 export const EDITOR_SNAPSHOT_DELAY_MS = 750;
 
@@ -22,7 +23,7 @@ export type ActiveEditorState =
       phase: "ready";
       resource: ResourceRef;
       document: EditorDocument;
-      content: string;
+      content: EditorContent;
       revision: number;
       persistedRevision: number;
       persisting: boolean;
@@ -67,7 +68,11 @@ export interface FileEditorController {
     canCommit?: (resource: ResourceRef) => boolean,
   ): Promise<EditorDocument>;
   ready(document: EditorDocument): ActiveEditorState;
-  updateContent(bridge: EditorStateBridge, content: string): void;
+  updateContent(
+    bridge: EditorStateBridge,
+    content: EditorContent,
+    base?: EditorContentBase | null,
+  ): void;
   snapshot(request: BufferSnapshotRequest): Promise<BufferSnapshotAck>;
   flush(bridge: EditorStateBridge): Promise<void>;
   scheduleSnapshot(flush: () => Promise<unknown>): () => void;
@@ -121,7 +126,7 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         resource: active.resource,
         base: active.document.base,
         lineEnding: active.document.lineEnding,
-        content: active.content,
+        content: String(active.content),
         revision: active.revision,
       };
       bridge.setActiveEditor({ ...active, persisting: true, message: null });
@@ -184,15 +189,20 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
       return document;
     },
     ready,
-    updateContent: (bridge, content) => {
+    updateContent: (bridge, content, base) => {
       const active = currentReady(bridge);
       if (!active) {
         return;
       }
-      const dirty =
-        content === active.document.buffer.content
-          ? active.document.dirty
-          : true;
+      const bufferContent = active.document.buffer.content;
+      // The editor's own answer costs the edit. Comparing text is the
+      // fallback, and the length check spares the string for most edits.
+      const unchanged =
+        base?.content === bufferContent
+          ? base.unchanged
+          : content.length === bufferContent.length &&
+            String(content) === bufferContent;
+      const dirty = unchanged ? active.document.dirty : true;
       bridge.setActiveEditor(
         {
           ...active,

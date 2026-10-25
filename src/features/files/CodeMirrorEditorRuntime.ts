@@ -44,12 +44,13 @@ interface RuntimeProps {
    */
   documentIdentity?: string;
   path: string;
-  content: string;
+  content: EditorContent;
   disabled: boolean;
   maxContentLength: number;
   appearance?: EditorAppearance;
-  onChange: (content: string) => void;
-  onCaretOffset?: (offset: number) => void;
+  /** Hands over the editor's immutable document; never a built string. */
+  onChange: (content: Text, base: EditorContentBase | null) => void;
+  onCaretOffset?: (offset: number, document: Text) => void;
 }
 
 interface RuntimeOptions extends RuntimeProps {
@@ -64,7 +65,8 @@ export interface CodeMirrorEditorRuntime {
   update: (props: RuntimeProps) => void;
 }
 
-import { utf8ByteLength } from "../../domain/text";
+import type { EditorContent, EditorContentBase } from "./editorContent";
+import { utf8LengthField, withinUtf8Limit } from "./utf8Tracking";
 
 /*
  * Document syntax palette resolves from --doc-syntax-* tokens (authority in
@@ -146,14 +148,35 @@ export async function highlightCodeSource(
   return spans;
 }
 
-function withinUtf8Limit(document: Text, limit: number) {
-  if (document.length > limit) {
-    return false;
-  }
-  if (document.length <= Math.floor(limit / 3)) {
-    return true;
-  }
-  return utf8ByteLength(document.toString()) <= limit;
+interface DocumentBase {
+  content: string;
+  document: Text;
+}
+
+/**
+ * The base each emitted document descends from, so an editor remounted on a
+ * document from the store (preview toggle, read-only change) still answers
+ * "unchanged" from shared structure.
+ */
+const basesOfEmitted = new WeakMap<Text, DocumentBase>();
+
+function baseFor(content: string, document: Text): DocumentBase | null {
+  // CodeMirror reads a lone "\r" as a line break, so its document would not
+  // round-trip to `content`; the controller then compares text instead.
+  return content.includes("\r") ? null : { content, document };
+}
+
+/**
+ * `sameContent`, restated here: a value import of `editorContent` would pull
+ * it into the CodeMirror chunk and make the File surface load CodeMirror
+ * eagerly.
+ */
+function sameText(left: EditorContent, right: EditorContent) {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return typeof left !== "string" && typeof right !== "string"
+    ? left.eq(right)
+    : String(left) === String(right);
 }
 
 function appearanceExtensions(appearance: EditorAppearance): Extension {
@@ -220,7 +243,10 @@ export function createCodeMirrorEditorRuntime(
   let applyingControlledContent = false;
   // A local transaction already serializes its exact content through onChange.
   // Its store echo must not become a controlled replacement (which clears undo).
-  let lastLocalContent = options.content;
+  let lastLocalContent: EditorContent = options.content;
+  // The last string the editor was given, and the document built from it.
+  // Edits share its unchanged structure, so `eq` against it costs the edit.
+  let base: DocumentBase | null = null;
   let languageGeneration = 0;
   let destroyed = false;
   const view = new EditorView({
@@ -237,22 +263,34 @@ export function createCodeMirrorEditorRuntime(
         appearanceCompartment.of(
           appearanceExtensions(current.appearance ?? DEFAULT_EDITOR_APPEARANCE),
         ),
+        utf8LengthField,
+        // Costs the size of the edit, not the document (EP-01).
         EditorState.transactionFilter.of((transaction) =>
-          !transaction.docChanged ||
-          withinUtf8Limit(transaction.newDoc, current.maxContentLength)
+          withinUtf8Limit(transaction, current.maxContentLength)
             ? transaction
             : [],
         ),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingControlledContent) {
-            lastLocalContent = update.state.doc.toString();
-            current.onChange(lastLocalContent);
+            const document = update.state.doc;
+            lastLocalContent = document;
+            if (base) basesOfEmitted.set(document, base);
+            current.onChange(
+              document,
+              base && {
+                content: base.content,
+                unchanged: document.eq(base.document),
+              },
+            );
           }
           if (
             current.onCaretOffset &&
             (update.selectionSet || update.docChanged)
           ) {
-            current.onCaretOffset(update.state.selection.main.head);
+            current.onCaretOffset(
+              update.state.selection.main.head,
+              update.state.doc,
+            );
           }
         }),
       ],
@@ -278,7 +316,11 @@ export function createCodeMirrorEditorRuntime(
   }
 
   selectLanguage(options.path);
-  current.onCaretOffset?.(view.state.selection.main.head);
+  base =
+    typeof options.content === "string"
+      ? baseFor(options.content, view.state.doc)
+      : (basesOfEmitted.get(options.content) ?? null);
+  current.onCaretOffset?.(view.state.selection.main.head, view.state.doc);
 
   return {
     destroy: () => {
@@ -333,12 +375,15 @@ export function createCodeMirrorEditorRuntime(
         next.documentIdentity !== undefined &&
         previous.documentIdentity !== undefined
           ? next.documentIdentity !== previous.documentIdentity
-          : view.state.doc.toString() !== props.content;
+          : !sameText(view.state.doc, props.content);
       // Identity normally avoids touching content, but it cannot mask an
       // authoritative content disagreement from an external reload.
       const controlledDocumentChanged =
         identityChanged || props.content !== previous.content;
-      if (controlledDocumentChanged && props.content !== lastLocalContent) {
+      if (
+        controlledDocumentChanged &&
+        !sameText(props.content, lastLocalContent)
+      ) {
         applyingControlledContent = true;
         try {
           view.dispatch({
@@ -353,6 +398,9 @@ export function createCodeMirrorEditorRuntime(
           applyingControlledContent = false;
         }
         lastLocalContent = props.content;
+      }
+      if (controlledDocumentChanged && typeof props.content === "string") {
+        base = baseFor(props.content, view.state.doc);
       }
       if (props.path !== previous.path) {
         selectLanguage(props.path);

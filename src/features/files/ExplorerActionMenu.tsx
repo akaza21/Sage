@@ -25,9 +25,12 @@ export function ExplorerActionMenu() {
     (state) => state.directoryListings,
   );
   const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeEditor = useWorkbenchStore((state) => state.activeEditor);
+  // The resource only: the whole editor state changes with every keystroke.
+  const activeResource = useWorkbenchStore(
+    (state) => state.activeEditor?.resource ?? null,
+  );
   const action = explorerSelectionAction({
-    activeEditor,
+    activeEditor: activeResource && { resource: activeResource },
     directoryListings,
     selectedResource,
     tabs,

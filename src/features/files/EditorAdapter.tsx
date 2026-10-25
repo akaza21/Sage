@@ -1,3 +1,4 @@
+import type { Text } from "@codemirror/state";
 import {
   forwardRef,
   useImperativeHandle,
@@ -8,6 +9,7 @@ import {
 
 import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
 import type { CodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
+import type { EditorContent, EditorContentBase } from "./editorContent";
 
 export interface EditorSelection {
   start: number;
@@ -24,11 +26,11 @@ interface EditorAdapterProps {
   ariaLabel: string;
   documentIdentity?: string;
   path: string;
-  content: string;
+  content: EditorContent;
   disabled: boolean;
   maxContentLength: number;
-  onChange: (content: string) => void;
-  onCaretOffset?: (offset: number) => void;
+  onChange: (content: Text, base: EditorContentBase | null) => void;
+  onCaretOffset?: (offset: number, document: Text) => void;
 }
 
 export const EditorAdapter = forwardRef<
