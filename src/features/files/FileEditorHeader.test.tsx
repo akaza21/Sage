@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FileEditorHeader } from "./FileEditorHeader";
+import { unsavedState } from "./saveShortcut";
 
 const requiredProps = {
   path: "src/main.ts",
@@ -21,9 +22,16 @@ describe("FileEditorHeader", () => {
     expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
     expect(
       screen.getByRole("status", {
-        name: "Unsaved changes. Press Control or Command plus S to save.",
+        name: "Unsaved changes. Press Control plus S to save.",
       }),
-    ).toHaveTextContent("Unsaved");
+    ).toHaveTextContent("Unsaved · Ctrl+S");
+  });
+
+  it("names Command+S on macOS", () => {
+    expect(unsavedState(true)).toEqual({
+      label: "Unsaved · Cmd+S",
+      accessibleLabel: "Unsaved changes. Press Command plus S to save.",
+    });
   });
 
   it("announces the saving and recovery-snapshot states accurately", () => {

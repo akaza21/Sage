@@ -406,7 +406,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const agentEditor = agentPage.getByRole("textbox", {
       name: "Edit src/workbench/AgentChatPanes.tsx",
     });
-    await agentEditor.press("Control+f");
+    await agentEditor.press("ControlOrMeta+f");
     const agentFind = agentPage.getByRole("search", { name: "Find in file" });
     await agentFind
       .getByRole("textbox", { name: "Find text" })

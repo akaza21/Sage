@@ -1,6 +1,8 @@
 import { Eye, FilePenLine } from "../../ui/leanIcons";
 
+import { usesMetaModifier } from "../../ui/shortcutLabel";
 import { FilePathChips } from "./FilePathChips";
+import { unsavedState } from "./saveShortcut";
 
 interface FileEditorHeaderProps {
   path: string;
@@ -39,11 +41,7 @@ export function FileEditorHeader({
           accessibleLabel: "Protecting recovery copy",
         }
       : dirty
-        ? {
-            label: "Unsaved · Ctrl/Cmd+S",
-            accessibleLabel:
-              "Unsaved changes. Press Control or Command plus S to save.",
-          }
+        ? unsavedState(usesMetaModifier())
         : null;
 
   return (

@@ -5,6 +5,7 @@ import {
   formatKeymapChords,
   keymapBinding,
   matchesKeymapChord,
+  matchesPlatformChord,
   type KeymapBinding,
 } from "../domain/keymapRegistry";
 import { isComposerFocusChord } from "../features/chat/composerChrome";
@@ -140,6 +141,46 @@ describe("keymap registry conformance", () => {
     expect(formatKeymapChords(keymapBinding("dismiss"), false)).toEqual([
       "Esc",
     ]);
+  });
+
+  it("labels Go to Line with Control on every platform", () => {
+    expect(formatKeymapChords(keymapBinding("goToLine"), false)).toEqual([
+      "Ctrl+G",
+    ]);
+    expect(formatKeymapChords(keymapBinding("goToLine"), true)).toEqual([
+      "Ctrl+G",
+    ]);
+  });
+
+  it("matches only the platform's own modifier for Editor chords", () => {
+    const save = keymapBinding("save");
+    const base = { ...chordEvent(save), ctrlKey: false };
+    expect(matchesPlatformChord(save, { ...base, ctrlKey: true }, false)).toBe(
+      true,
+    );
+    expect(matchesPlatformChord(save, { ...base, metaKey: true }, false)).toBe(
+      false,
+    );
+    expect(matchesPlatformChord(save, { ...base, metaKey: true }, true)).toBe(
+      true,
+    );
+    expect(matchesPlatformChord(save, { ...base, ctrlKey: true }, true)).toBe(
+      false,
+    );
+    const goToLine = keymapBinding("goToLine");
+    const g = { ...chordEvent(goToLine), ctrlKey: false };
+    expect(matchesPlatformChord(goToLine, { ...g, ctrlKey: true }, true)).toBe(
+      true,
+    );
+    expect(matchesPlatformChord(goToLine, { ...g, metaKey: true }, true)).toBe(
+      false,
+    );
+    const commit = keymapBinding("commit");
+    const enter = { ...chordEvent(commit), ctrlKey: false };
+    expect(
+      matchesPlatformChord(commit, { ...enter, metaKey: true }, true),
+    ).toBe(true);
+    expect(matchesPlatformChord(commit, enter, true)).toBe(false);
   });
 
   it("labels the composer and commit chords the way the UI states them", () => {

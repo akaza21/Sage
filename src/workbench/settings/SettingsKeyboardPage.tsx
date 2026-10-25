@@ -3,6 +3,7 @@ import {
   formatKeymapChords,
   type KeymapScope,
 } from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
 
 const SCOPES: readonly KeymapScope[] = [
   "Global",
@@ -19,10 +20,7 @@ const SCOPE_COPY: Record<KeymapScope, string> = {
 };
 
 export function SettingsKeyboardPage({ visible }: { visible: Set<string> }) {
-  const apple =
-    typeof navigator === "undefined"
-      ? false
-      : /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
+  const apple = usesMetaModifier();
   return (
     <section
       className="settings-surface__section"

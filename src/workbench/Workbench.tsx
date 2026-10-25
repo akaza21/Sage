@@ -6,7 +6,8 @@ import {
   type CSSProperties,
 } from "react";
 import { useWorkbenchStore } from "../app/store";
-import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
+import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
+import { usesMetaModifier } from "../ui/shortcutLabel";
 import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
 import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
@@ -194,12 +195,14 @@ export function Workbench() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (resourceModal) return;
-      if (matchesKeymapChord(keymapBinding("openSettings"), event)) {
+      // Platform modifier only: Control+N on macOS is the editor's next line.
+      const apple = usesMetaModifier();
+      if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
         event.preventDefault();
         setWindowMode("editor");
         void useWorkbenchStore.getState().openSettings();
       }
-      if (matchesKeymapChord(keymapBinding("newTask"), event)) {
+      if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
         setWindowMode("agent");
         void useWorkbenchStore.getState().createChat();

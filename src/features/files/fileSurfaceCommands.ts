@@ -1,3 +1,9 @@
+import {
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
+
 export interface FileSurfaceCommandActions {
   previewing: boolean;
   findOpen: boolean;
@@ -11,6 +17,10 @@ export interface FileSurfaceCommandActions {
   save: () => void;
 }
 
+/**
+ * Editor chords from the keymap registry, matched with the platform's own
+ * modifier: Command+S/F and Control+G on macOS, Control+S/F/G elsewhere.
+ */
 export function handleFileSurfaceCommandKey(
   event: {
     key: string;
@@ -21,18 +31,16 @@ export function handleFileSurfaceCommandKey(
     preventDefault: () => void;
   },
   actions: FileSurfaceCommandActions,
+  apple: boolean = usesMetaModifier(),
 ): boolean {
-  if (
-    event.key === "F12" &&
-    !event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey
-  ) {
+  const matches = (id: string) =>
+    matchesPlatformChord(keymapBinding(id), event, apple);
+  if (matches("goToSymbol")) {
     event.preventDefault();
     if (!actions.previewing) actions.goToLocalSymbol();
     return true;
   }
+  // Escape dismisses whatever modifiers are held, as it always has.
   if (event.key === "Escape") {
     if (actions.previewing) {
       event.preventDefault();
@@ -51,31 +59,19 @@ export function handleFileSurfaceCommandKey(
     }
     return false;
   }
-  const modified = (event.ctrlKey || event.metaKey) && !event.altKey;
-  if (!modified) {
-    return false;
-  }
-  const key = event.key.toLowerCase();
-  if (key === "s") {
+  if (matches("save")) {
     event.preventDefault();
     actions.save();
     return true;
   }
-  if (event.shiftKey) {
-    return false;
-  }
-  if (key === "f") {
+  if (matches("find")) {
     event.preventDefault();
-    if (!actions.previewing) {
-      actions.openFind();
-    }
+    if (!actions.previewing) actions.openFind();
     return true;
   }
-  if (key === "g") {
+  if (matches("goToLine")) {
     event.preventDefault();
-    if (!actions.previewing) {
-      actions.openGoToLine();
-    }
+    if (!actions.previewing) actions.openGoToLine();
     return true;
   }
   return false;

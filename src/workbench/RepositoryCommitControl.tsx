@@ -1,7 +1,12 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
+import {
+  formatKeymapChords,
+  keymapBinding,
+  matchesPlatformChord,
+} from "../domain/keymapRegistry";
+import { usesMetaModifier } from "../ui/shortcutLabel";
 import {
   canAbortGitSequence,
   canCommitRepository,
@@ -182,7 +187,13 @@ export function RepositoryCommitControl({
             clearError(repository.rootId);
           }}
           onKeyDown={(event) => {
-            if (matchesKeymapChord(keymapBinding("commit"), event)) {
+            if (
+              matchesPlatformChord(
+                keymapBinding("commit"),
+                event,
+                usesMetaModifier(),
+              )
+            ) {
               event.preventDefault();
               void submitCommit();
             }
@@ -210,7 +221,7 @@ export function RepositoryCommitControl({
                       : hasConflicts && repository.mergeInProgress
                         ? "Resolve remaining conflicts to enable commit."
                         : committable
-                          ? "Only staged changes will be committed. Ctrl/Command+Enter to commit."
+                          ? `Only staged changes will be committed. ${formatKeymapChords(keymapBinding("commit"), usesMetaModifier())[0]} to commit.`
                           : "Stage changes to enable commit."}
         </span>
         <span className="repository-commit__actions">

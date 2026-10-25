@@ -2,7 +2,7 @@ import { FileSearch, Search, Settings } from "../ui/leanIcons";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
+import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
@@ -105,7 +105,15 @@ export function TitleBar({
   useEffect(() => {
     if (inert || mode !== "agent" || chatSearchDisabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!matchesKeymapChord(keymapBinding("chatSearch"), event)) return;
+      // Control+K on macOS is the text fields' kill-line, so only Command.
+      if (
+        !matchesPlatformChord(
+          keymapBinding("chatSearch"),
+          event,
+          usesMetaModifier(),
+        )
+      )
+        return;
       event.preventDefault();
       openChatSearch();
     };

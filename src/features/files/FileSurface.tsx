@@ -9,6 +9,11 @@ import {
   FileSurfaceContent,
   FileSurfaceResourceState,
 } from "./FileSurfaceContent";
+import {
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
@@ -92,9 +97,7 @@ export function FileSurface({
     if (!readOnly || previewing) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (
-        event.key.toLowerCase() !== "f" ||
-        (!event.ctrlKey && !event.metaKey) ||
-        event.altKey
+        !matchesPlatformChord(keymapBinding("find"), event, usesMetaModifier())
       )
         return;
       event.preventDefault();

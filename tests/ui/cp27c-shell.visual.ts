@@ -125,7 +125,7 @@ async function editorControlsReachable(page: Page) {
   expect(
     await search.evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
-  await editor.press("Control+f");
+  await editor.press("ControlOrMeta+f");
   const find = page.getByRole("search", { name: "Find in file" });
   await find.getByRole("textbox", { name: "Find text" }).fill("ChatSurface");
   await expectContained(find, page);

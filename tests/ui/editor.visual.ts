@@ -597,7 +597,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const editorPlane = page.locator(".editor-input");
     const before = await editorPlane.boundingBox();
 
-    await editor.press("Control+f");
+    await editor.press("ControlOrMeta+f");
     const find = page.getByRole("search", { name: "Find in file" });
     await expect(find).toBeVisible();
     await find.getByRole("textbox", { name: "Find text" }).fill("ChatSurface");
@@ -906,7 +906,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.getByRole("button", { name: "Hide left sidebar" }).click();
     const editorContent = page.locator(".file-surface .cm-content");
     await editorContent.click();
-    await editorContent.press("Control+f");
+    await editorContent.press("ControlOrMeta+f");
     const find = page.getByRole("search", { name: "Find in file" });
     await expect(find).toBeVisible();
     await expectFindContained(page);

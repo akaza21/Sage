@@ -596,7 +596,7 @@ describe("FileSurface in-file find", () => {
       name: `Edit ${path}`,
     });
 
-    fireEvent.keyDown(editor, { key: "f", metaKey: true });
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
     const query = screen.getByRole("textbox", { name: "Find text" });
     expect(query).toHaveFocus();
     fireEvent.change(query, {

@@ -11,6 +11,11 @@ export interface KeymapBinding {
   ctrlOrMeta: KeymapModifier;
   shift: KeymapModifier;
   alt: KeymapModifier;
+  /**
+   * On macOS the chord uses Control instead of Command, as Go to Line does in
+   * native Mac editors (Command+G is Find Next there).
+   */
+  appleControl?: true;
 }
 
 export interface KeymapChordEvent {
@@ -121,6 +126,7 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required",
     shift: "forbidden",
     alt: "forbidden",
+    appleControl: true,
   },
   {
     id: "goToSymbol",
@@ -178,6 +184,29 @@ export function matchesKeymapChord(
   );
 }
 
+/**
+ * Matches the platform's own modifier only: Command on macOS (Control there
+ * is the text-editing modifier, as in Control+F for forward a character) and
+ * Control elsewhere (the Windows key is the system's). `matchesKeymapChord`
+ * keeps accepting either for surfaces that have not opted in yet.
+ */
+export function matchesPlatformChord(
+  binding: KeymapBinding,
+  event: KeymapChordEvent,
+  apple: boolean,
+): boolean {
+  const useControl = !apple || binding.appleControl === true;
+  const primary = useControl ? event.ctrlKey : event.metaKey;
+  const other = useControl ? event.metaKey : event.ctrlKey;
+  return (
+    !other &&
+    admits(binding.ctrlOrMeta, primary) &&
+    admits(binding.shift, event.shiftKey) &&
+    admits(binding.alt, event.altKey) &&
+    event.key.toLowerCase() === binding.key
+  );
+}
+
 const KEY_LABELS: Record<string, string> = {
   escape: "Esc",
   f12: "F12",
@@ -193,7 +222,9 @@ export function formatKeymapChords(
     (binding.key === "," ? "," : binding.key.toUpperCase());
   const chord = (withCtrlOrMeta: boolean) => {
     const parts: string[] = [];
-    if (withCtrlOrMeta) parts.push(apple ? "Cmd" : "Ctrl");
+    if (withCtrlOrMeta) {
+      parts.push(apple && binding.appleControl !== true ? "Cmd" : "Ctrl");
+    }
     if (binding.shift === "required") parts.push("Shift");
     if (binding.alt === "required") parts.push("Alt");
     parts.push(key);

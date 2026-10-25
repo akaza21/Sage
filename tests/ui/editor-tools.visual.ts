@@ -19,7 +19,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     await expect(
       page.getByRole("status", {
-        name: "Unsaved changes. Press Control or Command plus S to save.",
+        // The browser names the host platform's own save chord.
+        name: `Unsaved changes. Press ${process.platform === "darwin" ? "Command" : "Control"} plus S to save.`,
       }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
