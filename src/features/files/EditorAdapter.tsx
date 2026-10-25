@@ -7,7 +7,10 @@ import {
   useState,
 } from "react";
 
-import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
+import {
+  editorAppearanceFrom,
+  useEditorSettingsStore,
+} from "../../app/editorSettingsStore";
 import type { CodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
 import type { EditorContent, EditorContentBase } from "./editorContent";
 
@@ -45,12 +48,20 @@ export const EditorAdapter = forwardRef<
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
     "loading",
   );
-  const fontSize = useEditorAppearanceStore((state) => state.fontSize);
-  const tabSize = useEditorAppearanceStore((state) => state.tabSize);
-  const wordWrap = useEditorAppearanceStore((state) => state.wordWrap);
-  const lineNumbers = useEditorAppearanceStore((state) => state.lineNumbers);
-  const showWhitespace = useEditorAppearanceStore(
-    (state) => state.showWhitespace,
+  const fontSize = useEditorSettingsStore(
+    (state) => state.settings["editor.fontSize"],
+  );
+  const tabSize = useEditorSettingsStore(
+    (state) => state.settings["editor.tabSize"],
+  );
+  const wordWrap = useEditorSettingsStore(
+    (state) => state.settings["editor.wordWrap"],
+  );
+  const lineNumbers = useEditorSettingsStore(
+    (state) => state.settings["editor.lineNumbers"],
+  );
+  const showWhitespace = useEditorSettingsStore(
+    (state) => state.settings["editor.renderWhitespace"],
   );
   latestPropsRef.current = props;
 
@@ -68,13 +79,9 @@ export const EditorAdapter = forwardRef<
         const runtime = createCodeMirrorEditorRuntime({
           parent,
           ...latestPropsRef.current,
-          appearance: {
-            fontSize: useEditorAppearanceStore.getState().fontSize,
-            tabSize: useEditorAppearanceStore.getState().tabSize,
-            wordWrap: useEditorAppearanceStore.getState().wordWrap,
-            lineNumbers: useEditorAppearanceStore.getState().lineNumbers,
-            showWhitespace: useEditorAppearanceStore.getState().showWhitespace,
-          },
+          appearance: editorAppearanceFrom(
+            useEditorSettingsStore.getState().settings,
+          ),
         });
         runtimeRef.current = runtime;
         const selection = pendingSelectionRef.current;

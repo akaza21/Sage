@@ -21,10 +21,11 @@ import type {
   WorkbenchPorts,
 } from "./workbenchPorts";
 import {
-  DEFAULT_EDITOR_APPEARANCE,
-  admitEditorAppearance,
-  type EditorAppearance,
-} from "../features/files/editorAppearance";
+  admitEditorSetting,
+  admitEditorSettings,
+  EDITOR_SETTINGS,
+  type EditorSettings,
+} from "../domain/editorSettingsCatalogue";
 import {
   admitSessionAccessModes,
   type SessionAccessModes,
@@ -192,15 +193,50 @@ const agent: AgentPort = {
   sendPrompt: (request) => browserDesktop.sendPrompt(request),
 };
 
-let editorAppearance: EditorAppearance = DEFAULT_EDITOR_APPEARANCE;
+// The browser lane keeps Editor settings for the tab's session, so a reload
+// stands in for the desktop app's restart. The desktop app stores them in
+// SQLite instead.
+const EDITOR_SETTINGS_STORAGE_KEY = "sage.browser.editorSettings";
+
+function readBrowserEditorSettings(): EditorSettings {
+  try {
+    const stored = sessionStorage.getItem(EDITOR_SETTINGS_STORAGE_KEY);
+    return admitEditorSettings(stored ? JSON.parse(stored) : null);
+  } catch {
+    return admitEditorSettings(null);
+  }
+}
+
+function writeBrowserEditorSettings(settings: EditorSettings) {
+  try {
+    sessionStorage.setItem(
+      EDITOR_SETTINGS_STORAGE_KEY,
+      JSON.stringify(settings),
+    );
+  } catch {
+    // Storage can be unavailable; the values still last for this page.
+  }
+}
+
+let editorSettings: EditorSettings = readBrowserEditorSettings();
 let sessionAccessModes: SessionAccessModes = {};
 let uiAppearance: UiAppearance = DEFAULT_UI_APPEARANCE;
 
 const settings: SettingsPort = {
-  getEditorAppearance: () => Promise.resolve(editorAppearance),
-  setEditorAppearance: (appearance) => {
-    editorAppearance = admitEditorAppearance(appearance);
-    return Promise.resolve(editorAppearance);
+  getEditorSettings: () => Promise.resolve(editorSettings),
+  setEditorSettings: (changes) => {
+    // Match the desktop store: a value of the wrong type refuses the change.
+    const wrongType = EDITOR_SETTINGS.find(
+      (spec) =>
+        spec.key in changes &&
+        admitEditorSetting(spec, changes[spec.key]) === undefined,
+    );
+    if (wrongType) {
+      return Promise.reject(new Error(`Invalid value for ${wrongType.key}.`));
+    }
+    editorSettings = admitEditorSettings({ ...editorSettings, ...changes });
+    writeBrowserEditorSettings(editorSettings);
+    return Promise.resolve(editorSettings);
   },
   getSessionAccessModes: () => Promise.resolve(sessionAccessModes),
   setSessionAccessModes: (modes) => {

@@ -11,14 +11,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 
-const initialAppearance = useEditorAppearanceStore.getState();
+const initialSettings = useEditorSettingsStore.getState();
 
 afterEach(() => {
   cleanup();
-  useEditorAppearanceStore.setState(initialAppearance, true);
+  useEditorSettingsStore.setState(initialSettings, true);
 });
 
 function viewForEditor(editor: HTMLElement) {
@@ -133,9 +133,12 @@ describe("EditorAdapter", () => {
   });
 
   it("projects the same display settings into every shared File editor", async () => {
-    useEditorAppearanceStore.setState({
-      lineNumbers: false,
-      showWhitespace: true,
+    useEditorSettingsStore.setState({
+      settings: {
+        ...initialSettings.settings,
+        "editor.lineNumbers": false,
+        "editor.renderWhitespace": true,
+      },
     });
     const { container } = render(
       <EditorAdapter

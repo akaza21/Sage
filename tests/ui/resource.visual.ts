@@ -361,21 +361,21 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       await expect
         .poll(() =>
           target.evaluate(async () => {
-            const { useEditorAppearanceStore } =
-              await import("/src/app/editorAppearanceStore.ts");
-            return useEditorAppearanceStore.getState().persistenceReady;
+            const { useEditorSettingsStore } =
+              await import("/src/app/editorSettingsStore.ts");
+            return useEditorSettingsStore.getState().persistenceReady;
           }),
         )
         .toBe(true);
       await target.evaluate(async () => {
-        const { useEditorAppearanceStore } =
-          await import("/src/app/editorAppearanceStore.ts");
-        useEditorAppearanceStore.getState().setAppearance({
-          fontSize: 16,
-          tabSize: 4,
-          wordWrap: true,
-          lineNumbers: false,
-          showWhitespace: true,
+        const { useEditorSettingsStore } =
+          await import("/src/app/editorSettingsStore.ts");
+        useEditorSettingsStore.getState().setSettings({
+          "editor.fontSize": 16,
+          "editor.tabSize": 4,
+          "editor.wordWrap": true,
+          "editor.lineNumbers": false,
+          "editor.renderWhitespace": true,
         });
       });
       await expect(target.locator(".file-surface .cm-lineNumbers")).toHaveCount(

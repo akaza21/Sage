@@ -8,13 +8,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { SettingsSurface } from "./SettingsSurface";
 
-const initial = useEditorAppearanceStore.getState();
+const initial = useEditorSettingsStore.getState();
 
 beforeEach(() => {
-  useEditorAppearanceStore.setState({
+  useEditorSettingsStore.setState({
     persistenceClosing: false,
     persistenceReady: true,
     persistencePhase: "idle",
@@ -23,7 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  useEditorAppearanceStore.setState(initial, true);
+  useEditorSettingsStore.setState(initial, true);
   vi.restoreAllMocks();
 });
 
@@ -100,8 +100,8 @@ describe("SettingsSurface", () => {
     expect(screen.getByText("Default: On")).toBeInTheDocument();
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
     expect(screen.getByRole("searchbox")).toHaveClass("input");
-    const display = screen.getByRole("group", { name: "Editor Display" });
-    const indentation = screen.getByRole("group", { name: "Indentation" });
+    const display = screen.getByRole("group", { name: "Text" });
+    const indentation = screen.getByRole("group", { name: "Editing" });
     expect(within(display).getByLabelText("Font size")).toBeInTheDocument();
     expect(within(display).getByLabelText("Line numbers")).toBeChecked();
     expect(within(display).getByLabelText("Word wrap")).not.toBeChecked();
@@ -131,31 +131,31 @@ describe("SettingsSurface", () => {
     fireEvent.click(screen.getByLabelText("Word wrap"));
     fireEvent.click(screen.getByLabelText("Line numbers"));
     fireEvent.click(screen.getByLabelText("Show whitespace"));
-    expect(useEditorAppearanceStore.getState()).toMatchObject({
-      fontSize: 16,
-      tabSize: 4,
-      wordWrap: true,
-      lineNumbers: false,
-      showWhitespace: true,
+    expect(useEditorSettingsStore.getState().settings).toEqual({
+      "editor.fontSize": 16,
+      "editor.tabSize": 4,
+      "editor.wordWrap": true,
+      "editor.lineNumbers": false,
+      "editor.renderWhitespace": true,
     });
     expect(reset).toBeEnabled();
     fireEvent.click(reset);
-    expect(useEditorAppearanceStore.getState()).toMatchObject({
-      fontSize: 13,
-      tabSize: 2,
-      wordWrap: false,
-      lineNumbers: true,
-      showWhitespace: false,
+    expect(useEditorSettingsStore.getState().settings).toEqual({
+      "editor.fontSize": 13,
+      "editor.tabSize": 2,
+      "editor.wordWrap": false,
+      "editor.lineNumbers": true,
+      "editor.renderWhitespace": false,
     });
     expect(reset).toBeDisabled();
 
     await waitFor(() =>
-      expect(useEditorAppearanceStore.getState().persistencePhase).toBe("idle"),
+      expect(useEditorSettingsStore.getState().persistencePhase).toBe("idle"),
     );
   });
 
   it("keeps settings read-only until the durable record has loaded", () => {
-    useEditorAppearanceStore.setState({
+    useEditorSettingsStore.setState({
       persistenceReady: false,
       persistencePhase: "loading",
     });
@@ -184,12 +184,10 @@ describe("SettingsSurface", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "whitespace" },
     });
-    expect(
-      screen.getByRole("group", { name: "Editor Display" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Text" })).toBeInTheDocument();
     expect(screen.getByLabelText("Show whitespace")).toBeInTheDocument();
     expect(screen.queryByLabelText("Font size")).toBeNull();
-    expect(screen.queryByRole("group", { name: "Indentation" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Editing" })).toBeNull();
 
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "numbered" },
@@ -206,11 +204,9 @@ describe("SettingsSurface", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "tab size" },
     });
-    expect(
-      screen.getByRole("group", { name: "Indentation" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Editing" })).toBeInTheDocument();
     expect(screen.getByLabelText("Tab size")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Editor Display" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Text" })).toBeNull();
 
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "reset" },
@@ -228,7 +224,7 @@ describe("SettingsSurface", () => {
 
   it("shows persistence failure without private details and exposes Retry", () => {
     const retryPersistence = vi.fn();
-    useEditorAppearanceStore.setState({
+    useEditorSettingsStore.setState({
       persistencePhase: "error",
       persistenceErrorKind: "save",
       persistenceMessage: "Editor settings could not be saved.",
@@ -245,7 +241,7 @@ describe("SettingsSurface", () => {
   });
 
   it("freezes Retry while the workbench is closing", () => {
-    useEditorAppearanceStore.setState({
+    useEditorSettingsStore.setState({
       persistenceClosing: true,
       persistencePhase: "error",
       persistenceErrorKind: "save",

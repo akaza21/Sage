@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import {
   SETTINGS_PAGES,
   matchingSettingsEntryIds,
@@ -16,19 +16,19 @@ export function SettingsSurface() {
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
     SETTINGS_PAGES[0].id,
   );
-  const persistenceMessage = useEditorAppearanceStore(
+  const persistenceMessage = useEditorSettingsStore(
     (state) => state.persistenceMessage,
   );
-  const persistenceClosing = useEditorAppearanceStore(
+  const persistenceClosing = useEditorSettingsStore(
     (state) => state.persistenceClosing,
   );
-  const persistenceReady = useEditorAppearanceStore(
+  const persistenceReady = useEditorSettingsStore(
     (state) => state.persistenceReady,
   );
-  const persistencePhase = useEditorAppearanceStore(
+  const persistencePhase = useEditorSettingsStore(
     (state) => state.persistencePhase,
   );
-  const retryPersistence = useEditorAppearanceStore(
+  const retryPersistence = useEditorSettingsStore(
     (state) => state.retryPersistence,
   );
   const visible = useMemo(

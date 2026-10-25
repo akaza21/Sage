@@ -56,7 +56,7 @@ import type {
   TrashProjectResourceResult,
 } from "../domain/workbench";
 import type { HarnessDefinition } from "../domain/harness";
-import type { EditorAppearance } from "../features/files/editorAppearance";
+import type { EditorSettings } from "../domain/editorSettingsCatalogue";
 import type { SessionAccessModes } from "../domain/sessionAccessMode";
 import type { UiAppearance } from "../domain/uiAppearance";
 
@@ -252,10 +252,13 @@ export interface AgentPort {
 }
 
 export interface SettingsPort {
-  getEditorAppearance(): Promise<EditorAppearance>;
+  /** Every stored Editor setting, still to be admitted against the catalogue. */
+  getEditorSettings(): Promise<Record<string, unknown>>;
   getSessionAccessModes(): Promise<SessionAccessModes>;
   getUiAppearance(): Promise<UiAppearance>;
-  setEditorAppearance(appearance: EditorAppearance): Promise<EditorAppearance>;
+  setEditorSettings(
+    changes: Partial<EditorSettings>,
+  ): Promise<Record<string, unknown>>;
   setSessionAccessModes(modes: SessionAccessModes): Promise<SessionAccessModes>;
   setUiAppearance(appearance: UiAppearance): Promise<UiAppearance>;
 }
@@ -326,10 +329,10 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
   ],
   agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
   settings: [
-    "getEditorAppearance",
+    "getEditorSettings",
     "getSessionAccessModes",
     "getUiAppearance",
-    "setEditorAppearance",
+    "setEditorSettings",
     "setSessionAccessModes",
     "setUiAppearance",
   ],

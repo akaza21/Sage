@@ -115,10 +115,10 @@ describe("S0.3 workbench port seam", () => {
       "sendPrompt",
     ]);
     expect(FROZEN_WORKBENCH_PORT_METHODS.settings).toEqual([
-      "getEditorAppearance",
+      "getEditorSettings",
       "getSessionAccessModes",
       "getUiAppearance",
-      "setEditorAppearance",
+      "setEditorSettings",
       "setSessionAccessModes",
       "setUiAppearance",
     ]);
@@ -148,12 +148,29 @@ describe("S0.3 workbench port seam", () => {
     }
   });
 
+  it("browser Editor settings refuse a wrong type like the desktop store", async () => {
+    const { settings } = createBrowserWorkbenchPorts();
+    const before = await settings.getEditorSettings();
+
+    await expect(
+      settings.setEditorSettings({
+        "editor.fontSize": "16",
+      } as unknown as Parameters<typeof settings.setEditorSettings>[0]),
+    ).rejects.toThrow("editor.fontSize");
+    expect(await settings.getEditorSettings()).toEqual(before);
+    await expect(
+      settings.setEditorSettings({
+        "editor.fontSize": 15,
+      } as unknown as Parameters<typeof settings.setEditorSettings>[0]),
+    ).resolves.toMatchObject({ "editor.fontSize": 14 });
+  });
+
   it("exposes getWorkbenchPorts as the runtime acquisition seam", () => {
     const ports = getWorkbenchPorts();
     expect(typeof ports.project.getBootstrapSnapshot).toBe("function");
     expect(typeof ports.editor.openEditorDocument).toBe("function");
     expect(typeof ports.chat.createChat).toBe("function");
-    expect(typeof ports.settings.getEditorAppearance).toBe("function");
+    expect(typeof ports.settings.getEditorSettings).toBe("function");
   });
 
   it("keeps the desktop-only facade synchronous and native-only", () => {

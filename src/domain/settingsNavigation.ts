@@ -1,3 +1,4 @@
+import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
 import { KEYMAP_BINDINGS } from "./keymapRegistry";
 
 export type SettingsPageId = "editor" | "keyboard";
@@ -16,37 +17,15 @@ export interface SettingsPage {
   entries: readonly SettingsEntry[];
 }
 
+// Editor entries come from the settings catalogue, so a new setting is
+// searchable as soon as it has a registry entry.
 const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
-  {
-    id: "fontSize",
-    label: "Font size",
-    description: "Controls the size of text in the code editor.",
-    group: "Editor Display",
-  },
-  {
-    id: "lineNumbers",
-    label: "Line numbers",
-    description: "Shows a numbered gutter beside each line.",
-    group: "Editor Display",
-  },
-  {
-    id: "wordWrap",
-    label: "Word wrap",
-    description: "Wraps long lines so they remain inside the Editor window.",
-    group: "Editor Display",
-  },
-  {
-    id: "showWhitespace",
-    label: "Show whitespace",
-    description: "Reveals spaces and tabs when indentation is unclear.",
-    group: "Editor Display",
-  },
-  {
-    id: "tabSize",
-    label: "Tab size",
-    description: "Sets the number of spaces used for indentation.",
-    group: "Indentation",
-  },
+  ...EDITOR_SETTINGS.map((spec) => ({
+    id: spec.key,
+    label: spec.label,
+    description: spec.description,
+    group: spec.group,
+  })),
   {
     id: "reset",
     label: "Reset Editor Appearance",
@@ -56,7 +35,7 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
 ]);
 
 const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
-  KEYMAP_BINDINGS.map((binding) => ({
+  KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map((binding) => ({
     id: binding.id,
     label: binding.label,
     description: binding.description,

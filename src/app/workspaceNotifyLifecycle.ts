@@ -12,10 +12,6 @@ import {
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { currentProjectLayout } from "./projectProjection";
-import {
-  flushEditorAppearancePersistence,
-  holdEditorAppearancePersistenceForClose,
-} from "./editorAppearanceStore";
 import type { WorkbenchState } from "./store";
 
 type CloseStage =
@@ -208,13 +204,33 @@ export async function unbindWorkspaceNotify(): Promise<void> {
   });
 }
 
+/**
+ * The close path holds and flushes Editor settings through this hook, so the
+ * settings store and its catalogue load with the Workbench instead of in the
+ * startup bundle. The store binds itself when its module loads; until then
+ * nothing can be pending, so holding and flushing do nothing.
+ */
+interface EditorSettingsClose {
+  hold(): () => void;
+  flush(): Promise<void>;
+}
+
+let editorSettingsClose: EditorSettingsClose | null = null;
+
+export function bindEditorSettingsClose(close: EditorSettingsClose) {
+  editorSettingsClose = close;
+}
+
 export async function closeLiveWorkbench(
   get: () => WorkbenchState,
 ): Promise<void> {
-  const releaseAppearance = holdEditorAppearancePersistenceForClose();
+  const releaseSettings = editorSettingsClose?.hold() ?? (() => undefined);
   try {
     await runCloseStage("editorFlush", () => get().flushActiveEditor());
-    await runCloseStage("appearanceFlush", flushEditorAppearancePersistence);
+    await runCloseStage(
+      "appearanceFlush",
+      () => editorSettingsClose?.flush() ?? Promise.resolve(),
+    );
     await runCloseStage("workspaceUnwatch", unbindWorkspaceNotify);
     await runCloseStage("persistAndDestroy", () =>
       getWorkbenchPorts().project.persistProjectLayoutAndClose(
@@ -223,6 +239,6 @@ export async function closeLiveWorkbench(
       ),
     );
   } finally {
-    releaseAppearance();
+    releaseSettings();
   }
 }

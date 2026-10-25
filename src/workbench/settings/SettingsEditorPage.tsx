@@ -1,26 +1,23 @@
 import { type ReactNode } from "react";
 
-import { useEditorAppearanceStore } from "../../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import {
-  DEFAULT_EDITOR_APPEARANCE,
-  EDITOR_FONT_SIZES,
-  EDITOR_TAB_SIZES,
-  type EditorAppearance,
-} from "../../features/files/editorAppearance";
-import { SETTINGS_PAGES } from "../../domain/settingsNavigation";
+  EDITOR_SETTING_GROUPS,
+  EDITOR_SETTINGS,
+  type BooleanSettingSpec,
+  type EditorSettingKey,
+  type IntegerSettingSpec,
+} from "../../domain/editorSettingsCatalogue";
 
-type SettingKey = keyof EditorAppearance;
+/** `editor.fontSize` becomes `editor-font-size`. */
+function controlId(key: EditorSettingKey) {
+  return `editor-${key
+    .slice("editor.".length)
+    .replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+}
 
-const COPY = new Map(
-  (SETTINGS_PAGES.find((page) => page.id === "editor")?.entries ?? []).map(
-    (entry) => [entry.id, entry],
-  ),
-);
-
-function copyFor(id: string) {
-  const entry = COPY.get(id);
-  if (!entry) throw new Error(`unknown editor setting: ${id}`);
-  return entry;
+function withUnit(value: number, unit: string) {
+  return unit === "px" ? `${value}px` : `${value} ${unit}`;
 }
 
 function SettingGroup({
@@ -44,30 +41,46 @@ function SettingGroup({
   );
 }
 
-function ToggleSetting({
+function SettingCopy({
   id,
-  settingKey,
+  label,
+  description,
+  defaultLabel,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  defaultLabel: string;
+}) {
+  return (
+    <div className="settings-surface__copy">
+      <label htmlFor={id}>{label}</label>
+      <p id={`${id}-description`}>{description}</p>
+      <small id={`${id}-default`}>Default: {defaultLabel}</small>
+    </div>
+  );
+}
+
+function ToggleSetting({
+  spec,
   checked,
   disabled,
   onChange,
 }: {
-  id: string;
-  settingKey: SettingKey;
+  spec: BooleanSettingSpec;
   checked: boolean;
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }) {
-  const copy = copyFor(settingKey);
-  const defaultChecked = DEFAULT_EDITOR_APPEARANCE[settingKey] === true;
+  const id = controlId(spec.key as EditorSettingKey);
   return (
     <div className="settings-surface__row">
-      <div className="settings-surface__copy">
-        <label htmlFor={id}>{copy.label}</label>
-        <p id={`${id}-description`}>{copy.description}</p>
-        <small id={`${id}-default`}>
-          Default: {defaultChecked ? "On" : "Off"}
-        </small>
-      </div>
+      <SettingCopy
+        id={id}
+        label={spec.label}
+        description={spec.description}
+        defaultLabel={spec.default ? "On" : "Off"}
+      />
       <div className="settings-surface__toggle">
         <span>{checked ? "On" : "Off"}</span>
         <input
@@ -83,6 +96,49 @@ function ToggleSetting({
   );
 }
 
+function ChoiceSetting({
+  spec,
+  value,
+  disabled,
+  onChange,
+}: {
+  spec: IntegerSettingSpec;
+  value: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  const id = controlId(spec.key as EditorSettingKey);
+  return (
+    <div className="settings-surface__row">
+      <SettingCopy
+        id={id}
+        label={spec.label}
+        description={spec.description}
+        defaultLabel={withUnit(spec.default, spec.unit)}
+      />
+      <select
+        className="select"
+        id={id}
+        value={value}
+        disabled={disabled}
+        aria-describedby={`${id}-description ${id}-default`}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {spec.choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {withUnit(choice, spec.unit)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * The Editor settings page, rendered from the catalogue: each group with a
+ * visible entry, in catalogue order. A new setting needs a registry entry and,
+ * only for a new kind of value, a new control here.
+ */
 export function SettingsEditorPage({
   visible,
   controlsDisabled,
@@ -90,34 +146,12 @@ export function SettingsEditorPage({
   visible: Set<string>;
   controlsDisabled: boolean;
 }) {
-  const fontSize = useEditorAppearanceStore((state) => state.fontSize);
-  const tabSize = useEditorAppearanceStore((state) => state.tabSize);
-  const wordWrap = useEditorAppearanceStore((state) => state.wordWrap);
-  const lineNumbers = useEditorAppearanceStore((state) => state.lineNumbers);
-  const showWhitespace = useEditorAppearanceStore(
-    (state) => state.showWhitespace,
+  const settings = useEditorSettingsStore((state) => state.settings);
+  const setSettings = useEditorSettingsStore((state) => state.setSettings);
+  const reset = useEditorSettingsStore((state) => state.reset);
+  const atDefaults = EDITOR_SETTINGS.every(
+    (spec) => settings[spec.key] === spec.default,
   );
-  const setAppearance = useEditorAppearanceStore(
-    (state) => state.setAppearance,
-  );
-  const reset = useEditorAppearanceStore((state) => state.reset);
-  const appearance: EditorAppearance = {
-    fontSize,
-    tabSize,
-    wordWrap,
-    lineNumbers,
-    showWhitespace,
-  };
-  const atDefaults = Object.entries(DEFAULT_EDITOR_APPEARANCE).every(
-    ([key, value]) => appearance[key as SettingKey] === value,
-  );
-  const update = (change: Partial<EditorAppearance>) =>
-    setAppearance({ ...appearance, ...change });
-  const showDisplay =
-    visible.has("fontSize") ||
-    visible.has("wordWrap") ||
-    visible.has("lineNumbers") ||
-    visible.has("showWhitespace");
   return (
     <section
       className="settings-surface__section"
@@ -127,105 +161,39 @@ export function SettingsEditorPage({
         <h2 id="editor-appearance-heading">Editor Appearance</h2>
         <p>These choices apply to every file you open.</p>
       </header>
-      {showDisplay ? (
-        <SettingGroup id="editor-display-heading" title="Editor Display">
-          {visible.has("fontSize") ? (
-            <div className="settings-surface__row">
-              <div className="settings-surface__copy">
-                <label htmlFor="editor-font-size">
-                  {copyFor("fontSize").label}
-                </label>
-                <p id="editor-font-size-description">
-                  {copyFor("fontSize").description}
-                </p>
-                <small id="editor-font-size-default">
-                  Default: {DEFAULT_EDITOR_APPEARANCE.fontSize}px
-                </small>
-              </div>
-              <select
-                className="select"
-                id="editor-font-size"
-                value={fontSize}
-                disabled={controlsDisabled}
-                aria-describedby="editor-font-size-description editor-font-size-default"
-                onChange={(event) =>
-                  update({
-                    fontSize: Number(event.target.value) as typeof fontSize,
-                  })
-                }
-              >
-                {EDITOR_FONT_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {size}px
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          {visible.has("lineNumbers") ? (
-            <ToggleSetting
-              id="editor-line-numbers"
-              settingKey="lineNumbers"
-              checked={lineNumbers}
-              disabled={controlsDisabled}
-              onChange={(checked) => update({ lineNumbers: checked })}
-            />
-          ) : null}
-          {visible.has("wordWrap") ? (
-            <ToggleSetting
-              id="editor-word-wrap"
-              settingKey="wordWrap"
-              checked={wordWrap}
-              disabled={controlsDisabled}
-              onChange={(checked) => update({ wordWrap: checked })}
-            />
-          ) : null}
-          {visible.has("showWhitespace") ? (
-            <ToggleSetting
-              id="editor-show-whitespace"
-              settingKey="showWhitespace"
-              checked={showWhitespace}
-              disabled={controlsDisabled}
-              onChange={(checked) => update({ showWhitespace: checked })}
-            />
-          ) : null}
-        </SettingGroup>
-      ) : null}
-      {visible.has("tabSize") ? (
-        <SettingGroup id="editor-indentation-heading" title="Indentation">
-          <div className="settings-surface__row">
-            <div className="settings-surface__copy">
-              <label htmlFor="editor-tab-size">
-                {copyFor("tabSize").label}
-              </label>
-              <p id="editor-tab-size-description">
-                {copyFor("tabSize").description}
-              </p>
-              <small id="editor-tab-size-default">
-                Default: {DEFAULT_EDITOR_APPEARANCE.tabSize} spaces
-              </small>
-            </div>
-            <select
-              className="select"
-              id="editor-tab-size"
-              value={tabSize}
-              disabled={controlsDisabled}
-              aria-describedby="editor-tab-size-description editor-tab-size-default"
-              onChange={(event) =>
-                update({
-                  tabSize: Number(event.target.value) as typeof tabSize,
-                })
-              }
-            >
-              {EDITOR_TAB_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size} spaces
-                </option>
-              ))}
-            </select>
-          </div>
-        </SettingGroup>
-      ) : null}
+      {EDITOR_SETTING_GROUPS.map((group) => {
+        const specs = EDITOR_SETTINGS.filter(
+          (spec) => spec.group === group && visible.has(spec.key),
+        );
+        if (specs.length === 0) return null;
+        return (
+          <SettingGroup
+            key={group}
+            id={`editor-${group.toLowerCase()}-heading`}
+            title={group}
+          >
+            {specs.map((spec) =>
+              spec.kind === "boolean" ? (
+                <ToggleSetting
+                  key={spec.key}
+                  spec={spec}
+                  checked={settings[spec.key]}
+                  disabled={controlsDisabled}
+                  onChange={(checked) => setSettings({ [spec.key]: checked })}
+                />
+              ) : (
+                <ChoiceSetting
+                  key={spec.key}
+                  spec={spec}
+                  value={settings[spec.key]}
+                  disabled={controlsDisabled}
+                  onChange={(value) => setSettings({ [spec.key]: value })}
+                />
+              ),
+            )}
+          </SettingGroup>
+        );
+      })}
       {visible.has("reset") ? (
         <footer className="settings-surface__footer">
           <button

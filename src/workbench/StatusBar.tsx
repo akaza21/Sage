@@ -1,6 +1,6 @@
 import { GitBranch, PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
-import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";
 import { useWorkbenchStore } from "../app/store";
 import type { ProjectRepositoryStatus } from "../domain/workbench";
@@ -45,7 +45,9 @@ export function StatusBar({
   const browserClearNotice = useWorkbenchStore(
     (state) => state.browserClearNotice,
   );
-  const tabSize = useEditorAppearanceStore((state) => state.tabSize);
+  const tabSize = useEditorSettingsStore(
+    (state) => state.settings["editor.tabSize"],
+  );
   const caretLabel = caretStatusLabel(
     useEditorCaretStore((state) => state.caret),
   );

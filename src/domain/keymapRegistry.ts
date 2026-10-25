@@ -16,6 +16,12 @@ export interface KeymapBinding {
    * native Mac editors (Command+G is Find Next there).
    */
   appleControl?: true;
+  /**
+   * The ticket that makes this binding work. Until it lands the entry only
+   * reserves the chord: nothing listens for it and the Keyboard page leaves
+   * it out, so the page never lists a shortcut that does nothing.
+   */
+  reservedFor?: `EP-${number}`;
 }
 
 export interface KeymapChordEvent {
@@ -127,6 +133,17 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     shift: "forbidden",
     alt: "forbidden",
     appleControl: true,
+  },
+  {
+    id: "quickOpen",
+    label: "Quick Open",
+    description: "Opens a file in the project by typing part of its name.",
+    scope: "Editor",
+    key: "p",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+    reservedFor: "EP-08",
   },
   {
     id: "goToSymbol",

@@ -33,16 +33,20 @@ describe("settings navigation", () => {
   });
 
   it("matches an entry on its label, description and keywords", () => {
-    expect(matchingSettingsEntryIds("tab size", "editor")).toContain("tabSize");
-    expect(matchingSettingsEntryIds("indentation", "editor")).toContain(
-      "tabSize",
+    expect(matchingSettingsEntryIds("tab size", "editor")).toContain(
+      "editor.tabSize",
     );
-    expect(matchingSettingsEntryIds("TAB SIZE", "editor")).toContain("tabSize");
+    expect(matchingSettingsEntryIds("indentation", "editor")).toContain(
+      "editor.tabSize",
+    );
+    expect(matchingSettingsEntryIds("TAB SIZE", "editor")).toContain(
+      "editor.tabSize",
+    );
   });
 
   it("excludes entries the query does not describe", () => {
     expect(matchingSettingsEntryIds("tab size", "editor")).not.toContain(
-      "wordWrap",
+      "editor.wordWrap",
     );
   });
 
@@ -59,5 +63,14 @@ describe("settings navigation", () => {
 
   it("finds the save shortcut from the Keyboard page", () => {
     expect(matchingSettingsEntryIds("save", "keyboard")).toContain("save");
+  });
+});
+
+describe("reserved shortcuts", () => {
+  it("leaves a reserved binding off the Keyboard page until its ticket lands", () => {
+    expect(matchingSettingsEntryIds("quick open", "keyboard")).toEqual(
+      new Set(),
+    );
+    expect(matchingSettingsEntryIds("", "keyboard")).not.toContain("quickOpen");
   });
 });

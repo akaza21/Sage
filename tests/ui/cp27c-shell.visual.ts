@@ -177,9 +177,9 @@ async function settingsContained(page: Page) {
   }
   await settings.getByRole("tab", { name: "Editor", exact: true }).click();
   await page.evaluate(async () => {
-    const { useEditorAppearanceStore } =
-      await import("/src/app/editorAppearanceStore.ts");
-    useEditorAppearanceStore.setState({
+    const { useEditorSettingsStore } =
+      await import("/src/app/editorSettingsStore.ts");
+    useEditorSettingsStore.setState({
       persistencePhase: "error",
       persistenceMessage:
         "Editor settings could not be saved. Your changes remain in this window; retry when storage is available.",

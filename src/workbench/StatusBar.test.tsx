@@ -2,19 +2,19 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { Text } from "@codemirror/state";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";
 import { useWorkbenchStore } from "../app/store";
 import { StatusBar } from "./StatusBar";
 
 const initialState = useWorkbenchStore.getState();
-const initialAppearance = useEditorAppearanceStore.getState();
+const initialSettings = useEditorSettingsStore.getState();
 const initialCaret = useEditorCaretStore.getState();
 
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
-  useEditorAppearanceStore.setState(initialAppearance, true);
+  useEditorSettingsStore.setState(initialSettings, true);
   useEditorCaretStore.setState(initialCaret, true);
 });
 
@@ -101,7 +101,9 @@ describe("StatusBar repository truth", () => {
   });
 
   it("reports indentation without mutating Editor appearance", () => {
-    useEditorAppearanceStore.setState({ tabSize: 4 });
+    useEditorSettingsStore.setState({
+      settings: { ...initialSettings.settings, "editor.tabSize": 4 },
+    });
     render(<StatusBar />);
     expect(screen.getByTitle("Indentation")).toHaveTextContent("Spaces: 4");
     expect(screen.queryByRole("button", { name: /editor font/i })).toBeNull();

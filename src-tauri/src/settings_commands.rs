@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::{
-    settings_store::{EditorAppearance, SessionAccessModes, UiAppearance},
+    settings_store::{EditorSettings, SessionAccessModes, UiAppearance},
     state::AppState,
 };
 
@@ -26,21 +26,21 @@ pub(crate) fn access_preferences(state: &AppState) -> crate::error::AppResult<Se
 }
 
 #[tauri::command]
-pub fn get_editor_appearance(state: State<'_, AppState>) -> Result<EditorAppearance, String> {
+pub fn get_editor_settings(state: State<'_, AppState>) -> Result<EditorSettings, String> {
     state
         .settings
-        .editor_appearance()
+        .editor_settings()
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub fn set_editor_appearance(
+pub fn set_editor_settings(
     state: State<'_, AppState>,
-    appearance: EditorAppearance,
-) -> Result<EditorAppearance, String> {
+    changes: std::collections::BTreeMap<String, serde_json::Value>,
+) -> Result<EditorSettings, String> {
     state
         .settings
-        .set_editor_appearance(appearance)
+        .set_editor_settings(&changes)
         .map_err(|error| error.to_string())
 }
 

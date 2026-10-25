@@ -4,9 +4,9 @@ import { childResource, resourceKey } from "../domain/resourceIdentity";
 import type { BootstrapSnapshot } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
-  flushEditorAppearancePersistence,
-  useEditorAppearanceStore,
-} from "./editorAppearanceStore";
+  flushEditorSettingsPersistence,
+  useEditorSettingsStore,
+} from "./editorSettingsStore";
 import { useWorkbenchStore } from "./store";
 import {
   createWorkspaceNotifyHooks,
@@ -66,7 +66,7 @@ describe("live Project workspace notify bind", () => {
   });
 
   afterEach(async () => {
-    await flushEditorAppearancePersistence();
+    await flushEditorSettingsPersistence();
     await unbindWorkspaceNotify();
     vi.restoreAllMocks();
     useWorkbenchStore.setState(initialState, true);
@@ -420,22 +420,15 @@ describe("live Project workspace notify bind", () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it("waits for the latest editor appearance before native close", async () => {
+  it("waits for the latest editor settings before native close", async () => {
     let finishSave: (() => void) | undefined;
     let finishUnwatch: (() => void) | undefined;
     const save = vi
-      .spyOn(getWorkbenchPorts().settings, "setEditorAppearance")
+      .spyOn(getWorkbenchPorts().settings, "setEditorSettings")
       .mockImplementation(
         () =>
           new Promise((resolve) => {
-            finishSave = () =>
-              resolve({
-                fontSize: 16,
-                tabSize: 2,
-                wordWrap: false,
-                lineNumbers: true,
-                showWhitespace: false,
-              });
+            finishSave = () => resolve({ "editor.fontSize": 16 });
           }),
       );
     const close = vi
@@ -448,14 +441,8 @@ describe("live Project workspace notify bind", () => {
         }),
     );
     await useWorkbenchStore.getState().initialize();
-    useEditorAppearanceStore.setState({ persistenceReady: true });
-    useEditorAppearanceStore.getState().setAppearance({
-      fontSize: 16,
-      tabSize: 2,
-      wordWrap: false,
-      lineNumbers: true,
-      showWhitespace: false,
-    });
+    useEditorSettingsStore.setState({ persistenceReady: true });
+    useEditorSettingsStore.getState().setSettings({ "editor.fontSize": 16 });
 
     const closing = useWorkbenchStore.getState().closeWorkbench();
     await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
@@ -463,21 +450,17 @@ describe("live Project workspace notify bind", () => {
 
     finishSave?.();
     await vi.waitFor(() => expect(finishUnwatch).toBeTypeOf("function"));
-    useEditorAppearanceStore.getState().setAppearance({
-      fontSize: 14,
-      tabSize: 2,
-      wordWrap: false,
-      lineNumbers: true,
-      showWhitespace: false,
-    });
-    useEditorAppearanceStore.getState().retryPersistence();
+    useEditorSettingsStore.getState().setSettings({ "editor.fontSize": 14 });
+    useEditorSettingsStore.getState().retryPersistence();
     expect(save).toHaveBeenCalledOnce();
-    expect(useEditorAppearanceStore.getState().fontSize).toBe(16);
+    expect(useEditorSettingsStore.getState().settings["editor.fontSize"]).toBe(
+      16,
+    );
     expect(close).not.toHaveBeenCalled();
 
     finishUnwatch?.();
     await closing;
     expect(close).toHaveBeenCalledOnce();
-    expect(useEditorAppearanceStore.getState().persistenceClosing).toBe(false);
+    expect(useEditorSettingsStore.getState().persistenceClosing).toBe(false);
   });
 });

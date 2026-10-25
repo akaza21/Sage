@@ -245,7 +245,7 @@ impl AppState {
         binding: crate::acp::service::CharacterizationBinding,
     ) -> AppResult<Self> {
         let settings = SettingsStore::in_memory()?;
-        settings.editor_appearance()?;
+        settings.editor_settings()?;
         let trash_recovery = crate::resource_trash_commands::recover_pending_at_startup(&database)?;
         let transition_epoch = trash_recovery
             .as_ref()

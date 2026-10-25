@@ -8,7 +8,7 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
-import { useEditorAppearanceStore } from "../app/editorAppearanceStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
@@ -188,7 +188,7 @@ export function Workbench() {
     initialLayout.editorToolRailWidth,
   );
   useEffect(() => {
-    void useEditorAppearanceStore.getState().restore();
+    void useEditorSettingsStore.getState().restore();
     void useSessionAccessModeStore.getState().restore();
     void useUiAppearanceStore.getState().restore();
   }, []);

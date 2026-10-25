@@ -171,6 +171,53 @@ test.describe("Wave 2 canonical visual states", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
+  test("keeps Editor settings across a restart", async ({ page }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(page, "editor", "editor");
+    await page.getByRole("button", { name: "Open settings" }).click();
+    const settings = page.getByRole("region", { name: "Settings" });
+    await settings
+      .getByRole("combobox", { name: "Font size" })
+      .selectOption("16");
+    await settings
+      .getByRole("combobox", { name: "Tab size" })
+      .selectOption("8");
+    await settings.getByRole("checkbox", { name: "Show whitespace" }).check();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useEditorSettingsStore } =
+            await import("/src/app/editorSettingsStore.ts");
+          return useEditorSettingsStore.getState().persistencePhase;
+        }),
+      )
+      .toBe("idle");
+
+    // The browser lane's port keeps settings for the tab's session, the way
+    // the desktop app keeps them in SQLite; reopening the Workbench reloads
+    // the page and restores them through the same path.
+    await openScenario(page, "editor", "editor");
+    await expect(page.locator(".cm-highlightSpace").first()).toBeVisible();
+    await expect(page.getByTitle("Indentation")).toHaveText("Spaces: 8");
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await expect(
+      settings.getByRole("combobox", { name: "Font size" }),
+    ).toHaveValue("16");
+    await expect(
+      settings.getByRole("combobox", { name: "Tab size" }),
+    ).toHaveValue("8");
+    await expect(
+      settings.getByRole("checkbox", { name: "Show whitespace" }),
+    ).toBeChecked();
+    await expect(
+      settings.getByRole("checkbox", { name: "Line numbers" }),
+    ).toBeChecked();
+    await expect(settings.getByRole("group", { name: "Text" })).toBeVisible();
+    await expect(
+      settings.getByRole("group", { name: "Editing" }),
+    ).toBeVisible();
+  });
+
   test("keeps Editor Settings visible, resettable, and responsive", async ({
     page,
   }) => {
@@ -227,9 +274,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await settingsSearch.fill("");
 
     await page.evaluate(async () => {
-      const { useEditorAppearanceStore } =
-        await import("/src/app/editorAppearanceStore.ts");
-      useEditorAppearanceStore.setState({
+      const { useEditorSettingsStore } =
+        await import("/src/app/editorSettingsStore.ts");
+      useEditorSettingsStore.setState({
         persistencePhase: "error",
         persistenceErrorKind: "save",
         persistenceMessage: "Editor settings could not be saved.",
