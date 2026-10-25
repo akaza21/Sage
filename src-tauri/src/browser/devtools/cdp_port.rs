@@ -264,11 +264,7 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             Err(BrowserFailure::StaleHandle) => Ok(false),
             // Chromium holds commands for a frame until its pending
             // navigation commits, so a probe can outlast its budget.
-            Err(BrowserFailure::OutcomeUnknown | BrowserFailure::Unavailable)
-                if navigation.is_none() =>
-            {
-                Ok(false)
-            }
+            Err(BrowserFailure::OutcomeUnknown) if navigation.is_none() => Ok(false),
             Err(error) => Err(error),
         }
     }

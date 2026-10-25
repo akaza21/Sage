@@ -201,7 +201,10 @@ fn navigate_while_loading(lane: &mut Lane, path: &str) {
 /// page keeps loading on a hung image after it commits.
 fn assert_wait_skips_the_outgoing_page(lane: &mut Lane) {
     assert!(!lane.wait_text("Shared phrase", 1_000));
-    assert!(lane.wait_text("New page", 6_000));
+    // Probes held by the pending navigation went without the dispatch permit.
+    assert!(!lane.capability.port_mut().transport.issued());
+    assert!(lane.wait_text("New page", 10_000));
+    assert!(!lane.capability.port_mut().transport.issued());
     assert!(lane.wait_text("Shared phrase", 1_000));
     lane.capability.port_mut().transport.hold_stamp(None);
 }

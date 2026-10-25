@@ -3,6 +3,7 @@
 //! script uses or read the values it handles. The page still sees the DOM
 //! effects and events of an Agent action, so it can tell that something acted.
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     sync::{Arc, Mutex},
@@ -29,6 +30,8 @@ pub(crate) struct AgentWorld(Arc<Mutex<WorldCache>>);
 struct WorldCache {
     frame_id: Option<String>,
     target_info_refused: bool,
+    /// The navigation whose refused world last cleared the frame id.
+    reread_navigation: Option<u64>,
     context: Option<(u64, u64)>,
 }
 
@@ -46,9 +49,10 @@ impl<T: CdpTransport> CdpPort<T> {
     /// `navigation` names the document by navigation id, so title or favicon
     /// changes keep the world; the world is made once per navigation and again
     /// when its cached context is gone. `None` means the page is loading and
-    /// has no stamp: while the cached world of the outgoing document still
-    /// answers this fails with `StaleHandle`; otherwise a world is made for
-    /// the incoming document and not kept.
+    /// has no stamp: every step is a permitless read, the cached world is left
+    /// as it is, and while that world of the outgoing document still answers
+    /// this fails with `StaleHandle`; otherwise a world is made for the
+    /// incoming document and not kept.
     pub(super) fn in_agent_world<R>(
         &self,
         navigation: Option<u64>,
@@ -58,7 +62,7 @@ impl<T: CdpTransport> CdpPort<T> {
         let cached = self.cache()?.context;
         if navigation.is_none()
             && let Some((_, context)) = cached
-            && self.context_alive(context, deadline)?
+            && self.context_alive(context, true, deadline)?
         {
             return Err(BrowserFailure::StaleHandle);
         }
@@ -67,7 +71,7 @@ impl<T: CdpTransport> CdpPort<T> {
         {
             match script(context, left(deadline)?) {
                 Err(BrowserFailure::Unavailable) => {
-                    if self.context_alive(context, deadline)? {
+                    if self.context_alive(context, false, deadline)? {
                         return Err(BrowserFailure::Unavailable);
                     }
                 }
@@ -89,7 +93,8 @@ impl<T: CdpTransport> CdpPort<T> {
         let response = self.in_agent_world(navigation, deadline, |context, left| {
             let params =
                 json!({"expression": expression, "contextId": context, "returnByValue": true});
-            self.call(
+            self.send(
+                navigation.is_none(),
                 "Runtime.evaluate",
                 &params.to_string(),
                 max_result_bytes,
@@ -108,11 +113,37 @@ impl<T: CdpTransport> CdpPort<T> {
         self.world.0.lock().map_err(|_| BrowserFailure::Unavailable)
     }
 
+    /// Issues one step. A `read_only` step, taken while the page loads, goes
+    /// without the dispatch permit: Chromium holds it until the pending
+    /// navigation commits, and a timed-out permitted call would revoke the
+    /// whole grant.
+    fn send(
+        &self,
+        read_only: bool,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure> {
+        if read_only {
+            self.transport
+                .observe(method, params, max_result_bytes, timeout)
+        } else {
+            self.call(method, params, max_result_bytes, timeout)
+        }
+    }
+
     /// Whether `context` still answers; a failure there means its document
     /// went away, any other failure belongs to the script.
-    fn context_alive(&self, context: u64, deadline: Instant) -> Result<bool, BrowserFailure> {
+    fn context_alive(
+        &self,
+        context: u64,
+        read_only: bool,
+        deadline: Instant,
+    ) -> Result<bool, BrowserFailure> {
         let params = json!({"expression": "0", "contextId": context});
-        match self.call(
+        match self.send(
+            read_only,
             "Runtime.evaluate",
             &params.to_string(),
             4096,
@@ -127,45 +158,60 @@ impl<T: CdpTransport> CdpPort<T> {
     /// The main frame's id and whether it came from the cache. It equals the
     /// page target's id and outlives navigations, so it is read once per port,
     /// from the bounded target info where the transport allows it.
-    fn main_frame_id(&self, deadline: Instant) -> Result<(String, bool), BrowserFailure> {
+    fn main_frame_id(
+        &self,
+        read_only: bool,
+        deadline: Instant,
+    ) -> Result<(String, bool), BrowserFailure> {
         if let Some(frame_id) = self.cache()?.frame_id.clone() {
             return Ok((frame_id, true));
         }
-        let frame_id = self.read_frame_id(deadline)?;
+        let frame_id = self.read_frame_id(read_only, deadline)?;
         self.cache()?.frame_id = Some(frame_id.clone());
         Ok((frame_id, false))
     }
 
-    fn read_frame_id(&self, deadline: Instant) -> Result<String, BrowserFailure> {
+    fn read_frame_id(&self, read_only: bool, deadline: Instant) -> Result<String, BrowserFailure> {
         if !self.cache()?.target_info_refused {
-            match self.call(
+            match self.send(
+                read_only,
                 "Target.getTargetInfo",
                 "{}",
                 TARGET_INFO_BYTES,
                 left(deadline)?,
             ) {
-                Ok(info) => return id_at(&info, &["targetInfo", "targetId"]),
+                Ok(info) => {
+                    return parse::<TargetInfoResult>(&info).map(|info| info.target_info.target_id);
+                }
                 Err(BrowserFailure::Unavailable) => self.cache()?.target_info_refused = true,
                 Err(error) => return Err(error),
             }
         }
-        let tree = self.call("Page.getFrameTree", "{}", FRAME_TREE_BYTES, left(deadline)?)?;
-        id_at(&tree, &["frameTree", "frame", "id"])
+        let tree = self.send(
+            read_only,
+            "Page.getFrameTree",
+            "{}",
+            FRAME_TREE_BYTES,
+            left(deadline)?,
+        )?;
+        parse::<FrameTreeResult>(&tree).map(|tree| tree.frame_tree.frame.id)
     }
 
-    fn create_world(&self, frame_id: &str, deadline: Instant) -> Result<u64, BrowserFailure> {
+    fn create_world(
+        &self,
+        frame_id: &str,
+        read_only: bool,
+        deadline: Instant,
+    ) -> Result<u64, BrowserFailure> {
         let params = json!({"frameId": frame_id, "worldName": WORLD_NAME});
-        let created = self.call(
+        let created = self.send(
+            read_only,
             "Page.createIsolatedWorld",
             &params.to_string(),
             4096,
             left(deadline)?,
         )?;
-        let created: Value =
-            serde_json::from_str(&created).map_err(|_| BrowserFailure::Unavailable)?;
-        created["executionContextId"]
-            .as_u64()
-            .ok_or(BrowserFailure::Unavailable)
+        parse::<CreatedWorld>(&created).map(|created| created.execution_context_id)
     }
 
     fn make_agent_world(
@@ -173,14 +219,17 @@ impl<T: CdpTransport> CdpPort<T> {
         navigation: Option<u64>,
         deadline: Instant,
     ) -> Result<u64, BrowserFailure> {
-        let (frame_id, cached) = self.main_frame_id(deadline)?;
-        let context = match self.create_world(&frame_id, deadline) {
+        let read_only = navigation.is_none();
+        let (frame_id, cached) = self.main_frame_id(read_only, deadline)?;
+        let context = match self.create_world(&frame_id, read_only, deadline) {
             // The page target may have been swapped, as a prerender
-            // activation does; read its id again once.
-            Err(BrowserFailure::Unavailable) if cached => {
-                self.cache()?.frame_id = None;
-                let (frame_id, _) = self.main_frame_id(deadline)?;
-                self.create_world(&frame_id, deadline)?
+            // activation does; read its id again, once per navigation and
+            // never while the page loads.
+            Err(BrowserFailure::Unavailable)
+                if cached && navigation.is_some() && self.claim_reread(navigation)? =>
+            {
+                let (frame_id, _) = self.main_frame_id(false, deadline)?;
+                self.create_world(&frame_id, false, deadline)?
             }
             result => result?,
         };
@@ -194,21 +243,60 @@ impl<T: CdpTransport> CdpPort<T> {
         }
         Ok(context)
     }
+
+    /// Clears the cached frame id for a re-read, unless `navigation` already
+    /// had one.
+    fn claim_reread(&self, navigation: Option<u64>) -> Result<bool, BrowserFailure> {
+        let mut cache = self.cache()?;
+        if cache.reread_navigation == navigation {
+            return Ok(false);
+        }
+        cache.reread_navigation = navigation;
+        cache.frame_id = None;
+        Ok(true)
+    }
 }
 
-/// The string at `path` in a CDP result.
-fn id_at(result: &str, path: &[&str]) -> Result<String, BrowserFailure> {
-    let result: Value = serde_json::from_str(result).map_err(|_| BrowserFailure::Unavailable)?;
-    path.iter()
-        .fold(&result, |value, key| &value[*key])
-        .as_str()
-        .map(str::to_owned)
-        .ok_or(BrowserFailure::Unavailable)
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TargetInfoResult {
+    target_info: TargetInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TargetInfo {
+    target_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FrameTreeResult {
+    frame_tree: FrameTree,
+}
+
+#[derive(Deserialize)]
+struct FrameTree {
+    frame: Frame,
+}
+
+#[derive(Deserialize)]
+struct Frame {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatedWorld {
+    execution_context_id: u64,
+}
+
+fn parse<R: serde::de::DeserializeOwned>(result: &str) -> Result<R, BrowserFailure> {
+    serde_json::from_str(result).map_err(|_| BrowserFailure::Unavailable)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::*;
@@ -223,7 +311,8 @@ mod tests {
         stamp: Mutex<DocumentStamp>,
         frame_id: Mutex<&'static str>,
         live_context: Mutex<u64>,
-        calls: Mutex<HashMap<String, usize>>,
+        /// Every command, and whether it went with the dispatch permit.
+        log: Mutex<Vec<(bool, String)>>,
         navigate_while_making_world: bool,
         refuse_target_info: bool,
         loading: AtomicBool,
@@ -239,24 +328,16 @@ mod tests {
         }
 
         fn calls(&self, method: &str) -> usize {
-            self.calls.lock().unwrap().get(method).copied().unwrap_or(0)
+            let log = self.log.lock().unwrap();
+            log.iter().filter(|(_, logged)| logged == method).count()
         }
-    }
 
-    impl CdpTransport for Page {
-        fn call(
-            &self,
-            method: &str,
-            params: &str,
-            _max_result_bytes: usize,
-            _timeout: Duration,
-        ) -> Result<String, BrowserFailure> {
-            *self
-                .calls
-                .lock()
-                .unwrap()
-                .entry(method.to_owned())
-                .or_default() += 1;
+        fn permitted(&self) -> usize {
+            let log = self.log.lock().unwrap();
+            log.iter().filter(|(permitted, _)| *permitted).count()
+        }
+
+        fn answer(&self, method: &str, params: &str) -> Result<String, BrowserFailure> {
             let params: Value = serde_json::from_str(params).unwrap();
             let frame_id = *self.frame_id.lock().unwrap();
             match method {
@@ -289,15 +370,29 @@ mod tests {
                 _ => unreachable!("{method}"),
             }
         }
+    }
+
+    impl CdpTransport for Page {
+        fn call(
+            &self,
+            method: &str,
+            params: &str,
+            _max_result_bytes: usize,
+            _timeout: Duration,
+        ) -> Result<String, BrowserFailure> {
+            self.log.lock().unwrap().push((true, method.to_owned()));
+            self.answer(method, params)
+        }
 
         fn observe(
             &self,
             method: &str,
-            _: &str,
-            _: usize,
-            _: Duration,
+            params: &str,
+            _max_result_bytes: usize,
+            _timeout: Duration,
         ) -> Result<String, BrowserFailure> {
-            unreachable!("{method}")
+            self.log.lock().unwrap().push((false, method.to_owned()));
+            self.answer(method, params)
         }
 
         fn stamp(&self) -> Result<DocumentStamp, BrowserFailure> {
@@ -377,6 +472,18 @@ mod tests {
         assert_eq!(probe(&port), Err(BrowserFailure::Unavailable));
         assert_eq!(worlds(&port), 5);
         assert_eq!(port.transport.calls("Target.getTargetInfo"), 3);
+        // Not again for the same navigation, nor while the page loads.
+        assert_eq!(probe(&port), Err(BrowserFailure::Unavailable));
+        *port.transport.live_context.lock().unwrap() = 0;
+        port.transport.loading.store(true, Ordering::SeqCst);
+        let condition = WaitCondition::Text { text: "x".into() };
+        let mut port = port;
+        assert_eq!(
+            port.matches(&condition, Duration::from_secs(1)),
+            Err(BrowserFailure::Unavailable)
+        );
+        assert_eq!(worlds(&port), 7);
+        assert_eq!(port.transport.calls("Target.getTargetInfo"), 3);
     }
 
     #[test]
@@ -408,7 +515,7 @@ mod tests {
             port.evaluate_in_agent_world(Some(0), "true", 4096, spent),
             Err(BrowserFailure::Unavailable)
         );
-        assert!(port.transport.calls.lock().unwrap().is_empty());
+        assert!(port.transport.log.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -427,6 +534,7 @@ mod tests {
         let condition = WaitCondition::Text { text: "x".into() };
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         let cached = port.world.0.lock().unwrap().context;
+        let permitted = port.transport.permitted();
         port.transport.loading.store(true, Ordering::SeqCst);
         // The frame still shows the outgoing document the Agent scripted.
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(false));
@@ -437,5 +545,7 @@ mod tests {
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         assert_eq!(worlds(&port), 3);
         assert_eq!(port.world.0.lock().unwrap().context, cached);
+        // Every loading-time step went without the dispatch permit.
+        assert_eq!(port.transport.permitted(), permitted);
     }
 }
