@@ -92,13 +92,15 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         "Object.getOwnPropertyNames(window).length - window.__globalsAtLoad",
         false,
     );
+    let stacks = lane.evaluate(&tab, "window.__agentStacks", false);
     report.check(
         "s8.unobserved",
-        steps.no_new_hits() && globals == Ok(json!(0)),
+        steps.no_new_hits()
+            && steps.load_hits_are_tauri_devtools_only(&stacks)
+            && globals == Ok(json!(0)),
         format!(
-            "hook hits after each step (baseline at load) {}; page hooks saw {seen:?}; new page globals {globals:?}; caller stacks {:?}",
+            "hook hits after each step (baseline at load) {}; page hooks saw {seen:?}; new page globals {globals:?}; caller stacks {stacks:?}",
             steps.describe(),
-            lane.evaluate(&tab, "window.__agentStacks", false)
         ),
     );
 }
@@ -123,6 +125,30 @@ impl Timeline {
         self.0
             .iter()
             .all(|(_, count)| count.as_ref() == Ok(baseline))
+    }
+
+    /// The load baseline is excused only when every hit in it is the page's
+    /// `JSON.parse` hook called from Tauri's debug-only devtools hotkey init
+    /// script (`tauri` `webview/plugin.rs`, gated on `debug_assertions` or the
+    /// `devtools` feature, which Sage's release builds do not enable). Any
+    /// other load-time caller fails the check.
+    fn load_hits_are_tauri_devtools_only(&self, stacks: &Result<Value, String>) -> bool {
+        let Some((_, Ok(baseline))) = self.0.first() else {
+            return false;
+        };
+        let Some(baseline) = baseline.as_u64() else {
+            return false;
+        };
+        let Ok(Value::Array(stacks)) = stacks else {
+            return baseline == 0;
+        };
+        stacks.len() as u64 == baseline
+            && stacks.iter().all(|stack| {
+                stack.as_str().is_some_and(|stack| {
+                    stack.starts_with("JSON.parse:")
+                        && stack.contains("at toggleDevtoolsHotkey (<anonymous>")
+                })
+            })
     }
 
     fn describe(&self) -> String {
