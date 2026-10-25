@@ -18,6 +18,8 @@ mod highlight;
 pub(super) mod outcome;
 pub(super) mod page_context;
 mod world;
+
+const PROBE_FLOOR: Duration = Duration::from_secs(1);
 use outcome::{navigation_failure, navigation_matches};
 
 /// The Agent browser command layer: CDP parameters, result parsing, caps and
@@ -239,13 +241,18 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             return Err(BrowserFailure::StaleHandle);
         };
         let needle = serde_json::to_string(text).map_err(|_| BrowserFailure::InvalidRequest)?;
-        // A document still loading has no stamp yet; the next probe retries.
-        let stamp = match self.stamp() {
-            Err(BrowserFailure::Unavailable) => return Ok(false),
-            stamp => stamp?,
+        // While the page loads it has no stamp; probe whatever document the
+        // frame shows, still in the isolated world.
+        let navigation = match self.stamp() {
+            Ok(stamp) => Some(stamp.navigation_id),
+            Err(BrowserFailure::Unavailable) => None,
+            Err(error) => return Err(error),
         };
         let expression = format!("document.body?.innerText?.includes({needle}) === true");
-        match self.evaluate_in_agent_world(stamp, &expression, 4096, remaining) {
+        // A probe near the end of a wait, or one that makes the world, still
+        // gets time to answer; the wait overruns its budget by at most this.
+        let deadline = Instant::now() + remaining.max(PROBE_FLOOR);
+        match self.evaluate_in_agent_world(navigation, &expression, 4096, deadline) {
             Ok(value) => Ok(value.as_bool().unwrap_or(false)),
             // The page navigated while the world was made; probe again.
             Err(BrowserFailure::StaleHandle) => Ok(false),

@@ -1,9 +1,11 @@
 //! Security item S8: the Agent's scripts run in an isolated world, so a page
 //! that overrides its own globals can neither lie to them nor see them run.
 
-use serde_json::json;
+use std::time::Duration;
 
-use super::{Lane, handle, page_context};
+use serde_json::{Value, json};
+
+use super::{CdpTransport, Lane, handle, page_context};
 use crate::acp::browser::{BrowserAction, BrowserResult, FillSecret};
 
 const FAKE: &str = "FAKE-PHRASE-9d1";
@@ -63,7 +65,7 @@ fn s8_page_context_reports_the_real_title_and_selection() {
 }
 
 #[test]
-fn s8_click_and_fill_use_pristine_dom_methods_and_hide_the_value_from_page_hooks() {
+fn s8_click_and_fill_use_pristine_dom_methods_and_hide_the_value_from_page_and_instance_hooks() {
     let secret = "S8-FILL-6be0";
     let mut lane = Lane::open("/hostile.html");
     let (_, _, nodes) = lane.snapshot();
@@ -79,7 +81,7 @@ fn s8_click_and_fill_use_pristine_dom_methods_and_hide_the_value_from_page_hooks
     assert_eq!(fill, Ok(BrowserResult::Act { applied: true }));
     assert!(lane.wait_text("name holds 12 characters", 2_000));
     assert_eq!(
-        lane.evaluate("document.getElementById('name').value"),
+        lane.evaluate("window.__valueOf(document.getElementById('name'))"),
         secret
     );
     assert_unobserved(&mut lane);
@@ -116,4 +118,68 @@ fn s8_isolated_world_is_made_once_per_document_and_again_after_each_navigation()
     assert!(lane.wait_text(TRUTH, 2_000));
     assert_eq!(isolated_worlds(&mut lane), 4);
     assert_unobserved(&mut lane);
+}
+
+#[test]
+fn s8_scroll_uses_the_pristine_scroll_by() {
+    let mut lane = Lane::open("/hostile.html");
+    let (_, _, nodes) = lane.snapshot();
+    let scroll = lane.act(BrowserAction::Scroll {
+        handle: handle(&nodes, "textbox", "Log"),
+        delta_x: 0,
+        delta_y: 60,
+    });
+    assert_eq!(scroll, Ok(BrowserResult::Act { applied: true }));
+    let top = lane.evaluate("document.getElementById('log').scrollTop");
+    assert!(top.as_f64().unwrap() > 0.0, "{top}");
+    assert_unobserved(&mut lane);
+}
+
+#[test]
+fn s8_a_page_with_a_huge_url_and_frame_tree_cannot_starve_agent_scripts() {
+    let mut lane = Lane::open("/hostile.html");
+    lane.evaluate("window.__growFrameTree()");
+    let tree = lane
+        .capability
+        .port_mut()
+        .transport
+        .observe(
+            "Page.getFrameTree",
+            "{}",
+            16 * 1_048_576,
+            Duration::from_secs(5),
+        )
+        .expect("frame tree");
+    let frames = serde_json::from_str::<Value>(&tree).unwrap()["frameTree"]["childFrames"]
+        .as_array()
+        .map_or(0, Vec::len);
+    assert!(
+        tree.len() > 65_536 && frames == 8,
+        "{} bytes, {frames} frames",
+        tree.len()
+    );
+    assert!(lane.wait_text(TRUTH, 2_000));
+    assert!(!lane.wait_text(FAKE, 1_000));
+    let (_, _, nodes) = lane.snapshot();
+    let click = lane.act(BrowserAction::Click {
+        handle: handle(&nodes, "button", "Press me"),
+    });
+    assert_eq!(click, Ok(BrowserResult::Act { applied: true }));
+    assert!(lane.wait_text("Pressed for real", 2_000));
+    assert_unobserved(&mut lane);
+}
+
+#[test]
+fn s8_a_world_whose_document_went_away_is_made_again() {
+    let mut lane = Lane::open("/hostile.html");
+    assert!(lane.wait_text(TRUTH, 2_000));
+    assert_eq!(isolated_worlds(&mut lane), 1);
+    // The page replaces its document before the reported stamp moves, as
+    // WebView2 reports a new document only after its navigation events.
+    let held = lane.capability.port_mut().stamp().unwrap();
+    lane.capability.port_mut().transport.hold_stamp(Some(held));
+    lane.evaluate("location.href = '/landing.html'");
+    assert!(lane.wait_text("Landed safely", 5_000));
+    assert_eq!(isolated_worlds(&mut lane), 2);
+    lane.capability.port_mut().transport.hold_stamp(None);
 }

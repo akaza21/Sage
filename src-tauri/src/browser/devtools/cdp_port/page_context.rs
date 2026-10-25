@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -55,10 +55,10 @@ pub(crate) fn capture_page_context<T: CdpTransport>(
     let (ax_text, _) = project(nodes).map_err(|_| "browser page snapshot unavailable")?;
     let value = port
         .evaluate_in_agent_world(
-            before,
+            Some(before.navigation_id),
             "({title:document.title,selection:window.getSelection()?.toString().slice(0,2048) ?? ''})",
             16_384,
-            Duration::from_secs(5),
+            Instant::now() + Duration::from_secs(5),
         )
         .map_err(|_| "browser page title unavailable")?;
     let title = value["title"]

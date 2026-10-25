@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::acp::browser::{BrowserAction, BrowserFailure};
 use crate::browser::devtools::snapshot::DocumentStamp;
@@ -38,14 +38,17 @@ pub(super) fn perform<T: CdpTransport>(
             Ok(true)
         }
         _ => {
-            let resolved = port.in_agent_world(stamp, Duration::from_secs(5), |context| {
-                port.call(
-                    "DOM.resolveNode",
-                    &json!({"backendNodeId":backend_id,"executionContextId":context}).to_string(),
-                    4096,
-                    Duration::from_secs(5),
-                )
-            })?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let resolved =
+                port.in_agent_world(Some(stamp.navigation_id), deadline, |context, left| {
+                    port.call(
+                        "DOM.resolveNode",
+                        &json!({"backendNodeId":backend_id,"executionContextId":context})
+                            .to_string(),
+                        4096,
+                        left,
+                    )
+                })?;
             let resolved: Value =
                 serde_json::from_str(&resolved).map_err(|_| BrowserFailure::Unavailable)?;
             let object_id = resolved["object"]["objectId"]

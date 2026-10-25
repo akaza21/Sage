@@ -38,6 +38,9 @@ pub(super) struct Chromium {
     issued: AtomicBool,
     /// How many times each Agent command method was issued.
     calls: Mutex<HashMap<String, usize>>,
+    /// A stamp reported in place of the real one, as WebView2 reports a new
+    /// document only after its navigation events arrive.
+    held_stamp: Mutex<Option<DocumentStamp>>,
     profile: PathBuf,
 }
 
@@ -100,6 +103,7 @@ impl Chromium {
             documents: Mutex::new(Vec::new()),
             issued: AtomicBool::new(false),
             calls: Mutex::new(HashMap::new()),
+            held_stamp: Mutex::new(None),
             profile,
         };
         let target = chromium.setup(None, "Target.createTarget", json!({"url": "about:blank"}));
@@ -134,6 +138,11 @@ impl Chromium {
             .get(method)
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Keeps reporting `stamp` until released with `None`.
+    pub(super) fn hold_stamp(&self, stamp: Option<DocumentStamp>) {
+        *self.held_stamp.lock().expect("held stamp") = stamp;
     }
 
     fn setup(&self, session: Option<&str>, method: &str, params: Value) -> Value {
@@ -199,7 +208,14 @@ impl Chromium {
 
     /// The main frame's loader id and URL.
     fn frame(&self) -> Result<(String, String), BrowserFailure> {
-        let tree = self.observe("Page.getFrameTree", "{}", 65_536, Duration::from_secs(5))?;
+        // A page can grow its frame tree past any small cap; the test
+        // transport reads it whole, as WebView2 keeps the stamp natively.
+        let tree = self.observe(
+            "Page.getFrameTree",
+            "{}",
+            FRAME_BYTES,
+            Duration::from_secs(5),
+        )?;
         let tree: Value = serde_json::from_str(&tree).map_err(|_| BrowserFailure::Unavailable)?;
         let frame = &tree["frameTree"]["frame"];
         match (frame["loaderId"].as_str(), frame["url"].as_str()) {
@@ -271,6 +287,13 @@ impl CdpTransport for Chromium {
     }
 
     fn stamp(&self) -> Result<DocumentStamp, BrowserFailure> {
+        if let Some(held) = *self
+            .held_stamp
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+        {
+            return Ok(held);
+        }
         let (loader, _) = self.frame()?;
         self.document_stamp(loader)
     }

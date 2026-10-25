@@ -27,7 +27,29 @@
           });
         };
         const select = window.getSelection.bind(window);
+        const value = describe(HTMLInputElement.prototype, "value").get;
         window.__agentSeen = seen;
+        window.__valueOf = (element) => value.call(element);
+        window.__trapValue = (element) =>
+          define(element, "value", {
+            configurable: true,
+            get() {
+              note("get value");
+              return "FAKE-VALUE";
+            },
+            set(next) {
+              note(`stolen ${next}`);
+            },
+          });
+        window.__growFrameTree = () => {
+          history.replaceState(null, "", `?${"a".repeat(70000)}`);
+          for (let frame = 0; frame < 8; frame += 1) {
+            const iframe = document.createElement("iframe");
+            iframe.src = `about:blank#${"f".repeat(16000)}`;
+            document.body.appendChild(iframe);
+          }
+          window.__globalsAtLoad = Object.getOwnPropertyNames(window).length;
+        };
         window.__selectRealText = () =>
           select().selectAllChildren(document.getElementById("picked"));
 
@@ -66,6 +88,9 @@
         lie(HTMLElement.prototype, "click", function () {
           note("click");
         });
+        lie(Element.prototype, "scrollBy", function () {
+          note("scrollBy");
+        });
         lie(HTMLElement.prototype, "focus", function () {
           note("focus");
         });
@@ -98,16 +123,32 @@
     <p>Real text: <span id="picked">hostile-truth-41</span></p>
     <button type="button" id="press">Press me</button>
     <label>Name <input id="name" type="text" /></label>
+    <label
+      >Log
+      <textarea id="log" rows="2">
+one
+two
+three
+four
+five
+six
+seven
+eight
+nine
+ten</textarea>
+    </label>
     <p id="status">Idle</p>
     <script>
       const status = document.getElementById("status").firstChild;
       const input = document.getElementById("name");
       window.__selectRealText();
+      window.__trapValue(input);
       document.getElementById("press").addEventListener("click", () => {
         status.data = "Pressed for real";
       });
       input.addEventListener("input", () => {
-        status.data = "name holds " + input.value.length + " characters";
+        status.data =
+          "name holds " + window.__valueOf(input).length + " characters";
       });
     </script>
   </body>
