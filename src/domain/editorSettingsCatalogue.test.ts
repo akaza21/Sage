@@ -23,11 +23,11 @@ const spec = (key: string): EditorSettingSpec => {
 /** The comparable part of an entry: what Rust also stores. */
 interface StoredShape {
   key: string;
-  kind: "boolean" | "integer";
-  default: boolean | number;
+  kind: "boolean" | "integer" | "choice";
+  default: boolean | number | string;
   min?: number;
   max?: number;
-  choices?: number[];
+  choices?: (number | string)[];
   ticket: string;
 }
 
@@ -52,11 +52,27 @@ function rustRegistry(): StoredShape[] {
       const ticket = /ticket: "([^"]+)"/u.exec(entry)?.[1];
       const flag = /default: SettingValue::Bool\((true|false)\)/u.exec(entry);
       const number = /default: SettingValue::Int\((-?\d+)\)/u.exec(entry);
-      if (!key || !ticket || (!flag && !number)) {
+      const name = /default: SettingValue::Text\("([^"]+)"\)/u.exec(entry);
+      if (!key || !ticket || (!flag && !number && !name)) {
         throw new Error(`unreadable Rust entry: ${entry}`);
       }
       if (/kind: SettingKind::Bool/u.test(entry)) {
         return { key, kind: "boolean", default: flag?.[1] === "true", ticket };
+      }
+      const names =
+        /kind: SettingKind::Choice \{\s*choices: &\[([^\]]*)\],?\s*\}/u.exec(
+          entry,
+        );
+      if (names) {
+        return {
+          key,
+          kind: "choice",
+          default: name?.[1] ?? "",
+          choices: [...names[1].matchAll(/"([^"]+)"/gu)].map(
+            (match) => match[1],
+          ),
+          ticket,
+        };
       }
       const range =
         /kind: SettingKind::Int \{\s*min: (-?\d+),\s*max: (-?\d+),\s*choices: &\[([^\]]*)\],?\s*\}/u.exec(
@@ -80,6 +96,15 @@ function rustRegistry(): StoredShape[] {
 }
 
 function storedShape(entry: EditorSettingSpec): StoredShape {
+  if (entry.kind === "choice") {
+    return {
+      key: entry.key,
+      kind: entry.kind,
+      default: entry.default,
+      choices: [...entry.choices],
+      ticket: entry.ticket,
+    };
+  }
   return entry.kind === "boolean"
     ? {
         key: entry.key,
@@ -114,6 +139,11 @@ describe("editor settings catalogue", () => {
       expect(admitEditorSetting(entry, entry.default)).toBe(entry.default);
       expect(entry.label).not.toBe("");
       expect(entry.description).not.toBe("");
+      if (entry.kind === "choice") {
+        for (const choice of entry.choices) {
+          expect(entry.choiceLabels[choice]).toHaveLength(2);
+        }
+      }
     }
   });
 
@@ -144,6 +174,10 @@ describe("editor settings catalogue", () => {
       admitEditorSetting(spec("editor.fontSize"), Number.NaN),
     ).toBeUndefined();
     expect(admitEditorSetting(spec("editor.wordWrap"), 1)).toBeUndefined();
+    const modifier = spec("editor.multiCursorModifier");
+    expect(admitEditorSetting(modifier, "ctrlCmd")).toBe("ctrlCmd");
+    expect(admitEditorSetting(modifier, "meta")).toBeUndefined();
+    expect(admitEditorSetting(modifier, 1)).toBeUndefined();
   });
 
   it("admits a whole record: unknown keys dropped, bad values defaulted", () => {

@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { Transaction } from "@codemirror/state";
+import { EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
   act,
@@ -64,6 +64,48 @@ describe("EditorAdapter", () => {
     handle.current?.setSelection(6, 12);
     expect(editor).toHaveFocus();
     expect(handle.current?.selection()).toEqual({ start: 6, end: 12 });
+  });
+
+  it("gives an editable File the editing features and a read-only view none", async () => {
+    const editable = render(
+      <EditorAdapter
+        ariaLabel="Edit main.ts"
+        path="main.ts"
+        content={"function f() {\n  return 1;\n}\n"}
+        disabled={false}
+        maxContentLength={1024}
+        onChange={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(editable.container.querySelector(".cm-foldGutter")).not.toBeNull(),
+    );
+    act(() => {
+      useEditorSettingsStore.setState((state) => ({
+        settings: { ...state.settings, "editor.folding": false },
+      }));
+    });
+    expect(editable.container.querySelector(".cm-foldGutter")).toBeNull();
+    editable.unmount();
+
+    // The Agent artifact pane shows Files read-only.
+    const readOnly = render(
+      <EditorAdapter
+        ariaLabel="Edit main.ts"
+        path="main.ts"
+        content={"function f() {\n  return 1;\n}\n"}
+        disabled
+        readOnly
+        maxContentLength={1024}
+        onChange={vi.fn()}
+      />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "Edit main.ts" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(readOnly.container.querySelector(".cm-foldGutter")).toBeNull();
+    expect(
+      viewForEditor(editor).state.facet(EditorState.allowMultipleSelections),
+    ).toBe(false);
   });
 
   it("reconciles controlled content and read-only state", async () => {

@@ -47,6 +47,7 @@ describe("editor settings persistence", () => {
     await useEditorSettingsStore.getState().restore();
 
     expect(settings()).toEqual({
+      ...DEFAULT_EDITOR_SETTINGS,
       "editor.fontSize": 14,
       "editor.tabSize": 8,
       "editor.wordWrap": true,
@@ -99,6 +100,7 @@ describe("editor settings persistence", () => {
       .mockResolvedValue(DEFAULT_EDITOR_SETTINGS);
     useEditorSettingsStore.setState({
       settings: {
+        ...DEFAULT_EDITOR_SETTINGS,
         "editor.fontSize": 16,
         "editor.tabSize": 8,
         "editor.wordWrap": true,

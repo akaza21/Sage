@@ -5,7 +5,10 @@ import {
   DEFAULT_EDITOR_SETTINGS,
   type EditorSettings,
 } from "../domain/editorSettingsCatalogue";
-import type { EditorAppearance } from "../features/files/editorAppearance";
+import type {
+  EditorAppearance,
+  EditorEditing,
+} from "../features/files/editorAppearance";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { bindEditorSettingsClose } from "./workspaceNotifyLifecycle";
 
@@ -19,6 +22,17 @@ export function editorAppearanceFrom(
     wordWrap: settings["editor.wordWrap"],
     lineNumbers: settings["editor.lineNumbers"],
     showWhitespace: settings["editor.renderWhitespace"],
+  };
+}
+
+/** The editing features the CodeMirror runtime loads for an editable File. */
+export function editorEditingFrom(settings: EditorSettings): EditorEditing {
+  return {
+    matchBrackets: settings["editor.matchBrackets"],
+    autoClosingBrackets: settings["editor.autoClosingBrackets"],
+    folding: settings["editor.folding"],
+    occurrencesHighlight: settings["editor.occurrencesHighlight"],
+    multiCursorModifier: settings["editor.multiCursorModifier"],
   };
 }
 

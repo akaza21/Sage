@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FileEditorHeader } from "./FileEditorHeader";
-import { unsavedState } from "./saveShortcut";
+import { unsavedState } from "./fileSurfaceCommands";
 
 const requiredProps = {
   path: "src/main.ts",

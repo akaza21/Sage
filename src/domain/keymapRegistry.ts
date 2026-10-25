@@ -16,6 +16,8 @@ export interface KeymapBinding {
    * native Mac editors (Command+G is Find Next there).
    */
   appleControl?: true;
+  /** Shift and Alt on macOS when they differ, as Fold is Cmd+Option+[ there. */
+  apple?: { shift: KeymapModifier; alt: KeymapModifier };
   /**
    * The ticket that makes this binding work. Until it lands the entry only
    * reserves the chord: nothing listens for it and the Keyboard page leaves
@@ -215,11 +217,12 @@ export function matchesPlatformChord(
   const useControl = !apple || binding.appleControl === true;
   const primary = useControl ? event.ctrlKey : event.metaKey;
   const other = useControl ? event.metaKey : event.ctrlKey;
+  const { shift, alt } = (apple && binding.apple) || binding;
   return (
     !other &&
     admits(binding.ctrlOrMeta, primary) &&
-    admits(binding.shift, event.shiftKey) &&
-    admits(binding.alt, event.altKey) &&
+    admits(shift, event.shiftKey) &&
+    admits(alt, event.altKey) &&
     event.key.toLowerCase() === binding.key
   );
 }
@@ -228,6 +231,9 @@ const KEY_LABELS: Record<string, string> = {
   escape: "Esc",
   f12: "F12",
   enter: "Enter",
+  tab: "Tab",
+  arrowup: "Up",
+  arrowdown: "Down",
 };
 
 export function formatKeymapChords(
@@ -237,13 +243,14 @@ export function formatKeymapChords(
   const key =
     KEY_LABELS[binding.key] ??
     (binding.key === "," ? "," : binding.key.toUpperCase());
+  const { shift, alt } = (apple && binding.apple) || binding;
   const chord = (withCtrlOrMeta: boolean) => {
     const parts: string[] = [];
     if (withCtrlOrMeta) {
       parts.push(apple && binding.appleControl !== true ? "Cmd" : "Ctrl");
     }
-    if (binding.shift === "required") parts.push("Shift");
-    if (binding.alt === "required") parts.push("Alt");
+    if (shift === "required") parts.push("Shift");
+    if (alt === "required") parts.push(apple ? "Option" : "Alt");
     parts.push(key);
     return parts.join("+");
   };

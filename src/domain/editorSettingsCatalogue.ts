@@ -42,7 +42,17 @@ export interface IntegerSettingSpec extends EntryCopy {
   unit: string;
 }
 
-export type EditorSettingSpec = BooleanSettingSpec | IntegerSettingSpec;
+export interface ChoiceSettingSpec extends EntryCopy {
+  kind: "choice";
+  default: string;
+  /** The allowed names, in the order the settings page lists them. */
+  choices: readonly string[];
+  /** Each name's label elsewhere and on macOS, such as "Alt" and "Option". */
+  choiceLabels: Readonly<Record<string, readonly [string, string]>>;
+}
+
+export type EditorSettingSpec =
+  BooleanSettingSpec | IntegerSettingSpec | ChoiceSettingSpec;
 
 export const EDITOR_SETTINGS = [
   {
@@ -98,6 +108,56 @@ export const EDITOR_SETTINGS = [
     label: "Tab size",
     description: "Sets the number of spaces used for indentation.",
   },
+  {
+    key: "editor.matchBrackets",
+    kind: "boolean",
+    default: true,
+    group: "Text",
+    ticket: "EP-03",
+    label: "Match brackets",
+    description:
+      "Highlights the bracket that pairs with the one at the cursor.",
+  },
+  {
+    key: "editor.autoClosingBrackets",
+    kind: "boolean",
+    default: true,
+    group: "Editing",
+    ticket: "EP-03",
+    label: "Auto-close brackets",
+    description:
+      "Types the closing bracket or quote when you type the opening one.",
+  },
+  {
+    key: "editor.folding",
+    kind: "boolean",
+    default: true,
+    group: "Text",
+    ticket: "EP-03",
+    label: "Code folding",
+    description: "Shows fold arrows in the gutter so blocks can be collapsed.",
+  },
+  {
+    key: "editor.occurrencesHighlight",
+    kind: "boolean",
+    default: true,
+    group: "Text",
+    ticket: "EP-03",
+    label: "Highlight occurrences",
+    description:
+      "Marks other copies of the selected text or the word at the cursor.",
+  },
+  {
+    key: "editor.multiCursorModifier",
+    kind: "choice",
+    default: "alt",
+    choices: ["alt", "ctrlCmd"],
+    choiceLabels: { alt: ["Alt", "Option"], ctrlCmd: ["Ctrl", "Cmd"] },
+    group: "Editing",
+    ticket: "EP-03",
+    label: "Multi-cursor modifier",
+    description: "The key to hold while clicking to add another cursor.",
+  },
 ] as const satisfies readonly EditorSettingSpec[];
 
 type Entry = (typeof EDITOR_SETTINGS)[number];
@@ -109,7 +169,7 @@ export type EditorSettings = {
     ? boolean
     : E extends { choices: readonly (infer Choice)[] }
       ? Choice
-      : number;
+      : never;
 };
 
 export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
@@ -121,14 +181,20 @@ export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
 /**
  * The value as the registry allows it, matching the Rust side: whole numbers
  * are clamped to the range, then moved to the nearest choice (the lower one on
- * a tie). A value of the wrong type is `undefined`.
+ * a tie). A choice must be one of its names. A value of the wrong type is
+ * `undefined`.
  */
 export function admitEditorSetting(
   spec: EditorSettingSpec,
   value: unknown,
-): boolean | number | undefined {
+): boolean | number | string | undefined {
   if (spec.kind === "boolean") {
     return typeof value === "boolean" ? value : undefined;
+  }
+  if (spec.kind === "choice") {
+    return typeof value === "string" && spec.choices.includes(value)
+      ? value
+      : undefined;
   }
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     return undefined;

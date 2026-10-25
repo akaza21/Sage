@@ -6,9 +6,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   editorAppearanceFrom,
+  editorEditingFrom,
   useEditorSettingsStore,
 } from "../../app/editorSettingsStore";
 import type { CodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
@@ -31,6 +33,8 @@ interface EditorAdapterProps {
   path: string;
   content: EditorContent;
   disabled: boolean;
+  /** A read-only view (such as the Agent artifact pane) gets no editing features. */
+  readOnly?: boolean;
   maxContentLength: number;
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
@@ -63,6 +67,10 @@ export const EditorAdapter = forwardRef<
   const showWhitespace = useEditorSettingsStore(
     (state) => state.settings["editor.renderWhitespace"],
   );
+  // One shallow-compared object, so a change to another setting skips it.
+  const editing = useEditorSettingsStore(
+    useShallow((state) => editorEditingFrom(state.settings)),
+  );
   latestPropsRef.current = props;
 
   useLayoutEffect(() => {
@@ -76,12 +84,14 @@ export const EditorAdapter = forwardRef<
         if (!active) {
           return;
         }
+        const { settings } = useEditorSettingsStore.getState();
         const runtime = createCodeMirrorEditorRuntime({
           parent,
           ...latestPropsRef.current,
-          appearance: editorAppearanceFrom(
-            useEditorSettingsStore.getState().settings,
-          ),
+          appearance: editorAppearanceFrom(settings),
+          editing: latestPropsRef.current.readOnly
+            ? null
+            : editorEditingFrom(settings),
         });
         runtimeRef.current = runtime;
         const selection = pendingSelectionRef.current;
@@ -117,9 +127,12 @@ export const EditorAdapter = forwardRef<
           lineNumbers,
           showWhitespace,
         },
+        editing: props.readOnly ? null : editing,
       });
     }
   }, [
+    editing,
+    props.readOnly,
     fontSize,
     lineNumbers,
     props.ariaLabel,

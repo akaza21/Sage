@@ -1,8 +1,8 @@
 import {
-  KEYMAP_BINDINGS,
   formatKeymapChords,
   type KeymapScope,
 } from "../../domain/keymapRegistry";
+import { SETTINGS_KEYMAP_BINDINGS } from "../../domain/settingsNavigation";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 
 const SCOPES: readonly KeymapScope[] = [
@@ -31,7 +31,7 @@ export function SettingsKeyboardPage({ visible }: { visible: Set<string> }) {
         <p>These shortcuts are read-only for now.</p>
       </header>
       {SCOPES.map((scope) => {
-        const bindings = KEYMAP_BINDINGS.filter(
+        const bindings = SETTINGS_KEYMAP_BINDINGS.filter(
           (binding) => binding.scope === scope && visible.has(binding.id),
         );
         if (bindings.length === 0) return null;

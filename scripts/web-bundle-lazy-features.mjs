@@ -15,6 +15,14 @@
 const MAX_LAZY_FEATURES = 32;
 const MAX_REASON_LENGTH = 200;
 
+// Editor packs (EDIT-0005 D1): on-demand language grammars and editing
+// features, named by a reason that starts with "Editor pack:". Each cap is at
+// most 40 KB gzip and all of them together at most 350 KB, so a pack budget
+// can never grow past what the owner approved.
+const EDITOR_PACK_PREFIX = "Editor pack:";
+const MAX_EDITOR_PACK_GZIP_BYTES = 40 * 1024;
+const MAX_EDITOR_PACKS_GZIP_BYTES = 350 * 1000;
+
 function fail(message) {
   throw new Error(`web-bundle: ${message}`);
 }
@@ -49,6 +57,15 @@ export function parseLazyFeatureBudgets(value, reservedKeys = []) {
       fail("lazy feature chunk budgets are missing or invalid");
     seen.add(feature.entry);
   }
+  const packs = value.filter((feature) =>
+    feature.reason.startsWith(EDITOR_PACK_PREFIX),
+  );
+  if (
+    packs.some((pack) => pack.maxGzipBytes > MAX_EDITOR_PACK_GZIP_BYTES) ||
+    packs.reduce((sum, pack) => sum + pack.maxGzipBytes, 0) >
+      MAX_EDITOR_PACKS_GZIP_BYTES
+  )
+    fail("editor pack budgets exceed the approved 40 KB each, 350 KB in all");
   return value;
 }
 

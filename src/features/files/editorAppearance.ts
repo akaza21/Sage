@@ -20,3 +20,26 @@ export const DEFAULT_EDITOR_APPEARANCE: EditorAppearance = {
   lineNumbers: true,
   showWhitespace: false,
 };
+
+/**
+ * The editing features (EP-03), each switchable from Settings. A read-only
+ * view passes none, so it loads none of them.
+ */
+export interface EditorEditing {
+  matchBrackets: boolean;
+  autoClosingBrackets: boolean;
+  folding: boolean;
+  occurrencesHighlight: boolean;
+  multiCursorModifier: "alt" | "ctrlCmd";
+}
+
+/** True when both records hold the same values, or neither is present. */
+export function sameValues<T extends object>(
+  left: T | null | undefined,
+  right: T | null | undefined,
+): boolean {
+  if (!left || !right) return !left === !right;
+  return (Object.keys(left) as (keyof T)[]).every(
+    (key) => left[key] === right[key],
+  );
+}

@@ -89,6 +89,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
   "src/features/files/FileSurface.tsx",
+  // The editing features (EP-03) load with the first editable File.
+  "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",

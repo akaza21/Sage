@@ -1,9 +1,12 @@
 import { expect, it } from "vitest";
 import {
+  formatKeymapChords,
   KEYMAP_BINDINGS,
   keymapBinding,
   matchesKeymapChord,
+  matchesPlatformChord,
 } from "./keymapRegistry";
+import { EDITOR_EDITING_BINDINGS } from "./settingsNavigation";
 
 it("keeps chat and editor find as distinct scoped bindings", () => {
   const event = {
@@ -45,4 +48,28 @@ it("reserves Quick Open for EP-08 on a chord no live binding uses", () => {
       (binding) => binding.id,
     ),
   ).toEqual(["quickOpen"]);
+});
+
+it("names Option on macOS and follows a binding's macOS modifiers", () => {
+  const fold = EDITOR_EDITING_BINDINGS.find(
+    (binding) => binding.id === "editor.fold",
+  )!;
+  expect(formatKeymapChords(fold, false)).toEqual(["Ctrl+Shift+["]);
+  expect(formatKeymapChords(fold, true)).toEqual(["Cmd+Option+["]);
+  const event = {
+    key: "[",
+    ctrlKey: false,
+    metaKey: true,
+    shiftKey: false,
+    altKey: true,
+  };
+  expect(matchesPlatformChord(fold, event, true)).toBe(true);
+  expect(matchesPlatformChord(fold, { ...event, shiftKey: true }, true)).toBe(
+    false,
+  );
+  const cursorAbove = EDITOR_EDITING_BINDINGS.find(
+    (binding) => binding.id === "editor.addCursorAbove",
+  )!;
+  expect(formatKeymapChords(cursorAbove, false)).toEqual(["Ctrl+Alt+Up"]);
+  expect(formatKeymapChords(cursorAbove, true)).toEqual(["Cmd+Option+Up"]);
 });

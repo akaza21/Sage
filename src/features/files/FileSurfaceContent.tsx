@@ -78,6 +78,7 @@ export function FileSurfaceContent({
   previewing,
   transitioning,
   readOnly = false,
+  reviewOnly = false,
   agentMarkdown = false,
   onCaretOffset,
   onEditorChange,
@@ -96,6 +97,8 @@ export function FileSurfaceContent({
   previewing: boolean;
   transitioning: boolean;
   readOnly?: boolean;
+  /** The host shows this File for review only, even during a transition. */
+  reviewOnly?: boolean;
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
   onEditorChange: (
@@ -174,6 +177,7 @@ export function FileSurfaceContent({
             content={editor.content}
             maxContentLength={MAX_EDITABLE_CONTENT_BYTES}
             disabled={editor.saving || transitioning || readOnly}
+            readOnly={readOnly || reviewOnly}
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
           />
