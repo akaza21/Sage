@@ -22,7 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:fixture-privacy": "node scripts/check-harness-trace-privacy.mjs",
-    "check:policy": "node scripts/generate-acp-fixture-cases.mjs --check && node --test scripts/check-harness-trace-privacy.node-test.mjs scripts/check-policy.node-test.mjs && node scripts/check-harness-trace-privacy.mjs && node scripts/check-policy.mjs",
+    "check:policy": "node scripts/generate-acp-fixture-cases.mjs --check && node --test scripts/check-harness-trace-privacy.node-test.mjs scripts/check-policy.node-test.mjs scripts/browser-test-policy.node-test.mjs && node scripts/check-harness-trace-privacy.mjs && node scripts/check-policy.mjs",
     "check:dev": "node scripts/check-dev.mjs",
     "check:integration": "node scripts/check-integration.mjs",
     "check:release": "node scripts/check-release.mjs",
