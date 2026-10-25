@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::{CdpTransport, Lane, handle, page_context};
-use crate::acp::browser::{BrowserAction, BrowserResult, FillSecret};
+use crate::acp::browser::{BrowserAction, BrowserFailure, BrowserResult, FillSecret};
 
 const FAKE: &str = "FAKE-PHRASE-9d1";
 const TRUTH: &str = "hostile-truth-41";
@@ -177,9 +177,46 @@ fn s8_a_world_whose_document_went_away_is_made_again() {
     // The page replaces its document before the reported stamp moves, as
     // WebView2 reports a new document only after its navigation events.
     let held = lane.capability.port_mut().stamp().unwrap();
-    lane.capability.port_mut().transport.hold_stamp(Some(held));
+    lane.capability
+        .port_mut()
+        .transport
+        .hold_stamp(Some(Ok(held)));
     lane.evaluate("location.href = '/landing.html'");
     assert!(lane.wait_text("Landed safely", 5_000));
     assert_eq!(isolated_worlds(&mut lane), 2);
     lane.capability.port_mut().transport.hold_stamp(None);
+}
+
+/// Starts a page-initiated navigation to `path` with the stamp unavailable
+/// until the test releases it, as WebView2 reports a loading tab.
+fn navigate_while_loading(lane: &mut Lane, path: &str) {
+    lane.capability
+        .port_mut()
+        .transport
+        .hold_stamp(Some(Err(BrowserFailure::Unavailable)));
+    lane.evaluate(&format!("location.href = '{path}'"));
+}
+
+/// The old page and the slow new page both show "Shared phrase"; the new
+/// page keeps loading on a hung image after it commits.
+fn assert_wait_skips_the_outgoing_page(lane: &mut Lane) {
+    assert!(!lane.wait_text("Shared phrase", 1_000));
+    assert!(lane.wait_text("New page", 6_000));
+    assert!(lane.wait_text("Shared phrase", 1_000));
+    lane.capability.port_mut().transport.hold_stamp(None);
+}
+
+#[test]
+fn s8_a_wait_while_loading_skips_an_outgoing_page_the_agent_scripted() {
+    let mut lane = Lane::open("/shared-old.html");
+    assert!(lane.wait_text("Old page", 2_000));
+    navigate_while_loading(&mut lane, "/shared-new.html");
+    assert_wait_skips_the_outgoing_page(&mut lane);
+}
+
+#[test]
+fn s8_a_wait_while_loading_skips_an_outgoing_page_the_agent_never_scripted() {
+    let mut lane = Lane::open("/shared-old.html");
+    navigate_while_loading(&mut lane, "/shared-new.html");
+    assert_wait_skips_the_outgoing_page(&mut lane);
 }

@@ -73,6 +73,9 @@ fn respond(mut stream: TcpStream) {
     }
     let request = String::from_utf8_lossy(&request);
     let path = request.split_whitespace().nth(1).unwrap_or("/");
+    if let Some(delay) = delay(path) {
+        thread::sleep(delay);
+    }
     let (status, body) = match page(path) {
         Some(body) => ("200 OK", body),
         None => ("404 Not Found", String::from("not found")),
@@ -89,6 +92,8 @@ fn page(path: &str) -> Option<String> {
     let body = match path {
         "/form.html" => include_str!("../../../../testdata/browser-site/form.html"),
         "/injection.html" => include_str!("../../../../testdata/browser-site/injection.html"),
+        "/shared-old.html" => include_str!("../../../../testdata/browser-site/shared-old.html"),
+        "/shared-new.html" => include_str!("../../../../testdata/browser-site/shared-new.html"),
         "/hostile.html" => include_str!("../../../../testdata/browser-site/hostile.html"),
         "/includes.html" => include_str!("../../../../testdata/browser-site/includes.html"),
         "/navigates.html" => include_str!("../../../../testdata/browser-site/navigates.html"),
@@ -97,6 +102,15 @@ fn page(path: &str) -> Option<String> {
         _ => return None,
     };
     Some(body.to_owned())
+}
+
+/// A slow page, and a subresource that keeps the slow page loading.
+fn delay(path: &str) -> Option<Duration> {
+    match path {
+        "/shared-new.html" => Some(Duration::from_millis(2_500)),
+        "/hang.png" => Some(Duration::from_millis(4_000)),
+        _ => None,
+    }
 }
 
 /// About 10,000 DOM nodes: every row is an item, a link, and two text nodes.

@@ -38,9 +38,10 @@ pub(super) struct Chromium {
     issued: AtomicBool,
     /// How many times each Agent command method was issued.
     calls: Mutex<HashMap<String, usize>>,
-    /// A stamp reported in place of the real one, as WebView2 reports a new
-    /// document only after its navigation events arrive.
-    held_stamp: Mutex<Option<DocumentStamp>>,
+    /// A stamp, or `Unavailable`, reported in place of the real one: WebView2
+    /// reports a new document only after its navigation events arrive, and
+    /// no stamp at all while a navigation loads.
+    held_stamp: Mutex<Option<Result<DocumentStamp, BrowserFailure>>>,
     profile: PathBuf,
 }
 
@@ -141,7 +142,7 @@ impl Chromium {
     }
 
     /// Keeps reporting `stamp` until released with `None`.
-    pub(super) fn hold_stamp(&self, stamp: Option<DocumentStamp>) {
+    pub(super) fn hold_stamp(&self, stamp: Option<Result<DocumentStamp, BrowserFailure>>) {
         *self.held_stamp.lock().expect("held stamp") = stamp;
     }
 
@@ -292,7 +293,7 @@ impl CdpTransport for Chromium {
             .lock()
             .map_err(|_| BrowserFailure::Unavailable)?
         {
-            return Ok(held);
+            return held;
         }
         let (loader, _) = self.frame()?;
         self.document_stamp(loader)

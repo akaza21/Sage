@@ -241,21 +241,34 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             return Err(BrowserFailure::StaleHandle);
         };
         let needle = serde_json::to_string(text).map_err(|_| BrowserFailure::InvalidRequest)?;
-        // While the page loads it has no stamp; probe whatever document the
-        // frame shows, still in the isolated world.
+        // While the page loads it has no stamp. Only the incoming document
+        // counts: never the outgoing one, nor a document already fully loaded
+        // that the stamp has yet to report.
         let navigation = match self.stamp() {
             Ok(stamp) => Some(stamp.navigation_id),
             Err(BrowserFailure::Unavailable) => None,
             Err(error) => return Err(error),
         };
-        let expression = format!("document.body?.innerText?.includes({needle}) === true");
+        let found = format!("document.body?.innerText?.includes({needle}) === true");
+        let expression = match navigation {
+            Some(_) => found,
+            None => format!("document.readyState !== 'complete' && {found}"),
+        };
         // A probe near the end of a wait, or one that makes the world, still
         // gets time to answer; the wait overruns its budget by at most this.
         let deadline = Instant::now() + remaining.max(PROBE_FLOOR);
         match self.evaluate_in_agent_world(navigation, &expression, 4096, deadline) {
             Ok(value) => Ok(value.as_bool().unwrap_or(false)),
-            // The page navigated while the world was made; probe again.
+            // The page navigated while the world was made, or still shows the
+            // outgoing document; probe again.
             Err(BrowserFailure::StaleHandle) => Ok(false),
+            // Chromium holds commands for a frame until its pending
+            // navigation commits, so a probe can outlast its budget.
+            Err(BrowserFailure::OutcomeUnknown | BrowserFailure::Unavailable)
+                if navigation.is_none() =>
+            {
+                Ok(false)
+            }
             Err(error) => Err(error),
         }
     }
