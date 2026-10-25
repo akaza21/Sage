@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
+
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Emitter, Manager};

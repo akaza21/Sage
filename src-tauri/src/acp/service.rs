@@ -11,7 +11,7 @@ use crate::{
         page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
         runtime::{
             BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher,
-            SessionCoordinator, SessionCoordinatorError, ThreadWaitError,
+            SessionCoordinator, ThreadWaitError,
         },
         scheduler::Scheduler,
         store::{StoreError, load_chat_page},
@@ -32,27 +32,11 @@ use crate::acp::{
 };
 
 mod bootstrap;
-#[cfg_attr(
-    not(windows),
-    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-)]
 mod browser_attachment;
 #[cfg(windows)]
 mod browser_mcp;
-#[cfg_attr(
-    not(windows),
-    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-)]
 mod browser_operation;
-#[cfg_attr(
-    not(windows),
-    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-)]
 pub(crate) mod browser_permission;
-#[cfg_attr(
-    not(windows),
-    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-)]
 mod browser_shutdown;
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
@@ -90,6 +74,8 @@ mod renderer_recreation_packet;
 pub(crate) mod runtime_identity;
 mod runtime_slot;
 mod session_config;
+mod session_error;
+pub(crate) use session_error::{CodexSessionError, SessionDispatchError};
 mod shutdown;
 
 #[cfg(all(windows, feature = "acp-fixture"))]
@@ -108,41 +94,6 @@ pub(crate) use renderer_recreation_orchestrator::RendererRecreationReloadLifecyc
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum CodexSessionError {
-    #[error("the exact Codex binding is unavailable")]
-    Binding(crate::acp::bindings::codex::CodexAdmissionUnavailable),
-    #[error("the Codex session intent is stale or foreign")]
-    Intent,
-    #[error("this native Codex thread was started on an earlier Codex version")]
-    EarlierCodexVersion,
-    #[error(transparent)]
-    Session(#[from] SessionCoordinatorError),
-    #[error("Codex runtime capacity is occupied")]
-    Capacity,
-    #[error("the harness requires sign-in before it can continue")]
-    SignInRequired,
-    #[error("Codex browser tools are unavailable for this session")]
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-    )]
-    BrowserToolsUnavailable,
-    #[error("Codex live runtime requires recovery")]
-    Recovery,
-    #[error("the Steer acknowledgement timed out; the message may have been delivered")]
-    SteerOutcomeUnknown,
-    #[error("Codex process launch failed: {0:?}")]
-    LaunchFailure(crate::acp::process::LaunchError),
-    #[error("Codex process launch setup failed: {0:?}")]
-    LaunchSetup(CodexLaunchSetupError),
-}
-
-pub(crate) enum SessionDispatchError {
-    Binding,
-    Operation(CodexSessionError),
-}
 
 /// Carries positive pre-invocation proof without inferring it from an error kind.
 #[derive(Debug)]
