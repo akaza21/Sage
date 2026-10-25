@@ -17,18 +17,26 @@ mod act;
 mod highlight;
 pub(super) mod outcome;
 pub(super) mod page_context;
+mod world;
 use outcome::{navigation_failure, navigation_matches};
+
+/// The least time a wait probe gets, whatever is left of the wait.
+const PROBE_FLOOR: Duration = Duration::from_secs(1);
 
 /// The Agent browser command layer: CDP parameters, result parsing, caps and
 /// document stamps, over any transport.
 #[derive(Clone)]
 pub(crate) struct CdpPort<T> {
     pub(super) transport: T,
+    world: world::AgentWorld,
 }
 
 impl<T: CdpTransport> CdpPort<T> {
     pub(super) fn new(transport: T) -> Self {
-        Self { transport }
+        Self {
+            transport,
+            world: world::AgentWorld::default(),
+        }
     }
 
     pub(super) fn call(
@@ -234,12 +242,35 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             return Err(BrowserFailure::StaleHandle);
         };
         let needle = serde_json::to_string(text).map_err(|_| BrowserFailure::InvalidRequest)?;
-        let expression = format!("document.body?.innerText?.includes({needle}) === true");
-        let params = json!({"expression": expression, "returnByValue": true});
-        let response = self.call("Runtime.evaluate", &params.to_string(), 4096, remaining)?;
-        let response: Value =
-            serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
-        Ok(response["result"]["value"].as_bool().unwrap_or(false))
+        // While the page loads it has no stamp. Only the incoming document
+        // counts: never the outgoing one, nor a document already fully loaded
+        // that the stamp has yet to report.
+        let navigation = match self.stamp() {
+            Ok(stamp) => Some(stamp.navigation_id),
+            Err(BrowserFailure::Unavailable) => None,
+            Err(error) => return Err(error),
+        };
+        let found = format!("document.body?.innerText?.includes({needle}) === true");
+        let expression = match navigation {
+            Some(_) => found,
+            None => format!("document.readyState !== 'complete' && {found}"),
+        };
+        // A probe near the end of a wait, or one that makes the world, still
+        // gets time to answer; the wait overruns its budget by at most this.
+        let deadline = Instant::now() + remaining.max(PROBE_FLOOR);
+        match self.evaluate_in_agent_world(navigation, &expression, 4096, deadline) {
+            Ok(value) => Ok(value.as_bool().unwrap_or(false)),
+            // The page navigated while the world was made, or still shows the
+            // outgoing document; probe again.
+            Err(BrowserFailure::StaleHandle) => Ok(false),
+            // Chromium holds commands for a frame until its pending
+            // navigation commits, so a probe can outlast its budget; the
+            // probe is a permitless read, so the next one tries again.
+            Err(BrowserFailure::OutcomeUnknown) => Ok(false),
+            // A loading page can refuse a step for a moment.
+            Err(BrowserFailure::Unavailable) if navigation.is_none() => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 }
 

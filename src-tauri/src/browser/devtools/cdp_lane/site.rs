@@ -9,7 +9,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const REQUEST_BYTES: usize = 8192;
@@ -34,7 +34,7 @@ impl Site {
                     return;
                 }
                 if let Ok(stream) = stream {
-                    respond(stream);
+                    respond(stream, &worker_stop);
                 }
             }
         });
@@ -60,7 +60,7 @@ impl Drop for Site {
     }
 }
 
-fn respond(mut stream: TcpStream) {
+fn respond(mut stream: TcpStream, stop: &AtomicBool) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut request = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -73,6 +73,13 @@ fn respond(mut stream: TcpStream) {
     }
     let request = String::from_utf8_lossy(&request);
     let path = request.split_whitespace().nth(1).unwrap_or("/");
+    if let Some(delay) = delay(path) {
+        // Paced so that stopping the site never waits out a long delay.
+        let started = Instant::now();
+        while started.elapsed() < delay && !stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
     let (status, body) = match page(path) {
         Some(body) => ("200 OK", body),
         None => ("404 Not Found", String::from("not found")),
@@ -89,6 +96,9 @@ fn page(path: &str) -> Option<String> {
     let body = match path {
         "/form.html" => include_str!("../../../../testdata/browser-site/form.html"),
         "/injection.html" => include_str!("../../../../testdata/browser-site/injection.html"),
+        "/shared-old.html" => include_str!("../../../../testdata/browser-site/shared-old.html"),
+        "/shared-new.html" => include_str!("../../../../testdata/browser-site/shared-new.html"),
+        "/hostile.html" => include_str!("../../../../testdata/browser-site/hostile.html"),
         "/includes.html" => include_str!("../../../../testdata/browser-site/includes.html"),
         "/navigates.html" => include_str!("../../../../testdata/browser-site/navigates.html"),
         "/landing.html" => include_str!("../../../../testdata/browser-site/landing.html"),
@@ -96,6 +106,15 @@ fn page(path: &str) -> Option<String> {
         _ => return None,
     };
     Some(body.to_owned())
+}
+
+/// A slow page, and a subresource that keeps the slow page loading.
+fn delay(path: &str) -> Option<Duration> {
+    match path {
+        "/shared-new.html" => Some(Duration::from_secs(5)),
+        "/hang.png" => Some(Duration::from_secs(10)),
+        _ => None,
+    }
 }
 
 /// About 10,000 DOM nodes: every row is an item, a link, and two text nodes.

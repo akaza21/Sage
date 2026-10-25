@@ -3,6 +3,7 @@
 //! with one flattened session attached to one page target.
 
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
@@ -35,6 +36,13 @@ pub(super) struct Chromium {
     session: String,
     documents: Mutex<Vec<String>>,
     issued: AtomicBool,
+    /// How many times each command method was sent to the page, with or
+    /// without the dispatch permit.
+    calls: Mutex<HashMap<String, usize>>,
+    /// A stamp, or `Unavailable`, reported in place of the real one: WebView2
+    /// reports a new document only after its navigation events arrive, and
+    /// no stamp at all while a navigation loads.
+    held_stamp: Mutex<Option<Result<DocumentStamp, BrowserFailure>>>,
     profile: PathBuf,
 }
 
@@ -96,6 +104,8 @@ impl Chromium {
             session: String::new(),
             documents: Mutex::new(Vec::new()),
             issued: AtomicBool::new(false),
+            calls: Mutex::new(HashMap::new()),
+            held_stamp: Mutex::new(None),
             profile,
         };
         let target = chromium.setup(None, "Target.createTarget", json!({"url": "about:blank"}));
@@ -120,6 +130,32 @@ impl Chromium {
     /// as the WebView2 transport's per-dispatch flag does.
     pub(super) fn begin_dispatch(&self) {
         self.issued.store(false, Ordering::Release);
+    }
+
+    /// How many commands named `method` this transport has sent to the page,
+    /// through `call` or `observe`.
+    pub(super) fn calls(&self, method: &str) -> usize {
+        self.calls
+            .lock()
+            .expect("call counts")
+            .get(method)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn count(&self, method: &str) -> Result<(), BrowserFailure> {
+        *self
+            .calls
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .entry(method.to_owned())
+            .or_default() += 1;
+        Ok(())
+    }
+
+    /// Keeps reporting `stamp` until released with `None`.
+    pub(super) fn hold_stamp(&self, stamp: Option<Result<DocumentStamp, BrowserFailure>>) {
+        *self.held_stamp.lock().expect("held stamp") = stamp;
     }
 
     fn setup(&self, session: Option<&str>, method: &str, params: Value) -> Value {
@@ -185,7 +221,14 @@ impl Chromium {
 
     /// The main frame's loader id and URL.
     fn frame(&self) -> Result<(String, String), BrowserFailure> {
-        let tree = self.observe("Page.getFrameTree", "{}", 65_536, Duration::from_secs(5))?;
+        // A page can grow its frame tree past any small cap; the test
+        // transport reads it whole, as WebView2 keeps the stamp natively.
+        let tree = self.observe(
+            "Page.getFrameTree",
+            "{}",
+            FRAME_BYTES,
+            Duration::from_secs(5),
+        )?;
         let tree: Value = serde_json::from_str(&tree).map_err(|_| BrowserFailure::Unavailable)?;
         let frame = &tree["frameTree"]["frame"];
         match (frame["loaderId"].as_str(), frame["url"].as_str()) {
@@ -225,6 +268,7 @@ impl CdpTransport for Chromium {
         timeout: Duration,
     ) -> Result<String, BrowserFailure> {
         self.issued.store(true, Ordering::Release);
+        self.count(method)?;
         self.send(
             Some(&self.session),
             method,
@@ -241,6 +285,7 @@ impl CdpTransport for Chromium {
         max_result_bytes: usize,
         timeout: Duration,
     ) -> Result<String, BrowserFailure> {
+        self.count(method)?;
         self.send(
             Some(&self.session),
             method,
@@ -251,6 +296,13 @@ impl CdpTransport for Chromium {
     }
 
     fn stamp(&self) -> Result<DocumentStamp, BrowserFailure> {
+        if let Some(held) = *self
+            .held_stamp
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+        {
+            return held;
+        }
         let (loader, _) = self.frame()?;
         self.document_stamp(loader)
     }

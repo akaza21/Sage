@@ -5,6 +5,7 @@ use crate::acp::{
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Default))]
 pub(crate) struct DocumentStamp {
     pub navigation_id: u64,
     pub generation: u64,
