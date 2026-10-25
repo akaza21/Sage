@@ -6,16 +6,19 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { undo } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorCaretStore } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
+import { FIND_BAR_BINDINGS } from "../../domain/settingsNavigation";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { contentText } from "./editorContent";
 import { FileSurface } from "./FileSurface";
-import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
+import { findMatches, type FindRequest } from "./inFileFind";
+import { MAX_EDITABLE_CONTENT_BYTES } from "./editorContent";
 
 const path = "debounce.txt";
 const resource = { rootId: "root-a", relativePath: path };
@@ -263,7 +266,9 @@ describe("FileSurface durability cadence", () => {
     });
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    expect(screen.getByRole("textbox", { name: "Find text" })).toBeVisible();
+    expect(
+      await screen.findByRole("textbox", { name: "Find text" }),
+    ).toBeVisible();
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
     expect(screen.getByRole("textbox", { name: "Go to line" })).toBeVisible();
     fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
@@ -536,7 +541,7 @@ describe("FileSurface location navigation", () => {
       name: `Edit ${path}`,
     });
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    const find = screen.getByRole("textbox", { name: "Find text" });
+    const find = await screen.findByRole("textbox", { name: "Find text" });
     fireEvent.change(find, { target: { value: "alpha" } });
 
     act(() => {
@@ -578,12 +583,14 @@ describe("FileSurface in-file find", () => {
     expect(editor).toHaveFocus();
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    const query = screen.getByRole("textbox", { name: "Find text" });
+    const query = await screen.findByRole("textbox", { name: "Find text" });
     expect(screen.getByRole("search", { name: "Find in file" })).toHaveClass(
       "editor-find--overlay",
     );
     expect(screen.getByRole("textbox", { name: `Edit ${path}` })).toBe(editor);
     expect(query).toHaveFocus();
+    // The bar remembers its last query for the session, as VS Code does.
+    fireEvent.change(query, { target: { value: "" } });
     expect(screen.getByRole("status")).toHaveTextContent("No query");
 
     fireEvent.change(query, { target: { value: "needle" } });
@@ -634,7 +641,7 @@ describe("FileSurface in-file find", () => {
     });
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    const query = screen.getByRole("textbox", { name: "Find text" });
+    const query = await screen.findByRole("textbox", { name: "Find text" });
     expect(query).toHaveFocus();
     fireEvent.change(query, {
       target: { value: "absent" },
@@ -657,9 +664,10 @@ describe("FileSurface in-file find", () => {
       String(MAX_EDITABLE_CONTENT_BYTES),
     );
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
-      target: { value: "a" },
-    });
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Find text" }),
+      { target: { value: "a" } },
+    );
 
     expect(screen.getByRole("status")).toHaveTextContent(
       "File exceeds the 1 MiB Find limit",
@@ -678,13 +686,17 @@ describe("FileSurface in-file find", () => {
     });
 
     fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
-    const query = screen.getByRole("textbox", { name: "Find text" });
+    const query = await screen.findByRole("textbox", { name: "Find text" });
     fireEvent.change(query, { target: { value: "alpha" } });
     fireEvent.keyDown(query, { key: "Enter" });
     expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
 
+    // Edits search again after a short pause, so typing never pays for it.
     replaceEditorContent(editor, "alpha");
-    expect(screen.getByRole("status")).toHaveTextContent("1 of 1 match");
+    expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("1 of 1 match"),
+    );
 
     const nextResource = { rootId: "root-b", relativePath: "next.txt" };
     const nextTab = {
@@ -699,6 +711,373 @@ describe("FileSurface in-file find", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 0, end: 5 });
+  });
+});
+
+/** jsdom has no Worker; this one answers on the next microtask. */
+class InlineFindWorker {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  postMessage(request: FindRequest) {
+    queueMicrotask(() =>
+      this.onmessage?.({ data: findMatches(request) } as MessageEvent),
+    );
+  }
+  terminate() {}
+}
+
+async function openFindBar(
+  editor: HTMLElement,
+  chord: { key: string; ctrlKey?: boolean; metaKey?: boolean } = {
+    key: "f",
+    ctrlKey: true,
+  },
+) {
+  fireEvent.keyDown(editor, chord);
+  const query = await screen.findByRole("textbox", { name: "Find text" });
+  fireEvent.change(query, { target: { value: "" } });
+  for (const name of [
+    "Match case",
+    "Match whole word",
+    "Use regular expression",
+  ]) {
+    const toggle = screen.getByRole("button", { name });
+    if (toggle.getAttribute("aria-pressed") === "true") fireEvent.click(toggle);
+  }
+  return query;
+}
+
+describe("FileSurface Find and Replace", () => {
+  it("replaces one match, then all, and one undo reverses Replace all", async () => {
+    setReadyEditor(tab, "cat cat cat");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    const view = viewForEditor(editor);
+
+    fireEvent.keyDown(await openFindBar(editor), { key: "Escape" });
+    fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
+    await screen.findByRole("textbox", { name: "Replace text" });
+    const query = screen.getByRole("textbox", { name: "Find text" });
+    // With no query yet, Replace starts in the find box, as in VS Code.
+    expect(query).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: "Toggle Replace" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(query, { target: { value: "cat" } });
+    fireEvent.keyDown(query, { key: "Escape" });
+    fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
+    // With a query, it starts in the replace box.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Replace text" }),
+      ).toHaveFocus(),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+      target: { value: "dog" },
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 3 matches");
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Replace text" }), {
+        key: "Enter",
+      });
+    });
+    expect(activeEditorText()).toBe("dog cat cat");
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(editorSelection(editor)).toEqual({ start: 4, end: 7 });
+
+    // A typed edit stays its own undo step, apart from Replace all.
+    act(() => {
+      view.dispatch({
+        changes: { from: 11, insert: "!" },
+        userEvent: "input.type",
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Replace all" }));
+    });
+    expect(activeEditorText()).toBe("dog dog dog!");
+    expect(screen.getByRole("status")).toHaveTextContent("No matches");
+    // Typing right after it does not join the Replace all step either.
+    act(() => {
+      view.dispatch({
+        changes: { from: 11, insert: "?" },
+        userEvent: "input.type",
+      });
+    });
+
+    act(() => {
+      undo(view);
+    });
+    expect(activeEditorText()).toBe("dog dog dog!");
+    act(() => {
+      undo(view);
+    });
+    expect(activeEditorText()).toBe("dog cat cat!");
+  });
+
+  it("only selects the next match when Replace finds no match selected, as VS Code does", async () => {
+    setReadyEditor(tab, "cat cat");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    const query = await openFindBar(editor);
+    fireEvent.change(query, { target: { value: "cat" } });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
+    const replacement = screen.getByRole("textbox", { name: "Replace text" });
+    fireEvent.change(replacement, { target: { value: "dog" } });
+    act(() => {
+      viewForEditor(editor).dispatch({ selection: { anchor: 2 } });
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(replacement, { key: "Enter" });
+    });
+    expect(activeEditorText()).toBe("cat cat");
+    expect(editorSelection(editor)).toEqual({ start: 4, end: 7 });
+    await act(async () => {
+      fireEvent.keyDown(replacement, { key: "Enter" });
+    });
+    expect(activeEditorText()).toBe("cat dog");
+  });
+
+  it("selects the next match after a longer replacement and replaces past the match cap", async () => {
+    setReadyEditor(tab, "foo foo foo");
+    const { unmount } = render(<FileSurface tab={tab} />);
+    let editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    let query = await openFindBar(editor);
+    fireEvent.change(query, { target: { value: "foo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+      target: { value: "barbaz" },
+    });
+    const replaceOne = async () =>
+      act(async () => {
+        fireEvent.keyDown(
+          screen.getByRole("textbox", { name: "Replace text" }),
+          { key: "Enter" },
+        );
+      });
+    await replaceOne();
+    expect(activeEditorText()).toBe("barbaz foo foo");
+    expect(editorSelection(editor)).toEqual({ start: 7, end: 10 });
+    await replaceOne();
+    expect(activeEditorText()).toBe("barbaz barbaz foo");
+    unmount();
+
+    // Replace all changes every match, not only the 10,000 Find shows.
+    setReadyEditor(tab, "a ".repeat(12_000));
+    render(<FileSurface tab={tab} />);
+    editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    query = await openFindBar(editor);
+    fireEvent.change(query, { target: { value: "a" } });
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 10000+ matches");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+      target: { value: "b" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Replace all" }));
+    });
+    expect(activeEditorText()).toBe("b ".repeat(12_000));
+  });
+
+  it("searches a large File in the worker", async () => {
+    const spawned = vi.fn();
+    vi.stubGlobal(
+      "Worker",
+      class extends InlineFindWorker {
+        constructor() {
+          super();
+          spawned();
+        }
+      },
+    );
+    try {
+      setReadyEditor(tab, `${"x".repeat(70_000)} needle needle`);
+      render(<FileSurface tab={tab} />);
+      const editor = await screen.findByRole("textbox", {
+        name: `Edit ${path}`,
+      });
+      const query = await openFindBar(editor);
+      fireEvent.change(query, { target: { value: "needle" } });
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches"),
+      );
+      expect(spawned).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("replaces with pattern groups in the worker and reports a bad pattern", async () => {
+    vi.stubGlobal("Worker", InlineFindWorker);
+    try {
+      setReadyEditor(tab, "a=1\nb=2");
+      render(<FileSurface tab={tab} />);
+      const editor = await screen.findByRole("textbox", {
+        name: `Edit ${path}`,
+      });
+      const query = await openFindBar(editor);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Use regular expression" }),
+      );
+      fireEvent.change(query, { target: { value: "^(\\w)=(\\d)$" } });
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches"),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+        target: { value: "$2:$1" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Replace all" }));
+      });
+      expect(activeEditorText()).toBe("1:a\n2:b");
+
+      fireEvent.change(query, { target: { value: "(?i:a)" } });
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Use Match case, not an inline flag",
+        ),
+      );
+      expect(screen.getByRole("status")).not.toHaveTextContent("(?i:a)");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("seeds the query from a one-line selection and leaves the caret alone while typing", async () => {
+    setReadyEditor(tab, "alpha beta alpha\nbeta");
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    const view = viewForEditor(editor);
+    fireEvent.keyDown(await openFindBar(editor), { key: "Escape" });
+    act(() => {
+      view.dispatch({ selection: { anchor: 6, head: 10 } });
+    });
+
+    fireEvent.keyDown(editor, { key: "f", ctrlKey: true });
+    const query = await screen.findByRole("textbox", { name: "Find text" });
+    expect(query).toHaveValue("beta");
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(editorSelection(editor)).toEqual({ start: 6, end: 10 });
+
+    // Typing elsewhere while the bar is open never pulls the caret back.
+    editor.focus();
+    act(() => {
+      view.dispatch({ selection: { anchor: 0 } });
+      view.dispatch(view.state.replaceSelection("x"));
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(editorSelection(editor)).toEqual({ start: 1, end: 1 });
+
+    // F3 and Shift+F3 continue from the caret, as in VS Code.
+    fireEvent.keyDown(editor, { key: "F3" });
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(editorSelection(editor)).toEqual({ start: 7, end: 11 });
+    fireEvent.keyDown(editor, { key: "F3" });
+    expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
+    expect(editorSelection(editor)).toEqual({ start: 18, end: 22 });
+    fireEvent.keyDown(editor, { key: "F3" });
+    expect(editorSelection(editor)).toEqual({ start: 7, end: 11 });
+    act(() => {
+      view.dispatch({ selection: { anchor: 14 } });
+    });
+    fireEvent.keyDown(editor, { key: "F3", shiftKey: true });
+    expect(editorSelection(editor)).toEqual({ start: 7, end: 11 });
+    fireEvent.keyDown(editor, { key: "F3", shiftKey: true });
+    expect(editorSelection(editor)).toEqual({ start: 18, end: 22 });
+  });
+
+  it("answers exactly the find bar chords the Keyboard settings page lists", async () => {
+    for (const apple of [false, true]) {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue(
+        apple ? "MacIntel" : "Win32",
+      );
+      setReadyEditor(tab, "Cat cat cat");
+      const { unmount } = render(<FileSurface tab={tab} />);
+      const editor = await screen.findByRole("textbox", {
+        name: `Edit ${path}`,
+      });
+      const query = await openFindBar(editor, {
+        key: "f",
+        [apple ? "metaKey" : "ctrlKey"]: true,
+      });
+      fireEvent.change(query, { target: { value: "cat" } });
+      for (const binding of FIND_BAR_BINDINGS) {
+        const chord = { ...binding, ...(apple ? binding.apple : undefined) };
+        const primary = apple ? "metaKey" : "ctrlKey";
+        const event = {
+          // Option turns letters into other characters on macOS.
+          key: chord.key === "enter" ? "Enter" : apple ? "ç" : chord.key,
+          code:
+            chord.key === "enter" ? "Enter" : `Key${chord.key.toUpperCase()}`,
+          altKey: chord.alt === "required",
+          [primary]: chord.ctrlOrMeta === "required",
+        };
+        if (binding.id === "find.replaceAll") {
+          fireEvent.click(
+            screen.getByRole("button", { name: "Toggle Replace" }),
+          );
+          const replacement = screen.getByRole("textbox", {
+            name: "Replace text",
+          });
+          fireEvent.change(replacement, { target: { value: "x" } });
+          await act(async () => {
+            fireEvent.keyDown(replacement, { ...event, shiftKey: true });
+          });
+          expect(activeEditorText(), `${binding.id} with Shift`).toBe(
+            "x cat cat",
+          );
+          fireEvent.change(replacement, { target: { value: "y" } });
+          await act(async () => {
+            fireEvent.keyDown(replacement, event);
+          });
+          expect(activeEditorText(), binding.id).toBe("x y y");
+          continue;
+        }
+        const toggle = screen.getByRole("button", { name: binding.label });
+        const before = toggle.getAttribute("aria-pressed");
+        fireEvent.keyDown(query, { ...event, shiftKey: true });
+        expect(toggle, `${binding.id} with Shift`).toHaveAttribute(
+          "aria-pressed",
+          before,
+        );
+        fireEvent.keyDown(query, event);
+        expect(toggle, binding.id).not.toHaveAttribute("aria-pressed", before);
+        fireEvent.click(toggle);
+      }
+      unmount();
+    }
+  });
+
+  it("toggles options from the keyboard and keeps Replace off in a read-only File", async () => {
+    setReadyEditor(tab, "Cat cat");
+    render(<FileSurface tab={tab} readOnly />);
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    const query = await openFindBar(editor);
+    fireEvent.change(query, { target: { value: "cat" } });
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+
+    fireEvent.keyDown(query, { key: "c", code: "KeyC", altKey: true });
+    expect(screen.getByRole("button", { name: "Match case" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 1 match");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
+    expect(
+      screen.getByRole("textbox", { name: "Replace text" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Replace all" })).toBeDisabled();
+    expect(activeEditorText()).toBe("Cat cat");
+    // Ctrl+H with a remembered query still focuses a field it can type in.
+    fireEvent.keyDown(query, { key: "Escape" });
+    fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Find text" })).toHaveFocus(),
+    );
   });
 });
 

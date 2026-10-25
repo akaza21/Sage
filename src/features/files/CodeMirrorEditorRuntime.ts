@@ -67,6 +67,8 @@ export interface CodeMirrorEditorRuntime {
   selection: () => { start: number; end: number };
   setSelection: (start: number, end: number) => void;
   update: (props: RuntimeProps) => void;
+  /** For lazy features such as Find that act on the editor directly. */
+  view: EditorView;
 }
 
 import type { EditorContent, EditorContentBase } from "./editorContent";
@@ -367,6 +369,7 @@ export function createCodeMirrorEditorRuntime(
       view.destroy();
     },
     focus: () => view.focus(),
+    view,
     selection: () => ({
       start: view.state.selection.main.from,
       end: view.state.selection.main.to,

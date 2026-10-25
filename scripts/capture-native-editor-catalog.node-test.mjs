@@ -53,8 +53,10 @@ test("absence reasons stay grounded in shipped product boundaries", () => {
   assert.match(source("AGENTS.md"), /one File \/ Diff \/ Settings tab strip/u);
   assert.match(source("src/domain/keymapRegistry.ts"), /reservedFor: "EP-08"/u);
   const find = source("src/features/files/FileFindBar.tsx");
-  assert.match(find, /aria-label="Match case"/u);
-  assert.doesNotMatch(find, /aria-label="(?:Regex|Replace)/iu);
+  assert.match(find, /"Use regular expression"/u);
+  assert.match(find, /aria-label="Replace text"/u);
+  const drive = source("scripts/capture-native-editor-drive.mjs");
+  assert.doesNotMatch(drive, /find-widget|find-replace/u);
   assert.doesNotMatch(
     source("src/features/files/CodeMirrorEditorRuntime.ts"),
     /allowMultipleSelections/u,

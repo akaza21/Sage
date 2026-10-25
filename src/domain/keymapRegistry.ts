@@ -16,8 +16,16 @@ export interface KeymapBinding {
    * native Mac editors (Command+G is Find Next there).
    */
   appleControl?: true;
-  /** Shift and Alt on macOS when they differ, as Fold is Cmd+Option+[ there. */
-  apple?: { shift: KeymapModifier; alt: KeymapModifier };
+  /**
+   * The chord on macOS where it differs, as Fold is Cmd+Option+[ and Find
+   * next is Cmd+G there.
+   */
+  apple?: {
+    shift: KeymapModifier;
+    alt: KeymapModifier;
+    key?: string;
+    ctrlOrMeta?: KeymapModifier;
+  };
   /**
    * The ticket that makes this binding work. Until it lands the entry only
    * reserves the chord: nothing listens for it and the Keyboard page leaves
@@ -28,6 +36,8 @@ export interface KeymapBinding {
 
 export interface KeymapChordEvent {
   key: string;
+  /** The physical key, for Option chords on macOS. */
+  code?: string;
   altKey: boolean;
   ctrlKey: boolean;
   metaKey: boolean;
@@ -126,6 +136,49 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    id: "replace",
+    label: "Replace in file",
+    description: "Opens the find bar with its replace row.",
+    scope: "Editor",
+    key: "h",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+    apple: { key: "f", shift: "forbidden", alt: "required" },
+  },
+  {
+    id: "findNext",
+    label: "Find next",
+    description: "Moves to the next match of the find bar's text.",
+    scope: "Editor",
+    key: "f3",
+    ctrlOrMeta: "forbidden",
+    shift: "forbidden",
+    alt: "forbidden",
+    apple: {
+      key: "g",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "forbidden",
+    },
+  },
+  {
+    id: "findPrevious",
+    label: "Find previous",
+    description: "Moves to the previous match of the find bar's text.",
+    scope: "Editor",
+    key: "f3",
+    ctrlOrMeta: "forbidden",
+    shift: "required",
+    alt: "forbidden",
+    apple: {
+      key: "g",
+      ctrlOrMeta: "required",
+      shift: "required",
+      alt: "forbidden",
+    },
+  },
+  {
     id: "goToLine",
     label: "Go to line",
     description: "Jumps to a line number in the active file.",
@@ -203,6 +256,10 @@ export function matchesKeymapChord(
   );
 }
 
+function platformChord(binding: KeymapBinding, apple: boolean) {
+  return { ...binding, ...(apple ? binding.apple : undefined) };
+}
+
 /**
  * Matches the platform's own modifier only: Command on macOS (Control there
  * is the text-editing modifier, as in Control+F for forward a character) and
@@ -217,18 +274,30 @@ export function matchesPlatformChord(
   const useControl = !apple || binding.appleControl === true;
   const primary = useControl ? event.ctrlKey : event.metaKey;
   const other = useControl ? event.metaKey : event.ctrlKey;
-  const { shift, alt } = (apple && binding.apple) || binding;
+  const chord = platformChord(binding, apple);
   return (
     !other &&
-    admits(binding.ctrlOrMeta, primary) &&
-    admits(shift, event.shiftKey) &&
-    admits(alt, event.altKey) &&
-    event.key.toLowerCase() === binding.key
+    admits(chord.ctrlOrMeta, primary) &&
+    admits(chord.shift, event.shiftKey) &&
+    admits(chord.alt, event.altKey) &&
+    (event.key.toLowerCase() === chord.key ||
+      (apple && event.altKey && optionLetter(event.code) === chord.key))
   );
+}
+
+/**
+ * Option turns Command+Option+F into "ƒ" on macOS, so an Option chord on a
+ * letter matches the physical key instead.
+ */
+function optionLetter(code: string | undefined): string | undefined {
+  return code && /^Key[A-Z]$/u.test(code)
+    ? code.slice(3).toLowerCase()
+    : undefined;
 }
 
 const KEY_LABELS: Record<string, string> = {
   escape: "Esc",
+  f3: "F3",
   f12: "F12",
   enter: "Enter",
   tab: "Tab",
@@ -240,11 +309,11 @@ export function formatKeymapChords(
   binding: KeymapBinding,
   apple: boolean,
 ): string[] {
+  const { shift, alt, ctrlOrMeta, ...chord } = platformChord(binding, apple);
   const key =
-    KEY_LABELS[binding.key] ??
-    (binding.key === "," ? "," : binding.key.toUpperCase());
-  const { shift, alt } = (apple && binding.apple) || binding;
-  const chord = (withCtrlOrMeta: boolean) => {
+    KEY_LABELS[chord.key] ??
+    (chord.key === "," ? "," : chord.key.toUpperCase());
+  const format = (withCtrlOrMeta: boolean) => {
     const parts: string[] = [];
     if (withCtrlOrMeta) {
       parts.push(apple && binding.appleControl !== true ? "Cmd" : "Ctrl");
@@ -254,6 +323,6 @@ export function formatKeymapChords(
     parts.push(key);
     return parts.join("+");
   };
-  if (binding.ctrlOrMeta === "allowed") return [chord(false), chord(true)];
-  return [chord(binding.ctrlOrMeta === "required")];
+  if (ctrlOrMeta === "allowed") return [format(false), format(true)];
+  return [format(ctrlOrMeta === "required")];
 }

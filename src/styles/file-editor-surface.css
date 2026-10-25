@@ -174,13 +174,18 @@
   background: var(--color-surface);
 }
 
+/* VS Code's find widget: a Replace chevron down the left edge, the query
+   box holding its option toggles, then status and navigation. The replace
+   row's children share the same columns, so both boxes line up. */
 .editor-find--overlay {
   position: absolute;
   z-index: 3;
   top: 8px;
   right: 12px;
+  display: grid;
   width: min(440px, calc(100% - 24px));
   box-sizing: border-box;
+  grid-template-columns: 20px minmax(0, 1fr) auto repeat(3, 24px);
   padding: 4px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -223,6 +228,70 @@
 .editor-find__button[aria-pressed="true"] {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+.editor-find__expand {
+  width: 20px;
+  height: auto;
+  align-self: stretch;
+}
+
+.editor-find--replacing .editor-find__expand {
+  grid-row: span 2;
+}
+
+.editor-find__field {
+  display: flex;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 1px;
+  padding-right: 2px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.editor-find__field:focus-within {
+  border-color: var(--color-focus-ring);
+}
+
+.editor-find__field .editor-find__query {
+  min-width: 0;
+  max-width: none;
+  flex: 1 1 auto;
+}
+
+.editor-find__field .editor-find__query input {
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.editor-find__replace {
+  display: contents;
+}
+
+.editor-find__replace .editor-find__field {
+  grid-column: 2;
+}
+
+.editor-find__actions {
+  display: flex;
+  grid-column: 3 / -1;
+  gap: 4px;
+}
+
+/* Find and Replace marks. Every match is filled; the current one also gets
+   an edge, so it stays visible under the selection that follows it. */
+.editor-input .cm-editor .cm-findMatch {
+  background: var(--resource-document-find-match);
+}
+
+.editor-input .cm-editor .cm-findMatch--current {
+  box-shadow: inset 0 0 0 1px var(--resource-document-find-match-border);
 }
 
 .editor-input {
@@ -428,19 +497,21 @@
 
 @container (max-width: 420px) {
   .editor-find--overlay {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) repeat(4, 26px);
+    grid-template-columns: 20px minmax(0, 1fr) repeat(3, 24px);
   }
 
-  .editor-find--overlay .editor-find__query {
-    width: 100%;
-    max-width: none;
-    grid-column: 1 / -1;
+  .editor-find--overlay > .editor-find__field {
+    grid-column: 2 / -1;
   }
 
   .editor-find--overlay .editor-find__status {
     min-width: 0;
+    grid-column: 2;
     text-align: left;
+  }
+
+  .editor-find--replacing .editor-find__expand {
+    grid-row: span 3;
   }
 }
 
@@ -453,6 +524,21 @@
 
   .editor-find--overlay {
     border-color: CanvasText;
+    box-shadow: none;
+  }
+
+  .editor-find__field:focus-within {
+    outline: var(--focus-ring);
+  }
+
+  .editor-input .cm-editor .cm-findMatch {
+    forced-color-adjust: none;
+    color: MarkText;
+    background: Mark;
+  }
+
+  .editor-input .cm-editor .cm-findMatch--current {
+    outline: 2px solid Highlight;
     box-shadow: none;
   }
 }

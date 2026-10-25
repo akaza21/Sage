@@ -72,12 +72,21 @@
   .workbench--editor .source-branch-create__label select:focus-visible,
   .workbench--editor .repository-commit__label textarea:focus-visible,
   .workbench--editor .editor-find__query input:focus-visible,
+  .workbench--editor .editor-find__field:focus-within,
   .workbench--editor .settings-surface input[type="search"]:focus-visible,
   .workbench--editor .settings-surface select:focus-visible,
   .new-file-dialog--editor .new-file-dialog__field input:focus-visible {
     border-color: var(--editor-focus-edge);
     outline: 0;
     box-shadow: var(--editor-focus-halo-shadow);
+  }
+
+  /* The find box draws the halo, so its borderless inputs stay plain. */
+  .workbench--editor
+    .editor-find__field
+    .editor-find__query
+    input:focus-visible {
+    box-shadow: none;
   }
 
   .workbench--editor

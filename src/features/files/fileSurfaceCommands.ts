@@ -13,6 +13,9 @@ export interface FileSurfaceCommandActions {
   closeFind: () => void;
   closeGoToLine: () => void;
   openFind: () => void;
+  openReplace: () => void;
+  /** Steps through the find bar's matches, opening it when closed. */
+  moveFind: (direction: 1 | -1) => void;
   openGoToLine: () => void;
   goToLocalSymbol: () => void;
   save: () => void;
@@ -21,10 +24,13 @@ export interface FileSurfaceCommandActions {
 /**
  * Editor chords from the keymap registry, matched with the platform's own
  * modifier: Command+S/F and Control+G on macOS, Control+S/F/G elsewhere.
+ * Replace and Find next follow VS Code: Command+Option+F and Command+G on
+ * macOS (Command+H hides the app), Control+H and F3 elsewhere.
  */
 export function handleFileSurfaceCommandKey(
   event: {
     key: string;
+    code?: string;
     altKey: boolean;
     ctrlKey: boolean;
     metaKey: boolean;
@@ -68,6 +74,20 @@ export function handleFileSurfaceCommandKey(
   if (matches("find")) {
     event.preventDefault();
     if (!actions.previewing) actions.openFind();
+    return true;
+  }
+  if (matches("replace")) {
+    event.preventDefault();
+    if (!actions.previewing) actions.openReplace();
+    return true;
+  }
+  for (const [id, direction] of [
+    ["findNext", 1],
+    ["findPrevious", -1],
+  ] as const) {
+    if (!matches(id)) continue;
+    event.preventDefault();
+    if (!actions.previewing) actions.moveFind(direction);
     return true;
   }
   if (matches("goToLine")) {

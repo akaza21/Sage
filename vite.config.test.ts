@@ -88,6 +88,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
+  // The Find and Replace bar (EP-04) loads on the first Find or Replace.
+  "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
