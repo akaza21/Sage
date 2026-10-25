@@ -1,5 +1,7 @@
 use serde::Serialize;
-use tauri::{Manager, State};
+#[cfg(windows)]
+use tauri::Manager;
+use tauri::State;
 
 use super::{BrowserState, BrowserTabs, page_context::valid_page_context_tab_id};
 

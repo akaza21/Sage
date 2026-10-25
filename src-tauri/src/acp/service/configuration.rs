@@ -86,7 +86,7 @@ impl AcpService {
         Self::new_with_registry_for_test(database, Arc::new(BindingRegistry::with_codex(codex)))
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn new_with_codex_publisher_for_test(
         database: Database,
         codex: CodexBindingRegistration,
@@ -99,7 +99,7 @@ impl AcpService {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn new_with_registry_publisher_for_test(
         database: Database,
         registry: Arc<BindingRegistry>,

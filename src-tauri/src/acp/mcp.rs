@@ -34,6 +34,10 @@ pub(crate) enum McpServerDescriptor {
         args: Vec<String>,
         env: Vec<McpEnv>,
     },
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+    )]
     BrowserStdio(BrowserStdio),
     #[cfg_attr(
         not(test),
@@ -42,10 +46,7 @@ pub(crate) enum McpServerDescriptor {
             reason = "non-empty MCP admission awaits coordinated durable registry migration"
         )
     )]
-    Http {
-        name: String,
-        url: String,
-    },
+    Http { name: String, url: String },
     #[cfg_attr(
         not(test),
         expect(
@@ -53,10 +54,7 @@ pub(crate) enum McpServerDescriptor {
             reason = "non-empty MCP admission awaits coordinated durable registry migration"
         )
     )]
-    Sse {
-        name: String,
-        url: String,
-    },
+    Sse { name: String, url: String },
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -370,6 +368,10 @@ impl McpAdmission {
         Ok(result)
     }
 
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+    )]
     pub(crate) fn browser_stdio(
         command: String,
         environment: [(String, String); 4],

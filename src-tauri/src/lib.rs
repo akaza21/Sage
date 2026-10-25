@@ -1,6 +1,10 @@
 pub mod acp;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 mod browser;
 mod chat_archive;
 mod chat_archive_commands;
@@ -228,6 +232,7 @@ pub fn run() {
             #[cfg(not(all(windows, feature = "acp-fixture")))]
             let state = AppState::try_new_desktop(database, settings, app.handle().clone())?;
             app.manage(state);
+            #[cfg_attr(not(windows), allow(clippy::default_constructed_unit_structs))]
             app.manage(voice_input::VoiceInputState::default());
             let main_window_config = app
                 .config()

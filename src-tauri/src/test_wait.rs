@@ -1,7 +1,9 @@
+#[cfg(windows)]
+use std::time::Instant;
 use std::{
     future::Future,
     sync::{Mutex, MutexGuard, PoisonError},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub(crate) const HANG_GUARD: Duration = Duration::from_secs(120);
@@ -32,6 +34,7 @@ where
         })
 }
 
+#[cfg(windows)]
 #[track_caller]
 pub(crate) fn until(label: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + HANG_GUARD;

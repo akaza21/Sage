@@ -32,7 +32,7 @@ struct DurableSession {
 }
 
 impl AcpService {
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) async fn start_codex_session(
         &self,
         project_root: &crate::acp::bindings::codex::CodexProjectRootAuthority,

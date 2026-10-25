@@ -42,6 +42,10 @@ impl TerminalOutputSink {
         }
     }
 
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "only the ConPTY backend produces terminal output")
+    )]
     pub(super) fn append(&self, chunk: &[u8]) -> Result<(), TerminalError> {
         if chunk.len() > OUTPUT_CHUNK_BYTES {
             return Err(TerminalError::Backend);

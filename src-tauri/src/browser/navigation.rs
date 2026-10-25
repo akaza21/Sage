@@ -1,7 +1,9 @@
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
-use tauri::{AppHandle, Manager, State, Webview};
+#[cfg(windows)]
+use tauri::Manager;
+use tauri::{AppHandle, State, Webview};
 #[cfg(windows)]
 use windows_core::BOOL;
 
@@ -17,6 +19,7 @@ mod title;
 use emit::emit_snapshot;
 pub(super) use emit::navigation_state;
 pub(crate) use status::BrowserNavigation;
+#[cfg(windows)]
 use status::emit_or_retry;
 
 #[tauri::command]

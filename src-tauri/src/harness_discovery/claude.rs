@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[cfg(windows)]
+use super::candidates::bounded_path_roots;
 use super::{
     ProbeLimits,
-    candidates::{bounded_path_roots, path_candidates_for_basename},
+    candidates::path_candidates_for_basename,
     validation::{authentic_descendant_file, authentic_harness_file},
     version_probe::run_version_command,
 };
