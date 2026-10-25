@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { forbidBrowserRetries } from "./shared/browserRetryGuard";
+
+forbidBrowserRetries();
 
 type Rule = {
   id: string;
@@ -81,6 +84,8 @@ for (const rule of ruleSet.rules) {
         );
         break;
       }
+      default:
+        throw new Error(`rule ${rule.id} uses unknown measure ${rule.measure}`);
     }
   });
 }

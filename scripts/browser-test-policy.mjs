@@ -1,34 +1,42 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-const TEST_ROOTS = [
-  "tests/ui",
-  "src/features/browser",
-  "src/features/preview",
-  "src/app",
-  "src/features/chat/acp",
-  "src-tauri/src/browser",
-  "src-tauri/src/acp/browser",
-];
-const BROWSER_TEST_FILE =
-  /(^tests\/ui\/browser-[^/]+\.ts$)|(^src\/features\/browser\/.+\.test\.tsx?$)|(^src\/features\/preview\/HarnessBrowser[^/]*\.test\.tsx?$)|(^src\/app\/browser[^/]*\.test\.ts$)|(^src\/features\/chat\/acp\/Browser[^/]*\.test\.tsx?$)|(^src-tauri\/src\/(acp\/)?browser\/.+\.rs$)/u;
-const BYPASS_PATTERNS = [
+export const BROWSER_POLICY_LIMITS = Object.freeze({
+  files: 20_000,
+  depth: 16,
+  fileBytes: 512 * 1024,
+});
+const SCAN_ROOTS = ["src", "src-tauri/src", "src-tauri/tests", "tests/ui"];
+const TEST_FILE =
+  /(\.test\.tsx?|\.visual\.ts|\.spec\.ts|(^|\/)tests?\.rs|_tests?\.rs)$|^src-tauri\/tests\/|^tests\/ui\/shared\//u;
+const BROWSER_PATH = /browser/iu;
+const TS_BYPASS = [
   [
-    /\b(?:test|it|describe)\.(?:skip|only|fixme|todo)\b/u,
-    "skips or narrows a test",
+    /\b(?:test|it|describe)(?:\.describe)?\.(?:skip|only|fixme|todo|fails?|skipIf|runIf)\b/u,
+    "skips, narrows or inverts a test",
   ],
-  [
-    /\btest\.fail\s*\(|\bcontext\.skip\s*\(/u,
-    "marks a test as expected to fail or skipped",
-  ],
-  [/#\[ignore\b/u, "ignores a Rust test"],
-  [/\bretries\s*:/u, "retries a browser test"],
+  [/\b(?:context|testInfo)\.(?:skip|fixme|fail)\s*\(/u, "skips a running test"],
+  [/\bx(?:it|describe|test)\s*\(/u, "disables a test"],
+  [/\bretries\s*[:,}=]|--retries\b/u, "retries a browser test"],
 ];
+const RUST_BYPASS = [
+  [/#\[(?:cfg_attr\([^\]]*)?\bignore\b/u, "ignores a Rust test"],
+];
+export const RETRY_GUARD = "forbidBrowserRetries(";
 export const UI_RULE_DIRECTORY = "docs/work-items/BROWSER-FIRST-CLASS/ui-rules";
 export const UI_RULE_MAX_TOLERANCE_PX = 4;
+const UI_RULE_MEASURES = {
+  height: "number",
+  "background-color": "string",
+  "text-align": "string",
+  "left-of": "other",
+  "right-inset": "number",
+};
 const REFERENCE_DIRECTORY = "docs/work-items/CODEX-PARITY/reference";
 
-async function filesBelow(root, relativeDirectory) {
+async function filesBelow(root, relativeDirectory, budget, depth = 0) {
+  if (depth > BROWSER_POLICY_LIMITS.depth)
+    throw new Error(`${relativeDirectory} exceeds the policy walk depth.`);
   let entries;
   try {
     entries = await readdir(path.join(root, relativeDirectory), {
@@ -40,20 +48,38 @@ async function filesBelow(root, relativeDirectory) {
   }
   const files = [];
   for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name === "target") continue;
     const relativePath = `${relativeDirectory}/${entry.name}`;
     if (entry.isDirectory())
-      files.push(...(await filesBelow(root, relativePath)));
-    else files.push(relativePath);
+      files.push(...(await filesBelow(root, relativePath, budget, depth + 1)));
+    else if (entry.isFile()) {
+      budget.files += 1;
+      if (budget.files > BROWSER_POLICY_LIMITS.files)
+        throw new Error("browser policy walk exceeds its file cap.");
+      files.push(relativePath);
+    }
   }
   return files;
 }
 
+async function readBounded(root, relativePath) {
+  const source = await readFile(path.join(root, relativePath), "utf8");
+  if (Buffer.byteLength(source) > BROWSER_POLICY_LIMITS.fileBytes)
+    throw new Error(`${relativePath} exceeds the policy file byte cap.`);
+  return source;
+}
+
+function isCommentLine(line) {
+  return /^\s*(\/\/|\/\*|\*)/u.test(line);
+}
+
 export function bypassErrors(relativePath, source) {
+  const patterns = relativePath.endsWith(".rs") ? RUST_BYPASS : TS_BYPASS;
   const errors = [];
   source.split("\n").forEach((line, index) => {
-    const code = line.replace(/\/\/.*$/u, "");
-    for (const [pattern, reason] of BYPASS_PATTERNS) {
-      if (pattern.test(code))
+    if (isCommentLine(line)) return;
+    for (const [pattern, reason] of patterns) {
+      if (pattern.test(line))
         errors.push(
           `${relativePath}:${index + 1} ${reason}; browser checks may not be bypassed.`,
         );
@@ -62,28 +88,55 @@ export function bypassErrors(relativePath, source) {
   return errors;
 }
 
+export function retryGuardErrors(relativePath, source) {
+  return /^tests\/ui\/browser-[^/]+\.visual\.ts$/u.test(relativePath) &&
+    !source.includes(RETRY_GUARD)
+    ? [
+        `${relativePath} must call ${RETRY_GUARD}) so CI retries cannot hide a failure.`,
+      ]
+    : [];
+}
+
 export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
   const errors = [];
   const ids = new Set();
+  const fail = (rule, message) =>
+    errors.push(`${relativePath} rule ${rule.id ?? "?"} ${message}`);
   for (const rule of ruleSet.rules ?? []) {
-    if (ids.has(rule.id))
-      errors.push(`${relativePath} repeats rule ${rule.id}.`);
+    if (ids.has(rule.id)) fail(rule, "is repeated.");
     ids.add(rule.id);
     const reference = /^reference\/(\d{2})$/u.exec(rule.ref ?? "")?.[1];
     if (
       !reference ||
       !referenceNames.some((name) => name.startsWith(`${reference}-`))
     )
-      errors.push(
-        `${relativePath} rule ${rule.id} cites no Codex reference image on disk.`,
+      fail(rule, "cites no Codex reference image on disk.");
+    if (typeof rule.source !== "string" || rule.source.trim() === "")
+      fail(rule, "does not say where its value was measured.");
+    if (typeof rule.selector !== "string" || rule.selector.trim() === "")
+      fail(rule, "has no selector.");
+    const kind = UI_RULE_MEASURES[rule.measure];
+    if (!kind) fail(rule, `uses unknown measure ${rule.measure}.`);
+    else if (
+      kind === "other"
+        ? typeof rule.other !== "string"
+        : typeof rule.expected !== kind
+    )
+      fail(
+        rule,
+        `needs a ${kind === "other" ? "comparison selector" : `${kind} expectation`}.`,
       );
-    if (!rule.source)
-      errors.push(
-        `${relativePath} rule ${rule.id} does not say where its value was measured.`,
-      );
-    if ((rule.tolerancePx ?? 0) > UI_RULE_MAX_TOLERANCE_PX)
-      errors.push(
-        `${relativePath} rule ${rule.id} allows ${rule.tolerancePx} px (limit ${UI_RULE_MAX_TOLERANCE_PX}).`,
+    if (rule.measure === "right-inset" && typeof rule.within !== "string")
+      fail(rule, "needs a containing selector.");
+    const tolerance = rule.tolerancePx ?? 0;
+    if (
+      !Number.isFinite(tolerance) ||
+      tolerance < 0 ||
+      tolerance > UI_RULE_MAX_TOLERANCE_PX
+    )
+      fail(
+        rule,
+        `allows ${tolerance} px (limit 0 to ${UI_RULE_MAX_TOLERANCE_PX}).`,
       );
   }
   return errors;
@@ -91,19 +144,31 @@ export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
 
 export async function browserTestPolicyErrors(root) {
   const errors = [];
-  for (const directory of TEST_ROOTS) {
-    for (const file of await filesBelow(root, directory)) {
-      if (!BROWSER_TEST_FILE.test(file)) continue;
-      const source = await readFile(path.join(root, file), "utf8");
-      errors.push(...bypassErrors(file, source));
+  const budget = { files: 0 };
+  for (const directory of SCAN_ROOTS) {
+    for (const file of await filesBelow(root, directory, budget)) {
+      if (!BROWSER_PATH.test(file)) continue;
+      const rustUnderBrowser = file.endsWith(".rs");
+      if (!TEST_FILE.test(file) && !rustUnderBrowser) continue;
+      const source = await readBounded(root, file);
+      errors.push(
+        ...bypassErrors(file, source),
+        ...retryGuardErrors(file, source),
+      );
     }
   }
-  const referenceNames = (await filesBelow(root, REFERENCE_DIRECTORY)).map(
-    (file) => path.posix.basename(file),
-  );
-  for (const file of await filesBelow(root, UI_RULE_DIRECTORY)) {
+  const referenceNames = (
+    await filesBelow(root, REFERENCE_DIRECTORY, { files: 0 })
+  ).map((file) => path.posix.basename(file));
+  for (const file of await filesBelow(root, UI_RULE_DIRECTORY, { files: 0 })) {
     if (!file.endsWith(".json")) continue;
-    const ruleSet = JSON.parse(await readFile(path.join(root, file), "utf8"));
+    let ruleSet;
+    try {
+      ruleSet = JSON.parse(await readBounded(root, file));
+    } catch (error) {
+      errors.push(`${file} is not valid JSON: ${error.message}`);
+      continue;
+    }
     errors.push(...uiRuleErrors(file, ruleSet, referenceNames));
   }
   return errors;
