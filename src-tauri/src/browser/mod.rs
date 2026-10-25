@@ -21,6 +21,7 @@ use url::Url;
 use crate::launch_profile::LaunchProfile;
 
 mod admission;
+pub(crate) mod annotate;
 pub(crate) mod bounds;
 pub(crate) mod clear_data;
 pub(crate) mod devtools;
@@ -69,6 +70,7 @@ pub(crate) struct BrowserState {
     downloads: Mutex<downloads::DownloadRegistry>,
     permissions: Mutex<site_permissions::SitePermissions>,
     popups: Mutex<PopupRequests>,
+    annotate: Mutex<annotate::AnnotateMode>,
     clearing_data: AtomicBool,
 }
 
