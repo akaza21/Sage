@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::acp::browser::{redact_console, redact_url};
 
@@ -54,14 +53,18 @@ pub(crate) fn capture_page_context<T: CdpTransport>(
         return Err("browser page changed; retry".into());
     }
     let (ax_text, _) = project(nodes).map_err(|_| "browser page snapshot unavailable")?;
-    let payload = port.call("Runtime.evaluate", r#"{"expression":"({title:document.title,selection:window.getSelection()?.toString().slice(0,2048) ?? ''})","returnByValue":true}"#, 16_384, Duration::from_secs(5))
+    let value = port
+        .evaluate_in_agent_world(
+            before,
+            "({title:document.title,selection:window.getSelection()?.toString().slice(0,2048) ?? ''})",
+            16_384,
+            Duration::from_secs(5),
+        )
         .map_err(|_| "browser page title unavailable")?;
-    let value: Value =
-        serde_json::from_str(&payload).map_err(|_| "browser page title unavailable")?;
-    let title = value["result"]["value"]["title"]
+    let title = value["title"]
         .as_str()
         .ok_or("browser page title unavailable")?;
-    let selection = value["result"]["value"]["selection"].as_str().unwrap_or("");
+    let selection = value["selection"].as_str().unwrap_or("");
     if port.stamp().map_err(|_| "browser page changed; retry")? != before {
         return Err("browser page changed; retry".into());
     }

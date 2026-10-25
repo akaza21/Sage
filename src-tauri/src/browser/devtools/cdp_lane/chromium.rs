@@ -3,6 +3,7 @@
 //! with one flattened session attached to one page target.
 
 use std::{
+    collections::HashMap,
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
@@ -35,6 +36,8 @@ pub(super) struct Chromium {
     session: String,
     documents: Mutex<Vec<String>>,
     issued: AtomicBool,
+    /// How many times each Agent command method was issued.
+    calls: Mutex<HashMap<String, usize>>,
     profile: PathBuf,
 }
 
@@ -96,6 +99,7 @@ impl Chromium {
             session: String::new(),
             documents: Mutex::new(Vec::new()),
             issued: AtomicBool::new(false),
+            calls: Mutex::new(HashMap::new()),
             profile,
         };
         let target = chromium.setup(None, "Target.createTarget", json!({"url": "about:blank"}));
@@ -120,6 +124,16 @@ impl Chromium {
     /// as the WebView2 transport's per-dispatch flag does.
     pub(super) fn begin_dispatch(&self) {
         self.issued.store(false, Ordering::Release);
+    }
+
+    /// How many Agent commands named `method` this transport has issued.
+    pub(super) fn calls(&self, method: &str) -> usize {
+        self.calls
+            .lock()
+            .expect("call counts")
+            .get(method)
+            .copied()
+            .unwrap_or(0)
     }
 
     fn setup(&self, session: Option<&str>, method: &str, params: Value) -> Value {
@@ -225,6 +239,12 @@ impl CdpTransport for Chromium {
         timeout: Duration,
     ) -> Result<String, BrowserFailure> {
         self.issued.store(true, Ordering::Release);
+        *self
+            .calls
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .entry(method.to_owned())
+            .or_default() += 1;
         self.send(
             Some(&self.session),
             method,

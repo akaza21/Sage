@@ -9,6 +9,7 @@
 //! validates CDP parameters, result parsing and what reaches the Agent.
 
 mod chromium;
+mod isolation;
 mod site;
 
 use std::time::Duration;
@@ -379,15 +380,14 @@ fn prompt_injection_text_comes_back_as_bounded_page_data_only() {
     lane.assert_never_leaked(&["INJECT-SECRET-77e1", "HIDDEN-INJECTION"]);
 }
 
-/// Known weakness, security item S8: the text wait runs `includes` in the
-/// page's main world, so a page that replaces `String.prototype.includes`
-/// can fake a match. This asserts the current, exploitable behaviour; S8
-/// must flip it when the probe moves to an isolated world.
+/// Security item S8: the text wait runs in an isolated world, so a page that
+/// replaces `String.prototype.includes` cannot fake a match.
 #[test]
-fn known_weakness_s8_text_wait_trusts_the_page_main_world() {
+fn s8_text_wait_ignores_a_page_that_replaces_includes() {
     let phrase = "phrase-the-page-never-shows";
     let mut lane = Lane::open("/includes.html");
     let (_, text, _) = lane.snapshot();
     assert!(!text.contains(phrase));
-    assert!(lane.wait_text(phrase, 1_000));
+    assert!(!lane.wait_text(phrase, 300));
+    assert!(lane.wait_text("This page never shows", 2_000));
 }

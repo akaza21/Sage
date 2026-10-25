@@ -17,6 +17,7 @@ mod act;
 mod highlight;
 pub(super) mod outcome;
 pub(super) mod page_context;
+mod world;
 use outcome::{navigation_failure, navigation_matches};
 
 /// The Agent browser command layer: CDP parameters, result parsing, caps and
@@ -24,11 +25,15 @@ use outcome::{navigation_failure, navigation_matches};
 #[derive(Clone)]
 pub(crate) struct CdpPort<T> {
     pub(super) transport: T,
+    world: world::AgentWorld,
 }
 
 impl<T: CdpTransport> CdpPort<T> {
     pub(super) fn new(transport: T) -> Self {
-        Self { transport }
+        Self {
+            transport,
+            world: world::AgentWorld::default(),
+        }
     }
 
     pub(super) fn call(
@@ -234,12 +239,18 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             return Err(BrowserFailure::StaleHandle);
         };
         let needle = serde_json::to_string(text).map_err(|_| BrowserFailure::InvalidRequest)?;
+        // A document still loading has no stamp yet; the next probe retries.
+        let stamp = match self.stamp() {
+            Err(BrowserFailure::Unavailable) => return Ok(false),
+            stamp => stamp?,
+        };
         let expression = format!("document.body?.innerText?.includes({needle}) === true");
-        let params = json!({"expression": expression, "returnByValue": true});
-        let response = self.call("Runtime.evaluate", &params.to_string(), 4096, remaining)?;
-        let response: Value =
-            serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
-        Ok(response["result"]["value"].as_bool().unwrap_or(false))
+        match self.evaluate_in_agent_world(stamp, &expression, 4096, remaining) {
+            Ok(value) => Ok(value.as_bool().unwrap_or(false)),
+            // The page navigated while the world was made; probe again.
+            Err(BrowserFailure::StaleHandle) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 }
 

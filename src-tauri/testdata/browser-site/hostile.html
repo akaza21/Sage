@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hostile page</title>
+    <script>
+      (() => {
+        const seen = [];
+        const push = Array.prototype.push;
+        const note = (name) => push.call(seen, name);
+        const describe = Object.getOwnPropertyDescriptor;
+        const define = Object.defineProperty;
+        const stringify = JSON.stringify;
+        const parse = JSON.parse;
+        const map = Array.prototype.map;
+        const lie = (target, name, value) =>
+          define(target, name, { configurable: true, writable: true, value });
+        const lieGetter = (target, name, fake) => {
+          const real = describe(target, name);
+          define(target, name, {
+            configurable: true,
+            get() {
+              note(`get ${name}`);
+              return fake;
+            },
+            set: real.set,
+          });
+        };
+        const select = window.getSelection.bind(window);
+        window.__agentSeen = seen;
+        window.__selectRealText = () =>
+          select().selectAllChildren(document.getElementById("picked"));
+
+        lie(String.prototype, "includes", function () {
+          note("includes");
+          return true;
+        });
+        lie(Array.prototype, "includes", function () {
+          note("Array includes");
+          return true;
+        });
+        lie(Array.prototype, "map", function (...args) {
+          note("map");
+          return map.apply(this, args);
+        });
+        lie(JSON, "stringify", function (...args) {
+          note("JSON.stringify");
+          return stringify.apply(this, args);
+        });
+        lie(JSON, "parse", function (...args) {
+          note("JSON.parse");
+          return parse.apply(this, args);
+        });
+        lie(Document.prototype, "querySelector", function () {
+          note("querySelector");
+          return null;
+        });
+        lie(Element.prototype, "querySelector", function () {
+          note("querySelector");
+          return null;
+        });
+        lie(window, "getSelection", function () {
+          note("getSelection");
+          return { toString: () => "FAKE-SELECTION-3a7" };
+        });
+        lie(HTMLElement.prototype, "click", function () {
+          note("click");
+        });
+        lie(HTMLElement.prototype, "focus", function () {
+          note("focus");
+        });
+        lie(EventTarget.prototype, "dispatchEvent", function () {
+          note("dispatchEvent");
+          return true;
+        });
+        lie(Object, "getOwnPropertyDescriptor", function (target, name) {
+          note("getOwnPropertyDescriptor");
+          return {
+            set(value) {
+              note(`stolen ${value}`);
+            },
+          };
+        });
+        lie(Object, "defineProperty", function (target, name, descriptor) {
+          note("defineProperty");
+          return define(target, name, descriptor);
+        });
+        lieGetter(HTMLElement.prototype, "innerText", "FAKE-PHRASE-9d1");
+        lieGetter(Node.prototype, "textContent", "FAKE-PHRASE-9d1");
+        lieGetter(Document.prototype, "title", "FAKE-TITLE-51c");
+        window.__globalsAtLoad = 0;
+        window.__globalsAtLoad = Object.getOwnPropertyNames(window).length;
+      })();
+    </script>
+  </head>
+  <body>
+    <h1>Hostile page</h1>
+    <p>Real text: <span id="picked">hostile-truth-41</span></p>
+    <button type="button" id="press">Press me</button>
+    <label>Name <input id="name" type="text" /></label>
+    <p id="status">Idle</p>
+    <script>
+      const status = document.getElementById("status").firstChild;
+      const input = document.getElementById("name");
+      window.__selectRealText();
+      document.getElementById("press").addEventListener("click", () => {
+        status.data = "Pressed for real";
+      });
+      input.addEventListener("input", () => {
+        status.data = "name holds " + input.value.length + " characters";
+      });
+    </script>
+  </body>
+</html>

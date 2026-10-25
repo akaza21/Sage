@@ -89,6 +89,7 @@ fn page(path: &str) -> Option<String> {
     let body = match path {
         "/form.html" => include_str!("../../../../testdata/browser-site/form.html"),
         "/injection.html" => include_str!("../../../../testdata/browser-site/injection.html"),
+        "/hostile.html" => include_str!("../../../../testdata/browser-site/hostile.html"),
         "/includes.html" => include_str!("../../../../testdata/browser-site/includes.html"),
         "/navigates.html" => include_str!("../../../../testdata/browser-site/navigates.html"),
         "/landing.html" => include_str!("../../../../testdata/browser-site/landing.html"),
