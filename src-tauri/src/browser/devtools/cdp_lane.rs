@@ -2,6 +2,11 @@
 //! `DevtoolsCapability` dispatcher against headless Chromium and a loopback
 //! fixture site. Built only with `--features cdp-lane` on unix; a missing
 //! Chromium fails these tests rather than skipping them.
+//!
+//! What the lane does not prove: it calls `contract::dispatch` directly, so the
+//! WebView2 dispatch permit, revocation during navigation, the outer dispatch
+//! deadline and cancellation stay covered only by the Windows build. The lane
+//! validates CDP parameters, result parsing and what reaches the Agent.
 
 mod chromium;
 mod site;
@@ -56,6 +61,7 @@ impl Lane {
             scope: self.scope.clone(),
             command,
         };
+        self.capability.port_mut().transport.begin_dispatch();
         let response = dispatch(&mut self.capability, request);
         self.transcript.push(match &response {
             Ok(response) => serde_json::to_string(response).expect("response JSON"),

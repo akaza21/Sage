@@ -66,7 +66,6 @@ impl Chromium {
             .arg(&binary)
             .args([
                 "--headless=new",
-                "--no-sandbox",
                 "--remote-debugging-pipe",
                 "--disable-gpu",
                 "--no-first-run",
@@ -74,6 +73,8 @@ impl Chromium {
                 "--disable-extensions",
                 "--mute-audio",
             ])
+            // Chromium refuses to sandbox as root, as in cloud containers.
+            .args(running_as_root().then_some("--no-sandbox"))
             .arg(format!("--user-data-dir={}", profile.display()))
             .arg("about:blank")
             .stdin(Stdio::piped())
@@ -113,6 +114,12 @@ impl Chromium {
             chromium.setup(Some(&session), domain, json!({}));
         }
         chromium
+    }
+
+    /// Starts a new dispatch, so `issued` reports only this command's calls,
+    /// as the WebView2 transport's per-dispatch flag does.
+    pub(super) fn begin_dispatch(&self) {
+        self.issued.store(false, Ordering::Release);
     }
 
     fn setup(&self, session: Option<&str>, method: &str, params: Value) -> Value {
@@ -312,4 +319,9 @@ fn read_frames(mut events: ChildStdout, responses: SyncSender<Value>) {
             return;
         }
     }
+}
+
+fn running_as_root() -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata("/proc/self").is_ok_and(|process| process.uid() == 0)
 }

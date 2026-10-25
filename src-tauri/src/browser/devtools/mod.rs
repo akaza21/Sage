@@ -3,9 +3,12 @@ mod capability;
 mod cdp;
 #[cfg(all(test, unix, feature = "cdp-lane"))]
 mod cdp_lane;
-// The command layer compiles everywhere so the CDP lane can test it; only the
-// Windows WebView2 transport links it into the app.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg(all(feature = "cdp-lane", not(unix)))]
+compile_error!("the cdp-lane feature runs headless Chromium and is unix-only");
+// The command layer links into the app only on Windows; elsewhere it builds for
+// its unit tests and the CDP lane.
+#[cfg(any(windows, test))]
+#[cfg_attr(all(test, not(windows)), allow(dead_code))]
 mod cdp_port;
 #[allow(dead_code)]
 mod diagnostics;
@@ -26,7 +29,8 @@ pub(crate) use native::capture_user_png;
 pub(crate) use native::clear_agent_highlight;
 mod screenshot;
 mod snapshot;
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg(any(windows, test))]
+#[cfg_attr(all(test, not(windows)), allow(dead_code))]
 mod transport;
 mod wait;
 
