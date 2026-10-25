@@ -7,7 +7,13 @@
       (() => {
         const seen = [];
         const push = Array.prototype.push;
-        const note = (name) => push.call(seen, name);
+        const stacks = [];
+        // Each hook hit keeps its caller stack, so a hit names its source.
+        const note = (name) => {
+          push.call(seen, name);
+          if (stacks.length < 8)
+            push.call(stacks, `${name}: ${new Error().stack}`);
+        };
         const describe = Object.getOwnPropertyDescriptor;
         const define = Object.defineProperty;
         const stringify = JSON.stringify;
@@ -29,6 +35,7 @@
         const select = window.getSelection.bind(window);
         const value = describe(HTMLInputElement.prototype, "value").get;
         window.__agentSeen = seen;
+        window.__agentStacks = stacks;
         window.__valueOf = (element) => value.call(element);
         window.__trapValue = (element) =>
           define(element, "value", {

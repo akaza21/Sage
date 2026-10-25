@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>S1 popup</title>
+  </head>
+  <body>
+    <h1>S1 popup</h1>
+    <script>
+      // Reports under the name in the query, e.g. ?report=s1-popup, and
+      // greets its opener the way an OAuth popup hands back its result.
+      const name = new URLSearchParams(location.search).get("report");
+      const hasOpener = window.opener !== null;
+      let posted = false;
+      if (hasOpener) {
+        try {
+          window.opener.postMessage(
+            { kind: `${name}-hello`, href: location.href },
+            location.origin,
+          );
+          posted = true;
+        } catch (error) {
+          posted = `threw ${error}`;
+        }
+      }
+      fetch(`/report/${name}`, {
+        method: "POST",
+        body: JSON.stringify({ hasOpener, posted }),
+      });
+    </script>
+  </body>
+</html>

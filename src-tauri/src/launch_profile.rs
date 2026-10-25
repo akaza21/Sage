@@ -10,8 +10,8 @@ use crate::acp::service::{
     CharacterizationArtifact, CharacterizationBinding, CharacterizationCase,
 };
 
-const PROFILE_MARKER_NAME: &str = ".sage-disposable-profile-v1";
-const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
+pub(crate) const PROFILE_MARKER_NAME: &str = ".sage-disposable-profile-v1";
+pub(crate) const PROFILE_MARKER_BYTES: &[u8] = b"sage-disposable-profile-v1\n";
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod desktop_claude_fixture;

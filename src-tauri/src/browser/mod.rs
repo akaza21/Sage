@@ -29,6 +29,8 @@ mod favicon;
 mod history;
 pub(crate) mod ipc_guard;
 pub(crate) mod lifecycle;
+#[cfg(all(windows, feature = "native-lane"))]
+pub mod native_lane;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;

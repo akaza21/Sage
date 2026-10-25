@@ -48,6 +48,12 @@ windows = { version = "=0.61.3", default-features = false, features = [
   "Media_SpeechRecognition",
 ] }
 windows-core = { version = "=0.61.2", default-features = false, features = ["std"] }
+# Native lane only (`native-lane`): the loopback HTTPS fixture's self-signed
+# certificate and TLS server. Never in default or release builds.
+rcgen = { version = "=0.14.10", optional = true, default-features = false, features = ["crypto", "ring"] }
+rustls = { version = "=0.23.45", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+# Native lane only: prints the webview creation errors Tauri and wry only log.
+log = { version = "=0.4.33", optional = true, default-features = false, features = ["std"] }
 windows-sys = { version = "=0.61.2", default-features = false, features = [
   "Win32_Foundation",
   "Win32_Security",
@@ -75,6 +81,14 @@ name = "acp_adversarial_fixture"
 path = "tests/acp_adversarial_fixture.rs"
 required-features = ["acp-fixture"]
 
+# Boots the real Sage browser on WebView2 (Windows debug builds only); see
+# docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
+[[test]]
+name = "native_lane"
+path = "tests/native_lane/main.rs"
+harness = false
+required-features = ["native-lane"]
+
 [features]
 default = []
 acp-fixture = []
@@ -84,6 +98,8 @@ cdp-lane = []
 codex-provisioning-helper = []
 custom-protocol = ["tauri/custom-protocol"]
 diagnostics = []
+# The WebView2 native test lane: a test-only seam plus its TLS fixture deps.
+native-lane = ["dep:log", "dep:rcgen", "dep:rustls"]
 
 [profile.dev]
 incremental = true
