@@ -36,7 +36,7 @@ impl BrowserState {
             downloads: Mutex::new(downloads::DownloadRegistry::default()),
             permissions: Mutex::new(site_permissions::SitePermissions::default()),
             popups: Mutex::new(PopupRequests::default()),
-            annotate: Mutex::new(annotate::AnnotateMode::default()),
+            annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
         })
     }

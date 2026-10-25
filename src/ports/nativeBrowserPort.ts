@@ -132,6 +132,7 @@ export interface BrowserNavigation {
   zoomPercent: number;
   error?: string | null;
   printUnavailableReason?: string | null;
+  annotateUnavailableReason?: string | null;
 }
 
 export function browserStatus(tabId: string): Promise<BrowserNavigation> {
@@ -153,9 +154,12 @@ export function browserNavigate(tabId: string, url: string): Promise<void> {
   return invokeNative("browser_navigate", { tabId, url });
 }
 
+export type BrowserControlAction =
+  "back" | "forward" | "reload" | "stop" | "annotateOn" | "annotateOff";
+
 export function browserControl(
   tabId: string,
-  action: "back" | "forward" | "reload" | "stop",
+  action: BrowserControlAction,
 ): Promise<void> {
   return invokeNative("browser_control", { tabId, action });
 }

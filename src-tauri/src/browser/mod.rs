@@ -70,7 +70,7 @@ pub(crate) struct BrowserState {
     downloads: Mutex<downloads::DownloadRegistry>,
     permissions: Mutex<site_permissions::SitePermissions>,
     popups: Mutex<PopupRequests>,
-    annotate: Mutex<annotate::AnnotateMode>,
+    annotate: annotate::Annotate,
     clearing_data: AtomicBool,
 }
 

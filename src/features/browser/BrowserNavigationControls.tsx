@@ -18,21 +18,22 @@ import {
   type RefObject,
 } from "react";
 
+import type {
+  BrowserControlAction,
+  BrowserNavigation,
+} from "../../ports/nativeBrowserPort";
 import { useWorkbenchStore } from "../../app/store";
 import type { BrowserPageIdentity } from "./browserAddress";
-import {
-  BrowserAnnotateControl,
-  type AnnotatableNavigation,
-} from "./BrowserAnnotateControl";
+import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 
 interface Props {
-  navigation: AnnotatableNavigation | null;
+  navigation: BrowserNavigation | null;
   page: BrowserPageIdentity | null;
   address: string;
   addressField: RefObject<HTMLInputElement | null>;
   onAddressChange: (value: string) => void;
   onNavigate: () => void;
-  onControl: (action: "back" | "forward" | "reload" | "stop") => void;
+  onControl: (action: BrowserControlAction) => void;
   onFind: () => void;
   onPrint: () => void;
   onScreenshot: () => void;
@@ -45,7 +46,6 @@ interface Props {
   onExternal: () => void;
   clearDataControl: ReactNode;
   pageControls?: ReactNode;
-  onError?: (message: string) => void;
 }
 
 export function BrowserNavigationControls({
@@ -68,7 +68,6 @@ export function BrowserNavigationControls({
   onExternal,
   clearDataControl,
   pageControls,
-  onError,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -153,11 +152,7 @@ export function BrowserNavigationControls({
           )}
         </button>
       </div>
-      <BrowserAnnotateControl
-        navigation={navigation}
-        ready={page !== null}
-        onError={onError}
-      />
+      <BrowserAnnotateControl navigation={navigation} onControl={onControl} />
       <form
         className="browser-surface__address"
         onSubmit={(event) => {

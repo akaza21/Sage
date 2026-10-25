@@ -153,3 +153,48 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
             .is_empty()
     );
 }
+
+/// Annotate and the Agent's act highlight share Chromium's one overlay. An
+/// Agent highlight pauses hover highlighting until Sage clears it (a navigation
+/// starts or the Agent detaches), and leaving Annotate clears an Agent
+/// highlight too.
+#[test]
+fn annotate_and_the_agent_highlight_share_one_overlay() {
+    let mut lane = Lane::open("/hostile.html");
+    let (_, _, x, y) = press_button(&mut lane);
+    mouse(&mut lane, "mouseMoved", x, y);
+    let plain = capture(&mut lane);
+    lane.capability.port_mut().start_inspect().unwrap();
+    let (_, backend, x, y) = press_button(&mut lane);
+    lane.capability.port_mut().transport.take_overlay_events();
+    // The parameters `cdp_port/highlight.rs` sends for an Agent act.
+    let agent = json!({
+        "backendNodeId": backend,
+        "highlightConfig": {
+            "showInfo": false,
+            "contentColor": {"r": 74, "g": 143, "b": 255, "a": 0.24},
+            "borderColor": {"r": 74, "g": 143, "b": 255, "a": 0.9}
+        }
+    });
+    cdp(&mut lane, "Overlay.highlightNode", agent.clone());
+    mouse(&mut lane, "mouseMoved", x + 3.0, y);
+    assert!(
+        overlay_event(&mut lane, "Overlay.nodeHighlightRequested").is_none(),
+        "an Agent highlight pauses hover highlighting"
+    );
+    cdp(&mut lane, "Overlay.hideHighlight", json!({}));
+    mouse(&mut lane, "mouseMoved", x + 1.0, y);
+    assert!(
+        overlay_event(&mut lane, "Overlay.nodeHighlightRequested").is_some(),
+        "clearing the Agent highlight resumes hover highlighting"
+    );
+
+    cdp(&mut lane, "Overlay.highlightNode", agent);
+    lane.capability.port_mut().stop_inspect().unwrap();
+    mouse(&mut lane, "mouseMoved", x, y);
+    assert_eq!(
+        capture(&mut lane),
+        plain,
+        "leaving Annotate clears the Agent highlight"
+    );
+}

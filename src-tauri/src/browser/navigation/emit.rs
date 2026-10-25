@@ -24,7 +24,7 @@ pub(crate) fn navigation_state(
         } else {
             Some("system print dialog is unavailable on this platform")
         },
-        annotate_unavailable_reason: crate::browser::annotate::UNAVAILABLE_REASON,
+        annotate_unavailable_reason: crate::browser::annotate::unavailable_reason(snapshot),
     })
 }
 

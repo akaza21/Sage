@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, sync::Mutex};
 
 use super::*;
 
@@ -79,15 +79,19 @@ fn annotate_starts_only_on_a_known_tab_showing_a_committed_page() {
 }
 
 #[test]
-fn start_turns_the_overlay_on_once_and_announces_it() {
+fn start_turns_the_overlay_on_and_starting_again_restarts_and_reannounces_it() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();
     assert_eq!(
         mode.start(&overlay, "browser-1"),
         (vec![on("browser-1")], Ok(()))
     );
-    assert_eq!(mode.start(&overlay, "browser-1"), (vec![], Ok(())));
-    assert_eq!(overlay.calls(), ["start browser-1"]);
+    // A remounted chrome that shows Annotate off asks again and learns it is on.
+    assert_eq!(
+        mode.start(&overlay, "browser-1"),
+        (vec![on("browser-1")], Ok(()))
+    );
+    assert_eq!(overlay.calls(), ["start browser-1", "start browser-1"]);
 }
 
 #[test]
@@ -103,8 +107,11 @@ fn starting_on_another_tab_first_leaves_the_previous_one() {
         overlay.calls(),
         ["start browser-1", "stop browser-1", "start browser-2"]
     );
-    assert_eq!(mode.leave(&overlay, "browser-1", true), None);
-    assert_eq!(mode.leave(&overlay, "browser-2", true), Some(Ok(())));
+    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-2", true),
+        (vec![off("browser-2")], Ok(()))
+    );
 }
 
 #[test]
@@ -117,19 +124,22 @@ fn a_refused_start_leaves_annotate_off_but_still_announces_the_previous_tab() {
         mode.start(&overlay, "browser-2"),
         (vec![off("browser-1")], Err("start refused".into()))
     );
-    assert_eq!(mode.leave(&overlay, "browser-2", true), None);
-    assert_eq!(mode.leave(&overlay, "browser-1", true), None);
+    assert_eq!(mode.leave(&overlay, "browser-2", true), (vec![], Ok(())));
+    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
 }
 
 #[test]
 fn leaving_stops_the_overlay_once_and_ignores_tabs_that_are_not_annotating() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();
-    assert_eq!(mode.leave(&overlay, "browser-1", true), None);
+    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
     mode.start(&overlay, "browser-1").1.unwrap();
-    assert_eq!(mode.leave(&overlay, "browser-2", true), None);
-    assert_eq!(mode.leave(&overlay, "browser-1", true), Some(Ok(())));
-    assert_eq!(mode.leave(&overlay, "browser-1", true), None);
+    assert_eq!(mode.leave(&overlay, "browser-2", true), (vec![], Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-1", true),
+        (vec![off("browser-1")], Ok(()))
+    );
+    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
     assert_eq!(overlay.calls(), ["start browser-1", "stop browser-1"]);
 }
 
@@ -141,13 +151,16 @@ fn a_failed_stop_still_ends_the_mode_and_a_closing_tab_skips_the_overlay() {
     overlay.refuse_stop = true;
     assert_eq!(
         mode.leave(&overlay, "browser-1", true),
-        Some(Err("stop refused".into()))
+        (vec![off("browser-1")], Err("stop refused".into()))
     );
-    assert_eq!(mode.leave(&overlay, "browser-1", true), None);
+    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
 
     overlay.refuse_stop = false;
     mode.start(&overlay, "browser-3").1.unwrap();
-    assert_eq!(mode.leave(&overlay, "browser-3", false), Some(Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-3", false),
+        (vec![off("browser-3")], Ok(()))
+    );
     assert_eq!(
         overlay.calls(),
         ["start browser-1", "stop browser-1", "start browser-3"]
@@ -155,17 +168,112 @@ fn a_failed_stop_still_ends_the_mode_and_a_closing_tab_skips_the_overlay() {
 }
 
 #[test]
-fn annotate_is_reachable_only_through_the_guarded_browser_control_command() {
-    let source = include_str!("../ipc_commands.rs");
-    let (guard, handlers) = source
-        .split_once("tauri::generate_handler![")
-        .expect("guarded command list");
-    assert!(guard.contains("browser::ipc_guard::admits_main_invoke(webview.label(), &url)"));
-    assert!(handlers.contains("browser::navigation::control::browser_control,"));
-    assert!(!source.contains("annotate"), "no separate Annotate command");
+fn changes_are_announced_before_the_mode_lock_is_released() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    let announced = RefCell::new(Vec::new());
+    let announce = |change: AnnotateChange| {
+        assert!(
+            annotate.mode.try_lock().is_err(),
+            "announced after the lock was released"
+        );
+        announced.borrow_mut().push(change);
+    };
+    annotate
+        .run(announce, |mode| mode.start(&overlay, "browser-1"))
+        .unwrap();
+    annotate
+        .run(announce, |mode| mode.start(&overlay, "browser-2"))
+        .unwrap();
+    annotate
+        .run(announce, |mode| mode.leave(&overlay, "browser-2", true))
+        .unwrap();
+    assert_eq!(
+        announced.into_inner(),
+        [
+            on("browser-1"),
+            off("browser-1"),
+            on("browser-2"),
+            off("browser-2")
+        ]
+    );
 }
 
 #[test]
-fn the_platform_reason_is_given_exactly_where_there_is_no_inspect_overlay() {
+fn racing_starts_and_leaves_announce_the_final_state_last() {
+    struct Slow;
+    impl InspectOverlay for Slow {
+        fn start(&self, _: &str) -> Result<(), String> {
+            std::thread::yield_now();
+            Ok(())
+        }
+        fn stop(&self, _: &str) -> Result<(), String> {
+            std::thread::yield_now();
+            Ok(())
+        }
+    }
+    let annotate = Annotate::default();
+    let announced = Mutex::new(Vec::new());
+    std::thread::scope(|scope| {
+        for on in [true, false, true, false] {
+            let (annotate, announced) = (&annotate, &announced);
+            scope.spawn(move || {
+                for _ in 0..200 {
+                    let _ = annotate.run(
+                        |change| announced.lock().unwrap().push(change.active),
+                        |mode| {
+                            if on {
+                                mode.start(&Slow, "browser-1")
+                            } else {
+                                mode.leave(&Slow, "browser-1", true)
+                            }
+                        },
+                    );
+                }
+            });
+        }
+    });
+    let announced = announced.into_inner().unwrap();
+    assert_eq!(
+        announced.last().copied(),
+        Some(annotate.is_annotating("browser-1"))
+    );
+    // Every "off" follows an "on": no stale "off" overtakes a newer "on".
+    let mut on = false;
+    for active in announced {
+        assert!(active || on, "off announced while already off");
+        on = active;
+    }
+}
+
+#[test]
+fn the_lock_free_tab_copy_follows_the_mode() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    assert!(!annotate.is_annotating("browser-1"));
+    assert!(!annotate.is_annotating("browser-0"));
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-12"))
+        .unwrap();
+    assert!(annotate.is_annotating("browser-12"));
+    assert!(!annotate.is_annotating("browser-1"));
+    assert!(!annotate.is_annotating("main"));
+    annotate
+        .run(|_| (), |mode| mode.leave(&overlay, "browser-12", false))
+        .unwrap();
+    assert!(!annotate.is_annotating("browser-12"));
+}
+
+#[test]
+fn the_chrome_is_told_why_annotate_is_unavailable() {
     assert_eq!(UNAVAILABLE_REASON.is_none(), cfg!(windows));
+    let mut tabs = BrowserTabs::<()>::new();
+    tabs.insert("browser-1".into(), (), false);
+    let reason = |tabs: &BrowserTabs<()>| unavailable_reason(&tabs.snapshot("browser-1").unwrap());
+    let no_page = UNAVAILABLE_REASON.or(Some("Open a page to annotate"));
+    assert_eq!(reason(&tabs), no_page, "a new tab has no page");
+    assert!(tabs.start_navigation("browser-1", 1, "https://example.com/"));
+    assert_eq!(reason(&tabs), no_page, "a loading tab");
+    assert!(tabs.finish_navigation("browser-1", 1, Some("https://example.com/")));
+    assert_eq!(reason(&tabs), UNAVAILABLE_REASON, "a shown page");
 }

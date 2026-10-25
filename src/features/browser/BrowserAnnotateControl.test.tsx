@@ -4,27 +4,19 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createRef } from "react";
-import {
-  BrowserAnnotateControl,
-  type AnnotatableNavigation,
-} from "./BrowserAnnotateControl";
+import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
+import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserNavigationControls } from "./BrowserNavigationControls";
 
-const invokeNative = vi.fn(
-  async (_command: string, _args?: Record<string, unknown>) => undefined,
-);
+const onControl = vi.fn();
 let announce:
   | ((event: { payload: { tabId: string; active: boolean } }) => void)
   | undefined;
 const unlisten = vi.fn();
-vi.mock("../../ports/nativeInvoke", () => ({
-  isTauriRuntime: () => true,
-  invokeNative: (command: string, args?: Record<string, unknown>) =>
-    invokeNative(command, args),
-}));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (name: string, handler: typeof announce) => {
     if (name === "browser:annotate") announce = handler;
@@ -32,7 +24,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-const navigation: AnnotatableNavigation = {
+const navigation: BrowserNavigation = {
   tabId: "browser-1",
   url: "https://example.com/",
   revision: "3",
@@ -44,15 +36,13 @@ const navigation: AnnotatableNavigation = {
 
 beforeEach(() => {
   announce = undefined;
-  invokeNative.mockClear();
+  onControl.mockClear();
   unlisten.mockClear();
 });
 afterEach(cleanup);
 
-async function renderControl(
-  props: Partial<Parameters<typeof BrowserAnnotateControl>[0]> = {},
-) {
-  render(<BrowserAnnotateControl navigation={navigation} ready {...props} />);
+async function renderControl(current: BrowserNavigation | null = navigation) {
+  render(<BrowserAnnotateControl navigation={current} onControl={onControl} />);
   await act(async () => undefined);
   return screen.getByRole("button", { name: "Annotate" });
 }
@@ -75,7 +65,7 @@ it("sits between the navigation group and the address", () => {
         addressField={createRef()}
         onAddressChange={vi.fn()}
         onNavigate={vi.fn()}
-        onControl={vi.fn()}
+        onControl={onControl}
         onFind={vi.fn()}
         onPrint={vi.fn()}
         onScreenshot={vi.fn()}
@@ -100,27 +90,21 @@ it("sits between the navigation group and the address", () => {
     annotate.compareDocumentPosition(address) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+  fireEvent.click(annotate);
+  expect(onControl).toHaveBeenCalledWith("annotateOn");
 });
 
-it("turns Annotate on and shows it pressed only once Rust confirms", async () => {
+it("asks Rust to turn Annotate on and shows it pressed only once Rust confirms", async () => {
   const button = await renderControl();
   expect(button).toBeEnabled();
   expect(button).toHaveAttribute("aria-pressed", "false");
-  expect(button).toHaveAttribute("title", "Annotate the page");
   fireEvent.click(button);
-  expect(invokeNative).toHaveBeenCalledWith("browser_control", {
-    tabId: "browser-1",
-    action: "annotateOn",
-  });
+  expect(onControl).toHaveBeenCalledWith("annotateOn");
   expect(button).toHaveAttribute("aria-pressed", "false");
   rustSays("browser-1", true);
   expect(button).toHaveAttribute("aria-pressed", "true");
-  expect(button).toHaveAttribute("title", "Stop annotating (Esc)");
   fireEvent.click(button);
-  expect(invokeNative).toHaveBeenLastCalledWith("browser_control", {
-    tabId: "browser-1",
-    action: "annotateOff",
-  });
+  expect(onControl).toHaveBeenLastCalledWith("annotateOff");
 });
 
 it("follows exits Rust makes itself and ignores other tabs", async () => {
@@ -128,53 +112,39 @@ it("follows exits Rust makes itself and ignores other tabs", async () => {
   rustSays("browser-1", true);
   rustSays("browser-2", false);
   expect(button).toHaveAttribute("aria-pressed", "true");
-  // Navigation, hide or close: Rust leaves Annotate and announces it.
+  // Navigation, hide, close or Escape in the page: Rust leaves and says so.
   rustSays("browser-1", false);
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
 
-it("leaves on Escape from Sage's UI unless something else handled it", async () => {
+it("leaves on Escape at the control only while annotating", async () => {
   const button = await renderControl();
-  fireEvent.keyDown(window, { key: "Escape" });
-  expect(invokeNative).not.toHaveBeenCalled();
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(onControl).not.toHaveBeenCalled();
   rustSays("browser-1", true);
-  const handled = new KeyboardEvent("keydown", {
-    key: "Escape",
-    cancelable: true,
-  });
-  handled.preventDefault();
-  window.dispatchEvent(handled);
-  expect(invokeNative).not.toHaveBeenCalled();
-  fireEvent.keyDown(document.body, { key: "Escape" });
-  expect(invokeNative).toHaveBeenCalledWith("browser_control", {
-    tabId: "browser-1",
-    action: "annotateOff",
-  });
-  expect(button).toHaveAttribute("aria-pressed", "true");
-  rustSays("browser-1", false);
-  fireEvent.keyDown(window, { key: "Escape" });
-  expect(invokeNative).toHaveBeenCalledTimes(1);
+  fireEvent.keyDown(button, { key: "Enter" });
+  expect(onControl).not.toHaveBeenCalled();
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(onControl).toHaveBeenCalledWith("annotateOff");
 });
 
-it("renders disabled with the platform reason where there is no inspect overlay", async () => {
+it("renders disabled with the reason Rust gives", async () => {
   const reason =
     "Annotate needs the WebView2 inspect overlay and is not available on this platform yet";
   const button = await renderControl({
-    navigation: { ...navigation, annotateUnavailableReason: reason },
+    ...navigation,
+    annotateUnavailableReason: reason,
   });
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("title", reason);
   fireEvent.click(button);
-  expect(invokeNative).not.toHaveBeenCalled();
+  expect(onControl).not.toHaveBeenCalled();
 });
 
-it("is disabled until a page is showing", async () => {
-  const button = await renderControl({ ready: false });
+it("is disabled before the tab reports any state", async () => {
+  const button = await renderControl(null);
   expect(button).toBeDisabled();
-  expect(button).toHaveAttribute("title", "Open a page to annotate");
-  cleanup();
-  const none = await renderControl({ navigation: null });
-  expect(none).toBeDisabled();
+  expect(announce).toBeUndefined();
 });
 
 it("stops listening and forgets the state when the surface goes away", async () => {
@@ -182,5 +152,5 @@ it("stops listening and forgets the state when the surface goes away", async () 
   rustSays("browser-1", true);
   expect(button).toHaveAttribute("aria-pressed", "true");
   cleanup();
-  expect(unlisten).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(unlisten).toHaveBeenCalledTimes(1));
 });

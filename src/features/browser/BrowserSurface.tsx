@@ -13,6 +13,7 @@ import {
   browserStatus,
   browserSuggestedSites,
   browserZoom,
+  type BrowserControlAction,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
@@ -184,7 +185,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       setError(String(cause).slice(0, 512));
     }
   }
-  async function control(action: "back" | "forward" | "reload" | "stop") {
+  async function control(action: BrowserControlAction) {
     try {
       setError(null);
       await browserControl(tab.id, action);
@@ -319,7 +320,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
           onExternal={() => void pageAction(() => browserOpenExternal(tab.id))}
           clearDataControl={<BrowserClearData menuItem />}
-          onError={setError}
           pageControls={
             <BrowserToolbarPageActions
               projectId={projectId}
