@@ -6,9 +6,11 @@
 //! behaviour: each call is the production function a command, the chrome or
 //! the Agent reaches.
 
+mod diagnostics;
+
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicI32, Ordering},
@@ -69,12 +71,17 @@ impl AgentTab {
     }
 }
 
+/// The hidden main window's WebView2 user data folder.
+struct MainWebviewDir(PathBuf);
+
 /// Boots Sage on `root`, an empty directory the caller owns and removes, runs
-/// `lane` on a worker thread once the event loop is ready, closes every
-/// browser tab and the window, and exits. Returns the lane's exit code.
+/// the preflight and then `lane` on a worker thread once the event loop is
+/// ready, closes every browser tab and the window, and exits. Returns the
+/// lane's exit code, or 2 when the preflight fails and no case runs.
 pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Result<i32, String> {
     std::fs::write(root.join(PROFILE_MARKER_NAME), PROFILE_MARKER_BYTES)
         .map_err(|error| format!("profile marker: {error}"))?;
+    diagnostics::install_logger();
     let root = root.to_owned();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -95,11 +102,19 @@ pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Res
                 let driver = Lane {
                     app: handle.clone(),
                 };
-                let mut result =
-                    catch_unwind(AssertUnwindSafe(|| lane(&driver))).unwrap_or_else(|_| {
-                        eprintln!("native-lane: the lane panicked");
-                        101
-                    });
+                let mut result = match driver.preflight() {
+                    Ok(()) => {
+                        catch_unwind(AssertUnwindSafe(|| lane(&driver))).unwrap_or_else(|_| {
+                            eprintln!("native-lane: the lane panicked");
+                            101
+                        })
+                    }
+                    Err(failure) => {
+                        println!("[native-lane] PREFLIGHT FAIL: {failure}");
+                        println!("[native-lane] RESULT: FAIL (preflight; no case ran)");
+                        2
+                    }
+                };
                 if let Err(error) = driver.close_all() {
                     eprintln!("native-lane: tabs left open at exit: {error}");
                     result = result.max(1);
@@ -149,8 +164,9 @@ fn boot(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error::Err
         .to_owned();
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External("about:blank".parse()?))
         .visible(false)
-        .data_directory(webview_dir)
+        .data_directory(webview_dir.clone())
         .build()?;
+    app.manage(MainWebviewDir(webview_dir));
     Ok(())
 }
 
@@ -159,8 +175,24 @@ impl Lane {
         self.app.state::<BrowserState>()
     }
 
+    /// Runtime, session, desktop and main-webview evidence; `Err` when no
+    /// case could run (locked workstation, no WebView2).
+    fn preflight(&self) -> Result<(), String> {
+        let main = self.app.state::<MainWebviewDir>();
+        let state = self.state();
+        diagnostics::preflight(
+            &self.app,
+            &[
+                ("main window", &main.0),
+                ("browser tabs", &state.profile_dir),
+            ],
+        )
+    }
+
     /// `browser_open` as the chrome reaches it, or (`agent`) as the Agent's
-    /// OpenTab does.
+    /// OpenTab does. A failure also says which webviews Tauri still holds
+    /// and whether the runtime still runs closures on each, so a dropped
+    /// child is attributable.
     pub fn open_tab(&self, url: Option<&str>, agent: bool) -> Result<String, String> {
         tauri::async_runtime::block_on(lifecycle::open_browser_tab(
             self.app.clone(),
@@ -168,6 +200,13 @@ impl Lane {
             url.map(str::to_owned),
             agent,
         ))
+        .map_err(|error| {
+            format!(
+                "{error}; Sage tabs {:?}; {}",
+                self.tabs(),
+                diagnostics::webviews(&self.app)
+            )
+        })
     }
 
     /// The chrome's `browser_navigate`.

@@ -2747,6 +2747,7 @@ dependencies = [
  "agent-client-protocol-schema",
  "base64 0.22.1",
  "jpeg-decoder",
+ "log",
  "png 0.17.16",
  "rcgen",
  "regex",

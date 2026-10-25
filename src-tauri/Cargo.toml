@@ -52,6 +52,8 @@ windows-core = { version = "=0.61.2", default-features = false, features = ["std
 # certificate and TLS server. Never in default or release builds.
 rcgen = { version = "=0.14.10", optional = true, default-features = false, features = ["crypto", "ring"] }
 rustls = { version = "=0.23.45", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+# Native lane only: prints the webview creation errors Tauri and wry only log.
+log = { version = "=0.4.33", optional = true, default-features = false, features = ["std"] }
 windows-sys = { version = "=0.61.2", default-features = false, features = [
   "Win32_Foundation",
   "Win32_Security",
@@ -97,7 +99,7 @@ codex-provisioning-helper = []
 custom-protocol = ["tauri/custom-protocol"]
 diagnostics = []
 # The WebView2 native test lane: a test-only seam plus its TLS fixture deps.
-native-lane = ["dep:rcgen", "dep:rustls"]
+native-lane = ["dep:log", "dep:rcgen", "dep:rustls"]
 
 [profile.dev]
 incremental = true
