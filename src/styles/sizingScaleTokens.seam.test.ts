@@ -90,7 +90,7 @@ describe("sizing scale tokens", () => {
       "src/styles/agent-right-pane.css",
       "src/styles/agent-chat-panes.css",
       "src/styles/chat-navigation-surface.css",
-      "src/styles/problems-outline-surfaces.css",
+      "src/styles/outline-surface.css",
       "src/features/search/workspace-search.css",
       "src/features/chat/acp/acp-activity-cards.css",
       "src/features/chat/acp/acp-activity-details.css",

@@ -6,7 +6,6 @@ mod engine_walk;
 mod file_scan;
 mod helper_process;
 mod helper_protocol;
-pub(crate) mod language_fixture;
 mod literal_match;
 mod path_filter;
 mod types;

@@ -46,9 +46,8 @@ describe("RightSidebar beta tool rail", () => {
       screen.getByRole("button", { name: "Source Control" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Problems" }),
-    ).toBeInTheDocument();
+    // Problems returns with a real diagnostics source (EP-19).
+    expect(screen.queryByRole("button", { name: "Problems" })).toBeNull();
     expect(screen.getByRole("button", { name: "Outline" })).toBeInTheDocument();
   });
 });

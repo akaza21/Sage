@@ -104,7 +104,7 @@ describe("Editor visual-reference seam", () => {
     );
 
     expect(css).toMatch(
-      /\.workspace-search__result,[\s\S]*\.problem-card,[\s\S]*\.outline-card\s*\{[^}]*min-height:\s*var\(--row-height-compact\);[^}]*font-size:\s*var\(--font-size-sm\);[^}]*border-radius:\s*var\(--radius-sm\);/s,
+      /\.workspace-search__result,[\s\S]*\.outline-card\s*\{[^}]*min-height:\s*var\(--row-height-compact\);[^}]*font-size:\s*var\(--font-size-sm\);[^}]*border-radius:\s*var\(--radius-sm\);/s,
     );
     expect(css).toMatch(
       /\.workbench--editor \.status-bar\s*\{[^}]*border-top:\s*1px solid var\(--color-border-subtle\);/s,
@@ -112,7 +112,6 @@ describe("Editor visual-reference seam", () => {
     expect(css).toContain(".workbench--editor .workspace-search__progress");
     expect(css).toContain(".workbench--editor .workspace-search__error");
     expect(css).toContain(".workbench--editor .sidebar__error");
-    expect(css).toContain(".workbench--editor .problems-surface__empty");
     expect(css).toContain(".workbench--editor .outline-surface__empty");
   });
 

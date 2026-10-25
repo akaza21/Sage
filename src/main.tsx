@@ -27,7 +27,7 @@ import "./styles/composer-surface.css";
 import "./styles/chat-container-controls.css";
 import "./styles/composer-model-picker.css";
 import "./styles/composer-image.css";
-import "./styles/problems-outline-surfaces.css";
+import "./styles/outline-surface.css";
 import "./styles/agent-rail-surface.css";
 import "./styles/editor-visual-reference.css";
 import "./styles/editor-interactions.css";

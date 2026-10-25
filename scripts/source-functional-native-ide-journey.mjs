@@ -35,7 +35,7 @@ export const JOURNEY_STEPS = Object.freeze([
   "Explorer",
   "Search",
   "File",
-  "edit-diagnostic",
+  "edit-outline",
   "save",
   "Source Control",
   "Diff",
@@ -378,7 +378,7 @@ export function createJourneyReceipt({
     fail("milestones-invalid");
   }
   if (
-    !exactKeys(observations, ["diagnostic", "diff", "recovery", "save"]) ||
+    !exactKeys(observations, ["diff", "outline", "recovery", "save"]) ||
     !exactKeys(observations.save, [
       "contentSha256",
       "dirtyIndicatorCleared",
@@ -389,15 +389,11 @@ export function createJourneyReceipt({
     observations.save.dirtyIndicatorCleared !== true ||
     !SHA256.test(observations.save.contentSha256) ||
     !SHA256.test(observations.save.diskSha256) ||
-    !exactKeys(observations.diagnostic, [
-      "count",
-      "messagesSha256",
-      "resource",
-    ]) ||
-    observations.diagnostic.resource !== "journey.ts" ||
-    !Number.isSafeInteger(observations.diagnostic.count) ||
-    observations.diagnostic.count < 1 ||
-    !SHA256.test(observations.diagnostic.messagesSha256) ||
+    !exactKeys(observations.outline, ["count", "namesSha256", "resource"]) ||
+    observations.outline.resource !== "journey.ts" ||
+    !Number.isSafeInteger(observations.outline.count) ||
+    observations.outline.count < 1 ||
+    !SHA256.test(observations.outline.namesSha256) ||
     !exactKeys(observations.diff, ["contentSha256", "lineCount", "resource"]) ||
     observations.diff.resource !== "journey.ts" ||
     !Number.isSafeInteger(observations.diff.lineCount) ||
@@ -437,7 +433,7 @@ export function createJourneyReceipt({
     return { name, ...hashFile(artifact) };
   });
   return Object.freeze({
-    schemaVersion: 5,
+    schemaVersion: 6,
     completed: true,
     source: Object.freeze({ ...source }),
     sourceBinding: "collection-only",
@@ -457,7 +453,7 @@ export function createJourneyReceipt({
     cdp: Object.freeze({ ...cdp }),
     observations: Object.freeze({
       save: Object.freeze({ ...observations.save }),
-      diagnostic: Object.freeze({ ...observations.diagnostic }),
+      outline: Object.freeze({ ...observations.outline }),
       diff: Object.freeze({ ...observations.diff }),
       recovery: Object.freeze({ ...observations.recovery }),
     }),
@@ -790,9 +786,9 @@ export const UI_ACTIONS = Object.freeze([
     "Search form is unavailable",
   ),
   action(
-    "edit-diagnostic",
-    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
-    "Problems control is ambiguous",
+    "edit-outline",
+    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Outline\"]')];if(x.length!==1)return false;x[0].click();return true})()",
+    "Outline control is ambiguous",
   ),
   action(
     "save",
@@ -870,14 +866,13 @@ export function verificationFor(step) {
     return "(()=>{const forms=[...document.querySelectorAll('.workspace-search__form')];if(forms.length!==1)return false;return forms[0].querySelectorAll('input[type=\"search\"][aria-label=\"Search text\"]').length===1})()";
   if (step === "File")
     return 'document.querySelectorAll(\'.workspace-search__results[role="list"] [role="listitem"] > button.workspace-search__result[aria-label="Open journey.ts at line 1, column 14"]\').length===1';
-  if (step === "edit-diagnostic")
-    return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].getAttribute('data-diagnostic-listener-ready')==='true'})()";
+  if (step === "edit-outline") return UI_PROBES.outlineMounted;
   if (step === "save")
     return "document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]').length===1";
   if (step === "Source Control")
     return "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Source Control project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('button[aria-label=\"Open diff for journey.ts\"]').length===1})()";
   if (step === "Diff")
-    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('// SAGE_TS_DIAGNOSTIC journey edited through native CDP')})()";
+    return "(()=>{const surfaces=[...document.querySelectorAll('section.diff-surface[aria-label=\"Diff for journey.ts\"]')];if(surfaces.length!==1)return false;const ready=[...surfaces[0].querySelectorAll('.diff-editor[role=\"table\"][aria-label=\"Unified file diff\"]')];return ready.length===1&&ready[0].textContent.includes('export function journeyEdited() {}')})()";
   if (step === "error-recovery")
     return '(()=>{const tools=[...document.querySelectorAll(\'aside[aria-label="Project tools"]\')];if(tools.length!==1)return false;const trees=[...tools[0].querySelectorAll(\'[role="tree"][aria-label="Project files"]\')];return trees.length===1&&trees[0].querySelectorAll(\'[role="treeitem"][aria-label="Open file journey.ts"]\').length===1})()';
   return UI_ACTIONS[0].expression;
@@ -889,15 +884,13 @@ export const UI_PROBES = Object.freeze({
   editableEditor:
     'document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\').length===1',
   insertEditorEdit:
-    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\n// SAGE_TS_DIAGNOSTIC journey edited through native CDP\\n")})()',
-  openProblems:
-    "(()=>{const x=[...document.querySelectorAll('button[aria-label=\"Problems\"]')];if(x.length!==1)return false;x[0].click();return true})()",
-  problemsMounted:
-    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].getAttribute('data-diagnostic-listener-ready')==='true'})()",
-  problemsReady:
-    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];return surfaces.length===1&&surfaces[0].querySelectorAll('button.problem-card').length>=1})()",
-  diagnosticMessages:
-    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Problems project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Problems\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.problem-card')].map(x=>x.innerText))})()",
+    '(()=>{const x=[...document.querySelectorAll(\'section[aria-label="File editor journey.ts"] .cm-content[contenteditable="true"]\')];if(x.length!==1)return false;x[0].focus();return document.execCommand("insertText",false,"\\nexport function journeyEdited() {}\\n")})()',
+  outlineMounted:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Outline project tools\"]')];return panels.length===1&&panels[0].querySelectorAll('section[aria-label=\"Outline\"]').length===1})()",
+  outlineReady:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Outline project tools\"]')];if(panels.length!==1)return false;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Outline\"]')];return surfaces.length===1&&[...surfaces[0].querySelectorAll('button.outline-card .outline-card__name')].some(x=>x.textContent==='journeyEdited')})()",
+  outlineNames:
+    "(()=>{const panels=[...document.querySelectorAll('section[aria-label=\"Outline project tools\"]')];if(panels.length!==1)return null;const surfaces=[...panels[0].querySelectorAll('section[aria-label=\"Outline\"]')];if(surfaces.length!==1)return null;return JSON.stringify([...surfaces[0].querySelectorAll('button.outline-card .outline-card__name')].map(x=>x.textContent))})()",
   saveSettled:
     "(()=>{const editors=[...document.querySelectorAll('section[aria-label=\"File editor journey.ts\"]')];if(editors.length!==1)return false;const unsaved=editors[0].querySelectorAll('.file-header__save-state--dirty').length;const conflicts=editors[0].querySelectorAll('.editor-notice--conflict').length;const dirtyTabs=document.querySelectorAll('.tab--active .tab__dirty').length;return unsaved===0&&conflicts===0&&dirtyTabs===0})()",
   savedContent:
@@ -937,7 +930,7 @@ export async function performUiMilestone(cdp, current, deadline) {
       "journey.ts editor did not become editable",
     );
   }
-  if (current.label === "edit-diagnostic") {
+  if (current.label === "edit-outline") {
     if (
       (await cdp.evaluate(
         UI_PROBES.insertEditorEdit,
@@ -947,14 +940,11 @@ export async function performUiMilestone(cdp, current, deadline) {
       throw new Error("editor did not accept native text insertion");
     await waitFor(
       cdp,
-      UI_PROBES.problemsReady,
+      UI_PROBES.outlineReady,
       deadline,
-      "language diagnostic did not arrive",
+      "Outline did not list the inserted declaration",
     );
-    return cdp.evaluate(
-      UI_PROBES.diagnosticMessages,
-      operationDeadline(deadline),
-    );
+    return cdp.evaluate(UI_PROBES.outlineNames, operationDeadline(deadline));
   }
   if (current.label === "error-recovery") {
     if (
@@ -1066,7 +1056,7 @@ async function execute(options) {
       ready: options.frontendReady,
     },
   ];
-  let diagnosticMessages = null;
+  let outlineNames = null;
   let savedContent = null;
   let savedDisk = null;
   let diffContent = null;
@@ -1083,8 +1073,7 @@ async function execute(options) {
         current,
         deadline,
       );
-      if (current.label === "edit-diagnostic")
-        diagnosticMessages = milestoneObservation;
+      if (current.label === "edit-outline") outlineNames = milestoneObservation;
       if (current.label === "save") {
         await waitFor(
           cdp,
@@ -1208,24 +1197,16 @@ async function execute(options) {
       `${JSON.stringify(log, null, 2)}\n`,
     );
     artifacts.push(logPath);
-    const diagnostics = JSON.parse(String(diagnosticMessages));
+    const outline = JSON.parse(String(outlineNames));
     if (
       savedContent !== savedDisk ||
-      !savedDisk.includes(
-        "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
-      ) ||
-      !Array.isArray(diagnostics) ||
-      diagnostics.length < 1 ||
-      !diagnostics.some(
-        (message) =>
-          typeof message === "string" &&
-          message.includes("TypeScript fixture diagnostic"),
-      ) ||
+      !savedDisk.includes("export function journeyEdited() {}") ||
+      !Array.isArray(outline) ||
+      outline.length < 1 ||
+      !outline.includes("journeyEdited") ||
       typeof diffContent !== "string" ||
       !diffContent.includes("journey.ts") ||
-      !diffContent.includes(
-        "// SAGE_TS_DIAGNOSTIC journey edited through native CDP",
-      ) ||
+      !diffContent.includes("export function journeyEdited() {}") ||
       typeof recoveryDisk !== "string" ||
       !recoveryDisk.includes("// SAGE_EXTERNAL_CHANGE native recovery") ||
       recoveryDisk.includes("// SAGE_CONFLICT_EDIT native recovery")
@@ -1239,10 +1220,10 @@ async function execute(options) {
         contentSha256: digest(savedContent),
         diskSha256: digest(savedDisk),
       },
-      diagnostic: {
+      outline: {
         resource: "journey.ts",
-        count: diagnostics.length,
-        messagesSha256: digest(JSON.stringify(diagnostics)),
+        count: outline.length,
+        namesSha256: digest(JSON.stringify(outline)),
       },
       diff: {
         resource: "journey.ts",

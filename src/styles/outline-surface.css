@@ -1,11 +1,9 @@
-.problems-surface,
 .outline-surface {
   display: grid;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.problems-surface__header,
 .outline-surface__header {
   display: flex;
   align-items: center;
@@ -15,7 +13,6 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.problems-surface__header h1,
 .outline-surface__header h1 {
   margin: 0;
   color: var(--color-text-primary);
@@ -23,13 +20,11 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.problems-surface__header span,
 .outline-surface__header span {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
 
-.problems-surface__list,
 .outline-surface__list {
   display: grid;
   gap: 1px;
@@ -39,7 +34,6 @@
   list-style: none;
 }
 
-.problem-card,
 .outline-card {
   display: grid;
   width: 100%;
@@ -59,14 +53,11 @@
   cursor: pointer;
 }
 
-.problem-card:hover,
 .outline-card:hover,
-.problem-card:focus-visible,
 .outline-card:focus-visible {
   background: var(--color-surface-hover);
 }
 
-.problem-card__kind,
 .outline-card__kind {
   display: grid;
   width: 16px;
@@ -79,19 +70,6 @@
   color: var(--color-text-muted);
 }
 
-.problem-card--error .problem-card__kind {
-  color: var(--color-danger);
-}
-
-.problem-card--warning .problem-card__kind {
-  color: var(--color-warning);
-}
-
-.problem-card--info .problem-card__kind {
-  color: var(--color-accent);
-}
-
-.problem-card__copy,
 .outline-card__copy {
   display: grid;
   min-width: 0;
@@ -100,7 +78,6 @@
   gap: 4px;
 }
 
-.problem-card__message,
 .outline-card__name {
   overflow: hidden;
   color: var(--color-text-primary);
@@ -108,7 +85,6 @@
   white-space: nowrap;
 }
 
-.problem-card__location,
 .outline-card__location {
   display: flex;
   min-width: 0;
@@ -119,19 +95,16 @@
   white-space: nowrap;
 }
 
-.problem-card__location-file,
 .outline-card__location-file {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.problem-card__location-position,
 .outline-card__location-position {
   flex: 0 0 auto;
 }
 
-.problems-surface__empty,
 .outline-surface__empty {
   margin: 16px 12px;
   color: var(--color-text-muted);
@@ -140,12 +113,10 @@
 }
 
 @media (forced-colors: active) {
-  .problem-card__kind,
   .outline-card__kind {
     color: CanvasText;
   }
 
-  .problem-card:focus-visible,
   .outline-card:focus-visible {
     outline-color: Highlight;
   }

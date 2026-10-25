@@ -1,9 +1,4 @@
-import type { LanguageOutlineReport } from "../../domain/languageService";
-import type { ResourceRef } from "../../domain/resource";
-import { sameResource } from "../../domain/resourceIdentity";
-
-const MAX_OUTLINE_SYMBOLS = 64;
-const MAX_LINE = 0xffff_ffff;
+import type { SyntaxOutline } from "./syntaxOutline";
 
 export interface OutlineNavigationSelection {
   start: number;
@@ -11,34 +6,26 @@ export interface OutlineNavigationSelection {
 }
 
 /**
- * Resolves a local symbol only from the bounded, admitted Outline projection.
- * This is deliberately not a text-search fallback: without a language report,
- * navigation is unavailable rather than guessed.
+ * Resolves a same-file declaration only from the document's syntax Outline.
+ * This is deliberately not a text-search fallback: a name the Outline does not
+ * declare yields no navigation rather than a guessed match.
  */
 export function localSymbolNavigation(
-  resource: ResourceRef,
   content: string,
   selection: OutlineNavigationSelection,
-  report: LanguageOutlineReport | null,
+  outline: SyntaxOutline | null,
 ): OutlineNavigationSelection | null {
-  if (
-    !report ||
-    !sameResource(report.resource, resource) ||
-    report.symbols.length > MAX_OUTLINE_SYMBOLS
-  ) {
-    return null;
-  }
+  if (!outline) return null;
   const name = identifierAtSelection(content, selection);
   if (!name) return null;
-  const symbol = report.symbols.find(
+  const symbol = outline.symbols.find(
     (candidate) =>
       candidate.name === name &&
-      sameResource(candidate.resource, resource) &&
-      Number.isInteger(candidate.startLine) &&
-      candidate.startLine > 0 &&
-      candidate.startLine <= MAX_LINE,
+      candidate.kind !== "heading" &&
+      candidate.offset >= 0 &&
+      candidate.offset <= content.length,
   );
-  return symbol ? lineSelection(content, symbol.startLine) : null;
+  return symbol ? { start: symbol.offset, end: symbol.offset } : null;
 }
 
 function identifierAtSelection(
@@ -58,19 +45,6 @@ function identifierAtSelection(
     to += 1;
   const candidate = content.slice(from, to);
   return isIdentifier(candidate) ? candidate : null;
-}
-
-function lineSelection(
-  content: string,
-  line: number,
-): OutlineNavigationSelection {
-  let offset = 0;
-  for (let current = 1; current < line; current += 1) {
-    const newline = content.indexOf("\n", offset);
-    if (newline === -1) return { start: content.length, end: content.length };
-    offset = newline + 1;
-  }
-  return { start: offset, end: offset };
 }
 
 function clamp(value: number, ceiling: number): number {

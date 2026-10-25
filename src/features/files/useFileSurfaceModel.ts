@@ -12,14 +12,10 @@ import {
   useFileEditorLifecycle,
   type EditorStateBridge,
 } from "./fileEditorController";
-import {
-  useLanguageSession,
-  useOutlineProjection,
-} from "../language/languageClient";
 
 /**
  * The File lifecycle/resource model deliberately owns store selection, load
- * ordering, external-watch state and language session input.  The surface
+ * ordering and external-watch state.  The surface
  * remains responsible only for mounted-view refs and command presentation.
  */
 export function useFileSurfaceModel(
@@ -97,8 +93,6 @@ export function useFileSurfaceModel(
     flushActiveEditor,
   });
   useEditorExternalWatch(watchedResource, watchBridge);
-  useLanguageSession(watchedResource, content);
-  const outline = useOutlineProjection(watchedResource);
   const selectedMatchRef = useRef<{ start: number; end: number } | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -199,7 +193,6 @@ export function useFileSurfaceModel(
     updateEditorContent,
     saveActiveEditor,
     content,
-    outline,
     findOpen,
     openFind: () => {
       if (findOpen) {

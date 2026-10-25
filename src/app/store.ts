@@ -65,7 +65,7 @@ import { closeWorkbenchTab } from "./tabClosing";
 import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
 
 export type SidebarView =
-  "explorer" | "search" | "sourceControl" | "preview" | "problems" | "outline";
+  "explorer" | "search" | "sourceControl" | "preview" | "outline";
 export type ResourceState<T> =
   | { phase: "loading" }
   | { phase: "ready"; value: T }

@@ -1,5 +1,4 @@
 mod filesystem;
-pub(crate) mod language;
 
 use self::filesystem::{
     DiskDocument, atomic_replace, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,

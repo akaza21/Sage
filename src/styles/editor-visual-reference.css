@@ -131,12 +131,10 @@
   border-radius: var(--radius-sm);
 }
 
-.workbench--editor .problems-surface__header,
 .workbench--editor .outline-surface__header {
   min-height: 36px;
 }
 
-.workbench--editor .problems-surface__header,
 .workbench--editor .outline-surface__header {
   padding: 0 var(--space-3);
 }
@@ -304,7 +302,6 @@
 }
 
 .workbench--editor .workspace-search__result,
-.workbench--editor .problem-card,
 .workbench--editor .outline-card {
   min-height: var(--row-height-compact);
   font-size: var(--font-size-sm);
@@ -316,7 +313,6 @@
 .workbench--editor .sidebar__empty,
 .workbench--editor .sidebar__loading,
 .workbench--editor .sidebar__notice,
-.workbench--editor .problems-surface__empty,
 .workbench--editor .outline-surface__empty {
   max-width: none;
   margin: 0;

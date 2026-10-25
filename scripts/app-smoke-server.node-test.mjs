@@ -13,6 +13,7 @@ import {
   startDevServer,
   waitForServer,
 } from "./lib/app-smoke-server.mjs";
+import { processAlive } from "./lib/process-liveness.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -61,14 +62,27 @@ function listenUnready(t) {
   });
 }
 
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code !== "ESRCH";
+test("process liveness treats an unreaped zombie as exited on Linux", async (t) => {
+  if (process.platform === "win32") {
+    // No zombie state exists on Windows; liveness is kill(pid, 0) alone.
+    assert.equal(processAlive(process.pid), true);
+    return;
   }
-}
+  // sh forks a short child, then execs into a long sleep that never reaps it.
+  const parent = spawn("sh", ["-c", "sleep 0 & echo $!; exec sleep 30"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  t.after(() => parent.kill("SIGKILL"));
+  const zombie = await new Promise((done) => {
+    parent.stdout.setEncoding("utf8");
+    parent.stdout.once("data", (chunk) => done(Number(chunk.trim())));
+  });
+  await new Promise((done) => setTimeout(done, 500));
+
+  assert.equal(processAlive(parent.pid), true);
+  // Darwin has no cheap state probe, so only Linux can see the zombie.
+  assert.equal(processAlive(zombie), process.platform !== "linux");
+});
 
 test("a self-started dev server releases its port and process on success", async (t) => {
   const port = await reserveFreePort();

@@ -788,7 +788,7 @@ test("native IDE search result contract opens the exact fixture match", () => {
   assert.equal(result.clicks, 1);
 });
 
-test("native IDE File and edit-diagnostic preparations are strictly ordered", async () => {
+test("native IDE File and edit-outline preparations are strictly ordered", async () => {
   const fileCalls = [];
   await performUiMilestone(
     {
@@ -808,29 +808,29 @@ test("native IDE File and edit-diagnostic preparations are strictly ordered", as
   ]);
 
   const editCalls = [];
-  const messages = await performUiMilestone(
+  const names = await performUiMilestone(
     {
       evaluate: async (expression) => {
         editCalls.push(expression);
-        return expression === UI_PROBES.diagnosticMessages
-          ? JSON.stringify(["TypeScript fixture diagnostic"])
+        return expression === UI_PROBES.outlineNames
+          ? JSON.stringify(["journeyEdited"])
           : true;
       },
     },
-    uiAction("edit-diagnostic"),
+    uiAction("edit-outline"),
     Date.now() + 1_000,
   );
   assert.deepEqual(editCalls, [
-    UI_PROBES.openProblems,
-    UI_PROBES.problemsMounted,
+    uiAction("edit-outline").expression,
+    UI_PROBES.outlineMounted,
     UI_PROBES.insertEditorEdit,
-    UI_PROBES.problemsReady,
-    UI_PROBES.diagnosticMessages,
+    UI_PROBES.outlineReady,
+    UI_PROBES.outlineNames,
   ]);
-  assert.equal(messages, JSON.stringify(["TypeScript fixture diagnostic"]));
+  assert.equal(names, JSON.stringify(["journeyEdited"]));
 });
 
-test("native IDE edit inserts the admitted diagnostic marker once", () => {
+test("native IDE edit inserts the admitted declaration once", () => {
   const calls = [];
   const editor = { focus: () => calls.push(["focus"]) };
   const document = {
@@ -848,67 +848,68 @@ test("native IDE edit inserts the admitted diagnostic marker once", () => {
   );
   assert.deepEqual(calls, [
     ["focus"],
-    [
-      "insertText",
-      false,
-      "\n// SAGE_TS_DIAGNOSTIC journey edited through native CDP\n",
-    ],
+    ["insertText", false, "\nexport function journeyEdited() {}\n"],
   ]);
 });
 
-test("native IDE Problems probes bind one exact panel and diagnostic surface", () => {
-  const problemsButton = {
+test("native IDE Outline probes bind one exact panel and the inserted declaration", () => {
+  const outlineButton = {
     clicks: 0,
     click() {
       this.clicks += 1;
     },
   };
-  const card = { innerText: "Error missing semicolon journey.ts:1" };
-  let listenerReady = true;
-  const problems = {
-    getAttribute: (name) =>
-      name === "data-diagnostic-listener-ready" ? String(listenerReady) : null,
+  let names = ["journey"];
+  const cards = () => names.map((name) => ({ textContent: name }));
+  const outline = {
     querySelectorAll: (selector) =>
-      selector === "button.problem-card" ? [card] : [],
+      selector === "button.outline-card .outline-card__name" ? cards() : [],
   };
+  let panels = 1;
   const panel = {
     querySelectorAll: (selector) =>
-      selector === 'section[aria-label="Problems"]' ? [problems] : [],
+      selector === 'section[aria-label="Outline"]' ? [outline] : [],
   };
   const document = {
     querySelectorAll: (selector) => {
-      if (selector === 'button[aria-label="Problems"]') return [problemsButton];
-      return selector === 'section[aria-label="Problems project tools"]'
-        ? [panel]
+      if (selector === 'button[aria-label="Outline"]') return [outlineButton];
+      return selector === 'section[aria-label="Outline project tools"]'
+        ? Array.from({ length: panels }, () => panel)
         : [];
     },
   };
   assert.equal(
-    evaluateBrowserExpression(uiAction("edit-diagnostic").expression, {
+    evaluateBrowserExpression(uiAction("edit-outline").expression, {
       document,
     }),
     true,
   );
-  assert.equal(problemsButton.clicks, 1);
+  assert.equal(outlineButton.clicks, 1);
   assert.equal(
-    evaluateBrowserExpression(UI_PROBES.problemsMounted, { document }),
+    evaluateBrowserExpression(UI_PROBES.outlineMounted, { document }),
     true,
   );
-  listenerReady = false;
   assert.equal(
-    evaluateBrowserExpression(UI_PROBES.problemsMounted, { document }),
+    evaluateBrowserExpression(UI_PROBES.outlineReady, { document }),
     false,
   );
-  listenerReady = true;
+  names = ["journey", "journeyEdited"];
   assert.equal(
-    evaluateBrowserExpression(UI_PROBES.problemsReady, { document }),
+    evaluateBrowserExpression(UI_PROBES.outlineReady, { document }),
     true,
   );
   assert.deepEqual(
-    JSON.parse(
-      evaluateBrowserExpression(UI_PROBES.diagnosticMessages, { document }),
-    ),
-    [card.innerText],
+    JSON.parse(evaluateBrowserExpression(UI_PROBES.outlineNames, { document })),
+    names,
+  );
+  panels = 2;
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.outlineMounted, { document }),
+    false,
+  );
+  assert.equal(
+    evaluateBrowserExpression(UI_PROBES.outlineNames, { document }),
+    null,
   );
 });
 
@@ -1041,8 +1042,7 @@ test("native IDE Source Control and Diff readiness wait for the exact ready chan
     evaluateBrowserExpression(verificationFor("Diff"), { document }),
     false,
   );
-  diffEditor.textContent =
-    "+// SAGE_TS_DIAGNOSTIC journey edited through native CDP";
+  diffEditor.textContent = "+export function journeyEdited() {}";
   diffEditor.innerText = diffEditor.textContent;
   diffSurface.innerText = `journey.ts\n${diffEditor.innerText}`;
   assert.equal(
@@ -1262,7 +1262,7 @@ test("native IDE receipt binds a completed ordered journey and artifact hashes",
     };
     const receipt = createJourneyReceipt(input);
     assert.equal(receipt.completed, true);
-    assert.equal(receipt.schemaVersion, 5);
+    assert.equal(receipt.schemaVersion, 6);
     assert.deepEqual(
       receipt.milestones.map(({ step }) => step),
       JOURNEY_STEPS,
@@ -1371,7 +1371,7 @@ test("native IDE receipt refuses reordered milestones and evidence outside its r
   }
 });
 
-test("native IDE receipt refuses unobserved save, diagnostic, and Diff claims", () => {
+test("native IDE receipt refuses unobserved save, Outline, and Diff claims", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-ide-journey-"));
   try {
     const artifact = path.join(root, "journey.png");
@@ -4098,10 +4098,10 @@ function observed() {
       contentSha256: "1".repeat(64),
       diskSha256: "2".repeat(64),
     },
-    diagnostic: {
+    outline: {
       resource: "journey.ts",
       count: 1,
-      messagesSha256: "3".repeat(64),
+      namesSha256: "3".repeat(64),
     },
     diff: {
       resource: "journey.ts",

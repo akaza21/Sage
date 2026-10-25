@@ -13,7 +13,7 @@ afterEach(() => {
 describe("EditorWelcome", () => {
   it("offers only working Editor and Agent destinations", () => {
     const onOpenAgent = vi.fn();
-    useWorkbenchStore.setState({ sidebarOpen: false, sidebarView: "problems" });
+    useWorkbenchStore.setState({ sidebarOpen: false, sidebarView: "outline" });
     render(<EditorWelcome onOpenAgent={onOpenAgent} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Browse files" }));

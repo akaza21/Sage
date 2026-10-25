@@ -13,11 +13,10 @@ import { diffCacheKey } from "../../domain/diffIdentity";
 import type { EditorDocument, ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { desktop } from "../../services/desktop";
-import { languageDesktop } from "../../services/languageDesktop";
 import { EditSummary } from "../chat/EditSummary";
 import { ExplorerSurface } from "../files/ExplorerSurface";
 import { FileEditorHeader } from "../files/FileEditorHeader";
-import { ProblemsSurface } from "../problems/ProblemsSurface";
+import { OutlineSurface } from "../outline/OutlineSurface";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
 
 const target: ResourceRef = { rootId: "root-a", relativePath: "src/main.ts" };
@@ -61,26 +60,10 @@ afterEach(() => {
 });
 
 describe("source-functional IDE journey", () => {
-  it("chains Project, Explorer, Search, File, edit/diagnostics, and Diff through UI and workbench ports", async () => {
+  it("chains Project, Explorer, Search, File, edit/Outline, and Diff through UI and workbench ports", async () => {
     const project = getWorkbenchPorts().project;
     const editor = getWorkbenchPorts().editor;
     const repository = getWorkbenchPorts().repository;
-    const diagnostic = {
-      resource: target,
-      generation: 1,
-      diagnostics: [
-        {
-          resource: target,
-          message: "missing semicolon",
-          severity: "error" as const,
-          startLine: 2,
-          startColumn: 1,
-          endLine: 2,
-          endColumn: 2,
-        },
-      ],
-    };
-    let deliver!: (report: typeof diagnostic) => void;
     useWorkbenchStore.setState({
       phase: "ready",
       projectGeneration: 1,
@@ -144,13 +127,6 @@ describe("source-functional IDE journey", () => {
       binary: false,
       truncated: false,
     });
-    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockImplementation(
-      async (onReport) => {
-        deliver = onReport;
-        return () => {};
-      },
-    );
-
     const explorer = render(<ExplorerSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Journey" }));
     await screen.findByRole("treeitem", { name: "Open file src/main.ts" });
@@ -243,12 +219,13 @@ describe("source-functional IDE journey", () => {
     );
 
     search.unmount();
-    render(<ProblemsSurface />);
-    await waitFor(() => expect(deliver).toBeTypeOf("function"));
-    act(() => deliver(diagnostic));
+    const outline = render(<OutlineSurface />);
     expect(
-      screen.getByRole("button", { name: /missing semicolon/i }),
+      await screen.findByRole("button", {
+        name: "Variable: x. src/main.ts, line 1, column 5",
+      }),
     ).toBeInTheDocument();
+    outline.unmount();
 
     useWorkbenchStore.getState().updateEditorContent("let x = 1;\n");
     const repositoryRefresh = vi.spyOn(desktop, "getRepositoryStatus");

@@ -4,7 +4,7 @@ import type { WorkbenchTab } from "../domain/workbench";
 
 export type CanvasSurfaceKind = "browser" | "chat" | "diff" | "file";
 export type ToolSurfaceId =
-  "explorer" | "search" | "sourceControl" | "preview" | "problems" | "outline";
+  "explorer" | "search" | "sourceControl" | "preview" | "outline";
 
 type CanvasSurface = ComponentType<{
   tab: WorkbenchTab;

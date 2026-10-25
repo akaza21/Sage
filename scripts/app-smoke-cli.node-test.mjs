@@ -17,6 +17,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { killProcessTree, portAccepts } from "./lib/app-smoke-server.mjs";
+import { processAlive } from "./lib/process-liveness.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeEntry = resolve(repositoryRoot, "scripts", "app-smoke.mjs");
@@ -88,15 +89,6 @@ function serveUnready(t) {
       done({ port: site.address().port });
     });
   });
-}
-
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code !== "ESRCH";
-  }
 }
 
 function runSmoke(

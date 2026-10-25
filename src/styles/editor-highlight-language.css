@@ -49,7 +49,6 @@
       .root-tree__heading,
       .source-change,
       .workspace-search__result,
-      .problem-card,
       .outline-card
     ):active:not(:disabled):not(.button--danger):not(
       .source-change__confirmation-button--danger
@@ -86,7 +85,6 @@
       .explorer-action-menu__item,
       .workspace-search__file-heading,
       .workspace-search__result,
-      .problem-card,
       .outline-card
     ):focus-visible {
     outline: 0;

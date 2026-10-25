@@ -5,12 +5,19 @@ import {
 } from "../../../../src/domain/resourceIdentity";
 import { useWorkbenchStore } from "../../../../src/app/store";
 import { workspaceSearchDesktop } from "../../../../src/features/search/workspaceSearchDesktop";
-import { languageDesktop } from "../../../../src/services/languageDesktop";
 
 import { standardPage } from "../visualChatPages";
 import { fileResource } from "../visualDocumentFixtures";
 import { ROOT_ID } from "../visualFixtureIds";
 import type { VisualScenarioName } from "../visualScenarioTypes";
+
+const OUTLINE_LONG_CONTENT = [
+  "export function AgentChatPanes() {}",
+  "export type AgentChatPanesWithProjectScopedResourceFollowing = string;",
+  "const visibleChatsForTheActiveProjectWithinTheBoundedPairLimit = 2;",
+].join("\n");
+const OUTLINE_EMPTY_CONTENT =
+  'import { ChatSurface } from "../features/chat/ChatSurface";\n';
 
 export function buildEditorPages(
   name: VisualScenarioName,
@@ -75,85 +82,6 @@ export function installVisualRepositoryPickerFixture({
 }
 
 export function installEditorToolFixtures() {
-  languageDesktop.startLanguageSession = () => new Promise<number>(() => {});
-  languageDesktop.cancelLanguageSession = async () => undefined;
-  languageDesktop.subscribeDiagnostics = async (onReport) => {
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() =>
-        onReport({
-          resource: fileResource,
-          generation: 1,
-          diagnostics: [
-            {
-              resource: fileResource,
-              message: "ChatSurface must remain scoped to the active Chat",
-              severity: "error",
-              startLine: 7,
-              startColumn: 6,
-              endLine: 7,
-              endColumn: 17,
-            },
-            {
-              resource: fileResource,
-              message: "maximum should be named maxVisibleChats",
-              severity: "warning",
-              startLine: 4,
-              startColumn: 43,
-              endLine: 4,
-              endColumn: 50,
-            },
-            {
-              resource: fileResource,
-              message: "Preview stays bounded to the selected Project",
-              severity: "info",
-              startLine: 3,
-              startColumn: 17,
-              endLine: 3,
-              endColumn: 31,
-            },
-          ],
-        }),
-      ),
-    );
-    return () => undefined;
-  };
-  languageDesktop.subscribeOutline = async (onReport) => {
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() =>
-        onReport({
-          resource: fileResource,
-          generation: 1,
-          symbols: [
-            {
-              resource: fileResource,
-              name: "AgentChatPanes",
-              kind: "function",
-              startLine: 3,
-            },
-            {
-              resource: fileResource,
-              name: "AgentChatPanesWithProjectScopedResourceFollowing",
-              kind: "type",
-              startLine: 3,
-            },
-            {
-              resource: fileResource,
-              name: "visibleChats",
-              kind: "unknown",
-              startLine: 4,
-            },
-            {
-              resource: fileResource,
-              name: "AgentChatPanes.tsx",
-              kind: "file",
-              startLine: 1,
-            },
-          ],
-        }),
-      ),
-    );
-    return () => undefined;
-  };
   workspaceSearchDesktop.search = async (request) => ({
     requestId: "visual-search",
     projectId: request.projectId,
@@ -276,9 +204,32 @@ export function installVisualRepositoryPrimaryState(
   }));
 }
 
+/** Leaves the active File open with no declarations, so Outline is empty. */
 export function installVisualEmptyEditorTools() {
-  languageDesktop.subscribeDiagnostics = async () => () => undefined;
-  languageDesktop.subscribeOutline = async () => () => undefined;
+  useWorkbenchStore.setState((state) =>
+    state.activeEditor?.phase === "ready"
+      ? {
+          activeEditor: {
+            ...state.activeEditor,
+            content: OUTLINE_EMPTY_CONTENT,
+          },
+        }
+      : {},
+  );
+}
+
+/** Declarations long enough to exercise Outline row truncation. */
+export function installVisualLongOutlineSymbols() {
+  useWorkbenchStore.setState((state) =>
+    state.activeEditor?.phase === "ready"
+      ? {
+          activeEditor: {
+            ...state.activeEditor,
+            content: OUTLINE_LONG_CONTENT,
+          },
+        }
+      : {},
+  );
 }
 
 export function installVisualEmptyEditorCanvas() {

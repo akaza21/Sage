@@ -89,6 +89,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
   "src/features/files/FileSurface.tsx",
+  // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
+  "src/features/outline/OutlineSurface.tsx",
+  "src/features/outline/syntaxOutline.ts",
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",

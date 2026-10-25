@@ -11,10 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorCaretStore } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
-import type { LanguageOutlineReport } from "../../domain/languageService";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { languageDesktop } from "../../services/languageDesktop";
 import { FileSurface } from "./FileSurface";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 
@@ -145,31 +143,6 @@ describe("FileSurface document language", () => {
 });
 
 describe("FileSurface durability cadence", () => {
-  it("starts a language session for the File and cancels it on unmount", async () => {
-    const unsubscribe = vi.fn();
-    vi.spyOn(languageDesktop, "subscribeDiagnostics").mockResolvedValue(
-      unsubscribe,
-    );
-    const start = vi
-      .spyOn(languageDesktop, "startLanguageSession")
-      .mockResolvedValue(1);
-    const cancel = vi
-      .spyOn(languageDesktop, "cancelLanguageSession")
-      .mockResolvedValue();
-    setReadyEditor();
-
-    const { unmount } = render(<FileSurface tab={tab} />);
-
-    await waitFor(() => {
-      expect(start).toHaveBeenCalledWith(resource, document.buffer.content);
-    });
-    unmount();
-    await waitFor(() => {
-      expect(cancel).toHaveBeenCalledWith(resource);
-    });
-    expect(unsubscribe).toHaveBeenCalledOnce();
-  });
-
   it("keeps edit, keyboard save, undo, and conflict behavior at the File surface", async () => {
     const save = vi.fn(async () => true);
     setReadyEditor({ ...tab, dirty: true });
@@ -762,47 +735,52 @@ describe("FileSurface Go-to Line", () => {
 });
 
 describe("FileSurface local symbol navigation", () => {
-  it("fails closed until an admitted Outline report arrives, then moves the F12 caret", async () => {
-    const outlineSubscriptions: Array<(report: LanguageOutlineReport) => void> =
-      [];
-    vi.spyOn(languageDesktop, "subscribeOutline").mockImplementation(
-      async (callback) => {
-        outlineSubscriptions.push(callback);
-        return () => undefined;
-      },
-    );
+  const sourceTab: WorkbenchTab = {
+    ...tab,
+    id: "file:src/example.ts",
+    title: "example.ts",
+    resource: { rootId: "root-a", relativePath: "src/example.ts" },
+  };
+
+  it("moves the F12 caret to the declaration from the File's syntax Outline", async () => {
     const content =
       "const value = example();\n\nexport function example() {}\n";
-    setReadyEditor(tab, content);
-    render(<FileSurface tab={tab} />);
+    setReadyEditor(sourceTab, content);
+    render(<FileSurface tab={sourceTab} />);
     const editor = await screen.findByRole("textbox", {
-      name: `Edit ${path}`,
+      name: "Edit src/example.ts",
     });
-    viewForEditor(editor).dispatch({ selection: { anchor: 14 } });
+    act(() => viewForEditor(editor).dispatch({ selection: { anchor: 16 } }));
 
     fireEvent.keyDown(editor, { key: "F12" });
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "No local symbol is available from the language session.",
+    const declaration = content.indexOf("example() {}");
+    await waitFor(() =>
+      expect(editorSelection(editor)).toEqual({
+        start: declaration,
+        end: declaration,
+      }),
     );
-    expect(editorSelection(editor)).toEqual({ start: 14, end: 14 });
-
-    await waitFor(() => expect(outlineSubscriptions).toHaveLength(2));
-    act(() => {
-      for (const deliverOutline of outlineSubscriptions) {
-        deliverOutline({
-          resource,
-          generation: 1,
-          symbols: [
-            { resource, name: "example", kind: "function", startLine: 3 },
-          ],
-        });
-      }
-    });
-    fireEvent.keyDown(editor, { key: "F12" });
-    expect(editorSelection(editor)).toEqual({ start: 26, end: 26 });
     expect(screen.getByRole("status")).toHaveTextContent(
       "Moved to local symbol.",
     );
+  });
+
+  it("says so and leaves the caret when the File declares no such name", async () => {
+    const content = "missing();\nconst other = 1;\n";
+    setReadyEditor(sourceTab, content);
+    render(<FileSurface tab={sourceTab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: "Edit src/example.ts",
+    });
+    act(() => viewForEditor(editor).dispatch({ selection: { anchor: 2 } }));
+
+    fireEvent.keyDown(editor, { key: "F12" });
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "No declaration in this File for that name.",
+      ),
+    );
+    expect(editorSelection(editor)).toEqual({ start: 2, end: 2 });
   });
 });
 

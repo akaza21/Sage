@@ -11,8 +11,8 @@ import {
 } from "./FileSurfaceContent";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
-import { localSymbolNavigation } from "../language/outlineNavigation";
 import { canPreviewMarkdown } from "./markdownPreview";
+import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 
 export function FileSurface({
@@ -34,7 +34,6 @@ export function FileSurface({
     updateEditorContent,
     saveActiveEditor,
     content: findContent,
-    outline,
     findOpen,
     openFind,
     closeFind,
@@ -117,23 +116,28 @@ export function FileSurface({
     closeGoToLine();
   }
 
-  function goToLocalSymbol() {
+  async function goToLocalSymbol() {
     const input = editorInputRef.current;
     const readyEditor = editor;
     if (!input || !resource || readyEditor?.phase !== "ready") {
       setLanguageNavigationStatus("Local symbol navigation is unavailable.");
       return;
     }
-    const target = localSymbolNavigation(
-      resource,
-      readyEditor.content,
-      input.selection(),
-      outline,
-    );
+    const { content } = readyEditor;
+    const selection = input.selection();
+    const { syntaxOutline } = await import("../outline/syntaxOutline");
+    const outline = await syntaxOutline(resource.relativePath, content);
+    const stillCurrent = useWorkbenchStore.getState().activeEditor;
+    if (
+      stillCurrent?.phase !== "ready" ||
+      !sameResource(stillCurrent.resource, resource) ||
+      stillCurrent.content !== content
+    ) {
+      return;
+    }
+    const target = localSymbolNavigation(content, selection, outline);
     if (!target) {
-      setLanguageNavigationStatus(
-        "No local symbol is available from the language session.",
-      );
+      setLanguageNavigationStatus("No declaration in this File for that name.");
       return;
     }
     input.focus();
@@ -198,7 +202,7 @@ export function FileSurface({
           closeGoToLine,
           openFind: openFindFromSurface,
           openGoToLine,
-          goToLocalSymbol,
+          goToLocalSymbol: () => void goToLocalSymbol(),
           save: readOnly ? () => undefined : () => void saveActiveEditor(),
         });
       }}

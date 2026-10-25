@@ -171,57 +171,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(workbench).toHaveScreenshot("editor-search.png");
   });
 
-  test("keeps Editor Problems cards bounded", async ({ page }) => {
-    await page.setViewportSize({ width: 1380, height: 880 });
-    const workbench = await openScenario(page, "editor", "editor");
-
-    await page.getByRole("button", { name: "Problems", exact: true }).click();
-    const problemsTools = page.getByLabel("Problems project tools", {
-      exact: true,
-    });
-    await expect(
-      problemsTools.getByRole("heading", { name: "Problems" }),
-    ).toBeVisible();
-    await expect(problemsTools.getByText("3 Problems")).toBeVisible();
-    const problem = problemsTools.getByRole("button", {
-      name: "Flag: maximum should be named maxVisibleChats. src/workbench/AgentChatPanes.tsx, line 4, column 43",
-    });
-    await expect(problem).toBeVisible();
-    await expect(problem).toHaveAttribute(
-      "title",
-      "maximum should be named maxVisibleChats — src/workbench/AgentChatPanes.tsx:4:43",
-    );
-    await expect(problemsTools.locator(".problem-card")).toHaveCount(3);
-    await expect(problem).toContainText("AgentChatPanes.tsx:4:43");
-    const problemPosition = problem.locator(".problem-card__location-position");
-    await expect(problemPosition).toHaveText(":4:43");
-    await expect(problemPosition).toBeInViewport();
-    await problem.click();
-    await expect(page.getByTitle("Caret position")).toHaveText("Ln 4, Col 43");
-    await expectNoViewportOverflow(page);
-    await expect(workbench).toHaveScreenshot("editor-problems-populated.png");
-  });
-
-  test("keeps Editor Problems empty state bounded", async ({ page }) => {
-    await page.setViewportSize({ width: 1380, height: 880 });
-    const workbench = await openScenario(page, "editor", "editor");
-    await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
-      fixtures.installVisualEmptyEditorTools();
-    });
-
-    await page.getByRole("button", { name: "Problems", exact: true }).click();
-    const problemsTools = page.getByLabel("Problems project tools", {
-      exact: true,
-    });
-    await expect(problemsTools).toContainText(
-      "No problems for the active File.",
-    );
-    await expectNoViewportOverflow(page);
-    await expect(workbench).toHaveScreenshot("editor-problems.png");
-  });
-
   test("keeps Editor Outline cards bounded", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     const workbench = await openScenario(page, "editor", "editor");
@@ -233,30 +182,22 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       outlineTools.getByRole("heading", { name: "Outline" }),
     ).toBeVisible();
-    await expect(outlineTools.getByText("4 Symbols")).toBeVisible();
+    await expect(outlineTools.getByText("1 Symbol")).toBeVisible();
     const symbol = outlineTools.getByRole("button", {
-      name: "Function: AgentChatPanes. src/workbench/AgentChatPanes.tsx, line 3, column 1",
+      name: "Function: AgentChatPanes. src/workbench/AgentChatPanes.tsx, line 3, column 17",
     });
     await expect(symbol).toBeVisible();
     await expect(symbol).toHaveAttribute(
       "title",
-      "AgentChatPanes — src/workbench/AgentChatPanes.tsx:3:1",
+      "AgentChatPanes — src/workbench/AgentChatPanes.tsx:3:17",
     );
-    await expect(outlineTools.locator(".outline-card")).toHaveCount(4);
-    await expect(
-      outlineTools.getByRole("button", {
-        name: "Type: AgentChatPanesWithProjectScopedResourceFollowing. src/workbench/AgentChatPanes.tsx, line 3, column 1",
-      }),
-    ).toHaveAttribute(
-      "title",
-      "AgentChatPanesWithProjectScopedResourceFollowing — src/workbench/AgentChatPanes.tsx:3:1",
-    );
+    await expect(outlineTools.locator(".outline-card")).toHaveCount(1);
     const symbolPosition = symbol.locator(".outline-card__location-position");
-    await expect(symbolPosition).toHaveText(":3:1");
+    await expect(symbolPosition).toHaveText(":3:17");
     await expect(symbolPosition).toBeInViewport();
     await symbol.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByTitle("Caret position")).toHaveText("Ln 3, Col 1");
+    await expect(page.getByTitle("Caret position")).toHaveText("Ln 3, Col 17");
     await expectNoViewportOverflow(page);
     await expect(workbench).toHaveScreenshot("editor-outline-populated.png");
   });
@@ -526,29 +467,19 @@ test.describe("Wave 2 200% zoom state", () => {
     deviceScaleFactor: 2,
   });
 
-  test("keeps Problems and Outline rows contained at 200% zoom", async ({
-    page,
-  }) => {
+  test("keeps long Outline rows contained at 200% zoom", async ({ page }) => {
     await openScenario(page, "editor", "editor");
-
-    await page.getByRole("button", { name: "Problems", exact: true }).click();
-    const problems = page
-      .getByLabel("Problems project tools", { exact: true })
-      .locator(".problem-card");
-    await expect(problems).toHaveCount(3);
-    expect(
-      await problems.evaluateAll((rows) =>
-        rows.every(
-          (row) => row.clientWidth > 0 && row.scrollWidth <= row.clientWidth,
-        ),
-      ),
-    ).toBe(true);
+    await page.evaluate(async () => {
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      fixtures.installVisualLongOutlineSymbols();
+    });
 
     await page.getByRole("button", { name: "Outline", exact: true }).click();
     const symbols = page
       .getByLabel("Outline project tools", { exact: true })
       .locator(".outline-card");
-    await expect(symbols).toHaveCount(4);
+    await expect(symbols).toHaveCount(3);
     expect(
       await symbols.evaluateAll((rows) =>
         rows.every(

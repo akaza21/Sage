@@ -1,10 +1,4 @@
-import {
-  CircleAlert,
-  FileSearch,
-  Files,
-  GitBranch,
-  ListTree,
-} from "../ui/leanIcons";
+import { FileSearch, Files, GitBranch, ListTree } from "../ui/leanIcons";
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { SidebarView } from "../app/store";
@@ -22,7 +16,6 @@ const views: Array<{
   { id: "explorer", label: "Explorer", icon: Files },
   { id: "search", label: "Search", icon: FileSearch },
   { id: "sourceControl", label: "Source Control", icon: GitBranch },
-  { id: "problems", label: "Problems", icon: CircleAlert },
   { id: "outline", label: "Outline", icon: ListTree },
 ];
 

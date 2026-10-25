@@ -1,7 +1,5 @@
 import type { WorkbenchTab } from "../domain/workbench";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
-import { OutlineSurface } from "../features/outline/OutlineSurface";
-import { ProblemsSurface } from "../features/problems/ProblemsSurface";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
@@ -12,6 +10,10 @@ const loadChatSurface = () =>
 const loadSearchSurface = () =>
   import("../features/search/SearchSurface").then(({ SearchSurface }) => ({
     default: SearchSurface,
+  }));
+const loadOutlineSurface = () =>
+  import("../features/outline/OutlineSurface").then(({ OutlineSurface }) => ({
+    default: OutlineSurface,
   }));
 const loadSourceControlView = () =>
   import("./SourceControlView").then(({ SourceControlView }) => ({
@@ -116,7 +118,8 @@ export function registerWorkbenchSurfaces(): void {
   registerToolSurface("preview", () => (
     <LazyToolSurface label="Preview" load={loadPreviewSurface} />
   ));
-  registerToolSurface("problems", ProblemsSurface);
-  registerToolSurface("outline", OutlineSurface);
+  registerToolSurface("outline", () => (
+    <LazyToolSurface label="Outline" load={loadOutlineSurface} />
+  ));
   registered = true;
 }

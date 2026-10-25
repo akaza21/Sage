@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 
+import { posixGroupAlive } from "./process-liveness.mjs";
+
 const TASKKILL_TIMEOUT_MS = 2_000;
 const SETTLEMENT_POLL_MS = 25;
 
@@ -77,17 +79,6 @@ function signalPosixGroup(processGroupId, signal) {
     return true;
   } catch (error) {
     if (error.code === "ESRCH") return false;
-    throw error;
-  }
-}
-
-function posixGroupAlive(processGroupId) {
-  try {
-    process.kill(-processGroupId, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    if (error.code === "EPERM") return true;
     throw error;
   }
 }

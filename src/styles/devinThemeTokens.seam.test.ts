@@ -133,7 +133,7 @@ describe("Devin-dark theme tokens", () => {
       {
         path: "styles/editor-interactions.css",
         selector:
-          ".workbench--editor :where( .title-bar__search, .title-bar__mode, .activity-rail__button, .sidebar__heading button, .file-header__preview, .status-bar__button, .tab__activate, .tab__close, .tree__row, .root-tree__heading, .source-change, .source-change__action, .source-change__resolve, .source-change__confirmation-button, .source-branch__switch, .source-branch__delete, .source-branch-create button, .source-remote__action, .repository-commit__footer button, .workspace-search__details-toggle, .workspace-search__query-actions button, .workspace-search__input button, .workspace-search__result, .problem-card, .outline-card, .editor-find__button, .editor-welcome__actions button ):active:not(:disabled)",
+          ".workbench--editor :where( .title-bar__search, .title-bar__mode, .activity-rail__button, .sidebar__heading button, .file-header__preview, .status-bar__button, .tab__activate, .tab__close, .tree__row, .root-tree__heading, .source-change, .source-change__action, .source-change__resolve, .source-change__confirmation-button, .source-branch__switch, .source-branch__delete, .source-branch-create button, .source-remote__action, .repository-commit__footer button, .workspace-search__details-toggle, .workspace-search__query-actions button, .workspace-search__input button, .workspace-search__result, .outline-card, .editor-find__button, .editor-welcome__actions button ):active:not(:disabled)",
       },
       {
         path: "styles/editor-interactions.css",

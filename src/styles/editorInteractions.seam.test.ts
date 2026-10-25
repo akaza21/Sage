@@ -43,7 +43,6 @@ describe("Editor interaction-state seam", () => {
       ".repository-commit__footer button",
       ".workspace-search__details-toggle",
       ".workspace-search__query-actions button",
-      ".problem-card",
       ".outline-card",
       ".editor-welcome__actions button",
     ]) {

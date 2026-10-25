@@ -75,7 +75,6 @@ describe("Editor highlight language seam", () => {
       ".tab--active",
       ".tree__row--selected",
       ".explorer-action-menu__item",
-      ".problem-card",
       ".outline-card",
       ".source-change--selected",
       ".repository-commit__label",

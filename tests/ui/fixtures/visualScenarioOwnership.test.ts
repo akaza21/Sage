@@ -55,6 +55,7 @@ import {
   installVisualDirtyEditor,
   installVisualEmptyEditorCanvas,
   installVisualEmptyEditorTools,
+  installVisualLongOutlineSymbols,
   installVisualExplorerActionFixture,
   installVisualExplorerScrollFixture,
   installVisualExplorerUnavailableActionFixture,
@@ -489,6 +490,7 @@ describe("visual scenario surface ownership", () => {
       installVisualRepositoryLoading,
       installVisualRepositoryPrimaryState,
       installVisualEmptyEditorTools,
+      installVisualLongOutlineSymbols,
       installVisualEmptyEditorCanvas,
       installVisualDirtyEditor,
     ]) {

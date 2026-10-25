@@ -6,7 +6,6 @@
     .root-tree__heading,
     .source-change,
     .workspace-search__result,
-    .problem-card,
     .outline-card
   ) {
   transition:
@@ -56,7 +55,6 @@
     .workspace-search__query-actions button,
     .workspace-search__input button,
     .workspace-search__result,
-    .problem-card,
     .outline-card,
     .editor-find__button,
     .editor-welcome__actions button
