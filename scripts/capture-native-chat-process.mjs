@@ -139,10 +139,14 @@ export function launchOwned(build, fixture, roots, options, port) {
     SAGE_PROJECT_ROOT: roots.project,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
       "--remote-debugging-address=127.0.0.1 --remote-debugging-port=" + port,
-    [prefix + "_PATH"]: fixture.path,
-    [prefix + "_SHA256"]: fixture.sha256,
-    [prefix + "_BYTES"]: String(fixture.bytes),
-    [prefix + "_CASE"]: options.caseId,
+    ...(fixture
+      ? {
+          [prefix + "_PATH"]: fixture.path,
+          [prefix + "_SHA256"]: fixture.sha256,
+          [prefix + "_BYTES"]: String(fixture.bytes),
+          [prefix + "_CASE"]: options.caseId,
+        }
+      : {}),
   });
   const child = spawn(build.path, [], {
     cwd: roots.project,

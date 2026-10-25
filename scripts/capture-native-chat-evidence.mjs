@@ -116,6 +116,7 @@ export function persistCapture(
     error,
   },
   write = writeFileSync,
+  validate = validateProbe,
 ) {
   const created = [];
   const createFile = (file, bytes) => {
@@ -130,7 +131,7 @@ export function persistCapture(
   if (!error) {
     try {
       captured.probe.timing = { elapsedMs, steps: timing.steps };
-      validateProbe(captured.probe);
+      validate(captured.probe);
       createFile(output.png, captured.screenshot);
       const burst = captured.burst
         ? burstManifest(output.png, options, captured.burst)
@@ -179,13 +180,14 @@ export function persistCapture(
   write(output.probe, JSON.stringify(blocked, null, 2) + "\n");
   return { ...blocked, run };
 }
-export function stagingPaths(workspace, run, options) {
+export function stagingPaths(workspace, run, options, admit = null) {
   if (!RUN_ID.test(run)) throw new Error("capture-run");
-  requireNativeCase(options.harness, options.state);
+  if (admit) admit(options);
+  else requireNativeCase(options.harness, options.state);
   if (options.caseId !== options.harness + "-" + options.state)
     throw new Error("case-identity");
   const directory = path.resolve(workspace, "work", "native-captures", run);
-  return { directory, ...evidencePaths(directory, options) };
+  return { directory, ...evidencePaths(directory, options, admit) };
 }
 export function parsePromotionArgs(args) {
   if (args.length !== 9 || args[0] !== "--run" || args.at(-1) !== "--reviewed")

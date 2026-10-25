@@ -42,8 +42,8 @@ const workspace = path.resolve(
 function fail(code) {
   throw new Error(code);
 }
-export function parseRun(line) {
-  const match = RUN.exec(line.trim());
+export function parseRun(line, pattern = RUN) {
+  const match = pattern.exec(line.trim());
   if (!match) fail("batch-run");
   return { harness: match[1], state: match[2], width: Number(match[3]) };
 }
@@ -181,12 +181,17 @@ export async function preflight(root = workspace) {
 }
 
 /** Runs one capture and returns its last JSON line (bounded output). */
-export function runCapture({ harness, state, width }, root = workspace) {
+export function runCapture(
+  { harness, state, width },
+  root = workspace,
+  script = "scripts/capture-native-chat.mjs",
+  environment = {},
+) {
   return new Promise((resolve) => {
     const child = spawn(
       process.execPath,
       [
-        "scripts/capture-native-chat.mjs",
+        script,
         "--harness",
         harness,
         "--state",
@@ -194,7 +199,12 @@ export function runCapture({ harness, state, width }, root = workspace) {
         "--width",
         String(width),
       ],
-      { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+      {
+        cwd: root,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, ...environment },
+      },
     );
     let output = "";
     const take = (chunk) => {
@@ -233,11 +243,12 @@ export async function runBatch({
   append = (record) =>
     appendFileSync(ledger, JSON.stringify(record) + "\n", "utf8"),
   now = Date.now,
+  parse = parseRun,
 }) {
   if (runs.length > MAX_BATCH) fail("batch-size");
   const records = [];
   for (const line of runs) {
-    const run = parseRun(line);
+    const run = parse(line);
     const blocker = await check();
     if (blocker) return { aborted: blocker + " before " + key(run), records };
     const started = now();

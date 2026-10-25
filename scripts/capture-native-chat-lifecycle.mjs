@@ -127,11 +127,12 @@ export async function openOwnedCapture(
   options,
   workspace,
   record,
+  pageUrl,
 ) {
   const monitor = watchOwnedApp(child);
   try {
     const target = await monitor.run(() =>
-      discoverOwnedPage(port, deadline, child),
+      discoverOwnedPage(port, deadline, child, pageUrl),
     );
     record("cdp-target-ready");
     const bounds = JSON.parse(

@@ -113,6 +113,7 @@ async function runVctipProductionWrapperFixture({
       "windows-cargo-job.ps1",
       "WindowsCargoJob.psm1",
       "check-child-process.mjs",
+      "process-liveness.mjs",
       "check-windows-cargo-protocol.mjs",
       "check-windows-cargo-job.mjs",
     ]) {

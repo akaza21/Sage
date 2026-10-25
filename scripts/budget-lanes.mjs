@@ -53,6 +53,11 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "capture-native-chat-batch.node-test.mjs",
   "capture-native-chat-parity.node-test.mjs",
   "capture-native-chat-turn.node-test.mjs",
+  "capture-native-editor-catalog.node-test.mjs",
+  "capture-native-editor-dom.node-test.mjs",
+  "capture-native-editor-drive.node-test.mjs",
+  "capture-native-editor-capture.node-test.mjs",
+  "capture-native-editor-batch.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
@@ -466,6 +471,31 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat-turn.node-test.mjs",
     reason:
       "Portable simulated DOM readiness, bounded probe timestamp and acceptance-matrix admission checks; blocked-run coverage exits before launching an app.",
+  },
+  {
+    file: "capture-native-editor-catalog.node-test.mjs",
+    reason:
+      "Portable ED-0c Editor catalogue, truthful-absence and probe-identity checks; no native app or subprocess launch.",
+  },
+  {
+    file: "capture-native-editor-dom.node-test.mjs",
+    reason:
+      "Portable Editor state-predicate observation checks using existing jsdom; no native app, server or subprocess.",
+  },
+  {
+    file: "capture-native-editor-drive.node-test.mjs",
+    reason:
+      "Portable Editor drive sequencing with fake CDP over jsdom; no native app, server or subprocess.",
+  },
+  {
+    file: "capture-native-editor-capture.node-test.mjs",
+    reason:
+      "Portable Editor seed, frame verification and drift checks with fake CDP and temporary roots; never launches Sage.",
+  },
+  {
+    file: "capture-native-editor-batch.node-test.mjs",
+    reason:
+      "Portable Editor batch plan, run-line admission and resumable ledger checks with injected capture and preflight; no native app or subprocess launch.",
   },
   {
     file: "check-harness-trace-privacy.node-test.mjs",

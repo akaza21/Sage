@@ -100,8 +100,9 @@ export function parseArgs(args) {
     caseId: harness + "-" + state,
   };
 }
-export function evidencePaths(directory, options) {
-  if (
+export function evidencePaths(directory, options, admit = null) {
+  if (admit) admit(options);
+  else if (
     !STATES.has(options.state) ||
     !["codex", "claude", "pi"].includes(options.harness) ||
     ![1888, 720, 480].includes(options.width)
@@ -138,7 +139,7 @@ export function validateDimensions(dimensions, width, height, dpr) {
   )
     fail("viewport-mismatch");
 }
-export function validateProbe(probe) {
+export function validateProbe(probe, identity = validateChatIdentity) {
   keys(probe, [
     "schemaVersion",
     "caseId",
@@ -158,6 +159,13 @@ export function validateProbe(probe) {
     "timing",
     "verdict",
   ]);
+  if (probe.schemaVersion !== 1 || probe.verdict !== "captured")
+    fail("probe-identity");
+  identity(probe);
+  validateProbeBody(probe);
+  return probe;
+}
+function validateChatIdentity(probe) {
   if (
     probe.schemaVersion !== 1 ||
     probe.verdict !== "captured" ||
@@ -169,15 +177,20 @@ export function validateProbe(probe) {
     !IDENTIFIER.test(probe.turnId) ||
     !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-0.83.0"].includes(
       probe.protocol,
-    ) ||
-    typeof probe.webviewVersion !== "string" ||
-    !/^\d+(?:\.\d+){1,3}$/u.test(probe.webviewVersion)
+    )
   )
     fail("probe-identity");
   const harness = HARNESS[probe.caseId.split("-")[0]];
   if (
     probe.bindingId !== harness?.binding ||
     probe.protocol !== harness?.protocol
+  )
+    fail("probe-identity");
+}
+function validateProbeBody(probe) {
+  if (
+    typeof probe.webviewVersion !== "string" ||
+    !/^\d+(?:\.\d+){1,3}$/u.test(probe.webviewVersion)
   )
     fail("probe-identity");
   keys(probe.hashes, ["build", "fixture", "source", "servedAsset"]);
@@ -249,12 +262,16 @@ export function validateProbe(probe) {
   return probe;
 }
 /** Returns the single owned Sage page target, or null while none is present yet. */
-export function selectOwnedTarget(targets, port) {
+export function selectOwnedTarget(
+  targets,
+  port,
+  pageUrl = "http://127.0.0.1:1420/",
+) {
   if (!Array.isArray(targets) || targets.length > 32) fail("cdp-target");
   const owned = targets.filter(
     (target) =>
       target?.type === "page" &&
-      target.url === "http://127.0.0.1:1420/" &&
+      target.url === pageUrl &&
       /^Sage(?:$|\s)/u.test(target.title),
   );
   if (owned.length === 0) return null;
@@ -275,13 +292,13 @@ export function selectOwnedTarget(targets, port) {
  * Polls until exactly one owned page target appears. An unreachable or empty
  * listing waits; ambiguous or malformed owned targets and the deadline fail closed.
  */
-export async function discoverOwnedTarget(poll, port, deadline) {
+export async function discoverOwnedTarget(poll, port, deadline, pageUrl) {
   let selected = null;
   try {
     await waitForState(async () => {
       const targets = await poll();
       if (targets === undefined) return false;
-      selected = selectOwnedTarget(targets, port);
+      selected = selectOwnedTarget(targets, port, pageUrl);
       return selected !== null;
     }, deadline);
   } catch (error) {
@@ -291,7 +308,7 @@ export async function discoverOwnedTarget(poll, port, deadline) {
   return selected;
 }
 /** Polls the owned app's loopback /json listing while the app stays alive. */
-export function discoverOwnedPage(port, deadline, child) {
+export function discoverOwnedPage(port, deadline, child, pageUrl) {
   return discoverOwnedTarget(
     async () => {
       if (child.exitCode !== null || child.signalCode !== null || !child.pid)
@@ -310,6 +327,7 @@ export function discoverOwnedPage(port, deadline, child) {
     },
     port,
     deadline,
+    pageUrl,
   );
 }
 export function validatePng(bytes, viewport) {
