@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { isShortId } from "../domain/guards";
+
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import {
   sameAgentArtifactOwner,
@@ -44,22 +46,13 @@ interface AgentArtifactFollowStore {
   clear: () => void;
 }
 
-function validTabId(tabId: unknown): tabId is string {
-  return (
-    typeof tabId === "string" &&
-    tabId.length > 0 &&
-    tabId.length <= 512 &&
-    !tabId.includes("\0")
-  );
-}
-
 export function validAgentArtifactTarget(
   target: AgentArtifactTarget | null | undefined,
 ): target is AgentArtifactTarget {
   return Boolean(
     target &&
     (target.kind === "preview" ||
-      (target.kind === "tab" && validTabId(target.tabId))),
+      (target.kind === "tab" && isShortId(target.tabId))),
   );
 }
 
@@ -263,7 +256,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
       });
     },
     forgetTab: (tabId) => {
-      if (!validTabId(tabId)) return;
+      if (!isShortId(tabId)) return;
       const records = get().records.flatMap((record) => {
         const recent = record.recent.filter(
           (target) => target.kind !== "tab" || target.tabId !== tabId,

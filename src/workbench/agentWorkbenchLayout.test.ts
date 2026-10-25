@@ -68,7 +68,7 @@ describe("Agent navigation allocation", () => {
   it.each([
     [1041, 385, 280, 360],
     [1280, 385, 519, 360],
-    [1888, 385, 1020, 467],
+    [1888, 385, 850, 637],
   ])(
     "admits inline resources with a usable chat at %i",
     (viewportWidth, navigation, resource, chat) => {

@@ -15,7 +15,11 @@ import { agentChatMoveDestinations } from "./agentChatRail";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
-import { isSideChatId, useParentChatStatus } from "./sideChatState";
+import {
+  isSideChatId,
+  useParentChatStatus,
+  useRailChatId,
+} from "./sideChatState";
 import {
   ackSessionRailUnread,
   seenSessionRailFingerprint,
@@ -30,7 +34,7 @@ import {
   agentRailTrailingState,
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
-import { ProjectChatRailGlyph } from "./ProjectChatRailGlyph";
+import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 
@@ -79,7 +83,10 @@ export function ProjectChatNavigation({
   const storeArchivedChats = useWorkbenchStore((state) => state.archivedChats);
   const archivedChats = selected ? storeArchivedChats : (archived ?? []);
   const archivedListId = `archived-chat-list-${projectId}`;
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  // A side chat never lists; its parent keeps the highlight (Codex s2/f0244).
+  const activeTabId = useRailChatId(
+    useWorkbenchStore((state) => state.activeTabId),
+  );
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
@@ -294,26 +301,13 @@ export function ProjectChatNavigation({
               </span>
             ) : null}
             <div className="project-chat__trailing">
-              {focused && trailingState && trailingState.kind !== "time" ? (
-                <span
-                  className={`project-chat__state project-chat__status-chip project-chat__status-chip--${trailingState.kind}`}
-                >
-                  {trailingState.kind === "working" ||
-                  trailingState.kind === "recovering" ? (
-                    <span
-                      className="project-chat__working project-chat__working--status"
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  {trailingState.label}
-                </span>
-              ) : (
-                <ProjectChatRailGlyph
-                  state={trailingState}
-                  dateTime={updatedDateTime}
-                  relative={relativeTimeSuffix}
-                />
-              )}
+              <ProjectChatTrailingState
+                awaitingApproval={Boolean(approvalLabel)}
+                focused={focused}
+                state={trailingState}
+                dateTime={updatedDateTime}
+                relative={relativeTimeSuffix}
+              />
               {showActions ? (
                 <ProjectChatActionMenu
                   chatTitle={displayTitle}

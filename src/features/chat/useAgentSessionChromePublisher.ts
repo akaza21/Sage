@@ -1,17 +1,21 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 import type { AgentSessionChrome } from "../../app/agentChatOwner";
+import { useSideChatState } from "../../workbench/sideChatState";
 
 type Published = Omit<AgentSessionChrome, "chatId" | "actions">;
 
 /**
  * Publishes the focused chat's session chrome to the Agent header and keeps
- * the header's session actions pointed at the latest callbacks.
+ * the header's session actions pointed at the latest callbacks. A parent
+ * whose side chat holds focus keeps publishing its own live chrome, so its
+ * header cell never mixes its status with another Chat's session.
  */
 export function useAgentSessionChromePublisher(
-  publish: ((chrome: AgentSessionChrome | null) => void) | null,
+  publish: ((chatId: string, chrome: AgentSessionChrome | null) => void) | null,
   chatId: string | undefined,
-  focused: boolean,
+  /** The pinned Agent owner: the focused Chat. */
+  focusedChatId: string | null,
   chrome: Published,
   actions: { closeSession: () => void; endSession: () => void },
   composerRef: RefObject<HTMLTextAreaElement | null>,
@@ -24,11 +28,17 @@ export function useAgentSessionChromePublisher(
   useEffect(() => {
     Object.assign(sessionActions.current, { closeSession, endSession });
   }, [closeSession, endSession]);
+  const heldBySide = useSideChatState((state) =>
+    state.sides.some(
+      (side) => side.parentChatId === chatId && side.id === focusedChatId,
+    ),
+  );
+  const shown = focusedChatId === chatId || heldBySide;
   const { harnessStatus, canCloseSession, canEndSession, busy } = chrome;
   const { acpPage, messages } = chrome;
   useEffect(() => {
-    if (!publish || !chatId || !focused) return;
-    publish({
+    if (!publish || !chatId || !shown) return;
+    publish(chatId, {
       chatId,
       harnessStatus,
       canCloseSession,
@@ -38,11 +48,11 @@ export function useAgentSessionChromePublisher(
       messages,
       actions: sessionActions,
     });
-    return () => publish(null);
+    return () => publish(chatId, null);
   }, [
     publish,
     chatId,
-    focused,
+    shown,
     harnessStatus,
     canCloseSession,
     canEndSession,

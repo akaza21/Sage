@@ -7,6 +7,8 @@ import { jumpToChatTurn, type TurnListHost } from "./chatScroll";
 import { useChatViewport } from "./useChatViewport";
 import { useTurnListNavigation } from "./useTurnListNavigation";
 
+export { AcpHistoryNotices } from "./AcpHistoryNotices";
+
 export interface ChatNavigationProps {
   turns: readonly TurnProjection[];
   /** The virtual list's host; null while the Chat renders every Turn. */

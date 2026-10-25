@@ -35,7 +35,7 @@ describe("Agent motion style seams", () => {
       /\.acp-tool-rollup > summary\s*\{[^}]*transition:\s*color var\(--motion-duration-fast\) ease;/s,
     );
     expect(transcript).toMatch(
-      /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*opacity var\(--motion-duration-fast\) ease;/s,
+      /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*opacity var\(--motion-duration-fast\) ease,\s*transform var\(--motion-duration-chevron\) ease-out;/s,
     );
     expect(transcript).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.chat-transcript-actions[\s\S]*animation:\s*none;/,
@@ -212,7 +212,7 @@ describe("Codex live motion (parity spec section 10)", () => {
       /@keyframes sage-row-in\s*\{\s*from\s*\{\s*opacity:\s*0\.3;\s*\}\s*\}/,
     );
     expect(transcript).toMatch(
-      /\.chat-transcript-work\[open\]\s*\+\s*\.chat-transcript-work__groups\s*>\s*:not\(\.acp-tool-rollup\)\s*\{[^}]*animation:\s*sage-row-in var\(--motion-duration-row\) ease-out both;[^}]*animation-delay:\s*calc\(var\(--sage-row, 5\) \* var\(--motion-stagger\)\);/s,
+      /\.chat-transcript-work\[open\]\s*\+\s*\.chat-transcript-work__groups\s*>\s*\*\s*\{[^}]*animation:\s*sage-row-in var\(--motion-duration-row\) ease-out both;[^}]*animation-delay:\s*calc\(var\(--sage-row, 5\) \* var\(--motion-stagger\)\);/s,
     );
     expect(activity).toMatch(
       /\.acp-tool-rollup__items > \*\s*\{[^}]*animation:\s*sage-row-in var\(--motion-duration-row\) ease-out both;[^}]*animation-delay:\s*calc\(var\(--sage-row, 5\) \* var\(--motion-stagger\)\);/s,
@@ -235,7 +235,7 @@ describe("Codex live motion (parity spec section 10)", () => {
       // Same selector as the motion rule, so the fallback wins on specificity.
       [
         transcript,
-        "\\.chat-transcript-work\\[open\\]\\s*\\+\\s*\\.chat-transcript-work__groups\\s*>\\s*:not\\(\\.acp-tool-rollup\\)",
+        "\\.chat-transcript-work\\[open\\]\\s*\\+\\s*\\.chat-transcript-work__groups\\s*>\\s*\\*",
       ],
       [activity, "\\.acp-tool-rollup__items > \\*"],
     ] as const)

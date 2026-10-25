@@ -5,6 +5,8 @@ import {
   boundedIdentifier,
   decimalU64Counter,
   isRecord,
+  isShortId,
+  safeOrdinal,
 } from "./guards";
 
 describe("shared domain guards", () => {
@@ -33,5 +35,25 @@ describe("shared domain guards", () => {
       decimalU64Counter("9223372036854775808", { allowZero: false }),
     ).toBeNull();
     expect(decimalU64Counter("01", { allowZero: true })).toBeNull();
+  });
+});
+
+describe("shared short-id and ordinal guards", () => {
+  it("admits a non-empty NUL-free string of at most 512 units", () => {
+    expect(isShortId("chat-1")).toBe(true);
+    expect(isShortId("a".repeat(512))).toBe(true);
+    expect(isShortId("a".repeat(513))).toBe(false);
+    expect(isShortId("")).toBe(false);
+    expect(isShortId("a\0b")).toBe(false);
+    expect(isShortId(7)).toBe(false);
+  });
+
+  it("returns non-negative safe integers and null otherwise", () => {
+    expect(safeOrdinal(0)).toBe(0);
+    expect(safeOrdinal(Number.MAX_SAFE_INTEGER)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(safeOrdinal(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
+    expect(safeOrdinal(-1)).toBeNull();
+    expect(safeOrdinal(1.5)).toBeNull();
+    expect(safeOrdinal("1")).toBeNull();
   });
 });

@@ -16,8 +16,6 @@ interface FocusEnvelope {
   activityId: string;
 }
 
-const utf8Bytes = utf8ByteLength;
-
 function readEnvelope(): FocusEnvelope | null {
   let raw: string | null;
   try {
@@ -26,7 +24,7 @@ function readEnvelope(): FocusEnvelope | null {
   } catch {
     return null;
   }
-  if (!raw || utf8Bytes(raw) > maximumEnvelopeBytes) return null;
+  if (!raw || utf8ByteLength(raw) > maximumEnvelopeBytes) return null;
   try {
     const value = JSON.parse(raw) as unknown;
     if (!value || typeof value !== "object" || Array.isArray(value))
@@ -52,7 +50,7 @@ function readEnvelope(): FocusEnvelope | null {
       !/^[1-9][0-9]{0,19}$/.test(record.projectionRevision) ||
       [record.projectId, record.chatId, record.sageId, record.activityId].some(
         (field) =>
-          field.length === 0 || utf8Bytes(field) > maximumIdentityBytes,
+          field.length === 0 || utf8ByteLength(field) > maximumIdentityBytes,
       )
     ) {
       return null;
@@ -80,7 +78,7 @@ function writeEnvelope(surface: HTMLElement, page: AcpChatPage) {
     activityId,
   };
   const raw = JSON.stringify(envelope);
-  if (utf8Bytes(raw) > maximumEnvelopeBytes) return;
+  if (utf8ByteLength(raw) > maximumEnvelopeBytes) return;
   try {
     sessionStorage.setItem(storageKey, raw);
   } catch {

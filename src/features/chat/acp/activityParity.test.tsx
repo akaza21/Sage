@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { PrimaryActivities } from "./PrimaryActivities";
+import type { ToolActivityRollup } from "./ToolActivityRollupView";
 import { parityTool } from "./activityParity.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
@@ -14,6 +15,27 @@ import { projectTaskResources } from "../../../workbench/agentArtifactTabPresent
 import { ToolItem } from "./ToolItem";
 
 afterEach(cleanup);
+
+it("offers no dead expandDetails prop on Worked rows", () => {
+  // Type-level: tsc fails while either component still accepts the prop.
+  const { container } = render(
+    <PrimaryActivities
+      items={[]}
+      interactive
+      renderItem={() => null}
+      // @ts-expect-error expandDetails was removed: nothing passed it.
+      expandDetails
+    />,
+  );
+  expect(container).toBeEmptyDOMElement();
+  type RollupProps = Parameters<typeof ToolActivityRollup>[0];
+  const rollupProps: Omit<RollupProps, "rollup"> = {
+    interactive: true,
+    // @ts-expect-error expandDetails was removed: nothing passed it.
+    expandDetails: true,
+  };
+  expect(rollupProps.interactive).toBe(true);
+});
 
 it("keeps execute members of mixed Worked activity behind individual Ran rows", () => {
   const { container } = render(
@@ -24,11 +46,14 @@ it("keeps execute members of mixed Worked activity behind individual Ran rows", 
         parityTool("execute", 3),
       ]}
       interactive
-      expandDetails
       renderItem={() => null}
     />,
   );
   const rollup = container.querySelector("details")!;
+  // A Worked rollup opens only when the user opens it.
+  expect(rollup).not.toHaveAttribute("open");
+  rollup.open = true;
+  fireEvent(rollup, new Event("toggle"));
   expect(rollup).toHaveAttribute("open");
   expect(rollup.querySelector("summary")).toHaveTextContent(
     "Read a file, ran commands",
@@ -235,7 +260,7 @@ it.each(["execute", "read"] as const)(
   },
 );
 
-it("expanding Worked opens the read group as one collapsed row per file", () => {
+it("expanding Worked shows the read group closed; opening it lists one row per file", () => {
   const kind = "read";
   const projection = page("completed");
   projection.turns[0].items = [
@@ -264,9 +289,11 @@ it("expanding Worked opens the read group as one collapsed row per file", () => 
   const work = screen.getByText(/^Worked for /).closest("details")!;
   work.open = true;
   fireEvent(work, new Event("toggle"));
-  expect(work.nextElementSibling!.querySelector("details")).toHaveAttribute(
-    "open",
-  );
+  const group = work.nextElementSibling!.querySelector("details")!;
+  expect(group).not.toHaveAttribute("open");
+  expect(rowLabels()).toEqual([]);
+  group.open = true;
+  fireEvent(group, new Event("toggle"));
   expect(rowLabels()).toEqual([
     "Read example-1.ts",
     "Read example-2.ts",
@@ -276,9 +303,10 @@ it("expanding Worked opens the read group as one collapsed row per file", () => 
   work.open = false;
   fireEvent(work, new Event("toggle"));
   expect(rowLabels()).toEqual([]);
+  // Reopening Worked shows the group closed again (Codex s2/f0012-f0015).
   work.open = true;
   fireEvent(work, new Event("toggle"));
-  expect(rowLabels()).toHaveLength(3);
+  expect(rowLabels()).toEqual([]);
 });
 
 it("expanding Worked lists three collapsed per-command Ran rows", () => {
@@ -304,6 +332,10 @@ it("expanding Worked lists three collapsed per-command Ran rows", () => {
   expect(screen.queryByText("Shell")).toBeNull();
   work.open = true;
   fireEvent(work, new Event("toggle"));
+  const group = work.nextElementSibling!.querySelector("details")!;
+  expect(group).not.toHaveAttribute("open");
+  group.open = true;
+  fireEvent(group, new Event("toggle"));
   const commands =
     work.nextElementSibling!.querySelectorAll<HTMLDetailsElement>(
       ".acp-tool-rollup__items > details",

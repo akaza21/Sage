@@ -106,24 +106,79 @@ describe("integration results", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows a web search query when the wire carried one, then its results", () => {
+  it("shows a web result only as a plaintext code block, with no query line (Codex s5/f0405)", () => {
     const { container } = render(
       <ToolItem
         compact
         item={tool(
           { kind: "webSearch", label: "Web search" },
           "completed",
-          "Node.js node:test documentation",
+          '{"url": "https://nodejs.org/api/test.html"}',
           "Node.js node:test documentation",
         )}
       />,
     );
-    expect(container.querySelector("p")).toHaveTextContent(
-      "Node.js node:test documentation",
-    );
+    expect(container.querySelector("p")).toBeNull();
+    expect(screen.queryByText("Node.js node:test documentation")).toBeNull();
+    const result = container.querySelector(".acp-tool-result");
     expect(
-      container.querySelector(".acp-code-block__language"),
+      result?.querySelector(".acp-code-block__language"),
     ).toHaveTextContent("plaintext");
+    expect(result).toHaveTextContent("https://nodejs.org/api/test.html");
+  });
+
+  it("shows a web search's query in the plaintext block when no result came back", () => {
+    const { container } = render(
+      <ToolItem
+        compact
+        item={tool(
+          { kind: "webSearch", label: "Web search" },
+          "completed",
+          null,
+          "Node.js node:test documentation",
+        )}
+      />,
+    );
+    expect(container.querySelector("p")).toBeNull();
+    const result = container.querySelector(".acp-tool-result");
+    expect(
+      result?.querySelector(".acp-code-block__language"),
+    ).toHaveTextContent("plaintext");
+    expect(result).toHaveTextContent("Node.js node:test documentation");
+  });
+
+  it("never shows a failed web search's query as an error alert", () => {
+    const { container } = render(
+      <ToolItem
+        compact
+        item={tool(
+          { kind: "webSearch", label: "Web search" },
+          "failed",
+          null,
+          "Node.js node:test documentation",
+        )}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(container.querySelector(".acp-tool-error")).toBeNull();
+    expect(screen.queryByText("Node.js node:test documentation")).toBeNull();
+  });
+
+  it("still shows a failed web search's harness message as an alert", () => {
+    render(
+      <ToolItem
+        compact
+        item={tool(
+          { kind: "webSearch", label: "Web search" },
+          "failed",
+          "search backend unavailable",
+          "Node.js node:test documentation",
+        )}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toBe(
+      "search backend unavailable",
+    );
   });
 });
 

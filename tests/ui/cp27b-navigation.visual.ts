@@ -11,7 +11,7 @@ const geometries = [
     height: 1096,
     navigation: 385,
     closedChat: 1495,
-    openChat: 467,
+    openChat: 637,
   },
   {
     width: 1280,

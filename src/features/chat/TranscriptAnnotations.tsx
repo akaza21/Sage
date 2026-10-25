@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { attachedContextKey } from "../../domain/attachedContext";
 import type { TranscriptQuoteContext } from "../../domain/transcriptQuote";
 import { quoteAnswer, quoteRangeIn } from "./transcriptSelection";
+import { annotationBadgeOrigin } from "./annotationGeometry";
 
 type HighlightWindow = Window & {
   Highlight?: new (...ranges: Range[]) => unknown;
@@ -151,14 +152,7 @@ export function TranscriptAnnotations({
         if (!last) return [];
         if (key === editingKey) ranges.push(range);
         return last.top >= bounds.top && last.top < bounds.bottom
-          ? [
-              {
-                quote,
-                number: index + 1,
-                left: last.right - 12,
-                top: last.top - 26,
-              },
-            ]
+          ? [{ quote, number: index + 1, ...annotationBadgeOrigin(last) }]
           : [];
       });
       relookup = false;

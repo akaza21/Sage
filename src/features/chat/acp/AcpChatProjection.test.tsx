@@ -52,8 +52,11 @@ function toggleWorked(work: Element | null | undefined, open = true) {
   fireEvent(disclosure, new Event("toggle"));
 }
 
+/** Worked's rows; a closed Worked has none mounted (Codex s2/f0011). */
 function workedGroups(work: Element | null | undefined) {
-  return work?.matches("details") ? work.nextElementSibling : work;
+  if (!work?.matches("details")) return work;
+  const next = work.nextElementSibling;
+  return next?.matches(".chat-transcript-work__groups") ? next : null;
 }
 
 const browseOwner = {
@@ -410,9 +413,6 @@ describe("AcpChatProjection", () => {
     const changedFiles = screen.getByRole("region", {
       name: "Files edited in this chat",
     });
-    const collapsedRollup =
-      turn?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
-
     expect(day).toBeNull();
     expect(turn?.previousElementSibling).toHaveClass("chat-transcript-day");
     expect(prompt).not.toBeNull();
@@ -429,15 +429,18 @@ describe("AcpChatProjection", () => {
       answer!.compareDocumentPosition(changedFiles) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
+    // A closed Worked shows no rows (Codex s2/f0011).
+    expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(0);
     expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
-    expect(within(turn!).getAllByText("Ran tests · npm test")).toHaveLength(1);
+    expect(within(turn!).queryByText("Ran tests · npm test")).toBeNull();
     expect(work).not.toHaveAttribute("open");
-    expect(collapsedRollup).not.toBeNull();
-    expect(collapsedRollup).not.toHaveAttribute("open");
 
     toggleWorked(work);
     expect(work).toHaveAttribute("open");
+    expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
+    expect(container.querySelector(".acp-tool-rollup")).not.toHaveAttribute(
+      "open",
+    );
     const rollup =
       workedGroups(work)?.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(
@@ -591,20 +594,21 @@ describe("AcpChatProjection", () => {
     expect(work).not.toBeNull();
     expect(work).not.toHaveAttribute("open");
     toggleWorked(work);
-    expect(
+    const labels = () =>
       [...workedGroups(work)!.querySelectorAll(".acp-tool-rollup__label")].map(
         (label) => label.textContent,
-      ),
-    ).toEqual([
-      "Ran a command, read a file",
-      "Ran npm run check",
-      "Read main.ts",
-    ]);
+      );
+    expect(labels()).toEqual(["Ran a command, read a file"]);
     const rollup =
       container.querySelector<HTMLDetailsElement>(".acp-tool-rollup");
     expect(rollup).not.toBeNull();
     rollup!.open = true;
     fireEvent(rollup!, new Event("toggle"));
+    expect(labels()).toEqual([
+      "Ran a command, read a file",
+      "Ran npm run check",
+      "Read main.ts",
+    ]);
     for (const member of rollup!.querySelectorAll<HTMLDetailsElement>(
       ".acp-tool-rollup__items > details",
     )) {
@@ -850,7 +854,7 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toHaveAttribute("open");
-    expect(workedGroups(work)?.querySelector(".acp-markdown")).toBeNull();
+    expect(workedGroups(work)).toBeNull();
     toggleWorked(work);
     expect(
       workedGroups(work)?.querySelector(".acp-markdown"),
@@ -2092,6 +2096,11 @@ describe("AcpChatProjection", () => {
     )!;
     worked.open = true;
     fireEvent(worked, new Event("toggle"));
+    const group = document.querySelector<HTMLDetailsElement>(
+      '.acp-tool-rollup[data-activity-kind="mixed"]',
+    )!;
+    group.open = true;
+    fireEvent(group, new Event("toggle"));
 
     const readDisclosure = document.querySelector<HTMLDetailsElement>(
       '.acp-tool-rollup[data-activity-kind="read"]',

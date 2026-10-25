@@ -29,7 +29,9 @@
 }
 
 .chat-selection-popover button {
-  padding: 0 8px;
+  /* Codex s2/f0093 measures 7 px (172x29). 8 px overflows the 480 px answer
+     column (B5), so this is the spacing seam's one listed exception. */
+  padding: 0 7px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -69,6 +71,9 @@
   font-size: 12px;
   font-weight: 600;
   line-height: 24px;
+  box-shadow:
+    inset 0 0 0 1px var(--chat-annotation-badge-rim),
+    0 0 0 1px var(--color-canvas);
   cursor: pointer;
 }
 
@@ -76,7 +81,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(270px, calc(100vw - 16px));
   height: 44px;
   box-sizing: border-box;
   padding: 0 8px 0 16px;
@@ -197,6 +201,12 @@
   );
 }
 
+/* Codex s2/f0095, f0113: the comment-square icon is outlined and muted. */
+.annotation-chip__trigger svg {
+  flex: none;
+  color: var(--chat-annotation-muted);
+}
+
 .annotation-chip--sent {
   justify-self: end;
   margin-bottom: calc(8px - var(--space-3));
@@ -296,16 +306,12 @@
   height: 28px;
   box-sizing: border-box;
   padding: 0 4px 0 8px;
-  gap: 8px;
+  gap: 4px;
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-sm);
   background: var(--color-plane-raised);
   color: var(--color-status-foreground);
   font-size: 13px;
-}
-
-.agent-chat-panes:not(.agent-chat-panes--split) .side-chat-tab {
-  display: flex;
 }
 
 .side-chat-tab .agent-chat-pane__title {
@@ -356,7 +362,8 @@
 }
 
 .side-chat-home svg {
-  color: var(--color-text-muted);
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
 }
 
 .side-chat-home strong {
@@ -367,34 +374,32 @@
 
 .side-chat-home p {
   margin: 0;
-  color: var(--color-text-muted);
+  color: var(--color-text-primary);
   font-size: 12px;
 }
 
 .close-side-chat-dialog {
   width: min(378px, calc(100vw - 32px));
   box-sizing: border-box;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-side-chat-dialog);
   background: var(--color-plane-raised);
   color: var(--color-status-foreground);
 }
 
-.close-side-chat-dialog::backdrop {
-  background: var(--chat-annotation-scrim);
-}
-
+/* Codex s2/f0352 rhythm: about 170 px tall with a two-line body. */
 .close-side-chat-dialog h2 {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   font-size: 18px;
   font-weight: 600;
 }
 
 .close-side-chat-dialog p {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   color: var(--color-text-muted);
   font-size: 13px;
+  line-height: 1.4;
 }
 
 .close-side-chat-dialog label {
@@ -405,8 +410,9 @@
 }
 
 .close-side-chat-dialog input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+  /* A 14 px glyph-sized box (B4), the small icon size. */
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
   margin: 0;
   border-radius: var(--radius-annotation-checkbox);
 }
@@ -415,15 +421,19 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .close-side-chat-dialog .dirty-dialog__actions .button {
   height: 32px;
+  border-color: transparent;
   border-radius: var(--radius-md);
+  background: var(--chat-dialog-cancel-fill);
+  color: var(--color-status-foreground);
+  font-size: 13px;
 }
 
-.close-side-chat-dialog .button--danger {
+.close-side-chat-dialog .dirty-dialog__actions .button--danger {
   background: var(--chat-annotation-danger-bg);
   color: var(--chat-annotation-danger);
 }

@@ -16,7 +16,8 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
   // Expanded rollups nest per-command rows; measure the outer summary.
   const row = page.locator(".acp-tool-rollup").first();
   await revealWorkedContent(row);
-  await expect(row).toHaveAttribute("open", "");
+  // Worked reveals its rows closed (Codex s2/f0012-f0015).
+  await expect(row).not.toHaveAttribute("open", "");
   const label = row.locator(":scope > summary .acp-tool-rollup__label");
   await expect(label).toHaveText("Ran commands");
   const typography = await label.evaluate((node) => {

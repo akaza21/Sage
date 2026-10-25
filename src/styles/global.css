@@ -12,6 +12,8 @@
   --chat-annotation-danger: #ff6764;
   --chat-annotation-danger-bg: #403030;
   --chat-annotation-scrim: rgb(0 0 0 / 12%);
+  --chat-annotation-badge-rim: rgb(255 255 255 / 75%);
+  --chat-dialog-cancel-fill: #353535;
   --chat-annotation-shadow: 0 4px 18px #0004;
   --radius-annotation-badge: 12px 12px 12px 3px;
   --radius-annotation-comment: 22px;

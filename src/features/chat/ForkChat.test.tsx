@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
@@ -17,6 +18,26 @@ import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
 
 const getGoalChatPage = vi.hoisted(() => vi.fn());
+const fakeCommit = vi.hoisted(() => ({
+  next: null as null | (() => Promise<boolean>),
+}));
+const inheritComposerModel = vi.hoisted(() => vi.fn());
+vi.mock("../../app/chatTransitions", async (importOriginal) => {
+  const actual = (await importOriginal()) as {
+    commitIdentityChatResult: (input: unknown) => Promise<boolean>;
+  };
+  return {
+    ...actual,
+    commitIdentityChatResult: (input: unknown) =>
+      fakeCommit.next
+        ? fakeCommit.next()
+        : actual.commitIdentityChatResult(input),
+  };
+});
+vi.mock("./inheritedComposerModel", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
+  inheritComposerModel,
+}));
 vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   getGoalChatPage,
@@ -41,6 +62,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  fakeCommit.next = null;
+  inheritComposerModel.mockReset();
 });
 
 function forkablePage(
@@ -146,6 +169,49 @@ describe("Fork chat from here", () => {
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => finish(null));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("opens on the 12% scrim with its first option focused but not pre-filled (Codex s2/f0055)", () => {
+    render(
+      <ForkChatDialog
+        chatId="chat-1"
+        turnId="turn-1"
+        onClose={() => {}}
+        fork={async () => null}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("dialog--scrim");
+    const option = screen.getByRole("menuitem", {
+      name: /Fork in this workspace/,
+    });
+    expect(option).toHaveFocus();
+    expect(option).toHaveAttribute("data-fresh", "true");
+    fireEvent.keyDown(option, { key: "ArrowDown" });
+    expect(option).not.toHaveAttribute("data-fresh");
+  });
+
+  it("gives the committed fork the parent's confirmed model and effort (Codex s2/f0066)", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-1" } as never,
+      tabs: [
+        { id: "chat-1", kind: "chat", title: "Chat: X", position: 0 },
+      ] as never,
+      activeTabId: "chat-1",
+      projectTransitioning: false,
+    });
+    const parentConfig = { sageAgentSessionId: "parent-session" };
+    acpProjectionStoreFor("chat-1").setState({
+      page: { ...page("completed"), sessionConfig: parentConfig } as never,
+    });
+    fakeCommit.next = async () => {
+      useWorkbenchStore.setState({ activeTabId: "fork-1" });
+      return true;
+    };
+    await expect(
+      forkChat({ chatId: "chat-1", turnId: "turn-1" }),
+    ).resolves.toBe(null);
+    expect(inheritComposerModel).toHaveBeenCalledWith("fork-1", parentConfig);
   });
 
   it("reports a failed fork inline and stays open for another try", async () => {

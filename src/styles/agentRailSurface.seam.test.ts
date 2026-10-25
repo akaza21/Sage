@@ -26,7 +26,8 @@ describe("Agent rail stylesheet seam", () => {
 
   it("reuses the shared menu classes without nesting a select", async () => {
     const [component, surfaceCss] = await Promise.all([
-      readFile(resolve("src/workbench/AgentRailFilterMenu.tsx"), "utf8"),
+      // The open menu is its own lazy chunk (AgentRailFilterOptions.tsx).
+      readFile(resolve("src/workbench/AgentRailFilterOptions.tsx"), "utf8"),
       readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
     ]);
 
@@ -71,10 +72,12 @@ describe("Agent rail stylesheet seam", () => {
   });
 
   it("keeps the rail filter trigger and menu actions on consistent targets", async () => {
-    const [component, surfaceCss] = await Promise.all([
+    const [trigger, menu, surfaceCss] = await Promise.all([
       readFile(resolve("src/workbench/AgentRailFilterMenu.tsx"), "utf8"),
+      readFile(resolve("src/workbench/AgentRailFilterOptions.tsx"), "utf8"),
       readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
     ]);
+    const component = trigger + menu;
 
     expect(surfaceCss).toMatch(
       /\.agent-rail-filter__trigger\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*var\(--control-height-compact\);/s,

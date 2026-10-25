@@ -189,13 +189,10 @@
 }
 
 /*
- * Worked open (Codex s2/f0011-f0015): the rows that mount on expand fade in
- * top to bottom. Tool rows already show while collapsed, so they stay put.
- * Collapse is instant (s2/f0040).
+ * Worked open (Codex s2/f0011-f0015): the rows, which mount on expand, fade
+ * in top to bottom. Collapse is instant (s2/f0040).
  */
-.chat-transcript-work[open]
-  + .chat-transcript-work__groups
-  > :not(.acp-tool-rollup) {
+.chat-transcript-work[open] + .chat-transcript-work__groups > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
 }
@@ -258,7 +255,17 @@
 
 .chat-transcript-work__groups .acp-tool-rollup__chevron {
   opacity: 0;
-  transition: opacity var(--motion-duration-fast) ease;
+  transition:
+    opacity var(--motion-duration-fast) ease,
+    transform var(--motion-duration-chevron) ease-out;
+}
+
+/* Nested rows pitch 24 px (Codex s5/f0390: about 22 px). */
+.chat-transcript-work__groups
+  .acp-tool-rollup__items
+  .acp-tool-rollup
+  > summary {
+  min-height: 20px;
 }
 
 .chat-transcript-work__groups .acp-tool-rollup > summary:hover,
@@ -286,7 +293,9 @@
   display: flex;
   min-height: 28px;
   align-items: center;
-  gap: var(--space-1);
+  /* Codex pitches its ~22 px buttons 24 px apart (s2/f0053); on the 4 px
+   * scale they are 24 px buttons with no gap. */
+  gap: 0;
   margin-top: var(--space-2);
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
@@ -294,10 +303,11 @@
 .chat-transcript-actions > button {
   position: relative;
   display: inline-flex;
-  min-height: 28px;
+  width: 24px;
+  height: 24px;
   align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
+  justify-content: center;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
@@ -311,6 +321,27 @@
   border-color: var(--color-border-subtle);
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+/* The open "…" keeps a pressed fill under its menu (s2/f0053). */
+.chat-transcript-actions > button[aria-expanded="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+/* The answer's own time, muted, on row hover or focus (s2/f0093). */
+.chat-transcript-actions__time {
+  margin-left: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) ease;
+}
+
+.chat-transcript-actions:hover > .chat-transcript-actions__time,
+.chat-transcript-actions:focus-within > .chat-transcript-actions__time {
+  opacity: 1;
 }
 
 .chat-transcript-actions > button:focus-visible,
@@ -352,23 +383,23 @@
     animation: none;
   }
 
+  .chat-transcript-actions__time {
+    transition: none;
+  }
+
   .chat-transcript-work > summary,
   .chat-transcript-work__chevron,
   .chat-transcript-work__groups .acp-tool-rollup__chevron {
     transition: none;
   }
 
-  .chat-transcript-work[open]
-    + .chat-transcript-work__groups
-    > :not(.acp-tool-rollup) {
+  .chat-transcript-work[open] + .chat-transcript-work__groups > * {
     animation: none;
   }
 }
 
 @media (forced-colors: active) {
-  .chat-transcript-work[open]
-    + .chat-transcript-work__groups
-    > :not(.acp-tool-rollup) {
+  .chat-transcript-work[open] + .chat-transcript-work__groups > * {
     animation: none;
   }
 

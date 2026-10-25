@@ -953,7 +953,7 @@ describe("compact Workbench project tools", () => {
     });
     fireEvent(window, new Event("resize"));
     expect(rail).toHaveAttribute("aria-valuenow", "393");
-    expect(artifact).toHaveAttribute("aria-valuenow", "903");
+    expect(artifact).toHaveAttribute("aria-valuenow", "752");
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -980,7 +980,7 @@ describe("compact Workbench project tools", () => {
     const artifact = screen.getByRole("separator", {
       name: "Resize files and preview",
     });
-    expect(artifact).toHaveAttribute("aria-valuenow", "903");
+    expect(artifact).toHaveAttribute("aria-valuenow", "752");
     fireEvent.keyDown(artifact, { key: "End" });
     expect(artifact).toHaveAttribute("aria-valuenow", "1116");
     screen

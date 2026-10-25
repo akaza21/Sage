@@ -42,6 +42,27 @@ export function rememberedChatSurfacePreamble(name, onInvalid) {
   `;
 }
 
+/**
+ * Focuses a remembered Chat the way a user does: the only pane carrying its
+ * `data-chat-id` takes focus through its composer, which the pane's focus
+ * handler turns into the focused pane. Agent panes have no focus button.
+ */
+export function focusRememberedChatExpression(name, onInvalid) {
+  return `
+    const remembered=window.__hr6Chats?.[${JSON.stringify(name)}];
+    if(!remembered||!remembered.isConnected){${onInvalid}}
+    const chatId=remembered.getAttribute('data-chat-id');
+    if(!chatId){${onInvalid}}
+    const find=${boundedMatchProjection(2)};
+    const panes=find(document.documentElement,'section.agent-chat-pane[data-chat-id='+JSON.stringify(chatId)+']',false,${JSON.stringify(TURN_SCOPE)});
+    if(panes.exceeded!==false||panes.nodes.length!==1||panes.nodes[0]!==remembered){${onInvalid}}
+    const prompts=find(remembered,'textarea[aria-label="Message agent"]',false,${JSON.stringify(TURN_SCOPE)});
+    if(prompts.exceeded!==false||prompts.nodes.length!==1){${onInvalid}}
+    prompts.nodes[0].focus();
+    return true;
+  `;
+}
+
 export function focusedRememberedChatSurfacePreamble(name, onInvalid) {
   return `
     ${rememberedChatSurfacePreamble(name, onInvalid)}

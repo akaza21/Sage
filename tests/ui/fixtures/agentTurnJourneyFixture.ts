@@ -168,6 +168,7 @@ export async function runJourneyEvent(
       state.pages.get(id)!,
       event.state,
       event.assistantText,
+      event.streamDelta,
     );
     return publish(state, page);
   }

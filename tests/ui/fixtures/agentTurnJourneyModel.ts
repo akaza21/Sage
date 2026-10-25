@@ -50,6 +50,8 @@ export type JourneyEvent =
       chat: JourneyChat;
       state: TurnState;
       assistantText?: string;
+      /** Grows the streaming answer in place (multi-chunk replay). */
+      streamDelta?: string;
     }
   | { type: "resolveCancel"; chat: JourneyChat }
   | { type: "seedHistory"; chat: JourneyChat; turns: number }
@@ -243,10 +245,37 @@ export function appendTurn(
   };
 }
 
+/**
+ * A multi-chunk replay: each delta grows the Turn's streaming answer in
+ * place, as a harness's message chunks do, instead of adding an item.
+ */
+function streamIntoAnswer(
+  page: AcpChatPage,
+  turn: TurnProjection,
+  delta: string,
+): TurnProjection["items"] {
+  const last = turn.items.at(-1);
+  const answer =
+    last?.kind === "text" && last.payload.role === "assistant"
+      ? last
+      : item(page, turn, turn.items.length + 1, "assistant", "");
+  const grown = {
+    ...answer,
+    lifecycle: "streaming" as const,
+    terminalAt: null,
+    revision: String(Number(answer.revision) + 1) as EntityRevision,
+    payload: { ...answer.payload, text: answer.payload.text + delta },
+  };
+  return answer === last
+    ? [...turn.items.slice(0, -1), grown]
+    : [...turn.items, grown];
+}
+
 export function updateLatestTurn(
   page: AcpChatPage,
   state: TurnState,
   assistantText?: string,
+  streamDelta?: string,
 ): AcpChatPage {
   const current = page.turns.at(-1);
   if (!current) throw new Error(`No Turn exists for ${page.chatId}`);
@@ -275,7 +304,16 @@ export function updateLatestTurn(
             assistantText,
           ),
         ]
-      : current.items,
+      : streamDelta
+        ? streamIntoAnswer(page, current, streamDelta)
+        : terminal
+          ? // A terminal Turn settles its streamed answer.
+            current.items.map((entry) =>
+              entry.lifecycle === "streaming"
+                ? { ...entry, lifecycle: "completed" as const }
+                : entry,
+            )
+          : current.items,
   };
   return {
     ...page,

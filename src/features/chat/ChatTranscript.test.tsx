@@ -131,6 +131,12 @@ function retryPage() {
   return next;
 }
 
+/** Copy buttons of the latest-answer footer, not of an earlier Turn's row. */
+const footerCopies = () =>
+  screen
+    .queryAllByRole("button", { name: "Copy" })
+    .filter((button) => !button.closest(".acp-turn"));
+
 describe("ChatTranscript answer actions", () => {
   it("places isolated chat disclosures outside the scrolling transcript and resets them on owner change", async () => {
     const first = snapshotPage();
@@ -264,6 +270,26 @@ describe("ChatTranscript answer actions", () => {
       observer.disconnect();
     },
   );
+  it("announces Copy on an earlier answer like Copy on the latest", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const next = retryPage();
+    next.turns = [
+      ...next.turns,
+      {
+        ...page("completed").turns[0],
+        id: "latest-turn" as never,
+        ordinal: 2,
+      },
+    ];
+    const { container } = await renderTranscript(next);
+    const polite = container.querySelector('[data-acp-announcement="polite"]');
+    const earlier = container.querySelector(
+      `.acp-turn[data-turn-id="${next.turns[0].id}"]`,
+    ) as HTMLElement;
+    fireEvent.click(within(earlier).getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(polite).toHaveTextContent("Copied"));
+  });
   it.each(["", " \n\t "])(
     "copies the settled answer before trailing blank assistant text %j",
     async (text) => {
@@ -326,7 +352,7 @@ describe("ChatTranscript answer actions", () => {
     "waitingUser",
     "cancelling",
   ] as const)(
-    "does not place a prior answer's actions beneath a %s turn",
+    "keeps a prior answer's Copy in its own Turn, not beneath a %s turn",
     async (state) => {
       const next = retryPage();
       next.turns = [
@@ -339,7 +365,13 @@ describe("ChatTranscript answer actions", () => {
         },
       ];
       await renderTranscript(next);
-      expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+      // Every earlier answer keeps its own row (Codex s2/f0149).
+      const [copy] = screen.getAllByRole("button", { name: "Copy" });
+      expect(copy.closest(".acp-turn")).toHaveAttribute(
+        "data-turn-id",
+        next.turns[0].id,
+      );
+      expect(footerCopies()).toEqual([]);
       expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     },
   );
@@ -364,7 +396,9 @@ describe("ChatTranscript answer actions", () => {
       ];
       next.turns = [...next.turns, latest];
       await renderTranscript(next);
-      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      const copies = footerCopies();
+      expect(copies).toHaveLength(1);
+      fireEvent.click(copies[0]);
       expect(writeText).toHaveBeenCalledExactlyOnceWith(
         "Latest partial or final answer",
       );
@@ -394,7 +428,7 @@ describe("ChatTranscript answer actions", () => {
           createdAt: 1,
         } as ChatMessage,
       ]);
-      expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+      expect(footerCopies()).toEqual([]);
     },
   );
 });
@@ -485,12 +519,16 @@ describe("ChatTranscript Retry", () => {
             },
           ],
         });
-        expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+        expect(footerCopies()).toEqual([]);
         if (nextState !== state)
           expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
       }
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(document.querySelector(".chat-transcript-actions")).toBeNull();
+      expect(
+        [...document.querySelectorAll(".chat-transcript-actions")].filter(
+          (row) => !row.closest(".acp-turn"),
+        ),
+      ).toEqual([]);
       expect(onRetry).toHaveBeenCalledOnce();
     },
   );

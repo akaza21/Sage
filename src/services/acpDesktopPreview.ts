@@ -11,14 +11,6 @@ import {
 
 const EVENT = "acp-projection-changed-v1";
 
-function epoch(value: unknown): number | null {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0 &&
-    value <= Number.MAX_SAFE_INTEGER
-    ? value
-    : null;
-}
 function origin(value: unknown): string | undefined {
   if (typeof value !== "string" || utf8ByteLength(value) > 2048)
     return undefined;
@@ -39,7 +31,7 @@ function target(value: unknown): PreviewTargetRef | null {
   if (!isRecord(value)) return null;
   const projectId = safeIdentifier(value.projectId),
     projectGeneration = safeCounter(value.projectGeneration, true),
-    expectedTransitionEpoch = epoch(value.expectedTransitionEpoch),
+    expectedTransitionEpoch = safeOrdinal(value.expectedTransitionEpoch),
     chatId = safeIdentifier(value.chatId),
     sessionId = safeIdentifier(value.sessionId),
     runtimeEpoch = safeCounter(value.runtimeEpoch, false),
@@ -97,7 +89,7 @@ export function safePreviewProjectionChanged(
   const p = value.preview,
     projectId = safeIdentifier(p.projectId),
     projectGeneration = safeCounter(p.projectGeneration, true),
-    transitionEpoch = epoch(p.transitionEpoch),
+    transitionEpoch = safeOrdinal(p.transitionEpoch),
     chatId = safeIdentifier(p.chatId),
     sessionId = safeIdentifier(p.sessionId),
     runtimeEpoch = safeCounter(p.runtimeEpoch, false),
@@ -176,4 +168,5 @@ export async function subscribePreviewProjectionChanges(
     if (parsed) onChange(parsed);
   });
 }
+import { safeOrdinal } from "../domain/guards";
 import { utf8ByteLength } from "../domain/text";

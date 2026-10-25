@@ -26,6 +26,7 @@ import { ComposerAddActions } from "./ComposerAddActions";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
+import { useInheritedComposerModel } from "./inheritedComposerModel";
 import { useComposerCompaction } from "./useComposerCompaction";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
@@ -42,6 +43,8 @@ interface Props {
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
   modelLabelScope: string;
+  /** The Chat whose parent-inherited model and effort may label the composer. */
+  inheritScope?: string;
   sessionHarnessId: string | null;
   sessionModelId: string | null;
   selectedHarnessId: string | null;
@@ -69,6 +72,7 @@ export function ChatHarnessControls({
   availableBinding,
   canPrompt,
   modelLabelScope,
+  inheritScope = "",
   sessionHarnessId,
   sessionModelId,
   selectedHarnessId,
@@ -153,14 +157,21 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  const modelLabel =
+  const knownModelLabel =
     !confirmedModelLabel && sessionHarnessId !== selectedHarnessId
-      ? (models.find((model) => model.id === selectedModelId)?.name ?? "Model")
-      : (confirmedModelLabel ?? "Model");
+      ? models.find((model) => model.id === selectedModelId)?.name
+      : confirmedModelLabel;
+  // A side chat or fork shows its parent's confirmed model and effort until
+  // its own session confirms them; nothing else is ever invented.
+  const inherited = useInheritedComposerModel(inheritScope);
+  const inheriting =
+    !knownModelLabel && !selectedSessionConfig ? inherited : undefined;
+  const modelLabel = knownModelLabel ?? inheriting?.model ?? "Model";
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
-  const effortLabel =
-    composerOptionLabel(effortOption) ??
-    (confirmedEffort ? capitalizeLabel(confirmedEffort) : null);
+  const effortLabel = inheriting
+    ? inheriting.effort
+    : (composerOptionLabel(effortOption) ??
+      (confirmedEffort ? capitalizeLabel(confirmedEffort) : null));
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({
         id: choice.value,
@@ -311,7 +322,7 @@ export function ChatHarnessControls({
         choices={modelChoices}
         selectedId={currentModelId}
         modelLabel={modelLabel}
-        effortLabel={confirmedModelLabel ? effortLabel : null}
+        effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
         contextWindow={contextWindow}
         effortOption={effortOption}
         disabled={turnBusy || projectTransitioning || !canPrompt}

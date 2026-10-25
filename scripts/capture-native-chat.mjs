@@ -53,6 +53,8 @@ import {
   captureStep,
   cleanupCapture,
 } from "./capture-native-chat-drive.mjs";
+import { captureBurst } from "./capture-native-chat-motion.mjs";
+import { parityMotion } from "./capture-native-chat-parity.mjs";
 export { prepareCaptureChat } from "./capture-native-chat-drive.mjs";
 export {
   parseArgs,
@@ -210,8 +212,21 @@ export async function capture(options) {
         )
           throw new Error("capture-state-drift");
         timing.record("capture-verified", final);
+        // Motion states add a short frame burst after the verified still.
+        const motion = parityMotion(options.state);
+        const burst = motion
+          ? await captureBurst({
+              cdp,
+              evaluate,
+              spec: motion,
+              turnId: final.turnId,
+              deadline,
+              record: timing.record,
+              validate: (png) => validatePng(png, options),
+            })
+          : null;
         probe.timing.elapsedMs = Date.now() - started;
-        return { screenshot, probe: validateProbe(probe) };
+        return { screenshot, probe: validateProbe(probe), burst };
       },
       async () => {
         const closeError = await cleanupCapture(timing.record, [

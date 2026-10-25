@@ -147,16 +147,14 @@ export const PinOff = leanIcon("lucide lucide-pin-off", [
     },
   ],
 ]);
-export const Plug = leanIcon("lucide lucide-plug", [
-  ["path", { d: "M12 22v-5" }],
-  ["path", { d: "M15 8V2" }],
+/** The ⌘ glyph Codex gives MCP, web and integration rows (s5/f0390). */
+export const Command = leanIcon("lucide lucide-command", [
   [
     "path",
     {
-      d: "M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z",
+      d: "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
     },
   ],
-  ["path", { d: "M9 8V2" }],
 ]);
 export const Plus = leanIcon("lucide lucide-plus", [
   ["path", { d: "M5 12h14" }],

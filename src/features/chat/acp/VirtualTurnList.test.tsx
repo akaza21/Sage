@@ -232,6 +232,10 @@ it("Jump to latest lands at the true end after short Turn estimates are measured
   render(<History turns={turns()} />);
   scrollTo(0);
   fireEvent.click(screen.getByRole("button", { name: "Jump to latest" }));
+  act(() => vi.advanceTimersByTime(400));
+  // jsdom fires no scroll event for the timed jump's own scrollTop writes.
+  fireEvent.scroll(document.querySelector(".message-list")!);
+  act(() => vi.advanceTimersByTime(50));
   expect(scrollHeight() - scrollTop - 400).toBeLessThanOrEqual(1);
   expect(document.querySelector('[data-turn-id="turn-100"]')).not.toBeNull();
 });

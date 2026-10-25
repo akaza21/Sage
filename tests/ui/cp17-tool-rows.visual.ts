@@ -184,7 +184,14 @@ test("CP-17 tool rows: an integration group reads in Codex grammar and scrolls i
   ).toHaveText(
     "Used OpenAI Developer Docs, Search Service and node_repl integrations, ran a command",
   );
+  // Worked reveals the group closed; it opens on its own click (s2/f0016).
+  await expect(group).not.toHaveAttribute("open", "");
+  await group.locator(":scope > summary").click();
   await expect(group).toHaveAttribute("open", "");
+  // The open chevron turns down (s5/f0390).
+  await expect(
+    group.locator(":scope > summary .acp-tool-rollup__chevron"),
+  ).toHaveCSS("transform", /matrix\(0, 1, -1, 0|matrix\(6\.1\d*e-17, 1, -1/);
   const members = group.locator(
     ":scope > .acp-tool-rollup__items > .acp-tool-rollup",
   );
@@ -196,6 +203,31 @@ test("CP-17 tool rows: an integration group reads in Codex grammar and scrolls i
     "Run requested error probe",
     "Ran node -v",
   ]);
+  // Web and MCP rows use Codex's command glyph; a failed row stays muted.
+  for (const index of [0, 1, 2])
+    await expect(
+      members.nth(index).locator(":scope > summary svg").first(),
+    ).toHaveClass(/lucide-command/);
+  const iconColor = (index: number) =>
+    members
+      .nth(index)
+      .locator(":scope > summary svg")
+      .first()
+      .evaluate((node) => getComputedStyle(node).color);
+  expect(await iconColor(2)).toBe(await iconColor(0));
+  // Nested rows pitch 24 px (Codex about 22 px).
+  const [firstBox, secondBox] = await Promise.all([
+    members.nth(0).boundingBox(),
+    members.nth(1).boundingBox(),
+  ]);
+  expect(secondBox!.y - firstBox!.y).toBe(24);
+  // The web result is one plaintext block, with no query line (s5/f0405).
+  await members.nth(1).locator(":scope > summary").click();
+  await expect(
+    members.nth(1).locator(".acp-tool-result .acp-code-block__language"),
+  ).toHaveText(/plaintext/i);
+  await expect(members.nth(1).locator("p")).toHaveCount(0);
+  await members.nth(1).locator(":scope > summary").click();
   await members.nth(0).locator(":scope > summary").click();
   await expect(
     members.nth(0).locator(".acp-tool-result .acp-code-block"),

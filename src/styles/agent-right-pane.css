@@ -172,6 +172,11 @@
   min-width: 112px;
 }
 
+/* Codex s4/f0244: the Subagents label starts beside its icon. */
+.agent-artifact-pane .tab[data-resource-kind="subagent"] .tab__activate {
+  text-align: left;
+}
+
 .agent-artifact-pane .tab--pending:not(.tab--active) {
   box-shadow: inset 0 2px 0 var(--color-warning);
 }

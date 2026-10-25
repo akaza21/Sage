@@ -12,8 +12,11 @@ import { ChatCodeBlock } from "./ChatCodeBlock";
  * An integration result: a failure shows only the harness's message; a
  * result shows as a bounded code block, `json` when it parses as JSON.
  */
-function ToolResult({ item }: Pick<ToolItemProps, "item">) {
-  const output = item.payload.outputSummary;
+function ToolResult({
+  item,
+  output = item.payload.outputSummary,
+  plain = false,
+}: Pick<ToolItemProps, "item"> & { output?: string | null; plain?: boolean }) {
   if (!output) return null;
   if (item.toolState === "failed")
     return (
@@ -23,7 +26,8 @@ function ToolResult({ item }: Pick<ToolItemProps, "item">) {
     );
   let language = "plaintext";
   try {
-    if (/^[[{]/.test(output.trim()) && JSON.parse(output)) language = "json";
+    if (!plain && /^[[{]/.test(output.trim()) && JSON.parse(output))
+      language = "json";
   } catch {
     // Not JSON (or clipped); shown as plain text.
   }
@@ -114,13 +118,17 @@ export function ToolItemDetails({
         </>
       );
     case "webSearch":
+      // Codex s5/f0405: one plaintext block, the result or else the query.
+      // A failed search never shows its query as an error alert.
       return (
-        <>
-          {item.payload.inputSummary ? (
-            <p>{item.payload.inputSummary}</p>
-          ) : null}
-          <ToolResult item={item} />
-        </>
+        <ToolResult
+          item={item}
+          plain
+          output={
+            item.payload.outputSummary ||
+            (item.toolState === "failed" ? null : item.payload.inputSummary)
+          }
+        />
       );
     case "mcp":
       return <ToolResult item={item} />;

@@ -7,16 +7,9 @@ import {
   validAgentArtifactOwner,
 } from "../domain/agentArtifact";
 
-export const MAX_AGENT_ADMITTED_ARTIFACTS = 32;
+import { isShortId } from "../domain/guards";
 
-function validTabId(tabId: string): boolean {
-  return (
-    typeof tabId === "string" &&
-    tabId.length > 0 &&
-    tabId.length <= 512 &&
-    !tabId.includes("\0")
-  );
-}
+export const MAX_AGENT_ADMITTED_ARTIFACTS = 32;
 
 export function admitAgentArtifact(
   current: readonly AgentArtifactAdmission[],
@@ -24,7 +17,7 @@ export function admitAgentArtifact(
 ): AgentArtifactAdmission[] {
   if (
     !validAgentArtifactOwner(admission.owner) ||
-    !validTabId(admission.tabId)
+    !isShortId(admission.tabId)
   ) {
     return [...current];
   }

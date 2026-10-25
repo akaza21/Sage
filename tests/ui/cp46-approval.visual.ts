@@ -107,7 +107,23 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
   await expect(prompt.locator(".acp-permission-prompt__reason")).toContainText(
     "Agent's reason:",
   );
-  await expect(prompt.getByRole("button", { name: "Stop turn" })).toBeVisible();
+  // Stop stays for safety, as a quiet header control (s6/f0526 has none).
+  const stop = prompt.getByRole("button", { name: "Stop turn" });
+  await expect(stop).toBeVisible();
+  await expect(prompt.locator("header")).toContainText("Stop");
+  await expect(stop).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // Allow once holds focus on arrival and shows Codex's 2 px ring: a 1 px
+  // accent outline plus a 1 px accent spread (no 2 px outlines by policy).
+  await expect(allow).toHaveCSS("outline-style", "solid");
+  await expect(allow).toHaveCSS("outline-color", "rgb(58, 131, 247)");
+  await expect(allow).toHaveCSS(
+    "box-shadow",
+    "rgb(58, 131, 247) 0px 0px 0px 1px",
+  );
+  // The running row keeps a spinner beside the Awaiting approval pill.
+  await expect(
+    page.locator(".project-chat__approval-spinner").first(),
+  ).toBeVisible();
   const box = await prompt.boundingBox();
   expect(Math.abs(box!.width - before!.width)).toBeLessThanOrEqual(2);
   expect(Math.abs(box!.x - before!.x)).toBeLessThanOrEqual(2);
@@ -141,3 +157,44 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
     page.getByText("Awaiting approval", { exact: true }),
   ).toHaveCount(0);
 });
+
+for (const width of [720, 480]) {
+  test(`CP-46 approval card fills the composer slot at ${width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openScenario(page, "waiting", "agent");
+    await settleChatProjections(page);
+    const composer = page.locator("form.composer");
+    const before = (await composer.boundingBox())!;
+    await applyApproval(page, "received");
+    const prompt = page
+      .locator(".acp-permission-prompt")
+      .and(page.getByRole("group", { name: "Permission request" }));
+    await expect(prompt).toBeVisible();
+    const box = (await prompt.boundingBox())!;
+    expect(Math.abs(box.width - before.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.x - before.x)).toBeLessThanOrEqual(2);
+    // Deny and Allow keep to the right edge, wrapped or not.
+    const actions = (await prompt
+      .locator(".acp-permission-prompt__actions")
+      .boundingBox())!;
+    for (const button of [prompt.locator(".acp-permission-prompt__split")]) {
+      const edge = (await button.boundingBox())!;
+      expect(
+        Math.abs(edge.x + edge.width - (actions.x + actions.width)),
+      ).toBeLessThanOrEqual(1);
+    }
+    const deny = (await prompt
+      .getByRole("button", { name: /Deny/ })
+      .boundingBox())!;
+    const split = (await prompt
+      .locator(".acp-permission-prompt__split")
+      .boundingBox())!;
+    if (deny.y + 1 < split.y)
+      expect(
+        Math.abs(deny.x + deny.width - (actions.x + actions.width)),
+      ).toBeLessThanOrEqual(1);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+  });
+}

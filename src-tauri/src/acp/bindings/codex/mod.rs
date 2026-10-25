@@ -49,6 +49,7 @@ pub(crate) use child_transcript::{
     ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
     MAX_TURNS, normalize_child_user_message, normalize_read_response,
 };
+pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{
     AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
     CodexDiscoveryRunError, CodexModelSnapshot, CodexProcessTransport, DiscoveryZeroProcess,

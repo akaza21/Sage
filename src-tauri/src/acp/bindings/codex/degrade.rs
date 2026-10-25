@@ -7,6 +7,17 @@ use crate::acp::{
 use super::manifest::CuratedCapabilityCeiling;
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
+/// The debug desktop fixture's identity. It replays the observed 0.146 wire,
+/// so its sessions carry the 0.146 capability evidence under their own name.
+const DESKTOP_FIXTURE_PROTOCOL_IDENTITY: &str = "codex-app-server-desktop-fixture-0.146.0";
+
+/// Whether a stored session identity is the debug desktop fixture's. Always
+/// false outside a Windows debug `acp-fixture` build, where no such session
+/// can be activated.
+pub(crate) fn is_desktop_fixture_protocol(identity: &str) -> bool {
+    cfg!(all(windows, feature = "acp-fixture", debug_assertions))
+        && identity == DESKTOP_FIXTURE_PROTOCOL_IDENTITY
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 struct OptionalCapabilities {
@@ -146,11 +157,9 @@ pub(crate) fn projected_desktop_fixture_capabilities(
             characterisation: Characterisation::Characterised,
         }),
     )?;
-    snapshot.protocol_version = RequiredText::new(
-        "protocolVersion",
-        "codex-app-server-desktop-fixture-0.146.0",
-    )
-    .map_err(|_| ProjectionUnavailable::Identity)?;
+    snapshot.protocol_version =
+        RequiredText::new("protocolVersion", DESKTOP_FIXTURE_PROTOCOL_IDENTITY)
+            .map_err(|_| ProjectionUnavailable::Identity)?;
     Ok(snapshot)
 }
 
@@ -317,6 +326,20 @@ mod tests {
         assert!(!snapshot.child_transcript_read);
         assert!(!snapshot.native_session_fork);
         assert!(!models);
+    }
+
+    #[test]
+    fn only_the_debug_desktop_fixture_identity_counts_as_the_fixture_protocol() {
+        assert!(!is_desktop_fixture_protocol(
+            "codex-app-server-observed-0.146.0"
+        ));
+        assert!(!is_desktop_fixture_protocol(
+            "codex-app-server-desktop-fixture-0.147.0"
+        ));
+        assert_eq!(
+            is_desktop_fixture_protocol(DESKTOP_FIXTURE_PROTOCOL_IDENTITY),
+            cfg!(all(windows, feature = "acp-fixture", debug_assertions))
+        );
     }
 
     #[test]

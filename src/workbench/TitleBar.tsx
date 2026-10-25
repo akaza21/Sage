@@ -6,6 +6,7 @@ import { keymapBinding, matchesKeymapChord } from "../domain/keymapRegistry";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
+import { useRailChatId } from "./sideChatState";
 import {
   collectChatTabIds,
   WORKBENCH_WINDOW_MODES,
@@ -111,7 +112,10 @@ export function TitleBar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inert, chatSearchDisabled, mode, openChatSearch]);
-  const focusedId = titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId);
+  // A side chat keeps its parent's window title (Codex s2/f0244).
+  const focusedId = useRailChatId(
+    titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
+  );
   const sessionTitle =
     mode === "agent"
       ? titleBarSessionTitle(

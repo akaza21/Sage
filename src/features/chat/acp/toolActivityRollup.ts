@@ -63,10 +63,25 @@ function itemFile(presentation: ToolPresentation): string | null {
     : null;
 }
 
+/**
+ * The latest tool still at work. A call waiting on approval or not yet
+ * started is live too (Codex s6/f0526 "Running curl.exe ..."), unless its
+ * Turn has already ended.
+ */
+export function liveToolItem(
+  items: readonly ToolProjectionItem[],
+  turnEnded = false,
+): ToolProjectionItem | undefined {
+  if (turnEnded) return undefined;
+  return [...items]
+    .reverse()
+    .find((item) => !terminalToolStates.has(item.toolState));
+}
+
 /** One tool's own row label, in the live or finished form. */
 export function toolItemLabel(
   item: ToolProjectionItem,
-  live = item.toolState === "inProgress",
+  live = Boolean(liveToolItem([item])),
   tests = commandActivity(item) === "declaredTest",
 ): string {
   const presentation = item.payload.presentation;
@@ -131,6 +146,7 @@ export function toolRollupLabel(
   kind: ToolRollup["kind"],
   items: readonly ToolProjectionItem[],
   activity: ToolRollup["commandActivity"] = "ordinary",
+  turnEnded = false,
 ): string {
   if (kind === "subagent")
     return items.every(
@@ -143,10 +159,9 @@ export function toolRollupLabel(
         ? items[0].payload.presentation.label
         : `Ran ${items.length} subagents`;
   const tests = activity === "declaredTest";
-  if (items.length === 1) return toolItemLabel(items[0], undefined, tests);
-  const current = [...items]
-    .reverse()
-    .find((item) => item.toolState === "inProgress");
+  const current = liveToolItem(items, turnEnded);
+  if (items.length === 1)
+    return toolItemLabel(items[0], current === items[0], tests);
   if (current) return toolItemLabel(current, true, tests);
   return tests ? `Ran tests · ${items.length} commands` : mixedClauses(items);
 }

@@ -4,18 +4,19 @@ import {
   FilePenLine,
   FileText,
   Image,
-  Plug,
+  Command,
   Search,
   Terminal,
   Workflow,
-  ChevronDown,
+  ChevronRight,
 } from "../../../ui/leanIcons";
 
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
-import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
+import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
 import { toolStateLabels } from "./statusSemantics";
 import {
+  liveToolItem,
   toolRollupLabel,
   toolRollupDurationLabel,
   toolRollupState,
@@ -30,9 +31,9 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
   read: FileText,
   imageView: Image,
   search: Search,
-  fetch: Plug,
-  webSearch: Plug,
-  mcp: Plug,
+  fetch: Command,
+  webSearch: Command,
+  mcp: Command,
   think: BrainCircuit,
 };
 
@@ -43,29 +44,26 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
 export function ToolActivityRollup({
   rollup,
   interactive,
-  expandDetails = false,
   onOpenResource,
 }: {
   rollup: ToolRollup;
   interactive: boolean;
-  expandDetails?: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
-  const visible = useContext(WorkedActivityVisibility);
-  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const expanded = openOverride ?? (visible && expandDetails);
+  // A row opens only when the user opens it.
+  const [expanded, setExpanded] = useState(false);
+  const turnEnded = useContext(WorkedTurnTerminal);
   const label = toolRollupLabel(
     rollup.kind,
     rollup.items,
     rollup.commandActivity,
+    turnEnded,
   );
   const state = toolRollupState(rollup.items);
   // The latest live child names the row (toolRollupLabel); its icon must
   // describe that same child.
-  const current = [...rollup.items]
-    .reverse()
-    .find((item) => item.toolState === "inProgress");
-  const live = Boolean(current) || state === "inProgress";
+  const current = liveToolItem(rollup.items, turnEnded);
+  const live = Boolean(current) || (!turnEnded && state === "inProgress");
   const iconKind = (current ?? rollup.items[0])?.payload.presentation.kind;
   const ActivityIcon = (iconKind && activityIcons[iconKind]) || Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
@@ -77,7 +75,7 @@ export function ToolActivityRollup({
       open={expanded}
       onToggle={(event) => {
         if (event.currentTarget.open !== expanded)
-          setOpenOverride(event.currentTarget.open);
+          setExpanded(event.currentTarget.open);
       }}
     >
       <summary
@@ -98,7 +96,7 @@ export function ToolActivityRollup({
           </span>
         </span>
         <span className="acp-tool-rollup__meta">
-          <ChevronDown
+          <ChevronRight
             className="acp-tool-rollup__chevron"
             aria-hidden="true"
             size={14}

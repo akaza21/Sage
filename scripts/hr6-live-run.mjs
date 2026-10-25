@@ -32,6 +32,7 @@ import {
 } from "./hr6-readiness.mjs";
 import {
   captureFocusedChatExpression,
+  focusRememberedChatExpression,
   focusedChatSurfacePreamble,
   focusedRememberedChatSurfacePreamble,
   rememberedChatSurfacePreamble,
@@ -546,7 +547,7 @@ async function rememberFocusedChat(cdp, name, label) {
 async function focusRememberedChat(cdp, name, label) {
   await click(
     cdp,
-    `${rememberedChatSurfacePreamble(name, "return false;")}const find=${boundedMatchProjection(2)};const controls=find(pane,'button.agent-chat-pane__focus',false,"section.acp-turn");if(controls.nodes.length!==1||controls.exceeded)return false;controls.nodes[0].click();return true;`,
+    focusRememberedChatExpression(name, "return false;"),
     `${label}-focus`,
   );
   await waitFor(

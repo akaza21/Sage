@@ -475,7 +475,7 @@ it("mounts the lazy Chat search dialog only for a folder request, including one 
   expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
 });
 
-it("keeps folder grouping by default and omits Cursor-only rail fields", () => {
+it("keeps folder grouping by default and omits Cursor-only rail fields", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -497,8 +497,9 @@ it("keeps folder grouping by default and omits Cursor-only rail fields", () => {
   expect(screen.getByText("Projects")).toBeInTheDocument();
   expect(screen.queryByRole("menuitemradio", { name: "Status" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
+  // The open menu loads lazily on its first open.
   expect(
-    screen.getByRole("menu", { name: "Chat list options" }),
+    await screen.findByRole("menu", { name: "Chat list options" }),
   ).toHaveTextContent("Updated");
   expect(
     screen.getByRole("menuitemcheckbox", { name: "Workspace" }),
@@ -707,7 +708,7 @@ it("keeps archive enabled from a one-result local filter", () => {
   expect(screen.getByRole("menuitem", { name: "Archive chat" })).toBeEnabled();
 });
 
-it("collapses Pinned, Projects, and Recent through the shared preference set", () => {
+it("collapses Pinned, Projects, and Recent through the shared preference set", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -746,7 +747,9 @@ it("collapses Pinned, Projects, and Recent through the shared preference set", (
 
   fireEvent.click(screen.getByRole("button", { name: "Projects" }));
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Collapse All" }));
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Collapse All" }),
+  );
   expect(screen.getByRole("button", { name: "Pinned" })).toHaveAttribute(
     "aria-expanded",
     "false",
@@ -820,7 +823,7 @@ it("shows labelled active status and local project identity without fake account
   expect(footer?.querySelector(".project-sidebar__settings")).toBeTruthy();
 });
 
-it("marks visible unread rail chats read from the filter menu", () => {
+it("marks visible unread rail chats read from the filter menu", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -855,7 +858,9 @@ it("marks visible unread rail chats read from the filter menu", () => {
       ?.querySelector("[aria-label='Unread updates']"),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Mark All as Read" }));
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: "Mark All as Read" }),
+  );
   expect(
     screen
       .getByTitle("Open chat Shipped")

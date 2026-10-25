@@ -4,6 +4,7 @@ import type {
   ResourceRef,
   WorkbenchTab,
 } from "../domain/workbench";
+import { boundedRecordUpdate } from "./resourceStateHelpers";
 
 const MAX_PROJECT_GENERATION = Number.MAX_SAFE_INTEGER;
 
@@ -30,15 +31,12 @@ export function issueRequestIntent(
   sequence: number;
 } {
   const token = nextProjectGeneration(sequence);
-  const intents = { ...current };
-  delete intents[key];
-  intents[key] = token;
-  const overflow = Object.keys(intents).length - MAX_REQUEST_GENERATIONS;
-  if (overflow > 0) {
-    for (const expired of Object.keys(intents).slice(0, overflow)) {
-      delete intents[expired];
-    }
-  }
+  const intents = boundedRecordUpdate(
+    current,
+    [key],
+    token,
+    MAX_REQUEST_GENERATIONS,
+  );
   return { intents, token, sequence: token };
 }
 
@@ -68,6 +66,14 @@ export function validateTransitionIntent(
   ) {
     throw new Error("native project transition returned a stale intent epoch");
   }
+}
+
+/** No project transition is running and the native epoch is still `epoch`. */
+export function idleAtEpoch(
+  state: { projectTransitioning: boolean; nativeTransitionEpoch: number },
+  epoch: number,
+): boolean {
+  return !state.projectTransitioning && state.nativeTransitionEpoch === epoch;
 }
 
 export function matchesProjectIntent(

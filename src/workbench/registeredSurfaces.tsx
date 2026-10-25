@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import type { WorkbenchTab } from "../domain/workbench";
 import { ExplorerSurface } from "../features/files/ExplorerSurface";
 import { OutlineSurface } from "../features/outline/OutlineSurface";
@@ -74,18 +72,12 @@ function LazyCanvasSurface({
   );
 }
 
-function ChatCanvas({
-  tab,
-  paneHeader,
-}: {
-  tab: WorkbenchTab;
-  paneHeader?: ReactNode;
-}) {
+function ChatCanvas({ tab }: { tab: WorkbenchTab }) {
   return (
-    <LazyModuleBoundary<{ chatId: string; paneHeader?: ReactNode }>
+    <LazyModuleBoundary<{ chatId: string }>
       label="Chat"
       load={loadChatSurface}
-      render={(Surface) => <Surface chatId={tab.id} paneHeader={paneHeader} />}
+      render={(Surface) => <Surface chatId={tab.id} />}
     />
   );
 }

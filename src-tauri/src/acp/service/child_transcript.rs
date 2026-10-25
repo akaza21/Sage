@@ -121,8 +121,13 @@ fn observed_protocol(
     };
     let value: serde_json::Value =
         serde_json::from_str(&encoded).map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
+    // The debug desktop fixture replays the same 0.146 `thread/read` wire
+    // under its own identity, so native captures can read its children.
     Ok(value
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(crate::acp::bindings::codex::supports_native_0146_protocol))
+        .is_some_and(|identity| {
+            crate::acp::bindings::codex::supports_native_0146_protocol(identity)
+                || crate::acp::bindings::codex::is_desktop_fixture_protocol(identity)
+        }))
 }

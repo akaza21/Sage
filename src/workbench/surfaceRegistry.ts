@@ -9,7 +9,6 @@ export type ToolSurfaceId =
 type CanvasSurface = ComponentType<{
   tab: WorkbenchTab;
   readOnly?: boolean;
-  paneHeader?: ReactNode;
 }>;
 type ToolSurface = ComponentType;
 
@@ -53,10 +52,9 @@ export function listRegisteredToolIds(): ToolSurfaceId[] {
 export function renderRegisteredCanvas(
   kind: CanvasSurfaceKind,
   tab: WorkbenchTab,
-  options: { paneHeader?: ReactNode } = {},
 ): ReactNode {
   const Surface = canvasSurfaces.get(kind);
-  return Surface ? createElement(Surface, { tab, ...options }) : null;
+  return Surface ? createElement(Surface, { tab }) : null;
 }
 
 export function renderFileOrDiffCanvas(

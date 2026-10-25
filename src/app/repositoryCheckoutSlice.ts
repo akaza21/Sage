@@ -5,7 +5,7 @@ import type {
   GitRepositoryCheckoutResult,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { matchesProjectIntent } from "./projectIntent";
+import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCheckout {
@@ -97,8 +97,7 @@ async function runLocalBranchCommand(
     const result = await invoke(projectId, transitionEpoch);
     if (
       get().repositoryCheckout !== checkout ||
-      get().projectTransitioning ||
-      get().nativeTransitionEpoch !== transitionEpoch ||
+      !idleAtEpoch(get(), transitionEpoch) ||
       result.projectId !== projectId ||
       result.rootId !== rootId ||
       result.transitionEpoch !== transitionEpoch ||
@@ -121,8 +120,7 @@ async function runLocalBranchCommand(
   } catch (error) {
     if (
       get().repositoryCheckout === checkout &&
-      !get().projectTransitioning &&
-      get().nativeTransitionEpoch === transitionEpoch &&
+      idleAtEpoch(get(), transitionEpoch) &&
       matchesProjectIntent(get(), generation, projectId)
     ) {
       set({

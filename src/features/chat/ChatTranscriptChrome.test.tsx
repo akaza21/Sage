@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { AcpChatPresentation } from "./acp/AcpChatPresentation";
 import { settleLazyModules } from "../../test/settleLazyModules";
+import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import {
   ChatTranscriptFooter,
   ChatTranscriptTurnSummary,
@@ -36,12 +37,13 @@ describe("CP-28 answer chrome", () => {
       },
     });
     const { unmount } = render(
-      <ChatTranscriptFooter
-        useNativeAcp
-        page={page("completed")}
-        messages={[]}
-        onCopyFeedback={feedback}
-      />,
+      <AnswerCopyFeedback.Provider value={feedback}>
+        <ChatTranscriptFooter
+          useNativeAcp
+          page={page("completed")}
+          messages={[]}
+        />
+      </AnswerCopyFeedback.Provider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     unmount();

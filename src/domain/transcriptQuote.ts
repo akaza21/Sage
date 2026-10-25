@@ -1,5 +1,5 @@
 import type { AttachedContext } from "./attachedContext";
-import { isRecord } from "./guards";
+import { isRecord, safeOrdinal } from "./guards";
 import { utf8ByteLength } from "./text";
 
 /** Quote and comment bytes; equals MAX_ATTACHED_CONTEXT_NOTE_BYTES (Rust mirrors it). */
@@ -47,8 +47,7 @@ const identifier = (value: unknown) =>
   bounded(value, 512) &&
   value !== "" &&
   ![...value].some((c) => c < " " || (c >= "\x7f" && c <= "\x9f"));
-const offset = (value: unknown): value is number =>
-  Number.isSafeInteger(value) && (value as number) >= 0;
+const offset = (value: unknown): value is number => safeOrdinal(value) !== null;
 
 /** Admits an exact-key, byte-bounded quote; returns the validated value itself. */
 export function parseTranscriptQuoteContext(

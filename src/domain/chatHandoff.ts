@@ -21,13 +21,9 @@ export interface ChatHandoffIntent {
 
 import { utf8ByteLength } from "./text";
 
-function byteLength(value: string) {
-  return utf8ByteLength(value);
-}
-
 export function validateChatHandoffDraft(draft: string) {
   if (!draft.trim()) throw new Error("Chat Handoff draft cannot be empty");
-  if (byteLength(draft) > MAX_HANDOFF_DRAFT_BYTES) {
+  if (utf8ByteLength(draft) > MAX_HANDOFF_DRAFT_BYTES) {
     throw new Error(
       `Chat Handoff draft bytes exceed ${MAX_HANDOFF_DRAFT_BYTES}`,
     );
@@ -41,7 +37,7 @@ export function buildChatHandoffDraft(
 ) {
   const label = sourceLabel.trim();
   if (!label) throw new Error("Chat Handoff source label cannot be empty");
-  if (byteLength(label) > MAX_HANDOFF_SOURCE_LABEL_BYTES) {
+  if (utf8ByteLength(label) > MAX_HANDOFF_SOURCE_LABEL_BYTES) {
     throw new Error("Chat Handoff source label exceeds its byte limit");
   }
   if (sourceEntries.length > MAX_HANDOFF_SOURCE_MESSAGES) {
@@ -56,7 +52,7 @@ export function buildChatHandoffDraft(
     if (!(["user", "assistant", "system"] as const).includes(entry.role)) {
       throw new Error("Chat Handoff message role is invalid");
     }
-    const messageBytes = byteLength(entry.text);
+    const messageBytes = utf8ByteLength(entry.text);
     if (messageBytes > MAX_HANDOFF_MESSAGE_BYTES) {
       throw new Error(
         `Chat Handoff message bytes exceed ${MAX_HANDOFF_MESSAGE_BYTES}`,

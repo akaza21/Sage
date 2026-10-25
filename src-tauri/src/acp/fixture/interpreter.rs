@@ -40,7 +40,7 @@ pub(super) fn execute(invocation: FixtureInvocation) -> Result<i32, FixtureError
 
 pub(super) fn classify(op: &str) -> Result<StepOwner, FixtureError> {
     match op {
-        "delayUntilIntentChanges" | "exit" | "spawnFixtureChildren" | "spawnTree" => {
+        "delayUntilIntentChanges" | "exit" | "pauseMs" | "spawnFixtureChildren" | "spawnTree" => {
             Ok(StepOwner::Process)
         }
         "awaitClient"

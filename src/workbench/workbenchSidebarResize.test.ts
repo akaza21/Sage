@@ -15,17 +15,22 @@ import {
 describe("resizeWorkbenchSidebar", () => {
   it("opens the icon rail and project sidebar at Codex reference width", () => {
     expect(initialAgentLeftRailWidth(1936)).toBe(385);
-    expect(initialAgentArtifactWidth(1936)).toBe(1045);
+    expect(initialAgentArtifactWidth(1936)).toBe(871);
     expect(initialAgentDesktopSidebarWidths(1380)).toEqual({
       leftRailWidth: 385,
       artifactWidth: 619,
     });
   });
+  // Live Codex s4/f0244 at 1888: the right pane takes about 57% of the space
+  // beside the sidebar (chat 43%).
   it("opens the desktop Agent rail and artifact pane at the reference proportions", () => {
     expect(initialAgentLeftRailWidth(1672)).toBe(385);
-    expect(initialAgentArtifactWidth(1672)).toBe(903);
+    expect(initialAgentArtifactWidth(1672)).toBe(752);
     expect(initialAgentLeftRailWidth(1380)).toBe(385);
-    expect(initialAgentArtifactWidth(1380)).toBe(745);
+    expect(initialAgentArtifactWidth(1380)).toBe(621);
+    const pane = initialAgentArtifactWidth(1888);
+    const chat = 1888 - initialAgentLeftRailWidth(1888) - 16 - pane;
+    expect(pane / (pane + chat)).toBeCloseTo(0.57, 2);
   });
 
   it("keeps a usable Chat column when either desktop splitter reaches its end", () => {

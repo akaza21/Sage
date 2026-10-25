@@ -168,29 +168,6 @@
   outline-offset: -1px;
 }
 
-.agent-chat-pane__focus {
-  display: inline-flex;
-  height: 100%;
-  flex: 1 1 auto;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  text-align: left;
-  cursor: pointer;
-}
-
-.agent-chat-pane__focus:hover,
-.agent-chat-pane__focus[aria-pressed="true"] {
-  color: var(--color-text-primary);
-}
-
 .agent-chat-pane__title {
   min-width: 0;
   overflow: hidden;
@@ -205,10 +182,6 @@
 
 .agent-chat-panes--split .chat-surface {
   width: 100%;
-}
-
-.agent-chat-panes:not(.agent-chat-panes--split) .agent-chat-pane__identity {
-  display: none;
 }
 
 .agent-chat-panes--split .surface-header {

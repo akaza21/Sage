@@ -9,6 +9,7 @@ import {
 import type { TranscriptQuote } from "../domain/transcriptQuote";
 import type { ProjectTransitionResult } from "../domain/workbench";
 import { quoteContext } from "../features/chat/transcriptSelection";
+import { inheritComposerModel } from "../features/chat/inheritedComposerModel";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import {
@@ -172,6 +173,10 @@ export async function openSideChat(
       id: created,
       projectId: layout.projectId,
       parentChatId,
+    });
+    // The side session starts on `modelId` with no effort of its own.
+    inheritComposerModel(created, source?.sessionConfig, {
+      startsOnModelId: modelId,
     });
     return created;
   });

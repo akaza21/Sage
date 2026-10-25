@@ -116,6 +116,17 @@ it("adds the project scope row above the composer only for an established empty 
   expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
 });
 
+it("adds no project scope row above an empty side chat's composer (Codex s2/f0244)", () => {
+  const props = transcriptProps();
+  render(
+    <ChatTranscript
+      {...props}
+      page={{ ...emptyPage(), chatId: "side-1" as never }}
+    />,
+  );
+  expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+});
+
 it("names the project once adjacent to the home heading and keeps its picker usable", () => {
   useWorkbenchStore.setState({
     project: { id: "project-1", name: "Sage", roots: [] },

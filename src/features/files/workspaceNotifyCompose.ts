@@ -1,3 +1,4 @@
+import { isShortId, safeOrdinal } from "../../domain/guards";
 import { parentResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 
@@ -96,26 +97,8 @@ export function resetNotifyListingAdmission(): void {
   }
 }
 
-function safeCounter(value: unknown): number | null {
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= 9_007_199_254_740_991
-    ? value
-    : null;
-}
-
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
 const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
-
-function boundedIdentifier(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= 512 &&
-    !value.includes("\0")
-  );
-}
 
 function boundedNotifyPath(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
@@ -151,13 +134,13 @@ export function acceptWorkspaceNotifyNotice(
   ) {
     return null;
   }
-  const projectGeneration = safeCounter(record.projectGeneration);
-  const transitionEpoch = safeCounter(record.transitionEpoch);
+  const projectGeneration = safeOrdinal(record.projectGeneration);
+  const transitionEpoch = safeOrdinal(record.transitionEpoch);
   if (
-    !boundedIdentifier(record.projectId) ||
+    !isShortId(record.projectId) ||
     projectGeneration === null ||
     transitionEpoch === null ||
-    !boundedIdentifier(record.rootId) ||
+    !isShortId(record.rootId) ||
     !boundedNotifyPath(record.relativePath) ||
     !boundedNotifyKind(record.kind)
   ) {

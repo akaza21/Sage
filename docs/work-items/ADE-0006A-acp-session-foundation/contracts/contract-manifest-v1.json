@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 16,
-  "logicalBytes": 238467,
+  "logicalBytes": 238658,
   "files": [
     {
       "relativePath": "README.md",
@@ -29,8 +29,8 @@
     },
     {
       "relativePath": "fixture-vectors-v1.json",
-      "bytes": 60065,
-      "sha256": "a36ddc5101788e9471dec8ede00918590711695524f355f46bbd163ae4b57665"
+      "bytes": 60082,
+      "sha256": "52eda1275eb4a713fb57bcffb753a3d311e8bda031aae8e2351cd20bd484a916"
     },
     {
       "relativePath": "limit-fixture-coverage-v1.json",
@@ -49,8 +49,8 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 22585,
-      "sha256": "049c5a7b9d95dcb1bf9e9abf4abcbbe96f713362dbfb30dd14fff35272ec422a"
+      "bytes": 22759,
+      "sha256": "3090f2b6b7f11915d05845a555eff5224589ebf6ec57adaa916aad017ce1ab95"
     },
     {
       "relativePath": "package-contract-v1.json",

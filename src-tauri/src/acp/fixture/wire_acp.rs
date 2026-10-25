@@ -18,6 +18,7 @@ pub(super) fn await_request(
         "acpCancel" => "session/cancel",
         "acpClose" => "session/close",
         "acpPermissionDecision" => "permission",
+        "acpFork" => "session/fork",
         _ => return Err(FixtureError::InvalidArguments),
     };
     for _ in 0..32 {
@@ -128,7 +129,7 @@ pub(super) fn emit(
                 json!({"jsonrpc":"2.0","id":id,"result":{"stopReason":if shape == "acpCancelled" {"cancelled"} else {"end_turn"}}})
             }
         }
-        "acpInitialize" | "acpSession" | "acpAck" => {
+        "acpInitialize" | "acpInitializeFork" | "acpSession" | "acpForkResult" | "acpAck" => {
             let Some(id) = state.last_request_id.take() else {
                 return if shape == "acpAck" {
                     Ok(())
@@ -140,6 +141,11 @@ pub(super) fn emit(
                 "acpInitialize" => {
                     json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":[]})
                 }
+                // Unstable `session/fork`, advertised as claude-agent-acp 0.76.0 does.
+                "acpInitializeFork" => {
+                    json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{},"fork":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":[]})
+                }
+                "acpForkResult" => json!({"sessionId": codex::FORK_THREAD_ID}),
                 "acpSession" => {
                     json!({"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"},{"id":"plan","name":"Plan"}]},"configOptions":config_options()})
                 }

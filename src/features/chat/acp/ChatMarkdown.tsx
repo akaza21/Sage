@@ -12,6 +12,7 @@ import {
 import { useWorkbenchStore } from "../../../app/store";
 import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
 import { ChatCodeBlock } from "./ChatCodeBlock";
+import { streamTailTarget, type StreamTail } from "./streamTail";
 
 /**
  * The stream fade (chat-markdown.css) belongs to blocks appended after this
@@ -34,6 +35,23 @@ export function ChatMarkdown({
   fileReferenceOwner?: AgentArtifactOwner;
 }) {
   const document = useMemo(() => renderMarkdownPreview(text), [text]);
+  // One record per answer, replaced per chunk: the newest appended run
+  // fades while earlier text stays solid (Codex s5/f0309).
+  const [stream, setStream] = useState<{
+    text: string;
+    document: typeof document;
+    tail: StreamTail | null;
+  }>(() => ({ text, document, tail: null }));
+  if (stream.text !== text)
+    setStream({
+      text,
+      document,
+      // The run is the rendered text this chunk appended (streamTail.ts).
+      tail: streaming
+        ? streamTailTarget(stream.document, document, text.length)
+        : null,
+    });
+  const streamTail = streaming && stream.text === text ? stream.tail : null;
   const listMarkerWidth = useMemo(
     () =>
       document.blocks.reduce(
@@ -145,6 +163,7 @@ export function ChatMarkdown({
     >
       <MarkdownBlocks
         document={document}
+        streamTail={streamTail}
         renderLink={renderLink}
         renderCode={(block) =>
           block.language.toLowerCase() === "mermaid" &&

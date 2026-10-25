@@ -21,8 +21,9 @@ export interface AgentSessionChrome {
   };
 }
 
+/** Publishes (or, with null, withdraws) one Chat's session chrome. */
 export const AgentSessionChromeContext = createContext<
-  ((chrome: AgentSessionChrome | null) => void) | null
+  ((chatId: string, chrome: AgentSessionChrome | null) => void) | null
 >(null);
 
 interface AgentChatOwnerStore {

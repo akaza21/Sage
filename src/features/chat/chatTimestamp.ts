@@ -31,8 +31,13 @@ export function dayTimeLabel(timestamp: number): string {
           year:
             date.getFullYear() === now.getFullYear() ? undefined : "numeric",
         }).format(date);
-  return `${day} ${new Intl.DateTimeFormat(undefined, {
+  return `${day} ${timeOfDayLabel(timestamp)}`;
+}
+
+/** Local clock time, such as "12:23 PM". */
+export function timeOfDayLabel(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
-  }).format(date)}`;
+  }).format(timestamp);
 }

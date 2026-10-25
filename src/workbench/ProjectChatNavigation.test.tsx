@@ -11,6 +11,7 @@ import { useWorkbenchStore } from "../app/store";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
+import { useSideChatState } from "./sideChatState";
 import {
   resetAgentRailViewPrefs,
   syncAgentRailClock,
@@ -22,6 +23,7 @@ afterEach(() => {
   cleanup();
   clearSessionRailAcks();
   resetAgentRailViewPrefs();
+  useSideChatState.setState({ sides: [] });
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -105,8 +107,37 @@ it("shows a green Awaiting approval pill only for a chat whose surface awaits ap
     "Open chat Beta, Awaiting approval",
   );
   expect(screen.getAllByText("Awaiting approval")).toHaveLength(1);
+  // The Turn still runs behind the pill, so its spinner follows (s6/f0526).
+  expect(
+    screen
+      .getByTitle("Open chat Beta")
+      .parentElement?.querySelector(".project-chat__approval-spinner .spinner"),
+  ).not.toBeNull();
   act(() => setChatAwaitingApproval("chat:b", false));
   expect(screen.queryByText("Awaiting approval")).toBeNull();
+  expect(document.querySelector(".project-chat__approval-spinner")).toBeNull();
+});
+
+it("keeps the parent row selected while its side chat has focus (Codex s2/f0244)", () => {
+  seedChats();
+  useWorkbenchStore.setState({ activeTabId: "side-1" });
+  useSideChatState.setState({
+    sides: [{ id: "side-1", projectId: "project-a", parentChatId: "chat:b" }],
+  });
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  expect(screen.getByTitle("Open chat Beta")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(screen.getByTitle("Open chat Alpha")).not.toHaveAttribute(
+    "aria-current",
+  );
 });
 
 function openChatActions(title: string) {

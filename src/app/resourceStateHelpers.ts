@@ -7,15 +7,21 @@ import type { ResourceRef } from "../domain/workbench";
 
 import type { ResourceState } from "./store";
 
-export function boundedResourceStateUpdate<T>(
-  current: Record<string, ResourceState<T>>,
-  key: string,
-  value: ResourceState<T>,
+/**
+ * Writes `keys` (newest last) with `value` and drops the oldest entries
+ * beyond `limit`: the one insertion-ordered LRU every bounded record uses.
+ */
+export function boundedRecordUpdate<V>(
+  current: Record<string, V>,
+  keys: readonly string[],
+  value: V,
   limit: number,
 ) {
   const next = { ...current };
-  delete next[key];
-  next[key] = value;
+  for (const key of keys) {
+    delete next[key];
+    next[key] = value;
+  }
   for (const expired of Object.keys(next).slice(
     0,
     Math.max(0, Object.keys(next).length - limit),
@@ -25,23 +31,21 @@ export function boundedResourceStateUpdate<T>(
   return next;
 }
 
+export function boundedResourceStateUpdate<T>(
+  current: Record<string, ResourceState<T>>,
+  key: string,
+  value: ResourceState<T>,
+  limit: number,
+) {
+  return boundedRecordUpdate(current, [key], value, limit);
+}
+
 export function boundedExpandedUpdate(
   current: Record<string, boolean>,
   keys: string[],
   limit: number,
 ) {
-  const next = { ...current };
-  for (const key of keys) {
-    delete next[key];
-    next[key] = true;
-  }
-  const overflow = Object.keys(next).length - limit;
-  if (overflow > 0) {
-    for (const expired of Object.keys(next).slice(0, overflow)) {
-      delete next[expired];
-    }
-  }
-  return next;
+  return boundedRecordUpdate(current, keys, true, limit);
 }
 
 export function withoutResourceHierarchy<T>(

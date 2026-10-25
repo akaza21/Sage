@@ -27,6 +27,7 @@ const fake = vi.hoisted(() => {
         modelId: "model-selected",
       },
     ],
+    sessionConfig: { sageAgentSessionId: "parent-session" },
   };
   const sidePage = { projectionRevision: "2" };
   const projection = {
@@ -41,6 +42,7 @@ const fake = vi.hoisted(() => {
     native: vi.fn(),
     bootstrap: vi.fn(),
     start: vi.fn(),
+    inherit: vi.fn(),
     attach: state.attachChatContext,
   };
 });
@@ -87,6 +89,9 @@ vi.mock("../app/acpProjectionRegistry", () => ({
     getState: () =>
       id === "parent" ? { page: fake.parentPage } : fake.projection,
   }),
+}));
+vi.mock("../features/chat/inheritedComposerModel", () => ({
+  inheritComposerModel: fake.inherit,
 }));
 vi.mock("../services/acpDesktop", () => ({
   acpDesktop: {
@@ -168,6 +173,31 @@ it("creates a temporary Chat on the parent's harness and model, seeded with the 
   );
   expect(fake.state.projectTransitioning).toBe(false);
   expect(useSideChatState.getState().sides[0].parentChatId).toBe("parent");
+});
+
+it("labels the side composer only with the model it actually starts on (Codex s2/f0244)", async () => {
+  await openSideChat("parent", quote);
+  expect(fake.inherit).toHaveBeenCalledWith(
+    "side-test",
+    fake.parentPage.sessionConfig,
+    { startsOnModelId: "model-selected" },
+  );
+});
+
+it("tells the label a side chat starts on no model when the parent's session has none", async () => {
+  const session = fake.parentPage.sessions[0] as { modelId: string | null };
+  const prior = session.modelId;
+  session.modelId = null;
+  try {
+    await openSideChat("parent", quote);
+  } finally {
+    session.modelId = prior;
+  }
+  expect(fake.inherit).toHaveBeenCalledWith(
+    "side-test",
+    fake.parentPage.sessionConfig,
+    { startsOnModelId: null },
+  );
 });
 
 it("asks before closing and passes the opt-out to Rust only on confirmation", async () => {

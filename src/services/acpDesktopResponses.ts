@@ -9,6 +9,7 @@ import {
   boundedIdentifier as safeIdentifier,
   decimalU64Counter,
   isRecord,
+  safeOrdinal,
 } from "../domain/guards";
 import { utf8ByteLength } from "../domain/text";
 import type { AcpGoalState } from "../domain/acpGoal";
@@ -25,7 +26,7 @@ export function safeCounter(value: unknown, allowZero: boolean): string | null {
   return decimalU64Counter(value, { allowZero });
 }
 
-export { isRecord, safeIdentifier };
+export { isRecord, safeIdentifier, safeOrdinal };
 
 export function isOneOf<const Value extends string>(
   value: unknown,
@@ -45,12 +46,6 @@ export function safeMessage(value: unknown): string | null {
     return null;
   }
   return utf8ByteLength(value) <= 8192 ? value : null;
-}
-
-export function safeOrdinal(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null;
 }
 
 export function safeTimestamp(value: unknown): number | null {

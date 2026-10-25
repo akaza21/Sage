@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useFollowEnd } from "./useFollowEnd";
+import { JUMP_DURATION_MS, useFollowEnd } from "./useFollowEnd";
 
 let observers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
 
@@ -94,8 +94,10 @@ describe("useFollowEnd", () => {
   beforeEach(() => {
     observers = [];
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    // Each synchronous frame advances 16 ms, so a timed jump completes.
+    let clock = 0;
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(0);
+      callback((clock += 16));
       return 1;
     });
     vi.stubGlobal("cancelAnimationFrame", () => {});
@@ -314,7 +316,7 @@ describe("useFollowEnd", () => {
       scrollTop: 2000,
     });
     expect(scrollTo).not.toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: "auto" }),
+      expect.objectContaining({ top: 2000 }),
     );
     act(() => {
       view.result.current.updateFollowEnd();
@@ -322,6 +324,52 @@ describe("useFollowEnd", () => {
     });
     expect(view.result.current.followingEnd).toBe(true);
     expect(view.result.current.showJumpToLatest).toBe(false);
+  });
+
+  it("travels to the end over the jump duration with an ease-out curve", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { transcript, view, scrollTo } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    scrollTo.mockClear();
+    act(() => view.result.current.jumpToLatest());
+    const tops = [0, 100, 200, JUMP_DURATION_MS].map((time) => {
+      act(() => frames.shift()?.(1000 + time));
+      return (scrollTo.mock.lastCall?.[0] as ScrollToOptions).top!;
+    });
+    // Ease-out: well past linear at 100 ms and 200 ms, at the end on time.
+    expect(tops[0]).toBe(0);
+    expect(tops[1]).toBeGreaterThan(2000 * (100 / JUMP_DURATION_MS));
+    expect(tops[2]).toBeGreaterThan(tops[1]);
+    expect(tops[2]).toBeLessThan(2000);
+    expect(tops[3]).toBe(2000);
+    expect(frames).toHaveLength(0);
+    expect(scrollTo).not.toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "smooth" }),
+    );
+  });
+
+  it("jumps instantly under reduced motion", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("reduce"),
+    }));
+    const { transcript, view, scrollTo } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 0,
+    });
+    scrollTo.mockClear();
+    act(() => view.result.current.jumpToLatest());
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 2000 });
   });
 
   it.each(["wheel", "pointerdown", "touchstart", "keydown"])(
@@ -562,12 +610,12 @@ describe("useFollowEnd", () => {
       scrollHeight: 2400,
       scrollTop: 100,
     });
-    act(() => view.result.current.updateFollowEnd());
-    act(() => view.result.current.jumpToLatest());
-    expect(scrollTo).toHaveBeenLastCalledWith({
-      behavior: "smooth",
-      top: 2000,
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.splice(0).forEach((frame) => frame(0));
     });
+    act(() => view.result.current.jumpToLatest());
+    act(() => frames.shift()?.(0));
     measure(transcript, {
       clientHeight: 400,
       scrollHeight: 2520,
@@ -582,13 +630,15 @@ describe("useFollowEnd", () => {
         });
     });
     act(growTranscript);
+    act(() => frames.shift()?.(JUMP_DURATION_MS));
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: 2120 });
     expect(
       transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight,
     ).toBe(0);
     expect(view.result.current.showJumpToLatest).toBe(false);
   });
 
-  it("finishes a stalled smooth jump without an aggregate content resize", () => {
+  it("reaches the end on time even when the transcript holds still between frames", () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       frames.push(callback);
@@ -601,10 +651,6 @@ describe("useFollowEnd", () => {
       scrollTop: 100,
     });
     act(() => view.result.current.jumpToLatest());
-    expect(scrollTo).toHaveBeenLastCalledWith({
-      behavior: "smooth",
-      top: 2000,
-    });
     measure(transcript, {
       clientHeight: 400,
       scrollHeight: 2400,
@@ -619,8 +665,9 @@ describe("useFollowEnd", () => {
         });
     });
     act(() => view.result.current.updateFollowEnd());
-    for (let frame = 0; frame < 3; frame += 1)
+    for (let frame = 0; frame * 16 <= JUMP_DURATION_MS; frame += 1)
       act(() => frames.shift()?.(frame * 16));
+    expect(frames).toHaveLength(0);
     expect(
       transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight,
     ).toBe(0);
@@ -665,13 +712,20 @@ describe("useFollowEnd", () => {
   );
 
   it("does not re-show the pill from resize while a jump begins", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
     const { transcript, view } = mountFollowEnd();
     measure(transcript, {
       clientHeight: 400,
       scrollHeight: 2400,
       scrollTop: 100,
     });
-    act(() => view.result.current.updateFollowEnd());
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.splice(0).forEach((frame) => frame(0));
+    });
     expect(view.result.current.showJumpToLatest).toBe(true);
     act(() => {
       view.result.current.jumpToLatest();
@@ -844,7 +898,7 @@ describe("useFollowEnd", () => {
     readerScroll(500, 1000);
     expect(mounted.view.result.current.followingEnd).toBe(false);
     expect(mounted.view.result.current.showJumpToLatest).toBe(false);
-    return { ...mounted, grow, readerScroll };
+    return { ...mounted, frames, grow, readerScroll };
   }
 
   it("shows the new-activity pill when a running turn grows below a paused reader", () => {
@@ -859,13 +913,15 @@ describe("useFollowEnd", () => {
   });
 
   it("keeps the pill through reader scrolls and clears it on jump to latest", () => {
-    const { grow, readerScroll, view, scrollTo } = pauseNearEnd(true);
+    const { frames, grow, readerScroll, view, scrollTo } = pauseNearEnd(true);
     grow(500, 1100);
     readerScroll(450, 1100);
     expect(view.result.current.showJumpToLatest).toBe("activity");
 
     scrollTo.mockClear();
     act(() => view.result.current.jumpToLatest());
+    act(() => frames.splice(0).forEach((frame) => frame(0)));
+    act(() => frames.splice(0).forEach((frame) => frame(JUMP_DURATION_MS)));
     expect(scrollTo).toHaveBeenCalledWith(
       expect.objectContaining({ top: 700 }),
     );

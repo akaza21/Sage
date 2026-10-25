@@ -11,21 +11,16 @@ import { withSubagentNames } from "./subagentIdentities";
 export function PrimaryActivities({
   items,
   interactive,
-  expandDetails,
   onOpenResource,
   renderItem,
 }: {
   items: readonly AcpItem[];
   interactive: boolean;
-  expandDetails?: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
   renderItem: (item: AcpItem) => ReactNode;
 }) {
   const visible = useContext(WorkedActivityVisibility);
   const grouped = groupPrimaryActivities(withSubagentNames(items));
-  const latestTool = [...grouped]
-    .reverse()
-    .find((activity) => activity.kind === "toolRollup");
   return (
     <>
       {grouped.map((activity) =>
@@ -34,7 +29,6 @@ export function PrimaryActivities({
             key={activity.rollup.items[0]?.id}
             rollup={activity.rollup}
             interactive={interactive}
-            expandDetails={expandDetails && activity === latestTool}
             onOpenResource={onOpenResource}
           />
         ) : !visible ? null : activity.kind === "collaborationRollup" ? (

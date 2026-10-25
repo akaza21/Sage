@@ -174,6 +174,19 @@ export function PermissionPrompt({
         />
         {browser ? "Browser" : (nouns[payload.category ?? ""] ?? "Permission")}
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
+        {onCancelTurn ? (
+          // Always offered so the pane is never stranded, but quiet: the
+          // reference card has no Stop, so it is a secondary header control.
+          <button
+            ref={firstRef}
+            type="button"
+            className="acp-permission-prompt__stop"
+            aria-label="Stop turn"
+            onClick={onCancelTurn}
+          >
+            Stop
+          </button>
+        ) : null}
       </header>
       <p className="acp-permission-prompt__question">{question}</p>
       {payload.reason ? (
@@ -193,17 +206,6 @@ export function PermissionPrompt({
         {announcement}
       </p>
       <div className="acp-permission-prompt__actions">
-        {onCancelTurn ? (
-          <button
-            ref={firstRef}
-            type="button"
-            className="acp-permission-prompt__stop"
-            aria-label="Stop turn"
-            onClick={onCancelTurn}
-          >
-            Stop
-          </button>
-        ) : null}
         {canDeny ? (
           <button
             ref={onCancelTurn ? undefined : firstRef}

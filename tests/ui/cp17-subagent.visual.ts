@@ -184,6 +184,25 @@ test("Codex s4/f0244: the Subagents tab lists Active · 1 and Done · 1", async 
   await expect(done).toContainText("Count math");
   await expect(done).toContainText("just now");
   await expect(rightPane).not.toContainText("private-");
+  // s4/f0244: the right pane takes about 57% beside the sidebar, the tab
+  // label sits beside its icon, and list avatars are 20 px discs.
+  const chat = await page.locator(".agent-chat-panes").boundingBox();
+  const pane = await rightPane.boundingBox();
+  expect(pane!.width / (pane!.width + chat!.width)).toBeCloseTo(0.57, 1);
+  // The label's text, not its stretched box, starts just after the icon.
+  const gap = await rightPane
+    .getByRole("tab", { name: "Subagents" })
+    .evaluate((tab) => {
+      const icon = tab.querySelector("svg")!.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(tab.querySelector(".tab__basename")!);
+      return range.getBoundingClientRect().left - icon.right;
+    });
+  expect(gap).toBeLessThanOrEqual(8);
+  for (const avatar of await rightPane.locator(".subagent-avatar").all()) {
+    const box = await avatar.boundingBox();
+    expect([Math.round(box!.width), Math.round(box!.height)]).toEqual([20, 20]);
+  }
   await expect(rightPane).toHaveScreenshot("subagents-tab-active-done.png");
 });
 
@@ -210,6 +229,10 @@ test("Codex s4/f0487: clicking a grouped name opens that child's header", async 
   // The visual fixture's wire names no spawn model, so none is shown.
   await expect(header.locator(".subagent-surface__model")).toHaveCount(0);
   await expect(header).toContainText("Worked for 25s");
+  const avatar = await header.locator(".subagent-avatar").boundingBox();
+  expect([Math.round(avatar!.width), Math.round(avatar!.height)]).toEqual([
+    16, 16,
+  ]);
   // The browser fixture serves no child transcript, so the body shows the
   // unavailable notice; capture only the Codex s4/f0487 header row.
   await expect(header).toHaveScreenshot("subagent-child-header.png");

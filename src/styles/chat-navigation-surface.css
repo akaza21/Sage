@@ -350,6 +350,11 @@
     infinite;
 }
 
+.project-chat__approval-spinner {
+  display: grid;
+  color: var(--color-text-muted);
+}
+
 .project-chat__working--status {
   background: var(--color-warning);
 }

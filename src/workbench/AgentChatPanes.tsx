@@ -29,7 +29,7 @@ import { ChatSurface } from "../features/chat/ChatSurface";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPane } from "./AgentChatPane";
-import { AgentTaskHeader } from "./AgentTaskHeader";
+import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
 import {
@@ -82,13 +82,16 @@ export function AgentChatPanes({
     (state) => state.projectTransitioning,
   );
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
-  const [sessionChrome, setSessionChrome] = useState<AgentSessionChrome | null>(
-    null,
-  );
+  // Only the focused Chat and a focused side chat's parent publish, and each
+  // withdraws on cleanup, so this holds at most two entries.
+  const [sessionChromeById, setSessionChromeById] = useState<
+    Readonly<Record<string, AgentSessionChrome>>
+  >({});
   const publishSessionChrome = useCallback(
-    (chrome: AgentSessionChrome | null) => {
-      setSessionChrome(chrome);
-    },
+    (chatId: string, chrome: AgentSessionChrome | null) =>
+      setSessionChromeById(({ [chatId]: _withdrawn, ...rest }) =>
+        chrome ? { ...rest, [chatId]: chrome } : rest,
+      ),
     [],
   );
   const [storedPercent, setStoredPercent] = useState(
@@ -208,7 +211,6 @@ export function AgentChatPanes({
   }, [displayedIds, focusedOwner]);
 
   const hasVisibleChats = nextVisibleIds.length > 0;
-  const focusedTab = tabs.find((tab) => tab.id === focusedId) ?? null;
   const chatTabs = useMemo(
     () =>
       chatIds.map((id) => tabs.find((tab) => tab.id === id)).filter(isChatTab),
@@ -297,22 +299,18 @@ export function AgentChatPanes({
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
       <div className="agent-chat-center">
-        <div className="agent-chat-center__header">
-          <AgentTaskHeader
-            tab={focusedTab}
-            chatCount={chatTabs.length}
-            snapshot={focusedSnapshot}
-            sessionChrome={
-              sessionChrome?.chatId === focusedId ? sessionChrome : null
-            }
-          />
-          {onArtifactHeaderMount ? (
-            <div
-              className="agent-artifact-header-slot"
-              ref={onArtifactHeaderMount}
-            />
-          ) : null}
-        </div>
+        <AgentChatCenterHeader
+          tabs={tabs}
+          paneIds={
+            sidePanes && displayedIds.some(isSideChatId) ? displayedIds : null
+          }
+          focusedId={focusedId}
+          focusedSnapshot={focusedSnapshot}
+          chatCount={chatTabs.length}
+          sessionChromeById={sessionChromeById}
+          splitPercent={splitPercent}
+          onArtifactHeaderMount={onArtifactHeaderMount}
+        />
         <div
           ref={panesRef}
           id="agent-chat-panel"

@@ -5,6 +5,14 @@ import {
   ownedPaneNodes,
   SINGLE_CAPTURE_PANE,
 } from "./capture-native-chat-pane.mjs";
+import {
+  PARITY_PANE_SELECTORS,
+  PARITY_TURN_KINDS,
+  PARITY_DOCUMENT_SELECTORS,
+  parityObservation,
+  parityRules,
+  parityChatPredicates,
+} from "./capture-native-chat-parity-dom.mjs";
 export const IDLE_CAPTURE_STATES = Object.freeze([
   "new-chat",
   "composer-idle",
@@ -79,15 +87,24 @@ export function hiddenByClosedDetails(element) {
   return false;
 }
 export function assistantTextRendered(turnId, document, visible) {
-  return Array.from(document.querySelectorAll(".acp-turn"))
-    .filter((element) => element.dataset.turnId === turnId)
-    .some((element) =>
-      Array.from(
-        element.querySelectorAll(
-          ".acp-message--assistant .acp-markdown, .acp-permission:not(.acp-permission--settled) > p:first-of-type",
-        ),
-      ).some((text) => visible(text) && text.textContent.trim().length > 0),
-    );
+  return (
+    Array.from(document.querySelectorAll(".acp-turn"))
+      .filter((element) => element.dataset.turnId === turnId)
+      .some((element) =>
+        Array.from(
+          element.querySelectorAll(
+            ".acp-message--assistant .acp-markdown, .acp-permission:not(.acp-permission--settled) > p:first-of-type",
+          ),
+        ).some((text) => visible(text) && text.textContent.trim().length > 0),
+      ) ||
+    Array.from(
+      document.querySelectorAll(
+        ".acp-permission-prompt .acp-permission-prompt__question",
+      ),
+    ).some(
+      (text) => visible(text) && (text.textContent ?? "").trim().length > 0,
+    )
+  );
 }
 export function hasVisibleLazyFallback(document, visible) {
   return Array.from(
@@ -113,6 +130,7 @@ export function observationFor(binding) {
   const {useWorkbenchStore}=await import('/src/app/store.ts');
   const {acpProjectionStoreFor}=await import('/src/app/acpProjectionRegistry.ts');
   const {pinnedAgentChatOwner}=await import('/src/app/agentChatOwner.ts');
+  const sideChats=await import('/src/workbench/sideChatState.ts').catch(()=>null);
   const store=useWorkbenchStore.getState(), ownerId=pinnedAgentChatOwner() ?? store.activeTabId;
   const page=acpProjectionStoreFor(ownerId).getState().page;
   const chatId=store.tabs.find(tab=>tab.id===ownerId && tab.kind==='chat')?.id ?? null, projectId=store.project?.id ?? null;
@@ -134,15 +152,18 @@ export function observationFor(binding) {
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>queryAll(selector).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'${FILES_EDITED} [role="table"][aria-label="Inline saved diff"]',diffTab:'[aria-label="Agent artifact tabs"] [role="tab"][aria-label^="Diff "]',diffView:'[aria-label="Agent artifacts"] [role="table"][aria-label="Unified file diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'${COMPOSER_MENU}',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'${COMPOSER_MENU} [role="group"][aria-label="Session mode"] [role="menuitemradio"]',meter:'.composer__context [role="progressbar"]'};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'${FILES_EDITED} [role="table"][aria-label="Inline saved diff"]',diffTab:'[aria-label="Agent artifact tabs"] [role="tab"][aria-label^="Diff "]',diffView:'[aria-label="Agent artifacts"] [role="table"][aria-label="Unified file diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission-prompt__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'${COMPOSER_MENU}',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'${COMPOSER_MENU} [role="group"][aria-label="Session mode"] [role="menuitemradio"]',meter:'.composer__context [role="progressbar"]',...${JSON.stringify(PARITY_PANE_SELECTORS)}};
+  const documentSelectors=${JSON.stringify(PARITY_DOCUMENT_SELECTORS)};
   const currentTurn=queryAll('.acp-turn').find(element=>turn?.id && element.dataset.turnId===turn.id);
-  const turnKinds=new Set(['thought','tool','rollup','editingFiles','subagent','plan','compaction','notice','permission','pendingApproval','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded']);
+  const turnKinds=new Set(['thought','tool','rollup','editingFiles','subagent','plan','compaction','notice','permission','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded',...${JSON.stringify(PARITY_TURN_KINDS)}]);
   const namedKinds=${JSON.stringify(NAMED_KINDS)};
   const accessibleName=${accessibleName.toString()};
   const named=(kind,nodes)=>namedKinds[kind] ? nodes.filter(element=>accessibleName(element)===namedKinds[kind]) : nodes;
-  const nodesFor=(kind,selector)=>named(kind,turnKinds.has(kind) ? queryAll(selector).filter(element=>currentTurn && element.closest('.acp-turn')===currentTurn) : queryAll(selector));
+  const documentNodes=selector=>{const nodes=[...document.querySelectorAll(selector)];if(nodes.length>64)throw Error('capture-owner-bound');return nodes};
+  const nodesFor=(kind,selector)=>documentSelectors[kind]===selector ? documentNodes(selector) : named(kind,turnKinds.has(kind) ? queryAll(selector).filter(element=>currentTurn && element.closest('.acp-turn')===currentTurn) : queryAll(selector));
+  const allSelectors={...selectors,...documentSelectors};
   const elements=[]; let charged=0;
-  for(const [kind,selector] of Object.entries(selectors))for(const element of nodesFor(kind,selector)){
+  for(const [kind,selector] of Object.entries(allSelectors))for(const element of nodesFor(kind,selector)){
     if(elements.length>=64)throw Error('probe-elements');
     const raw=(element.innerText ?? '').trim(); charged+=raw.length;
     if(raw.length>16384 || charged>65536)throw Error('probe-text-bound');
@@ -155,7 +176,8 @@ export function observationFor(binding) {
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
-  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(selectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  const parity=(${parityObservation.toString()})(document,queryAll,visible,{sideParentChatId:sideChats?.useSideChatState.getState().sides.find(entry=>entry.id===chatId)?.parentChatId,forkedFrom:page?.forkedFrom});
+  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,...parity,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(allSelectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
 
@@ -218,13 +240,11 @@ export function namedState(options, observation, captureChat) {
     binding: observation.bindingId === HARNESS[options.harness]?.binding,
     selected: observation.selected === HARNESS[options.harness]?.id,
   };
-  if (captureChat) {
-    predicates.chat =
-      observation.chatId === captureChat.chatId &&
-      observation.projectId === captureChat.projectId &&
-      observation.projectionLoaded === true;
-    predicates.singlePane = observation.singlePane === true;
-  }
+  if (captureChat)
+    Object.assign(
+      predicates,
+      parityChatPredicates(state, observation, captureChat),
+    );
   const rules = {
     "new-chat": observation.state === "none",
     "turn-running": live,
@@ -346,13 +366,17 @@ export function namedState(options, observation, captureChat) {
       terminal && assistantRendered && observation.controls.send,
     "responsive-480":
       terminal && assistantRendered && observation.controls.send,
+    ...parityRules(observation, { terminal, live, assistantRendered }),
   };
   predicates.namedState =
     rules[state] === true && observation.lazyFallbackVisible === false;
   return predicates;
 }
-export function clickExpression(selector) {
-  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
+/** `chatId` also admits that Chat's owned artifact pane (Subagents, Diff). */
+export function clickExpression(selector, chatId = null) {
+  if (chatId !== null && !/^[A-Za-z0-9:_-]{1,128}$/u.test(chatId))
+    throw new Error("chat-identity");
+  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
 }
 /** Opens the single matching disclosure summary; idempotent, true once open. */
 export function openExpression(selector) {
@@ -372,10 +396,15 @@ export function isExpandable(selector) {
 export function expandExpression(selector) {
   return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)});const button=elements[0];if(elements.length!==1 || button.disabled || !button.hasAttribute('aria-expanded'))return false;if(button.getAttribute('aria-expanded')!=='true'){button.scrollIntoView({block:'center',inline:'nearest'});button.click()}return button.getAttribute('aria-expanded')==='true'})()`;
 }
+export const APPROVAL_ALLOW =
+  ".acp-permission-prompt__split > button:first-child";
+export const APPROVAL_DENY =
+  ".acp-permission-prompt__actions > button:not(.acp-permission-prompt__stop)";
 export function isLiveTurnAction(selector) {
   return (
     selector === 'button[aria-label="Cancel turn"]' ||
-    selector.includes(".acp-permission__actions button:")
+    selector === APPROVAL_ALLOW ||
+    selector === APPROVAL_DENY
   );
 }
 const LAST_TURN = ".acp-turn:last-of-type ";
@@ -424,10 +453,9 @@ export function actionsFor(state, harness) {
         ? [LAST_TURN + ".acp-subagent-row .acp-subagent-name"]
         : []),
     ];
-  if (state === "approval-approved")
-    return [LAST_TURN + ".acp-permission__actions button:first-child"];
-  if (state === "approval-declined")
-    return [LAST_TURN + ".acp-permission__actions button:last-child"];
+  // Wave 7: the pending approval replaces the composer (PermissionPrompt).
+  if (state === "approval-approved") return [APPROVAL_ALLOW];
+  if (state === "approval-declined") return [APPROVAL_DENY];
   if (state === "turn-stopped") return ['button[aria-label="Cancel turn"]'];
   if (state === "turn-retry") return [".acp-turn__failure button"];
   if (state === "file-hunk" || state === "file-diff-tab")

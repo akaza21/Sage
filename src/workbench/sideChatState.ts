@@ -33,6 +33,18 @@ export const useSideChatState = create<{
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 
+/**
+ * The Chat that names the window and holds the rail highlight: a focused
+ * side chat never lists, so its parent keeps both (Codex s2/f0244).
+ */
+export function useRailChatId(activeId: string | null) {
+  return (
+    useSideChatState(
+      (state) => state.sides.find((side) => side.id === activeId)?.parentChatId,
+    ) ?? activeId
+  );
+}
+
 /** A parent Chat reads as working while one of its side chats runs. */
 export function useParentChatStatus() {
   const sides = useSideChatState((state) => state.sides);

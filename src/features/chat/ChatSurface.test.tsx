@@ -29,6 +29,7 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
+import { useSideChatState } from "../../workbench/sideChatState";
 import type * as AcpModule from "./acp";
 
 const hooks = vi.hoisted(() => ({
@@ -1426,33 +1427,57 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByLabelText(/^Harness status:/)).toBeNull();
     expect(document.querySelector(".surface-header")).toBeNull();
     expect(publish).toHaveBeenCalledWith(
+      "chat-a",
       expect.objectContaining({ chatId: "chat-a" }),
     );
   });
 
-  it("keeps a side chat's own tab under Agent chrome and no other pane header", () => {
+  it("keeps publishing a parent's session chrome while its side chat is focused", () => {
     const publish = vi.fn();
-    const header = <button type="button">Close side chat</button>;
-    const view = render(
-      <AgentSessionChromeContext.Provider value={publish}>
-        <ChatSurface chatId="side-chat-a" paneHeader={header} />
-      </AgentSessionChromeContext.Provider>,
-    );
-    expect(
-      document.querySelector(
-        ".chat-surface--side-chat > .chat-surface__side-header",
-      ),
-    ).toContainElement(screen.getByRole("button", { name: "Close side chat" }));
-    view.unmount();
-    render(
-      <AgentSessionChromeContext.Provider value={publish}>
-        <ChatSurface chatId="chat-a" paneHeader={header} />
-      </AgentSessionChromeContext.Provider>,
-    );
-    expect(
-      screen.queryByRole("button", { name: "Close side chat" }),
-    ).toBeNull();
-    expect(document.querySelector(".chat-surface--side-chat")).toBeNull();
+    useSideChatState.setState({
+      sides: [{ id: "side-a", projectId: "project-a", parentChatId: "chat-a" }],
+    });
+    pinAgentChatOwner("side-a");
+    try {
+      const view = render(
+        <AgentSessionChromeContext.Provider value={publish}>
+          <ChatSurface chatId="chat-a" />
+        </AgentSessionChromeContext.Provider>,
+      );
+      expect(publish).toHaveBeenCalledWith(
+        "chat-a",
+        expect.objectContaining({ chatId: "chat-a" }),
+      );
+      view.unmount();
+      expect(publish).toHaveBeenLastCalledWith("chat-a", null);
+      publish.mockClear();
+      // A Chat that is neither focused nor the side chat's parent is silent.
+      render(
+        <AgentSessionChromeContext.Provider value={publish}>
+          <ChatSurface chatId="chat-b" />
+        </AgentSessionChromeContext.Provider>,
+      );
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      useSideChatState.setState({ sides: [] });
+    }
+  });
+
+  it("renders no header of its own under Agent chrome, side chats included", () => {
+    // The task header names the Chat; a side chat's tab lives in the Agent
+    // center header row (Codex s2/f0244).
+    const publish = vi.fn();
+    for (const chatId of ["side-chat-a", "chat-a"]) {
+      const view = render(
+        <AgentSessionChromeContext.Provider value={publish}>
+          <ChatSurface chatId={chatId} />
+        </AgentSessionChromeContext.Provider>,
+      );
+      expect(
+        document.querySelector("section.chat-surface > header"),
+      ).toBeNull();
+      view.unmount();
+    }
   });
 
   it("renders only provider-advertised session modes and preserves their order", () => {
@@ -2090,8 +2115,10 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("stops following when the reader scrolls away and offers a return to latest", () => {
+    // Synchronous frames 16 ms apart, so the timed jump runs to its end.
+    let clock = 0;
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(0);
+      callback((clock += 16));
       return 1;
     });
     const scrollTo = vi.mocked(Element.prototype.scrollTo);
@@ -2111,7 +2138,7 @@ describe("ChatSurface ACP resource integration", () => {
       name: "Jump to latest",
     });
     fireEvent.click(returnToLatest);
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 600 });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 600 });
   });
 
   it("coalesces a scroll burst and cancels pending follow work on owner change or unmount", () => {
@@ -3166,18 +3193,18 @@ describe("ChatSurface ACP resource integration", () => {
           tabIndex={0}
           onFocus={() => pinAgentChatOwner("chat-background")}
         >
-          <ChatSurface
-            chatId="chat-background"
-            paneHeader={
-              <>
-                <figure aria-label="Overflowing diagram" tabIndex={0} />
-                <button type="button">Diagram action</button>
-              </>
-            }
-          />
+          <ChatSurface chatId="chat-background" />
         </section>
       );
       const { rerender } = render(renderPane());
+      // Focusable transcript content (a scrollable diagram and its action).
+      const figure = document.createElement("figure");
+      figure.setAttribute("aria-label", "Overflowing diagram");
+      figure.tabIndex = 0;
+      const action = document.createElement("button");
+      action.type = "button";
+      action.textContent = "Diagram action";
+      document.querySelector(".chat-surface")!.append(figure, action);
       setTurnState("completed");
       rerender(renderPane());
       const composer = screen.getByRole("textbox", { name: "Message agent" });

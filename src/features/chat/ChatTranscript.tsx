@@ -21,6 +21,7 @@ import { ChatHome } from "./ChatHome";
 import { composerWorkspaceName } from "./composerChrome";
 import { isNewProjectChat } from "./newProjectChat";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import {
   AcpAnnouncementRegions,
   type Announcement,
@@ -108,13 +109,18 @@ export function ChatTranscript({
       : (messages.at(-1)?.text ?? "");
   const feedback =
     copyFeedback?.scope === scope ? copyFeedback.announcement : null;
-  const announceCopy = (text: string) => {
-    if (!focusedRef.current) return;
-    setCopyFeedback({
-      scope,
-      announcement: { id: `answer-copy:${++copySequence.current}`, text },
-    });
-  };
+  // Stable per scope: it is also every earlier and inherited answer's
+  // Copy announcer (AnswerCopyFeedback).
+  const announceCopy = useCallback(
+    (text: string) => {
+      if (!focusedRef.current) return;
+      setCopyFeedback({
+        scope,
+        announcement: { id: `answer-copy:${++copySequence.current}`, text },
+      });
+    },
+    [scope],
+  );
   const forgetCopyFeedback = useCallback((id: string) => {
     setCopyFeedback((current) =>
       current?.announcement.id === id ? null : current,
@@ -159,7 +165,7 @@ export function ChatTranscript({
     </div>
   );
   return (
-    <>
+    <AnswerCopyFeedback.Provider value={announceCopy}>
       <div
         ref={transcriptRef}
         className={`message-list${showHome ? " message-list--home" : ""}`}
@@ -226,7 +232,6 @@ export function ChatTranscript({
             onRetry={
               page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
             }
-            onCopyFeedback={announceCopy}
           />
           {focused && (!useNativeAcp || !page) ? (
             <AcpAnnouncementRegions
@@ -263,7 +268,8 @@ export function ChatTranscript({
       </button>
       {useNativeAcp && !projectTransitioning ? (
         <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>
-          {showHome && projectName ? (
+          {/* A side chat inherits its parent's Project (Codex s2/f0244). */}
+          {showHome && projectName && !isSideChatId(page?.chatId) ? (
             <div
               className="chat-home__scope"
               role="group"
@@ -275,6 +281,6 @@ export function ChatTranscript({
           ) : null}
         </div>
       ) : null}
-    </>
+    </AnswerCopyFeedback.Provider>
   );
 }

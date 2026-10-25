@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 
 import type { GitProcessState } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { matchesProjectIntent } from "./projectIntent";
+import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export type RepositoryRemoteAction = "fetch" | "push" | "pull";
@@ -99,8 +99,7 @@ export const createRepositoryRemoteSlice: StateCreator<
             )({ projectId, rootId, remote: remote! }, transitionEpoch);
       if (
         get().repositoryRemote !== transport ||
-        get().projectTransitioning ||
-        get().nativeTransitionEpoch !== transitionEpoch ||
+        !idleAtEpoch(get(), transitionEpoch) ||
         result.projectId !== projectId ||
         result.rootId !== rootId ||
         result.transitionEpoch !== transitionEpoch ||
@@ -123,8 +122,7 @@ export const createRepositoryRemoteSlice: StateCreator<
     } catch (error) {
       if (
         get().repositoryRemote === transport &&
-        !get().projectTransitioning &&
-        get().nativeTransitionEpoch === transitionEpoch &&
+        idleAtEpoch(get(), transitionEpoch) &&
         matchesProjectIntent(get(), generation, projectId)
       ) {
         set({

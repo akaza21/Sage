@@ -12,7 +12,7 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { matchesResourceIntent } from "./projectIntent";
+import { idleAtEpoch, matchesResourceIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryMutation {
@@ -128,8 +128,7 @@ export const createRepositoryMutationSlice: StateCreator<
       );
       if (
         get().repositoryMutation !== mutation ||
-        get().projectTransitioning ||
-        get().nativeTransitionEpoch !== transitionEpoch ||
+        !idleAtEpoch(get(), transitionEpoch) ||
         result.projectId !== projectId ||
         result.transitionEpoch !== transitionEpoch ||
         !matchesResourceIntent(get(), generation, projectId, resource)
@@ -150,8 +149,7 @@ export const createRepositoryMutationSlice: StateCreator<
     } catch (error) {
       if (
         get().repositoryMutation === mutation &&
-        !get().projectTransitioning &&
-        get().nativeTransitionEpoch === transitionEpoch &&
+        idleAtEpoch(get(), transitionEpoch) &&
         matchesResourceIntent(get(), generation, projectId, resource)
       ) {
         set({

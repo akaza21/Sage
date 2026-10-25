@@ -128,7 +128,7 @@ const unavailableFile: SafeResourceLocation = {
 };
 
 describe("ToolActivityRollup", () => {
-  it("opens Shell through both Worked disclosures and retains the nested choice on reopen", async () => {
+  it("opens Shell through both Worked disclosures and reopens Worked with the row closed", async () => {
     const command = tool("shell", "execute");
     command.payload.inputSummary = "npm run check";
     const turn: TurnProjection = {
@@ -147,11 +147,7 @@ describe("ToolActivityRollup", () => {
       browserOperationsCollapsed: 0,
     };
     render(
-      <ChatTranscriptTurnSummary
-        turn={turn}
-        hasActivities
-        hasCollapsedActivities
-      >
+      <ChatTranscriptTurnSummary turn={turn} hasActivities>
         <ToolActivityRollup
           rollup={{
             kind: "execute",
@@ -165,12 +161,12 @@ describe("ToolActivityRollup", () => {
     const worked = document.querySelector<HTMLDetailsElement>(
       ".chat-transcript-work",
     )!;
-    const row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
     expect(worked.open).toBe(false);
-    expect(row.open).toBe(false);
+    expect(document.querySelector(".acp-tool-rollup")).toBeNull();
     expect(screen.queryByText("Shell")).toBeNull();
     fireEvent.click(worked.querySelector("summary")!);
     expect(worked.open).toBe(true);
+    let row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
     expect(row.open).toBe(false);
     expect(row.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
     fireEvent.click(row.querySelector("summary")!);
@@ -179,13 +175,12 @@ describe("ToolActivityRollup", () => {
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "$ npm run check",
     );
+    // Collapse removes the rows (Codex s2/f0040); reopening shows them closed.
     fireEvent.click(worked.querySelector("summary")!);
-    expect(screen.getByText("Shell")).toBeVisible();
+    expect(screen.queryByText("Shell")).toBeNull();
     fireEvent.click(worked.querySelector("summary")!);
-    expect(row.open).toBe(true);
-    expect(screen.getByText("Shell")).toBeVisible();
-    fireEvent.click(row.querySelector("summary")!);
-    fireEvent(row, new Event("toggle"));
+    row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+    expect(row.open).toBe(false);
     expect(screen.queryByText("Shell")).toBeNull();
   });
 
@@ -470,21 +465,26 @@ describe("ToolActivityRollup", () => {
   it.each([
     ["completed", "Ran commands", "Ran tests"],
     ["inProgress", "Running a command", "Running tests"],
-    ["pending", "Ran commands", "Ran tests"],
-    ["waitingForApproval", "Ran commands", "Ran tests"],
+    ["pending", "Running a command", "Running tests"],
+    ["waitingForApproval", "Running a command", "Running tests"],
     ["failed", "Ran commands", "Ran tests"],
     ["cancelled", "Ran commands", "Ran tests"],
     ["declined", "Ran commands", "Ran tests"],
   ] as const)(
-    "keeps %s command state out of the label and in the row state",
+    "names %s commands live or settled, keeping the state in the row",
     (toolState, ordinary, declaredSingleton) => {
       const items = [
         { ...tool("command-1", "execute"), toolState },
         { ...tool("command-2", "execute"), toolState },
       ];
+      // Waiting on approval or not yet started is still live (s6/f0526).
+      const live = ordinary.startsWith("Running");
       expect(toolRollupLabel("execute", items)).toBe(ordinary);
       expect(toolRollupLabel("execute", items, "declaredTest")).toBe(
-        toolState === "inProgress" ? "Running tests" : "Ran tests · 2 commands",
+        live ? "Running tests" : "Ran tests · 2 commands",
+      );
+      expect(toolRollupLabel("execute", items, "ordinary", true)).toBe(
+        "Ran commands",
       );
       expect(toolRollupLabel("execute", [items[0]], "declaredTest")).toBe(
         declaredSingleton,
@@ -584,10 +584,12 @@ describe("ToolActivityRollup", () => {
       ["pending", "pending"],
       ["waitingForApproval", "waitingForApproval"],
     ] as const)(
-      "keeps %s in the row state rather than the label",
+      "names the live %s command and keeps the state in the row",
       (toolState, rowState) => {
         const count =
-          toolState === "inProgress"
+          toolState === "inProgress" ||
+          toolState === "pending" ||
+          toolState === "waitingForApproval"
             ? commandActivity === "declaredTest"
               ? "Running tests"
               : "Running a command"
@@ -631,8 +633,8 @@ describe("ToolActivityRollup", () => {
   it.each([
     ["inProgress", "Running"],
     ["completed", "Ran"],
-    ["pending", "Ran"],
-    ["waitingForApproval", "Ran"],
+    ["pending", "Running"],
+    ["waitingForApproval", "Running"],
     ["failed", "Ran"],
     ["cancelled", "Ran"],
     ["declined", "Ran"],
@@ -679,10 +681,10 @@ describe("ToolActivityRollup", () => {
       expect(
         summary.querySelector(".acp-tool-rollup__label"),
       ).toHaveTextContent(`${action} npm run check`);
-      if (toolState !== "completed" && toolState !== "inProgress") {
-        expect(summary.querySelector(".acp-live-shimmer")).toBeNull();
-        expect(summary.querySelector(".acp-state")).toBeNull();
-      }
+      expect(Boolean(summary.querySelector(".acp-live-shimmer"))).toBe(
+        action === "Running",
+      );
+      expect(summary.querySelector(".acp-state")).toBeNull();
       expect(screen.queryByLabelText("Command line")).toBeNull();
       row.open = true;
       fireEvent(row, new Event("toggle"));

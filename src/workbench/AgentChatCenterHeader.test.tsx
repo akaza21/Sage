@@ -1,0 +1,116 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+import type { AgentSessionChrome } from "../app/agentChatOwner";
+import { useWorkbenchStore } from "../app/store";
+import type { WorkbenchTab } from "../domain/workbench";
+import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
+
+vi.mock("../features/chat/transcriptLazy", () => ({
+  TranscriptPart: ({ chatId }: { chatId: string }) => (
+    <span>Side tab {chatId}</span>
+  ),
+}));
+
+const snapshot = (chatId: string, working: boolean): ChatLiveSnapshot => ({
+  chatId,
+  statusLabel: working ? "Working" : "Idle",
+  statusTone: working ? "working" : "idle",
+  latestText: "",
+  streaming: false,
+  waiting: false,
+  working,
+});
+
+vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
+  useAcpChatLiveSnapshot: (chatId: string) => snapshot(chatId, true),
+}));
+
+const initialState = useWorkbenchStore.getState();
+const parent: WorkbenchTab = {
+  id: "chat:parent",
+  kind: "chat",
+  title: "Parent task",
+  position: 0,
+  pinned: false,
+  dirty: false,
+};
+const side: WorkbenchTab = { ...parent, id: "side-1", title: "Side chat" };
+
+function chrome(chatId: string, harnessStatus: string): AgentSessionChrome {
+  return {
+    chatId,
+    harnessStatus,
+    canCloseSession: true,
+    canEndSession: false,
+    busy: false,
+    acpPage: null,
+    messages: [],
+    actions: {
+      current: {
+        closeSession: vi.fn(),
+        endSession: vi.fn(),
+        focusComposer: vi.fn(),
+      },
+    },
+  };
+}
+
+beforeEach(() => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "Sage", roots: [] },
+    projects: [{ id: "project-a", name: "Sage", roots: [] }],
+    tabs: [parent, side],
+    activeTabId: side.id,
+  } as never);
+});
+
+afterEach(() => {
+  cleanup();
+  useWorkbenchStore.setState(initialState, true);
+});
+
+it("keeps the parent's own live session chrome while its side chat is focused", () => {
+  render(
+    <AgentChatCenterHeader
+      tabs={[parent, side]}
+      paneIds={[parent.id, side.id]}
+      focusedId={side.id}
+      focusedSnapshot={snapshot(side.id, false)}
+      chatCount={1}
+      sessionChromeById={{
+        [parent.id]: chrome(parent.id, "Parent live"),
+        [side.id]: chrome(side.id, "Side live"),
+      }}
+      splitPercent={57}
+    />,
+  );
+  // Status and actions in the parent cell both belong to the parent.
+  expect(screen.getByRole("status")).toHaveAccessibleName(
+    "Chat status: Working",
+  );
+  expect(screen.getByLabelText("Harness status: Parent live")).toBeVisible();
+  expect(screen.queryByLabelText("Harness status: Side live")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+  expect(
+    screen.getByRole("menuitem", { name: "Close session" }),
+  ).toBeInTheDocument();
+});
+
+it("shows no session chrome the parent did not publish", () => {
+  render(
+    <AgentChatCenterHeader
+      tabs={[parent, side]}
+      paneIds={[parent.id, side.id]}
+      focusedId={side.id}
+      focusedSnapshot={snapshot(side.id, false)}
+      chatCount={1}
+      sessionChromeById={{ [side.id]: chrome(side.id, "Side live") }}
+      splitPercent={57}
+    />,
+  );
+  expect(screen.queryByLabelText(/^Harness status:/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+  expect(screen.queryByRole("menuitem", { name: "Close session" })).toBeNull();
+});

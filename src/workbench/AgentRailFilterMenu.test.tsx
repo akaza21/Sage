@@ -30,7 +30,8 @@ describe("AgentRailFilterMenu", () => {
     const trigger = screen.getByRole("button", { name: "Chat list options" });
     fireEvent.click(trigger);
 
-    const menu = screen.getByRole("menu", { name: "Chat list options" });
+    // The open menu is a lazy chunk, loaded on its first open.
+    const menu = await screen.findByRole("menu", { name: "Chat list options" });
     expect(screen.getByRole("group", { name: "Grouping" })).toBeVisible();
     expect(screen.getByRole("group", { name: "Ordering" })).toBeVisible();
     expect(screen.getByRole("group", { name: "Show" })).toBeVisible();
@@ -65,11 +66,11 @@ describe("AgentRailFilterMenu", () => {
     expect(outside).toHaveFocus();
   });
 
-  it("keeps status filters inside the menu's radio interaction model", () => {
+  it("keeps status filters inside the menu's radio interaction model", async () => {
     render(<AgentRailFilterMenu onMarkAllRead={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
 
-    const all = screen.getByRole("menuitemradio", {
+    const all = await screen.findByRole("menuitemradio", {
       name: "All statuses",
     });
     const working = screen.getByRole("menuitemradio", { name: "Working" });
@@ -88,7 +89,9 @@ describe("AgentRailFilterMenu", () => {
 
     const trigger = screen.getByRole("button", { name: "Chat list options" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark All as Read" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Mark All as Read" }),
+    );
 
     expect(onMarkAllRead).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();

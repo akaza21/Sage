@@ -72,3 +72,34 @@ test("CP-40: toolbar flips below a selection at the scrollport edge", async ({
   expect(toolbar.y).toBeLessThanOrEqual(selected.y + selected.height + 8);
   await expect(workbench).toHaveScreenshot("selection-popover-flipped.png");
 });
+
+for (const width of [1872, 720, 480]) {
+  test(`CP-40: Codex-sized pill stays inside the answer column at ${width}`, async ({
+    page,
+  }) => {
+    await openSelectionScenario(page);
+    await page.setViewportSize({ width, height: 1080 });
+    const selected = await dragAnswerPhrase(page);
+    const toolbar = (await page
+      .getByRole("toolbar", { name: "Selection actions" })
+      .boundingBox())!;
+    // Codex s2/f0093: 13 px labels with 7 px padding (172 x 29 there; Sage
+    // keeps its own Inter face, which sets the same labels about 15 px wider).
+    expect(toolbar.width).toBeGreaterThanOrEqual(164);
+    expect(toolbar.width).toBeLessThanOrEqual(190);
+    const column = (await page
+      .locator("[data-selectable-answer]")
+      .first()
+      .boundingBox())!;
+    expect(toolbar.x).toBeGreaterThanOrEqual(
+      Math.min(column.x, selected.x) - 1,
+    );
+    expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(width);
+    // Inter labels make the pill ~1 px wider than the 480 px answer
+    // column; it may reach into the gutter but never past the scrollport.
+    if (width === 480)
+      expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(
+        column.x + column.width + 2,
+      );
+  });
+}

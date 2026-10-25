@@ -92,6 +92,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",
+  // The Chat list options menu loads on its first open.
+  "src/workbench/AgentRailFilterOptions.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",

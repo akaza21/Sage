@@ -91,6 +91,13 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await open(page, "commands");
       await page.locator(".chat-transcript-work > summary").click();
+      // Worked reveals its groups closed (Codex s2/f0012-f0015); a group
+      // opens on its own click (s2/f0016-f0018).
+      const commandGroup = page.locator(
+        ".chat-transcript-work__groups > .acp-tool-rollup",
+      );
+      await expect(commandGroup).not.toHaveAttribute("open");
+      await commandGroup.locator(":scope > summary").click();
       const commands = page.locator(
         ".acp-tool-rollup__items > .acp-tool-rollup",
       );
@@ -140,6 +147,11 @@ for (const width of [1888, 720, 480]) {
           ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
       ).toHaveText("Read files");
+      const readGroup = page.locator(
+        ".chat-transcript-work__groups > .acp-tool-rollup",
+      );
+      await expect(readGroup).not.toHaveAttribute("open");
+      await readGroup.locator(":scope > summary").click();
       const rows = page.locator(".acp-tool-rollup__items > .acp-tool-rollup");
       await expect(rows).toHaveCount(3);
       await expect(page.locator(".acp-tool-command-frame")).toHaveCount(0);

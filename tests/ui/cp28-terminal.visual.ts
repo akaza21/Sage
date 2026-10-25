@@ -58,6 +58,9 @@ async function installTurn(page: Page, stopped: boolean) {
 
 test.use({ deviceScaleFactor: 1 });
 
+/** The latest answer's row; earlier Turns keep their own (s2/f0149). */
+const footerActions = ".message-list__content > .chat-transcript-actions";
+
 for (const width of [1888, 720, 480]) {
   for (const scenario of ["agent-single", "agent-dual"] as const) {
     test(`CP-28 Stop preserves answer/action columns at ${width}px in ${scenario}`, async ({
@@ -74,7 +77,7 @@ for (const width of [1888, 720, 480]) {
       await installTurn(page, false);
       const bounds = [];
       for (const pane of await panes.all()) {
-        await expect(pane.locator(".chat-transcript-actions")).toHaveCount(0);
+        await expect(pane.locator(footerActions)).toHaveCount(0);
         const answer = pane.locator(".acp-message--assistant").last();
         await expect(answer).toBeVisible();
         bounds.push(await answer.boundingBox());
@@ -90,9 +93,7 @@ for (const width of [1888, 720, 480]) {
         const answer = pane.locator(".acp-message--assistant").last();
         const before = bounds[index];
         const after = await answer.boundingBox();
-        const actions = await pane
-          .locator(".chat-transcript-actions")
-          .boundingBox();
+        const actions = await pane.locator(footerActions).boundingBox();
         const header = await pane
           .locator(".acp-turn__header")
           .last()

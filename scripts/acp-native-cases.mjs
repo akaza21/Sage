@@ -4,6 +4,20 @@ import {
   events,
   acpEffortUpdate,
 } from "./acp-native-case-events.mjs";
+import {
+  paritySupported,
+  parityAbsent,
+  parityGaps,
+  parityTurns,
+} from "./capture-native-chat-parity.mjs";
+import {
+  PARITY_BASE,
+  PARITY_LIVE,
+  parityOwnEvents,
+  parityInitializeShape,
+  paritySecondTurn,
+  parityForkSteps,
+} from "./acp-native-parity-events.mjs";
 
 const sharedStates = [
   "new-chat",
@@ -76,9 +90,10 @@ const liveStates = new Set([
   "subagents-started",
   "plan-running",
   "composer-stop",
+  ...PARITY_LIVE,
 ]);
 export const truthfulAbsentStates = Object.freeze({
-  pi: piAbsentStates,
+  pi: Object.freeze([...piAbsentStates, ...parityAbsent("pi")]),
   codex: Object.freeze([
     "compaction-started",
     "compaction-failed",
@@ -86,6 +101,7 @@ export const truthfulAbsentStates = Object.freeze({
     "approval-pending",
     "approval-approved",
     "approval-declined",
+    ...parityAbsent("codex"),
   ]),
   claude: Object.freeze([
     "child-opened",
@@ -94,6 +110,7 @@ export const truthfulAbsentStates = Object.freeze({
     "compaction-failed",
     "compaction-cancelled",
     "context-meter",
+    ...parityAbsent("claude"),
   ]),
 });
 export const nativeCaptureProductGaps = Object.freeze({
@@ -103,10 +120,18 @@ export const nativeCaptureProductGaps = Object.freeze({
     "file-edit-live",
     "file-hunk",
     "file-diff-tab",
+    ...parityGaps("codex"),
   ]),
-  claude: Object.freeze(["attachment-chip"]),
-  pi: Object.freeze([]),
+  claude: Object.freeze(["attachment-chip", ...parityGaps("claude")]),
+  pi: Object.freeze([...parityGaps("pi")]),
 });
+/** A state's first-Turn wire events, through its parity base when it has one. */
+function caseEvents(harness, state) {
+  if (PARITY_BASE[state]) return events(harness, PARITY_BASE[state]);
+  if (paritySupported(harness).includes(state))
+    return parityOwnEvents(harness, state);
+  return events(harness, state);
+}
 export function nativeCases() {
   return [
     ...piNativeCases(),
@@ -114,6 +139,7 @@ export function nativeCases() {
       const states = [
         ...sharedStates,
         ...(harness === "codex" ? codexStates : claudeStates),
+        ...paritySupported(harness),
       ].filter((state) => !truthfulAbsentStates[harness].includes(state));
       return states.map((state) => {
         const steps =
@@ -141,7 +167,7 @@ export function nativeCases() {
               ]
             : [
                 wait("acpInitialize"),
-                emit("acpInitialize"),
+                emit(parityInitializeShape(state)),
                 wait("acpNew"),
                 emit("acpSession"),
                 wait("acpPrompt"),
@@ -161,7 +187,7 @@ export function nativeCases() {
             emit("acpCompleted"),
             wait("acpPrompt"),
           );
-        steps.push(...events(harness, state));
+        steps.push(...caseEvents(harness, state));
         if (liveStates.has(state) || state === "turn-stopped")
           steps.push(
             wait(harness === "codex" ? "codexInterrupt" : "acpCancel"),
@@ -192,6 +218,12 @@ export function nativeCases() {
             wait("codexUnsubscribe"),
             emit("codexAck"),
           );
+        // Second Turns and the fork RPC land after the first Turn settles,
+        // before the closing request the tail awaits.
+        if (parityTurns(state) === 2)
+          steps.splice(-2, 0, ...paritySecondTurn(harness));
+        if (state === "fork-thread")
+          steps.splice(-2, 0, ...parityForkSteps(harness));
         if (state === "turn-retry") {
           steps.splice(
             -2,

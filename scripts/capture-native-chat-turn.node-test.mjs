@@ -6,6 +6,7 @@ import path from "node:path";
 import * as dom from "./capture-native-chat-dom.mjs";
 import { paneSelector } from "./capture-native-chat-pane.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
+import { parityWidths } from "./capture-native-chat-parity.mjs";
 import {
   nativeCases,
   truthfulAbsentStates,
@@ -371,10 +372,12 @@ test("in-turn approval actions share the readiness gate and target the submitted
     dom.isLiveTurnAction(dom.actionsFor("worked-expanded")[0]),
     false,
   );
+  // Wave 7: the pending approval replaces the composer, outside any Turn.
   assert.equal(
     dom.scopeToTurn(dom.actionsFor("approval-approved")[0], "new-turn"),
-    '.acp-turn[data-turn-id="new-turn"] .acp-permission__actions button:first-child',
+    dom.APPROVAL_ALLOW,
   );
+  assert.equal(dom.actionsFor("approval-declined")[0], dom.APPROVAL_DENY);
   const label = { textContent: "Inspect synthetic example", shown: true };
   const document = {
     querySelectorAll: () => [
@@ -700,6 +703,9 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
               : /unsupported-state/u,
             `${harness}/${state}/${width}`,
           );
+        } else if (!parityWidths(state).includes(width)) {
+          assert.ok(ids.has(`${harness}-${state}`));
+          assert.throws(() => parseArgs(args), /state-width-unsupported/u);
         } else {
           const options = parseArgs(args);
           assert.equal(options.caseId, `${harness}-${state}`);

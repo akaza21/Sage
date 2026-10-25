@@ -222,7 +222,10 @@ test("curated Codex journeys hydrate Models and Goal before the first turn", () 
 
 test("generated lost-Steer supports model-enabled and desktop admission", () => {
   const source = readFileSync(
-    new URL("../src-tauri/src/acp/fixture/generated_cases.rs", import.meta.url),
+    new URL(
+      "../src-tauri/src/acp/fixture/generated_journey_cases.rs",
+      import.meta.url,
+    ),
     "utf8",
   );
   const match = source.match(
@@ -237,7 +240,7 @@ test("generated lost-Steer supports model-enabled and desktop admission", () => 
 });
 test("bounded native catalogue", () => {
   const cases = nativeCases();
-  assert.ok(cases.length > 60 && cases.length < 160);
+  assert.ok(cases.length > 60 && cases.length < 240);
   assert.equal(new Set(cases.map(({ id }) => id)).size, cases.length);
   for (const entry of cases) {
     assert.match(entry.id, /^(codex|claude|pi)-[a-z0-9-]+$/u);

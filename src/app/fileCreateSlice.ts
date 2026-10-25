@@ -15,6 +15,10 @@ import {
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { resourceTabUpdate } from "./resourceTabs";
+import {
+  boundedExpandedUpdate,
+  boundedResourceStateUpdate,
+} from "./resourceStateHelpers";
 import type { ResourceState, WorkbenchState } from "./store";
 
 const MAX_CACHED_DIRECTORIES = 64;
@@ -45,15 +49,12 @@ function boundedListingUpdate(
   current: Record<string, ResourceState<DirectoryListing>>,
   listing: DirectoryListing,
 ) {
-  const key = resourceKey(listing.resource);
-  const next = { ...current };
-  delete next[key];
-  next[key] = { phase: "ready", value: listing };
-  const overflow = Object.keys(next).length - MAX_CACHED_DIRECTORIES;
-  for (const expired of Object.keys(next).slice(0, Math.max(0, overflow))) {
-    delete next[expired];
-  }
-  return next;
+  return boundedResourceStateUpdate(
+    current,
+    resourceKey(listing.resource),
+    { phase: "ready", value: listing },
+    MAX_CACHED_DIRECTORIES,
+  );
 }
 
 function withoutListing(
@@ -65,16 +66,15 @@ function withoutListing(
   return next;
 }
 
-function boundedExpandedUpdate(current: Record<string, boolean>, key: string) {
-  const next = { ...current };
-  delete next[key];
-  next[key] = true;
-  const overflow = Object.keys(next).length - MAX_CACHED_DIRECTORIES;
-  for (const expired of Object.keys(next).slice(0, Math.max(0, overflow))) {
-    delete next[expired];
-  }
-  return next;
-}
+const expandDirectories = (
+  current: Record<string, boolean>,
+  ...resources: ResourceRef[]
+) =>
+  boundedExpandedUpdate(
+    current,
+    resources.map(resourceKey),
+    MAX_CACHED_DIRECTORIES,
+  );
 
 type ResourceCreateKind = "file" | "folder";
 
@@ -154,10 +154,7 @@ function applyFileCreation(
     directoryListings: resourceConfirmed
       ? boundedListingUpdate(state.directoryListings, result.parentListing)
       : withoutListing(state.directoryListings, parent),
-    expandedDirectories: boundedExpandedUpdate(
-      state.expandedDirectories,
-      resourceKey(parent),
-    ),
+    expandedDirectories: expandDirectories(state.expandedDirectories, parent),
   };
 }
 
@@ -178,11 +175,8 @@ function applyFolderCreation(
       ? boundedListingUpdate(state.directoryListings, result.parentListing)
       : withoutListing(state.directoryListings, parent),
     expandedDirectories: resourceConfirmed
-      ? boundedExpandedUpdate(
-          boundedExpandedUpdate(state.expandedDirectories, resourceKey(parent)),
-          resourceKey(result.resource),
-        )
-      : boundedExpandedUpdate(state.expandedDirectories, resourceKey(parent)),
+      ? expandDirectories(state.expandedDirectories, parent, result.resource)
+      : expandDirectories(state.expandedDirectories, parent),
   };
 }
 

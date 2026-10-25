@@ -49,6 +49,8 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "capture-native-chat-rich-content.node-test.mjs",
   "capture-native-chat-source.node-test.mjs",
   "capture-native-chat-sizing.node-test.mjs",
+  "capture-native-chat-batch.node-test.mjs",
+  "capture-native-chat-parity.node-test.mjs",
   "capture-native-chat-turn.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
@@ -442,6 +444,16 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat-sizing.node-test.mjs",
     reason:
       "Portable DPR-1 requested-client geometry and PNG dimension contracts; no native app or window is launched.",
+  },
+  {
+    file: "capture-native-chat-batch.node-test.mjs",
+    reason:
+      "Portable NC-4 batch planning, resumable ledger and live-frame pairing checks with injected capture and preflight; no native app, Vite or subprocess launch.",
+  },
+  {
+    file: "capture-native-chat-parity.node-test.mjs",
+    reason:
+      "Portable NC-4 parity catalogue, matrix agreement, jsdom observation, pointer/key drive and motion-burst checks with fake CDP; no native app, server or subprocess launch.",
   },
   {
     file: "capture-native-chat-turn.node-test.mjs",

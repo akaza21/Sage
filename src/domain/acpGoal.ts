@@ -1,3 +1,4 @@
+import { safeOrdinal } from "./guards";
 import { utf8ByteLength } from "./text";
 
 export type AcpGoalState =
@@ -41,7 +42,7 @@ const bounded = (value: unknown, max: number): value is string =>
   ) &&
   utf8ByteLength(value) <= max;
 const counter = (value: unknown): value is number =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  safeOrdinal(value) !== null;
 
 export function decodeAcpGoal(value: unknown): AcpGoalState | null {
   if (!record(value)) return null;

@@ -20,24 +20,6 @@
   grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) fit-content(60%);
 }
 
-/* A side chat keeps its own tab strip above the chat (Codex s2/f0244: 45px; 44 on the 4px scale). */
-.chat-surface--agent.chat-surface--side-chat {
-  grid-template-areas: "header" "notice" "transcript" "edits" "composer";
-  grid-template-rows: auto auto minmax(120px, 1fr) minmax(0, auto) fit-content(
-      60%
-    );
-}
-
-.chat-surface--side-chat > .chat-surface__side-header {
-  display: flex;
-  min-width: 0;
-  min-height: 44px;
-  grid-area: header;
-  align-items: center;
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
 .chat-surface--agent > .composer__notice {
   grid-area: notice;
 }

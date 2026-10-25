@@ -133,7 +133,11 @@ export function TranscriptSelectionPopover({
         bottom: rects[rects.length - 1].bottom,
       },
       { left: column.left, top: viewport.top, width: column.width },
-      { width: element.offsetWidth || 172, height: element.offsetHeight || 28 },
+      // Fractional sizes, so a column-wide clamp never overhangs by a pixel.
+      {
+        width: element.getBoundingClientRect().width || 172,
+        height: element.offsetHeight || 28,
+      },
     );
     setPosition({
       left: column.left + point.left,

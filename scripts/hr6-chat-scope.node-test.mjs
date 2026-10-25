@@ -7,6 +7,7 @@ import { JSDOM } from "jsdom";
 import {
   captureFocusedChatExpression,
   focusedChatSurfacePreamble,
+  focusRememberedChatExpression,
   focusedRememberedChatSurfacePreamble,
   rememberedChatSurfacePreamble,
 } from "./hr6-chat-scope.mjs";
@@ -87,11 +88,47 @@ test("chat-local journey selectors use the focused pane after a second chat open
     );
 });
 
+function focusRemembered(window, name) {
+  return Function(
+    "document",
+    "window",
+    `return (()=>{${focusRememberedChatExpression(name, "return false;")}})()`,
+  )(window.document, window);
+}
+
+const PANES = `
+  <section class="agent-chat-pane agent-chat-pane--focused" data-chat-id="chat-codex"><section aria-label="Agent chat" class="chat-surface">Codex<textarea aria-label="Message agent"></textarea></section></section>
+  <section class="agent-chat-pane" data-chat-id="chat-claude"><section aria-label="Agent chat" class="chat-surface">Claude<textarea aria-label="Message agent"></textarea></section></section>
+`;
+
+test("a remembered Chat is focused through its pane's data-chat-id", () => {
+  const dom = new JSDOM(PANES);
+  const { document } = dom.window;
+  const [codex, claude] = document.querySelectorAll(".agent-chat-pane");
+  dom.window.__hr6Chats = { codex, claude };
+  assert.equal(focusRemembered(dom.window, "claude"), true);
+  assert.equal(
+    document.activeElement,
+    claude.querySelector('textarea[aria-label="Message agent"]'),
+  );
+
+  // Two panes claiming the same Chat, or a missing id, are ambiguous.
+  codex.setAttribute("data-chat-id", "chat-claude");
+  assert.equal(focusRemembered(dom.window, "claude"), false);
+  codex.removeAttribute("data-chat-id");
+  assert.equal(focusRemembered(dom.window, "codex"), false);
+  assert.equal(focusRemembered(dom.window, "missing"), false);
+
+  const journey = readFileSync(
+    new URL("./hr6-live-run.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(journey, /focusRememberedChatExpression/);
+  assert.doesNotMatch(journey, /agent-chat-pane__focus/);
+});
+
 test("recorded Chat scope cannot cross panes or accept focus ambiguity", () => {
-  const dom = new JSDOM(`
-    <section class="agent-chat-pane agent-chat-pane--focused"><button class="agent-chat-pane__focus">Codex</button><section aria-label="Agent chat" class="chat-surface">Codex</section></section>
-    <section class="agent-chat-pane"><button class="agent-chat-pane__focus">Claude</button><section aria-label="Agent chat" class="chat-surface">Claude</section></section>
-  `);
+  const dom = new JSDOM(PANES);
   const { document } = dom.window;
   const [codex, claude] = document.querySelectorAll(".agent-chat-pane");
   dom.window.__hr6Chats = { codex, claude };

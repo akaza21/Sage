@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import type { HarnessDefinition } from "../domain/workbench";
-import { invokeNative } from "../ports/nativeInvoke";
+import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 import { traceCloseStage } from "./workspaceNotifyLifecycle";
@@ -19,12 +19,8 @@ const markStartup = (name: string) => {
 };
 
 const markHarnessPresence = (harnesses: HarnessDefinition[]) => {
-  if (
-    harnesses.some((harness) => harness.installState === "available") &&
-    performance.getEntriesByName("sage-startup:harness-presence").length === 0
-  ) {
+  if (harnesses.some((harness) => harness.installState === "available"))
     markStartup("sage-startup:harness-presence");
-  }
 };
 
 export function App() {
@@ -46,7 +42,7 @@ export function App() {
   }, [phase]);
 
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (!isTauriRuntime()) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
     markStartup("sage-startup:harness-subscription-start");
@@ -74,9 +70,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) {
-      return;
-    }
+    if (!isTauriRuntime()) return;
     let disposed = false;
     let closing = false;
     let unlisten: (() => void) | undefined;

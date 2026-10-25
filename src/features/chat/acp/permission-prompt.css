@@ -124,9 +124,17 @@
   color: var(--approval-primary-text);
 }
 
-.acp-permission-prompt__actions button:focus-visible {
+.acp-permission-prompt button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: 1px;
+}
+
+/* The default decision shows Codex's 2 px ring whenever it holds focus,
+   including the focus the card gives it on arrival (s6/f0526). */
+.acp-permission-prompt__split > button:first-child:focus {
+  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline-offset: 0;
+  box-shadow: 0 0 0 1px var(--chat-annotation-accent);
 }
 
 .acp-permission-prompt__actions button:disabled {
@@ -170,9 +178,15 @@
   -webkit-line-clamp: 2;
 }
 
-/* Stop leads the row so the Turn can always be ended from the card. */
-.acp-permission-prompt__actions .acp-permission-prompt__stop {
-  margin-inline-end: auto;
-  border-color: transparent;
-  color: var(--color-text-muted);
+/* Stop stays in the header so the Turn can always be ended from the card. */
+.acp-permission-prompt__stop {
+  margin-inline-start: auto;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  font-size: var(--font-size-xs);
+}
+
+.acp-permission-prompt__stop:hover {
+  color: var(--color-text-primary);
 }

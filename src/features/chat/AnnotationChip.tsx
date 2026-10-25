@@ -18,12 +18,15 @@ import { leanIcon } from "../../ui/leanIconCore";
 import { isSideChatId } from "../../workbench/sideChatState";
 import "./transcript-interactions.css";
 
+// Codex's outlined, muted comment square: centred tail, two lines (s2/f0113).
 const CommentSquare = leanIcon("annotation-comment-square", [
   [
     "path",
-    { d: "M21 15a3 3 0 0 1-3 3H7l-4 4V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z" },
+    {
+      d: "M7 4h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-3l-2 3-2-3H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z",
+    },
   ],
-  ["path", { d: "M8 8h8M8 12h5" }],
+  ["path", { d: "M8 9h8M8 13h5" }],
 ]);
 const AnnotationPencil = leanIcon("annotation-pencil", [
   ["path", { d: "m16 3 5 5M3 21l5-1L21 7a2 2 0 0 0-5-5L3 15Z" }],

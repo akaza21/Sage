@@ -7,11 +7,23 @@ import {
 } from "react";
 
 export const FOLLOW_END_THRESHOLD_PX = 64;
+/** Jump to latest travels like Codex s2/f0046-f0048: ~320 ms, ease-out. */
+export const JUMP_DURATION_MS = 320;
 
 function followEndScrollBehavior(): ScrollBehavior {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
     ? "auto"
     : "smooth";
+}
+
+function scrollTranscript(
+  transcript: HTMLElement,
+  top: number,
+  behavior: ScrollBehavior,
+) {
+  if (typeof transcript.scrollTo === "function")
+    transcript.scrollTo({ behavior, top });
+  else transcript.scrollTop = top;
 }
 
 function transcriptIsAtEnd(
@@ -100,11 +112,7 @@ export function useFollowEnd({
       }
       const top = transcript.scrollHeight - transcript.clientHeight;
       if (Math.abs(top - transcript.scrollTop) > 1) anchoringRef.current = true;
-      if (typeof transcript.scrollTo === "function") {
-        transcript.scrollTo({ behavior, top });
-        return;
-      }
-      transcript.scrollTop = top;
+      scrollTranscript(transcript, top, behavior);
     },
     [endRef, transcriptRef],
   );
@@ -170,7 +178,8 @@ export function useFollowEnd({
   }, [interruptJump, ownerKey, transcriptRef]);
 
   useEffect(() => {
-    if (!followingEnd) return;
+    // A jump drives its own travel; a native smooth scroll would fight it.
+    if (!followingEnd || jumpingRef.current) return;
     anchorToEnd(followEndScrollBehavior());
   }, [anchorToEnd, followingEnd, revision]);
 
@@ -182,10 +191,8 @@ export function useFollowEnd({
     const observer = new ResizeObserver(() => {
       const current = transcriptRef.current;
       if (!current) return;
-      if (jumpingRef.current) {
-        anchorToEnd("auto");
-        return;
-      }
+      // A travelling jump retargets the moving end on its next frame.
+      if (jumpingRef.current) return;
       if (!followingEndRef.current) {
         setJumpState(jumpFor(current));
         return;
@@ -246,25 +253,36 @@ export function useFollowEnd({
     jumpingRef.current = true;
     setFollowState({ ownerKey, following: true });
     setJumpState({ ownerKey, visible: false });
-    anchorToEnd(followEndScrollBehavior());
-    let previousTop = NaN;
-    const finishJump = () => {
+    const transcript = transcriptRef.current;
+    if (!transcript || followEndScrollBehavior() === "auto") {
+      anchorToEnd("auto");
+      jumpingRef.current = false;
+      return;
+    }
+    // A timed ease-out tween rather than a native smooth scroll, which
+    // WebView2 can hold for frames; each frame retargets the moving end.
+    const from = transcript.scrollTop;
+    let started: number | null = null;
+    const step = (now: number) => {
       frameRef.current = null;
-      const transcript = transcriptRef.current;
-      if (!jumpingRef.current || !transcript) return;
-      if (distanceFromEnd(transcript) <= 1) {
-        jumpingRef.current = false;
-        anchoringRef.current = false;
+      const current = transcriptRef.current;
+      if (!jumpingRef.current || !current) return;
+      started ??= now;
+      const progress = Math.min(1, (now - started) / JUMP_DURATION_MS);
+      const end = current.scrollHeight - current.clientHeight;
+      scrollTranscript(
+        current,
+        from + (end - from) * (1 - (1 - progress) ** 3),
+        "auto",
+      );
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(step);
         return;
       }
-      if (transcript.scrollTop === previousTop) {
-        anchorToEnd("auto");
-        return;
-      }
-      previousTop = transcript.scrollTop;
-      frameRef.current = requestAnimationFrame(finishJump);
+      jumpingRef.current = false;
+      anchoringRef.current = distanceFromEnd(current) > 1;
     };
-    frameRef.current = requestAnimationFrame(finishJump);
+    frameRef.current = requestAnimationFrame(step);
   }, [anchorToEnd, cancelFrame, ownerKey, transcriptRef]);
 
   return { followingEnd, showJumpToLatest, updateFollowEnd, jumpToLatest };

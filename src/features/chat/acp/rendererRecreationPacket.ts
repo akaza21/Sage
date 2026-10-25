@@ -31,8 +31,6 @@ type RendererRecreationPacketCollectorHost = Window & {
   __SAGE_COLLECT_RENDERER_RECREATION_PACKET__?: () => RendererRecreationFrontendPacket | null;
 };
 
-const utf8Bytes = utf8ByteLength;
-
 function walkAnnouncementRegions(root: ParentNode): HTMLElement[] | null {
   if (typeof document === "undefined" || !("createTreeWalker" in document)) {
     return null;
@@ -66,7 +64,7 @@ function countLiveRegions(
   let assertive = 0;
   for (const node of nodes) {
     const kind = node.dataset.acpAnnouncement ?? "";
-    if (utf8Bytes(kind) > MAX_ANNOUNCEMENT_KIND_BYTES) return null;
+    if (utf8ByteLength(kind) > MAX_ANNOUNCEMENT_KIND_BYTES) return null;
     if (kind === "polite") polite += 1;
     else if (kind === "assertive") assertive += 1;
     else return null;
@@ -149,12 +147,12 @@ export function admitRendererRecreationPacket(
 ): RendererRecreationFrontendPacket | null {
   if (!packet) return null;
   const raw = JSON.stringify(packet);
-  if (utf8Bytes(raw) > MAX_PACKET_BYTES) return null;
+  if (utf8ByteLength(raw) > MAX_PACKET_BYTES) return null;
   if (packet.schemaVersion !== RENDERER_RECREATION_PACKET_SCHEMA_VERSION) {
     return null;
   }
   if (!isFocusOutcome(packet.focusOutcome)) return null;
-  if (utf8Bytes(packet.focusOutcome) > MAX_PACKET_BYTES) return null;
+  if (utf8ByteLength(packet.focusOutcome) > MAX_PACKET_BYTES) return null;
   const { polite, assertive } = packet.liveRegions;
   if (!(
     (polite === 1 && assertive === 1) ||

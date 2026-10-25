@@ -230,6 +230,121 @@ test.describe("CP-47 chat motion", () => {
       .toBeLessThanOrEqual(1);
   });
 
+  test("jump to latest travels to the end over about 320 ms, easing out (s2/f0046-f0048)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openJourney(page);
+    await runEvent(page, { type: "seedHistory", chat: "alpha", turns: 12 });
+    await settleTranscriptAtEnd(page);
+    const alpha = pane(page, "Alpha");
+    const transcript = alpha.locator(".message-list");
+    await transcript.evaluate((node) => {
+      node.scrollTop = 0;
+      node.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect(
+      alpha.getByRole("button", { name: "Jump to latest" }),
+    ).toBeVisible();
+    // Click and sample scrollTop every frame for 600 ms in the page itself.
+    const samples = await transcript.evaluate(
+      (node) =>
+        new Promise<{ at: number; top: number; end: number }[]>((resolve) => {
+          const button = node
+            .closest(".agent-chat-pane, .chat-surface, body")!
+            .querySelector<HTMLButtonElement>(
+              'button[aria-label="Jump to latest"]',
+            )!;
+          const start = performance.now();
+          const out: { at: number; top: number; end: number }[] = [];
+          button.click();
+          const tick = (now: number) => {
+            out.push({
+              at: now - start,
+              top: node.scrollTop,
+              end: node.scrollHeight - node.clientHeight,
+            });
+            if (now - start < 600) requestAnimationFrame(tick);
+            else resolve(out);
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    const end = samples.at(-1)!.end;
+    const progress = (at: number) =>
+      samples.filter((sample) => sample.at <= at).at(-1)!.top / end;
+    // Visibly travelling, not an instant jump; ease-out runs ahead of linear.
+    expect(progress(60)).toBeLessThan(0.9);
+    expect(progress(100)).toBeGreaterThan(0.1);
+    expect(progress(200)).toBeGreaterThan(progress(100));
+    expect(progress(200)).toBeLessThan(1);
+    expect(end - samples.at(-1)!.top).toBeLessThanOrEqual(1);
+    const arrived = samples.find((sample) => sample.end - sample.top <= 1)!;
+    expect(arrived.at).toBeGreaterThanOrEqual(250);
+    expect(arrived.at).toBeLessThanOrEqual(450);
+  });
+
+  test("a multi-chunk replay fades only the newest appended run (s5/f0309)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openJourney(page);
+    const alpha = pane(page, "Alpha");
+    await alpha
+      .getByRole("textbox", { name: "Message agent" })
+      .fill("Stream a short answer");
+    await alpha.getByRole("button", { name: "Send message" }).click();
+    await runEvent(page, {
+      type: "resolveSend",
+      chat: "alpha",
+      state: "sending",
+    });
+    const chunks = [
+      "Top hit:",
+      " Streaming API",
+      " responses explain",
+      " typed events.",
+    ];
+    const answer = alpha.locator(".acp-message--assistant .acp-markdown p");
+    const tail = alpha.locator(".acp-message--assistant .acp-stream-new");
+    for (const [index, streamDelta] of chunks.entries()) {
+      await runEvent(page, {
+        type: "publish",
+        chat: "alpha",
+        state: "running",
+        streamDelta,
+      });
+      await expect(answer).toHaveText(chunks.slice(0, index + 1).join(""));
+      if (index === 0) {
+        await expect(tail).toHaveCount(0);
+        continue;
+      }
+      // Only the newest run is marked, and it fades on the stream curve.
+      await expect(tail).toHaveCount(1);
+      await expect(tail).toHaveText(streamDelta);
+      await expect(tail).toHaveCSS("animation-name", "acp-stream-in");
+      const [first, done] = await sampleAt(
+        tail,
+        "acp-stream-in",
+        [0, 300],
+        "opacity",
+      );
+      expect(Number(first)).toBeCloseTo(0.15, 2);
+      expect(Number(done)).toBe(1);
+    }
+    // Earlier text sits outside the faded run, fully opaque.
+    expect(
+      await answer.evaluate((node) => getComputedStyle(node).opacity),
+    ).toBe("1");
+    await runEvent(page, {
+      type: "publish",
+      chat: "alpha",
+      state: "completed",
+    });
+    await expect(tail).toHaveCount(0);
+    await expect(answer).toHaveText(chunks.join(""));
+  });
+
   test("new activity below a paused reader shows the dots pill, which jumps to latest", async ({
     page,
   }) => {

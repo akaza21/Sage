@@ -1,8 +1,9 @@
 /*
  * Streamed answers (Codex s5/f0299-f0309): each block or list/table row that
- * mounts while the turn runs fades in once. Earlier DOM nodes keep their
- * finished animation across re-renders, so only new content moves; opacity
- * never shifts layout.
+ * mounts while the turn runs fades in once, and so does the newest run of
+ * text appended to a growing block (.acp-stream-new, ChatMarkdown), so the
+ * newest words trail. Earlier DOM nodes keep their finished animation across
+ * re-renders, so only new content moves; opacity never shifts layout.
  */
 .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
   .acp-message--assistant
@@ -11,7 +12,10 @@
 .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
   .acp-message--assistant
   .acp-markdown
-  :is(li, tr) {
+  :is(li, tr),
+.acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+  .acp-message--assistant
+  .acp-stream-new {
   animation: acp-stream-in var(--motion-duration-stream) ease-out both;
 }
 
@@ -29,7 +33,10 @@
   .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
     .acp-message--assistant
     .acp-markdown
-    :is(li, tr) {
+    :is(li, tr),
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-stream-new {
     animation: none;
   }
 }
@@ -42,7 +49,10 @@
   .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
     .acp-message--assistant
     .acp-markdown
-    :is(li, tr) {
+    :is(li, tr),
+  .acp-turn:is([data-turn-state="running"], [data-turn-state^="waiting"])
+    .acp-message--assistant
+    .acp-stream-new {
     animation: none;
   }
 }

@@ -255,7 +255,10 @@
         "src-tauri/src/acp/transport/"
       ],
       "files": [
+        "src-tauri/src/acp/fixture/generated_journey_cases.rs",
+        "src-tauri/src/acp/fixture/pause_tests.rs",
         "src-tauri/src/acp/fixture/wire_child_opened_tests.rs",
+        "src-tauri/src/acp/fixture/wire_parity_tests.rs",
         "src-tauri/src/acp/redaction/command.rs",
         "src-tauri/src/acp/redaction/corpus.rs",
         "src-tauri/src/acp/redaction/corpus_data.rs",

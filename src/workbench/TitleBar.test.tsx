@@ -12,6 +12,7 @@ import { useWorkbenchStore } from "../app/store";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import { LeftSidebar } from "./LeftSidebar";
 import { TitleBar } from "./TitleBar";
+import { useSideChatState } from "./sideChatState";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -134,6 +135,35 @@ describe("TitleBar center chrome", () => {
         name: "Search chats",
       }),
     ).toBeNull();
+  });
+
+  it("keeps the parent's window title while its side chat has focus (Codex s2/f0244)", () => {
+    seedChats();
+    const { tabs } = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      tabs: [
+        ...tabs,
+        {
+          id: "side-1",
+          kind: "chat",
+          title: "Side chat",
+          position: 2,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "side-1",
+    });
+    useSideChatState.setState({
+      sides: [{ id: "side-1", projectId: "project-a", parentChatId: "chat:b" }],
+    });
+    try {
+      render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
+      expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+      expect(screen.queryByRole("heading", { name: "Side chat" })).toBeNull();
+    } finally {
+      useSideChatState.setState({ sides: [] });
+    }
   });
 
   it("opens Chat search from the search chord and shows it on the control", async () => {

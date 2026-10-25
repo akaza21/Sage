@@ -241,10 +241,4 @@
   .agent-chat-pane .chat-surface--agent {
     grid-template-rows: auto minmax(0, 1fr) auto minmax(0, auto) max-content;
   }
-
-  .agent-chat-pane .chat-surface--agent.chat-surface--side-chat {
-    grid-template-rows:
-      auto auto minmax(0, 1fr) auto minmax(0, auto)
-      max-content;
-  }
 }

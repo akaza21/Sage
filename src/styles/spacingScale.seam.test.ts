@@ -33,6 +33,12 @@ const paddingProperties = new Set([
   "padding-left",
 ]);
 
+// Measured Codex values that the 4 px scale cannot hold, each with its reason.
+const exceptions = new Set([
+  // Codex s2/f0093 selection pill (W9 B5): 8 px overflows the 480 px column.
+  "src/features/chat/transcript-interactions.css .chat-selection-popover button padding: 0 7px",
+]);
+
 const declaration = /^\s*([a-z-]+)\s*:\s*([^;]+);/;
 const pixelLength = /(\d*\.?\d+)px/g;
 
@@ -74,7 +80,10 @@ describe("spacing scale seam", () => {
     for (const file of files) {
       const source = await readFile(file, "utf8");
       const lines = source.split(/\r?\n/);
+      let selector = "";
       lines.forEach((line, index) => {
+        if (line.trim().endsWith("{"))
+          selector = line.trim().slice(0, -1).trim();
         const parsed = declaration.exec(line);
         if (!parsed) {
           return;
@@ -83,6 +92,13 @@ describe("spacing scale seam", () => {
         if (!sizingProperties.has(property) && !flowProperties.has(property)) {
           return;
         }
+        const relative = file
+          .replace(resolve("src"), "src")
+          .replaceAll("\\", "/");
+        if (
+          exceptions.has(`${relative} ${selector} ${property}: ${value.trim()}`)
+        )
+          return;
         for (const match of value.matchAll(pixelLength)) {
           const pixels = Number(match[1]);
           if (offScaleValue(property, pixels)) {

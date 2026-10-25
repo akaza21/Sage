@@ -147,3 +147,43 @@ test("CP-41: cap is visible, deletion renumbers and annotations alone can send",
   );
   await expect(page.locator(".transcript-annotation-badge")).toHaveCount(0);
 });
+
+for (const width of [1872, 720, 480]) {
+  test(`CP-41: the open comment field leaves its badge visible at ${width}`, async ({
+    page,
+  }) => {
+    await openSelectionScenario(page);
+    await page.setViewportSize({ width, height: 1080 });
+    await dragAnswerPhrase(page);
+    await page
+      .getByRole("button", { name: "Add to chat", exact: true })
+      .click();
+    const field = page.getByRole("form", { name: "Annotation comment" });
+    const badge = page.getByRole("button", {
+      name: "Annotation 1",
+      exact: true,
+    });
+    const fieldBox = (await field.boundingBox())!;
+    const badgeBox = (await badge.boundingBox())!;
+    // Codex s2/f0095: field and badge are both visible, never stacked.
+    const overlaps =
+      fieldBox.x < badgeBox.x + badgeBox.width &&
+      fieldBox.x + fieldBox.width > badgeBox.x &&
+      fieldBox.y < badgeBox.y + badgeBox.height &&
+      fieldBox.y + fieldBox.height > badgeBox.y;
+    expect(overlaps).toBe(false);
+    expect(fieldBox.width).toBeLessThanOrEqual(270);
+    expect(fieldBox.x).toBeGreaterThanOrEqual(0);
+    expect(fieldBox.x + fieldBox.width).toBeLessThanOrEqual(width);
+    const save = (await field
+      .getByRole("button", { name: "Save annotation" })
+      .boundingBox())!;
+    expect(save.x + save.width).toBeLessThanOrEqual(width);
+    // The badge chip icon is muted and outlined, not white (s2/f0113).
+    await field.getByRole("textbox").press("Enter");
+    await expect(page.locator(".annotation-chip svg").first()).toHaveCSS(
+      "color",
+      "rgb(153, 153, 153)",
+    );
+  });
+}

@@ -8,6 +8,9 @@ use super::super::FixtureError;
 use super::{WireState, write_stdout};
 
 const THREAD_ID: &str = "fixture-persisted-session-1";
+/// The session a native capture's fork creates (Codex `thread/fork` per the
+/// pinned 0.146 schema; Claude `session/fork` per claude-agent-acp 0.76.0).
+pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
 const USER_AGENT: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
 const USER_AGENT_0146: &str = "sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)";
 
@@ -189,6 +192,7 @@ pub(super) fn emit_response(
             json!({"turn":{"id":turn_id}})
         }
         "ack" => json!({}),
+        "fork" => json!({"thread":{"id": FORK_THREAD_ID, "forkedFromId": THREAD_ID}}),
         _ => return Err(FixtureError::InvalidArguments),
     };
     emit_json(

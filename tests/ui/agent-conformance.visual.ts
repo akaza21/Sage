@@ -779,9 +779,8 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(workedSummary).toBeVisible();
     await expect(workedSummary).toContainText(/^Worked/);
     await expect(worked).not.toHaveAttribute("open", "");
-    // Like Codex, the collapsed Turn keeps one closed "Ran …" row in view.
-    await expect(toolRollup(page).locator("summary")).toBeVisible();
-    await expect(toolRollup(page)).not.toHaveAttribute("open", "");
+    // Like Codex (s2/f0011), a collapsed Worked shows no activity rows.
+    await expect(toolRollup(page)).toHaveCount(0);
     await revealWorkedContent(toolRollup(page).locator("summary"));
 
     // C24 — `Ran tests` ships off a declared `scripts.test`.
@@ -835,27 +834,27 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // see "Defects found while inventorying" in
     // docs/design/agent-panel-conformance.md.
     //
-    // Wave 5 (Codex ref 58): opening Worked on a terminal turn auto-expands
-    // its latest rollup, so the row starts open here and the toggle is
-    // proven by collapsing and reopening it.
+    // Wave 9 (Codex s2/f0012-f0015): opening Worked reveals its rows closed,
+    // so the toggle is proven by opening and then collapsing the row.
     expect(
       await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
-      "C19: the latest terminal rollup opens with Worked",
-    ).toBe(true);
-    await summary.focus();
-    await page.keyboard.press("Enter");
-    expect(
-      await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
-      "C19: activating the summary actually collapses the row",
+      "C19: the rollup is revealed closed with Worked",
     ).toBe(false);
     await expect(rollup.locator(".acp-tool-rollup__items")).toHaveCount(0);
-
+    await summary.focus();
     await page.keyboard.press("Enter");
     expect(
       await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
       "C19: activating the summary actually opens the row",
     ).toBe(true);
     await expect(rollup.locator(".acp-tool-rollup__items")).toBeVisible();
+
+    await page.keyboard.press("Enter");
+    expect(
+      await rollup.evaluate((node) => (node as HTMLDetailsElement).open),
+      "C19: activating the summary actually collapses the row",
+    ).toBe(false);
+    await expect(rollup.locator(".acp-tool-rollup__items")).toHaveCount(0);
   });
 
   test("shows a compact live activity row with an accessible running indicator", async ({

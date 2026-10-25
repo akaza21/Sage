@@ -111,6 +111,38 @@
   flex: 1;
 }
 
+/* With a side chat shown, each pane owns a header cell aligned to the pane
+   columns (8 px is the splitter); the artifact action shares the last cell. */
+.agent-chat-center__header--panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.agent-chat-center__header--panes > * {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.agent-chat-center__header--split > .agent-chat-center__side-tab {
+  grid-column: 2;
+}
+
+.agent-chat-center__header--panes > .agent-artifact-header-slot {
+  grid-column: -2;
+  justify-self: end;
+  /* Clear of the side tab's bottom rule, which already spans the cell. */
+  border-bottom: 0;
+}
+
+.agent-chat-center__side-tab {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
 .agent-artifact-header-slot {
   display: grid;
   flex: 0 0 auto;
@@ -133,6 +165,8 @@
 }
 
 @container chat (max-width: 520px) {
+  /* The approval card holds the composer slot at the composer's width. */
+  .workbench--agent .acp-permission-prompt,
   .workbench--agent .message-list,
   .workbench--agent .composer {
     --chat-column-trailing: 0px;

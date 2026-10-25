@@ -25,15 +25,10 @@
   border-radius: var(--radius-xl);
   background: var(--composer-fill);
   box-shadow: var(--composer-shadow);
-  transition:
-    border-color var(--motion-duration-fast) ease,
-    box-shadow var(--motion-duration-fast) ease;
 }
 
-.composer:focus-within {
-  border-color: var(--highlight-focus-edge);
-  box-shadow: var(--highlight-focus-halo-shadow), var(--elevation-popover);
-}
+/* Codex draws no focus border on the composer; the caret shows focus
+   (s2/f0113, s2/f0244). Forced colors keep a system outline below. */
 
 /* An approval holds the slot; the form stays mounted so the draft survives. */
 .composer[hidden] {

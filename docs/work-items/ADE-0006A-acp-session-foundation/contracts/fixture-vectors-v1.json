@@ -28,6 +28,7 @@
       "emitStderrLine",
       "exit",
       "fillStderrRing",
+      "pauseMs",
       "readPromptBytes",
       "readRequestBytes",
       "spawnFixtureChildren",

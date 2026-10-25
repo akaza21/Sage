@@ -35,9 +35,19 @@ it("removes dead partial chrome and reveals rollup chevrons only on interaction"
   );
 });
 
-it("opens Worked and its latest read details in one commit without replacing visible rows", () => {
+it("shows no rows under a collapsed Worked and reveals its groups collapsed", () => {
+  // Codex s2/f0011 (collapsed: answer only) and f0012-f0015 (groups closed).
   const projection = page("completed");
-  projection.turns[0].items = [parityTool("read"), textItem()];
+  projection.turns[0].items = [
+    {
+      ...textItem(),
+      id: "intro" as AcpItem["id"],
+      ordinal: 0,
+      payload: { role: "assistant", text: "Intro prose" },
+    },
+    { ...parityTool("read"), ordinal: 1 },
+    { ...textItem(), ordinal: 2 },
+  ];
   const { container } = render(
     <AcpChatPresentation
       page={projection}
@@ -51,19 +61,20 @@ it("opens Worked and its latest read details in one commit without replacing vis
   const worked = container.querySelector<HTMLDetailsElement>(
     "details.chat-transcript-work",
   )!;
-  const read = container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+  expect(container.querySelector(".acp-tool-rollup")).toBeNull();
+  expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
+  expect(screen.queryByText("Intro prose")).toBeNull();
   fireEvent.click(worked.querySelector("summary")!);
   expect(worked).toHaveAttribute("open");
-  expect(container.querySelector(".acp-tool-rollup")).toBe(read);
-  expect(read).toHaveAttribute("open");
-  expect(screen.getByRole("group", { name: "read" })).toBeVisible();
-  expect(screen.getByText("fixture output")).toBeVisible();
-  fireEvent.click(worked.querySelector("summary")!);
-  expect(container.querySelector(".acp-tool-rollup")).toBe(read);
+  const read = container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
   expect(read).not.toHaveAttribute("open");
-  fireEvent.click(worked.querySelector("summary")!);
-  expect(container.querySelector(".acp-tool-rollup")).toBe(read);
+  expect(screen.queryByText("fixture output")).toBeNull();
+  expect(screen.getByText("Intro prose")).toBeVisible();
+  read.open = true;
+  fireEvent(read, new Event("toggle"));
   expect(screen.getByText("fixture output")).toBeVisible();
+  fireEvent.click(worked.querySelector("summary")!);
+  expect(container.querySelector(".acp-tool-rollup")).toBeNull();
 });
 
 it.each<ToolPresentation>([
@@ -90,7 +101,7 @@ it.each<ToolPresentation>([
     resultSummary: "Inspected",
   },
 ])(
-  "opens the latest $kind rollup synchronously, with or without an earlier compact row",
+  "reveals the latest $kind rollup closed, with or without an earlier compact row",
   (presentation) => {
     for (const withRead of [false, true]) {
       const projection = page("completed");
@@ -111,14 +122,16 @@ it.each<ToolPresentation>([
           retentionIncomplete={false}
         />,
       );
+      fireEvent.click(
+        container.querySelector(".chat-transcript-work > summary")!,
+      );
       const rows = [
         ...container.querySelectorAll<HTMLDetailsElement>(".acp-tool-rollup"),
       ];
       const latest = rows.at(-1)!;
-      fireEvent.click(
-        container.querySelector(".chat-transcript-work > summary")!,
-      );
-      expect(latest).toHaveAttribute("open");
+      expect(latest).not.toHaveAttribute("open");
+      latest.open = true;
+      fireEvent(latest, new Event("toggle"));
       if (withRead) {
         // Adjacent tools share one row; its members are nested, closed rows.
         expect(rows).toHaveLength(1);
@@ -190,7 +203,7 @@ it("never auto-opens a completed turn for an unresolved retained permission", ()
   expect(container.querySelector("details")).not.toHaveAttribute("open");
 });
 
-it("keeps a completed Ran row visible and collapsed while Worked is closed", () => {
+it("hides a completed Ran row while Worked is closed and shows it closed once open", () => {
   const projection = page("completed");
   projection.turns[0].items = [parityTool(), textItem()];
   const { container } = render(
@@ -203,9 +216,10 @@ it("keeps a completed Ran row visible and collapsed while Worked is closed", () 
       retentionIncomplete={false}
     />,
   );
-  expect(container.querySelector(".chat-transcript-work")).not.toHaveAttribute(
-    "open",
-  );
+  const worked = container.querySelector(".chat-transcript-work")!;
+  expect(worked).not.toHaveAttribute("open");
+  expect(screen.queryByText("Ran git status --short")).toBeNull();
+  fireEvent.click(worked.querySelector("summary")!);
   const row = screen.getByText("Ran git status --short");
   expect(row).toBeVisible();
   const disclosure = row.closest("details")!;
@@ -214,9 +228,6 @@ it("keeps a completed Ran row visible and collapsed while Worked is closed", () 
   disclosure.open = true;
   fireEvent(disclosure, new Event("toggle"));
   expect(screen.getByText("Shell")).toBeVisible();
-  expect(container.querySelector(".chat-transcript-work")).not.toHaveAttribute(
-    "open",
-  );
 });
 
 it("adds no empty tool row group beside a closed Worked without tool calls", () => {
@@ -358,7 +369,7 @@ it.each(["cancelled", "interrupted"] as const)(
   },
 );
 
-it("opens only the latest compact rollup when Worked is opened", () => {
+it("opens no compact rollup when Worked is opened", () => {
   const projection = page("completed");
   projection.turns[0].items = [
     parityTool("read", 1),
@@ -385,7 +396,7 @@ it("opens only the latest compact rollup when Worked is opened", () => {
   fireEvent(work, new Event("toggle"));
   const rows =
     container.querySelectorAll<HTMLDetailsElement>(".acp-tool-rollup");
-  expect([...rows].map((row) => row.open)).toEqual([false, true]);
+  expect([...rows].map((row) => row.open)).toEqual([false, false]);
   rows[0].open = true;
   fireEvent(rows[0], new Event("toggle"));
   expect(rows[0].open).toBe(true);
@@ -449,6 +460,12 @@ it("lists individually collapsed Ran command rows inside expanded Worked", () =>
   )!;
   worked.open = true;
   fireEvent(worked, new Event("toggle"));
+  // The group itself opens only on its own click (Codex s2/f0016-f0018).
+  const group =
+    container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
+  expect(group.open).toBe(false);
+  group.open = true;
+  fireEvent(group, new Event("toggle"));
   const commands = container.querySelectorAll<HTMLDetailsElement>(
     ".acp-tool-rollup__items > details",
   );

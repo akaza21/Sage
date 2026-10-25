@@ -1,6 +1,4 @@
-export function isTauriRuntime(): boolean {
-  return "__TAURI_INTERNALS__" in window;
-}
+export { isTauriRuntime } from "./desktopRuntime";
 
 export async function invokeNative<T>(
   command: string,

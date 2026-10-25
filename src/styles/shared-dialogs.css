@@ -11,6 +11,11 @@
   background: var(--color-overlay);
 }
 
+/* Codex's light 12% scrim for in-chat dialogs (s2/f0055, s2/f0352). */
+.dialog--scrim::backdrop {
+  background: var(--chat-annotation-scrim);
+}
+
 .dirty-dialog h2 {
   margin: 0 0 8px;
   font-size: var(--font-size-lg);

@@ -149,12 +149,6 @@
   color: var(--color-text-muted);
 }
 
-.acp-tool-rollup[data-activity-state="failed"]
-  .acp-tool-rollup__summary-copy
-  > svg {
-  color: var(--color-danger);
-}
-
 .acp-tool-rollup__meta {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -190,8 +184,9 @@
   opacity: 1;
 }
 
+/* Open turns > into a down chevron (Codex s5/f0390, s2/f0015). */
 .acp-tool-rollup[open] > summary .acp-tool-rollup__chevron {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .acp-tool-rollup__items .acp-activity-card {

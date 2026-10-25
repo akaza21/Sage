@@ -8,6 +8,8 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { MAX_BURST_FRAMES } from "./capture-native-chat-motion.mjs";
 import {
   parseArgs,
   evidencePaths,
@@ -32,6 +34,75 @@ export function safeDestination(file) {
     if (error.code !== "ENOENT") throw error;
   }
 }
+/**
+ * A motion burst beside the still, rec.ps1-style: `<stem>-fNN-<ms>ms.png`
+ * frames plus `<stem>.frames.json` (index, wall and animation offsets,
+ * bytes, SHA-256). Every frame is a validated viewport PNG in the same
+ * staging directory.
+ */
+export function burstManifest(png, options, burst) {
+  if (
+    !burst ||
+    !["wall", "seek"].includes(burst.mode) ||
+    !Array.isArray(burst.frames) ||
+    burst.frames.length < 2 ||
+    burst.frames.length > MAX_BURST_FRAMES
+  )
+    throw new Error("burst-manifest");
+  const base = path.dirname(png),
+    stem = path.basename(png, ".png");
+  const files = burst.frames.map((frame, index) => {
+    const offset = frame.animationMs ?? frame.atMs;
+    if (
+      frame.index !== index ||
+      !Number.isSafeInteger(frame.atMs) ||
+      frame.atMs < 0 ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset > 600000
+    )
+      throw new Error("burst-manifest");
+    validatePng(frame.png, options);
+    const name =
+      stem +
+      "-f" +
+      String(index + 1).padStart(2, "0") +
+      "-" +
+      String(offset).padStart(6, "0") +
+      "ms.png";
+    const file = path.resolve(base, name);
+    if (path.dirname(file) !== base) throw new Error("evidence-path");
+    safeDestination(file);
+    return {
+      file,
+      png: frame.png,
+      entry: {
+        name,
+        index,
+        atMs: frame.atMs,
+        animationMs: frame.animationMs,
+        bytes: frame.png.length,
+        sha256: createHash("sha256").update(frame.png).digest("hex"),
+      },
+    };
+  });
+  const manifest = {
+    schemaVersion: 1,
+    caseId: options.caseId,
+    width: options.width,
+    mode: burst.mode,
+    intervalMs: burst.intervalMs,
+    frames: files.map(({ entry }) => entry),
+  };
+  assertPrivacy(manifest);
+  const target = path.resolve(base, stem + ".frames.json");
+  safeDestination(target);
+  return {
+    files,
+    path: target,
+    json: JSON.stringify(manifest, null, 2) + "\n",
+  };
+}
 export function persistCapture(
   {
     output,
@@ -46,31 +117,40 @@ export function persistCapture(
   },
   write = writeFileSync,
 ) {
-  let pngCreated = false;
+  const created = [];
+  const createFile = (file, bytes) => {
+    const handle = openSync(file, "wx");
+    created.push(file);
+    try {
+      write(handle, bytes);
+    } finally {
+      closeSync(handle);
+    }
+  };
   if (!error) {
     try {
       captured.probe.timing = { elapsedMs, steps: timing.steps };
       validateProbe(captured.probe);
-      const handle = openSync(output.png, "wx");
-      pngCreated = true;
-      try {
-        write(handle, captured.screenshot);
-      } finally {
-        closeSync(handle);
-      }
+      createFile(output.png, captured.screenshot);
+      const burst = captured.burst
+        ? burstManifest(output.png, options, captured.burst)
+        : null;
+      for (const frame of burst?.files ?? []) createFile(frame.file, frame.png);
+      if (burst) createFile(burst.path, burst.json);
       write(output.probe, JSON.stringify(captured.probe, null, 2) + "\n");
       return {
         verdict: "captured",
         run,
         directory,
         png: path.basename(output.png),
+        ...(burst ? { frames: burst.files.length } : {}),
       };
     } catch (failure) {
       error = failure;
-      if (pngCreated) {
+      if (created.length) {
         if (timing.steps.length < 64) timing.record("png-rollback-start");
         try {
-          unlinkSync(output.png);
+          for (const file of created.reverse()) unlinkSync(file);
           if (timing.steps.length < 64) timing.record("png-rollback-finished");
         } catch (cleanupError) {
           error = new Error("capture-png-cleanup", { cause: cleanupError });

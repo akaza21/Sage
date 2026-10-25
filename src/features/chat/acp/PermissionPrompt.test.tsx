@@ -115,7 +115,7 @@ describe("PermissionPrompt", () => {
     expect(screen.getByText("Allow this action?")).toBeVisible();
   });
 
-  it("orders Stop, Deny then Allow once, focuses the primary, and offers the menu", () => {
+  it("keeps a quiet Stop in the header, orders Deny then Allow once, focuses the primary, and offers the menu", () => {
     render(<PermissionPrompt items={[permission()]} onCancelTurn={vi.fn()} />);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
@@ -124,6 +124,11 @@ describe("PermissionPrompt", () => {
       "Allow once ⏎",
       "",
     ]);
+    // Codex's card has no Stop among its decisions (s6/f0526); Sage keeps
+    // one for safety, as a secondary header control.
+    const stop = screen.getByRole("button", { name: "Stop turn" });
+    expect(stop.closest("header")).not.toBeNull();
+    expect(stop.closest(".acp-permission-prompt__actions")).toBeNull();
     expect(screen.getByRole("button", { name: /Allow once/ })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "More allow options" }));
     const menu = screen.getByRole("menu", { name: "Allow options" });

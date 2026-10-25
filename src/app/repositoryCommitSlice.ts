@@ -14,7 +14,7 @@ import type {
   RootRepositoryStatus,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import { matchesProjectIntent } from "./projectIntent";
+import { idleAtEpoch, matchesProjectIntent } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCommit {
@@ -104,8 +104,7 @@ async function runLockedSequenceCommand(
     const result = await invoke(projectId, transitionEpoch);
     if (
       get().repositoryCommit !== commit ||
-      get().projectTransitioning ||
-      get().nativeTransitionEpoch !== transitionEpoch ||
+      !idleAtEpoch(get(), transitionEpoch) ||
       result.projectId !== projectId ||
       result.rootId !== rootId ||
       result.transitionEpoch !== transitionEpoch ||
@@ -126,8 +125,7 @@ async function runLockedSequenceCommand(
   } catch (error) {
     if (
       get().repositoryCommit === commit &&
-      !get().projectTransitioning &&
-      get().nativeTransitionEpoch === transitionEpoch &&
+      idleAtEpoch(get(), transitionEpoch) &&
       matchesProjectIntent(get(), generation, projectId)
     ) {
       set({
@@ -207,8 +205,7 @@ export const createRepositoryCommitSlice: StateCreator<
       );
       if (
         get().repositoryCommit !== commit ||
-        get().projectTransitioning ||
-        get().nativeTransitionEpoch !== transitionEpoch ||
+        !idleAtEpoch(get(), transitionEpoch) ||
         result.projectId !== projectId ||
         result.rootId !== rootId ||
         result.transitionEpoch !== transitionEpoch ||
@@ -231,8 +228,7 @@ export const createRepositoryCommitSlice: StateCreator<
     } catch (error) {
       if (
         get().repositoryCommit === commit &&
-        !get().projectTransitioning &&
-        get().nativeTransitionEpoch === transitionEpoch &&
+        idleAtEpoch(get(), transitionEpoch) &&
         matchesProjectIntent(get(), generation, projectId)
       ) {
         set({

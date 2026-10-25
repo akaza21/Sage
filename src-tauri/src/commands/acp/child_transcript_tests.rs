@@ -115,8 +115,30 @@ impl RuntimeEngine for ChildEngine {
 
 #[tokio::test]
 async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() {
-    child_ipc_journey(ProjectGeneration::ZERO, ProjectGeneration::ZERO, true).await;
+    child_ipc_journey(
+        ProjectGeneration::ZERO,
+        ProjectGeneration::ZERO,
+        true,
+        OBSERVED_0146,
+    )
+    .await;
 }
+
+/// The native capture's desktop fixture replays the 0.146 `thread/read` wire
+/// under its own identity; its child view reads that replay (wave 9 C1).
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[tokio::test]
+async fn native_child_ipc_reads_the_desktop_fixture_replay() {
+    child_ipc_journey(
+        ProjectGeneration::ZERO,
+        ProjectGeneration::ZERO,
+        false,
+        "codex-app-server-desktop-fixture-0.146.0",
+    )
+    .await;
+}
+
+const OBSERVED_0146: &str = "codex-app-server-observed-0.146.0";
 
 #[tokio::test]
 async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live_generation() {
@@ -124,6 +146,7 @@ async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live
         ProjectGeneration::new(3).unwrap(),
         ProjectGeneration::new(2).unwrap(),
         false,
+        OBSERVED_0146,
     )
     .await;
 }
@@ -132,6 +155,7 @@ async fn child_ipc_journey(
     projection_generation: ProjectGeneration,
     native_generation: ProjectGeneration,
     export_fixture: bool,
+    protocol: &str,
 ) {
     let export_path = std::env::var_os("SAGE_CP18D_EXPORT_DB")
         .filter(|_| export_fixture)
@@ -201,8 +225,7 @@ async fn child_ipc_journey(
         .unwrap();
         let capabilities = CapabilitySnapshotV1 {
             schema_version: SchemaVersionV1,
-            protocol_version: RequiredText::new("protocol", "codex-app-server-observed-0.146.0")
-                .unwrap(),
+            protocol_version: RequiredText::new("protocol", protocol).unwrap(),
             new_session: true,
             resume_session: false,
             load_session: false,

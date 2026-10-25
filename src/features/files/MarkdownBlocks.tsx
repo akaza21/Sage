@@ -10,12 +10,20 @@ export function MarkdownBlocks({
   document,
   renderLink = (index) => document.fileLinks[index].label,
   renderCode,
+  streamTail,
 }: {
   document: MarkdownPreviewDocument;
   renderLink?: (index: number) => ReactNode;
   renderCode?: (
     block: Extract<MarkdownPreviewBlock, { kind: "code" }>,
   ) => ReactNode;
+  /** A streamed answer's newest run, wrapped so only it fades. */
+  streamTail?: {
+    blockIndex: number;
+    itemIndex: number | undefined;
+    chars: number;
+    key: number;
+  } | null;
 }) {
   const formatsByLocation = new Map(
     document.formats.map((format) => [
@@ -24,6 +32,28 @@ export function MarkdownBlocks({
     ]),
   );
   const inline = (text: string, blockIndex: number, itemIndex?: number) => {
+    const content = formatted(text, blockIndex, itemIndex);
+    if (
+      streamTail?.blockIndex !== blockIndex ||
+      streamTail.itemIndex !== itemIndex
+    )
+      return content;
+    // Only a trailing plain-text run is split; formatted ends stay whole.
+    const nodes = Array.isArray(content) ? [...content] : [content];
+    const last = nodes.at(-1);
+    if (typeof last !== "string" || !last) return content;
+    let split = Math.max(0, last.length - streamTail.chars);
+    // Never split a surrogate pair: its whole character joins the run.
+    if (split > 0 && /[\uDC00-\uDFFF]/.test(last[split])) split -= 1;
+    nodes[nodes.length - 1] = last.slice(0, split);
+    nodes.push(
+      <span className="acp-stream-new" key={`tail:${streamTail.key}`}>
+        {last.slice(split)}
+      </span>,
+    );
+    return nodes;
+  };
+  const formatted = (text: string, blockIndex: number, itemIndex?: number) => {
     const spans = formatsByLocation.get(`${blockIndex}:${itemIndex}`) ?? [];
     const render = (formats: InlineFormat[]): ReactNode[] =>
       formats.map((format, index) =>

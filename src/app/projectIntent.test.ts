@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  idleAtEpoch,
   issueRequestIntent,
   matchesRequestIntent,
   MAX_REQUEST_GENERATIONS,
@@ -85,5 +86,16 @@ describe("native transition intents", () => {
         7,
       ),
     ).toThrow("stale intent epoch");
+  });
+});
+
+describe("idle transition epoch", () => {
+  it("holds only while no transition runs and the epoch is unchanged", () => {
+    const state = { projectTransitioning: false, nativeTransitionEpoch: 4 };
+    expect(idleAtEpoch(state, 4)).toBe(true);
+    expect(idleAtEpoch(state, 3)).toBe(false);
+    expect(idleAtEpoch({ ...state, projectTransitioning: true }, 4)).toBe(
+      false,
+    );
   });
 });

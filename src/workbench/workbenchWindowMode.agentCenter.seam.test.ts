@@ -455,11 +455,9 @@ describe("Agent center workbench window mode seam", () => {
     expect(
       screen.queryByText(/stays open beside the focused chat/i),
     ).toBeNull();
-    expect(
-      within(paneB)
-        .getAllByRole("status")
-        .map((node) => node.textContent),
-    ).toEqual(["Idle"]);
+    // A pane has no header of its own: the task header names the focused
+    // Chat and carries its status.
+    expect(within(paneB).queryAllByRole("status")).toEqual([]);
     expect(screen.queryByText("Turn continues in the background.")).toBeNull();
   });
 

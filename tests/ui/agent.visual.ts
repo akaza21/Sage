@@ -374,19 +374,19 @@ test.describe("Tool activity rollup disclosure", () => {
     const summary = rollup.locator("summary");
     const items = rollup.locator(".acp-tool-rollup__items");
 
-    // Wave 5 (Codex ref 58): opening Worked on a terminal turn expands its
-    // latest rollup, so the disclosure starts open.
-    await expect(rollup).toHaveAttribute("open", "");
-    await expect(items).toBeVisible();
-
-    await summary.click();
+    // Wave 9 (Codex s2/f0012-f0015): opening Worked reveals the rollup
+    // closed; it opens on its own click.
     await expect(rollup).not.toHaveAttribute("open", "");
     await expect(items).toHaveCount(0);
+
+    await summary.click();
+    await expect(rollup).toHaveAttribute("open", "");
+    await expect(items).toBeVisible();
     await summary.focus();
     await expect(summary).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(rollup).toHaveAttribute("open", "");
-    await expect(items).toBeVisible();
+    await expect(rollup).not.toHaveAttribute("open", "");
+    await expect(items).toHaveCount(0);
   });
 });
 
@@ -402,7 +402,9 @@ test.describe("Tool activity rollup summary containment", () => {
     // Expanded rollups nest per-command rows; address the outer disclosure.
     const rollup = page.locator(".acp-tool-rollup").first();
     await revealWorkedContent(rollup);
-    // Measure once Worked has settled on the expanded latest rollup.
+    // Worked reveals the rollup closed; open it and measure once settled.
+    await expect(rollup).not.toHaveAttribute("open", "");
+    await rollup.locator(":scope > summary").click();
     await expect(rollup).toHaveAttribute("open", "");
     await expect(
       rollup.locator(":scope > .acp-tool-rollup__items"),
@@ -1338,6 +1340,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         composerSelector,
       ),
     ).toBe(true);
+    // Codex draws no focus border on the composer; the caret shows focus
+    // there (w9 B9, s2/f0113). Forced colors keep a system outline below.
     await expect
       .poll(
         () =>
@@ -1345,7 +1349,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
             const owner = trigger.closest<HTMLElement>(".composer");
             if (!owner) return false;
             const edgeProbe = document.createElement("span");
-            edgeProbe.style.border = "1px solid var(--highlight-focus-edge)";
+            edgeProbe.style.border = "1px solid var(--composer-border)";
             owner.append(edgeProbe);
             const target = getComputedStyle(edgeProbe).borderTopColor;
             edgeProbe.remove();
@@ -1422,9 +1426,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     expect(sharedFocus.edgeColor, focusIdentity).not.toBe(
       sharedFocus.transparentColor,
     );
-    expect(sharedFocus.edgeColor, focusIdentity).toBe(sharedFocus.resolvedEdge);
-    expect(sharedFocus.halo, focusIdentity).not.toBe("none");
-    expect(sharedFocus.halo, focusIdentity).toBe(sharedFocus.resolvedHalo);
+    expect(sharedFocus.edgeColor, focusIdentity).not.toBe(
+      sharedFocus.resolvedEdge,
+    );
+    expect(sharedFocus.halo, focusIdentity).not.toBe(sharedFocus.resolvedHalo);
     await settleTranscriptAtStart(page);
     await expect(workbench).toHaveScreenshot("agent-keyboard-focus.png");
   });

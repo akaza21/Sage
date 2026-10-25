@@ -4,13 +4,10 @@ import {
   type TranscriptQuoteContext,
 } from "../../domain/transcriptQuote";
 import { utf8ByteLength } from "../../domain/text";
-import {
-  quoteRange,
-  SELECTABLE_ANSWER,
-  selectionPopoverPosition,
-} from "./transcriptSelection";
+import { quoteRange, SELECTABLE_ANSWER } from "./transcriptSelection";
+import { annotationFieldBox } from "./annotationGeometry";
 
-const FIELD = { width: 270, height: 44 };
+const FIELD_HEIGHT = 44;
 
 /**
  * The optional comment pill opened by "Add to chat" or the chip's edit action.
@@ -31,7 +28,7 @@ export function AnnotationComment({
   active?: boolean;
 }) {
   const [comment, setComment] = useState(quote.comment ?? "");
-  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 270 });
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef({ comment, onSave });
@@ -53,23 +50,19 @@ export function AnnotationComment({
       if (!rects?.length) {
         setPosition({
           left: column.left,
-          top: viewport.bottom - FIELD.height - 8,
+          top: viewport.bottom - FIELD_HEIGHT - 8,
+          width: Math.min(270, column.width),
         });
         return;
       }
-      const point = selectionPopoverPosition(
-        {
-          left: rects[0].left,
-          top: rects[0].top,
-          bottom: rects[rects.length - 1].bottom,
-        },
-        { left: column.left, top: viewport.top, width: column.width },
-        { width: Math.min(FIELD.width, column.width), height: FIELD.height },
+      setPosition(
+        annotationFieldBox(
+          { first: rects[0], last: rects[rects.length - 1] },
+          column.width,
+          viewport,
+          FIELD_HEIGHT,
+        ),
       );
-      setPosition({
-        left: column.left + point.left,
-        top: Math.min(viewport.bottom - FIELD.height, viewport.top + point.top),
-      });
     };
     update();
     input.current?.focus({ preventScroll: true });

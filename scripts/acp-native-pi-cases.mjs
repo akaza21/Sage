@@ -4,6 +4,15 @@ import {
   wait,
   NATIVE_IMAGE_BASE64,
 } from "./acp-native-case-events.mjs";
+import {
+  PARITY_BASE,
+  PARITY_LIVE,
+  SECOND_PROMPT_ANSWER,
+  STREAM_BLOCKS,
+  STREAM_CHUNKS,
+  paced,
+} from "./acp-native-parity-events.mjs";
+import { paritySupported, parityTurns } from "./capture-native-chat-parity.mjs";
 
 export const piAbsentStates = Object.freeze([
   "tool-long-label",
@@ -63,8 +72,10 @@ const states = [
   "responsive-480",
   "non-read-denial",
   "cancelled-dialog",
+  ...paritySupported("pi"),
 ];
 const live = new Set([
+  ...PARITY_LIVE,
   "turn-running",
   "thinking-first-token",
   "thinking-live",
@@ -164,7 +175,11 @@ function events(state, { update, finish }) {
     );
   if (state === "prose-then-thinking")
     steps.push(update("text_delta", "Inspecting the synthetic example. "));
-  if (state.includes("thinking")) {
+  if (state === "motion-stream-fade")
+    steps.push(
+      ...paced(STREAM_CHUNKS.map((chunk) => update("text_delta", chunk))),
+    );
+  else if (state.includes("thinking")) {
     steps.push(
       update("thinking_start", ""),
       update("thinking_delta", "Inspecting"),
@@ -256,8 +271,15 @@ function events(state, { update, finish }) {
     );
   return steps;
 }
+/** The terminal answer the stream settles on; streamed fades keep theirs. */
+const finalText = (state) =>
+  state === "motion-stream-fade"
+    ? STREAM_BLOCKS.join("")
+    : "Synthetic replay.\n\n" + answer(state);
 export function piNativeCases() {
-  return states.map((state) => {
+  return states.map((id) => {
+    // Parity states drive UI over an existing state's replay.
+    const state = PARITY_BASE[id] ?? id;
     const stream = assistantStream();
     const { start, update, finish } = stream;
     const steps = [
@@ -269,8 +291,8 @@ export function piNativeCases() {
       ...start(),
       ...events(state, stream),
     ];
-    if (live.has(state) || state === "turn-stopped")
-      steps.push(wait("piAbort"));
+    const holdsTurn = live.has(state) || live.has(id);
+    if (holdsTurn || state === "turn-stopped") steps.push(wait("piAbort"));
     if (state === "compaction-started")
       steps.push(
         frame("compaction_end", { aborted: true }),
@@ -291,12 +313,12 @@ export function piNativeCases() {
         ...finish(
           state === "turn-error"
             ? "error"
-            : live.has(state) ||
+            : holdsTurn ||
                 state === "turn-stopped" ||
                 state === "non-read-denial"
               ? "aborted"
               : "stop",
-          "Synthetic replay.\n\n" + answer(state),
+          finalText(state),
         ),
       );
     if (state === "turn-retry")
@@ -312,8 +334,17 @@ export function piNativeCases() {
         frame("auto_retry_end", { success: true, attempt: 1 }),
         ...finish("stop", "Synthetic retry completed."),
       );
+    // Pi discovers thinking levels once per activation, never per prompt,
+    // so the second Turn awaits only its prompt.
+    if (parityTurns(id) === 2)
+      steps.push(
+        wait("piPrompt"),
+        ...start(),
+        update("text_delta", SECOND_PROMPT_ANSWER),
+        ...finish("stop", SECOND_PROMPT_ANSWER),
+      );
     steps.push(wait("piIdle"));
-    return { id: "pi-" + state, steps };
+    return { id: "pi-" + id, steps };
   });
 }
 

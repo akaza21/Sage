@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Copy, RotateCcw, Check, ChevronRight } from "../../ui/leanIcons";
+import { useEffect, useState, type ReactNode } from "react";
+import { RotateCcw, ChevronRight } from "../../ui/leanIcons";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { terminalTurnStates } from "./acp/statusSemantics";
-import { dayTimeLabel } from "./chatTimestamp";
+import { AnswerActions } from "./AnswerActions";
+import { TurnDaySeparator } from "./acp/AcpTurnDates";
 import { ForkPart } from "./lazyParts";
 import {
   WorkedActivityVisibility,
@@ -38,13 +39,11 @@ export function ChatTranscriptTurnSummary({
   turn,
   hasActivities,
   children,
-  hasCollapsedActivities = false,
   thinkingPlaceholder = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
-  hasCollapsedActivities?: boolean;
   /** Side chats show Codex's shimmering Thinking, not a header, before any work. */
   thinkingPlaceholder?: boolean;
 }) {
@@ -68,8 +67,9 @@ export function ChatTranscriptTurnSummary({
       </div>
     );
   }
+  // Collapsed Worked shows no rows at all (Codex s2/f0011).
   const groups =
-    children && (!terminal || expanded || hasCollapsedActivities) ? (
+    children && (!terminal || expanded) ? (
       <WorkedTurnTerminal value={terminal}>
         <WorkedActivityVisibility value={!terminal || expanded}>
           <div className="chat-transcript-work__groups">{children}</div>
@@ -126,25 +126,12 @@ export function ChatTranscriptFooter({
   page,
   messages,
   onRetry,
-  onCopyFeedback,
 }: {
   useNativeAcp: boolean;
   page: AcpChatPage | null;
   messages: readonly ChatMessage[];
   onRetry?: () => void;
-  onCopyFeedback?: (text: string) => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<number | undefined>(undefined);
-  const copyRequest = useRef(0);
-  useEffect(
-    () => () => {
-      copyRequest.current++;
-      window.clearTimeout(copyTimer.current);
-    },
-    [],
-  );
-  const CopyIcon = copied ? Check : Copy;
   const acpAssistant = lastAssistantItem(page);
   const legacyAssistant = page
     ? undefined
@@ -165,41 +152,17 @@ export function ChatTranscriptFooter({
 
   if (!hasText) return null;
 
-  async function copyAnswer() {
-    const request = ++copyRequest.current;
-    window.clearTimeout(copyTimer.current);
-    let succeeded = true;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      succeeded = false;
-    }
-    if (request !== copyRequest.current) return;
-    setCopied(succeeded);
-    onCopyFeedback?.(succeeded ? "Copied" : "Copy failed");
-    if (succeeded)
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1_200);
-  }
-
   return (
     <>
-      {!page && typeof timestamp === "number" && Number.isFinite(timestamp) ? (
-        <div className="chat-transcript-day" role="separator">
-          <time dateTime={new Date(timestamp).toISOString()}>
-            {dayTimeLabel(timestamp)}
-          </time>
-        </div>
-      ) : null}
-      <div className="chat-transcript-actions" aria-label="Message actions">
-        {/* Text is guaranteed here: the footer returns early without it. */}
-        <button
-          type="button"
-          aria-label={copied ? "Copied" : "Copy"}
-          title={copied ? "Copied" : "Copy"}
-          onClick={() => void copyAnswer()}
-        >
-          <CopyIcon size={14} aria-hidden="true" />
-        </button>
+      <TurnDaySeparator
+        timestamp={
+          !page && typeof timestamp === "number" && Number.isFinite(timestamp)
+            ? timestamp
+            : null
+        }
+      />
+      {/* Text is guaranteed here: the footer returns early without it. */}
+      <AnswerActions text={text} createdAt={page ? timestamp : undefined}>
         {page && latestTurn?.state === "completed" ? (
           <ForkPart part="AnswerMoreActions" page={page} />
         ) : null}
@@ -213,7 +176,7 @@ export function ChatTranscriptFooter({
             <RotateCcw size={14} aria-hidden="true" />
           </button>
         ) : null}
-      </div>
+      </AnswerActions>
     </>
   );
 }

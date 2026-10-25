@@ -166,7 +166,6 @@ export function ChatComposerRegion({
   });
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
-  const projectName = composerWorkspaceName(project);
   const dictation = useComposerDictation(
     text,
     onTextChange,
@@ -330,6 +329,7 @@ export function ChatComposerRegion({
         ) : null}
         <ChatHarnessControls
           modelLabelScope={JSON.stringify([dictationScope, sessionId])}
+          inheritScope={dictationScope}
           accessBindingId={accessBindingId}
           onOpenGoal={goalDetails.onOpen}
           imageAction={imageInput.action}
@@ -340,7 +340,7 @@ export function ChatComposerRegion({
           sessionModelId={sessionModelId}
           selectedHarnessId={selectedHarnessId}
           selectedModelId={selectedModelId}
-          projectName={projectName}
+          projectName={composerWorkspaceName(project)}
           turnBusy={actionBusy || activeTurn}
           sessionConfig={sessionConfig}
           modePending={modePending}

@@ -41,7 +41,6 @@ export function SideChatHeader({
   chatId: string;
   running: boolean;
 }) {
-  const root = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const prompt = useStore(acpProjectionStoreFor(chatId), (state) => {
     const item = state.page?.turns[0]?.items.find(
@@ -51,7 +50,10 @@ export function SideChatHeader({
     return item?.kind === "text" ? item.payload.text.slice(0, 128) : null;
   });
   useEffect(() => {
-    const pane = root.current?.closest(".agent-chat-pane");
+    // The tab sits in the center header row, outside its pane.
+    const pane = document.querySelector(
+      `.agent-chat-pane[data-chat-id="${CSS.escape(chatId)}"]`,
+    );
     if (!pane) return;
     const focus = () => {
       const composer = pane.querySelector<HTMLTextAreaElement>("textarea");
@@ -74,10 +76,10 @@ export function SideChatHeader({
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, []);
+  }, [chatId]);
   const title = prompt?.trim() || "Side chat";
   return (
-    <div ref={root} className="agent-chat-pane__identity side-chat-tab">
+    <div className="agent-chat-pane__identity side-chat-tab">
       <span className="side-chat-tab__icon" aria-hidden="true">
         {running ? (
           // The shared 12px status spinner; `.spinner` alone has no style.
@@ -155,7 +157,7 @@ export function SideChatDialogs() {
 export function SideChatHome() {
   return (
     <div className="side-chat-home">
-      <MessageCirclePlus size={18} aria-hidden="true" />
+      <MessageCirclePlus size={20} aria-hidden="true" />
       <strong>Side chat</strong>
       <p>Side chats are temporary and disappear when you close the app.</p>
     </div>
@@ -191,7 +193,7 @@ export function CloseSideChatDialog({
   };
   return (
     <ModalDialog
-      className="close-side-chat-dialog"
+      className="close-side-chat-dialog dialog--scrim"
       labelledBy={title}
       onDismiss={dismiss}
     >

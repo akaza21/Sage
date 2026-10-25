@@ -12,6 +12,7 @@ import type {
   ResourceRef,
 } from "../../../domain/workbench";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { AnswerActions } from "../AnswerActions";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
@@ -56,11 +57,14 @@ const Turn = memo(
     onOpenResource,
     onRetry,
     inherited = false,
+    answerActions = inherited,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
     /** A fork's read-only parent Turn: never interactive or quotable. */
     inherited?: boolean;
+    /** An earlier or inherited answer keeps its own Copy row (s2/f0066). */
+    answerActions?: boolean;
     hasProjectRoot: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
     onRetry?: () => void;
@@ -141,9 +145,6 @@ const Turn = memo(
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" || item.id === liveThought?.id),
     );
-    const hasCollapsedActivities = workingItems.some(
-      (item) => item.kind === "toolCall",
-    );
     return (
       <section
         className="acp-turn"
@@ -179,7 +180,6 @@ const Turn = memo(
           <ChatTranscriptTurnSummary
             turn={turn}
             thinkingPlaceholder={isSideChatId(page.chatId)}
-            hasCollapsedActivities={hasCollapsedActivities}
             hasActivities={
               workingItems.length > 0 ||
               (turn.browserOperations?.length ?? 0) > 0 ||
@@ -190,7 +190,6 @@ const Turn = memo(
               <PrimaryActivities
                 items={workingItems}
                 interactive={interactive}
-                expandDetails={terminal}
                 onOpenResource={openForTurn}
                 renderItem={(item) => (
                   <ItemView
@@ -217,6 +216,12 @@ const Turn = memo(
               turnState={turn.state}
               interactive={interactive}
               fileReferenceOwner={fileReferenceOwner}
+            />
+          ) : null}
+          {answerActions && finalAnswer?.kind === "text" ? (
+            <AnswerActions
+              text={finalAnswer.payload.text}
+              createdAt={finalAnswer.createdAt}
             />
           ) : null}
           {roots.map((activity) => (
@@ -272,6 +277,7 @@ const Turn = memo(
     left.page.currentSessionId === right.page.currentSessionId &&
     // `inherited` is fixed per mount: only InheritedTurns passes it.
     left.hasProjectRoot === right.hasProjectRoot &&
+    left.answerActions === right.answerActions &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
 );
@@ -339,6 +345,7 @@ export function AcpChatPresentation({
           hasProjectRoot={projectRoots.length > 0}
           onOpenResource={onOpenResource}
           onRetry={index === page.turns.length - 1 ? onRetry : undefined}
+          answerActions={index < page.turns.length - 1}
         />
       </Fragment>
     );
@@ -355,32 +362,17 @@ export function AcpChatPresentation({
         hostRef={navigationRef}
         incomplete={hasEarlier || countIncomplete}
       />
-      {hasEarlier && onLoadEarlier ? (
-        <button
-          type="button"
-          className="acp-history-action"
-          disabled={loadingEarlier}
-          onClick={onLoadEarlier}
-        >
-          {loadingEarlier ? "Loading earlier history…" : "Load earlier history"}
-        </button>
-      ) : null}
-      {historyError ? (
-        <p className="acp-history-error" role="alert" aria-live="off">
-          Earlier history could not be loaded: {historyError}
-        </p>
-      ) : null}
-      {page.nextCursor !== null ? (
-        <p className="acp-history-notice">
-          Earlier history has not been loaded. Changed-file summaries show
-          retained records only.
-        </p>
-      ) : null}
-      {retentionIncomplete ? (
-        <p className="acp-history-notice">
-          Some Chat history was discarded to stay within memory limits.
-          Changed-file summaries show retained records only.
-        </p>
+      {hasEarlier || historyError || countIncomplete ? (
+        // Rare history notices ride the navigation chunk (ChatNavigation.tsx).
+        <NavigationPart
+          part="AcpHistoryNotices"
+          hasEarlier={hasEarlier}
+          loadingEarlier={loadingEarlier}
+          historyError={historyError}
+          onLoadEarlier={onLoadEarlier}
+          unloaded={page.nextCursor !== null}
+          retentionIncomplete={retentionIncomplete}
+        />
       ) : null}
       {page.turns.length > 40 ? (
         <VirtualTurnList

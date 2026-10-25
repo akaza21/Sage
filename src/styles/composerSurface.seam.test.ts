@@ -443,14 +443,14 @@ describe("Composer surface stylesheet seam", () => {
     );
   });
 
-  it("retains the shared composer keyboard focus edge and halo with system forced colors", async () => {
+  it("draws no composer focus border, as Codex, but keeps a forced-colors outline", async () => {
     const surfaceCss = await composerRules();
-    const globalCss = await readFile(resolve("src/styles/global.css"), "utf8");
-
-    expect(surfaceCss).toMatch(
-      /\.composer:focus-within\s*\{[^}]*border-color:\s*var\(--highlight-focus-edge\);[^}]*box-shadow:\s*var\(--highlight-focus-halo-shadow\),\s*var\(--elevation-popover\);/s,
+    // Codex shows focus by the caret alone (s2/f0113, s2/f0244; W9 B9).
+    const defaultCss = surfaceCss.replace(
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*$/,
+      "",
     );
-    expect(globalCss).toMatch(/--highlight-focus-edge:\s*color-mix\(/);
+    expect(defaultCss).not.toMatch(/\.composer:focus-within\s*\{/);
     expect(surfaceCss).not.toMatch(
       /\.composer:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
     );

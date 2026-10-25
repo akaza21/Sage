@@ -983,6 +983,30 @@ describe("AgentChatPanes temporary side chat routing", () => {
     ).not.toContain("48");
   });
 
+  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", () => {
+    const { container } = render(<AgentChatPanes />);
+    reportCenterWidth(1_000);
+    const header = container.querySelector(".agent-chat-center__header")!;
+    expect(header).toHaveClass(
+      "agent-chat-center__header--panes",
+      "agent-chat-center__header--split",
+    );
+    expect(header).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 43fr) minmax(0, 57fr)",
+    });
+    const cells = Array.from(header.children);
+    expect(cells[0]).toHaveTextContent("Chat A");
+    expect(cells[0]).not.toHaveTextContent("Side chat");
+    expect(cells[1]).toHaveClass("agent-chat-center__side-tab");
+    // Tight: the side chat shows alone with only its own tab in the row.
+    reportCenterWidth(600);
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+    expect(header).not.toHaveClass("agent-chat-center__header--split");
+    expect(Array.from(header.children).map((cell) => cell.className)).toEqual([
+      "agent-chat-center__side-tab",
+    ]);
+  });
+
   it("falls back to the ordinary two-pane policy when another Chat takes focus", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);

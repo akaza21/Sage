@@ -6,6 +6,8 @@ import {
 } from "../../app/chatTransitions";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { useWorkbenchStore } from "../../app/store";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { inheritComposerModel } from "./inheritedComposerModel";
 import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
@@ -52,6 +54,9 @@ export async function forkChat({
   if (!layout || get().projectTransitioning)
     return "Wait for the current Project operation.";
   const context = createChatTransitionContext(set, get);
+  // The native fork keeps the parent's model and effort (Codex s2/f0066).
+  const parentConfig =
+    acpProjectionStoreFor(chatId).getState().page?.sessionConfig;
   set({ projectTransitioning: true, error: null });
   const committed = await commitIdentityChatResult({
     set,
@@ -70,8 +75,10 @@ export async function forkChat({
   if (committed) {
     // Rust activates the fork; it replaces the parent's pane, unpaired.
     const fork = get().activeTabId;
-    if (fork && fork !== chatId)
+    if (fork && fork !== chatId) {
       useSideChatState.setState({ soloChatId: fork });
+      inheritComposerModel(fork, parentConfig);
+    }
     return null;
   }
   // The dialog reports the failure inline instead of the global banner.
@@ -162,6 +169,15 @@ function AnswerMoreMenu(target: ForkTarget) {
   );
 }
 
+/** Whether the control that opened the dialog was reached by keyboard. */
+function openedByKeyboard() {
+  try {
+    return Boolean(document.activeElement?.matches(":focus-visible"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * "Fork in a new worktree" is deliberately absent: Sage Chats have no
  * worktree support, and worktrees are never the project model.
@@ -180,6 +196,9 @@ export function ForkChatDialog({
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The first option takes focus on open but is not pre-highlighted after a
+  // pointer open (Codex s2/f0055); a keyboard open or key press shows it.
+  const [fresh, setFresh] = useState(() => !openedByKeyboard());
   const dismiss = () => {
     if (!busyRef.current) onClose();
   };
@@ -209,7 +228,7 @@ export function ForkChatDialog({
   };
   return (
     <ModalDialog
-      className="fork-chat-dialog"
+      className="fork-chat-dialog dialog--scrim"
       labelledBy={title}
       onDismiss={dismiss}
     >
@@ -219,11 +238,13 @@ export function ForkChatDialog({
         aria-labelledby={title}
         aria-busy={busy || undefined}
         className="fork-chat-dialog__options"
+        onKeyDown={() => setFresh(false)}
       >
         <button
           ref={option}
           type="button"
           role="menuitem"
+          data-fresh={fresh || undefined}
           disabled={busy}
           onClick={async () => {
             settle(true);
