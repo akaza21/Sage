@@ -293,7 +293,7 @@
 
 .workspace-search__preview {
   color: var(--color-text-muted);
-  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
 }
 

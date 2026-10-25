@@ -490,3 +490,48 @@ test.describe("Wave 2 200% zoom state", () => {
     await expectNoViewportOverflow(page);
   });
 });
+
+// Page zoom is a smaller CSS viewport at a higher device scale, as in the
+// other 200% states; fractional scales catch sub-pixel rounding drift.
+for (const scale of [1, 1.25, 1.5, 2]) {
+  test.describe(`Editor gutter at ${scale * 100}% zoom`, () => {
+    test.use({
+      viewport: {
+        width: Math.round(1380 / scale),
+        height: Math.round(880 / scale),
+      },
+      deviceScaleFactor: scale,
+    });
+
+    test("keeps every line number level with its line", async ({ page }) => {
+      await openScenario(page, "editor", "editor");
+      const editor = page.locator(".file-surface .cm-editor");
+      await expect(editor.locator(".cm-line").first()).toBeVisible();
+      const rows = await editor.evaluate((root) => {
+        const lines = [...root.querySelectorAll<HTMLElement>(".cm-line")];
+        // CodeMirror keeps one invisible sizing element first in the gutter.
+        const numbers = [
+          ...root.querySelectorAll<HTMLElement>(
+            ".cm-lineNumbers .cm-gutterElement",
+          ),
+        ].filter((element) => element.style.visibility !== "hidden");
+        const middle = (element: HTMLElement) => {
+          const box = element.getBoundingClientRect();
+          return box.top + box.height / 2;
+        };
+        return lines.map((line, index) => ({
+          label: numbers[index]?.textContent ?? null,
+          offset: numbers[index]
+            ? Math.abs(middle(numbers[index]) - middle(line))
+            : null,
+        }));
+      });
+      expect(rows.length).toBeGreaterThan(2);
+      rows.forEach((row, index) => {
+        expect(row.label).toBe(String(index + 1));
+        expect(row.offset).not.toBeNull();
+        expect(row.offset!).toBeLessThanOrEqual(1);
+      });
+    });
+  });
+}

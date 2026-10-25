@@ -232,8 +232,12 @@
   --font-family-ui:
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  /* Windows: Cascadia, then Consolas (Chromium skips ui-monospace there).
+     macOS: ui-monospace (SF Mono), then Menlo, because WebKit maps a bare
+     monospace to Courier. Linux: Liberation Mono. */
   --font-family-mono:
-    "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;

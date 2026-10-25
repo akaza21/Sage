@@ -66,7 +66,8 @@ export function TerminalDock({
       allowProposedApi: false,
       convertEol: false,
       cursorBlink: true,
-      fontFamily: "Cascadia Mono, Consolas, monospace",
+      // xterm measures a concrete face; Menlo keeps macOS off Courier.
+      fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
       lineHeight: 1.3,
       scrollback: 1_000,

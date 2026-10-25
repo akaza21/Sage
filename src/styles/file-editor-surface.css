@@ -271,7 +271,7 @@
 
 .editor-input .cm-scroller {
   overflow: auto;
-  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-family-mono);
   line-height: 1.65;
   tab-size: 2;
 }
@@ -286,8 +286,9 @@
   padding: 0;
 }
 
+/* No top padding here: CodeMirror already offsets gutter rows by the content
+   padding, and adding it again drops every line number one row low. */
 .editor-input .cm-gutters {
-  padding-top: 16px;
   border-right: 1px solid var(--resource-document-gutter-divider);
   color: var(--resource-document-gutter-foreground);
   background: var(--color-canvas);
