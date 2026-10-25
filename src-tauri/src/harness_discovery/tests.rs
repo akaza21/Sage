@@ -15,10 +15,7 @@ use super::{
 };
 
 #[cfg(windows)]
-use super::{
-    InstallLayout,
-    candidates::{known_install_roots_from_app_data, known_install_roots_from_windows},
-};
+use super::{InstallLayout, candidates::known_install_roots_from_windows};
 
 fn scratch_dir() -> PathBuf {
     let nonce = SystemTime::now()
