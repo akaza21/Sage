@@ -5,12 +5,18 @@
 // Only the Windows glue calls the native-popup path; tests cover it everywhere.
 #![cfg_attr(not(windows), allow(dead_code))]
 
+use std::time::Instant;
+
 use super::*;
 
 /// The only non-HTTP(S) document a popup may start on: the opener-linked
 /// empty document that `window.open('')` creates before the opener assigns
 /// `location`. Matched exactly, never by prefix.
 pub(crate) const INITIAL_BLANK: &str = "about:blank";
+
+/// A native child the chrome never acknowledged is closed after this, so a
+/// hidden live page cannot hold a tab-cap slot indefinitely.
+pub(crate) const NATIVE_ACK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Admission for a popup the opener's WebView2 would host natively. It is the
 /// same check as the intent path (`popup_target`: live opener, tab cap,
@@ -21,8 +27,7 @@ pub(super) fn native_popup_target<T>(
     requested: &str,
 ) -> Option<String> {
     if requested == INITIAL_BLANK {
-        let open = tabs.entries.contains_key(opener) && tabs.slot_count() < MAX_BROWSER_TABS;
-        return open.then(|| INITIAL_BLANK.to_owned());
+        return opener_has_room(tabs, opener).then(|| INITIAL_BLANK.to_owned());
     }
     let url = admit_url(requested).ok()?;
     popup_target(tabs, opener, &url)
@@ -37,26 +42,15 @@ impl PopupRequests {
         opener: &str,
         requested: &str,
     ) -> Option<PopupIntent> {
-        if self.entries.len() >= MAX_PENDING_POPUPS {
-            return None;
-        }
-        let url = native_popup_target(tabs, opener, requested)?;
-        let id = self.next_id.checked_add(1)?;
-        self.next_id = id;
-        let intent = PopupIntent {
-            id,
-            opener_tab_id: opener.to_owned(),
-            url,
-        };
-        self.entries
-            .insert(id, (intent.clone(), PopupState::NativeOpening));
-        Some(intent)
+        let url = native_popup_target(tabs, opener, requested);
+        self.insert(opener, url, PopupState::NativeOpening)
     }
 
     /// Records the created child as an `Opened` popup, so the tab cap,
     /// `take_for_opener` teardown and the chrome's replay/ack all cover it.
     /// Returns false when the opener closed (or the entry was dropped) first.
-    pub(crate) fn native_opened(&mut self, id: u64, tab_id: &str) -> bool {
+    /// `now` starts the acknowledgement deadline.
+    pub(crate) fn native_opened(&mut self, id: u64, tab_id: &str, now: Instant) -> bool {
         let Some((intent, state)) = self.entries.get_mut(&id) else {
             return false;
         };
@@ -64,10 +58,39 @@ impl PopupRequests {
             return false;
         }
         *state = PopupState::Opened(tab_id.to_owned());
+        intent.native_tab_id = Some(tab_id.to_owned());
         if intent.url == INITIAL_BLANK && self.initial_blank.len() < MAX_BROWSER_TABS {
             self.initial_blank.insert(tab_id.to_owned());
         }
+        let entries = &self.entries;
+        self.native_deadlines
+            .retain(|id, _| entries.contains_key(id));
+        self.native_deadlines.insert(id, now + NATIVE_ACK_DEADLINE);
         true
+    }
+
+    /// Native children still `Opened` (never acknowledged or abandoned) at
+    /// their deadline. Each is quarantined like `take_for_opener`; the caller
+    /// closes the tab and then calls `finish_cleanup`.
+    pub(crate) fn take_expired_native(&mut self, now: Instant) -> Vec<(u64, String)> {
+        let mut expired = Vec::new();
+        let deadlines = std::mem::take(&mut self.native_deadlines);
+        for (id, deadline) in deadlines {
+            let Some((_, state)) = self.entries.get_mut(&id) else {
+                continue;
+            };
+            let PopupState::Opened(tab_id) = state else {
+                continue;
+            };
+            if deadline <= now {
+                let tab_id = tab_id.clone();
+                *state = PopupState::Quarantined(Some(tab_id.clone()));
+                expired.push((id, tab_id));
+            } else {
+                self.native_deadlines.insert(id, deadline);
+            }
+        }
+        expired
     }
 
     /// Drops a native popup whose creation failed before a child existed.
@@ -99,6 +122,22 @@ pub(crate) fn navigation_admitted(app: &AppHandle, tab_id: &str, uri: &str) -> b
     match app.state::<BrowserState>().popups.lock() {
         Ok(mut popups) => popups.admit_navigation(tab_id, uri),
         Err(_) => admit_url(uri).is_ok(),
+    }
+}
+
+pub(crate) fn opener_has_room<T>(tabs: &BrowserTabs<T>, opener: &str) -> bool {
+    tabs.entries.contains_key(opener) && tabs.slot_count() < MAX_BROWSER_TABS
+}
+
+pub(crate) fn emit_popup_intent(app: &AppHandle, id: u64) {
+    let intent = app
+        .state::<BrowserState>()
+        .popups
+        .lock()
+        .ok()
+        .and_then(|popups| popups.entries.get(&id).map(|(intent, _)| intent.clone()));
+    if let Some(intent) = intent {
+        let _ = app.emit_to("main", "browser:popup-request", intent);
     }
 }
 

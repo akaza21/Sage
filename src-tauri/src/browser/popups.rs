@@ -13,9 +13,10 @@ mod native;
 #[cfg(windows)]
 pub(super) use native::register_native;
 mod opener;
+mod settle;
 #[cfg(windows)]
 pub(super) use opener::navigation_admitted;
-pub(super) use opener::{INITIAL_BLANK, enqueue_intent};
+pub(super) use opener::{INITIAL_BLANK, emit_popup_intent, enqueue_intent, opener_has_room};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +24,9 @@ pub(crate) struct PopupIntent {
     pub(super) id: u64,
     pub(super) opener_tab_id: String,
     pub(super) url: String,
+    /// Set only for a native (opener-linked) child, so the chrome can abandon it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) native_tab_id: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -45,6 +49,7 @@ pub(super) struct PopupRequests {
     next_id: u64,
     entries: BTreeMap<u64, (PopupIntent, PopupState)>,
     initial_blank: BTreeSet<String>,
+    native_deadlines: BTreeMap<u64, std::time::Instant>,
 }
 
 impl PopupRequests {
@@ -54,19 +59,28 @@ impl PopupRequests {
         opener: &str,
         requested: &Url,
     ) -> Option<PopupIntent> {
+        let url = popup_target(tabs, opener, requested);
+        self.insert(opener, url, PopupState::Pending)
+    }
+
+    fn insert(
+        &mut self,
+        opener: &str,
+        url: Option<String>,
+        state: PopupState,
+    ) -> Option<PopupIntent> {
         if self.entries.len() >= MAX_PENDING_POPUPS {
             return None;
         }
-        let url = popup_target(tabs, opener, requested)?;
         let id = self.next_id.checked_add(1)?;
-        self.next_id = id;
         let intent = PopupIntent {
             id,
             opener_tab_id: opener.to_owned(),
-            url,
+            url: url?,
+            native_tab_id: None,
         };
-        self.entries
-            .insert(id, (intent.clone(), PopupState::Pending));
+        self.next_id = id;
+        self.entries.insert(id, (intent.clone(), state));
         Some(intent)
     }
 
@@ -208,7 +222,7 @@ pub(super) fn popup_target<T>(
     opener: &str,
     requested: &Url,
 ) -> Option<String> {
-    if !tabs.entries.contains_key(opener) || tabs.slot_count() >= MAX_BROWSER_TABS {
+    if !opener_has_room(tabs, opener) {
         return None;
     }
     admit_url(requested.as_str())
@@ -327,15 +341,7 @@ async fn finish_popup_open(
             .err()
             .unwrap_or_else(|| "popup opener closed during open".into()));
     }
-    let intent = state.popups.lock().ok().and_then(|popups| {
-        popups
-            .entries
-            .get(&intent_id)
-            .map(|(intent, _)| intent.clone())
-    });
-    if let Some(intent) = intent {
-        let _ = app.emit_to("main", "browser:popup-request", intent);
-    }
+    emit_popup_intent(app, intent_id);
     Ok(PopupOpenResult {
         tab_id,
         opener_tab_id,

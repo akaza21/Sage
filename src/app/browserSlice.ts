@@ -105,7 +105,13 @@ export const createBrowserSlice: StateCreator<
     try {
       const projectId = get().project?.id;
       const generation = get().projectGeneration;
-      if (!projectId || get().projectTransitioning) return;
+      if (!projectId || get().projectTransitioning) {
+        // A native child is already a live hidden page holding a tab slot.
+        const { id, openerTabId: opener, nativeTabId: child } = intent;
+        if (typeof child === "string")
+          await browserPopupAbandon(id, opener, child);
+        return;
+      }
       await get().flushActiveEditor();
       if (!matchesProjectIntent(get(), generation, projectId))
         throw new Error("Project changed");

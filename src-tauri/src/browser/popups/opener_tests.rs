@@ -1,5 +1,17 @@
 use super::super::*;
 use super::*;
+use std::time::{Duration, Instant};
+
+fn t0() -> Instant {
+    Instant::now()
+}
+
+fn linked(intent: &PopupIntent, tab_id: &str) -> PopupIntent {
+    PopupIntent {
+        native_tab_id: Some(tab_id.into()),
+        ..intent.clone()
+    }
+}
 
 fn live_opener() -> BrowserTabs<usize> {
     let mut tabs = BrowserTabs::<usize>::new();
@@ -69,9 +81,9 @@ fn native_reservation_is_bounded_hidden_and_reuses_opener_cleanup() {
         requests.begin(&tabs, blank.id, "browser-1"),
         Err("popup open is in progress".into())
     );
-    assert!(requests.native_opened(blank.id, "browser-2"));
-    assert!(!requests.native_opened(blank.id, "browser-2"));
-    assert_eq!(requests.pending(), vec![blank.clone()]);
+    assert!(requests.native_opened(blank.id, "browser-2", t0()));
+    assert!(!requests.native_opened(blank.id, "browser-2", t0()));
+    assert_eq!(requests.pending(), vec![linked(&blank, "browser-2")]);
     assert_eq!(
         requests.begin(&tabs, blank.id, "browser-1"),
         Ok(PopupBegin::Reuse("browser-2".into()))
@@ -84,11 +96,17 @@ fn native_reservation_is_bounded_hidden_and_reuses_opener_cleanup() {
         vec![(blank.id, "browser-2".into())]
     );
     assert!(
-        !requests.native_opened(https.id, "browser-3"),
+        !requests.native_opened(https.id, "browser-3", t0()),
         "closed opener drops in-flight popup"
     );
-    for _ in 0..MAX_PENDING_POPUPS {
-        requests.reserve_native(&tabs, "browser-1", "https://example.com/");
+    // The quarantined child keeps one of the bounded entries until cleanup.
+    for filled in 1..MAX_PENDING_POPUPS {
+        assert!(
+            requests
+                .reserve_native(&tabs, "browser-1", "https://example.com/")
+                .is_some(),
+            "entry {filled} fits"
+        );
     }
     assert!(
         requests
@@ -107,11 +125,11 @@ fn failed_native_popup_releases_only_its_in_flight_entry() {
     let kept = requests
         .reserve_native(&tabs, "browser-1", "https://example.com/")
         .unwrap();
-    assert!(requests.native_opened(kept.id, "browser-2"));
+    assert!(requests.native_opened(kept.id, "browser-2", t0()));
     requests.native_failed(failed.id);
     requests.native_failed(kept.id);
-    assert_eq!(requests.pending(), vec![kept]);
-    assert!(!requests.native_opened(failed.id, "browser-3"));
+    assert_eq!(requests.pending(), vec![linked(&kept, "browser-2")]);
+    assert!(!requests.native_opened(failed.id, "browser-3", t0()));
 }
 
 #[test]
@@ -123,7 +141,7 @@ fn initial_blank_is_admitted_only_for_a_native_opener_linked_child_until_it_navi
         .reserve_native(&tabs, "browser-1", "about:blank")
         .unwrap();
     assert!(!requests.admit_navigation("browser-2", "about:blank"));
-    assert!(requests.native_opened(blank.id, "browser-2"));
+    assert!(requests.native_opened(blank.id, "browser-2", t0()));
     assert!(requests.admit_navigation("browser-2", "about:blank"));
     assert!(requests.admit_navigation("browser-2", "about:blank"));
     assert!(!requests.admit_navigation("browser-3", "about:blank"));
@@ -140,20 +158,81 @@ fn initial_blank_is_admitted_only_for_a_native_opener_linked_child_until_it_navi
     let next = requests
         .reserve_native(&tabs, "browser-1", "about:blank")
         .unwrap();
-    assert!(requests.native_opened(next.id, "browser-4"));
+    assert!(requests.native_opened(next.id, "browser-4", t0()));
     assert!(requests.admit_navigation("browser-4", "https://example.com/"));
     assert!(!requests.admit_navigation("browser-4", "about:blank"));
 
     let https = requests
         .reserve_native(&tabs, "browser-1", "https://example.com/")
         .unwrap();
-    assert!(requests.native_opened(https.id, "browser-5"));
+    assert!(requests.native_opened(https.id, "browser-5", t0()));
     assert!(!requests.admit_navigation("browser-5", "about:blank"));
 
     let closed = requests
         .reserve_native(&tabs, "browser-1", "about:blank")
         .unwrap();
-    assert!(requests.native_opened(closed.id, "browser-6"));
+    assert!(requests.native_opened(closed.id, "browser-6", t0()));
     requests.forget_child("browser-6");
     assert!(!requests.admit_navigation("browser-6", "about:blank"));
+}
+
+#[test]
+fn dispatch_failure_releases_the_reserved_slot() {
+    let tabs = live_opener();
+    let mut requests = PopupRequests::default();
+    let reserved = (0..MAX_PENDING_POPUPS)
+        .map(|_| {
+            requests
+                .reserve_native(&tabs, "browser-1", "https://example.com/")
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        requests
+            .reserve_native(&tabs, "browser-1", "https://example.com/")
+            .is_none()
+    );
+    requests.native_failed(reserved[0].id);
+    assert!(
+        requests
+            .reserve_native(&tabs, "browser-1", "https://example.com/")
+            .is_some()
+    );
+}
+
+#[test]
+fn unacknowledged_native_children_expire_at_the_deadline_only() {
+    let tabs = live_opener();
+    let mut requests = PopupRequests::default();
+    let start = Instant::now();
+    let late = requests
+        .reserve_native(&tabs, "browser-1", "about:blank")
+        .unwrap();
+    let acked = requests
+        .reserve_native(&tabs, "browser-1", "https://example.com/")
+        .unwrap();
+    let fresh = requests
+        .reserve_native(&tabs, "browser-1", "https://example.com/")
+        .unwrap();
+    assert!(requests.native_opened(late.id, "browser-2", start));
+    assert!(requests.native_opened(acked.id, "browser-3", start));
+    let later = start + Duration::from_secs(10);
+    assert!(requests.native_opened(fresh.id, "browser-4", later));
+    assert!(requests.ack(acked.id, "browser-1", "browser-3"));
+
+    let before = start + NATIVE_ACK_DEADLINE - Duration::from_millis(1);
+    assert!(requests.take_expired_native(before).is_empty());
+    let due = start + NATIVE_ACK_DEADLINE;
+    assert_eq!(
+        requests.take_expired_native(due),
+        vec![(late.id, "browser-2".into())]
+    );
+    assert!(requests.take_expired_native(due).is_empty());
+    requests.finish_cleanup(late.id, "browser-2");
+    assert_eq!(requests.pending(), vec![linked(&fresh, "browser-4")]);
+    assert_eq!(
+        requests.take_expired_native(later + NATIVE_ACK_DEADLINE),
+        vec![(fresh.id, "browser-4".into())]
+    );
+    assert!(requests.native_deadlines.is_empty());
 }

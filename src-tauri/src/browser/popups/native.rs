@@ -1,11 +1,17 @@
 //! Windows only (S1 Option C): Sage's own WebView2 `NewWindowRequested`
 //! handler, so an admitted popup becomes a normal policed Sage tab that keeps
 //! `window.opener`. All policy lives in `opener.rs`; this file only moves
-//! WebView2 objects and checks every HRESULT. Any failure falls back to the
-//! deny-and-enqueue intent path.
-use std::{cell::RefCell, collections::BTreeMap, sync::mpsc, time::Duration};
+//! WebView2 objects and checks every HRESULT; the deferral ordering is the
+//! Linux-tested `settle.rs`. A popup falls back to the deny-and-enqueue intent
+//! path only while WebView2 never received a child.
+use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 
-use tauri::{AppHandle, Emitter, Manager, Webview};
+use tauri::{AppHandle, Manager, Webview};
 use url::Url;
 use webview2_com::{
     CoTaskMemPWSTR,
@@ -18,7 +24,9 @@ use webview2_com::{
 use windows_core::{Interface, PWSTR};
 
 use super::super::{BrowserState, downloads, lifecycle};
-use super::{INITIAL_BLANK, enqueue_intent};
+use super::opener::NATIVE_ACK_DEADLINE;
+use super::settle::{NewWindowRequest, Settlement, settle};
+use super::{INITIAL_BLANK, MAX_PENDING_POPUPS, emit_popup_intent, enqueue_intent};
 
 struct PendingPopup {
     args: ICoreWebView2NewWindowRequestedEventArgs,
@@ -31,7 +39,7 @@ struct PendingPopup {
 
 thread_local! {
     // WebView2 interfaces are apartment-bound and must never enter
-    // BrowserState. One entry per reserved popup, so MAX_PENDING_POPUPS bounds it.
+    // BrowserState. Bounded by MAX_PENDING_POPUPS (checked before insert).
     static PENDING: RefCell<BTreeMap<u64, PendingPopup>> = const { RefCell::new(BTreeMap::new()) };
 }
 
@@ -75,15 +83,7 @@ fn request(
 ) {
     let mut uri = PWSTR::null();
     if let Err(error) = unsafe { args.Uri(&mut uri) } {
-        deny_and_enqueue(
-            app,
-            &args,
-            None,
-            opener,
-            "",
-            &format!("Uri failed: {error}"),
-        );
-        return;
+        return deny_and_enqueue(app, &args, opener, "", &format!("Uri failed: {error}"));
     }
     let requested = CoTaskMemPWSTR::from(uri).to_string();
     let state = app.state::<BrowserState>();
@@ -92,10 +92,12 @@ fn request(
         _ => None,
     };
     let Some(intent) = reserved else {
-        deny_and_enqueue(app, &args, None, opener, &requested, "not admitted");
-        return;
+        return deny_and_enqueue(app, &args, opener, &requested, "not admitted");
     };
     let prepared = (|| -> Result<_, String> {
+        if PENDING.with_borrow(|pending| pending.len() >= MAX_PENDING_POPUPS) {
+            return Err("too many deferred popups".into());
+        }
         let core: ICoreWebView2_2 = sender
             .ok_or("opener WebView2 unavailable")?
             .cast()
@@ -108,13 +110,13 @@ fn request(
         Ok(prepared) => prepared,
         Err(error) => {
             release(app, intent.id, None);
-            deny_and_enqueue(app, &args, None, opener, &requested, &error);
-            return;
+            return deny_and_enqueue(app, &args, opener, &requested, &error);
         }
     };
+    let id = intent.id;
     PENDING.with_borrow_mut(|pending| {
         pending.insert(
-            intent.id,
+            id,
             PendingPopup {
                 args,
                 deferral,
@@ -125,19 +127,22 @@ fn request(
             },
         );
     });
-    let id = intent.id;
     let dispatch_app = app.clone();
     // Off the main thread `run_on_main_thread` posts to the event loop
     // instead of running inline (tauri-runtime-wry-2.11.4/src/lib.rs:235-254).
     tauri::async_runtime::spawn(async move {
         let attach_app = dispatch_app.clone();
         if let Err(error) = dispatch_app.run_on_main_thread(move || attach(&attach_app, id)) {
+            // The event loop is gone, so the apartment-bound deferral cannot be
+            // completed from here; release the bounded reservation at least.
+            release(&dispatch_app, id, None);
             eprintln!("browser popup dispatch failed; WebView2 deferral left open: {error}");
         }
     });
 }
 
-/// Main thread: create the tab, hand it to WebView2, hook it, then complete.
+/// Main thread: create, hide, link and hook the child, then let `settle`
+/// call SetNewWindow/SetHandled and Complete the deferral exactly once.
 fn attach(app: &AppHandle, id: u64) {
     let Some((opener, requested, loading, environment)) = PENDING.with_borrow(|pending| {
         pending.get(&id).map(|popup| {
@@ -152,36 +157,33 @@ fn attach(app: &AppHandle, id: u64) {
         return;
     };
     let state = app.state::<BrowserState>();
-    let label = match lifecycle::open_popup_tab(app, &state, environment, loading) {
-        Ok(label) => label,
-        Err(error) => return fail(app, id, None, &opener, &requested, &error),
+    let created = lifecycle::open_popup_tab(app, &state, environment, loading);
+    let label = created.as_ref().ok().cloned();
+    let prepared = created.and_then(|label| prepare(app, &state, id, &opener, &label));
+    let mut request = NativeRequest {
+        id,
+        webview: label
+            .as_deref()
+            .and_then(|label| state.webview_for_tab(label)),
     };
-    if let Err(error) = adopt(app, &state, id, &opener, &label) {
-        return fail(app, id, Some(label), &opener, &requested, &error);
-    }
-    let Some(popup) = PENDING.with_borrow_mut(|pending| pending.remove(&id)) else {
-        return fail(app, id, Some(label), &opener, &requested, "request expired");
-    };
-    if let Err(error) = unsafe { popup.deferral.Complete() } {
-        release(app, id, Some(label));
-        return fall_back(
-            app,
-            &opener,
-            &requested,
-            &format!("Complete failed: {error}"),
-        );
-    }
-    let intent = state
-        .popups
-        .lock()
-        .ok()
-        .and_then(|popups| popups.entries.get(&id).map(|(intent, _)| intent.clone()));
-    if let Some(intent) = intent {
-        let _ = app.emit_to("main", "browser:popup-request", intent);
+    match settle(&mut request, prepared) {
+        Settlement::Attached => {
+            emit_popup_intent(app, id);
+            expire_unacknowledged(app);
+        }
+        Settlement::FallBack(reason) => {
+            release(app, id, label);
+            fall_back(app, &opener, &requested, &reason);
+        }
+        Settlement::Abandoned(reason) => {
+            // WebView2 may already host the popup: close it, never duplicate it.
+            release(app, id, label);
+            eprintln!("browser popup closed without fallback: {reason}");
+        }
     }
 }
 
-fn adopt(
+fn prepare(
     app: &AppHandle,
     state: &BrowserState,
     id: u64,
@@ -196,7 +198,7 @@ fn adopt(
         .map_err(|error| format!("popup tab hide failed: {error}"))?;
     let linked = match (state.tabs.lock(), state.popups.lock()) {
         (Ok(tabs), Ok(mut popups)) => {
-            tabs.entries.contains_key(opener) && popups.native_opened(id, label)
+            tabs.entries.contains_key(opener) && popups.native_opened(id, label, Instant::now())
         }
         _ => false,
     };
@@ -208,58 +210,82 @@ fn adopt(
         .lock()
         .map_err(|error| error.to_string())?
         .set_provenance(label, downloads::NavigationProvenance::User);
-    set_new_window(&webview, id)?;
-    // Event subscriptions on the new contents must follow SetNewWindow and
-    // precede Complete, so NavigationStarting sees the first navigation.
-    // `with_webview` runs inline here (main thread), so this cannot wait on itself.
+    // Hooks go on before SetNewWindow so that SetNewWindow stays the last
+    // step that can still fall back without a duplicate tab. `with_webview`
+    // runs inline on the main thread, so `block_on` cannot wait on itself.
     tauri::async_runtime::block_on(lifecycle::register_tab_hooks(app, &webview))
 }
 
-fn set_new_window(webview: &Webview, id: u64) -> Result<(), String> {
-    let (sender, receiver) = mpsc::sync_channel(1);
-    webview
-        .with_webview(move |platform| {
-            let result = (|| {
-                let core = unsafe { platform.controller().CoreWebView2() }
-                    .map_err(|error| format!("CoreWebView2 failed: {error}"))?;
-                let args = PENDING
-                    .with_borrow(|pending| pending.get(&id).map(|popup| popup.args.clone()))
-                    .ok_or("popup request expired")?;
-                unsafe { args.SetNewWindow(&core) }
-                    .map_err(|error| format!("SetNewWindow failed: {error}"))?;
-                unsafe { args.SetHandled(true) }
-                    .map_err(|error| format!("SetHandled failed: {error}"))
-            })();
-            let _ = sender.send(result);
-        })
-        .map_err(|error| error.to_string())?;
-    receiver
-        .try_recv()
-        .map_err(|_| "popup attach did not run on the main thread".to_owned())?
+/// The real WebView2 request; `complete` removes it, so it runs at most once.
+struct NativeRequest {
+    id: u64,
+    webview: Option<Webview>,
 }
 
-fn fail(
-    app: &AppHandle,
-    id: u64,
-    label: Option<String>,
-    opener: &str,
-    requested: &str,
-    error: &str,
-) {
-    release(app, id, label);
-    if let Some(popup) = PENDING.with_borrow_mut(|pending| pending.remove(&id)) {
-        if let Err(error) = unsafe { popup.args.SetNewWindow(None::<&ICoreWebView2>) } {
-            eprintln!("browser popup SetNewWindow reset failed: {error}");
-        }
-        deny_and_enqueue(
-            app,
-            &popup.args,
-            Some(&popup.deferral),
-            opener,
-            requested,
-            error,
-        );
+fn pending_args(id: u64) -> Result<ICoreWebView2NewWindowRequestedEventArgs, String> {
+    PENDING
+        .with_borrow(|pending| pending.get(&id).map(|popup| popup.args.clone()))
+        .ok_or_else(|| "popup request expired".to_owned())
+}
+
+impl NewWindowRequest for NativeRequest {
+    fn set_new_window(&mut self) -> Result<(), String> {
+        let webview = self.webview.as_ref().ok_or("popup tab unavailable")?;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let id = self.id;
+        webview
+            .with_webview(move |platform| {
+                let result = (|| {
+                    let core = unsafe { platform.controller().CoreWebView2() }
+                        .map_err(|error| format!("CoreWebView2 failed: {error}"))?;
+                    unsafe { pending_args(id)?.SetNewWindow(&core) }
+                        .map_err(|error| format!("SetNewWindow failed: {error}"))
+                })();
+                let _ = sender.send(result);
+            })
+            .map_err(|error| error.to_string())?;
+        receiver
+            .try_recv()
+            .map_err(|_| "popup attach did not run on the main thread".to_owned())?
     }
+
+    fn set_handled(&mut self) -> Result<(), String> {
+        unsafe { pending_args(self.id)?.SetHandled(true) }.map_err(|error| error.to_string())
+    }
+
+    fn complete(&mut self) -> Result<(), String> {
+        let popup = PENDING
+            .with_borrow_mut(|pending| pending.remove(&self.id))
+            .ok_or("deferral already completed")?;
+        unsafe { popup.deferral.Complete() }.map_err(|error| error.to_string())
+    }
+}
+
+/// Closes native children the chrome never acknowledged within the deadline.
+fn expire_unacknowledged(app: &AppHandle) {
+    let sweep_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(NATIVE_ACK_DEADLINE).await;
+        let state = sweep_app.state::<BrowserState>();
+        let expired = match state.popups.lock() {
+            Ok(mut popups) => popups.take_expired_native(Instant::now()),
+            Err(_) => Vec::new(),
+        };
+        for (id, tab_id) in expired {
+            let closed = lifecycle::close_browser_tab(&sweep_app, &state, tab_id.clone()).await;
+            let gone = state
+                .tabs
+                .lock()
+                .is_ok_and(|tabs| !tabs.entries.contains_key(&tab_id));
+            if closed.is_ok() || gone {
+                if let Ok(mut popups) = state.popups.lock() {
+                    popups.finish_cleanup(id, &tab_id);
+                }
+            } else if let Err(error) = closed {
+                eprintln!("browser popup deadline close failed: {error}");
+            }
+        }
+    });
 }
 
 /// Drops the popup's bookkeeping and closes a tab that was already created.
@@ -282,19 +308,16 @@ fn release(app: &AppHandle, id: u64, label: Option<String>) {
     }
 }
 
+/// Before any deferral: deny the popup synchronously and fall back.
 fn deny_and_enqueue(
     app: &AppHandle,
     args: &ICoreWebView2NewWindowRequestedEventArgs,
-    deferral: Option<&ICoreWebView2Deferral>,
     opener: &str,
     requested: &str,
     reason: &str,
 ) {
     if let Err(error) = unsafe { args.SetHandled(true) } {
         eprintln!("browser popup SetHandled failed: {error}");
-    }
-    if let Some(Err(error)) = deferral.map(|deferral| unsafe { deferral.Complete() }) {
-        eprintln!("browser popup deferral Complete failed: {error}");
     }
     fall_back(app, opener, requested, reason);
 }
