@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Includes override</title>
+    <script>
+      String.prototype.includes = function () {
+        return true;
+      };
+    </script>
+  </head>
+  <body>
+    <p>This page never shows the phrase the agent waits for.</p>
+  </body>
+</html>

@@ -963,6 +963,7 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn development_default_prefers_an_available_curated_harness() {
         let catalog = HarnessCatalog::with_codex_registration_and_presence(

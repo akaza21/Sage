@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { forbidBrowserRetries } from "./shared/browserRetryGuard";
+
+forbidBrowserRetries();
 
 test("new-tab browser menu retains unavailable page actions at 560 px", async ({
   page,

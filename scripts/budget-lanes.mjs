@@ -42,6 +42,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-candidate-verifier.node-test.mjs",
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
+  "browser-test-policy.node-test.mjs",
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
   "capture-native-chat-catalog.node-test.mjs",
@@ -470,6 +471,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "check-harness-trace-privacy.node-test.mjs",
     reason:
       "Portable harness-trace privacy guard regression tests inspect JSON values without native capabilities.",
+  },
+  {
+    file: "browser-test-policy.node-test.mjs",
+    reason:
+      "Portable browser no-bypass and reference-backed UI rule policy tests over in-memory sources; no native capability required.",
   },
   {
     file: "check-policy.node-test.mjs",

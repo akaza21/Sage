@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { forbidBrowserRetries } from "./shared/browserRetryGuard";
+
+forbidBrowserRetries();
 
 test("Suggested tiles truncate long titles in a 560 px browser pane", async ({
   page,

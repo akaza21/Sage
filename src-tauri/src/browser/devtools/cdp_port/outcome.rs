@@ -1,6 +1,6 @@
 use crate::acp::browser::BrowserFailure;
 
-pub(super) fn dispatch_timeout_failure(issued: bool) -> BrowserFailure {
+pub(in crate::browser::devtools) fn dispatch_timeout_failure(issued: bool) -> BrowserFailure {
     if issued {
         BrowserFailure::OutcomeUnknown
     } else {
@@ -8,7 +8,7 @@ pub(super) fn dispatch_timeout_failure(issued: bool) -> BrowserFailure {
     }
 }
 
-pub(super) fn dispatch_disconnected_failure(issued: bool) -> BrowserFailure {
+pub(in crate::browser::devtools) fn dispatch_disconnected_failure(issued: bool) -> BrowserFailure {
     dispatch_timeout_failure(issued)
 }
 

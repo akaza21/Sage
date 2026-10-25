@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-address.html",
+  "viewport": { "width": 1920, "height": 900 },
+  "rules": [
+    {
+      "id": "toolbar-height",
+      "ref": "reference/14",
+      "source": "CP-16 measured toolbar y86-129",
+      "selector": ".browser-surface__toolbar",
+      "measure": "height",
+      "expected": 44,
+      "tolerancePx": 1
+    },
+    {
+      "id": "address-height",
+      "ref": "reference/14",
+      "source": "CP-16 measured address pill about 32 px high",
+      "selector": ".browser-surface__address input",
+      "measure": "height",
+      "expected": 32,
+      "tolerancePx": 1
+    },
+    {
+      "id": "address-fill",
+      "ref": "reference/14",
+      "source": "CP-16 measured address pill fill #2d2d2d",
+      "selector": ".browser-surface__address input",
+      "measure": "background-color",
+      "expected": "rgb(45, 45, 45)"
+    },
+    {
+      "id": "address-host-centred",
+      "ref": "reference/14",
+      "source": "CP-16 centred host label rather than full URL",
+      "selector": ".browser-surface__address input",
+      "measure": "text-align",
+      "expected": "center"
+    },
+    {
+      "id": "navigation-before-address",
+      "ref": "reference/14",
+      "source": "CP-16 back/forward/reload group left of the address pill",
+      "selector": ".browser-surface__nav-group",
+      "measure": "left-of",
+      "other": ".browser-surface__address"
+    },
+    {
+      "id": "menu-at-right-edge",
+      "ref": "reference/14",
+      "source": "CP-16 round overflow menu at the toolbar's right end",
+      "selector": "button[aria-label='More options']",
+      "measure": "right-inset",
+      "within": ".browser-surface__toolbar",
+      "expected": 8,
+      "tolerancePx": 4
+    }
+  ]
+}

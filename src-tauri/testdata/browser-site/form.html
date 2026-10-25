@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign in</title>
+  </head>
+  <body>
+    <h1>Sign in</h1>
+    <form onsubmit="return false;">
+      <input type="hidden" name="csrf" value="CANARY-CSRF-a83d27" />
+      <label>Email <input id="email" type="text" name="email" /></label>
+      <label
+        >Password
+        <input
+          id="password"
+          type="password"
+          name="password"
+          value="CANARY-PW-5f1e9c"
+      /></label>
+      <label>Notes <textarea id="notes"></textarea></label>
+      <button type="button" id="submit">Submit</button>
+    </form>
+    <p id="status">Idle</p>
+    <script>
+      const status = document.getElementById("status");
+      document.getElementById("submit").addEventListener("click", () => {
+        status.textContent = "Submitted once";
+      });
+      for (const id of ["email", "password"]) {
+        document.getElementById(id).addEventListener("input", (event) => {
+          status.textContent = `${id} now holds ${event.target.value.length} characters`;
+        });
+      }
+      document.getElementById("notes").addEventListener("keydown", (event) => {
+        status.textContent = `Notes saw ${event.key}`;
+      });
+    </script>
+  </body>
+</html>

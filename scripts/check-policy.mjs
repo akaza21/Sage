@@ -5,6 +5,7 @@ import process from "node:process";
 
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
+import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import {
   cssHighlightPolicyErrors,
@@ -889,6 +890,9 @@ for (const error of await acpTransportParityErrors(root)) {
   fail(error);
 }
 for (const error of await q02SharedHelperPolicyErrors(root)) {
+  fail(error);
+}
+for (const error of await browserTestPolicyErrors(root)) {
   fail(error);
 }
 

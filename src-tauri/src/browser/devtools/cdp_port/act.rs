@@ -4,10 +4,10 @@ use std::time::Duration;
 use crate::acp::browser::{BrowserAction, BrowserFailure};
 use crate::browser::devtools::snapshot::DocumentStamp;
 
-use super::{NativePort, highlight};
+use super::{CdpPort, CdpTransport, highlight};
 
-pub(super) fn perform(
-    port: &mut NativePort,
+pub(super) fn perform<T: CdpTransport>(
+    port: &mut CdpPort<T>,
     stamp: DocumentStamp,
     backend_id: u64,
     action: &BrowserAction,
