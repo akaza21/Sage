@@ -48,17 +48,21 @@ impl<T: CdpTransport> CdpPort<T> {
     /// Runs `script` with the isolated world's context id and the time left.
     /// `navigation` names the document by navigation id, so title or favicon
     /// changes keep the world; the world is made once per navigation and again
-    /// when its cached context is gone. `None` means the page is loading and
-    /// has no stamp: every step is a permitless read, the cached world is left
-    /// as it is, and while that world of the outgoing document still answers
-    /// this fails with `StaleHandle`; otherwise a world is made for the
-    /// incoming document and not kept.
+    /// when its cached context is gone. A `read_only` caller (a wait probe or
+    /// a page-context read) makes and checks the world without the dispatch
+    /// permit. `None` means the page is loading and has no stamp: every step
+    /// is a permitless read, the cached world is left as it is, and while
+    /// that world of the outgoing document still answers this fails with
+    /// `StaleHandle`; otherwise a world is made for the incoming document and
+    /// not kept.
     pub(super) fn in_agent_world<R>(
         &self,
         navigation: Option<u64>,
+        read_only: bool,
         deadline: Instant,
         script: impl Fn(u64, Duration) -> Result<R, BrowserFailure>,
     ) -> Result<R, BrowserFailure> {
+        let read_only = read_only || navigation.is_none();
         let cached = self.cache()?.context;
         if navigation.is_none()
             && let Some((_, context)) = cached
@@ -71,18 +75,19 @@ impl<T: CdpTransport> CdpPort<T> {
         {
             match script(context, left(deadline)?) {
                 Err(BrowserFailure::Unavailable) => {
-                    if self.context_alive(context, false, deadline)? {
+                    if self.context_alive(context, read_only, deadline)? {
                         return Err(BrowserFailure::Unavailable);
                     }
                 }
                 result => return result,
             }
         }
-        let context = self.make_agent_world(navigation, deadline)?;
+        let context = self.make_agent_world(navigation, read_only, deadline)?;
         script(context, left(deadline)?)
     }
 
     /// Evaluates `expression` in the isolated world and returns its value.
+    /// Every step is a permitless read.
     pub(super) fn evaluate_in_agent_world(
         &self,
         navigation: Option<u64>,
@@ -90,11 +95,11 @@ impl<T: CdpTransport> CdpPort<T> {
         max_result_bytes: usize,
         deadline: Instant,
     ) -> Result<Value, BrowserFailure> {
-        let response = self.in_agent_world(navigation, deadline, |context, left| {
+        let response = self.in_agent_world(navigation, true, deadline, |context, left| {
             let params =
                 json!({"expression": expression, "contextId": context, "returnByValue": true});
             self.send(
-                navigation.is_none(),
+                true,
                 "Runtime.evaluate",
                 &params.to_string(),
                 max_result_bytes,
@@ -113,10 +118,9 @@ impl<T: CdpTransport> CdpPort<T> {
         self.world.0.lock().map_err(|_| BrowserFailure::Unavailable)
     }
 
-    /// Issues one step. A `read_only` step, taken while the page loads, goes
-    /// without the dispatch permit: Chromium holds it until the pending
-    /// navigation commits, and a timed-out permitted call would revoke the
-    /// whole grant.
+    /// Issues one step. A `read_only` step goes without the dispatch permit:
+    /// Chromium holds it while a navigation is pending, even one that raced
+    /// the stamp, and a timed-out permitted call would revoke the whole grant.
     fn send(
         &self,
         read_only: bool,
@@ -217,9 +221,9 @@ impl<T: CdpTransport> CdpPort<T> {
     fn make_agent_world(
         &self,
         navigation: Option<u64>,
+        read_only: bool,
         deadline: Instant,
     ) -> Result<u64, BrowserFailure> {
-        let read_only = navigation.is_none();
         let (frame_id, cached) = self.main_frame_id(read_only, deadline)?;
         let context = match self.create_world(&frame_id, read_only, deadline) {
             // The page target may have been swapped, as a prerender
@@ -228,8 +232,8 @@ impl<T: CdpTransport> CdpPort<T> {
             Err(BrowserFailure::Unavailable)
                 if cached && navigation.is_some() && self.claim_reread(navigation)? =>
             {
-                let (frame_id, _) = self.main_frame_id(false, deadline)?;
-                self.create_world(&frame_id, false, deadline)?
+                let (frame_id, _) = self.main_frame_id(read_only, deadline)?;
+                self.create_world(&frame_id, read_only, deadline)?
             }
             result => result?,
         };
@@ -478,10 +482,8 @@ mod tests {
         port.transport.loading.store(true, Ordering::SeqCst);
         let condition = WaitCondition::Text { text: "x".into() };
         let mut port = port;
-        assert_eq!(
-            port.matches(&condition, Duration::from_secs(1)),
-            Err(BrowserFailure::Unavailable)
-        );
+        // A refusal while loading is retried by the next probe.
+        assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(false));
         assert_eq!(worlds(&port), 7);
         assert_eq!(port.transport.calls("Target.getTargetInfo"), 3);
     }
@@ -494,8 +496,8 @@ mod tests {
             *runs.lock().unwrap() += 1;
             Err(BrowserFailure::Unavailable)
         };
-        let first = port.in_agent_world(Some(0), soon(), fail);
-        let second = port.in_agent_world(Some(0), soon(), fail);
+        let first = port.in_agent_world(Some(0), false, soon(), fail);
+        let second = port.in_agent_world(Some(0), false, soon(), fail);
         assert_eq!(
             (first, second),
             (
@@ -534,7 +536,6 @@ mod tests {
         let condition = WaitCondition::Text { text: "x".into() };
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         let cached = port.world.0.lock().unwrap().context;
-        let permitted = port.transport.permitted();
         port.transport.loading.store(true, Ordering::SeqCst);
         // The frame still shows the outgoing document the Agent scripted.
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(false));
@@ -545,7 +546,41 @@ mod tests {
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         assert_eq!(worlds(&port), 3);
         assert_eq!(port.world.0.lock().unwrap().context, cached);
-        // Every loading-time step went without the dispatch permit.
-        assert_eq!(port.transport.permitted(), permitted);
+    }
+
+    #[test]
+    fn wait_probes_and_page_context_reads_never_use_the_dispatch_permit() {
+        let mut port = CdpPort::new(Page {
+            refuse_target_info: true,
+            ..Page::new()
+        });
+        let condition = WaitCondition::Text { text: "x".into() };
+        let wait = |port: &mut CdpPort<Page>| port.matches(&condition, Duration::from_secs(1));
+        // A fresh world, then the cached one, and the page-context read.
+        assert_eq!(wait(&mut port), Ok(true));
+        assert_eq!(wait(&mut port), Ok(true));
+        assert_eq!(probe(&port), Ok(json!(true)));
+        // The cached world's document went away before the stamp moved.
+        *port.transport.live_context.lock().unwrap() = 0;
+        assert_eq!(wait(&mut port), Ok(true));
+        // A swapped page target needs its frame id read again.
+        *port.transport.frame_id.lock().unwrap() = "swapped";
+        port.transport.stamp.lock().unwrap().navigation_id += 1;
+        assert_eq!(wait(&mut port), Ok(true));
+        // The page is loading, on the outgoing and then the incoming document.
+        port.transport.loading.store(true, Ordering::SeqCst);
+        assert_eq!(wait(&mut port), Ok(false));
+        *port.transport.live_context.lock().unwrap() = 0;
+        assert_eq!(wait(&mut port), Ok(true));
+        assert_eq!(worlds(&port), 5);
+        assert_eq!(port.transport.calls("Page.getFrameTree"), 2);
+        assert_eq!(port.transport.permitted(), 0);
+        // An action on a new document still makes its world with the permit.
+        port.transport.loading.store(false, Ordering::SeqCst);
+        port.transport.stamp.lock().unwrap().navigation_id += 1;
+        let navigation = port.stamp().unwrap().navigation_id;
+        let resolved = port.in_agent_world(Some(navigation), false, soon(), |_, _| Ok(()));
+        assert_eq!(resolved, Ok(()));
+        assert!(port.transport.permitted() > 0);
     }
 }

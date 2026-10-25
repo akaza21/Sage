@@ -18,9 +18,10 @@ mod highlight;
 pub(super) mod outcome;
 pub(super) mod page_context;
 mod world;
-
-const PROBE_FLOOR: Duration = Duration::from_secs(1);
 use outcome::{navigation_failure, navigation_matches};
+
+/// The least time a wait probe gets, whatever is left of the wait.
+const PROBE_FLOOR: Duration = Duration::from_secs(1);
 
 /// The Agent browser command layer: CDP parameters, result parsing, caps and
 /// document stamps, over any transport.
@@ -263,8 +264,11 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             // outgoing document; probe again.
             Err(BrowserFailure::StaleHandle) => Ok(false),
             // Chromium holds commands for a frame until its pending
-            // navigation commits, so a probe can outlast its budget.
-            Err(BrowserFailure::OutcomeUnknown) if navigation.is_none() => Ok(false),
+            // navigation commits, so a probe can outlast its budget; the
+            // probe is a permitless read, so the next one tries again.
+            Err(BrowserFailure::OutcomeUnknown) => Ok(false),
+            // A loading page can refuse a step for a moment.
+            Err(BrowserFailure::Unavailable) if navigation.is_none() => Ok(false),
             Err(error) => Err(error),
         }
     }

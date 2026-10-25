@@ -36,7 +36,8 @@ pub(super) struct Chromium {
     session: String,
     documents: Mutex<Vec<String>>,
     issued: AtomicBool,
-    /// How many times each Agent command method was issued.
+    /// How many times each command method was sent to the page, with or
+    /// without the dispatch permit.
     calls: Mutex<HashMap<String, usize>>,
     /// A stamp, or `Unavailable`, reported in place of the real one: WebView2
     /// reports a new document only after its navigation events arrive, and
@@ -131,7 +132,8 @@ impl Chromium {
         self.issued.store(false, Ordering::Release);
     }
 
-    /// How many Agent commands named `method` this transport has issued.
+    /// How many commands named `method` this transport has sent to the page,
+    /// through `call` or `observe`.
     pub(super) fn calls(&self, method: &str) -> usize {
         self.calls
             .lock()
@@ -139,6 +141,16 @@ impl Chromium {
             .get(method)
             .copied()
             .unwrap_or(0)
+    }
+
+    fn count(&self, method: &str) -> Result<(), BrowserFailure> {
+        *self
+            .calls
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .entry(method.to_owned())
+            .or_default() += 1;
+        Ok(())
     }
 
     /// Keeps reporting `stamp` until released with `None`.
@@ -256,12 +268,7 @@ impl CdpTransport for Chromium {
         timeout: Duration,
     ) -> Result<String, BrowserFailure> {
         self.issued.store(true, Ordering::Release);
-        *self
-            .calls
-            .lock()
-            .map_err(|_| BrowserFailure::Unavailable)?
-            .entry(method.to_owned())
-            .or_default() += 1;
+        self.count(method)?;
         self.send(
             Some(&self.session),
             method,
@@ -278,6 +285,7 @@ impl CdpTransport for Chromium {
         max_result_bytes: usize,
         timeout: Duration,
     ) -> Result<String, BrowserFailure> {
+        self.count(method)?;
         self.send(
             Some(&self.session),
             method,

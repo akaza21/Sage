@@ -39,8 +39,11 @@ pub(super) fn perform<T: CdpTransport>(
         }
         _ => {
             let deadline = Instant::now() + Duration::from_secs(5);
-            let resolved =
-                port.in_agent_world(Some(stamp.navigation_id), deadline, |context, left| {
+            let resolved = port.in_agent_world(
+                Some(stamp.navigation_id),
+                false,
+                deadline,
+                |context, left| {
                     port.call(
                         "DOM.resolveNode",
                         &json!({"backendNodeId":backend_id,"executionContextId":context})
@@ -48,7 +51,8 @@ pub(super) fn perform<T: CdpTransport>(
                         4096,
                         left,
                     )
-                })?;
+                },
+            )?;
             let resolved: Value =
                 serde_json::from_str(&resolved).map_err(|_| BrowserFailure::Unavailable)?;
             let object_id = resolved["object"]["objectId"]
