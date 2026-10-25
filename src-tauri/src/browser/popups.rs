@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -7,6 +7,15 @@ use url::Url;
 use super::{BrowserState, BrowserTabs, MAX_BROWSER_TABS, admit_url};
 
 const MAX_PENDING_POPUPS: usize = 8;
+
+#[cfg(windows)]
+mod native;
+#[cfg(windows)]
+pub(super) use native::register_native;
+mod opener;
+#[cfg(windows)]
+pub(super) use opener::navigation_admitted;
+pub(super) use opener::{INITIAL_BLANK, enqueue_intent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +34,8 @@ enum PopupBegin {
 enum PopupState {
     Pending,
     Opening,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    NativeOpening,
     Opened(String),
     Quarantined(Option<String>),
 }
@@ -33,6 +44,7 @@ enum PopupState {
 pub(super) struct PopupRequests {
     next_id: u64,
     entries: BTreeMap<u64, (PopupIntent, PopupState)>,
+    initial_blank: BTreeSet<String>,
 }
 
 impl PopupRequests {
@@ -62,7 +74,11 @@ impl PopupRequests {
         self.entries
             .values()
             .filter_map(|(intent, state)| {
-                (!matches!(state, PopupState::Quarantined(_))).then_some(intent.clone())
+                (!matches!(
+                    state,
+                    PopupState::Quarantined(_) | PopupState::NativeOpening
+                ))
+                .then_some(intent.clone())
             })
             .collect()
     }
@@ -80,7 +96,9 @@ impl PopupRequests {
         if intent.opener_tab_id != opener || !tabs.entries.contains_key(opener) {
             return Err("popup opener unavailable".into());
         }
-        if admit_url(&intent.url).is_err() {
+        let native_blank = intent.url == INITIAL_BLANK
+            && matches!(state, PopupState::NativeOpening | PopupState::Opened(_));
+        if admit_url(&intent.url).is_err() && !native_blank {
             return Err("popup URL unavailable".into());
         }
         match state {
@@ -89,7 +107,9 @@ impl PopupRequests {
                 Ok(PopupBegin::Create(intent.url.clone()))
             }
             PopupState::Opened(tab_id) => Ok(PopupBegin::Reuse(tab_id.clone())),
-            PopupState::Opening => Err("popup open is in progress".into()),
+            PopupState::Opening | PopupState::NativeOpening => {
+                Err("popup open is in progress".into())
+            }
             PopupState::Quarantined(_) => Err("popup native close is unresolved".into()),
         }
     }
@@ -128,7 +148,10 @@ impl PopupRequests {
                 children.push((id, tab_id.clone()));
                 self.quarantine(id, Some(tab_id));
             } else if self.entries.get(&id).is_some_and(|(_, state)| {
-                matches!(state, PopupState::Pending | PopupState::Opening)
+                matches!(
+                    state,
+                    PopupState::Pending | PopupState::Opening | PopupState::NativeOpening
+                )
             }) {
                 self.entries.remove(&id);
             }
@@ -162,6 +185,7 @@ impl PopupRequests {
     }
 
     pub(super) fn forget_child(&mut self, tab_id: &str) {
+        self.initial_blank.remove(tab_id);
         self.entries.retain(
             |_, (_, state)| !matches!(state, PopupState::Opened(opened) if opened == tab_id),
         );

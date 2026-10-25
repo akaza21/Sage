@@ -34,6 +34,8 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     };
     use windows_core::PWSTR;
 
+    use super::popups::{INITIAL_BLANK, navigation_admitted};
+
     let label = webview.label().to_owned();
     let (sender, receiver) = mpsc::sync_channel(1);
     let event_webview = webview.clone();
@@ -55,11 +57,14 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                 args.Uri(&mut uri)?;
                             }
                             let uri = webview2_com::CoTaskMemPWSTR::from(uri).to_string();
-                            if admit_url(&uri).is_err() {
+                            if !navigation_admitted(&start_app, &start_label, &uri) {
                                 unsafe {
                                     args.SetCancel(true)?;
                                 }
                                 return Ok(());
+                            }
+                            if uri == INITIAL_BLANK {
+                                return Ok(()); // opener-linked initial document; not a page load
                             }
                             let browser = start_app.state::<BrowserState>();
                             let (started, denied) =

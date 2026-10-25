@@ -7,6 +7,10 @@ mod close_wait;
 use close_wait::{uncertain_close, wait_for_native_close};
 mod close_tab;
 pub(super) use close_tab::close_browser_tab;
+mod builder;
+pub(super) use builder::register_tab_hooks;
+#[cfg(windows)]
+pub(super) use builder::{TabEnvironment, open_popup_tab};
 
 fn finish_browser_tab_close(
     downloads: &Mutex<downloads::DownloadRegistry>,
@@ -46,6 +50,7 @@ fn complete_native_close<T>(
     let _ = sender.send(result);
 }
 
+#[cfg(any(not(windows), test))]
 fn allowed_browser_navigation(next: &Url) -> bool {
     admit_url(next.as_str()).is_ok()
 }
@@ -241,37 +246,9 @@ pub(super) async fn open_browser_tab(
         .map(admit_url)
         .transpose()
         .map_err(str::to_owned)?;
-    let inert_url = Url::parse("about:blank").map_err(|error| error.to_string())?;
     let window = app.get_window("main").ok_or("main window unavailable")?;
     let (label, _opening) = open_with(&state.tabs, &state.clearing_data, url.is_some(), |label| {
-        let popup_app = app.clone();
-        let popup_opener = label.to_owned();
-        let builder = WebviewBuilder::new(label.to_owned(), WebviewUrl::External(inert_url))
-            .data_directory(state.profile_dir.clone())
-            .on_navigation(allowed_browser_navigation)
-            .on_new_window(move |requested, _| {
-                let browser = popup_app.state::<BrowserState>();
-                let intent = browser.tabs.lock().ok().and_then(|tabs| {
-                    browser
-                        .popups
-                        .lock()
-                        .ok()
-                        .and_then(|mut popups| popups.enqueue(&tabs, &popup_opener, &requested))
-                });
-                if let Some(intent) = intent {
-                    let _ = popup_app.emit_to("main", "browser:popup-request", intent);
-                }
-                NewWindowResponse::Deny
-            });
-        let webview = match window.add_child(
-            builder,
-            LogicalPosition::new(0.0, 0.0),
-            LogicalSize::new(1.0, 1.0),
-        ) {
-            Ok(webview) => webview,
-            Err(error) => return Err(format!("browser child creation failed: {error}")),
-        };
-        Ok(webview)
+        builder::create_tab_webview(&app, &window, &state.profile_dir, label, None)
     })?;
     hide_or_close(
         &state.tabs,
@@ -299,29 +276,7 @@ pub(super) async fn open_browser_tab(
                 downloads::NavigationProvenance::User
             },
         );
-    let registration = navigation::register_native(app.clone(), webview.clone())
-        .await
-        .map_err(|error| format!("browser navigation setup failed: {error}"));
-    let registration = match registration {
-        Ok(()) => shortcuts::register_native(app.clone(), webview.clone())
-            .await
-            .map_err(|error| format!("browser shortcuts setup failed: {error}")),
-        Err(error) => Err(error),
-    };
-    #[cfg(windows)]
-    let registration = match registration {
-        Ok(()) => downloads::register_native(app.clone(), webview.clone())
-            .await
-            .map_err(|error| format!("browser downloads setup failed: {error}")),
-        Err(error) => Err(error),
-    };
-    #[cfg(windows)]
-    let registration = match registration {
-        Ok(()) => site_permissions::register_native(app.clone(), webview.clone())
-            .await
-            .map_err(|error| format!("browser permissions setup failed: {error}")),
-        Err(error) => Err(error),
-    };
+    let registration = register_tab_hooks(&app, &webview).await;
     let opened = registration.and_then(|()| {
         complete_browser_open(label.clone(), url, |target| {
             webview
