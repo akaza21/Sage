@@ -251,7 +251,6 @@ impl Lane {
         let params = json!({
             "expression": expression,
             "returnByValue": true,
-            "awaitPromise": true,
             "userGesture": user_gesture,
         });
         let response = self.cdp(tab, "Runtime.evaluate", &params)?;

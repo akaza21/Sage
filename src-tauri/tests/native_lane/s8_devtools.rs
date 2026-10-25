@@ -41,7 +41,10 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     ) {
         return;
     }
+    let mut steps = Timeline::default();
+    steps.mark(lane, &tab, "load");
     frame_and_world(lane, report, &tab);
+    steps.mark(lane, &tab, "raw-cdp");
     let mut agent = match lane.agent(&tab) {
         Ok(agent) => agent,
         Err(error) => {
@@ -49,6 +52,7 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
             return;
         }
     };
+    steps.mark(lane, &tab, "attach");
     let fake = wait_text(&mut agent, FAKE, 300);
     let truth = wait_text(&mut agent, TRUTH, 5_000);
     report.check(
@@ -56,6 +60,7 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         fake == Ok(false) && truth == Ok(true),
         format!("fake phrase -> {fake:?}; real text -> {truth:?}"),
     );
+    steps.mark(lane, &tab, "text-wait");
     let context = lane.page_context(&tab);
     let context_text = context.as_ref().map_or(String::new(), |context| {
         context["text"].as_str().unwrap_or_default().to_owned()
@@ -67,7 +72,9 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         }) && context_text.starts_with(&format!("Selected text:\n{TRUTH}\n")),
         format!("{context:?}").chars().take(300).collect::<String>(),
     );
-    act(&mut agent, report);
+    steps.mark(lane, &tab, "page-context");
+    act(&mut agent, report, &mut steps, lane, &tab);
+    steps.mark(lane, &tab, "fill");
     let value = lane.evaluate(
         &tab,
         "window.__valueOf(document.getElementById('name'))",
@@ -78,6 +85,7 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         value == Ok(json!(SECRET)),
         format!("the input holds {value:?}"),
     );
+    steps.mark(lane, &tab, "fill-value-read");
     let seen = lane.evaluate(&tab, "window.__agentSeen", false);
     let globals = lane.evaluate(
         &tab,
@@ -87,8 +95,26 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     report.check(
         "s8.unobserved",
         seen == Ok(json!([])) && globals == Ok(json!(0)),
-        format!("page hooks saw {seen:?}; new page globals {globals:?}"),
+        format!(
+            "page hooks saw {seen:?}; new page globals {globals:?}; hook hits after each step {}; caller stacks {:?}",
+            steps.0.join(", "),
+            lane.evaluate(&tab, "window.__agentStacks", false)
+        ),
     );
+}
+
+/// How many page hooks had fired after each step, so a hit names its step.
+#[derive(Default)]
+struct Timeline(Vec<String>);
+
+impl Timeline {
+    fn mark(&mut self, lane: &Lane, tab: &str, step: &str) {
+        let count = lane.evaluate(tab, "window.__agentSeen.length", false);
+        self.0.push(format!(
+            "{step}={}",
+            count.map_or_else(|error| error, |count| count.to_string())
+        ));
+    }
 }
 
 /// The raw CDP steps the Agent world rests on, on this WebView2 build.
@@ -133,7 +159,7 @@ fn frame_and_world(lane: &Lane, report: &mut Report, tab: &str) {
     );
 }
 
-fn act(agent: &mut AgentTab, report: &mut Report) {
+fn act(agent: &mut AgentTab, report: &mut Report, steps: &mut Timeline, lane: &Lane, tab: &str) {
     let nodes = match agent.perform(BrowserCommand::SnapshotPage {}) {
         Ok(BrowserResult::SnapshotPage { nodes, .. }) => nodes,
         other => {
@@ -164,6 +190,7 @@ fn act(agent: &mut AgentTab, report: &mut Report) {
         click == Ok(BrowserResult::Act { applied: true }) && pressed == Ok(true),
         format!("click -> {click:?}; real handler ran -> {pressed:?}"),
     );
+    steps.mark(lane, tab, "click");
     let fill = agent.perform(BrowserCommand::Act {
         action: BrowserAction::Fill {
             handle: name,

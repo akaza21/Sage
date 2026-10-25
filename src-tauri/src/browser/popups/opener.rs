@@ -106,23 +106,56 @@ impl PopupRequests {
 
     /// Navigation admission for a browser tab. HTTP(S) per `admit_url`; the
     /// exact `about:blank` only for a native opener-linked child that has not
-    /// yet started any other navigation. Any other attempt spends the grant.
-    pub(crate) fn admit_navigation(&mut self, tab_id: &str, uri: &str) -> bool {
+    /// yet started any other navigation. Any other attempt spends the grant,
+    /// and a denied one abandons the child: WebView2 reports
+    /// `window.open('javascript:…')` as an `about:blank` request, so a blank
+    /// child whose first real navigation is refused never had a page to show.
+    pub(crate) fn admit_navigation(&mut self, tab_id: &str, uri: &str) -> NavigationVerdict {
         if uri == INITIAL_BLANK && self.initial_blank.contains(tab_id) {
-            return true;
+            return NavigationVerdict::Admit;
         }
-        self.initial_blank.remove(tab_id);
-        admit_url(uri).is_ok()
+        let held_blank = self.initial_blank.remove(tab_id);
+        match (admit_url(uri).is_ok(), held_blank) {
+            (true, _) => NavigationVerdict::Admit,
+            (false, true) => NavigationVerdict::Abandon,
+            (false, false) => NavigationVerdict::Deny,
+        }
     }
 }
 
+/// What `admit_navigation` decided for one navigation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NavigationVerdict {
+    Admit,
+    Deny,
+    /// Deny, and close the blank popup child that asked: its one-shot blank
+    /// grant was spent on a refused URL.
+    Abandon,
+}
+
 /// `admit_navigation` against the live browser state; fails closed to plain
-/// `admit_url` if the popup registry is unavailable.
+/// `admit_url` if the popup registry is unavailable. An abandoned child is
+/// closed off the WebView2 callback, which frees its tab-cap slot and drops
+/// its popup entry (`close_browser_tab` forgets the child).
 pub(crate) fn navigation_admitted(app: &AppHandle, tab_id: &str, uri: &str) -> bool {
-    match app.state::<BrowserState>().popups.lock() {
+    let verdict = match app.state::<BrowserState>().popups.lock() {
         Ok(mut popups) => popups.admit_navigation(tab_id, uri),
-        Err(_) => admit_url(uri).is_ok(),
+        Err(_) if admit_url(uri).is_ok() => NavigationVerdict::Admit,
+        Err(_) => NavigationVerdict::Deny,
+    };
+    if verdict == NavigationVerdict::Abandon {
+        let close_app = app.clone();
+        let tab_id = tab_id.to_owned();
+        tauri::async_runtime::spawn(async move {
+            let state = close_app.state::<BrowserState>();
+            if let Err(error) =
+                super::super::lifecycle::close_browser_tab(&close_app, &state, tab_id).await
+            {
+                eprintln!("browser abandoned popup close failed: {error}");
+            }
+        });
     }
+    verdict == NavigationVerdict::Admit
 }
 
 pub(crate) fn opener_has_room<T>(tabs: &BrowserTabs<T>, opener: &str) -> bool {

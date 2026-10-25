@@ -161,7 +161,10 @@ fn popup(
     );
 }
 
-/// `window.open(url)` from the opener must not create a tab or load `marker`.
+/// `window.open(url)` from the opener must leave no tab or linked popup behind
+/// and never load `marker`. WebView2 may first host a `javascript:` popup as a
+/// blank child (its request reads `about:blank`); Sage must then close it once
+/// its first real navigation is refused, so `window.open` may return non-null.
 fn denied(
     lane: &Lane,
     site: &Site,
@@ -175,6 +178,9 @@ fn denied(
     let popups = lane.native_popups();
     let opened = open(lane, opener, &format!("window.__open({})", json!(url)));
     quiet_period();
+    let settled = wait_for(Duration::from_secs(10), || {
+        (lane.tabs() == tabs).then_some(())
+    });
     let after = lane.tabs();
     let linked: Vec<NativePopup> = lane
         .native_popups()
@@ -183,7 +189,7 @@ fn denied(
         .collect();
     report.check(
         id,
-        opened == Ok(json!(false)) && after == tabs && linked.is_empty() && site.hits(marker) == 0,
+        settled.is_some() && linked.is_empty() && site.hits(marker) == 0,
         format!(
             "window.open -> {opened:?}; tabs {} -> {}; new linked popups {linked:?}; {marker} fetched {} times",
             tabs.len(),
