@@ -13,7 +13,7 @@ import {
 } from "./capture-native-editor-dom.mjs";
 
 export async function editorChord(cdp, key, deadline) {
-  for (const type of ["keyDown", "keyUp"])
+  for (const type of ["rawKeyDown", "keyUp"])
     await cdp.key(
       { type, key, ctrl: true },
       Math.min(deadline, Date.now() + 5000),

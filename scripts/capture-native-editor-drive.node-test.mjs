@@ -3,6 +3,7 @@ import test from "node:test";
 import { driveEditor, editorChord } from "./capture-native-editor-drive.mjs";
 import { parseEditorArgs } from "./capture-native-editor-catalog.mjs";
 import { editorDom } from "./capture-native-editor-test-support.mjs";
+import { keyParams } from "./source-functional-native-ide-cdp.mjs";
 
 test("Ctrl+G uses bounded CDP key down and key up, not a fake prompt", async () => {
   const calls = [];
@@ -15,11 +16,12 @@ test("Ctrl+G uses bounded CDP key down and key up, not a fake prompt", async () 
   assert.deepEqual(
     calls.map(([event]) => event),
     [
-      { type: "keyDown", key: "g", ctrl: true },
+      { type: "rawKeyDown", key: "g", ctrl: true },
       { type: "keyUp", key: "g", ctrl: true },
     ],
   );
   assert.ok(calls.every(([, at]) => at <= deadline));
+  for (const [event] of calls) assert.doesNotThrow(() => keyParams(event));
 });
 for (const state of [
   "editor-idle",
@@ -35,7 +37,7 @@ for (const state of [
       evaluate: async (expression) => fixture.window.eval(expression),
       key: async (event) => {
         keys.push(event);
-        if (event.type === "keyDown" && event.key === "g" && event.ctrl)
+        if (event.type === "rawKeyDown" && event.key === "g" && event.ctrl)
           fixture.openGoto();
       },
     };
@@ -102,7 +104,7 @@ for (const width of [720, 480])
       const cdp = {
         evaluate: async (expression) => fixture.window.eval(expression),
         key: async (event) => {
-          if (event.type === "keyDown") fixture.openGoto();
+          if (event.type === "rawKeyDown") fixture.openGoto();
         },
       };
       const options = parseEditorArgs([
