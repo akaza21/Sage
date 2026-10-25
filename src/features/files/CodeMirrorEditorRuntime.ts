@@ -24,7 +24,9 @@ import {
 
 import {
   DEFAULT_EDITOR_APPEARANCE,
+  sameValues,
   type EditorAppearance,
+  type EditorEditing,
 } from "./editorAppearance";
 import {
   editorLanguageForPath,
@@ -48,6 +50,8 @@ interface RuntimeProps {
   disabled: boolean;
   maxContentLength: number;
   appearance?: EditorAppearance;
+  /** The editing features to load; none for a read-only view. */
+  editing?: EditorEditing | null;
   /** Hands over the editor's immutable document; never a built string. */
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
@@ -66,6 +70,7 @@ export interface CodeMirrorEditorRuntime {
 }
 
 import type { EditorContent, EditorContentBase } from "./editorContent";
+import type * as EditingFeatures from "./editorEditing";
 import { utf8LengthField, withinUtf8Limit } from "./utf8Tracking";
 
 /*
@@ -206,17 +211,28 @@ function editableExtensions(props: RuntimeProps): Extension {
   ];
 }
 
-function sameAppearance(
-  left: EditorAppearance,
-  right: EditorAppearance,
-): boolean {
-  return (
-    left.fontSize === right.fontSize &&
-    left.tabSize === right.tabSize &&
-    left.wordWrap === right.wordWrap &&
-    left.lineNumbers === right.lineNumbers &&
-    left.showWhitespace === right.showWhitespace
+type EditingModule = typeof EditingFeatures;
+
+// Loaded on demand for the first editable File, then reused synchronously so
+// later editors start with every feature in place.
+let editingModule: EditingModule | null = null;
+let editingLoad: Promise<EditingModule> | null = null;
+
+function editingExtensionsFor(editing: EditorEditing | null | undefined) {
+  return editing && editingModule
+    ? editingModule.editingExtensions(editing)
+    : [];
+}
+
+function loadEditing(): Promise<EditingModule> {
+  editingLoad ??= import("./editorEditing").then(
+    (loaded) => (editingModule = loaded),
+    (error: unknown) => {
+      editingLoad = null;
+      throw error;
+    },
   );
+  return editingLoad;
 }
 
 function sameEditableConfiguration(
@@ -236,6 +252,7 @@ export function createCodeMirrorEditorRuntime(
   const editableCompartment = new Compartment();
   const languageCompartment = new Compartment();
   const appearanceCompartment = new Compartment();
+  const editingCompartment = new Compartment();
   let current: RuntimeProps = {
     ...options,
     appearance: options.appearance ?? DEFAULT_EDITOR_APPEARANCE,
@@ -256,6 +273,8 @@ export function createCodeMirrorEditorRuntime(
       extensions: [
         highlightActiveLine(),
         history(),
+        // Ahead of the base keymap, so the editing chords take precedence.
+        editingCompartment.of(editingExtensionsFor(current.editing)),
         keymap.of([...historyKeymap, ...defaultKeymap]),
         syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true }),
         editableCompartment.of(editableExtensions(current)),
@@ -315,6 +334,25 @@ export function createCodeMirrorEditorRuntime(
       });
   }
 
+  // Applies the editing features `current` asks for, loading them first when
+  // needed. The editor works without them while they load (or if they fail).
+  function applyEditing() {
+    if (current.editing && !editingModule) {
+      void loadEditing()
+        .then(() => {
+          if (!destroyed && current.editing) applyEditing();
+        })
+        .catch(() => undefined);
+      return;
+    }
+    view.dispatch({
+      effects: editingCompartment.reconfigure(
+        editingExtensionsFor(current.editing),
+      ),
+    });
+  }
+
+  if (current.editing && !editingModule) applyEditing();
   selectLanguage(options.path);
   base =
     typeof options.content === "string"
@@ -353,7 +391,7 @@ export function createCodeMirrorEditorRuntime(
         effects.push(editableCompartment.reconfigure(editableExtensions(next)));
       }
       if (
-        !sameAppearance(
+        !sameValues(
           previous.appearance ?? DEFAULT_EDITOR_APPEARANCE,
           next.appearance ?? DEFAULT_EDITOR_APPEARANCE,
         )
@@ -366,6 +404,9 @@ export function createCodeMirrorEditorRuntime(
       }
       if (effects.length > 0) {
         view.dispatch({ effects });
+      }
+      if (!sameValues(previous.editing, next.editing)) {
+        applyEditing();
       }
       // Do not stringify the editor document for unrelated prop updates.  A
       // changed identity is deliberately stronger than a local revision: it

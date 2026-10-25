@@ -5,9 +5,12 @@ import {
   EDITOR_SETTING_GROUPS,
   EDITOR_SETTINGS,
   type BooleanSettingSpec,
+  type ChoiceSettingSpec,
   type EditorSettingKey,
+  type EditorSettings,
   type IntegerSettingSpec,
 } from "../../domain/editorSettingsCatalogue";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
 
 /** `editor.fontSize` becomes `editor-font-size`. */
 function controlId(key: EditorSettingKey) {
@@ -96,25 +99,29 @@ function ToggleSetting({
   );
 }
 
-function ChoiceSetting({
+function SelectSetting({
   spec,
   value,
   disabled,
   onChange,
 }: {
-  spec: IntegerSettingSpec;
-  value: number;
+  spec: IntegerSettingSpec | ChoiceSettingSpec;
+  value: number | string;
   disabled: boolean;
-  onChange: (value: number) => void;
+  onChange: (value: string) => void;
 }) {
   const id = controlId(spec.key as EditorSettingKey);
+  const label = (choice: number | string) =>
+    spec.kind === "choice"
+      ? spec.choiceLabels[choice][usesMetaModifier() ? 1 : 0]
+      : withUnit(Number(choice), spec.unit);
   return (
     <div className="settings-surface__row">
       <SettingCopy
         id={id}
         label={spec.label}
         description={spec.description}
-        defaultLabel={withUnit(spec.default, spec.unit)}
+        defaultLabel={label(spec.default)}
       />
       <select
         className="select"
@@ -122,11 +129,11 @@ function ChoiceSetting({
         value={value}
         disabled={disabled}
         aria-describedby={`${id}-description ${id}-default`}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => onChange(event.target.value)}
       >
-        {spec.choices.map((choice) => (
+        {spec.choices.map((choice: number | string) => (
           <option key={choice} value={choice}>
-            {withUnit(choice, spec.unit)}
+            {label(choice)}
           </option>
         ))}
       </select>
@@ -182,12 +189,18 @@ export function SettingsEditorPage({
                   onChange={(checked) => setSettings({ [spec.key]: checked })}
                 />
               ) : (
-                <ChoiceSetting
+                <SelectSetting
                   key={spec.key}
                   spec={spec}
                   value={settings[spec.key]}
                   disabled={controlsDisabled}
-                  onChange={(value) => setSettings({ [spec.key]: value })}
+                  // The store admits the value, as it does every value.
+                  onChange={(value) =>
+                    setSettings({
+                      [spec.key]:
+                        spec.kind === "choice" ? value : Number(value),
+                    } as Partial<EditorSettings>)
+                  }
                 />
               ),
             )}

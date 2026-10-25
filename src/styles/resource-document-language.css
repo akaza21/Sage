@@ -19,6 +19,12 @@
   --resource-document-caret: var(--doc-caret);
   --resource-document-selection: var(--doc-selection-background);
   --resource-document-selection-foreground: var(--doc-selection-foreground);
+  --resource-document-bracket-match-border: var(--doc-bracket-match-border);
+  --resource-document-bracket-match-background: var(
+    --doc-bracket-match-background
+  );
+  --resource-document-occurrence: var(--doc-occurrence-background);
+  --resource-document-fold-placeholder: var(--doc-fold-placeholder-background);
   --resource-document-error-foreground: var(--doc-error-foreground);
   --color-canvas: var(--doc-canvas);
   --color-panel: var(--doc-panel);

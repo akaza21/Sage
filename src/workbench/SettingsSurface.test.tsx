@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
+import { DEFAULT_EDITOR_SETTINGS } from "../domain/editorSettingsCatalogue";
 import { SettingsSurface } from "./SettingsSurface";
 
 const initial = useEditorSettingsStore.getState();
@@ -89,7 +90,7 @@ describe("SettingsSurface", () => {
     expect(screen.queryByText("Save file")).toBeNull();
   });
 
-  it("explains, changes, and resets the five honest Editor Appearance settings", async () => {
+  it("explains, changes, and resets every Editor setting", async () => {
     render(<SettingsSurface />);
 
     expect(
@@ -97,8 +98,9 @@ describe("SettingsSurface", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
-    expect(screen.getByText("Default: On")).toBeInTheDocument();
+    expect(screen.getAllByText("Default: On")).toHaveLength(5);
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
+    expect(screen.getByText("Default: Alt")).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveClass("input");
     const display = screen.getByRole("group", { name: "Text" });
     const indentation = screen.getByRole("group", { name: "Editing" });
@@ -107,6 +109,23 @@ describe("SettingsSurface", () => {
     expect(within(display).getByLabelText("Word wrap")).not.toBeChecked();
     expect(within(display).getByLabelText("Show whitespace")).not.toBeChecked();
     expect(within(indentation).getByLabelText("Tab size")).toBeInTheDocument();
+    expect(within(display).getByLabelText("Match brackets")).toBeChecked();
+    expect(within(display).getByLabelText("Code folding")).toBeChecked();
+    expect(
+      within(display).getByLabelText("Highlight occurrences"),
+    ).toBeChecked();
+    expect(
+      within(indentation).getByLabelText("Auto-close brackets"),
+    ).toBeChecked();
+    const modifier = within(indentation).getByLabelText(
+      "Multi-cursor modifier",
+    );
+    expect(modifier).toHaveClass("select");
+    expect(
+      within(modifier)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Alt", "Ctrl"]);
     expect(screen.getByLabelText("Font size")).toHaveClass("select");
     expect(screen.getByLabelText("Tab size")).toHaveClass("select");
     expect(screen.getByLabelText("Font size")).toHaveAccessibleDescription(
@@ -131,7 +150,12 @@ describe("SettingsSurface", () => {
     fireEvent.click(screen.getByLabelText("Word wrap"));
     fireEvent.click(screen.getByLabelText("Line numbers"));
     fireEvent.click(screen.getByLabelText("Show whitespace"));
+    fireEvent.click(screen.getByLabelText("Code folding"));
+    fireEvent.change(modifier, { target: { value: "ctrlCmd" } });
     expect(useEditorSettingsStore.getState().settings).toEqual({
+      ...DEFAULT_EDITOR_SETTINGS,
+      "editor.folding": false,
+      "editor.multiCursorModifier": "ctrlCmd",
       "editor.fontSize": 16,
       "editor.tabSize": 4,
       "editor.wordWrap": true,
@@ -140,13 +164,9 @@ describe("SettingsSurface", () => {
     });
     expect(reset).toBeEnabled();
     fireEvent.click(reset);
-    expect(useEditorSettingsStore.getState().settings).toEqual({
-      "editor.fontSize": 13,
-      "editor.tabSize": 2,
-      "editor.wordWrap": false,
-      "editor.lineNumbers": true,
-      "editor.renderWhitespace": false,
-    });
+    expect(useEditorSettingsStore.getState().settings).toEqual(
+      DEFAULT_EDITOR_SETTINGS,
+    );
     expect(reset).toBeDisabled();
 
     await waitFor(() =>

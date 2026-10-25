@@ -105,6 +105,27 @@ test.describe("Wave 2 accessibility and responsive states", () => {
   test("keeps Editor Source Control errors distinct", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     const workbench = await openScenario(page, "editor", "editor");
+    // The capture below is taken while repository status loads, so first let
+    // the File finish styling: until its stylesheet applies, line numbers sit
+    // a row below their text and the screenshot depends on timing.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const text = document.querySelector(".file-surface .cm-line");
+          const number = [
+            ...document.querySelectorAll(
+              ".file-surface .cm-lineNumbers .cm-gutterElement",
+            ),
+          ].find((element) => element.textContent === "1");
+          if (!text || !number) return Infinity;
+          return Math.abs(
+            number.getBoundingClientRect().top -
+              text.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThan(2);
+    await expect(page.locator(".file-surface .cm-foldGutter")).toBeVisible();
     await page.evaluate(async () => {
       const fixtures =
         await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");

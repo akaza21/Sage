@@ -54,6 +54,52 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     runtime.destroy();
   });
 
+  it("keeps keystrokes off the whole document with the editing features on", async () => {
+    const limit = 1024 * 1024;
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const onChange = vi.fn();
+    const props = {
+      ariaLabel: "Edit big.ts",
+      path: "big.ts",
+      content: "call(item, item);\n".repeat(20_000),
+      disabled: false,
+      maxContentLength: limit,
+      onChange,
+      editing: {
+        matchBrackets: true,
+        autoClosingBrackets: true,
+        folding: true,
+        occurrencesHighlight: true,
+        multiCursorModifier: "alt" as const,
+      },
+    };
+    const runtime = createCodeMirrorEditorRuntime({ parent, ...props });
+    const view = EditorView.findFromDOM(
+      parent.querySelector<HTMLElement>(".cm-content")!,
+    )!;
+    await vi.waitFor(() =>
+      expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull(),
+    );
+    const toString = vi.spyOn(Text.prototype, "toString");
+    for (let index = 0; index < 1_000; index += 1) {
+      // Typing inside brackets, beside a repeated word: every feature runs.
+      view.dispatch({
+        changes: { from: 5 + index, insert: "x" },
+        selection: { anchor: 6 + index },
+        userEvent: "input.type",
+      });
+      runtime.update({
+        ...props,
+        content: onChange.mock.lastCall?.[0],
+        documentIdentity: `big\0${index + 1}`,
+      });
+    }
+    expect(toString).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1_000);
+    runtime.destroy();
+  });
+
   it("says whether an edited document still equals the text it was given", () => {
     const { runtime, view, onChange } = mount("a".repeat(100_000), 1 << 20);
     const base = (call: number) => onChange.mock.calls[call][1];

@@ -188,6 +188,7 @@ export function FileSurface({
       previewing={previewing}
       transitioning={projectTransitioning}
       readOnly={reviewReadOnly}
+      reviewOnly={readOnly}
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onEditorChange={readOnly ? () => undefined : updateEditorContent}

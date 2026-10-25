@@ -248,6 +248,8 @@ describe("FileSurface durability cadence", () => {
   });
 
   it("renders a file read-only when the host owns its review surface", async () => {
+    // Evaluated up front, so an editing load would land before the check below.
+    await import("./editorEditing");
     setReadyEditor();
     render(<FileSurface tab={tab} readOnly />);
 
@@ -269,6 +271,37 @@ describe("FileSurface durability cadence", () => {
       content: document.buffer.content,
       revision: 0,
     });
+    // The Agent artifact pane's read-only Files get no editing features
+    // (EP-03): no fold gutter, no multiple cursors.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      editor.closest(".cm-editor")?.querySelector(".cm-foldGutter"),
+    ).toBeNull();
+  });
+
+  it("gives an editable File its editing features within the same wait", async () => {
+    await import("./editorEditing");
+    setReadyEditor();
+    render(<FileSurface tab={tab} />);
+
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      editor.closest(".cm-editor")?.querySelector(".cm-foldGutter"),
+    ).not.toBeNull();
+  });
+
+  it("keeps a read-only File free of editing features during a Project transition", async () => {
+    await import("./editorEditing");
+    setReadyEditor();
+    useWorkbenchStore.setState({ projectTransitioning: true });
+    render(<FileSurface tab={tab} readOnly />);
+
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      editor.closest(".cm-editor")?.querySelector(".cm-foldGutter"),
+    ).toBeNull();
   });
 
   it("freezes editor input while a Project transition owns the projection", async () => {

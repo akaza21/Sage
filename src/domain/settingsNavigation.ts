@@ -1,5 +1,101 @@
 import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
-import { KEYMAP_BINDINGS } from "./keymapRegistry";
+import { KEYMAP_BINDINGS, type KeymapBinding } from "./keymapRegistry";
+
+/**
+ * Shortcuts CodeMirror handles (EP-03), kept out of the startup bundle's
+ * `KEYMAP_BINDINGS`. A test keeps `editorEditing.ts` binding the same chords.
+ */
+export const EDITOR_EDITING_BINDINGS: readonly KeymapBinding[] = Object.freeze([
+  {
+    id: "editor.indent",
+    label: "Indent lines",
+    description:
+      "Tab indents the selected lines and Shift+Tab outdents them. Press Esc, then Tab, to move focus out of the editor.",
+    scope: "Editor",
+    key: "tab",
+    ctrlOrMeta: "forbidden",
+    shift: "allowed",
+    alt: "forbidden",
+  },
+  {
+    id: "editor.selectNextOccurrence",
+    label: "Add next occurrence",
+    description: "Selects the next copy of the selected text as well.",
+    scope: "Editor",
+    key: "d",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
+    id: "editor.addCursorAbove",
+    label: "Add cursor above",
+    description: "Adds a cursor on the line above.",
+    scope: "Editor",
+    key: "arrowup",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
+  },
+  {
+    id: "editor.addCursorBelow",
+    label: "Add cursor below",
+    description: "Adds a cursor on the line below.",
+    scope: "Editor",
+    key: "arrowdown",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
+  },
+  {
+    id: "editor.toggleLineComment",
+    label: "Toggle line comment",
+    description: "Comments or uncomments the selected lines.",
+    scope: "Editor",
+    key: "/",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
+    id: "editor.toggleBlockComment",
+    label: "Toggle block comment",
+    description: "Wraps the selection in a block comment, or removes it.",
+    scope: "Editor",
+    key: "a",
+    ctrlOrMeta: "forbidden",
+    shift: "required",
+    alt: "required",
+  },
+  {
+    id: "editor.fold",
+    label: "Fold",
+    description: "Collapses the block at the cursor.",
+    scope: "Editor",
+    key: "[",
+    ctrlOrMeta: "required",
+    shift: "required",
+    alt: "forbidden",
+    apple: { shift: "forbidden", alt: "required" },
+  },
+  {
+    id: "editor.unfold",
+    label: "Unfold",
+    description: "Expands the folded block at the cursor.",
+    scope: "Editor",
+    key: "]",
+    ctrlOrMeta: "required",
+    shift: "required",
+    alt: "forbidden",
+    apple: { shift: "forbidden", alt: "required" },
+  },
+]);
+
+/** Every shortcut the Keyboard settings page lists. */
+export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
+  ...KEYMAP_BINDINGS,
+  ...EDITOR_EDITING_BINDINGS,
+];
 
 export type SettingsPageId = "editor" | "keyboard";
 
@@ -35,12 +131,14 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
 ]);
 
 const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
-  KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map((binding) => ({
-    id: binding.id,
-    label: binding.label,
-    description: binding.description,
-    group: binding.scope,
-  })),
+  SETTINGS_KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map(
+    (binding) => ({
+      id: binding.id,
+      label: binding.label,
+      description: binding.description,
+      group: binding.scope,
+    }),
+  ),
 );
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([

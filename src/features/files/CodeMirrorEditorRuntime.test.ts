@@ -6,8 +6,8 @@ import {
   syntaxTree,
   type TagStyle,
 } from "@codemirror/language";
-import { Text, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorState, Text, type Extension } from "@codemirror/state";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createCodeMirrorEditorRuntime } from "./CodeMirrorEditorRuntime";
@@ -256,6 +256,122 @@ describe("CodeMirrorEditorRuntime caret", () => {
     expect(onCaretOffset).toHaveBeenCalledWith(0, expect.any(Text));
     runtime.setSelection(6, 6);
     expect(onCaretOffset).toHaveBeenLastCalledWith(6, expect.any(Text));
+    runtime.destroy();
+  });
+});
+
+describe("CodeMirrorEditorRuntime editing features", () => {
+  const editing = {
+    matchBrackets: true,
+    autoClosingBrackets: true,
+    folding: true,
+    occurrencesHighlight: true,
+    multiCursorModifier: "alt" as const,
+  };
+
+  function mountEditing(next: typeof editing | null) {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const props = {
+      ariaLabel: "Edit main.ts",
+      path: "main.ts",
+      content: "function f() {\n  return 1;\n}\n",
+      disabled: false,
+      maxContentLength: 1024,
+      onChange: vi.fn(),
+    };
+    const runtime = createCodeMirrorEditorRuntime({
+      parent,
+      ...props,
+      editing: next,
+    });
+    const view = EditorView.findFromDOM(
+      parent.querySelector<HTMLElement>(".cm-content")!,
+    )!;
+    return { runtime, view, props };
+  }
+
+  const allowsMultipleSelections = (view: EditorView) =>
+    view.state.facet(EditorState.allowMultipleSelections);
+
+  it("loads them on demand for an editable File", async () => {
+    const { runtime, view } = mountEditing(editing);
+    await vi.waitFor(() => expect(allowsMultipleSelections(view)).toBe(true));
+    // Fold arrows sit between the line numbers and the text, as in VS Code.
+    expect(
+      [...view.dom.querySelectorAll(".cm-gutter")].map((gutter) =>
+        gutter.classList.contains("cm-foldGutter") ? "fold" : "lineNumbers",
+      ),
+    ).toEqual(["lineNumbers", "fold"]);
+    runtime.destroy();
+  });
+
+  it("puts the editing keys ahead of the base keymap", async () => {
+    const { runtime, view } = mountEditing(editing);
+    await vi.waitFor(() => expect(allowsMultipleSelections(view)).toBe(true));
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: '""' },
+      selection: { anchor: 1 },
+    });
+    // The base keymap would delete one quote; auto-close deletes the pair.
+    expect(
+      runScopeHandlers(
+        view,
+        new KeyboardEvent("keydown", { key: "Backspace", keyCode: 8 }),
+        "editor",
+      ),
+    ).toBe(true);
+    expect(view.state.doc.toString()).toBe("");
+    runtime.destroy();
+  });
+
+  it("gives a read-only view none of them", async () => {
+    // Load the module first, so its absence is the runtime's choice.
+    const loaded = mountEditing(editing);
+    await vi.waitFor(() =>
+      expect(allowsMultipleSelections(loaded.view)).toBe(true),
+    );
+    loaded.runtime.destroy();
+    const { runtime, view } = mountEditing(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(allowsMultipleSelections(view)).toBe(false);
+    expect(view.dom.querySelector(".cm-foldGutter")).toBeNull();
+    runtime.destroy();
+  });
+
+  it("starts a later editor with them already in place", async () => {
+    const first = mountEditing(editing);
+    await vi.waitFor(() =>
+      expect(allowsMultipleSelections(first.view)).toBe(true),
+    );
+    const second = mountEditing(editing);
+    expect(allowsMultipleSelections(second.view)).toBe(true);
+    first.runtime.destroy();
+    second.runtime.destroy();
+  });
+
+  it("switches a feature off and on from Settings without remounting", async () => {
+    const { runtime, view, props } = mountEditing(editing);
+    await vi.waitFor(() =>
+      expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull(),
+    );
+    view.dispatch({ selection: { anchor: 5 } });
+    runtime.update({ ...props, editing: { ...editing, folding: false } });
+    expect(view.dom.querySelector(".cm-foldGutter")).toBeNull();
+    expect(view.state.selection.main.head).toBe(5);
+    runtime.update({ ...props, editing: { ...editing } });
+    expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull();
+    runtime.update({ ...props, editing: null });
+    expect(allowsMultipleSelections(view)).toBe(false);
+    runtime.destroy();
+  });
+
+  it("does not reconfigure for an equal set of features", async () => {
+    const { runtime, view, props } = mountEditing(editing);
+    await vi.waitFor(() => expect(allowsMultipleSelections(view)).toBe(true));
+    const dispatch = vi.spyOn(view, "dispatch");
+    runtime.update({ ...props, editing: { ...editing } });
+    expect(dispatch).not.toHaveBeenCalled();
     runtime.destroy();
   });
 });

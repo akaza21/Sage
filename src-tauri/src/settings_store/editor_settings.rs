@@ -10,7 +10,7 @@ use std::{
 };
 
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 use super::SettingsStore;
@@ -19,11 +19,13 @@ use crate::error::{AppError, AppResult};
 /// The row format version. A later format bumps it and converts older rows.
 const ROW_VERSION: i64 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum SettingValue {
     Bool(bool),
     Int(i64),
+    /// One of a `Choice` setting's names.
+    Text(&'static str),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,6 +37,10 @@ pub enum SettingKind {
         min: i64,
         max: i64,
         choices: &'static [i64],
+    },
+    /// One name from a fixed list.
+    Choice {
+        choices: &'static [&'static str],
     },
 }
 
@@ -91,6 +97,38 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         default: SettingValue::Int(2),
         ticket: "EP-02",
     },
+    SettingSpec {
+        key: "editor.matchBrackets",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-03",
+    },
+    SettingSpec {
+        key: "editor.autoClosingBrackets",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-03",
+    },
+    SettingSpec {
+        key: "editor.folding",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-03",
+    },
+    SettingSpec {
+        key: "editor.occurrencesHighlight",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-03",
+    },
+    SettingSpec {
+        key: "editor.multiCursorModifier",
+        kind: SettingKind::Choice {
+            choices: &["alt", "ctrlCmd"],
+        },
+        default: SettingValue::Text("alt"),
+        ticket: "EP-03",
+    },
 ];
 
 /// Every registry key with its current value; keys never go missing.
@@ -113,6 +151,10 @@ fn defaults() -> EditorSettings {
 fn admit(spec: &SettingSpec, value: &Value) -> Option<SettingValue> {
     match spec.kind {
         SettingKind::Bool => value.as_bool().map(SettingValue::Bool),
+        SettingKind::Choice { choices } => value
+            .as_str()
+            .and_then(|name| choices.iter().find(|choice| **choice == name))
+            .map(|choice| SettingValue::Text(choice)),
         SettingKind::Int { min, max, choices } => safe_integer(value).map(|number| {
             let clamped = number.clamp(min, max);
             SettingValue::Int(
@@ -201,6 +243,7 @@ fn json(value: SettingValue) -> Value {
     match value {
         SettingValue::Bool(value) => Value::from(value),
         SettingValue::Int(value) => Value::from(value),
+        SettingValue::Text(value) => Value::from(value),
     }
 }
 
@@ -341,7 +384,10 @@ mod tests {
              ) STRICT;
              INSERT INTO editor_appearance VALUES (1, 16, 8, 1, 0, 1);",
         );
-        let expected = EditorSettings::from([
+        // The five legacy values carry over; settings added later read their
+        // defaults.
+        let mut expected = defaults();
+        expected.extend([
             ("editor.fontSize", SettingValue::Int(16)),
             ("editor.lineNumbers", SettingValue::Bool(false)),
             ("editor.renderWhitespace", SettingValue::Bool(true)),
@@ -518,6 +564,35 @@ mod tests {
     }
 
     #[test]
+    fn admits_only_the_listed_names_for_a_choice() {
+        let store = SettingsStore::in_memory().unwrap();
+        let settings = store
+            .set_editor_settings(&changes(json!({ "editor.multiCursorModifier": "ctrlCmd" })))
+            .unwrap();
+        assert_eq!(
+            settings["editor.multiCursorModifier"],
+            SettingValue::Text("ctrlCmd")
+        );
+        for bad in [json!("meta"), json!(1), json!(null)] {
+            assert!(
+                store
+                    .set_editor_settings(&changes(json!({ "editor.multiCursorModifier": bad })))
+                    .is_err()
+            );
+        }
+        upsert(
+            &store.0.lock().unwrap(),
+            "editor.multiCursorModifier",
+            &json!("shift"),
+        )
+        .unwrap();
+        assert_eq!(
+            store.editor_settings().unwrap()["editor.multiCursorModifier"],
+            SettingValue::Text("alt")
+        );
+    }
+
+    #[test]
     fn serializes_values_as_plain_json() {
         let settings = SettingsStore::in_memory()
             .unwrap()
@@ -531,6 +606,11 @@ mod tests {
                 "editor.renderWhitespace": false,
                 "editor.tabSize": 2,
                 "editor.wordWrap": false,
+                "editor.matchBrackets": true,
+                "editor.autoClosingBrackets": true,
+                "editor.folding": true,
+                "editor.occurrencesHighlight": true,
+                "editor.multiCursorModifier": "alt",
             })
         );
     }

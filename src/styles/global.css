@@ -204,6 +204,11 @@
   --doc-caret: #e1e7df;
   --doc-selection-background: #264f78;
   --doc-selection-foreground: #f4f7fb;
+  /* EP-03 editing marks, after VS Code's dark defaults. */
+  --doc-bracket-match-border: #888888;
+  --doc-bracket-match-background: rgb(0 100 0 / 0.1);
+  --doc-occurrence-background: rgb(173 214 255 / 0.15);
+  --doc-fold-placeholder-background: rgb(255 255 255 / 0.08);
   --doc-error-foreground: #efb3ae;
   --doc-syntax-meta: #aeb8c4;
   --doc-syntax-keyword: #c792ea;
@@ -766,6 +771,10 @@ textarea:disabled,
     --doc-caret: CanvasText;
     --doc-selection-background: Highlight;
     --doc-selection-foreground: HighlightText;
+    --doc-bracket-match-border: CanvasText;
+    --doc-bracket-match-background: Canvas;
+    --doc-occurrence-background: Canvas;
+    --doc-fold-placeholder-background: Canvas;
     --doc-error-foreground: CanvasText;
     --diff-add: CanvasText;
     --diff-add-muted: Canvas;

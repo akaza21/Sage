@@ -304,17 +304,83 @@
   background: var(--resource-document-active-line);
 }
 
+/* With several cursors CodeMirror draws every selection and hides the
+   native one; these rules style the native selection only when it shows.
+   A class, not :has(), which would recheck styles on every edit. */
 .editor-input .cm-selectionBackground,
-.editor-input .cm-content ::selection {
+.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
   background: var(--resource-document-selection) !important;
 }
 
-.editor-input .cm-content ::selection {
+.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
   color: var(--resource-document-selection-foreground) !important;
 }
 
 .editor-input .cm-cursor {
   border-left-color: var(--resource-document-caret);
+}
+
+/* EP-03 editing marks. The extra .cm-editor outranks CodeMirror's injected
+   base theme, which would otherwise paint its light-mode colours. */
+.editor-input .cm-editor .cm-matchingBracket {
+  outline: 1px solid var(--resource-document-bracket-match-border);
+  background: var(--resource-document-bracket-match-background);
+}
+
+.editor-input .cm-editor .cm-nonmatchingBracket {
+  color: var(--resource-document-error-foreground);
+  background: transparent;
+}
+
+.editor-input .cm-editor .cm-selectionMatch {
+  background: var(--resource-document-occurrence);
+}
+
+/* In forced colours the occurrence fill is Canvas, so an outline marks it. */
+@media (forced-colors: active) {
+  .editor-input .cm-editor .cm-selectionMatch {
+    outline: 1px solid CanvasText;
+  }
+}
+
+.editor-input .cm-foldGutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  cursor: pointer;
+}
+
+/* A chevron, pointing down while the block is open. Like VS Code, open
+   blocks show it only while the pointer is over the gutter. */
+.editor-input .cm-foldMarker {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.editor-input .cm-foldMarker[data-open="false"] {
+  transform: translateX(-2px) rotate(-45deg);
+}
+
+.editor-input .cm-foldMarker[data-open="true"] {
+  opacity: 0;
+}
+
+.editor-input .cm-gutters:hover .cm-foldMarker {
+  opacity: 1;
+}
+
+.editor-input .cm-editor .cm-foldPlaceholder {
+  margin: 0 2px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--resource-document-gutter-foreground);
+  background: var(--resource-document-fold-placeholder);
 }
 
 .editor-input .cm-focused {
