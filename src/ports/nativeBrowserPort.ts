@@ -40,6 +40,8 @@ export interface BrowserPopupIntent {
   id: number;
   openerTabId: string;
   url: string;
+  /** Present only for a Windows native child that keeps `window.opener`. */
+  nativeTabId?: string;
 }
 
 export interface BrowserPopupOpen {

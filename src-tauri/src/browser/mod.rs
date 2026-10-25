@@ -9,9 +9,11 @@ use std::{
     },
 };
 
+#[cfg(not(windows))]
+use tauri::webview::NewWindowResponse;
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Webview, WebviewBuilder,
-    WebviewUrl, webview::NewWindowResponse,
+    WebviewUrl,
 };
 use url::Url;
 

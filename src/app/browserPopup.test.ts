@@ -229,3 +229,143 @@ it("replays a completion event that races with an in-progress popup response", a
   );
   expect(native.browserOpenPopup).toHaveBeenCalledTimes(2);
 });
+
+it("abandons a native opener-linked child when no project can adopt it", async () => {
+  const popup = {
+    id: 9,
+    openerTabId: "browser-1",
+    url: "about:blank",
+    nativeTabId: "browser-4",
+  };
+  native.browserPopupPending.mockResolvedValue([]);
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  const state = {
+    project: { id: "project", roots: [] },
+    projectGeneration: 1,
+    projectTransitioning: true,
+    tabs: [{ id: "browser-1", kind: "browser", title: "Opener", position: 0 }],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+  };
+  createBrowserSlice(
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
+    { subscribe: vi.fn() } as never,
+  );
+  await vi.waitFor(() =>
+    expect(events.listen).toHaveBeenCalledWith(
+      "browser:popup-request",
+      expect.any(Function),
+    ),
+  );
+  const listener = events.listen.mock.calls[0][1] as (event: {
+    payload: Partial<typeof popup>;
+  }) => void;
+  listener({ payload: popup });
+  await vi.waitFor(() =>
+    expect(native.browserPopupAbandon).toHaveBeenCalledWith(
+      9,
+      "browser-1",
+      "browser-4",
+    ),
+  );
+  listener({ payload: { ...popup, id: 10, nativeTabId: undefined } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(native.browserPopupAbandon).toHaveBeenCalledTimes(1);
+  expect(native.browserOpenPopup).not.toHaveBeenCalled();
+  expect(state.tabs).toHaveLength(1);
+});
+
+function mountWithOpener(overrides: object = {}) {
+  const state = {
+    project: { id: "project", roots: [] },
+    projectGeneration: 1,
+    projectTransitioning: false,
+    tabs: [{ id: "browser-1", kind: "browser", title: "Opener", position: 0 }],
+    activeTabId: "browser-1",
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+  createBrowserSlice(
+    ((update: ((current: unknown) => unknown) | object) =>
+      Object.assign(
+        state,
+        typeof update === "function" ? (update(state) as object) : update,
+      )) as never,
+    (() => state) as never,
+    { subscribe: vi.fn() } as never,
+  );
+  return state;
+}
+
+async function popupListener() {
+  await vi.waitFor(() =>
+    expect(events.listen).toHaveBeenCalledWith(
+      "browser:popup-request",
+      expect.any(Function),
+    ),
+  );
+  return events.listen.mock.calls[0][1] as (event: { payload: object }) => void;
+}
+
+it("removes a just-inserted popup tab when its late ack fails", async () => {
+  native.browserPopupPending.mockResolvedValue([]);
+  native.browserOpenPopup.mockResolvedValue({
+    tabId: "browser-4",
+    openerTabId: "browser-1",
+    url: "https://example.com/",
+  });
+  native.browserPopupAck.mockRejectedValue(new Error("popup tab unavailable"));
+  const state = mountWithOpener();
+  const listener = await popupListener();
+  listener({
+    payload: {
+      id: 11,
+      openerTabId: "browser-1",
+      url: "https://example.com/",
+      nativeTabId: "browser-4",
+    },
+  });
+  await vi.waitFor(() =>
+    expect(state).toMatchObject({
+      error: "Couldn't open popup: popup tab unavailable",
+    }),
+  );
+  expect(native.browserPopupAck).toHaveBeenCalledWith(
+    11,
+    "browser-1",
+    "browser-4",
+  );
+  expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1"]);
+  expect(state.activeTabId).toBe("browser-1");
+});
+
+it("abandons a native child when the Project changes during the editor flush", async () => {
+  native.browserPopupPending.mockResolvedValue([]);
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  const state = mountWithOpener();
+  state.flushActiveEditor.mockImplementation(async () => {
+    state.projectGeneration = 2;
+  });
+  const listener = await popupListener();
+  listener({
+    payload: {
+      id: 12,
+      openerTabId: "browser-1",
+      url: "about:blank",
+      nativeTabId: "browser-5",
+    },
+  });
+  await vi.waitFor(() =>
+    expect(native.browserPopupAbandon).toHaveBeenCalledWith(
+      12,
+      "browser-1",
+      "browser-5",
+    ),
+  );
+  expect(native.browserOpenPopup).not.toHaveBeenCalled();
+});

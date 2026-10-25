@@ -6,8 +6,6 @@ import {
   openBrowser,
   browserPopupPending,
   browserOpenPopup,
-  browserPopupAck,
-  browserPopupAbandon,
   type BrowserPopupIntent,
   type BrowserNavigation,
 } from "../ports/nativeBrowserPort";
@@ -25,6 +23,11 @@ import {
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
 import type { WorkbenchState } from "./store";
+import {
+  abandonNativePopup,
+  abandonOpenedPopup,
+  ackPopup,
+} from "./browserPopupNative";
 
 export interface BrowserSlice {
   openBrowser: (url?: string) => Promise<void>;
@@ -105,10 +108,13 @@ export const createBrowserSlice: StateCreator<
     try {
       const projectId = get().project?.id;
       const generation = get().projectGeneration;
-      if (!projectId || get().projectTransitioning) return;
+      if (!projectId || get().projectTransitioning)
+        return await abandonNativePopup(intent);
       await get().flushActiveEditor();
-      if (!matchesProjectIntent(get(), generation, projectId))
+      if (!matchesProjectIntent(get(), generation, projectId)) {
+        await abandonNativePopup(intent);
         throw new Error("Project changed");
+      }
       const opened = await browserOpenPopup(intent.id, intent.openerTabId);
       if (
         opened.openerTabId !== intent.openerTabId ||
@@ -117,19 +123,16 @@ export const createBrowserSlice: StateCreator<
       )
         throw new Error("Popup response invalid");
       if (!matchesProjectIntent(get(), generation, projectId)) {
-        await browserPopupAbandon(intent.id, opened.openerTabId, opened.tabId);
+        await abandonOpenedPopup(intent.id, opened);
         throw new Error("Project changed");
       }
-      if (!get().tabs.some((tab) => tab.id === opened.tabId)) {
+      const inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
+      if (inserted) {
         const openerIndex = get().tabs.findIndex(
           (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
         );
         if (openerIndex < 0) {
-          await browserPopupAbandon(
-            intent.id,
-            opened.openerTabId,
-            opened.tabId,
-          );
+          await abandonOpenedPopup(intent.id, opened);
           throw new Error("Popup opener closed");
         }
         set((state) => {
@@ -150,7 +153,7 @@ export const createBrowserSlice: StateCreator<
           };
         });
       }
-      await browserPopupAck(intent.id, opened.openerTabId, opened.tabId);
+      await ackPopup(set, get, intent.id, opened, inserted);
       finishedPopups.add(intent.id);
       if (finishedPopups.size > 32) {
         const first = finishedPopups.values().next().value;
