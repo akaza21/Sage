@@ -18,7 +18,10 @@ const BLUE: (u8, u8, u8) = (58, 131, 247);
 /// Steps that leave inspect mode, in order. Each runs even if one before it
 /// failed, so the page never keeps a half-enabled overlay.
 const STOP: [(&str, &str); 4] = [
-    ("Overlay.setInspectMode", r#"{"mode":"none","highlightConfig":{}}"#),
+    (
+        "Overlay.setInspectMode",
+        r#"{"mode":"none","highlightConfig":{}}"#,
+    ),
     ("Overlay.hideHighlight", "{}"),
     ("Overlay.disable", "{}"),
     ("DOM.disable", "{}"),
@@ -92,7 +95,12 @@ mod tests {
             let calls = self.calls.lock().unwrap();
             calls.iter().map(|(method, _, _)| method.clone()).collect()
         }
-        fn record(&self, method: &str, params: &str, permitted: bool) -> Result<String, BrowserFailure> {
+        fn record(
+            &self,
+            method: &str,
+            params: &str,
+            permitted: bool,
+        ) -> Result<String, BrowserFailure> {
             self.calls
                 .lock()
                 .unwrap()
@@ -105,10 +113,22 @@ mod tests {
     }
 
     impl CdpTransport for Recorder {
-        fn call(&self, method: &str, params: &str, _: usize, _: Duration) -> Result<String, BrowserFailure> {
+        fn call(
+            &self,
+            method: &str,
+            params: &str,
+            _: usize,
+            _: Duration,
+        ) -> Result<String, BrowserFailure> {
             self.record(method, params, true)
         }
-        fn observe(&self, method: &str, params: &str, _: usize, _: Duration) -> Result<String, BrowserFailure> {
+        fn observe(
+            &self,
+            method: &str,
+            params: &str,
+            _: usize,
+            _: Duration,
+        ) -> Result<String, BrowserFailure> {
             self.record(method, params, false)
         }
         fn stamp(&self) -> Result<DocumentStamp, BrowserFailure> {
@@ -143,7 +163,10 @@ mod tests {
         assert_eq!(params["mode"], "searchForNode");
         let config = &params["highlightConfig"];
         assert_eq!(config["showInfo"], false);
-        assert_eq!(config["borderColor"], json!({"r": 58, "g": 131, "b": 247, "a": 1.0}));
+        assert_eq!(
+            config["borderColor"],
+            json!({"r": 58, "g": 131, "b": 247, "a": 1.0})
+        );
         assert_eq!(config["contentColor"]["b"], 247);
         assert_eq!(config["marginColor"]["a"], 0.0);
     }
@@ -153,7 +176,10 @@ mod tests {
         let port = port(Some("Overlay.setInspectMode"));
         assert_eq!(port.start_inspect(), Err(BrowserFailure::Unavailable));
         let methods = port.transport.methods();
-        assert_eq!(&methods[..3], ["DOM.enable", "Overlay.enable", "Overlay.setInspectMode"]);
+        assert_eq!(
+            &methods[..3],
+            ["DOM.enable", "Overlay.enable", "Overlay.setInspectMode"]
+        );
         assert_eq!(&methods[3..], STOP.map(|(method, _)| method));
     }
 

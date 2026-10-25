@@ -145,5 +145,11 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
     mouse(&mut lane, "mousePressed", x, y);
     mouse(&mut lane, "mouseReleased", x, y);
     assert!(lane.wait_text("Pressed for real", 2_000));
-    assert!(lane.capability.port_mut().transport.take_overlay_events().is_empty());
+    assert!(
+        lane.capability
+            .port_mut()
+            .transport
+            .take_overlay_events()
+            .is_empty()
+    );
 }

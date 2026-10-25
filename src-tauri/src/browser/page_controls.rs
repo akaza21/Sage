@@ -103,9 +103,7 @@ pub(crate) async fn browser_hide(
 ) -> Result<(), String> {
     let webview = active_webview(&state, &tab_id)?;
     super::annotate::leave(&app, &tab_id, true);
-    webview
-        .hide()
-        .map_err(|error| error.to_string())
+    webview.hide().map_err(|error| error.to_string())
 }
 
 #[tauri::command]

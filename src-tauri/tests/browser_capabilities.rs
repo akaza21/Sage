@@ -78,7 +78,7 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::state_query::browser_history",
         "browser::state_query::browser_suggested_sites",
         "browser::page_controls::browser_navigate",
-        "browser::navigation::browser_control",
+        "browser::navigation::control::browser_control",
         "browser::page_controls::browser_zoom",
         "browser::page_controls::browser_open_external",
         "browser::page_controls::browser_find",

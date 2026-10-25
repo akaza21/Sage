@@ -42,6 +42,28 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+.browser-surface__toolbar .browser-surface__annotate {
+  display: flex;
+  align-items: center;
+  width: auto;
+  height: 28px;
+  gap: var(--space-1);
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--browser-control-fill);
+  font: inherit;
+}
+.browser-surface__toolbar .browser-surface__annotate[aria-pressed="true"] {
+  color: var(--color-accent-hover);
+  background: color-mix(
+    in srgb,
+    var(--color-accent) 9%,
+    var(--browser-control-fill)
+  );
+}
+.browser-surface__toolbar .browser-surface__annotate:disabled {
+  opacity: 0.5;
+}
 .browser-surface__address {
   position: relative;
   flex: 1 1 auto;

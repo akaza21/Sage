@@ -113,7 +113,10 @@ pub(crate) async fn set(app: AppHandle, tab_id: String, on: bool) -> Result<(), 
         let overlay = NativeOverlay(&state);
         let mut mode = state.annotate.lock().map_err(|_| "browser unavailable")?;
         if on {
-            target(&*state.tabs.lock().map_err(|_| "browser unavailable")?, &tab_id)?;
+            target(
+                &*state.tabs.lock().map_err(|_| "browser unavailable")?,
+                &tab_id,
+            )?;
             let (changes, started) = mode.start(&overlay, &tab_id);
             drop(mode);
             changes.into_iter().for_each(|change| emit(&app, change));
@@ -159,14 +162,20 @@ struct NativeOverlay<'a>(&'a BrowserState);
 impl InspectOverlay for NativeOverlay<'_> {
     #[cfg(windows)]
     fn start(&self, label: &str) -> Result<(), String> {
-        let webview = self.0.webview_for_tab(label).ok_or("browser tab unavailable")?;
+        let webview = self
+            .0
+            .webview_for_tab(label)
+            .ok_or("browser tab unavailable")?;
         super::devtools::set_annotate(&webview, true)
             .map_err(|_| "browser annotate unavailable".into())
     }
 
     #[cfg(windows)]
     fn stop(&self, label: &str) -> Result<(), String> {
-        let webview = self.0.webview_for_tab(label).ok_or("browser tab unavailable")?;
+        let webview = self
+            .0
+            .webview_for_tab(label)
+            .ok_or("browser tab unavailable")?;
         super::devtools::set_annotate(&webview, false)
             .map_err(|_| "browser annotate unavailable".into())
     }

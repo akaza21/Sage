@@ -31,8 +31,10 @@ import {
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
 import { BrowserNewTab } from "./BrowserNewTab";
-import { useBrowserShortcuts } from "./useBrowserShortcuts";
-import { performBrowserShortcut } from "./browserShortcuts";
+import {
+  performBrowserShortcut,
+  useBrowserShortcuts,
+} from "./browserShortcuts";
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
@@ -317,6 +319,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
           onExternal={() => void pageAction(() => browserOpenExternal(tab.id))}
           clearDataControl={<BrowserClearData menuItem />}
+          onError={setError}
           pageControls={
             <BrowserToolbarPageActions
               projectId={projectId}

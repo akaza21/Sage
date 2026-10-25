@@ -1,7 +1,10 @@
 {
   "schemaVersion": 1,
   "fixture": "/tests/ui/fixtures/browser-address.html",
-  "viewport": { "width": 1920, "height": 900 },
+  "viewport": {
+    "width": 1920,
+    "height": 900
+  },
   "rules": [
     {
       "id": "toolbar-height",
@@ -54,6 +57,31 @@
       "within": ".browser-surface__toolbar",
       "expected": 8,
       "tolerancePx": 4
+    },
+    {
+      "id": "annotate-after-navigation",
+      "ref": "reference/59a",
+      "source": "M1a measured nav pill x≈893-925, Annotate pill x≈929-1017 at y107",
+      "selector": ".browser-surface__nav-group",
+      "measure": "left-of",
+      "other": ".browser-surface__annotate"
+    },
+    {
+      "id": "annotate-before-address",
+      "ref": "reference/59a",
+      "source": "M1a measured Annotate pill ends x≈1017, address pill starts x≈1025 at y107",
+      "selector": ".browser-surface__annotate",
+      "measure": "left-of",
+      "other": ".browser-surface__address"
+    },
+    {
+      "id": "annotate-height",
+      "ref": "reference/59a",
+      "source": "M1a measured Annotate pill y≈94.5-119.5 at x1010 (26 px); Sage keeps its 28 px control on the 4 px scale",
+      "selector": ".browser-surface__annotate",
+      "measure": "height",
+      "expected": 26,
+      "tolerancePx": 2
     }
   ]
 }

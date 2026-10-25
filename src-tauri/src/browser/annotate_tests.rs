@@ -82,7 +82,10 @@ fn annotate_starts_only_on_a_known_tab_showing_a_committed_page() {
 fn start_turns_the_overlay_on_once_and_announces_it() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();
-    assert_eq!(mode.start(&overlay, "browser-1"), (vec![on("browser-1")], Ok(())));
+    assert_eq!(
+        mode.start(&overlay, "browser-1"),
+        (vec![on("browser-1")], Ok(()))
+    );
     assert_eq!(mode.start(&overlay, "browser-1"), (vec![], Ok(())));
     assert_eq!(overlay.calls(), ["start browser-1"]);
 }
@@ -149,6 +152,17 @@ fn a_failed_stop_still_ends_the_mode_and_a_closing_tab_skips_the_overlay() {
         overlay.calls(),
         ["start browser-1", "stop browser-1", "start browser-3"]
     );
+}
+
+#[test]
+fn annotate_is_reachable_only_through_the_guarded_browser_control_command() {
+    let source = include_str!("../ipc_commands.rs");
+    let (guard, handlers) = source
+        .split_once("tauri::generate_handler![")
+        .expect("guarded command list");
+    assert!(guard.contains("browser::ipc_guard::admits_main_invoke(webview.label(), &url)"));
+    assert!(handlers.contains("browser::navigation::control::browser_control,"));
+    assert!(!source.contains("annotate"), "no separate Annotate command");
 }
 
 #[test]
