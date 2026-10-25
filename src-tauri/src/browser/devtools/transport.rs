@@ -1,0 +1,47 @@
+use std::time::Duration;
+
+use crate::acp::browser::BrowserFailure;
+
+use super::snapshot::DocumentStamp;
+
+/// A main-frame document that finished loading after an Agent navigation.
+pub(crate) struct Settled {
+    pub url: String,
+    pub navigation_id: u64,
+}
+
+/// Carries CDP commands to one page. The command logic in `cdp_port` builds
+/// every parameter and parses every result; a transport only moves bytes and
+/// reports which document the page currently shows.
+pub(crate) trait CdpTransport {
+    /// Issues one Agent command, under the dispatch permit when one is held.
+    /// The result is the CDP `result` object as JSON, at most
+    /// `max_result_bytes` long.
+    fn call(
+        &self,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure>;
+
+    /// Reads page state after an Agent command was issued. It never consumes
+    /// or waits on the dispatch permit.
+    fn observe(
+        &self,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure>;
+
+    /// The committed document the next command would act on.
+    fn stamp(&self) -> Result<DocumentStamp, BrowserFailure>;
+
+    /// Whether an Agent command left this transport in the current dispatch.
+    fn issued(&self) -> bool;
+
+    /// Polls once for a settled document newer than `before`. `Ok(None)`
+    /// means still loading; an error ends the navigation wait.
+    fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure>;
+}

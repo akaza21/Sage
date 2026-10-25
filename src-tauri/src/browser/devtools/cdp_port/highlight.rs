@@ -1,13 +1,10 @@
 use serde_json::json;
 use std::time::Duration;
-use tauri::Webview;
 
-use crate::acp::browser::BrowserFailure;
-
-use super::{NativePort, cdp};
+use super::{CdpPort, CdpTransport};
 use crate::browser::devtools::snapshot::DocumentStamp;
 
-pub(super) fn mark(port: &NativePort, stamp: DocumentStamp, backend_id: u64) {
+pub(super) fn mark<T: CdpTransport>(port: &CdpPort<T>, stamp: DocumentStamp, backend_id: u64) {
     if port.stamp().ok() != Some(stamp) {
         return;
     }
@@ -37,17 +34,6 @@ fn highlight_params(backend_id: u64) -> String {
         }
     })
     .to_string()
-}
-
-pub(crate) fn clear(webview: &Webview) -> Result<(), BrowserFailure> {
-    cdp::call(
-        webview,
-        "Overlay.hideHighlight",
-        "{}",
-        4096,
-        Duration::from_secs(1),
-    )?;
-    Ok(())
 }
 
 #[cfg(test)]

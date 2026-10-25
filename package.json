@@ -17,6 +17,7 @@
     "test:budgets:posix:linux": "node scripts/budget-lanes.mjs --lane posix-linux",
     "test:budgets:posix:darwin": "node scripts/budget-lanes.mjs --lane posix-darwin",
     "test:budgets:inventory": "node --test --test-concurrency=1 scripts/budget-lanes.node-test.mjs",
+    "test:cdp-lane": "cargo test --manifest-path src-tauri/Cargo.toml --features cdp-lane --lib browser::devtools",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",

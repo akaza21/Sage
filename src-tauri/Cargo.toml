@@ -79,6 +79,8 @@ required-features = ["acp-fixture"]
 default = []
 acp-fixture = []
 acp-schema = ["dep:agent-client-protocol-schema"]
+# Runs browser::devtools tests against a real headless Chromium (unix only).
+cdp-lane = []
 codex-provisioning-helper = []
 custom-protocol = ["tauri/custom-protocol"]
 diagnostics = []

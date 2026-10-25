@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, atomic::AtomicBool},
-    time::Duration,
-};
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -9,7 +6,7 @@ use serde_json::Value;
 use crate::acp::browser::{redact_console, redact_url};
 
 use super::super::snapshot::project;
-use super::{BrowserState, DevtoolsPort, NativePort};
+use super::{CdpPort, CdpTransport, DevtoolsPort};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,33 +33,20 @@ fn safe_page_text(value: &str, limit: usize, multiline: bool) -> String {
     filtered[..end].to_owned()
 }
 
-pub(crate) fn capture_page_context(
-    state: &BrowserState,
+/// Reads the page the user is looking at as bounded, redacted context, only
+/// while it still shows `expected_revision`. `url` reads the tab's openable
+/// URL once that revision is confirmed.
+pub(crate) fn capture_page_context<T: CdpTransport>(
+    port: &mut CdpPort<T>,
     tab_id: &str,
     expected_revision: &str,
+    url: impl FnOnce() -> Result<String, String>,
 ) -> Result<CapturedPageContext, String> {
-    let webview = state
-        .tabs
-        .lock()
-        .map_err(|_| "browser unavailable")?
-        .handle(tab_id)
-        .cloned()
-        .ok_or("browser tab unavailable")?;
-    let mut port = NativePort {
-        webview,
-        permit: None,
-        issued: Arc::new(AtomicBool::new(false)),
-    };
     let before = port.stamp().map_err(|_| "browser page unavailable")?;
     if before.generation.to_string() != expected_revision {
         return Err("browser page changed; retry".into());
     }
-    let url = state
-        .tabs
-        .lock()
-        .map_err(|_| "browser unavailable")?
-        .openable_url(tab_id)
-        .map_err(|_| "browser page unavailable")?;
+    let url = url()?;
     let (snapshot_stamp, nodes) = port
         .snapshot()
         .map_err(|_| "browser page snapshot unavailable")?;
