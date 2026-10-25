@@ -172,8 +172,11 @@ fn attach(app: &AppHandle, id: u64) {
             expire_unacknowledged(app);
         }
         Settlement::FallBack(reason) => {
-            release(app, id, label);
-            fall_back(app, &opener, &requested, &reason);
+            // Queue only after the child's close, so it does not hold the
+            // tab-cap slot the opener-less fallback needs.
+            release_then(app, id, label, move |app| {
+                fall_back(app, &opener, &requested, &reason)
+            });
         }
         Settlement::Abandoned(reason) => {
             // WebView2 may already host the popup: close it, never duplicate it.
@@ -273,10 +276,11 @@ fn expire_unacknowledged(app: &AppHandle) {
         };
         for (id, tab_id) in expired {
             let closed = lifecycle::close_browser_tab(&sweep_app, &state, tab_id.clone()).await;
-            let gone = state
-                .tabs
-                .lock()
-                .is_ok_and(|tabs| !tabs.entries.contains_key(&tab_id));
+            // As browser_popup_abandon: a missing tab counts as cleaned up
+            // only while no native close is unresolved.
+            let gone = state.tabs.lock().is_ok_and(|tabs| {
+                !tabs.entries.contains_key(&tab_id) && tabs.teardown.blocked_message().is_none()
+            });
             if closed.is_ok() || gone {
                 if let Ok(mut popups) = state.popups.lock() {
                     popups.finish_cleanup(id, &tab_id);
@@ -288,8 +292,18 @@ fn expire_unacknowledged(app: &AppHandle) {
     });
 }
 
-/// Drops the popup's bookkeeping and closes a tab that was already created.
 fn release(app: &AppHandle, id: u64, label: Option<String>) {
+    release_then(app, id, label, |_| {});
+}
+
+/// Drops the popup's bookkeeping, closes a tab that was already created, and
+/// then runs `after` (immediately when there is no tab).
+fn release_then(
+    app: &AppHandle,
+    id: u64,
+    label: Option<String>,
+    after: impl FnOnce(&AppHandle) + Send + 'static,
+) {
     let state = app.state::<BrowserState>();
     if let Ok(mut popups) = state.popups.lock() {
         popups.native_failed(id);
@@ -297,15 +311,17 @@ fn release(app: &AppHandle, id: u64, label: Option<String>) {
             popups.forget_child(label);
         }
     }
-    if let Some(label) = label {
-        let close_app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let state = close_app.state::<BrowserState>();
-            if let Err(error) = lifecycle::close_browser_tab(&close_app, &state, label).await {
-                eprintln!("browser popup cleanup close failed: {error}");
-            }
-        });
-    }
+    let Some(label) = label else {
+        return after(app);
+    };
+    let close_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = close_app.state::<BrowserState>();
+        if let Err(error) = lifecycle::close_browser_tab(&close_app, &state, label).await {
+            eprintln!("browser popup cleanup close failed: {error}");
+        }
+        after(&close_app);
+    });
 }
 
 /// Before any deferral: deny the popup synchronously and fall back.

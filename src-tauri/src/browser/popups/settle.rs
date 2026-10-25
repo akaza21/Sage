@@ -18,8 +18,9 @@ pub(crate) enum Settlement {
     /// WebView2 never received a child: the popup was denied and the caller
     /// closes any created tab and falls back to the intent path.
     FallBack(String),
-    /// WebView2 may already host the popup in the child, so the caller closes
-    /// the child and must not queue a second, opener-less tab.
+    /// `Complete` failed after `SetNewWindow`: WebView2 may already host the
+    /// popup, so the caller closes the child and must not queue a second,
+    /// opener-less tab.
     Abandoned(String),
 }
 
@@ -41,12 +42,14 @@ pub(crate) fn settle(
         }
         return Settlement::FallBack(reason);
     }
-    let handled = request.set_handled();
-    let completed = request.complete();
-    match (handled, completed) {
-        (Ok(()), Ok(())) => Settlement::Attached,
-        (Err(error), _) => Settlement::Abandoned(format!("SetHandled failed: {error}")),
-        (_, Err(error)) => Settlement::Abandoned(format!("Complete failed: {error}")),
+    // With NewWindow set, WebView2 uses the child even if this report fails
+    // (wry's own handler has already marked the request handled).
+    if let Err(error) = request.set_handled() {
+        eprintln!("browser popup SetHandled failed after SetNewWindow: {error}");
+    }
+    match request.complete() {
+        Ok(()) => Settlement::Attached,
+        Err(error) => Settlement::Abandoned(format!("Complete failed: {error}")),
     }
 }
 

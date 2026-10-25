@@ -63,16 +63,18 @@ fn set_new_window_failure_denies_and_falls_back() {
 }
 
 #[test]
-fn failures_after_set_new_window_abandon_without_a_duplicate_intent() {
-    for (fail, reason) in [
-        ("SetHandled", "SetHandled failed: SetHandled E_FAIL"),
-        ("Complete", "Complete failed: Complete E_FAIL"),
-    ] {
-        let mut request = Recorder::failing(&[fail]);
-        assert_eq!(
-            settle(&mut request, Ok(())),
-            Settlement::Abandoned(reason.into())
-        );
-        assert_eq!(request.calls, ["SetNewWindow", "SetHandled", "Complete"]);
-    }
+fn set_handled_failure_after_set_new_window_still_completes_and_attaches() {
+    let mut request = Recorder::failing(&["SetHandled"]);
+    assert_eq!(settle(&mut request, Ok(())), Settlement::Attached);
+    assert_eq!(request.calls, ["SetNewWindow", "SetHandled", "Complete"]);
+}
+
+#[test]
+fn complete_failure_after_set_new_window_abandons_without_a_duplicate_intent() {
+    let mut request = Recorder::failing(&["SetHandled", "Complete"]);
+    assert_eq!(
+        settle(&mut request, Ok(())),
+        Settlement::Abandoned("Complete failed: Complete E_FAIL".into())
+    );
+    assert_eq!(request.calls, ["SetNewWindow", "SetHandled", "Complete"]);
 }
