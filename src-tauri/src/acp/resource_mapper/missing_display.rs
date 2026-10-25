@@ -51,7 +51,7 @@ impl NativeResourceMapper {
                     .is_some_and(|prefix| prefix.eq_ignore_ascii_case(root_path))
                 && supplied.as_bytes()[root_path.len()] == b'/';
             #[cfg(not(windows))]
-            let inside = supplied.starts_with(&root_path)
+            let inside = supplied.starts_with(root_path)
                 && supplied.as_bytes().get(root_path.len()) == Some(&b'/');
             if inside && selected.replace((root, root_path.len())).is_some() {
                 return Err(ResourceMapError::AmbiguousRoot);

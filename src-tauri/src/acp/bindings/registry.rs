@@ -22,9 +22,9 @@ mod record;
 mod record_root;
 use record::{Admission, AdmittedBinding, RootPolicy};
 pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod test_support;
-#[cfg(test)]
+#[cfg(all(test, windows))]
 pub(crate) use test_support::{
     TEST_BINDING_ID, take_test_cancel_dispatch_for_test, take_test_close_dispatch_for_test,
     take_test_factory_construction_for_test, take_test_turn_dispatch_for_test,
@@ -373,8 +373,10 @@ impl BindingRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use std::{ffi::OsStr, fs};
 
+    #[cfg(windows)]
     use crate::{
         acp::{
             bindings::standard_acp::OpenCodeBindingRegistration,

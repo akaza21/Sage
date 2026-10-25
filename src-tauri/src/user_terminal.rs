@@ -65,6 +65,10 @@ trait TerminalProcess: Send {
 
 enum TerminalSpawnFailure {
     Clean(TerminalError),
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "only the ConPTY backend retains a failed spawn")
+    )]
     Retained(Box<dyn TerminalProcess>),
 }
 

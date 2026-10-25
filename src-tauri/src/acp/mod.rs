@@ -1,5 +1,9 @@
 pub(crate) mod attached_context;
 pub(crate) mod bindings;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 pub mod browser;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;

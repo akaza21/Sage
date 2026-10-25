@@ -99,7 +99,7 @@ impl AcpService {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn has_retained_live_host_recovery_for(&self, owner: &RuntimeOwner) -> bool {
         let retained = self
             .codex_recovery

@@ -1,4 +1,6 @@
-use tauri::{Manager, State};
+#[cfg(windows)]
+use tauri::Manager;
+use tauri::State;
 
 use super::BrowserState;
 

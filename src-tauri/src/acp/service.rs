@@ -32,11 +32,27 @@ use crate::acp::{
 };
 
 mod bootstrap;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 mod browser_attachment;
 #[cfg(windows)]
 mod browser_mcp;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 mod browser_operation;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 pub(crate) mod browser_permission;
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+)]
 mod browser_shutdown;
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
@@ -108,6 +124,10 @@ pub(crate) enum CodexSessionError {
     #[error("the harness requires sign-in before it can continue")]
     SignInRequired,
     #[error("Codex browser tools are unavailable for this session")]
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
+    )]
     BrowserToolsUnavailable,
     #[error("Codex live runtime requires recovery")]
     Recovery,

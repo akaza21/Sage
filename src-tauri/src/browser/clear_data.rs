@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, WebviewBuilder, WebviewUrl,
-};
+#[cfg(windows)]
+use tauri::Emitter;
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewBuilder, WebviewUrl};
 use url::Url;
 
 use super::{
@@ -118,6 +118,7 @@ pub(crate) async fn browser_clear_data(
     state: State<'_, BrowserState>,
 ) -> Result<ClearBrowsingDataResult, String> {
     let tab_ids = begin_clear(&state.tabs, &state.clearing_data)?;
+    #[cfg_attr(not(windows), allow(unused_mut, unused_variables))]
     let mut gate = ClearGate {
         flag: &state.clearing_data,
         armed: true,

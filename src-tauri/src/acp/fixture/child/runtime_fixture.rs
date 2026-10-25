@@ -28,7 +28,6 @@ impl FixtureClock {
         Self(AtomicI64::new(now_millis))
     }
 
-    #[cfg(windows)]
     pub(in crate::acp::fixture) fn set(&self, now_millis: i64) {
         self.0.store(now_millis, Ordering::SeqCst);
     }

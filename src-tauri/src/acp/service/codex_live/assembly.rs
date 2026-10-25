@@ -1,7 +1,7 @@
 use super::*;
 
 impl AcpService {
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) async fn activate_codex_session(
         &self,
         command: ActivateSessionCommand,
@@ -353,7 +353,7 @@ impl AcpService {
         Ok(())
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn fail_next_runtime_port_finish_park(&self) {
         *self
             .runtime_port_finish_park_failure

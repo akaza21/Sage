@@ -6,9 +6,8 @@ use std::{
 
 use super::{
     DiscoveredHarness, DiscoverySource, DisplayVersionCache, HarnessDiscovery, HarnessExecutable,
-    HarnessVersion, InstallLayout, InstalledHarness, PATH_BYTES_MAX, ProbeLimits,
-    authentic_harness_file, discover_from_candidates, enrich_installed_harness_versions,
-    present_candidate,
+    HarnessVersion, InstalledHarness, PATH_BYTES_MAX, ProbeLimits, authentic_harness_file,
+    discover_from_candidates, enrich_installed_harness_versions, present_candidate,
 };
 use super::{
     candidates::{candidates_for_test, path_roots_from, scan_candidates_from_roots},
@@ -16,7 +15,7 @@ use super::{
 };
 
 #[cfg(windows)]
-use super::candidates::known_install_roots_from_windows;
+use super::{InstallLayout, candidates::known_install_roots_from_windows};
 
 fn scratch_dir() -> PathBuf {
     let nonce = SystemTime::now()
