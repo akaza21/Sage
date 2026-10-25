@@ -87,13 +87,20 @@ export function editorDom(state = "editor-idle", width = 1888) {
     const section = document.createElement("section");
     section.className = "workspace-search";
     section.innerHTML =
-      '<input aria-label="Search text">' +
-      [EDITOR_FILE, "src/features/outline/outlineCard.ts"]
-        .map(
-          (file) =>
-            `<section class="workspace-search__file-group"><button class="workspace-search__file-heading" aria-label="Collapse results for ${file}" aria-expanded="true"></button><button class="workspace-search__result">export</button></section>`,
-        )
-        .join("");
+      '<form class="workspace-search__form"><input aria-label="Search text"></form>';
+    // Results render only after the form submits, as in WorkspaceSearchView.
+    section.querySelector("form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      section.insertAdjacentHTML(
+        "beforeend",
+        [EDITOR_FILE, "src/features/outline/outlineCard.ts"]
+          .map(
+            (file) =>
+              `<section class="workspace-search__file-group"><button class="workspace-search__file-heading" aria-label="Collapse results for ${file}" aria-expanded="true"></button><button class="workspace-search__result">export</button></section>`,
+          )
+          .join(""),
+      );
+    });
     document.body.append(section);
     document
       .querySelector('[aria-label="Search"]')
@@ -163,7 +170,11 @@ export function editorDom(state = "editor-idle", width = 1888) {
       symbolColumn: 1,
     });
   }
-  if (state === "search-view") openSearch().value = "export";
+  if (state === "search-view") {
+    const input = openSearch();
+    input.value = "export";
+    input.form.requestSubmit();
+  }
   if (state === "settings-editor") openSettings();
   return {
     dom,

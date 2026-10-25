@@ -104,6 +104,10 @@ export async function driveEditor(
   } else if (options.state === "search-view") {
     await tool("Search");
     await fill('input[aria-label="Search text"]', "export");
+    // WorkspaceSearchView searches only on form submit (Enter); typing alone stays idle.
+    await until(
+      `(()=>{const input=document.querySelector('input[aria-label="Search text"]');if(!input?.form||input.value!=='export')return false;input.form.requestSubmit();return true})()`,
+    );
   } else if (options.state === "settings-editor") {
     await click('button[aria-label="Open settings"]');
     await until("Boolean(document.querySelector('.settings-surface'))");
