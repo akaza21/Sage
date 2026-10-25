@@ -66,52 +66,43 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
         )
         .and_then(|text| serde_json::from_str::<Value>(text.as_str().unwrap_or("null")).map_err(|error| error.to_string()))
     };
-    let child = match children.as_slice() {
-        [] => None,
-        [child] => Some(child.as_str()),
-        _ => {
-            report.check(
-                "s1.javascript-contained",
-                false,
-                format!(
-                    "one window.open made {} children: {children:?}",
-                    children.len()
-                ),
-            );
-            close(lane, &children);
-            return;
+    // The scenario is pinned: exactly one child, a Sage tab. Anything else
+    // fails every check below rather than skipping it.
+    let [child] = children.as_slice() else {
+        let why = format!(
+            "one window.open made {} children {children:?} (want exactly 1); window.open -> {opened:?}; opener __jsRan {in_opener:?}; new linked popups {linked:?}",
+            children.len()
+        );
+        for id in CHECKS {
+            report.check(id, false, &why);
         }
+        close(lane, &children);
+        return;
     };
-    let state = child.map(|child| {
-        // Fetches may still be in flight; give them a few seconds to settle.
-        wait_for(Duration::from_secs(5), || {
-            ran(child).ok().filter(|state| {
-                !state["fetch"]
-                    .as_object()
-                    .is_some_and(|fetch| fetch.values().any(|outcome| outcome == "pending"))
-            })
+    // Fetches may still be in flight; give them a few seconds to settle.
+    let state = wait_for(Duration::from_secs(5), || {
+        ran(child).ok().filter(|state| {
+            !state["fetch"]
+                .as_object()
+                .is_some_and(|fetch| fetch.values().any(|outcome| outcome == "pending"))
         })
-        .map_or_else(|| ran(child), Ok)
-    });
-    let link = child.and_then(|child| linked.iter().find(|popup| popup.child == child));
+    })
+    .map_or_else(|| ran(child), Ok);
+    let link = linked.iter().find(|popup| &popup.child == child);
     let adopted = link.map(|link| lane.acknowledge_popup(link));
-    let contained = match (child, &state) {
-        (None, _) => linked.is_empty(),
-        (Some(child), Some(Ok(state))) => {
-            linked.len() == 1
-                && link.is_some_and(|link| link.opener == opener && link.url == "about:blank")
-                && matches!(adopted, Some(Ok(())))
-                && lane.tabs().iter().any(|tab| tab == child)
-                && state["href"] == "about:blank"
-                && state["origin"] == site.origin().as_str()
-        }
-        _ => false,
-    };
+    let contained = state.as_ref().is_ok_and(|state| {
+        state["ran"] == "number"
+            && state["href"] == "about:blank"
+            && state["origin"] == site.origin().as_str()
+    }) && linked.len() == 1
+        && link.is_some_and(|link| link.opener == opener && link.url == "about:blank")
+        && matches!(adopted, Some(Ok(())))
+        && lane.tabs().contains(child);
     report.check(
-        "s1.javascript-contained",
+        CHECKS[0],
         contained && in_opener == Ok(json!("undefined")),
         format!(
-            "window.open -> {opened:?}; child {child:?} (tabs {} -> {}, cap {TAB_CAP}); pending entry {link:?}; chrome ack {adopted:?}; child state {state:?}; opener __jsRan {in_opener:?}; {RELATIVE_MARKER} fetched {} times, {ABSOLUTE_MARKER} {} times; Abandon verdicts +{}",
+            "window.open -> {opened:?}; child {child} (tabs {} -> {}); pending entry {link:?}; chrome ack {adopted:?}; child state {state:?}; opener __jsRan {in_opener:?}; {RELATIVE_MARKER} fetched {} times, {ABSOLUTE_MARKER} {} times; Abandon verdicts +{}",
             tabs.len(),
             tabs.len() + children.len(),
             site.hits(RELATIVE_MARKER),
@@ -119,16 +110,65 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
             lane.abandoned_popups().saturating_sub(abandoned)
         ),
     );
-    if let Some(child) = child {
-        ipc(lane, site, report, child);
-        navigations(lane, site, report, child);
-        close(lane, &children);
-    }
+    let before_ipc = lane.tabs();
+    let probes = ipc(lane, site, child);
+    navigations(lane, site, report, child);
+    cap(lane, report, child);
+    // Backstop for paths that went unanswered: long after the probes, the
+    // command still has not run and the tab list is unchanged.
+    let after = lane.tabs();
+    report.check(
+        CHECKS[1],
+        probes.0 && site.hits(COMMAND_MARKER) == 0 && after == before_ipc,
+        format!(
+            "{}; after navigation and cap steps: {COMMAND_MARKER} fetched {} times, tabs {before_ipc:?} -> {after:?}",
+            probes.1,
+            site.hits(COMMAND_MARKER)
+        ),
+    );
+    close(lane, &children);
 }
 
-/// The S3 probe set, from inside the child: every path refused or absent,
-/// and `browser_open` of the marker never runs.
-fn ipc(lane: &Lane, site: &Site, report: &mut Report, child: &str) {
+const CHECKS: [&str; 4] = [
+    "s1.javascript-contained",
+    "s1.javascript-contained.ipc",
+    "s1.javascript-contained.navigation",
+    "s1.javascript-contained.cap",
+];
+
+/// The child holds a tab-cap slot: with it alive, exactly
+/// `TAB_CAP - live tabs` more tabs open (one fewer than without it), and
+/// the next one is refused. The filler tabs are closed afterwards.
+fn cap(lane: &Lane, report: &mut Report, child: &str) {
+    let live = lane.tabs();
+    let mut filler = Vec::new();
+    let refusal = loop {
+        match lane.open_tab(None, false) {
+            Ok(tab) if filler.len() <= TAB_CAP => filler.push(tab),
+            Ok(tab) => {
+                filler.push(tab);
+                break None;
+            }
+            Err(error) => break Some(error),
+        }
+    };
+    let room = TAB_CAP.saturating_sub(live.len());
+    close(lane, &filler);
+    report.check(
+        CHECKS[3],
+        live.contains(&child.to_owned()) && filler.len() == room && refusal.is_some(),
+        format!(
+            "with {child} alive: {} live tabs {live:?}, {} more opened (want {room}, one fewer than without the child), then {refusal:?}",
+            live.len(),
+            filler.len()
+        ),
+    );
+}
+
+/// The S3 probe set, from inside the child: every path refused or absent
+/// (an unanswered raw message counts as refused; `run` backstops it), and
+/// `browser_open` of the marker has not run after a long quiet period.
+fn ipc(lane: &Lane, site: &Site, child: &str) -> (bool, String) {
     let tabs = lane.tabs();
     let started = lane.evaluate(
         child,
@@ -144,6 +184,8 @@ fn ipc(lane: &Lane, site: &Site, report: &mut Report, child: &str) {
             .filter(|result| !result.is_null())
     });
     quiet_period();
+    quiet_period();
+    quiet_period();
     let probes = result
         .as_ref()
         .and_then(|result| result["probes"].as_array().cloned())
@@ -155,15 +197,14 @@ fn ipc(lane: &Lane, site: &Site, report: &mut Report, child: &str) {
                 probe["outcome"].as_str().unwrap_or("?"),
             )
         });
-    report.check(
-        "s1.javascript-contained.ipc",
+    (
         all_refused && site.hits(COMMAND_MARKER) == 0 && lane.tabs() == tabs,
         format!(
-            "probe {started:?}; result {result:?}; {COMMAND_MARKER} fetched {} times; tabs {tabs:?} -> {:?}",
+            "probe {started:?}; result {result:?}; after 6 s quiet: {COMMAND_MARKER} fetched {} times, tabs {tabs:?} -> {:?}",
             site.hits(COMMAND_MARKER),
             lane.tabs()
         ),
-    );
+    )
 }
 
 /// The child's next navigations: an HTTP(S) page settles through Sage's
@@ -191,7 +232,7 @@ fn navigations(lane: &Lane, site: &Site, report: &mut Report, child: &str) {
     let stayed = lane.settled_url(child);
     let href = lane.evaluate(child, "location.href", false);
     report.check(
-        "s1.javascript-contained.navigation",
+        CHECKS[2],
         settled.is_some()
             && stayed.as_deref() == Some(&target)
             && href == Ok(json!(target))
