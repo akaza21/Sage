@@ -12,7 +12,7 @@ use sage_lib::{
     },
     native_lane::{AgentTab, Lane},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
     report::{Report, sage_sources, wait_for},
@@ -94,26 +94,46 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
     report.check(
         "s8.unobserved",
-        seen == Ok(json!([])) && globals == Ok(json!(0)),
+        steps.no_new_hits() && globals == Ok(json!(0)),
         format!(
-            "page hooks saw {seen:?}; new page globals {globals:?}; hook hits after each step {}; caller stacks {:?}",
-            steps.0.join(", "),
+            "hook hits after each step (baseline at load) {}; page hooks saw {seen:?}; new page globals {globals:?}; caller stacks {:?}",
+            steps.describe(),
             lane.evaluate(&tab, "window.__agentStacks", false)
         ),
     );
 }
 
-/// How many page hooks had fired after each step, so a hit names its step.
+/// How many page hooks had fired after each step. Hits before the first
+/// mark (load) are the page's own load (in debug builds, Tauri's devtools
+/// hotkey init script runs `JSON.parse` at `DOMContentLoaded`); every later
+/// step must add none.
 #[derive(Default)]
-struct Timeline(Vec<String>);
+struct Timeline(Vec<(String, Result<Value, String>)>);
 
 impl Timeline {
     fn mark(&mut self, lane: &Lane, tab: &str, step: &str) {
         let count = lane.evaluate(tab, "window.__agentSeen.length", false);
-        self.0.push(format!(
-            "{step}={}",
-            count.map_or_else(|error| error, |count| count.to_string())
-        ));
+        self.0.push((step.to_owned(), count));
+    }
+
+    fn no_new_hits(&self) -> bool {
+        let Some((_, Ok(baseline))) = self.0.first() else {
+            return false;
+        };
+        self.0
+            .iter()
+            .all(|(_, count)| count.as_ref() == Ok(baseline))
+    }
+
+    fn describe(&self) -> String {
+        self.0
+            .iter()
+            .map(|(step, count)| match count {
+                Ok(count) => format!("{step}={count}"),
+                Err(error) => format!("{step}={error}"),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 

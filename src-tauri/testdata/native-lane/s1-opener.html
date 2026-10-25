@@ -27,6 +27,17 @@
           return `threw ${error}`;
         }
       };
+      // A blank popup whose first real navigation is a blob: document that
+      // would report `marker` (absolute: blob URLs resolve nothing relative).
+      window.__openBlob = (marker) => {
+        const popup = window.open("");
+        if (popup === null) return "null";
+        const page = `<script>fetch(${JSON.stringify(location.origin + marker)}, {method: "POST"})<\/script>`;
+        popup.location = URL.createObjectURL(
+          new Blob([page], { type: "text/html" }),
+        );
+        return "assigned";
+      };
     </script>
   </body>
 </html>

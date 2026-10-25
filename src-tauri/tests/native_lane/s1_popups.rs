@@ -16,6 +16,7 @@ use crate::{
 /// Sage's tab cap (`MAX_BROWSER_TABS`).
 const TAB_CAP: usize = 8;
 const JS_MARKER: &str = "/s1/js-ran";
+const BLOB_MARKER: &str = "/s1/blob-ran";
 
 pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     report.section("S1 popups keep window.opener as policed Sage tabs");
@@ -60,14 +61,21 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         &target,
         &opened,
     );
-    denied(
+    javascript_popup(lane, site, report, &opener);
+    let tabs = lane.tabs();
+    let popups = lane.native_popups();
+    let opened = open(
+        lane,
+        &opener,
+        &format!("window.__openBlob({})", json!(BLOB_MARKER)),
+    );
+    gone(
         lane,
         site,
         report,
-        &opener,
-        "s1.javascript-denied",
-        &format!("javascript:void(fetch('{JS_MARKER}',{{method:'POST'}}))"),
-        JS_MARKER,
+        "s1.blob-abandoned",
+        (&tabs, &popups, &opened),
+        BLOB_MARKER,
     );
     for _ in lane.tabs().len()..TAB_CAP {
         if let Err(error) = lane.open_tab(None, false) {
@@ -161,10 +169,68 @@ fn popup(
     );
 }
 
+/// `window.open('javascript:…')`. WebView2 reports it as an `about:blank`
+/// request and raises no `NavigationStarting` for the `javascript:` URL in
+/// the child, so Sage may host a blank child, as Chrome does, minus the
+/// script. What must hold: the payload never runs (no marker fetch, no
+/// `__jsRan` in the opener or any child), and any child is a policed Sage
+/// tab on exactly `about:blank`, linked to the opener and counted against
+/// the tab cap. The child is closed afterwards.
+fn javascript_popup(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
+    let tabs = lane.tabs();
+    let popups = lane.native_popups();
+    let payload =
+        format!("javascript:void((window.__jsRan=1),fetch('{JS_MARKER}',{{method:'POST'}}))");
+    let opened = open(lane, opener, &format!("window.__open({})", json!(payload)));
+    quiet_period();
+    let children: Vec<String> = lane
+        .tabs()
+        .into_iter()
+        .filter(|tab| !tabs.contains(tab))
+        .collect();
+    let linked: Vec<NativePopup> = lane
+        .native_popups()
+        .into_iter()
+        .filter(|popup| !popups.contains(popup))
+        .collect();
+    let ran = "typeof window.__jsRan";
+    let in_opener = lane.evaluate(opener, ran, false);
+    let mut policed = linked.len() == children.len();
+    let mut evidence = Vec::new();
+    for child in &children {
+        let link = linked.iter().find(|popup| &popup.child == child);
+        let href = lane.evaluate(child, "location.href", false);
+        let in_child = lane.evaluate(child, ran, false);
+        policed &= link.is_some_and(|link| link.opener == opener && link.url == "about:blank")
+            && href == Ok(json!("about:blank"))
+            && in_child == Ok(json!("undefined"));
+        evidence.push(format!(
+            "{child}: link {link:?}, location {href:?}, __jsRan {in_child:?}"
+        ));
+    }
+    let closed: Vec<_> = children.iter().map(|child| lane.close_tab(child)).collect();
+    report.check(
+        "s1.javascript-denied",
+        policed
+            && in_opener == Ok(json!("undefined"))
+            && site.hits(JS_MARKER) == 0
+            && closed.iter().all(Result::is_ok),
+        format!(
+            "window.open -> {opened:?}; tabs {} -> {} (cap {TAB_CAP}); children [{}]; unmatched linked popups {:?}; opener __jsRan {in_opener:?}; {JS_MARKER} fetched {} times; closed {closed:?}",
+            tabs.len(),
+            tabs.len() + children.len(),
+            evidence.join("; "),
+            linked
+                .iter()
+                .filter(|popup| !children.contains(&popup.child))
+                .collect::<Vec<_>>(),
+            site.hits(JS_MARKER)
+        ),
+    );
+}
+
 /// `window.open(url)` from the opener must leave no tab or linked popup behind
-/// and never load `marker`. WebView2 may first host a `javascript:` popup as a
-/// blank child (its request reads `about:blank`); Sage must then close it once
-/// its first real navigation is refused, so `window.open` may return non-null.
+/// and never load `marker`.
 fn denied(
     lane: &Lane,
     site: &Site,
@@ -177,6 +243,21 @@ fn denied(
     let tabs = lane.tabs();
     let popups = lane.native_popups();
     let opened = open(lane, opener, &format!("window.__open({})", json!(url)));
+    gone(lane, site, report, id, (&tabs, &popups, &opened), marker);
+}
+
+/// Within 10 s the tabs are back to `before` and no new linked popup
+/// remains, and `marker` was never fetched. A blank child abandoned by Sage
+/// (its first real navigation refused) counts as gone once it is closed.
+fn gone(
+    lane: &Lane,
+    site: &Site,
+    report: &mut Report,
+    id: &str,
+    before: (&[String], &[NativePopup], &Result<Value, String>),
+    marker: &str,
+) {
+    let (tabs, popups, opened) = before;
     quiet_period();
     let settled = wait_for(Duration::from_secs(10), || {
         (lane.tabs() == tabs).then_some(())
@@ -191,9 +272,7 @@ fn denied(
         id,
         settled.is_some() && linked.is_empty() && site.hits(marker) == 0,
         format!(
-            "window.open -> {opened:?}; tabs {} -> {}; new linked popups {linked:?}; {marker} fetched {} times",
-            tabs.len(),
-            after.len(),
+            "window.open -> {opened:?}; tabs {tabs:?} -> {after:?}; new linked popups {linked:?}; {marker} fetched {} times",
             site.hits(marker)
         ),
     );
