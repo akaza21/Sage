@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>S1 opener</title>
+  </head>
+  <body>
+    <h1>S1 opener</h1>
+    <script>
+      const report = (name, data) =>
+        fetch(`/report/${name}`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+      window.addEventListener("message", (event) =>
+        report("s1-message", { data: event.data, origin: event.origin }),
+      );
+      // The lane calls these with a user gesture, as a click would.
+      window.__open = (url) => window.open(url) !== null;
+      window.__openBlank = (url) => {
+        const popup = window.open("");
+        if (popup === null) return "null";
+        try {
+          popup.location = url;
+          return "assigned";
+        } catch (error) {
+          return `threw ${error}`;
+        }
+      };
+    </script>
+  </body>
+</html>

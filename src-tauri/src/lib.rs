@@ -98,6 +98,12 @@ mod workbench_persistence;
 mod workbench_restore;
 mod workspace;
 
+#[cfg(all(feature = "native-lane", not(all(windows, debug_assertions))))]
+compile_error!("the native-lane feature boots WebView2 and is for Windows debug builds only");
+#[cfg(all(windows, feature = "native-lane"))]
+#[doc(hidden)]
+pub use browser::native_lane;
+
 use std::{fs, sync::Arc};
 
 use tauri::{Manager, webview::PageLoadEvent};

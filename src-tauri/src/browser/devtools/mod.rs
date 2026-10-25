@@ -34,5 +34,16 @@ mod snapshot;
 mod transport;
 mod wait;
 
+/// The native lane's own CDP observation of a tab, outside any Agent permit.
+#[cfg(all(windows, feature = "native-lane"))]
+pub(crate) fn lane_call(
+    webview: &tauri::Webview,
+    method: &str,
+    params: &str,
+    timeout: std::time::Duration,
+) -> Result<String, crate::acp::browser::BrowserFailure> {
+    cdp::call(webview, method, params, 1_048_576, timeout)
+}
+
 #[cfg(test)]
 mod tests;
