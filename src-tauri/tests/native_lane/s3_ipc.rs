@@ -16,7 +16,7 @@ use crate::{
 const MARKER: &str = "/s3/command-ran";
 
 /// Outcomes that refuse the call; `resolved` is never acceptable.
-fn refused(path: &str, outcome: &str) -> bool {
+pub fn refused(path: &str, outcome: &str) -> bool {
     if path.starts_with("invoke ") {
         // The bridge answered with an error, or the page has no bridge.
         matches!(outcome, "rejected" | "no-bridge")

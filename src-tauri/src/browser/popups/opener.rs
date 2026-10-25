@@ -107,9 +107,13 @@ impl PopupRequests {
     /// Navigation admission for a browser tab. HTTP(S) per `admit_url`; the
     /// exact `about:blank` only for a native opener-linked child that has not
     /// yet started any other navigation. Any other attempt spends the grant,
-    /// and a denied one abandons the child: WebView2 reports
-    /// `window.open('javascript:…')` as an `about:blank` request, so a blank
-    /// child whose first real navigation is refused never had a page to show.
+    /// and a denied one abandons the child, which never had a page to show:
+    /// a `blob:`, `file:` or custom-scheme first navigation. On WebView2 a
+    /// `javascript:` popup is not abandoned: it arrives as an `about:blank`
+    /// request and no navigation fires for its `javascript:` URL, so its
+    /// script runs in the blank child with the opener's origin, as in Chrome.
+    /// That gains nothing the opener lacks (it could `window.open('')` and
+    /// script the child itself), and the child stays a policed Sage tab.
     pub(crate) fn admit_navigation(&mut self, tab_id: &str, uri: &str) -> NavigationVerdict {
         if uri == INITIAL_BLANK && self.initial_blank.contains(tab_id) {
             return NavigationVerdict::Admit;
@@ -133,6 +137,10 @@ pub(crate) enum NavigationVerdict {
     Abandon,
 }
 
+/// Native lane only: how many navigations `navigation_admitted` abandoned.
+#[cfg(feature = "native-lane")]
+pub(crate) static ABANDONED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// `admit_navigation` against the live browser state; fails closed to plain
 /// `admit_url` if the popup registry is unavailable. An abandoned child is
 /// closed off the WebView2 callback, which frees its tab-cap slot and drops
@@ -144,6 +152,8 @@ pub(crate) fn navigation_admitted(app: &AppHandle, tab_id: &str, uri: &str) -> b
         Err(_) => NavigationVerdict::Deny,
     };
     if verdict == NavigationVerdict::Abandon {
+        #[cfg(feature = "native-lane")]
+        ABANDONED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let close_app = app.clone();
         let tab_id = tab_id.to_owned();
         tauri::async_runtime::spawn(async move {

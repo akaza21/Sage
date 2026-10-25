@@ -344,6 +344,13 @@ impl Lane {
             .collect()
     }
 
+    /// How many navigations Sage has answered with
+    /// `NavigationVerdict::Abandon` (a blank popup child closed because its
+    /// first real navigation was refused).
+    pub fn abandoned_popups(&self) -> u64 {
+        popups::ABANDONED.load(Ordering::SeqCst)
+    }
+
     /// Adopts a native popup as the chrome does (`browser_popup_ack`).
     pub fn acknowledge_popup(&self, popup: &NativePopup) -> Result<(), String> {
         popups::browser_popup_ack(

@@ -127,28 +127,23 @@ impl Timeline {
             .all(|(_, count)| count.as_ref() == Ok(baseline))
     }
 
-    /// The load baseline is excused only when every hit in it is the page's
-    /// `JSON.parse` hook called from Tauri's debug-only devtools hotkey init
-    /// script (`tauri` `webview/plugin.rs`, gated on `debug_assertions` or the
-    /// `devtools` feature, which Sage's release builds do not enable). Any
-    /// other load-time caller fails the check.
+    /// The load baseline is zero, or, in a debug build only, exactly one hit:
+    /// the page's `JSON.parse` hook called directly by Tauri's devtools
+    /// hotkey init script. That script runs once per document and exists
+    /// only under `debug_assertions` or tauri's `devtools` feature
+    /// (`tauri` `webview/plugin.rs`), which Sage's release builds do not
+    /// enable. Any other load-time hit fails the check.
     fn load_hits_are_tauri_devtools_only(&self, stacks: &Result<Value, String>) -> bool {
         let Some((_, Ok(baseline))) = self.0.first() else {
             return false;
         };
-        let Some(baseline) = baseline.as_u64() else {
-            return false;
-        };
-        let Ok(Value::Array(stacks)) = stacks else {
-            return baseline == 0;
-        };
-        stacks.len() as u64 == baseline
-            && stacks.iter().all(|stack| {
-                stack.as_str().is_some_and(|stack| {
-                    stack.starts_with("JSON.parse:")
-                        && stack.contains("at toggleDevtoolsHotkey (<anonymous>")
-                })
-            })
+        match (baseline.as_u64(), stacks) {
+            (Some(0), _) => true,
+            (Some(1), Ok(Value::Array(stacks))) if cfg!(debug_assertions) => {
+                matches!(stacks.as_slice(), [stack] if stack.as_str().is_some_and(devtools_hotkey_parse))
+            }
+            _ => false,
+        }
     }
 
     fn describe(&self) -> String {
@@ -161,6 +156,29 @@ impl Timeline {
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+/// `hostile.html`'s record of one hit, `JSON.parse: Error` then V8 frames:
+/// only the hook's own frames in `hostile.html`, ending with the hook
+/// itself (`at JSON.<anonymous> (…hostile.html:…)`), whose direct caller is
+/// line 7 of Tauri's script (`at toggleDevtoolsHotkey (<anonymous>:7:…)`).
+fn devtools_hotkey_parse(stack: &str) -> bool {
+    let mut lines = stack.lines().map(str::trim);
+    if lines.next() != Some("JSON.parse: Error") {
+        return false;
+    }
+    let frames: Vec<&str> = lines.collect();
+    let Some(hook) = frames.iter().position(|frame| {
+        frame.starts_with("at JSON.<anonymous> (") && frame.contains("hostile.html:")
+    }) else {
+        return false;
+    };
+    frames[..hook]
+        .iter()
+        .all(|frame| frame.contains("hostile.html:"))
+        && frames
+            .get(hook + 1)
+            .is_some_and(|caller| caller.starts_with("at toggleDevtoolsHotkey (<anonymous>:7:"))
 }
 
 /// The raw CDP steps the Agent world rests on, on this WebView2 build.

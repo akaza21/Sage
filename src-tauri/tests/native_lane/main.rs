@@ -9,6 +9,8 @@ mod report;
 #[cfg(windows)]
 mod s10_tls;
 #[cfg(windows)]
+mod s1_javascript;
+#[cfg(windows)]
 mod s1_popups;
 #[cfg(windows)]
 mod s3_ipc;

@@ -14,6 +14,8 @@ mod native;
 pub(super) use native::register_native;
 mod opener;
 mod settle;
+#[cfg(all(windows, feature = "native-lane"))]
+pub(super) use opener::ABANDONED;
 #[cfg(windows)]
 pub(super) use opener::navigation_admitted;
 pub(super) use opener::{INITIAL_BLANK, emit_popup_intent, enqueue_intent, opener_has_room};
