@@ -10,9 +10,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     ProbeLimits,
-    candidates::{
-        bounded_path_roots, known_install_roots_from_app_data, path_candidates_for_basename,
-    },
+    candidates::{bounded_path_roots, path_candidates_for_basename},
     validation::{authentic_descendant_file, authentic_harness_file},
     version_probe::run_version_command,
 };
@@ -124,7 +122,7 @@ fn adapter_package_root_from(npm_roots: Vec<PathBuf>) -> Option<(PathBuf, PathBu
 fn npm_global_roots() -> Vec<PathBuf> {
     #[cfg(windows)]
     {
-        known_install_roots_from_app_data(std::env::var_os("APPDATA").as_deref())
+        super::candidates::known_install_roots_from_app_data(std::env::var_os("APPDATA").as_deref())
     }
     #[cfg(not(windows))]
     {

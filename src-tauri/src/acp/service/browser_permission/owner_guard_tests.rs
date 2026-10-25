@@ -139,6 +139,7 @@ fn owner_rotation_between_sql_precheck_and_issue_denies_the_call() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn session_capability_owner_guard_denies_changed_binding() {
     let (service, runtime_owner) =

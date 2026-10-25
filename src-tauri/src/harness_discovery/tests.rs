@@ -11,10 +11,7 @@ use super::{
     present_candidate,
 };
 use super::{
-    candidates::{
-        candidates_for_test, known_install_roots_from_app_data, path_roots_from,
-        scan_candidates_from_roots,
-    },
+    candidates::{candidates_for_test, path_roots_from, scan_candidates_from_roots},
     validation::expected_basenames,
 };
 
@@ -459,7 +456,7 @@ fn appdata_npm_root_is_found_without_path_candidates() {
     );
     let candidates = candidates_for_test(
         HarnessExecutable::Claude,
-        known_install_roots_from_app_data(Some(app_data.as_os_str()))
+        super::candidates::known_install_roots_from_app_data(Some(app_data.as_os_str()))
             .into_iter()
             .map(|root| (DiscoverySource::KnownInstallRoot, root)),
     );
