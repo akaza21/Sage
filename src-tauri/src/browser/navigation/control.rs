@@ -1,4 +1,5 @@
-//! Back, forward, reload and stop for a browser tab.
+//! Back, forward, reload and stop for a browser tab, and the Annotate
+//! actions, which answer with a value.
 
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
@@ -15,10 +16,20 @@ pub(crate) async fn browser_control(
     state: State<'_, BrowserState>,
     tab_id: String,
     action: String,
-) -> Result<(), String> {
-    if let Some(on) = super::super::annotate::action(&action) {
-        return super::super::annotate::set(app, tab_id, on).await;
+    comment: Option<String>,
+    ordinal: Option<u8>,
+) -> Result<Option<serde_json::Value>, String> {
+    if let Some(action) = super::super::annotate::action(&action) {
+        return super::super::annotate::set(app, tab_id, action, comment, ordinal).await;
     }
+    history_control(state, tab_id, action).await.map(|()| None)
+}
+
+async fn history_control(
+    state: State<'_, BrowserState>,
+    tab_id: String,
+    action: String,
+) -> Result<(), String> {
     if !matches!(action.as_str(), "back" | "forward" | "reload" | "stop") {
         return Err("unknown browser action".into());
     }

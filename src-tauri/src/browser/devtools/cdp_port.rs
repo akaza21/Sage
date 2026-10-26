@@ -18,6 +18,7 @@ mod highlight;
 mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
+pub(super) mod select;
 mod world;
 use outcome::{navigation_failure, navigation_matches};
 

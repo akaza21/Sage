@@ -11,7 +11,7 @@ use super::{CdpTransport, Lane};
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A test-side CDP call outside the Agent transcript.
-fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
+pub(super) fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
     let result = lane
         .capability
         .port_mut()
@@ -22,13 +22,13 @@ fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
 }
 
 /// Counts every DOM mutation and fixes the global count from here on.
-fn watch_main_world(lane: &mut Lane) {
+pub(super) fn watch_main_world(lane: &mut Lane) {
     lane.evaluate(
         "window.__mutations = 0; new MutationObserver((records) => { window.__mutations += records.length; }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true }); window.__globalsAtLoad = Object.getOwnPropertyNames(window).length; true",
     );
 }
 
-fn assert_main_world_untouched(lane: &mut Lane) {
+pub(super) fn assert_main_world_untouched(lane: &mut Lane) {
     assert_eq!(lane.evaluate("window.__mutations"), json!(0));
     assert_eq!(
         lane.evaluate("Object.getOwnPropertyNames(window).length - window.__globalsAtLoad"),
@@ -38,7 +38,7 @@ fn assert_main_world_untouched(lane: &mut Lane) {
 }
 
 /// The button's node ids and centre, read natively with DOM enabled.
-fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
+pub(super) fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
     let root = cdp(lane, "DOM.getDocument", json!({"depth": 0}));
     let node = cdp(
         lane,
@@ -59,7 +59,7 @@ fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
     )
 }
 
-fn mouse(lane: &mut Lane, kind: &str, x: f64, y: f64) {
+pub(super) fn mouse(lane: &mut Lane, kind: &str, x: f64, y: f64) {
     let mut params = json!({"type": kind, "x": x, "y": y});
     if kind != "mouseMoved" {
         params["button"] = "left".into();
@@ -78,7 +78,7 @@ fn capture(lane: &mut Lane) -> String {
 }
 
 /// Waits for an `Overlay.*` event named `method`; other events are dropped.
-fn overlay_event(lane: &mut Lane, method: &str) -> Option<Value> {
+pub(super) fn overlay_event(lane: &mut Lane, method: &str) -> Option<Value> {
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
         let events = lane.capability.port_mut().transport.take_overlay_events();

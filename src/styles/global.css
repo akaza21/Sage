@@ -166,6 +166,9 @@
   --browser-popover-shadow: 0 12px 28px #0009;
   --browser-start-fill: #181818;
   --browser-bright-text: #f4f4f4;
+  --browser-annotate-blue: #339cff;
+  --browser-annotate-tick: #808080;
+  --browser-annotate-placeholder: #8c8c8c;
 
   /* File/Diff document authority (AV-03). Single source for the shared
      document palette; consumers alias their generic roles to these tokens.

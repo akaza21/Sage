@@ -203,9 +203,11 @@ fn redacted_url_is_bounded_after_redaction() {
                 entries: vec![NetworkEntry {
                     cursor: 1,
                     method: "GET".into(),
+                    // Not secret-shaped: a run of one letter would read as
+                    // base64 and be redacted.
                     url: format!(
                         "https://example.com/?safe={}",
-                        "x".repeat(BROWSER_LIMITS.url_bytes)
+                        "x-".repeat(BROWSER_LIMITS.url_bytes)
                     ),
                     status: 200,
                 }],

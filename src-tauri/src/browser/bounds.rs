@@ -1,4 +1,4 @@
-use tauri::{LogicalPosition, LogicalSize, State};
+use tauri::{LogicalPosition, LogicalSize, Manager, State};
 
 use super::BrowserState;
 
@@ -26,6 +26,18 @@ pub(crate) async fn browser_set_bounds(
     webview
         .set_position(LogicalPosition::new(x, y))
         .and_then(|()| webview.set_size(LogicalSize::new(width, height)))
-        .and_then(|()| webview.show())
+        .map_err(|error| error.to_string())?;
+    // A page frozen for an Annotate comment stays hidden until the comment
+    // is done. The check runs on the main thread, where Annotate's hide runs
+    // too and only after it marks the page frozen, so a show checked before
+    // the mark is always followed by that hide.
+    let app = webview.app_handle().clone();
+    let shown = webview.clone();
+    app.clone()
+        .run_on_main_thread(move || {
+            if !app.state::<BrowserState>().annotate.is_frozen(&tab_id) {
+                let _ = shown.show();
+            }
+        })
         .map_err(|error| error.to_string())
 }

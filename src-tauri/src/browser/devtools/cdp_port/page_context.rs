@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::acp::browser::{redact_console, redact_url};
+use crate::acp::browser::{redact_console, redact_url, safe_page_text};
 
 use super::super::snapshot::project;
 use super::{CdpPort, CdpTransport, DevtoolsPort};
@@ -15,21 +15,6 @@ pub(crate) struct CapturedPageContext {
     url: String,
     title: String,
     text: String,
-}
-
-fn safe_page_text(value: &str, limit: usize, multiline: bool) -> String {
-    let filtered: String = value
-        .chars()
-        .filter(|ch| {
-            (!ch.is_control() || (multiline && *ch == '\n'))
-                && !matches!(*ch, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
-        })
-        .collect();
-    let mut end = filtered.len().min(limit);
-    while !filtered.is_char_boundary(end) {
-        end -= 1;
-    }
-    filtered[..end].to_owned()
 }
 
 /// Reads the page the user is looking at as bounded, redacted context, only
@@ -91,15 +76,4 @@ pub(crate) fn capture_page_context<T: CdpTransport>(
         title: safe_page_text(&redact_console(title), 256, false),
         text,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::safe_page_text;
-
-    #[test]
-    fn page_text_filter_removes_controls_and_bounds_multibyte_text() {
-        assert_eq!(safe_page_text("A\u{202e}B\nC", 16, true), "AB\nC");
-        assert_eq!(safe_page_text("ééé", 5, true), "éé");
-    }
 }
