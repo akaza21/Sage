@@ -11,9 +11,7 @@ use crate::acp::{
     transport::{Frame, request_payload_digest},
 };
 
-use super::{
-    OmpBindingCapabilities, OmpTranslator, Operation, Outbound, ResearchBinding, TranslationError,
-};
+use super::{OmpBindingCapabilities, OmpTranslator, Operation, Outbound, ResearchBinding};
 
 mod support;
 

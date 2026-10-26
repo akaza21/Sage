@@ -13,7 +13,7 @@ use super::{
 };
 
 pub(super) mod support;
-use support::{capability, error_payload, identity, permission, text, unsupported};
+use support::{capability, error_payload, identity, text};
 pub(in crate::acp::bindings::codex) use support::{command_output_token, sanitize, validate_shape};
 
 mod items;

@@ -20,9 +20,7 @@ pub(crate) use request_digest::request_payload_digest;
     unused_imports,
     reason = "ordinary transport writer remains an admitted adapter seam"
 )]
-pub(crate) use writer::{
-    FrameWriteError, FrameWriteOutcome, FrameWriter, OutboundFrame, OutboundFrameClass,
-};
+pub(crate) use writer::{FrameWriteError, FrameWriteOutcome, OutboundFrame, OutboundFrameClass};
 
 #[cfg(test)]
 mod tests;

@@ -10,9 +10,7 @@ use crate::acp::{
 };
 
 use super::{OmpRuntime, RequestKind};
-use crate::acp::bindings::omp::{
-    AdapterEvent, ModelSummary, Operation, PromptTerminal, TranslationError,
-};
+use crate::acp::bindings::omp::{AdapterEvent, Operation, PromptTerminal, TranslationError};
 
 mod delivery;
 mod identity;
