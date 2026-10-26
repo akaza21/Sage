@@ -1,7 +1,8 @@
+#[cfg(test)]
+use crate::acp::limits::LIMITS;
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId, SageTurnId},
     intent::ExternalId,
-    limits::LIMITS,
 };
 
 /// A user choice for one exact, durably identified permission request.
@@ -34,6 +35,7 @@ pub(crate) struct PermissionIntent {
     pub normalized_payload_json: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PermissionDisposition {
     ResponseQueued,
@@ -48,6 +50,7 @@ pub(crate) enum DeclineCommit {
     IdenticalDuplicate,
 }
 
+#[cfg(test)]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PermissionError {
     #[error("permission request identity is invalid")]
@@ -60,13 +63,8 @@ pub(crate) enum PermissionError {
     ControlLane,
 }
 
+#[cfg(test)]
 pub(crate) trait PermissionJournal {
-    fn commit_ask(&mut self, _intent: &PermissionIntent) -> Result<(), PermissionError> {
-        Err(PermissionError::Durable)
-    }
-    fn commit_allow(&mut self, _intent: &PermissionIntent) -> Result<(), PermissionError> {
-        Err(PermissionError::Durable)
-    }
     fn commit_decline(
         &mut self,
         intent: &PermissionIntent,
@@ -75,26 +73,12 @@ pub(crate) trait PermissionJournal {
     fn resolved_declined(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError>;
 }
 
-pub(crate) fn ask_permission<J: PermissionJournal>(
-    journal: &mut J,
-    intent: &PermissionIntent,
-) -> Result<(), PermissionError> {
-    validate_intent(intent)?;
-    journal.commit_ask(intent)
-}
-
-pub(crate) fn allow_once_permission<J: PermissionJournal>(
-    journal: &mut J,
-    intent: &PermissionIntent,
-) -> Result<(), PermissionError> {
-    validate_intent(intent)?;
-    journal.commit_allow(intent)
-}
-
+#[cfg(test)]
 pub(crate) trait DeclineTransport {
     fn queue_decline(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError>;
 }
 
+#[cfg(test)]
 pub(crate) fn decline_permission<J: PermissionJournal, T: DeclineTransport>(
     journal: &mut J,
     transport: &mut T,
@@ -130,6 +114,7 @@ pub(crate) fn decline_permission<J: PermissionJournal, T: DeclineTransport>(
 /// Advances a decline only after the transport confirms that the response was
 /// written. Restart recovery never calls this function and never replays the
 /// response.
+#[cfg(test)]
 pub(crate) fn decline_written<J: PermissionJournal>(
     journal: &mut J,
     intent: &PermissionIntent,
@@ -141,6 +126,7 @@ pub(crate) fn decline_written<J: PermissionJournal>(
     Ok(PermissionDisposition::ResolvedDeclined)
 }
 
+#[cfg(test)]
 fn validate_intent(intent: &PermissionIntent) -> Result<(), PermissionError> {
     if intent.runtime_epoch == RuntimeEpoch::ZERO
         || !valid_digest(&intent.binding_digest)
@@ -154,6 +140,7 @@ fn validate_intent(intent: &PermissionIntent) -> Result<(), PermissionError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value

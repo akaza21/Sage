@@ -239,6 +239,7 @@ where
 }
 
 impl ProcessLivePort {
+    #[cfg(test)]
     pub(crate) fn new(
         owner: RuntimeOwner,
         mailbox: Arc<DriverMailbox>,

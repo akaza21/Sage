@@ -1,21 +1,28 @@
 use rusqlite::{Transaction, params};
 
+#[cfg(test)]
+use crate::acp::lifecycle::ServerRequestState;
+#[cfg(test)]
+use crate::acp::runtime::permissions::{PermissionError, PermissionJournal};
 use crate::acp::{
     contract::SageItemId,
-    lifecycle::ServerRequestState,
-    runtime::permissions::{DeclineCommit, PermissionError, PermissionIntent, PermissionJournal},
+    runtime::permissions::{DeclineCommit, PermissionIntent},
 };
 
 use super::{
-    EntityMutation, MutationDisposition, RequestStateCommand, StoreError, apply_request_state,
+    EntityMutation, MutationDisposition, StoreError,
     facts::{append_fact_payload, next_projection_revision, publish_projection},
 };
+#[cfg(test)]
+use super::{RequestStateCommand, apply_request_state};
 
+#[cfg(test)]
 pub(crate) struct PermissionDecisionJournal<'a> {
     connection: &'a mut rusqlite::Connection,
     now_millis: i64,
 }
 
+#[cfg(test)]
 impl<'a> PermissionDecisionJournal<'a> {
     pub(crate) fn new(connection: &'a mut rusqlite::Connection, now_millis: i64) -> Self {
         Self {
@@ -135,36 +142,8 @@ pub(super) fn receive_permission_request_in(
     })
 }
 
+#[cfg(test)]
 impl PermissionJournal for PermissionDecisionJournal<'_> {
-    fn commit_ask(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError> {
-        advance(
-            self.connection,
-            intent,
-            ServerRequestState::Asked,
-            self.now_millis,
-        )
-        .map(|_| ())
-        .map_err(|_| PermissionError::Durable)
-    }
-
-    fn commit_allow(&mut self, intent: &PermissionIntent) -> Result<(), PermissionError> {
-        advance(
-            self.connection,
-            intent,
-            ServerRequestState::AllowPending,
-            self.now_millis,
-        )
-        .and_then(|_| {
-            advance(
-                self.connection,
-                intent,
-                ServerRequestState::AllowCommitted,
-                self.now_millis,
-            )
-        })
-        .map(|_| ())
-        .map_err(|_| PermissionError::Durable)
-    }
     fn commit_decline(
         &mut self,
         intent: &PermissionIntent,
@@ -196,8 +175,10 @@ impl PermissionJournal for PermissionDecisionJournal<'_> {
     }
 }
 
+#[cfg(test)]
 pub(crate) type DenyOnlyPermissionJournal<'a> = PermissionDecisionJournal<'a>;
 
+#[cfg(test)]
 fn commit_decline(
     connection: &mut rusqlite::Connection,
     intent: &PermissionIntent,
@@ -271,6 +252,7 @@ pub(super) fn commit_decline_in(
     Ok(DeclineCommit::Applied)
 }
 
+#[cfg(test)]
 fn advance(
     connection: &mut rusqlite::Connection,
     intent: &PermissionIntent,

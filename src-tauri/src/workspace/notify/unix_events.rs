@@ -109,6 +109,7 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(buffer: &[u8]) -> Vec<(St
 
 pub(super) const MAX_UNIX_WATCH_DIRECTORIES: usize = 64;
 
+#[cfg(test)]
 pub(super) fn unix_workspace_notify_supported() -> bool {
     cfg!(any(target_os = "macos", target_os = "linux"))
 }

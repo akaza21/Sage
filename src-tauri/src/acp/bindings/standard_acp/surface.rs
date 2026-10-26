@@ -1,6 +1,8 @@
 use serde_json::Value;
 
-use crate::acp::{bindings::adapter::RefusalDetail, lifecycle::TurnState};
+use crate::acp::bindings::adapter::RefusalDetail;
+#[cfg(test)]
+use crate::acp::lifecycle::TurnState;
 
 use super::profile::StandardAcpProfile;
 
@@ -73,6 +75,7 @@ impl SessionUpdateKind {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StopReason {
     EndTurn,
@@ -82,6 +85,7 @@ pub(crate) enum StopReason {
     Cancelled,
 }
 
+#[cfg(test)]
 pub(crate) const STOP_REASONS: &[StopReason] = &[
     StopReason::EndTurn,
     StopReason::MaxTokens,
@@ -90,6 +94,7 @@ pub(crate) const STOP_REASONS: &[StopReason] = &[
     StopReason::Cancelled,
 ];
 
+#[cfg(test)]
 impl StopReason {
     pub(crate) fn parse(value: &str) -> Option<Self> {
         STOP_REASONS
@@ -117,6 +122,7 @@ impl StopReason {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClientRequestMethod {
     RequestPermission,
@@ -129,6 +135,7 @@ pub(crate) enum ClientRequestMethod {
     TerminalKill,
 }
 
+#[cfg(test)]
 pub(crate) const CLIENT_REQUEST_METHODS: &[ClientRequestMethod] = &[
     ClientRequestMethod::RequestPermission,
     ClientRequestMethod::ReadTextFile,
@@ -140,6 +147,7 @@ pub(crate) const CLIENT_REQUEST_METHODS: &[ClientRequestMethod] = &[
     ClientRequestMethod::TerminalKill,
 ];
 
+#[cfg(test)]
 impl ClientRequestMethod {
     pub(crate) fn parse(value: &str) -> Option<Self> {
         CLIENT_REQUEST_METHODS
@@ -194,9 +202,6 @@ impl ToolCallContentKind {
 
 pub(crate) const UNKNOWN_UPDATE_REASON: &str = "The harness sent a session update this profile does not describe; \
 its raw kind is retained and nothing is inferred from it";
-
-pub(crate) const UNKNOWN_STOP_REASON: &str = "The harness ended the prompt with a stop reason outside the ACP set; \
-the Turn is failed and the raw reason is retained";
 
 pub(crate) const UNKNOWN_NOTIFICATION_REASON: &str = "The harness sent a notification outside the ACP method set; \
 its raw method is retained and nothing is inferred from it";

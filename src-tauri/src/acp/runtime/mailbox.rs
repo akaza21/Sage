@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
-use crate::acp::{contract::ProjectionRevision, intent::ProjectionChangedV1};
+use crate::acp::contract::ProjectionRevision;
+use crate::acp::intent::ProjectionChangedV1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum MailboxError {
@@ -21,6 +22,7 @@ pub(crate) struct ProjectionMailbox {
 }
 
 impl ProjectionMailbox {
+    #[cfg(test)]
     pub(crate) fn publish_committed(
         &self,
         event: ProjectionChangedV1,
@@ -53,6 +55,7 @@ impl ProjectionMailbox {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn take(&self) -> Option<ProjectionChangedV1> {
         self.pending
             .lock()

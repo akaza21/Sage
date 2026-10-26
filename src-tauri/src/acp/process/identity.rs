@@ -76,6 +76,13 @@ impl ProcessIdentityReceipt {
 /// Native monotonic anchors for the exact verified child launch. The receipt
 /// stays attached to the retained process authority, so a collector cannot
 /// accidentally combine a start anchor from one epoch with another process.
+#[cfg_attr(
+    not(all(windows, feature = "acp-fixture")),
+    allow(
+        dead_code,
+        reason = "only the Windows fixture characterization reads spawn timing"
+    )
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SpawnTimingReceipt {
     frequency_hz: u64,
@@ -83,6 +90,13 @@ pub(crate) struct SpawnTimingReceipt {
     process_ready_tick: u64,
 }
 
+#[cfg_attr(
+    not(all(windows, feature = "acp-fixture")),
+    allow(
+        dead_code,
+        reason = "only the Windows fixture characterization reads spawn timing"
+    )
+)]
 impl SpawnTimingReceipt {
     pub(super) fn new(
         frequency_hz: u64,
@@ -111,6 +125,7 @@ impl SpawnTimingReceipt {
         self.process_ready_tick
     }
 
+    #[cfg(test)]
     pub(crate) fn duration_micros(&self) -> u64 {
         let ticks = self.process_ready_tick - self.spawn_started_tick;
         u64::try_from(

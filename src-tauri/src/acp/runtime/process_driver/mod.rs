@@ -19,7 +19,7 @@ pub(crate) use close::{
     ActiveCloseBeginState, CloseError, CloseFailure, ClosingProcessWrite, WorkerZeroProof,
     ZeroCloseState,
 };
-pub(crate) use driver::{DriverAdmission, DriverStep, ProcessAdapterDriver};
+pub(crate) use driver::{DriverStep, ProcessAdapterDriver};
 pub(crate) use idle_close::{
     IdleCloseBeginState, IdleCloseError, IdleCloseFailure, IdleClosingState, IdleZeroState,
 };
@@ -33,12 +33,13 @@ pub(crate) use mailbox::{
     CancelIntent, ControlMessage, DriverMailbox, MailboxError, PromptIntent, ReaderTerminal,
 };
 pub(crate) use prepared_write::{PreparedProcessWrite, PreparedWriteError, PreparedWriteFailure};
-pub(crate) use reader::{BlockingStdout, BlockingStdoutReader, ProcessExitWatcher};
+#[cfg(test)]
+pub(crate) use reader::BlockingStdout;
+pub(crate) use reader::{BlockingStdoutReader, ProcessExitWatcher};
 pub(crate) use reusable_close::{ReusableCloseBeginState, ReusableClosingState, ReusableZeroState};
 pub(crate) use reuse::{
-    BindTurnResult, CompleteTurnResult, CompletedDriverParts, CoordinatorZeroProcessHandoff,
-    PrepareDriverTurnError, PrepareDriverTurnFailure, PreparedDriverTurn, RebindFailure,
-    ZeroProcessHandoff,
+    CompletedDriverParts, PrepareDriverTurnError, PrepareDriverTurnFailure, PreparedDriverTurn,
+    RebindFailure, ZeroProcessHandoff,
 };
 pub(crate) use types::{
     CoordinatorZeroToken, DispatchSource, DriverClock, DriverError, DriverProgress,
@@ -70,11 +71,9 @@ mod tests;
 mod worker_tests;
 pub(crate) use activation::{
     ActivationDriverError, ActivationProcessDriver, ActivationStartupStep,
-    RetainedActivationDriverConstruction,
 };
 pub(crate) use activation_parts::{
     ActivationProjectionRecoveryHandoff, ActivationZeroProcessHandoff,
-    CompletedActivationDriverParts, FirstTurnBindError, FirstTurnBindFailure,
-    FirstTurnDriverResult, FirstTurnRecoveryParts, PrepareActivationTurnError,
-    PrepareActivationTurnFailure, PreparedActivationTurn, RecoveryActivationDriverParts,
+    CompletedActivationDriverParts, FirstTurnBindFailure, PrepareActivationTurnError,
+    PrepareActivationTurnFailure, PreparedActivationTurn,
 };

@@ -248,6 +248,7 @@ impl JournalBatchBuilder {
 }
 
 impl<S: AcpStore + 'static> JournalRunner<S> {
+    #[cfg(test)]
     pub(crate) fn spawn(self) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || self.run_blocking())
     }

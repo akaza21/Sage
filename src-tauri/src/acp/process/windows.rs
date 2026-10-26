@@ -36,8 +36,10 @@ use self::job::JobBoundary;
 pub(crate) use self::job::JobBoundary as TerminalJobBoundary;
 use self::native::{NativeHandle, StdioSet};
 use self::observe::{observe_exit, try_observe_exit, wait_until};
+#[cfg(test)]
+pub(crate) use self::preview::PreviewJobBoundary;
 pub(crate) use self::preview::{
-    PreviewJobBoundary, PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess,
+    PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess,
 };
 #[cfg(test)]
 pub(crate) use self::preview_recovery_tests::retained_preview_recovery_with_retry_fault_for_test;

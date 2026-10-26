@@ -1,14 +1,16 @@
 use serde_json::Value;
 
+#[cfg(test)]
+use crate::acp::lifecycle::TurnState;
 use crate::acp::{
     contract::{RequiredText, SafeText},
     intent::NormalizedPayload,
-    lifecycle::{ItemLifecycle, TurnState},
+    lifecycle::ItemLifecycle,
 };
 
-use super::super::{
-    sanitize::normalized_text, surface::HARNESS_RPC_ERROR_CODE, wire::decode_frame,
-};
+#[cfg(test)]
+use super::super::wire::decode_frame;
+use super::super::{sanitize::normalized_text, surface::HARNESS_RPC_ERROR_CODE};
 use super::{
     AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError,
     decode::{rpc_id, usage_event, usage_object},
@@ -24,6 +26,7 @@ pub(crate) enum PromptTerminal {
 }
 
 impl PromptTerminal {
+    #[cfg(test)]
     pub(crate) fn turn_state(self) -> TurnState {
         match self {
             Self::Completed => TurnState::Completed,
@@ -34,6 +37,7 @@ impl PromptTerminal {
 }
 
 impl StandardAcpTranslator {
+    #[cfg(test)]
     pub(crate) fn translate_prompt_result(
         &mut self,
         raw: &[u8],

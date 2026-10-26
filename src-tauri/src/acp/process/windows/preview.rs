@@ -57,6 +57,10 @@ pub(crate) struct PreviewWindowsProcess {
 }
 
 pub(crate) enum PreviewLaunchFailure {
+    #[allow(
+        dead_code,
+        reason = "callers only tell a clean failure from a retained one"
+    )]
     Clean(LaunchError),
     Retained(PreviewLaunchRecovery),
 }

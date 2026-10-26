@@ -11,6 +11,10 @@ mod command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostState {
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     Unavailable,
     Cold,
     Activating,
@@ -31,6 +35,10 @@ pub(crate) enum PromptWrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostOutcome {
     Activated,
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     PromptPrepared,
     PromptAccepted,
     SteerQueued,
@@ -335,6 +343,7 @@ pub(super) enum HostReply {
     Outcome(HostOutcome),
     NativeRpc(crate::acp::goal::NativeRpcReply),
     Prepared(SageTurnId),
+    #[allow(dead_code, reason = "only tests query the host state")]
     State(HostState),
 }
 
