@@ -25,7 +25,7 @@ impl Drop for Fixture {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn renames_one_regular_file_without_changing_content() {
     let fixture = Fixture::new();
@@ -63,7 +63,7 @@ fn collision_fails_without_overwriting_either_file() {
     );
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn case_only_rename_commits_the_requested_exact_spelling() {
     let fixture = Fixture::new();
@@ -145,7 +145,7 @@ fn link_source_fails_before_mutation() {
     assert!(fixture.root.join("src/old.rs").is_file());
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn source_replacement_after_held_preflight_fails_before_mutation() {
     let fixture = Fixture::new();
@@ -171,7 +171,7 @@ fn source_replacement_after_held_preflight_fails_before_mutation() {
     assert!(!fixture.root.join("src/new.rs").exists());
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
     let fixture = Fixture::new();
@@ -198,7 +198,7 @@ fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
     assert!(fixture.root.join("src/new.rs").is_file());
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn parent_swap_during_reconciliation_never_confirms_the_replacement_path() {
     let fixture = Fixture::new();
@@ -237,7 +237,7 @@ fn parent_swap_during_reconciliation_never_confirms_the_replacement_path() {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn root_swap_during_reconciliation_never_confirms_the_replacement_path() {
     let fixture = Fixture::new();
@@ -276,7 +276,7 @@ fn root_swap_during_reconciliation_never_confirms_the_replacement_path() {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[test]
 fn unsupported_platform_fails_without_mutating_the_source() {
     let fixture = Fixture::new();
@@ -293,4 +293,24 @@ fn unsupported_platform_fails_without_mutating_the_source() {
         "preserve\n"
     );
     assert!(!fixture.root.join("src/new.rs").exists());
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn a_linked_parent_directory_fails_before_mutation() {
+    let fixture = Fixture::new();
+    std::os::unix::fs::symlink(fixture.root.join("src"), fixture.root.join("linked")).unwrap();
+    let source = crate::domain::ResourceRef {
+        root_id: "root".into(),
+        relative_path: "linked/old.rs".into(),
+    };
+
+    assert!(
+        fixture
+            .workspace
+            .rename_file(&source, "renamed.rs")
+            .is_err()
+    );
+    assert!(fixture.root.join("src/old.rs").is_file());
+    assert!(!fixture.root.join("src/renamed.rs").exists());
 }

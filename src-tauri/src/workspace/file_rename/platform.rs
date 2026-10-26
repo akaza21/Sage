@@ -6,7 +6,7 @@ use crate::{
     workspace::RootIdentity,
 };
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use crate::workspace::root_identity_path;
 
 pub(super) struct ParentAuthority<'a> {
@@ -21,7 +21,7 @@ pub(super) struct RenameObservation {
     pub(super) target_identity_confirmed: bool,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[derive(Debug, Clone, Copy)]
 struct RenameIdentityProof {
     root: RootIdentity,
@@ -29,19 +29,23 @@ struct RenameIdentityProof {
     source: RootIdentity,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[derive(Debug)]
 pub(super) struct FileRenameAuthority {
     proof: RenameIdentityProof,
     directories: Vec<File>,
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "held open so its identity cannot be reused")
+    )]
     source: File,
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[derive(Debug)]
 pub(super) struct FileRenameAuthority;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 impl FileRenameAuthority {
     fn parent(&self) -> &File {
         self.directories
@@ -50,7 +54,7 @@ impl FileRenameAuthority {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn verify_visible_authority(
     authority: &FileRenameAuthority,
     root: &Path,
@@ -71,7 +75,7 @@ fn verify_visible_authority(
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn observe_listing<L>(
     authority: &FileRenameAuthority,
     root: &Path,
@@ -91,8 +95,12 @@ where
 mod windows;
 #[cfg(windows)]
 pub(super) use windows::{observe_recovery, rename_file_noreplace};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod unix;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) use unix::{observe_recovery, rename_file_noreplace};
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn rename_file_noreplace<C, P, S, L>(
     _authority: ParentAuthority<'_>,
     _source_name: &str,
@@ -118,7 +126,7 @@ where
     ))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn observe_recovery<L>(
     _authority: std::sync::Arc<FileRenameAuthority>,
     _root: &Path,
