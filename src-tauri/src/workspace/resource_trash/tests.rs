@@ -87,3 +87,38 @@ fn preflight_rejects_root_kind_mismatch_and_nonempty_folder_without_mutation() {
     assert!(fixture.root.join("src/nonempty/child.rs").is_file());
     assert!(fixture.root.join("src/dotgit/.git/config").is_file());
 }
+
+#[test]
+fn a_backend_warning_keeps_the_outcome_unconfirmed_even_when_the_name_is_gone() {
+    let fixture = Fixture::new();
+    let source = fixture.workspace.resource("src/file.rs").unwrap();
+    let parent = fixture.workspace.resource("src").unwrap();
+    fs::remove_file(fixture.root.join("src/file.rs")).unwrap();
+    let listing = || fixture.workspace.list_directory(&parent);
+
+    let warned = super::commit_from_observation(
+        &source,
+        parent.clone(),
+        super::platform::TrashObservation {
+            warning: Some("a different item reached the trash".into()),
+            listing: listing(),
+            source_absent_confirmed: true,
+        },
+    );
+    let clean = super::commit_from_observation(
+        &source,
+        parent.clone(),
+        super::platform::TrashObservation {
+            warning: None,
+            listing: listing(),
+            source_absent_confirmed: true,
+        },
+    );
+
+    assert!(!warned.resource_confirmed);
+    assert_eq!(
+        warned.warning.as_deref(),
+        Some("a different item reached the trash")
+    );
+    assert!(clean.resource_confirmed);
+}

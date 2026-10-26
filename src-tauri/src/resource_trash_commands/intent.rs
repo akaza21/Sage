@@ -8,7 +8,11 @@ use crate::{
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
     project_registry::RootRecord,
-    workspace::{MAX_DIRECTORY_ENTRIES, resource_trash::ResourceTrashIdentity, root_identity_path},
+    workspace::{
+        MAX_DIRECTORY_ENTRIES,
+        resource_trash::{ResourceTrashIdentity, TRASH_NAME},
+        root_identity_path,
+    },
 };
 
 use super::{MAX_JAVASCRIPT_SAFE_INTEGER, layout, parent_resource};
@@ -85,9 +89,9 @@ impl PendingTrashIntent {
             || self.transition_epoch >= MAX_JAVASCRIPT_SAFE_INTEGER
             || self.digest != self.calculate_digest()
         {
-            return Err(AppError::InvalidRequest(
-                "pending Recycle Bin intent is corrupt".into(),
-            ));
+            return Err(AppError::InvalidRequest(format!(
+                "pending {TRASH_NAME} intent is corrupt"
+            )));
         }
         crate::workspace::validate_contract_path(&self.source.relative_path, false)?;
         crate::workspace::validate_contract_path(&self.parent.relative_path, true)
@@ -104,9 +108,9 @@ pub(super) fn persist(database: &Database, pending: &PendingTrashIntent) -> AppR
         |row| row.get(0),
     )?;
     if exists {
-        return Err(AppError::InvalidRequest(
-            "another pending Recycle Bin intent requires startup reconciliation".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "another pending {TRASH_NAME} intent requires startup reconciliation"
+        )));
     }
     transaction.execute(
         "INSERT INTO resource_trash_intents(
@@ -143,9 +147,9 @@ pub(super) fn delete_exact(
         [&pending.digest],
     )?;
     if removed != 1 {
-        return Err(AppError::InvalidRequest(
-            "pending Recycle Bin intent changed before settlement".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "pending {TRASH_NAME} intent changed before settlement"
+        )));
     }
     Ok(())
 }
@@ -194,7 +198,7 @@ pub(crate) fn recover_at_startup(database: &Database) -> AppResult<Option<Startu
     Ok(Some(StartupTrashRecovery {
         transition_epoch: pending.transition_epoch + 1,
         notice: format!(
-            "A pending Recycle Bin operation was recovered as EffectUnknown after restart; {detail}."
+            "A pending {TRASH_NAME} operation was recovered as EffectUnknown after restart; {detail}."
         ),
     }))
 }
@@ -280,7 +284,9 @@ fn load_root(database: &Database, pending: &PendingTrashIntent) -> AppResult<Roo
             },
         )
         .optional()?
-        .ok_or_else(|| AppError::InvalidRequest("pending Recycle Bin root is unavailable".into()))
+        .ok_or_else(|| {
+            AppError::InvalidRequest(format!("pending {TRASH_NAME} root is unavailable"))
+        })
 }
 
 struct FilesystemObservation {
@@ -320,7 +326,7 @@ fn observe_filesystem(
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let source_name = source.file_name().ok_or_else(|| {
-                AppError::InvalidRequest("pending Recycle Bin source has no filename".into())
+                AppError::InvalidRequest(format!("pending {TRASH_NAME} source has no filename"))
             })?;
             let mut count = 0_usize;
             let mut source_seen = false;
@@ -328,9 +334,9 @@ fn observe_filesystem(
                 let entry = entry?;
                 count += 1;
                 if count > MAX_DIRECTORY_ENTRIES {
-                    return Err(AppError::ResourceLimit(
-                        "pending Recycle Bin parent exceeds the bounded recovery scan".into(),
-                    ));
+                    return Err(AppError::ResourceLimit(format!(
+                        "pending {TRASH_NAME} parent exceeds the bounded recovery scan"
+                    )));
                 }
                 if entry.file_name() == source_name {
                     source_seen = true;
@@ -377,13 +383,13 @@ fn join_relative(root: &std::path::Path, relative: &str) -> PathBuf {
 
 fn identity_array(bytes: Vec<u8>) -> AppResult<[u8; 24]> {
     bytes.try_into().map_err(|_| {
-        AppError::InvalidRequest("pending Recycle Bin identity length is corrupt".into())
+        AppError::InvalidRequest(format!("pending {TRASH_NAME} identity length is corrupt"))
     })
 }
 
 fn nonnegative(value: i64) -> AppResult<u64> {
     u64::try_from(value)
-        .map_err(|_| AppError::InvalidRequest("pending Recycle Bin counter is corrupt".into()))
+        .map_err(|_| AppError::InvalidRequest(format!("pending {TRASH_NAME} counter is corrupt")))
 }
 
 fn kind_text(kind: TrashResourceKind) -> &'static str {
@@ -397,8 +403,8 @@ fn parse_kind(value: &str) -> AppResult<TrashResourceKind> {
     match value {
         "file" => Ok(TrashResourceKind::File),
         "emptyFolder" => Ok(TrashResourceKind::EmptyFolder),
-        _ => Err(AppError::InvalidRequest(
-            "pending Recycle Bin kind is corrupt".into(),
-        )),
+        _ => Err(AppError::InvalidRequest(format!(
+            "pending {TRASH_NAME} kind is corrupt"
+        ))),
     }
 }

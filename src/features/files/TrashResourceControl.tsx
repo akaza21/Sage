@@ -5,6 +5,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { sameOrDescendantResource } from "../../domain/resourceIdentity";
 import type { ResourceRef, TrashResourceKind } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
+import { trashName } from "../../ui/trashName";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 
 interface TrashResourceControlProps {
@@ -56,6 +57,7 @@ export function TrashResourceControl({
     );
   };
 
+  const moveLabel = `Move to ${trashName()}`;
   const displayTarget =
     dialog.target ?? (source && kind ? { source, kind } : null);
   const resourceLabel =
@@ -66,7 +68,7 @@ export function TrashResourceControl({
   const triggerTitle = sourceOpen
     ? "Close File and Diff tabs for this resource and its descendants"
     : source && kind
-      ? "Move to Recycle Bin"
+      ? moveLabel
       : "Select one visible closed file or empty folder";
 
   return (
@@ -76,7 +78,7 @@ export function TrashResourceControl({
         type="button"
         role="menuitem"
         tabIndex={-1}
-        aria-label="Move to Recycle Bin"
+        aria-label={moveLabel}
         title={triggerTitle}
         disabled={!source || !kind || sourceOpen || projectTransitioning}
         onClick={() => {
@@ -85,7 +87,7 @@ export function TrashResourceControl({
         }}
       >
         <Trash2 size={14} aria-hidden="true" />
-        <span>Move to Recycle Bin</span>
+        <span>{moveLabel}</span>
       </button>
       {dialog.target ? (
         <ModalDialog
@@ -94,9 +96,10 @@ export function TrashResourceControl({
           onDismiss={() => dialog.closeDialog()}
         >
           <form className="new-file-dialog__form" onSubmit={submit}>
-            <h2 id="trash-resource-title">Move to Recycle Bin?</h2>
+            <h2 id="trash-resource-title">{moveLabel}?</h2>
             <p>
-              Move this {resourceLabel} to the operating system Recycle Bin.
+              Move this {resourceLabel} to the {trashName()}. You can restore it
+              from there.
             </p>
             <p className="new-file-dialog__preview">Path: {path}</p>
             <p className="new-file-dialog__error" role="alert">
@@ -117,7 +120,7 @@ export function TrashResourceControl({
                 type="submit"
                 disabled={inFlight}
               >
-                {inFlight ? "Moving…" : "Move to Recycle Bin"}
+                {inFlight ? "Moving…" : moveLabel}
               </button>
             </div>
           </form>

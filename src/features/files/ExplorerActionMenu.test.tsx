@@ -146,7 +146,7 @@ describe("ExplorerActionMenu", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Add folder root",
       "Rename File",
-      "Move to Recycle Bin",
+      "Move to Trash",
     ]);
     expect(items[0]).toHaveFocus();
 
@@ -303,7 +303,7 @@ describe("ExplorerActionMenu", () => {
       within(menu).queryByRole("menuitem", { name: /Rename/ }),
     ).not.toBeInTheDocument();
     expect(
-      within(menu).queryByRole("menuitem", { name: "Move to Recycle Bin" }),
+      within(menu).queryByRole("menuitem", { name: "Move to Trash" }),
     ).not.toBeInTheDocument();
   });
 

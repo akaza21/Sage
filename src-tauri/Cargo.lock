@@ -2749,6 +2749,8 @@ dependencies = [
  "jpeg-decoder",
  "libc",
  "log",
+ "objc2",
+ "objc2-foundation",
  "png 0.17.16",
  "rcgen",
  "regex",
