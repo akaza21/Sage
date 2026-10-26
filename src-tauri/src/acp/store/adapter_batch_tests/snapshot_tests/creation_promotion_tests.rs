@@ -72,6 +72,10 @@ struct Harness {
     fixture: Fixture,
     translator: StandardAcpTranslator,
     resources: NativeRoots,
+    #[allow(
+        dead_code,
+        reason = "held so the temporary tree lives as long as the harness"
+    )]
     tree: TempTree,
     project: PathBuf,
     now: i64,

@@ -70,6 +70,7 @@ impl WriteFence {
         self.phase == Phase::StdoutOpen
     }
 
+    #[cfg(test)]
     pub(crate) fn awaiting_observation(&self) -> bool {
         self.phase == Phase::AwaitingObservation
     }

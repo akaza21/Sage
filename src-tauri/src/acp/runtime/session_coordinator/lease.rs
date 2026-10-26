@@ -40,31 +40,7 @@ impl SessionTreeLease {
             .map_err(Into::into)
     }
 
-    /// Releases only in-memory scheduler authority during final-window
-    /// shutdown. Durable Starting/Ready state is intentionally left for the
-    /// existing restart-recovery transaction.
-    // Failure returns the exact lease and one-shot proof for retry.
-    #[allow(clippy::result_large_err)]
-    pub(crate) fn shutdown_after_zero_process(
-        mut self,
-        proof: ZeroProcessProof,
-    ) -> Result<(), (Self, ZeroProcessProof)> {
-        if self.validate_proof(&proof).is_err() {
-            return Err((self, proof));
-        }
-        let Some(tree) = self.tree.take() else {
-            return Err((self, proof));
-        };
-        match tree.zero_process_converged_retained() {
-            Ok(()) => Ok(()),
-            Err((tree, _)) => {
-                self.tree = Some(tree);
-                Err((self, proof))
-            }
-        }
-    }
-
-    #[cfg(feature = "acp-fixture")]
+    #[cfg(all(windows, feature = "acp-fixture"))]
     pub(crate) fn set_characterization_observation(
         &mut self,
         observation: crate::acp::characterization_observation::CharacterizationObservation,
@@ -149,6 +125,7 @@ impl SessionTreeLease {
         Ok(mutation)
     }
 
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) async fn fail_activation_after_zero_process(
         &mut self,
         command: FailActivationCommand,
@@ -165,6 +142,7 @@ impl SessionTreeLease {
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn abort_activation_after_zero_process(
         &mut self,
         command: crate::acp::store::AbortActivationCommand,

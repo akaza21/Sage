@@ -1,5 +1,3 @@
-use rusqlite::{OptionalExtension, params};
-
 use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     lifecycle::SessionState,
@@ -57,20 +55,6 @@ pub(crate) fn load_recovery_candidates(
         });
     }
     Ok(candidates)
-}
-
-pub(crate) fn load_projection_revision(
-    connection: &rusqlite::Connection,
-    session_id: &str,
-) -> Result<Option<i64>, StoreError> {
-    connection
-        .query_row(
-            "SELECT projection_revision FROM agent_sessions WHERE id=?1",
-            params![session_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(StoreError::Database)
 }
 
 fn parse_session_state(value: &str) -> Result<SessionState, StoreError> {

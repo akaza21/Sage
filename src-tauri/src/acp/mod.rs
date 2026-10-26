@@ -27,10 +27,6 @@ pub(crate) mod process;
 pub mod projection;
 pub(crate) mod recovery;
 pub(crate) mod redaction;
-pub(crate) mod transcript_quote;
-// The admitted runtime host constructs this snapshot; keep the independently
-// reviewable packet warning-clean until that host integration lands.
-#[allow(dead_code)]
 pub(crate) mod resource_mapper;
 pub(crate) mod runtime;
 pub(crate) mod scheduler;
@@ -38,6 +34,7 @@ pub(crate) mod semantic_ingress;
 pub(crate) mod service;
 pub(crate) mod session_config;
 pub(crate) mod store;
+pub(crate) mod transcript_quote;
 pub(crate) mod transport;
 
 #[cfg(test)]

@@ -1,45 +1,49 @@
-#![allow(dead_code)] // Removed when the isolated packet receives central wiring.
-
 mod activation_pump;
 mod adapter_pump;
 mod adapter_store_journal;
 mod bounded_thread;
 mod coordinator;
+#[allow(
+    dead_code,
+    reason = "agent file operations are staged and not dispatched yet"
+)]
 pub(crate) mod file_ops;
 pub(crate) mod host_browse;
 mod journal;
 mod journal_support;
 pub(crate) mod later_permission;
+#[cfg(test)]
 mod live_capacity;
 mod live_engine;
+#[cfg(test)]
 mod mailbox;
+#[cfg(test)]
 mod normalizer;
 pub(crate) mod notice_routes;
 mod notifier;
 pub(crate) mod permissions;
 pub(crate) mod read_text_file;
 
-#[allow(unused_imports)]
 pub(crate) use activation_pump::{
-    ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
-    ActivationMode, ActivationPump, ActivationPumpError, ActivationReceipt, ActivationTransport,
-    CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
-    IdleActivationParts, RecoveryActivationParts, TeardownActivationParts,
-    is_available_commands_update,
+    ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationMode,
+    ActivationPump, ActivationPumpError, ActivationTransport, CoordinatorActivationHandoff,
+    CoordinatorActivationJournal, CoordinatorShutdownHandoff, IdleActivationParts,
+    RecoveryActivationParts, TeardownActivationParts, is_available_commands_update,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
+#[cfg(test)]
+pub(crate) use adapter_pump::normalized_payload_bytes;
 pub(crate) use adapter_pump::{
-    ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpAdmission, AdapterPumpError,
-    CompletedPumpParts, DurableAdapterEvent, EgressTransport, FlushDisposition, JournalReceipt,
-    NonfatalRefusal, PumpIntent, PumpJournalError, QueueDisposition, SessionPumpIntent, TurnScope,
-    normalized_payload_bytes,
+    ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
+    EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, SessionPumpIntent,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, PumpIntent, TurnScope};
 pub(crate) use adapter_store_journal::SqliteAdapterBatchJournal;
 pub(crate) use bounded_thread::{BoundedThread, ThreadWaitError};
 mod process_driver;
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(crate) use process_driver::{
     CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
     protocol_failure_requests_tree_exit,
@@ -49,56 +53,54 @@ mod runtime_host;
 mod session_coordinator;
 pub(crate) mod terminal_detail;
 
-#[allow(unused_imports)]
 pub(crate) use coordinator::{
     ActiveDispatch, CoordinatorError, PrepareDispatch, PrepareFailure, PrepareRecovery,
     ProjectIntentAuthority, SendCoordinator,
 };
-#[allow(unused_imports)]
-pub(crate) use journal::{JournalError, JournalHandle, JournalLane, JournalRunner};
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use journal::JournalRunner;
+pub(crate) use journal::{JournalError, JournalHandle, JournalLane};
+#[cfg(test)]
 pub(crate) use live_capacity::{
     CapacityScope, LiveCapacityError, LiveCapacityLease, LiveCapacityPool,
 };
-#[allow(unused_imports)]
 pub(crate) use live_engine::{LiveRuntimeEngine, LiveRuntimePort, LiveWrite};
-#[allow(unused_imports)]
+#[cfg(test)]
 pub(crate) use mailbox::{MailboxError, ProjectionMailbox, PublishDisposition};
-#[allow(unused_imports)]
+#[cfg(test)]
 pub(crate) use normalizer::{NormalizerInput, normalize};
-#[allow(unused_imports)]
 pub(crate) use notifier::{
     NotificationError, NotificationRecovery, NotificationSink, NotificationSinkFuture,
     ProjectionNotifier, PublishError, PublishOutcome,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use process_driver::MailboxError as DriverMailboxError;
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
+pub(crate) use process_driver::StdinTransport;
+#[cfg(all(test, windows))]
 pub(crate) use process_driver::{
-    ActivationDriverError, ActivationProcessDriver, ActivationProjectionRecoveryHandoff,
-    ActivationStartFailure, ActivationZeroProcessHandoff, ActiveCloseBeginState, BindTurnResult,
-    BlockingStdout, BlockingStdoutReader, CancelIntent, CompleteTurnResult,
-    CompletedActivationDriverParts, CompletedDriverParts, CoordinatorZeroProcessHandoff,
-    DriverAdmission, DriverClock, DriverError, DriverMailbox, DriverProgress, DriverStep,
-    FirstDeliveryUnknown, FirstTurnBindError, FirstTurnBindFailure, FirstTurnDriverResult,
-    FirstTurnRecoveryParts, FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState,
-    LiveRunnerExit, LiveRunnerHandle, MailboxError as DriverMailboxError,
-    PrepareActivationTurnError, PrepareActivationTurnFailure, PrepareDriverTurnError,
-    PrepareDriverTurnFailure, PreparedActivationTurn, PreparedDriverTurn, PreparedProcessWrite,
-    PreparedWriteError, PreparedWriteFailure, ProcessAdapterDriver, ProcessExitWatcher,
-    ProcessLivePort, ProcessTreeControl, PromptIntent, ReaderTerminal, RebindFailure,
-    RecoveryActivationDriverParts, RetainedActivationDriverConstruction, RunnerStartSubstep,
-    StdinTransport, SystemDriverClock, TeardownCause, TreeLeaseOwner, ZeroProcessHandoff,
+    ActivationDriverError, ActiveCloseBeginState, BlockingStdoutReader,
 };
-#[allow(unused_imports)]
-pub(crate) use projection_publisher::{
-    ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
+pub(crate) use process_driver::{
+    ActivationProcessDriver, ActivationProjectionRecoveryHandoff, ActivationStartFailure,
+    ActivationZeroProcessHandoff, DriverClock, DriverError, DriverMailbox, FirstTurnWorkerContext,
+    LiveRunnerExit, LiveRunnerHandle, PreparedProcessWrite, PreparedWriteError, ProcessLivePort,
+    ProcessTreeControl, ReaderTerminal, RunnerStartSubstep, SystemDriverClock, TeardownCause,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use process_driver::{
+    CompletedActivationDriverParts, ProcessAdapterDriver, TreeLeaseOwner,
+};
+#[cfg(test)]
+pub(crate) use projection_publisher::ProjectionPublishError;
+pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher};
+#[cfg(test)]
+pub(crate) use runtime_host::HostState;
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostState, HostSteerIntent, NativeRpcCompletionSink, PromptWrite,
-    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
+    HostPromptIntent, HostSteerIntent, NativeRpcCompletionSink, PromptWrite, RuntimeEngine,
+    RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
 };
-#[allow(unused_imports)]
 pub(crate) use session_coordinator::{
     ActivationRecovery, SessionCoordinator, SessionCoordinatorError, SessionTreeLease,
     ZeroProcessProof,

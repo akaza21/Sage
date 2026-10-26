@@ -78,6 +78,7 @@ pub(super) fn payload_measure(
     Ok(writer.finish()?.1)
 }
 
+#[cfg(test)]
 pub(crate) fn normalized_payload_bytes(
     payload: &NormalizedPayload,
 ) -> Result<usize, AdapterPumpError> {

@@ -166,7 +166,7 @@ fn required_path(key: &str) -> OsString {
 #[test]
 #[ignore = "requires the observed Windows global npm OpenCode installation"]
 fn real_opencode_survives_its_production_launch_spec_environment() {
-    use crate::acp::bindings::runtime::{NativeRuntime, RuntimeFactory};
+    use crate::acp::bindings::runtime::RuntimeFactory;
 
     let app_data = std::env::var_os("APPDATA").expect("APPDATA");
     let shim = PathBuf::from(app_data).join("npm").join("opencode.cmd");

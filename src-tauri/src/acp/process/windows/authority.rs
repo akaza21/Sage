@@ -87,6 +87,7 @@ impl TreeControl {
         })
     }
 
+    #[cfg(any(test, feature = "acp-fixture"))]
     pub(crate) fn spawn_timing_receipt(&self) -> SpawnTimingReceipt {
         self.0.spawn_timing
     }
@@ -172,14 +173,17 @@ impl TreeControl {
         Ok(requested.unwrap_or(TreeExit::Exited { code: Some(code) }))
     }
 
+    #[cfg(test)]
     pub(crate) fn wait(&self) -> Result<TreeExit, LaunchError> {
         self.wait_until(Instant::now() + self.0.terminate_deadline)
     }
 
+    #[cfg(any(test, feature = "acp-fixture"))]
     pub(crate) fn wait_before(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
         self.wait_until(deadline)
     }
 
+    #[cfg(test)]
     pub(crate) fn terminate(&self, reason: TreeExit) -> Result<TreeExit, LaunchError> {
         let deadline = Instant::now() + self.0.terminate_deadline;
         self.request_termination(reason)?;
@@ -209,6 +213,7 @@ impl TreeControl {
         Ok((exit, ZeroProcessToken::new(self.0.runtime_epoch)))
     }
 
+    #[cfg(test)]
     pub(crate) fn terminate_zero(
         &self,
         reason: TreeExit,
@@ -346,6 +351,10 @@ pub(super) struct TreeAuthority {
     #[cfg(feature = "acp-fixture")]
     pub(super) characterization_observation: Mutex<CharacterizationObservationState>,
     pub(super) runtime_epoch: u64,
+    #[cfg_attr(
+        not(feature = "acp-fixture"),
+        allow(dead_code, reason = "only the fixture lane reads spawn timing so far")
+    )]
     pub(super) spawn_timing: SpawnTimingReceipt,
 }
 

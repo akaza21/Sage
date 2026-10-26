@@ -153,6 +153,7 @@ impl RuntimeHost {
         Duration::from_millis(command.deadline_millis())
     }
 
+    #[cfg(test)]
     pub(in crate::acp::runtime::runtime_host) fn join(&self) -> Result<(), HostError> {
         self.join_with_timeout(self.cleanup_timeout())
     }

@@ -1,5 +1,4 @@
-#![allow(dead_code)] // Curated host-tool dispatch is invoked from tests and ACP adapters.
-
+#[cfg(test)]
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
@@ -11,10 +10,13 @@ use crate::acp::intent::NormalizedPayload;
 pub(crate) const CURATED_APPLY_FILE_TOOL_NAME: &str = "sage.apply_file";
 pub(crate) const CURATED_BROWSE_TOOL_NAME: &str = "_sage/browse";
 pub(crate) const MAX_HARNESS_BROWSE_URL_BYTES: usize = 2048;
+#[cfg(test)]
 pub(crate) const MAX_HARNESS_BROWSE_SESSIONS: usize = 2;
 
+#[cfg(test)]
 const MAX_ID_BYTES: usize = 512;
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrowseIntent {
     pub chat_id: String,
@@ -22,6 +24,7 @@ pub(crate) struct BrowseIntent {
     pub url: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrowseSession {
     pub chat_id: String,
@@ -36,6 +39,7 @@ pub(crate) struct HostBrowseRequest {
     pub url: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct BrowseHost {
     sessions: BTreeMap<String, BrowseSession>,
@@ -46,6 +50,7 @@ pub(crate) fn advertised_host_tools() -> &'static [&'static str] {
     &[CURATED_APPLY_FILE_TOOL_NAME, CURATED_BROWSE_TOOL_NAME]
 }
 
+#[cfg(test)]
 pub(crate) fn is_advertised_host_tool(name: &str) -> bool {
     advertised_host_tools().contains(&name)
 }
@@ -171,6 +176,7 @@ pub(crate) fn host_browse_session_matches(
         .is_none_or(|session| session == active_session)
 }
 
+#[cfg(test)]
 impl BrowseHost {
     pub(crate) fn dispatch(&mut self, intent: &BrowseIntent) -> Option<BrowseSession> {
         if !is_safe_id(&intent.chat_id) {
@@ -222,10 +228,12 @@ impl BrowseHost {
     }
 }
 
+#[cfg(test)]
 fn is_safe_id(value: &str) -> bool {
     !value.is_empty() && value.len() <= MAX_ID_BYTES && !value.contains('\0')
 }
 
+#[cfg(test)]
 fn sessions_conflict(existing: Option<&str>, incoming: Option<&str>) -> bool {
     matches!((existing, incoming), (Some(left), Some(right)) if left != right)
 }

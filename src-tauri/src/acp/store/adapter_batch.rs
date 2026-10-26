@@ -218,6 +218,7 @@ impl AdapterInboundBatchCommand {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn apply_adapter_inbound_batch(
     connection: &mut rusqlite::Connection,
     command: AdapterInboundBatchCommand,

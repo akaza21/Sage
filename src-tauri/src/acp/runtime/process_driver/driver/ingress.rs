@@ -20,6 +20,7 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    #[cfg(test)]
     pub(crate) async fn run_next(
         &mut self,
         mailbox: &DriverMailbox,
@@ -33,6 +34,7 @@ where
         }
     }
 
+    #[cfg(test)]
     pub(crate) async fn run_next_step(
         &mut self,
         mailbox: &DriverMailbox,
