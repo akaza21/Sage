@@ -12,6 +12,13 @@
       content="Sage is a small, persistent, ACP-native agent development environment."
     />
     <title>Sage</title>
+    <!-- Paint the canvas color before the bundle loads so launch never flashes white. -->
+    <style>
+      html,
+      body {
+        background: #141414;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
