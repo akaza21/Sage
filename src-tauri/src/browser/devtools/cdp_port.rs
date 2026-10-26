@@ -15,6 +15,7 @@ use super::{
 
 mod act;
 mod highlight;
+mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
 mod world;

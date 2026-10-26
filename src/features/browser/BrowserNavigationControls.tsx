@@ -18,9 +18,13 @@ import {
   type RefObject,
 } from "react";
 
-import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
+import type {
+  BrowserControlAction,
+  BrowserNavigation,
+} from "../../ports/nativeBrowserPort";
 import { useWorkbenchStore } from "../../app/store";
 import type { BrowserPageIdentity } from "./browserAddress";
+import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 
 interface Props {
   navigation: BrowserNavigation | null;
@@ -29,7 +33,7 @@ interface Props {
   addressField: RefObject<HTMLInputElement | null>;
   onAddressChange: (value: string) => void;
   onNavigate: () => void;
-  onControl: (action: "back" | "forward" | "reload" | "stop") => void;
+  onControl: (action: BrowserControlAction) => void;
   onFind: () => void;
   onPrint: () => void;
   onScreenshot: () => void;
@@ -148,6 +152,7 @@ export function BrowserNavigationControls({
           )}
         </button>
       </div>
+      <BrowserAnnotateControl navigation={navigation} onControl={onControl} />
       <form
         className="browser-surface__address"
         onSubmit={(event) => {
