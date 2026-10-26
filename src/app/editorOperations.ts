@@ -1,27 +1,6 @@
-import type { EditorDocument } from "../domain/workbench";
-import type { ActiveEditorState } from "./editorSlice";
-
 const MAX_QUEUED_EDITOR_OPERATIONS = 8;
 let editorOperationPipeline: Promise<void> = Promise.resolve();
 let queuedEditorOperations = 0;
-
-export function editorErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export function editorReady(document: EditorDocument): ActiveEditorState {
-  return {
-    phase: "ready",
-    resource: document.resource,
-    document,
-    content: document.buffer.content,
-    revision: document.buffer.revision,
-    persistedRevision: document.buffer.revision,
-    persisting: false,
-    saving: false,
-    message: null,
-  };
-}
 
 export function enqueueEditorOperation<T>(
   operation: () => Promise<T>,

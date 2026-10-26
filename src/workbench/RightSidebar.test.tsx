@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef, RootRepositoryStatus } from "../domain/workbench";
-import { workspaceSearchDesktop } from "../features/search";
+import { workspaceSearchDesktop } from "../features/search/workspaceSearchDesktop";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { RightSidebar } from "./RightSidebar";
 

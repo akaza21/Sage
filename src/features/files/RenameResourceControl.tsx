@@ -11,6 +11,7 @@ import { ModalDialog } from "../../ui/ModalDialog";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { renameTargetResource } from "./fileRenameContract";
 import { renameFolderTargetResource } from "./folderRenameContract";
+import { errorMessage } from "../../domain/errors";
 
 export function RenameResourceControl({
   kind,
@@ -64,7 +65,7 @@ export function RenameResourceControl({
       if (folder) renameFolderTargetResource(capturedSource, basename);
       else renameTargetResource(capturedSource, basename);
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : String(error));
+      setLocalError(errorMessage(error));
       return;
     }
     setLocalError(null);

@@ -15,10 +15,8 @@ import {
   type ActiveEditorState,
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
-import {
-  editorErrorMessage as errorMessage,
-  enqueueEditorOperation,
-} from "./editorOperations";
+import { errorMessage } from "../domain/errors";
+import { enqueueEditorOperation } from "./editorOperations";
 import {
   matchesActiveTabIntent,
   matchesProjectIntent,

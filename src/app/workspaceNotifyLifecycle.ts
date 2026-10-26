@@ -13,6 +13,7 @@ import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
+import { errorMessage } from "../domain/errors";
 
 type CloseStage =
   | "closeRequested"
@@ -43,7 +44,7 @@ async function runCloseStage(
     traceCloseStage(stage, "end");
   } catch (error) {
     traceCloseStage(stage, "error");
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     throw new Error(`Close ${stage} failed: ${detail}`, { cause: error });
   }
 }
