@@ -11,10 +11,8 @@ import {
 } from "./projectIntent";
 import { runEnsureLocalProject } from "./ensureLocalProject";
 import { runSwitchProject } from "./switchProject";
-import {
-  currentProjectLayout as layout,
-  projectErrorMessage as errorMessage,
-} from "./projectProjection";
+import { errorMessage } from "../domain/errors";
+import { currentProjectLayout as layout } from "./projectProjection";
 import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
 import { closeLiveWorkbench } from "./workspaceNotifyLifecycle";

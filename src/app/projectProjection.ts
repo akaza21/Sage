@@ -5,10 +5,6 @@ import type {
 import { browserLiveTabs } from "../ports/nativeBrowserPort";
 import type { WorkbenchState } from "./store";
 
-export function projectErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function currentProjectLayout(
   state: WorkbenchState,
 ): ProjectLayoutRequest | null {

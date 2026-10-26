@@ -14,7 +14,6 @@ export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
 export const MAX_AGENT_RAIL_RECENT_CHATS = 8;
 export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
-export const LOCAL_PROJECT_NAME = "Local";
 export const UNKNOWN_PROJECT_NAME = "Unknown project";
 
 export interface AgentRailProjectGroup {

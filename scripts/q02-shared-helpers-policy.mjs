@@ -55,13 +55,6 @@ export const Q02_POLICY_OWNERSHIP = Object.freeze([
     reason: "Chat Search rejects arrays",
     discriminator: "plain record plus Array.isArray rejection",
   },
-  {
-    rule: "nonArrayRecord",
-    path: "src/features/search/ide1ProjectExplorerSearchFile.ts",
-    symbol: "isNonArrayRecord",
-    reason: "IDE journey protocol rejects arrays",
-    discriminator: "plain record plus Array.isArray rejection",
-  },
 ]);
 
 const production = /\.(?:ts|tsx)$/u;

@@ -24,10 +24,6 @@ export function sameRepository(
   );
 }
 
-export function rootRepositoryRef(rootId: string): RepositoryRef {
-  return { rootId, relativePath: "" };
-}
-
 export function diffCacheKey(
   repository: RepositoryRef | null | undefined,
   resource: ResourceRef,
@@ -43,16 +39,4 @@ export function diffCacheKey(
 export function diffCacheResourceKey(cacheKey: string): string {
   const split = cacheKey.indexOf(COMPOSITE_SEPARATOR);
   return split === -1 ? cacheKey : cacheKey.slice(split + 1);
-}
-
-export function invalidateDiffCacheForResource<T>(
-  diffs: Record<string, T>,
-  resource: ResourceRef,
-): Record<string, T> {
-  const target = resourceKey(resource);
-  return Object.fromEntries(
-    Object.entries(diffs).filter(
-      ([key]) => diffCacheResourceKey(key) !== target,
-    ),
-  );
 }

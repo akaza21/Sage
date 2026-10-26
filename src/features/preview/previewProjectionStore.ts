@@ -8,6 +8,7 @@ import type {
 } from "../../domain/previewProjection";
 import { acpDesktop } from "../../services/acpDesktop";
 import { previewOwnerKey, samePreviewOwner } from "./previewPresentation";
+import { errorMessage } from "../../domain/errors";
 
 type PreviewState = {
   owner: PreviewProjectionOwner | null;
@@ -57,7 +58,7 @@ function transitionAllowed(
 }
 
 function message(error: unknown): string {
-  const value = error instanceof Error ? error.message : String(error);
+  const value = errorMessage(error);
   return value.slice(0, 8192) || "Preview updates are unavailable.";
 }
 

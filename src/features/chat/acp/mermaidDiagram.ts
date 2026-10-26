@@ -4,7 +4,6 @@ import { mermaidLines, clampMermaidLabel as clampLabel } from "./mermaidText";
 
 export const MAX_MERMAID_NODES = 32;
 export const MAX_MERMAID_EDGES = 48;
-export const MAX_MERMAID_LABEL = 64;
 export const MAX_MERMAID_SOURCE_BYTES = 8192;
 
 export type MermaidDirection = "TD" | "LR";

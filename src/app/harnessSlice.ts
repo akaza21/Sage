@@ -15,6 +15,7 @@ import {
 } from "./harnessModelCache";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
+import { errorMessage } from "../domain/errors";
 
 export type HarnessDiscoveryPhase =
   | "idle"
@@ -201,7 +202,7 @@ export const createHarnessSlice: StateCreator<
       }
     } catch (error) {
       if (!current(generation, projectId, requestGeneration, harnessId)) return;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       if (usesAccountModelDiscovery) {
         set({ harnessDiscoveryPhase: "error", harnessDiscoveryError: message });
       } else {
@@ -286,8 +287,7 @@ export const createHarnessSlice: StateCreator<
         if (!authCurrent(get(), scope, requestGeneration)) return;
         set({
           harnessDiscoveryPhase: "error",
-          harnessDiscoveryError:
-            error instanceof Error ? error.message : String(error),
+          harnessDiscoveryError: errorMessage(error),
         });
       }
     },
@@ -324,8 +324,7 @@ export const createHarnessSlice: StateCreator<
         if (!authCurrent(get(), scope, requestGeneration)) return;
         set({
           harnessDiscoveryPhase: "error",
-          harnessDiscoveryError:
-            error instanceof Error ? error.message : String(error),
+          harnessDiscoveryError: errorMessage(error),
         });
       }
     },
