@@ -129,15 +129,17 @@ export function BrowserAnnotatePopover({
 const NO_SINK = "The composer cannot take page elements yet";
 const FULL = "This message already has 8 page elements";
 
-/** Loads the frozen frame and turns the comment into an element item. */
+/**
+ * Loads the frozen frame and turns the comment into an element item. The
+ * element keeps waiting until the composer took the item, so a refused item
+ * stays on screen with the reason.
+ */
 export default function BrowserAnnotateComment({
   tabId,
   selection,
-  onError,
 }: {
   tabId: string;
   selection: BrowserAnnotateSelection;
-  onError: (message: string) => void;
 }) {
   const [frame, setFrame] = useState<BrowserAnnotateFrame | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,10 +164,11 @@ export default function BrowserAnnotateComment({
       error={error}
       onConfirm={(comment) =>
         void browserAnnotateConfirm(tabId, ordinal!, comment)
-          .then((item) => {
-            if (!handOffBrowserElement(item))
-              onError("The page element could not be attached");
-          })
+          .then((item) =>
+            handOffBrowserElement(item)
+              ? browserControl(tabId, "annotateCancel")
+              : setError("The page element could not be attached"),
+          )
           .catch(fail)
       }
       onCancel={() => void browserControl(tabId, "annotateCancel").catch(fail)}

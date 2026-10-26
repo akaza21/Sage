@@ -237,3 +237,12 @@ it("reports a failed pick through the surface's error banner", async () => {
   expect(onError).toHaveBeenCalledWith("browser element unavailable");
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+it("drops an element left waiting by an earlier chrome once it listens", async () => {
+  await renderControl();
+  expect(announce).toBeDefined();
+  expect(invokeNative).toHaveBeenCalledWith("browser_control", {
+    tabId: "browser-1",
+    action: "annotateCancel",
+  });
+});

@@ -40,6 +40,9 @@ pub(crate) struct PageElement {
     pub positional: String,
     pub text: String,
     pub sensitive: bool,
+    /// A form control sits inside the element or its labels, so the
+    /// accessible name may carry the control's value.
+    pub controls: bool,
     pub title: String,
     pub rect: Rect,
     pub viewport: Viewport,
@@ -55,8 +58,9 @@ pub(crate) struct Rect {
     pub height: f64,
 }
 
-/// The layout viewport in page CSS px: its scroll offset, its size with and
-/// without scrollbars, and device pixels per CSS px.
+/// The visual viewport in page CSS px: its offset in the page, the webview's
+/// size and the visible size without scrollbars at the current pinch zoom,
+/// and device pixels per page CSS px.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Viewport {
@@ -86,7 +90,7 @@ impl Viewport {
             .all(size)
             && self.scale.is_finite()
             && self.scale > 0.0
-            && self.scale <= 8.0
+            && self.scale <= 40.0
     }
 }
 
@@ -108,7 +112,11 @@ pub(crate) struct Picked {
     pub role: String,
     pub name: String,
     pub text: String,
+    /// The contract box: the element's part inside the document.
     pub bounds: ElementBox,
+    /// The whole element, for the chrome's outline; it may start above or
+    /// left of the document.
+    pub outline: ElementBox,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -144,7 +152,8 @@ pub(crate) struct BrowserElement {
 
 /// Bounds and redacts what the page reported. `role` and `name` come from
 /// the accessibility tree; a sensitive field (password, hidden, card or
-/// one-time-code) keeps its role only.
+/// one-time-code) keeps its role only, as does an element whose name may
+/// embed a form control's value.
 pub(crate) fn pick(
     page: &PageElement,
     role: &str,
@@ -160,13 +169,14 @@ pub(crate) fn pick(
             .or_else(|| selector(&page.positional))
             .ok_or("browser element selector unavailable")?,
         role: if valid_role(role) { role } else { "generic" }.to_owned(),
-        name: if page.sensitive {
+        name: if page.sensitive || page.controls {
             String::new()
         } else {
             settled(name, NAME_BYTES, false)
         },
         text: settled(&page.text, TEXT_BYTES, true),
         bounds: element_box(page.rect)?,
+        outline: outline(page.rect)?,
     };
     confirm(&picked, 1, "")?;
     Ok(picked)
@@ -316,7 +326,26 @@ fn selector(candidate: &str) -> Option<String> {
     (!selector.is_empty() && clean(&selector, SELECTOR_BYTES, false)).then_some(selector)
 }
 
+/// The contract box: the part of the element inside the document, whose
+/// origin cannot be negative, at least 1 px each way.
 fn element_box(rect: Rect) -> Result<ElementBox, String> {
+    let whole = outline(rect)?;
+    let inside = |start: i64, extent: i64| {
+        let from = start.clamp(0, COORDINATE_MAX);
+        (from, (start + extent - from).clamp(1, EXTENT_MAX))
+    };
+    let (x, width) = inside(whole.x, whole.width);
+    let (y, height) = inside(whole.y, whole.height);
+    Ok(ElementBox {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+/// The whole element, rounded to CSS px.
+fn outline(rect: Rect) -> Result<ElementBox, String> {
     let Rect {
         x,
         y,
@@ -328,8 +357,8 @@ fn element_box(rect: Rect) -> Result<ElementBox, String> {
     }
     let round = |value: f64, low: i64, high: i64| (value.round() as i64).clamp(low, high);
     Ok(ElementBox {
-        x: round(x, 0, COORDINATE_MAX),
-        y: round(y, 0, COORDINATE_MAX),
+        x: round(x, -COORDINATE_MAX, COORDINATE_MAX),
+        y: round(y, -COORDINATE_MAX, COORDINATE_MAX),
         width: round(width, 1, EXTENT_MAX),
         height: round(height, 1, EXTENT_MAX),
     })

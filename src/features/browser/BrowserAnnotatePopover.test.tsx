@@ -54,7 +54,6 @@ const item: BrowserElementContext = {
 };
 const onConfirm = vi.fn();
 const onCancel = vi.fn();
-const onError = vi.fn();
 let unregister = () => {};
 
 beforeEach(() => {
@@ -160,13 +159,7 @@ it("will not confirm when blocked or over 4 KB, and says why", () => {
 
 it("says the composer cannot take elements until Chat registers a sink", async () => {
   invokeNative.mockResolvedValue(frame);
-  render(
-    <BrowserAnnotateComment
-      tabId="browser-1"
-      selection={selection}
-      onError={onError}
-    />,
-  );
+  render(<BrowserAnnotateComment tabId="browser-1" selection={selection} />);
   const tick = screen.getByRole("button", { name: "Add comment" });
   expect(tick).toBeDisabled();
   expect(tick).toHaveAttribute(
@@ -176,7 +169,7 @@ it("says the composer cannot take elements until Chat registers a sink", async (
   await act(async () => undefined);
 });
 
-it("numbers the comment from the sink, confirms it in Rust and hands the item off", async () => {
+it("numbers the comment from the sink, confirms it in Rust, hands the item off, then ends the wait", async () => {
   const attach = vi.fn();
   unregister = registerBrowserElementSink({ nextOrdinal: () => 2, attach });
   invokeNative.mockImplementation(
@@ -184,11 +177,7 @@ it("numbers the comment from the sink, confirms it in Rust and hands the item of
       args.action === "annotateFrame" ? frame : item,
   );
   const { container } = render(
-    <BrowserAnnotateComment
-      tabId="browser-1"
-      selection={selection}
-      onError={onError}
-    />,
+    <BrowserAnnotateComment tabId="browser-1" selection={selection} />,
   );
   await waitFor(() =>
     expect(container.querySelector(".browser-annotate__frame")).not.toBeNull(),
@@ -207,10 +196,16 @@ it("numbers the comment from the sink, confirms it in Rust and hands the item of
     ordinal: 2,
     comment: "Make it blue",
   });
-  expect(onError).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(invokeNative).toHaveBeenLastCalledWith("browser_control", {
+      tabId: "browser-1",
+      action: "annotateCancel",
+    }),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
-it("refuses an item that fails the mirrored checks and cancels through Rust", async () => {
+it("keeps an item the composer refuses waiting, says why, and cancels through Rust", async () => {
   const attach = vi.fn();
   unregister = registerBrowserElementSink({ nextOrdinal: () => 1, attach });
   invokeNative.mockImplementation(
@@ -221,20 +216,18 @@ it("refuses an item that fails the mirrored checks and cancels through Rust", as
           ? { ...item, url: "https://user:pw@example.com/" }
           : null,
   );
-  render(
-    <BrowserAnnotateComment
-      tabId="browser-1"
-      selection={selection}
-      onError={onError}
-    />,
-  );
+  render(<BrowserAnnotateComment tabId="browser-1" selection={selection} />);
   fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
-  await waitFor(() =>
-    expect(onError).toHaveBeenCalledWith(
-      "The page element could not be attached",
-    ),
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The page element could not be attached",
   );
   expect(attach).not.toHaveBeenCalled();
+  // The element still waits: nothing released it in Rust.
+  expect(invokeNative).not.toHaveBeenCalledWith("browser_control", {
+    tabId: "browser-1",
+    action: "annotateCancel",
+  });
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() =>
     expect(invokeNative).toHaveBeenCalledWith("browser_control", {
@@ -255,13 +248,7 @@ it("shows a refused confirmation in the box and keeps the element waiting", asyn
       throw "browser element text rejected";
     },
   );
-  render(
-    <BrowserAnnotateComment
-      tabId="browser-1"
-      selection={selection}
-      onError={onError}
-    />,
-  );
+  render(<BrowserAnnotateComment tabId="browser-1" selection={selection} />);
   fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "browser element text rejected",

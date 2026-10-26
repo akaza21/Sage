@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import type {
-  BrowserAnnotateChange,
-  BrowserAnnotateSelection,
-  BrowserControlAction,
-  BrowserNavigation,
+import {
+  browserControl,
+  type BrowserAnnotateChange,
+  type BrowserAnnotateSelection,
+  type BrowserControlAction,
+  type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import BrowserAnnotateComment from "./BrowserAnnotatePopover";
 
@@ -49,6 +50,12 @@ export function BrowserAnnotateControl({
           if (payload.error) onError(payload.error);
         }),
       )
+      // A new chrome has no comment box: drop any element still waiting,
+      // which shows the page again.
+      .then((stop) => {
+        void browserControl(tabId, "annotateCancel").catch(() => undefined);
+        return stop;
+      })
       .catch(() => () => undefined);
     return () => {
       void unlisten.then((stop) => stop());
@@ -73,11 +80,7 @@ export function BrowserAnnotateControl({
       </button>
       {tabId && selection && frame
         ? createPortal(
-            <BrowserAnnotateComment
-              tabId={tabId}
-              selection={selection}
-              onError={onError}
-            />,
+            <BrowserAnnotateComment tabId={tabId} selection={selection} />,
             frame,
           )
         : null}

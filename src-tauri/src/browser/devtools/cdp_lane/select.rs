@@ -14,7 +14,10 @@ use super::{
         assert_main_world_untouched, cdp, mouse, overlay_event, press_button, watch_main_world,
     },
 };
-use crate::browser::annotate::element;
+use crate::browser::annotate::{
+    element::{self, PageElement},
+    selection::Frame,
+};
 
 const EMAIL_CANARY: &str = "CANARY-EMAIL-1c90e2";
 const NOTES_CANARY: &str = "CANARY-NOTES-6b2f71";
@@ -216,5 +219,83 @@ fn the_frame_shows_the_scrolled_viewport() {
     assert!(
         visible(&shown) != top,
         "a viewport-relative clip would show the top"
+    );
+}
+
+const SHIP_CANARY: &str = "CANARY-SHIP-2a7c58";
+const SELECT_CANARY: &str = "CANARY-SELECT-4e8a13";
+
+/// Picks `selector` on the open page: what the page reported, the frame
+/// and the item.
+fn item_of(lane: &mut Lane, selector: &str) -> (PageElement, Frame, element::BrowserElement) {
+    lane.capability.port_mut().start_inspect().unwrap();
+    let backend = backend_of(lane, selector);
+    let picked = lane.capability.port_mut().pick_element(backend).unwrap();
+    let url = lane.site.url("/annotate.html");
+    let item = element::pick(&picked.page, &picked.role, &picked.name, "browser-1", &url)
+        .and_then(|picked| element::confirm(&picked, 1, ""))
+        .unwrap_or_else(|error| panic!("item for {selector}: {error}"));
+    (picked.page, picked.frame, item)
+}
+
+#[test]
+fn a_name_that_may_embed_a_form_value_never_reaches_the_item() {
+    let mut lane = Lane::open("/annotate.html");
+    lane.evaluate("document.getElementById('ship').focus(); true");
+    cdp(&mut lane, "Input.insertText", json!({"text": SHIP_CANARY}));
+    lane.evaluate("document.getElementById('speed').selectedIndex = 1; true");
+    for selector in ["#wrapped-input", "#wrapped-select", "#ship"] {
+        let (page, _, item) = item_of(&mut lane, selector);
+        // A wrapper's name is built from its content, values included; the
+        // input's own name comes from its label alone.
+        let wraps = selector != "#ship";
+        assert_eq!(page.controls, wraps, "{selector}");
+        assert_eq!(
+            item.name.trim(),
+            if wraps { "" } else { "Ship to" },
+            "{selector}"
+        );
+        let all = serde_json::to_string(&item).unwrap();
+        for canary in [SHIP_CANARY, SELECT_CANARY] {
+            assert!(!all.contains(canary), "{canary} reached {selector}: {all}");
+        }
+    }
+    let (page, _, item) = item_of(&mut lane, "#press");
+    assert!(!page.controls);
+    assert_eq!(item.name, "Press me");
+}
+
+#[test]
+fn text_the_user_cannot_see_never_reaches_the_item() {
+    let mut lane = Lane::open("/annotate.html");
+    let (_, _, item) = item_of(&mut lane, "#hidden-text");
+    assert_eq!(item.text, "Visible words");
+}
+
+#[test]
+fn a_pinch_zoomed_page_frames_what_it_shows() {
+    let mut lane = Lane::open("/annotate.html");
+    let (plain, _, _) = item_of(&mut lane, "#press");
+    let zoom = |lane: &mut Lane, factor: f64| {
+        cdp(
+            lane,
+            "Emulation.setPageScaleFactor",
+            json!({"pageScaleFactor": factor}),
+        );
+    };
+    zoom(&mut lane, 2.0);
+    let (zoomed, frame, _) = item_of(&mut lane, "#press");
+    zoom(&mut lane, 1.0);
+    let (before, after) = (plain.viewport, zoomed.viewport);
+    assert_eq!(after.scale, before.scale * 2.0);
+    assert!((after.width - before.width / 2.0).abs() < 1.0, "{after:?}");
+    assert!(
+        (after.client_width - before.client_width / 2.0).abs() < 8.0,
+        "{after:?}"
+    );
+    assert_eq!(jpeg_size(&frame.jpeg_base64), (frame.width, frame.height));
+    assert_eq!(
+        f64::from(frame.width),
+        (after.client_width * after.scale).round()
     );
 }

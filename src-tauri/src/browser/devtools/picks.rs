@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, collections::HashMap, sync::mpsc, time::Duration};
 
-use tauri::Webview;
+use tauri::{AppHandle, Webview};
 use webview2_com::{
     CoTaskMemPWSTR, DevToolsProtocolEventReceivedEventHandler,
     Microsoft::Web::WebView2::Win32::ICoreWebView2DevToolsProtocolEventReceiver,
@@ -53,13 +53,19 @@ pub(crate) fn watch_picks(
     })
 }
 
-/// Stops listening for this tab's clicks.
-pub(crate) fn unwatch_picks(webview: &Webview) -> Result<(), BrowserFailure> {
-    let label = webview.label().to_owned();
-    on_main(webview, move |_| {
+/// Stops listening for this tab's clicks. It needs only the app, so a tab
+/// whose webview is already gone still lets go of its listener.
+pub(crate) fn unwatch_picks(app: &AppHandle, label: &str) -> Result<(), BrowserFailure> {
+    let label = label.to_owned();
+    let (sender, receiver) = mpsc::sync_channel(1);
+    app.run_on_main_thread(move || {
         unregister(PICKS.with(|picks| picks.borrow_mut().remove(&label)));
-        Ok(())
+        let _ = sender.send(());
     })
+    .map_err(|_| BrowserFailure::Unavailable)?;
+    receiver
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|_| BrowserFailure::Unavailable)
 }
 
 fn unregister(registration: Option<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>) {

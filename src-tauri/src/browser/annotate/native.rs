@@ -29,20 +29,30 @@ impl InspectOverlay for NativeOverlay<'_> {
         })
         .map_err(unavailable)?;
         devtools::set_annotate(&webview, true).map_err(|error| {
-            let _ = devtools::unwatch_picks(&webview);
+            let _ = devtools::unwatch_picks(self.1, label);
             unavailable(error)
         })
     }
 
-    fn stop(&self, label: &str) -> Result<(), String> {
+    /// Always lets go of the click listener, which holds the app; a closing
+    /// tab skips the overlay, whose webview may already be gone.
+    fn stop(&self, label: &str, closing: bool) -> Result<(), String> {
+        let unwatched = devtools::unwatch_picks(self.1, label).map_err(unavailable);
+        if closing {
+            return unwatched;
+        }
         let webview = self.webview(label)?;
-        let unwatched = devtools::unwatch_picks(&webview);
         devtools::set_annotate(&webview, false)
-            .and(unwatched)
             .map_err(unavailable)
+            .and(unwatched)
     }
 
-    fn pick(&self, label: &str, backend_node_id: u64) -> Result<Selection, String> {
+    fn pick(
+        &self,
+        label: &str,
+        backend_node_id: u64,
+        freeze: &dyn Fn(),
+    ) -> Result<Selection, String> {
         let webview = self.webview(label)?;
         let url = self
             .0
@@ -53,6 +63,7 @@ impl InspectOverlay for NativeOverlay<'_> {
         let node = devtools::pick_element(&webview, backend_node_id)?;
         let picked = element::pick(&node.page, &node.role, &node.name, label, &url)
             .and_then(|picked| {
+                freeze();
                 webview.hide().map_err(unavailable)?;
                 Ok(picked)
             })

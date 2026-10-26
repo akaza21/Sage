@@ -83,10 +83,18 @@ pub(crate) enum Exit {
 /// Drives the native inspect overlay of one tab.
 pub(crate) trait InspectOverlay {
     fn start(&self, label: &str) -> Result<(), String>;
-    fn stop(&self, label: &str) -> Result<(), String>;
+    /// Stops listening for clicks, and turns the overlay off unless the tab
+    /// is `closing`, when its webview may already be gone.
+    fn stop(&self, label: &str, closing: bool) -> Result<(), String>;
     /// Reads the clicked element, pauses hover highlighting, captures the
-    /// page and hides it so the chrome can draw over the frozen frame.
-    fn pick(&self, label: &str, backend_node_id: u64) -> Result<Selection, String>;
+    /// page and hides it so the chrome can draw over the frozen frame. It
+    /// calls `freeze` before the hide, so a resize never shows the page.
+    fn pick(
+        &self,
+        label: &str,
+        backend_node_id: u64,
+        freeze: &dyn Fn(),
+    ) -> Result<Selection, String>;
     /// Shows the frozen page again when `reveal`, and resumes hover
     /// highlighting when `resume`.
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String>;
@@ -124,6 +132,26 @@ impl Annotate {
     /// the mode lock; placing the tab must not show it.
     pub(crate) fn is_frozen(&self, label: &str) -> bool {
         tab_number(label).is_some_and(|number| self.frozen.load(Ordering::Acquire) == number)
+    }
+
+    /// Marks `label`'s page frozen ahead of the hide that freezes it; the
+    /// next change settles the copy again.
+    fn freeze(&self, label: &str) {
+        self.frozen
+            .store(tab_number(label).unwrap_or(0), Ordering::Release);
+    }
+
+    /// Picks the element Chromium reported for a click on `label`.
+    fn pick(
+        &self,
+        overlay: &impl InspectOverlay,
+        label: &str,
+        backend_node_id: u64,
+        announce: impl Fn(AnnotateChange),
+    ) -> Result<(), String> {
+        self.run(announce, |mode| {
+            mode.pick(overlay, label, backend_node_id, &|| self.freeze(label))
+        })
     }
 
     /// Applies one change to the mode and announces what it changed before
@@ -182,7 +210,7 @@ impl AnnotateMode {
                 let _ = overlay.release(&previous, true, false);
             }
             if previous != label {
-                let _ = overlay.stop(&previous);
+                let _ = overlay.stop(&previous, false);
                 changes.push(change(previous, false));
             }
         }
@@ -211,10 +239,7 @@ impl AnnotateMode {
             Some(_) if exit != Exit::Closed => overlay.release(label, exit == Exit::Reveal, false),
             _ => Ok(()),
         };
-        let stopped = match exit {
-            Exit::Closed => Ok(()),
-            _ => overlay.stop(label),
-        };
+        let stopped = overlay.stop(label, exit == Exit::Closed);
         (vec![change(label.to_owned(), false)], stopped.and(released))
     }
 }
@@ -253,7 +278,7 @@ pub(crate) async fn set(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<BrowserState>();
-        let overlay = NativeOverlay(&state);
+        let overlay = NativeOverlay(&state, &app);
         let announce = |change| emit(&app, change);
         match action {
             Action::On => state.annotate.run(announce, |mode| {
@@ -276,9 +301,11 @@ pub(crate) async fn set(
             Action::Confirm => {
                 let comment = comment.unwrap_or_default();
                 let ordinal = ordinal.ok_or("browser element ordinal rejected")?;
-                return value(state.annotate.run(announce, |mode| {
-                    mode.confirm(&overlay, &tab_id, ordinal, &comment)
-                }))
+                return value(
+                    state
+                        .annotate
+                        .run(announce, |mode| mode.confirm(&tab_id, ordinal, &comment)),
+                )
                 .map(Some);
             }
             Action::Frame => {
@@ -304,11 +331,12 @@ pub(crate) fn pick(app: &AppHandle, label: &str, backend_node_id: u64) {
     let label = label.to_owned();
     std::thread::spawn(move || {
         let state = app.state::<BrowserState>();
-        let overlay = NativeOverlay(&state);
-        let _ = state.annotate.run(
-            |change| emit(&app, change),
-            |mode| mode.pick(&overlay, &label, backend_node_id),
-        );
+        let overlay = NativeOverlay(&state, &app);
+        let _ = state
+            .annotate
+            .pick(&overlay, &label, backend_node_id, |change| {
+                emit(&app, change)
+            });
     });
 }
 
@@ -321,7 +349,7 @@ pub(crate) fn leave(app: &AppHandle, label: &str, exit: Exit) {
     let label = label.to_owned();
     std::thread::spawn(move || {
         let state = app.state::<BrowserState>();
-        let overlay = NativeOverlay(&state);
+        let overlay = NativeOverlay(&state, &app);
         let _ = state.annotate.run(
             |change| emit(&app, change),
             |mode| mode.leave(&overlay, &label, exit),
@@ -337,20 +365,20 @@ fn emit(app: &AppHandle, change: AnnotateChange) {
     let _ = app.emit_to("main", "browser:annotate", change);
 }
 
-struct NativeOverlay<'a>(&'a BrowserState);
+struct NativeOverlay<'a>(&'a BrowserState, &'a AppHandle);
 
 #[cfg(not(windows))]
 impl InspectOverlay for NativeOverlay<'_> {
     fn start(&self, _: &str) -> Result<(), String> {
-        let _ = self.0;
+        let _ = (self.0, self.1);
         Err(UNAVAILABLE_REASON.unwrap_or_default().into())
     }
 
-    fn stop(&self, _: &str) -> Result<(), String> {
+    fn stop(&self, _: &str, _: bool) -> Result<(), String> {
         Ok(())
     }
 
-    fn pick(&self, _: &str, _: u64) -> Result<Selection, String> {
+    fn pick(&self, _: &str, _: u64, _: &dyn Fn()) -> Result<Selection, String> {
         Err(UNAVAILABLE_REASON.unwrap_or_default().into())
     }
 

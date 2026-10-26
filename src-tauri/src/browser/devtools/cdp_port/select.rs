@@ -26,10 +26,13 @@ const FRAME_BYTES: usize = 8_000_000;
 /// Runs on the clicked element in the isolated world. A step is a tag, or
 /// `:nth-child(k of tag)` among siblings of that tag: `tag:pseudo` would read
 /// as a URL scheme to `redact_console` and fail the send-time check. It never
-/// reads a form
-/// control's value: text inside inputs, text areas, selects and editable
-/// regions is skipped, as is text that is aria-hidden, invisible or has no
-/// size. Password, hidden, card and one-time-code fields are `sensitive`.
+/// reads a form control's value: text inside inputs, text areas, selects and
+/// editable regions is skipped, and `controls` says when the accessible name
+/// may embed such a value (a control inside the element or its labels). Text
+/// the user cannot see is skipped too: aria-hidden, invisible, transparent,
+/// under 2px, or outside both the visible viewport and the element's box.
+/// Password, hidden, card and one-time-code fields are `sensitive`. The
+/// viewport is the visual one, so a pinch-zoomed page frames what it shows.
 const READ_ELEMENT: &str = r#"function () {
   const root = this;
   if (!(root instanceof Element)) return null;
@@ -49,32 +52,45 @@ const READ_ELEMENT: &str = r#"function () {
       anchor = true;
     } else anchored.unshift(step(node));
   }
-  const skip = 'input, textarea, select, option, script, style, noscript, template, [contenteditable]:not([contenteditable="false"]), [aria-hidden="true"]';
+  const editable = '[contenteditable]:not([contenteditable="false"])';
+  const control = `input, textarea, select, ${editable}`;
+  const skip = `${control}, option, script, style, noscript, template, [aria-hidden="true"]`;
+  const labels = [...(root.labels || []), ...(root.getAttribute('aria-labelledby') || '').split(/\s+/).map((id) => id && document.getElementById(id))];
+  const controls = root.matches(editable) || !!root.querySelector(control)
+    || labels.some((label) => label && [label, ...label.querySelectorAll(control)].some((node) => node !== root && node.matches(control)));
+  const vv = visualViewport;
+  const seen = { left: vv.offsetLeft, top: vv.offsetTop, right: vv.offsetLeft + vv.width, bottom: vv.offsetTop + vv.height };
+  const rect = root.getBoundingClientRect();
+  const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const alpha = (color) => color === 'transparent' ? 0 : parseFloat((color.match(/^rgba\(.*,\s*([\d.]+)\)$|\/\s*([\d.]+)\)$/) || []).slice(1).find(Boolean) ?? '1');
+  const range = document.createRange();
   const pieces = [];
   let length = 0;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node && length < 2048; node = walker.nextNode()) {
     const parent = node.parentElement;
     if (!parent || parent.closest(skip)) continue;
-    if (!parent.checkVisibility({ visibilityProperty: true })) continue;
-    const box = parent.getBoundingClientRect();
-    if (box.width === 0 || box.height === 0) continue;
+    if (!parent.checkVisibility({ visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true })) continue;
+    const style = getComputedStyle(parent);
+    if (parseFloat(style.fontSize) < 2 || alpha(style.color) < 0.1 || alpha(style.webkitTextFillColor) < 0.1) continue;
+    range.selectNodeContents(node);
+    const box = range.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0 || !meets(box, seen) || !meets(box, rect)) continue;
     const text = node.data.replace(/\s+/g, ' ').trim();
     if (text) { pieces.push(text); length += text.length + 1; }
   }
   const autocomplete = (root.getAttribute('autocomplete') || '').toLowerCase();
   const sensitive = (root instanceof HTMLInputElement && (root.type === 'password' || root.type === 'hidden'))
     || /(^|\s)(cc-|one-time-code|current-password|new-password)/.test(autocomplete);
-  const rect = root.getBoundingClientRect();
-  const page = document.documentElement;
   return {
     selector: anchored.join(' > '),
     positional: positional.join(' > '),
     text: pieces.join(' ').slice(0, 2048),
     sensitive,
+    controls,
     title: document.title.slice(0, 1024),
     rect: { x: rect.left + scrollX, y: rect.top + scrollY, width: rect.width, height: rect.height },
-    viewport: { x: scrollX, y: scrollY, width: innerWidth, height: innerHeight, clientWidth: page.clientWidth, clientHeight: page.clientHeight, scale: devicePixelRatio },
+    viewport: { x: vv.pageLeft, y: vv.pageTop, width: innerWidth / vv.scale, height: innerHeight / vv.scale, clientWidth: vv.width, clientHeight: vv.height, scale: devicePixelRatio * vv.scale },
   };
 }"#;
 
@@ -204,12 +220,15 @@ impl<T: CdpTransport> CdpPort<T> {
                 serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
             let data = response["data"]
                 .as_str()
-                .filter(|data| data.len() <= FRAME_BYTES && jpeg_base64(data))
+                .filter(|data| data.len() <= FRAME_BYTES)
                 .ok_or(BrowserFailure::Unavailable)?;
+            // The JPEG's own size: Chromium rounds a fractional viewport its
+            // own way.
+            let (width, height) = jpeg_size(data).ok_or(BrowserFailure::Unavailable)?;
             return Ok(Frame {
                 jpeg_base64: data.to_owned(),
-                width: (viewport.client_width * scale).round() as u32,
-                height: (viewport.client_height * scale).round() as u32,
+                width,
+                height,
             });
         }
         Err(BrowserFailure::Capacity)
@@ -247,12 +266,27 @@ fn frame_scale(viewport: &Viewport) -> f64 {
         .min(FRAME_SIDE / viewport.client_height)
 }
 
-fn jpeg_base64(data: &str) -> bool {
-    data.starts_with("/9j/")
-        && data.len().is_multiple_of(4)
-        && data
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
+/// The width and height in a base64 JPEG's frame header, if it is one.
+fn jpeg_size(data: &str) -> Option<(u32, u32)> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let bytes = STANDARD.decode(data).ok()?;
+    if !bytes.starts_with(&[0xFF, 0xD8]) {
+        return None;
+    }
+    let mut at = 2;
+    loop {
+        let (&[0xFF, marker], rest) = bytes.get(at..)?.split_first_chunk::<2>()? else {
+            return None;
+        };
+        let length = usize::from(u16::from_be_bytes(*rest.first_chunk::<2>()?));
+        // SOF0 to SOF15, leaving out DHT (C4), JPG (C8) and DAC (CC).
+        if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
+            let header = rest.get(3..7)?;
+            let side = |at: usize| u32::from(u16::from_be_bytes([header[at], header[at + 1]]));
+            return Some((side(2), side(0))).filter(|(width, height)| *width > 0 && *height > 0);
+        }
+        at += 2 + length;
+    }
 }
 
 #[cfg(test)]
@@ -289,10 +323,16 @@ mod tests {
     }
 
     #[test]
-    fn only_base64_jpeg_data_is_kept() {
-        assert!(jpeg_base64("/9j/4AAQ"));
-        assert!(!jpeg_base64("iVBORw0K"));
-        assert!(!jpeg_base64("/9j/4AA"));
-        assert!(!jpeg_base64("/9j/<img"));
+    fn the_frame_size_is_read_from_the_jpeg_header() {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        // SOI, an APP0 segment to skip, then SOF0 for 780x436.
+        let jpeg = [
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x4A, 0x46, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01,
+            0xB4, 0x03, 0x0C, 0x03,
+        ];
+        assert_eq!(jpeg_size(&STANDARD.encode(jpeg)), Some((780, 436)));
+        assert_eq!(jpeg_size(&STANDARD.encode(&jpeg[..12])), None);
+        assert_eq!(jpeg_size(&STANDARD.encode([0x89, b'P', b'N', b'G'])), None);
+        assert_eq!(jpeg_size("/9j/<img"), None);
     }
 }

@@ -17,11 +17,11 @@ static BARE_TOKENS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid bare token regex")
 });
 static SECRET_SHAPES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*|[0-9A-Fa-f]{32,}|[A-Za-z0-9+/]{32,}={0,2})$")
+    Regex::new(r"^(?:eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*|[0-9A-Fa-f]{32,})$")
         .expect("valid secret shape regex")
 });
-static MIXED_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]{24,}$").expect("valid mixed token regex"));
+static TOKEN_CHARS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_+/-]{24,}={0,2}$").expect("valid token regex"));
 /// What a redacted path segment becomes, already percent-encoded so that a
 /// second pass leaves it as it is.
 const REDACTED_SEGMENT: &str = "%5Bredacted%5D";
@@ -82,15 +82,59 @@ fn sensitive(key: &str) -> bool {
 }
 
 /// Whether a bare value looks like a credential: a known token prefix, a
-/// JWT, a hex or base64 run of 32 or more characters, or 24 or more
-/// `[A-Za-z0-9_-]` characters mixing upper case, lower case and digits.
+/// JWT, a hex run of 32 or more characters, or a random-looking token.
 fn secret_like(value: &str) -> bool {
-    BARE_TOKENS.is_match(value)
-        || SECRET_SHAPES.is_match(value)
-        || (MIXED_TOKEN.is_match(value)
-            && value.bytes().any(|byte| byte.is_ascii_uppercase())
-            && value.bytes().any(|byte| byte.is_ascii_lowercase())
-            && value.bytes().any(|byte| byte.is_ascii_digit()))
+    BARE_TOKENS.is_match(value) || SECRET_SHAPES.is_match(value) || random_token(value)
+}
+
+/// 24 or more base64 or URL-safe characters that mix upper case, lower case
+/// and digits, and either run to 32 or more letters and digits with no word
+/// separator (`-` or `_`), as base64 does, or switch between the three about
+/// every fourth character or more often, as random tokens do. Words in slugs
+/// and short CamelCase switch far less (`Rust2024-Edition-Release-Notes`
+/// switches once), and switches at `-`, `_`, `+` and `/` do not count. Hex
+/// with separators (a UUID) is an identifier, not a token.
+fn random_token(value: &str) -> bool {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Class {
+        Upper,
+        Lower,
+        Digit,
+    }
+    let class = |byte: u8| match byte {
+        b'A'..=b'Z' => Some(Class::Upper),
+        b'a'..=b'z' => Some(Class::Lower),
+        b'0'..=b'9' => Some(Class::Digit),
+        _ => None,
+    };
+    if !TOKEN_CHARS.is_match(value)
+        || value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || matches!(byte, b'-' | b'_'))
+    {
+        return false;
+    }
+    let bytes = value.trim_end_matches('=').as_bytes();
+    let has = |wanted: Class| bytes.iter().any(|byte| class(*byte) == Some(wanted));
+    if !(has(Class::Upper) && has(Class::Lower) && has(Class::Digit)) {
+        return false;
+    }
+    let characters = bytes
+        .iter()
+        .filter(|byte| byte.is_ascii_alphanumeric())
+        .count();
+    if characters >= 32 && !bytes.iter().any(|byte| matches!(byte, b'-' | b'_')) {
+        return true;
+    }
+    let switches = bytes
+        .windows(2)
+        .filter(|pair| match (class(pair[0]), class(pair[1])) {
+            (Some(Class::Upper), Some(Class::Lower)) => false,
+            (Some(from), Some(to)) => from != to,
+            _ => false,
+        })
+        .count();
+    switches * 4 >= characters
 }
 
 /// A path segment is redacted when it looks like a credential, except a git

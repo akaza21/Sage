@@ -11,6 +11,7 @@ fn page() -> PageElement {
         positional: "html > body > form > :nth-child(2 of button)".into(),
         text: "Place order\n£24.00".into(),
         sensitive: false,
+        controls: false,
         title: "Cart".into(),
         rect: Rect {
             x: 412.4,
@@ -102,7 +103,7 @@ fn picking_redacts_the_url_name_text_and_title() {
 }
 
 #[test]
-fn a_sensitive_field_keeps_its_role_only() {
+fn a_sensitive_field_or_a_name_that_may_hold_a_value_keeps_its_role_only() {
     let mut page = page();
     page.sensitive = true;
     let picked = pick(&page, "textbox", "Password", "browser-1", "https://e.com/").unwrap();
@@ -110,6 +111,17 @@ fn a_sensitive_field_keeps_its_role_only() {
         (picked.role.as_str(), picked.name.as_str()),
         ("textbox", "")
     );
+    page.sensitive = false;
+    page.controls = true;
+    let picked = pick(
+        &page,
+        "button",
+        "Ship to typed",
+        "browser-1",
+        "https://e.com/",
+    )
+    .unwrap();
+    assert_eq!((picked.role.as_str(), picked.name.as_str()), ("button", ""));
 }
 
 #[test]
@@ -377,7 +389,7 @@ fn viewports_outside_sane_ranges_are_refused() {
     for change in [
         |viewport: &mut Viewport| viewport.width = 0.0,
         |viewport: &mut Viewport| viewport.scale = f64::INFINITY,
-        |viewport: &mut Viewport| viewport.scale = 9.0,
+        |viewport: &mut Viewport| viewport.scale = 41.0,
         |viewport: &mut Viewport| viewport.y = -1.0,
         |viewport: &mut Viewport| viewport.client_height = f64::NAN,
     ] {

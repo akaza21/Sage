@@ -43,7 +43,7 @@ impl Selection {
         SelectionView {
             role: self.picked.role.clone(),
             name: self.picked.name.clone(),
-            bounds: self.picked.bounds,
+            bounds: self.picked.outline,
             viewport: self.viewport,
         }
     }
@@ -58,12 +58,13 @@ impl AnnotateMode {
         overlay: &impl InspectOverlay,
         label: &str,
         backend_node_id: u64,
+        freeze: &dyn Fn(),
     ) -> (Vec<AnnotateChange>, Result<(), String>) {
         if self.tab.as_deref() != Some(label) || self.pending.is_some() {
             return (Vec::new(), Ok(()));
         }
         let mut announced = change(label.to_owned(), true);
-        match overlay.pick(label, backend_node_id) {
+        match overlay.pick(label, backend_node_id, freeze) {
             Ok(selection) => {
                 announced.selection = Some(selection.view());
                 self.pending = Some(selection);
@@ -86,12 +87,11 @@ impl AnnotateMode {
         (vec![self.resumed(label, &released)], released)
     }
 
-    /// Numbers and comments the waiting element. An item that fails the
-    /// contract checks keeps the element waiting; an accepted one ends the
-    /// wait, and the item goes out even if the page fails to come back.
+    /// Numbers and comments the waiting element. The element keeps waiting:
+    /// the chrome cancels the wait once the composer took the item, so an
+    /// item the composer refuses can be sent again or dropped.
     pub(super) fn confirm(
-        &mut self,
-        overlay: &impl InspectOverlay,
+        &self,
         label: &str,
         ordinal: u8,
         comment: &str,
@@ -103,13 +103,10 @@ impl AnnotateMode {
         else {
             return (Vec::new(), Err("no browser element is waiting".into()));
         };
-        let item = match element::confirm(&selection.picked, ordinal, comment) {
-            Ok(item) => item,
-            Err(error) => return (Vec::new(), Err(error)),
-        };
-        self.pending = None;
-        let released = overlay.release(label, true, true);
-        (vec![self.resumed(label, &released)], Ok(item))
+        (
+            Vec::new(),
+            element::confirm(&selection.picked, ordinal, comment),
+        )
     }
 
     /// The frozen frame of the waiting element on `label`.

@@ -70,6 +70,50 @@ fn ordinary_values_and_slugs_survive() {
 }
 
 #[test]
+fn word_slugs_survive_and_random_tokens_do_not() {
+    // Words switch case or turn into digits rarely; separators do not count.
+    for slug in [
+        "Rust2024-Edition-Release-Notes",
+        "covid19-vaccine-Update-2021-Moderna",
+        "how_to_configure_the_reverse_proxy_server",
+        "My-Long-Article-Title-About-Something",
+        "iPhone15ProMaxReview2024Edition",
+        "507f1f77bcf86cd799439011",
+        "123E4567-E89B-12D3-A456-426614174000",
+    ] {
+        for url in [
+            format!("https://example.com/posts/{slug}"),
+            format!("https://example.com/?next={slug}"),
+            format!("https://example.com/#{slug}"),
+        ] {
+            assert_eq!(redact_url(&url), url, "{slug}");
+        }
+    }
+    let hex = "0123456789abcdef".repeat(2);
+    for token in [
+        JWT,
+        hex.as_str(),
+        "Xk9_fQ2-mZ7pL4wR8tY1uV6s",
+        "aB3dE5gH7jK9mN1pQ3sT5vX7",
+        "dGhpcyBpcyBhIHNlY3JldCB0b2tlbiB2YWx1ZQ==",
+        "Ab3dEf6hIj9kLm2nOp5qRs8t",
+        // Base64 of text switches rarely, but runs long without a separator.
+        "QWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVu",
+    ] {
+        assert_eq!(
+            redact_url(&format!("https://example.com/posts/{token}")),
+            "https://example.com/posts/%5Bredacted%5D",
+            "{token}"
+        );
+        assert_eq!(
+            redact_url(&format!("https://example.com/?next={token}")),
+            "https://example.com/?next=[redacted]",
+            "{token}"
+        );
+    }
+}
+
+#[test]
 fn credential_path_segments_are_redacted_but_git_object_ids_are_kept() {
     assert_eq!(
         redact_url(&format!("https://example.com/reset/{JWT}/done")),
