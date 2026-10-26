@@ -81,6 +81,21 @@ pub(crate) fn clear_agent_highlight(webview: &Webview) -> Result<(), BrowserFail
     Ok(())
 }
 
+/// Turns the user's Annotate hover highlight on or off, outside any Agent
+/// permit.
+pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFailure> {
+    let port = NativePort::new(NativeTransport {
+        webview: webview.clone(),
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    });
+    if on {
+        port.start_inspect()
+    } else {
+        port.stop_inspect()
+    }
+}
+
 pub(crate) type NativePort = CdpPort<NativeTransport>;
 pub(crate) type NativeDevtools = DevtoolsCapability<NativePort>;
 

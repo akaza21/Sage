@@ -36,9 +36,8 @@ pub(crate) use admission::{
 };
 pub(crate) use auth::{
     AuthBrowser, AuthTransport, CodexAuthDeadline, CodexAuthError, CodexAuthNotification,
-    CodexAuthOutcome, CodexAuthProtocol, CodexAuthRequest, NativeAuthUrl, NativeBrowser,
-    NativeLoginId, ProductionAuthTransport, run_account_protocol, run_login_protocol,
-    run_logout_protocol,
+    CodexAuthOutcome, CodexAuthProtocol, NativeAuthUrl, NativeBrowser, NativeLoginId,
+    ProductionAuthTransport, run_account_protocol, run_login_protocol, run_logout_protocol,
 };
 pub(crate) use authority::{
     ConfigAuthorityError, EnvironmentAuthorityError, ResidueMarker, RetentionDecision,
@@ -51,9 +50,8 @@ pub(crate) use child_transcript::{
 };
 pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{
-    AdmittedDiscovery, CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline,
-    CodexDiscoveryRunError, CodexModelSnapshot, CodexProcessTransport, DiscoveryZeroProcess,
-    ProcessLaunchPolicy, discover_admitted,
+    CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryDeadline, CodexDiscoveryRunError,
+    CodexProcessTransport, DiscoveryZeroProcess, ProcessLaunchPolicy, discover_admitted,
 };
 #[cfg(test)]
 pub(crate) use discovery::{
@@ -77,11 +75,6 @@ pub(crate) use physical::{
     inspect_managed_package,
 };
 pub(crate) use policy::{SecurityPolicyError, parse_security_policy};
-pub(crate) use provisioning::{
-    ExplicitStagingAuthorization, PreparedCodexStaging, ProvisioningError, StagingOperation,
-    VerifiedCodexSource, authorize_offline_staging_from_environment, prepare_codex_staging,
-    prepare_codex_staging_after_signed_role, verify_codex_source,
-};
 #[cfg(all(windows, feature = "codex-provisioning-helper"))]
 pub(crate) use provisioning::{
     HelperOperation, execute_boundary_publication, execute_boundary_recover,

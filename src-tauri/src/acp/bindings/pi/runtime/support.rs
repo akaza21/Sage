@@ -9,7 +9,7 @@ use crate::acp::{
 };
 
 use super::{DenyIntent, DenyStage, PiRuntime};
-use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome};
+use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome, ToolOutcome};
 
 mod authority;
 mod capabilities;

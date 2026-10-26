@@ -3,12 +3,12 @@
 //! with one flattened session attached to one page target.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender},
     },
@@ -28,6 +28,8 @@ const DEFAULT_CHROMIUM: &str = "/opt/pw-browsers/chromium";
 const FRAME_BYTES: usize = 16 * 1024 * 1024;
 const PENDING_RESPONSES: usize = 16;
 const DOCUMENTS: usize = 64;
+/// Overlay events kept for the Annotate checks; the oldest go first.
+const OVERLAY_EVENTS: usize = 64;
 const SETUP_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub(super) struct Chromium {
@@ -43,6 +45,7 @@ pub(super) struct Chromium {
     /// reports a new document only after its navigation events arrive, and
     /// no stamp at all while a navigation loads.
     held_stamp: Mutex<Option<Result<DocumentStamp, BrowserFailure>>>,
+    overlay_events: Arc<Mutex<VecDeque<Value>>>,
     profile: PathBuf,
 }
 
@@ -93,7 +96,9 @@ impl Chromium {
         let commands = child.stdin.take().expect("Chromium command pipe");
         let events = child.stdout.take().expect("Chromium response pipe");
         let (sender, responses) = mpsc::sync_channel(PENDING_RESPONSES);
-        thread::spawn(move || read_frames(events, sender));
+        let overlay_events = Arc::new(Mutex::new(VecDeque::new()));
+        let kept = overlay_events.clone();
+        thread::spawn(move || read_frames(events, sender, kept));
         let mut chromium = Self {
             child,
             link: Mutex::new(Link {
@@ -106,6 +111,7 @@ impl Chromium {
             issued: AtomicBool::new(false),
             calls: Mutex::new(HashMap::new()),
             held_stamp: Mutex::new(None),
+            overlay_events,
             profile,
         };
         let target = chromium.setup(None, "Target.createTarget", json!({"url": "about:blank"}));
@@ -151,6 +157,15 @@ impl Chromium {
             .entry(method.to_owned())
             .or_default() += 1;
         Ok(())
+    }
+
+    /// Takes the `Overlay.*` events Chromium sent since the last take.
+    pub(super) fn take_overlay_events(&self) -> Vec<Value> {
+        self.overlay_events
+            .lock()
+            .expect("overlay events")
+            .drain(..)
+            .collect()
     }
 
     /// Keeps reporting `stamp` until released with `None`.
@@ -344,8 +359,13 @@ impl Drop for Chromium {
 }
 
 /// Splits Chromium's output into frames and forwards command responses;
-/// events are dropped. A frame over `FRAME_BYTES` ends the link.
-fn read_frames(mut events: ChildStdout, responses: SyncSender<Value>) {
+/// `Overlay.*` events are kept, others dropped. A frame over `FRAME_BYTES`
+/// ends the link.
+fn read_frames(
+    mut events: ChildStdout,
+    responses: SyncSender<Value>,
+    overlay: Arc<Mutex<VecDeque<Value>>>,
+) {
     let mut pending = Vec::new();
     let mut chunk = vec![0u8; 65_536];
     loop {
@@ -363,6 +383,17 @@ fn read_frames(mut events: ChildStdout, responses: SyncSender<Value>) {
             let Ok(message) = message else {
                 return;
             };
+            if message["method"]
+                .as_str()
+                .is_some_and(|method| method.starts_with("Overlay."))
+                && let Ok(mut kept) = overlay.lock()
+            {
+                if kept.len() == OVERLAY_EVENTS {
+                    kept.pop_front();
+                }
+                kept.push_back(message);
+                continue;
+            }
             if message.get("id").is_some() && responses.send(message).is_err() {
                 return;
             }

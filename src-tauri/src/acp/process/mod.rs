@@ -30,7 +30,7 @@ pub(crate) use unix::launch_fixture_for_test;
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
 pub(crate) use identity::{ProcessIdentityReceipt, SpawnTimingReceipt};
-pub(crate) use manifest::{ManifestExpectation, ManifestGuard};
+pub(crate) use manifest::ManifestExpectation;
 pub(crate) use platform::{
     LaunchFailure, LaunchRecovery, PlatformSupervisor, RunningTree, StdinEndpoint, StdoutEndpoint,
     TreeControl,

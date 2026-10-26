@@ -18,6 +18,8 @@ pub(super) enum BrowserShortcut {
     NewTab,
     CloseTab,
     Stop,
+    /// Handled in Rust; never sent to the chrome.
+    LeaveAnnotate,
 }
 
 #[derive(Clone, Copy)]
@@ -27,6 +29,7 @@ pub(super) struct KeyChord {
     pub(super) alt: bool,
     pub(super) shift: bool,
     pub(super) loading: bool,
+    pub(super) annotating: bool,
 }
 
 pub(super) fn shortcut_for(chord: KeyChord) -> Option<BrowserShortcut> {
@@ -56,6 +59,10 @@ pub(super) fn shortcut_for(chord: KeyChord) -> Option<BrowserShortcut> {
     if !chord.ctrl && !chord.alt && !chord.shift {
         return match chord.key {
             0x74 => Some(BrowserShortcut::Reload),
+            // Escape leaves Annotate first; a loading page then stops on
+            // the next Escape. (A navigation start already ends Annotate,
+            // so both hold only briefly.)
+            0x1B if chord.annotating => Some(BrowserShortcut::LeaveAnnotate),
             0x1B if chord.loading => Some(BrowserShortcut::Stop),
             _ => None,
         };
@@ -104,8 +111,8 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                         }
                         let pressed =
                             |virtual_key: u16| unsafe { GetKeyState(i32::from(virtual_key)) < 0 };
-                        let loading = app
-                            .state::<super::BrowserState>()
+                        let state = app.state::<super::BrowserState>();
+                        let loading = state
                             .tabs
                             .lock()
                             .ok()
@@ -117,10 +124,15 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                             alt: pressed(VK_MENU.0),
                             shift: pressed(VK_SHIFT.0),
                             loading,
+                            annotating: state.annotate.is_annotating(&label),
                         };
                         if let Some(action) = shortcut_for(chord) {
                             unsafe {
                                 args.SetHandled(true)?;
+                            }
+                            if action == BrowserShortcut::LeaveAnnotate {
+                                super::annotate::leave(&app, &label, true);
+                                return Ok(());
                             }
                             let _ = app.emit_to(
                                 "main",
@@ -169,6 +181,7 @@ mod tests {
             alt: false,
             shift: false,
             loading: false,
+            annotating: false,
         }
     }
 
@@ -218,6 +231,56 @@ mod tests {
                 ..chord(0x1B)
             }),
             Some(BrowserShortcut::Stop)
+        );
+    }
+
+    #[test]
+    fn escape_leaves_annotate_before_it_stops_a_load() {
+        let annotating = KeyChord {
+            annotating: true,
+            ..chord(0x1B)
+        };
+        assert_eq!(
+            shortcut_for(annotating),
+            Some(BrowserShortcut::LeaveAnnotate)
+        );
+        assert_eq!(
+            shortcut_for(KeyChord {
+                loading: true,
+                ..annotating
+            }),
+            Some(BrowserShortcut::LeaveAnnotate)
+        );
+        for modified in [
+            KeyChord {
+                ctrl: true,
+                ..annotating
+            },
+            KeyChord {
+                alt: true,
+                ..annotating
+            },
+            KeyChord {
+                shift: true,
+                ..annotating
+            },
+        ] {
+            assert_eq!(shortcut_for(modified), None);
+        }
+        // Other keys still reach the page or their own shortcut.
+        assert_eq!(
+            shortcut_for(KeyChord {
+                key: b'A' as u32,
+                ..annotating
+            }),
+            None
+        );
+        assert_eq!(
+            shortcut_for(KeyChord {
+                key: 0x74,
+                ..annotating
+            }),
+            Some(BrowserShortcut::Reload)
         );
     }
 

@@ -13,6 +13,7 @@ pub(crate) async fn close_browser_tab(
         .get(&tab_id)
         .map(|tab| tab.handle.clone())
         .ok_or("browser tab unavailable")?;
+    crate::browser::annotate::leave(app, &tab_id, false);
     let children = state
         .popups
         .lock()

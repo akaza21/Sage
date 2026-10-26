@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use serde_json::{Value, json};
 
 use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+    bindings::adapter::{AdapterEgress, AdapterRuntimeError},
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
     mcp::McpAdmission,

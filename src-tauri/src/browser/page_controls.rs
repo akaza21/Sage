@@ -1,4 +1,4 @@
-use tauri::{State, Webview};
+use tauri::{AppHandle, State, Webview};
 
 #[cfg(windows)]
 use tauri::Manager;
@@ -97,12 +97,13 @@ fn active_webview(state: &State<'_, BrowserState>, tab_id: &str) -> Result<Webvi
 
 #[tauri::command]
 pub(crate) async fn browser_hide(
+    app: AppHandle,
     state: State<'_, BrowserState>,
     tab_id: String,
 ) -> Result<(), String> {
-    active_webview(&state, &tab_id)?
-        .hide()
-        .map_err(|error| error.to_string())
+    let webview = active_webview(&state, &tab_id)?;
+    super::annotate::leave(&app, &tab_id, true);
+    webview.hide().map_err(|error| error.to_string())
 }
 
 #[tauri::command]

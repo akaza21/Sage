@@ -3,7 +3,7 @@
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
-use tauri::{State, Webview};
+use tauri::{AppHandle, State, Webview};
 #[cfg(windows)]
 use windows_core::BOOL;
 
@@ -11,10 +11,14 @@ use super::super::{BrowserState, admit_url};
 
 #[tauri::command]
 pub(crate) async fn browser_control(
+    app: AppHandle,
     state: State<'_, BrowserState>,
     tab_id: String,
     action: String,
 ) -> Result<(), String> {
+    if let Some(on) = super::super::annotate::action(&action) {
+        return super::super::annotate::set(app, tab_id, on).await;
+    }
     if !matches!(action.as_str(), "back" | "forward" | "reload" | "stop") {
         return Err("unknown browser action".into());
     }

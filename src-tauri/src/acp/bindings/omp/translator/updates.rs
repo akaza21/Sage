@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
-    intent::{FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation},
+    intent::NormalizedPayload,
     limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
@@ -15,11 +15,11 @@ use crate::acp::{
 use super::{ActiveTurn, OmpTranslator, ResourceMapper, TranslationError};
 use crate::acp::bindings::omp::{
     protocol::{AdapterEvent, ItemUpdateMode},
-    wire::{normalized_text, opaque_id, sanitized_command_output},
+    wire::{normalized_text, opaque_id},
 };
 
 pub(crate) use kinds::{category_label, external_id, object, tool_category};
-use kinds::{lifecycle, line_count, optional_item_id, parse_tool_state, required_string};
+use kinds::{lifecycle, optional_item_id, parse_tool_state, required_string};
 use tool_snapshots::{CommandPatch, command_update_payload, path_locations};
 
 const MAX_EVENTS_PER_FRAME: usize = 16;

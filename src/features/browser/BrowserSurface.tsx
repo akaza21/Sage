@@ -13,6 +13,7 @@ import {
   browserStatus,
   browserSuggestedSites,
   browserZoom,
+  type BrowserControlAction,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
@@ -31,8 +32,10 @@ import {
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
 import { BrowserNewTab } from "./BrowserNewTab";
-import { useBrowserShortcuts } from "./useBrowserShortcuts";
-import { performBrowserShortcut } from "./browserShortcuts";
+import {
+  performBrowserShortcut,
+  useBrowserShortcuts,
+} from "./browserShortcuts";
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
@@ -182,7 +185,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       setError(String(cause).slice(0, 512));
     }
   }
-  async function control(action: "back" | "forward" | "reload" | "stop") {
+  async function control(action: BrowserControlAction) {
     try {
       setError(null);
       await browserControl(tab.id, action);

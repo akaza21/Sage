@@ -2,7 +2,6 @@ use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
     contract::SageServerRequestId,
     runtime::permissions::PermissionDecision,
-    transport::OutboundFrame,
 };
 
 use super::super::PiRuntime;

@@ -6,7 +6,7 @@ use std::{
 use crate::launch_profile::LaunchProfile;
 
 use super::{
-    BrowserState, BrowserTabs, PopupRequests, downloads,
+    BrowserState, BrowserTabs, PopupRequests, annotate, downloads,
     profile::{browser_profile_dir, validate_project_roots},
     site_permissions,
 };
@@ -36,6 +36,7 @@ impl BrowserState {
             downloads: Mutex::new(downloads::DownloadRegistry::default()),
             permissions: Mutex::new(site_permissions::SitePermissions::default()),
             popups: Mutex::new(PopupRequests::default()),
+            annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
         })
     }
