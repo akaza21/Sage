@@ -8,6 +8,8 @@ use std::{
 pub(crate) mod ipc;
 mod output;
 mod stream;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod unix;
 #[cfg(windows)]
 mod windows;
 
@@ -66,8 +68,8 @@ trait TerminalProcess: Send {
 enum TerminalSpawnFailure {
     Clean(TerminalError),
     #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only the ConPTY backend retains a failed spawn")
+        not(any(windows, target_os = "linux", target_os = "macos")),
+        allow(dead_code, reason = "only the PTY backends retain a failed spawn")
     )]
     Retained(Box<dyn TerminalProcess>),
 }
@@ -114,10 +116,10 @@ impl Drop for TerminalSessionPort {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 struct UnsupportedFactory;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 impl TerminalFactory for UnsupportedFactory {
     fn spawn(
         &self,
@@ -159,7 +161,11 @@ impl TerminalSessionPort {
         {
             Self::new(Box::new(windows::ConPtyFactory))
         }
-        #[cfg(not(windows))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            Self::new(Box::new(unix::UnixPtyFactory))
+        }
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         {
             Self::new(Box::new(UnsupportedFactory))
         }

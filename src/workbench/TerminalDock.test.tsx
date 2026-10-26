@@ -150,6 +150,62 @@ it("reports an ended shell and ignores later input", async () => {
   expect(native.write).toHaveBeenCalledTimes(1);
 });
 
+it("sends input again while the program is not reading it", async () => {
+  native.write
+    .mockRejectedValueOnce({ code: "busy" })
+    .mockRejectedValueOnce({ code: "busy" });
+  const onStatus = vi.fn();
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={onStatus}
+    />,
+  );
+  await waitFor(() => expect(xterm.data).not.toBeNull());
+  act(() => xterm.data?.("paste"));
+  await waitFor(() => expect(native.write).toHaveBeenCalledTimes(3));
+  expect(native.write.mock.calls.map((call) => call[2])).toEqual([
+    "paste",
+    "paste",
+    "paste",
+  ]);
+  expect(onStatus).not.toHaveBeenCalled();
+});
+
+it("drops input refused as busy for too long and says why", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    native.write.mockRejectedValue({ code: "busy" });
+    const onStatus = vi.fn();
+    render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={onStatus}
+      />,
+    );
+    await waitFor(() => expect(xterm.data).not.toBeNull());
+    act(() => xterm.data?.("x"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenCalledWith(
+        "Terminal operation failed.",
+        false,
+      ),
+    );
+    const attempts = native.write.mock.calls.length;
+    expect(attempts).toBeGreaterThan(2);
+    expect(attempts).toBeLessThan(40);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("retries a transient native reader conflict after remount", async () => {
   native.read.mockRejectedValueOnce({ code: "busy" });
   const onStatus = vi.fn();

@@ -12,6 +12,15 @@ import {
 } from "../services/userTerminalDesktop";
 import { utf8ByteLength } from "../domain/text";
 
+/** How long input refused as busy keeps being offered before it is dropped. */
+const INPUT_RETRY_MS = 10_000;
+
+function errorCode(error: unknown): unknown {
+  return error && typeof error === "object" && "code" in error
+    ? (error as { code?: unknown }).code
+    : undefined;
+}
+
 interface Dimensions {
   columns: number;
   rows: number;
@@ -90,12 +99,7 @@ export function TerminalDock({
           try {
             page = await readUserTerminal(ownerScope, session, cursor);
           } catch (error) {
-            if (
-              error &&
-              typeof error === "object" &&
-              "code" in error &&
-              (error as { code?: unknown }).code === "busy"
-            ) {
+            if (errorCode(error) === "busy") {
               await new Promise((resolve) => setTimeout(resolve, 100));
               continue;
             }
@@ -137,6 +141,27 @@ export function TerminalDock({
       }
     }
 
+    // A program that is not reading its input makes the native side refuse
+    // a write as busy without taking any of it, so the same chunk is sent
+    // again after a growing pause, for up to INPUT_RETRY_MS.
+    async function writeWhenAccepted(chunk: string): Promise<void> {
+      const started = Date.now();
+      for (let delay = 50; ; delay = Math.min(delay * 2, 500)) {
+        try {
+          await writeUserTerminal(ownerScope, session, chunk);
+          return;
+        } catch (error) {
+          if (
+            errorCode(error) !== "busy" ||
+            stopped ||
+            Date.now() - started >= INPUT_RETRY_MS
+          )
+            throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
     async function drainInput(): Promise<void> {
       if (inputSending) return;
       inputSending = true;
@@ -146,12 +171,11 @@ export function TerminalDock({
           pendingInput = "";
           pendingInputBytes = 0;
           try {
-            await writeUserTerminal(ownerScope, session, chunk);
+            await writeWhenAccepted(chunk);
           } catch (error) {
             pendingInput = "";
             pendingInputBytes = 0;
-            if (error && typeof error === "object" && "code" in error)
-              sessionEnded = (error as { code?: unknown }).code === "ended";
+            sessionEnded = errorCode(error) === "ended";
             if (!stopped)
               onStatusRef.current(terminalErrorLabel(error), sessionEnded);
             break;

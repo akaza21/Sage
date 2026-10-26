@@ -33,6 +33,8 @@ export function terminalErrorLabel(error: unknown): string {
     if (code === "invalid_scope" || code === "unknown_session")
       return "This terminal is no longer attached to the current chat.";
     if (code === "ended") return "Session ended";
+    if (code === "busy")
+      return "Input was not sent: the program in the terminal is not reading it.";
   }
   return "Terminal operation failed. The native session may need cleanup.";
 }

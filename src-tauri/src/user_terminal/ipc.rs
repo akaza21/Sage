@@ -103,7 +103,7 @@ impl From<TerminalError> for TerminalIpcError {
 }
 
 fn available() -> Result<(), TerminalIpcError> {
-    if cfg!(windows) {
+    if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
         Ok(())
     } else {
         Err(TerminalIpcError::new("unavailable"))
