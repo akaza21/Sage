@@ -35,8 +35,10 @@ pub(crate) async fn browser_set_bounds(
     let shown = webview.clone();
     app.clone()
         .run_on_main_thread(move || {
-            if !app.state::<BrowserState>().annotate.is_frozen(&tab_id) {
-                let _ = shown.show();
+            if !app.state::<BrowserState>().annotate.is_frozen(&tab_id)
+                && let Err(error) = shown.show()
+            {
+                eprintln!("browser show failed for {tab_id}: {error}");
             }
         })
         .map_err(|error| error.to_string())

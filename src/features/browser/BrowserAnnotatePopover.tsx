@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { utf8ByteLength } from "../../domain/text";
 import {
   browserElementSink,
@@ -143,6 +143,7 @@ export default function BrowserAnnotateComment({
 }) {
   const [frame, setFrame] = useState<BrowserAnnotateFrame | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirming = useRef(false);
   const sink = browserElementSink();
   const ordinal = sink?.nextOrdinal() ?? null;
   const fail = (cause: unknown) => setError(String(cause).slice(0, 512));
@@ -162,7 +163,9 @@ export default function BrowserAnnotateComment({
       ordinal={ordinal}
       blocked={!sink ? NO_SINK : ordinal === null ? FULL : null}
       error={error}
-      onConfirm={(comment) =>
+      onConfirm={(comment) => {
+        if (confirming.current) return;
+        confirming.current = true;
         void browserAnnotateConfirm(tabId, ordinal!, comment)
           .then((item) =>
             handOffBrowserElement(item)
@@ -170,7 +173,8 @@ export default function BrowserAnnotateComment({
               : setError("The page element could not be attached"),
           )
           .catch(fail)
-      }
+          .finally(() => (confirming.current = false));
+      }}
       onCancel={() => void browserControl(tabId, "annotateCancel").catch(fail)}
     />
   );
