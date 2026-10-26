@@ -3,18 +3,16 @@ use serde_json::{Map, Value};
 use crate::acp::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
-        COMMAND_RESOURCE_LIMIT, ExternalId, FileChangeFacts, FileChangeOperation,
-        NormalizedPayload, SafeResourceLocation, ToolCategory,
+        COMMAND_RESOURCE_LIMIT, ExternalId, FileChangeOperation, NormalizedPayload,
+        SafeResourceLocation, ToolCategory,
     },
-    lifecycle::ItemLifecycle,
     limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
 
-use super::super::sanitize::{normalized_label_text, sanitized_command_output};
-use super::super::surface::ToolCallContentKind;
+use super::super::sanitize::normalized_label_text;
 use super::decode::{
-    category_label, lifecycle_for_tool, line_count, parse_tool_state, string, structural_subagent,
+    category_label, lifecycle_for_tool, parse_tool_state, string, structural_subagent,
     transition_tool,
 };
 use super::diff_records::{DiffObservation, FrameState};
@@ -23,8 +21,7 @@ use super::tool_snapshots::{
     CommandPatch, command_update_payload, content_update_payload, path_locations,
 };
 use super::{
-    AdapterEvent, MAX_EVENTS_PER_FRAME, MAX_TRACKED_TOOLS, ResourceMapper, StandardAcpTranslator,
-    TranslationError,
+    AdapterEvent, MAX_TRACKED_TOOLS, ResourceMapper, StandardAcpTranslator, TranslationError,
 };
 
 pub(super) const FILE_CHANGE_SUMMARY: &str = "File change reported over ACP";

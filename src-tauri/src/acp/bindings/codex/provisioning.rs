@@ -19,7 +19,7 @@ mod windows;
 
 mod digest;
 
-pub(super) use digest::{hash_native_path, hex, source_proof_digest};
+pub(super) use digest::{hex, source_proof_digest};
 
 mod helper;
 

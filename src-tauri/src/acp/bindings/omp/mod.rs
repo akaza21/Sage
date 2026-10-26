@@ -20,8 +20,7 @@ pub(crate) use manifest::{
 };
 #[allow(unused_imports)]
 pub(crate) use protocol::{
-    AdapterEvent, ItemUpdateMode, ModelSummary, Operation, Outbound, PermissionResponse,
-    PromptTerminal,
+    AdapterEvent, ItemUpdateMode, ModelSummary, Operation, Outbound, PromptTerminal,
 };
 pub(crate) use runtime::OmpRuntime;
 pub(crate) use translator::{OmpTranslator, ResourceMapper, TranslationError};

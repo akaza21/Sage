@@ -2,7 +2,6 @@ use super::*;
 
 mod permission;
 mod read_text_file;
-use permission::permission_allow_option;
 
 impl ClaudeRuntime {
     fn binding_is_characterised(&self) -> bool {

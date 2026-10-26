@@ -43,7 +43,3 @@ pub(crate) use profile::{
     NpmPackageManifestRequirement, PROFILES, StandardAcpClientCapabilities, StandardAcpLaunch,
     StandardAcpProfile, StandardAcpVersionShape, profile_for,
 };
-pub(crate) use surface::{
-    ClientRequestMethod, SessionUpdateKind, StopReason, ToolCallContentKind, UnmappedUpdate,
-    unmapped_update,
-};

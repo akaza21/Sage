@@ -29,7 +29,7 @@ pub(crate) use manifest::{
     AdmittedCandidate, CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT, LAUNCH_ENVIRONMENT_KEYS,
     ManifestError, validate_research_candidate,
 };
-pub(crate) use runtime::{ClaudeRuntime, ClaudeRuntimeFactory};
+pub(crate) use runtime::ClaudeRuntimeFactory;
 pub(crate) use translator::{
     AdapterEvent, PromptTerminal, ResourceMapper, StandardAcpTranslator as ClaudeTranslator,
     TranslationError,
