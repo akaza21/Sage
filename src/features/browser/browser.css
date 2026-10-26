@@ -301,8 +301,116 @@
   background: var(--bg);
 }
 .browser-surface__frame {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+/* Annotate's comment box over the frozen page (Codex ref 60). */
+.browser-annotate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--browser-start-fill);
+}
+.browser-annotate__frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+.browser-annotate__outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--browser-annotate-blue);
+  pointer-events: none;
+}
+.browser-annotate__badge {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-circle);
+  color: var(--browser-bright-text);
+  background: var(--browser-annotate-blue);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.browser-annotate__pill {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 296px;
+  height: 44px;
+  padding: 0 8px 0 12px;
+  border-radius: var(--radius-annotation-comment);
+  background: var(--browser-address-fill);
+  box-shadow: var(--browser-popover-shadow);
+}
+.browser-annotate__pill button {
+  flex: none;
+  padding: 0;
+  border: 0;
+}
+.browser-annotate__adjust {
+  width: 16px;
+  height: 16px;
+  background: var(--browser-muted-text);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 7h10M18 7h2M4 17h4M12 17h8'/%3E%3Ccircle cx='16' cy='7' r='2'/%3E%3Ccircle cx='10' cy='17' r='2'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  opacity: 0.6;
+}
+.browser-annotate__comment {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: var(--browser-bright-text);
+  background: transparent;
+  font-size: 13px;
+}
+.browser-annotate__comment::placeholder {
+  color: var(--browser-annotate-placeholder);
+}
+.browser-annotate__confirm {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-circle);
+  background: var(--browser-annotate-tick);
+}
+.browser-annotate__confirm::before {
+  width: 12px;
+  height: 12px;
+  background: var(--browser-address-fill);
+  content: "";
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.browser-annotate__confirm:disabled {
+  cursor: not-allowed;
+}
+.browser-annotate__confirm:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.browser-annotate__error {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger-surface-text);
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  font-size: 12px;
 }
 .browser-surface__frame--new-tab {
   display: none;

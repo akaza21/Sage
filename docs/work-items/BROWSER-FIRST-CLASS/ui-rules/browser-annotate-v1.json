@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-annotate.html",
+  "viewport": {
+    "width": 1872,
+    "height": 1080
+  },
+  "rules": [
+    {
+      "id": "comment-pill-height",
+      "ref": "reference/60",
+      "source": "M1b measured the pill y696-740 at x1300 (44 px)",
+      "selector": ".browser-annotate__pill",
+      "measure": "height",
+      "expected": 44,
+      "tolerancePx": 1
+    },
+    {
+      "id": "comment-pill-width",
+      "ref": "reference/60",
+      "source": "M1b measured the pill ending x1423; its left end sits under the badge near x1128 (about 296 px)",
+      "selector": ".browser-annotate__pill",
+      "measure": "width",
+      "expected": 296,
+      "tolerancePx": 4
+    },
+    {
+      "id": "comment-pill-fill",
+      "ref": "reference/60",
+      "source": "M1b sampled the pill fill rgb(45, 45, 45) at x1300 y718",
+      "selector": ".browser-annotate__pill",
+      "measure": "background-color",
+      "expected": "rgb(45, 45, 45)"
+    },
+    {
+      "id": "comment-pill-round",
+      "ref": "reference/60",
+      "source": "M1b measured fully round 44 px ends",
+      "selector": ".browser-annotate__pill",
+      "measure": "border-radius",
+      "expected": "22px"
+    },
+    {
+      "id": "comment-placeholder",
+      "ref": "reference/60",
+      "source": "M1b read the placeholder 'Add a comment…' starting x1178",
+      "selector": ".browser-annotate__comment",
+      "measure": "placeholder",
+      "expected": "Add a comment…"
+    },
+    {
+      "id": "adjust-before-comment",
+      "ref": "reference/60",
+      "source": "M1b measured the Adjust icon x1148-1164 left of the placeholder at x1178",
+      "selector": ".browser-annotate__adjust",
+      "measure": "left-of",
+      "other": ".browser-annotate__comment"
+    },
+    {
+      "id": "comment-before-tick",
+      "ref": "reference/60",
+      "source": "M1b measured the tick x1388-1415 at the pill's right end",
+      "selector": ".browser-annotate__comment",
+      "measure": "left-of",
+      "other": ".browser-annotate__confirm"
+    },
+    {
+      "id": "tick-size",
+      "ref": "reference/60",
+      "source": "M1b measured the tick circle y704-731 at x1401 (28 px)",
+      "selector": ".browser-annotate__confirm",
+      "measure": "height",
+      "expected": 28,
+      "tolerancePx": 1
+    },
+    {
+      "id": "tick-fill",
+      "ref": "reference/60",
+      "source": "M1b sampled the tick fill rgb(128, 128, 128) at x1390 y718",
+      "selector": ".browser-annotate__confirm",
+      "measure": "background-color",
+      "expected": "rgb(128, 128, 128)"
+    },
+    {
+      "id": "tick-right-inset",
+      "ref": "reference/60",
+      "source": "M1b measured the tick ending x1415, 8 px inside the pill's end at x1423",
+      "selector": ".browser-annotate__confirm",
+      "measure": "right-inset",
+      "within": ".browser-annotate__pill",
+      "expected": 8,
+      "tolerancePx": 2
+    },
+    {
+      "id": "badge-size",
+      "ref": "reference/60",
+      "source": "M1b measured badge 3 at x1105-1129, y705-729 (24 px)",
+      "selector": ".browser-annotate__badge",
+      "measure": "height",
+      "expected": 24,
+      "tolerancePx": 1
+    },
+    {
+      "id": "badge-fill",
+      "ref": "reference/60",
+      "source": "M1b sampled the badge fill rgb(51, 156, 255) at x1110 y718",
+      "selector": ".browser-annotate__badge",
+      "measure": "background-color",
+      "expected": "rgb(51, 156, 255)"
+    },
+    {
+      "id": "comment-pill-under-element",
+      "ref": "reference/60",
+      "source": "Codex anchors the pill at the click point beside the badge; CDP reports no click point, so Sage puts it under the picked element",
+      "selector": ".browser-annotate__pill",
+      "measure": "below",
+      "other": ".browser-annotate__outline"
+    }
+  ]
+}

@@ -26,6 +26,14 @@ pub(crate) async fn browser_set_bounds(
     webview
         .set_position(LogicalPosition::new(x, y))
         .and_then(|()| webview.set_size(LogicalSize::new(width, height)))
-        .and_then(|()| webview.show())
+        .and_then(|()| {
+            // A page frozen for an Annotate comment stays hidden until the
+            // comment is done.
+            if state.annotate.is_frozen(&tab_id) {
+                Ok(())
+            } else {
+                webview.show()
+            }
+        })
         .map_err(|error| error.to_string())
 }

@@ -3,10 +3,12 @@ use std::{cell::RefCell, sync::Mutex};
 use super::*;
 
 #[derive(Default)]
-struct Overlay {
+pub(super) struct Overlay {
     calls: RefCell<Vec<String>>,
     refuse_start: bool,
     refuse_stop: bool,
+    pub(super) refuse_pick: bool,
+    pub(super) refuse_release: bool,
 }
 
 impl InspectOverlay for Overlay {
@@ -24,27 +26,48 @@ impl InspectOverlay for Overlay {
         }
         Ok(())
     }
+    fn pick(&self, label: &str, backend_node_id: u64) -> Result<Selection, String> {
+        self.calls
+            .borrow_mut()
+            .push(format!("pick {label} {backend_node_id}"));
+        if self.refuse_pick {
+            return Err("pick refused".into());
+        }
+        Ok(selection::tests::selection(label))
+    }
+    fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String> {
+        self.calls
+            .borrow_mut()
+            .push(format!("release {label} reveal={reveal} resume={resume}"));
+        if self.refuse_release {
+            return Err("release refused".into());
+        }
+        Ok(())
+    }
 }
 
 impl Overlay {
-    fn calls(&self) -> Vec<String> {
+    pub(super) fn calls(&self) -> Vec<String> {
         self.calls.borrow().clone()
     }
 }
 
-fn on(label: &str) -> AnnotateChange {
+pub(super) fn on(label: &str) -> AnnotateChange {
     change(label.into(), true)
 }
 
-fn off(label: &str) -> AnnotateChange {
+pub(super) fn off(label: &str) -> AnnotateChange {
     change(label.into(), false)
 }
 
 #[test]
-fn only_the_two_annotate_actions_are_recognised() {
-    assert_eq!(action("annotateOn"), Some(true));
-    assert_eq!(action("annotateOff"), Some(false));
-    for other in ["annotate", "AnnotateOn", "reload", ""] {
+fn only_the_annotate_actions_are_recognised() {
+    assert_eq!(action("annotateOn"), Some(Action::On));
+    assert_eq!(action("annotateOff"), Some(Action::Off));
+    assert_eq!(action("annotateCancel"), Some(Action::Cancel));
+    assert_eq!(action("annotateConfirm"), Some(Action::Confirm));
+    assert_eq!(action("annotateFrame"), Some(Action::Frame));
+    for other in ["annotate", "AnnotateOn", "annotateSelect", "reload", ""] {
         assert_eq!(action(other), None, "{other}");
     }
 }
@@ -107,9 +130,12 @@ fn starting_on_another_tab_first_leaves_the_previous_one() {
         overlay.calls(),
         ["start browser-1", "stop browser-1", "start browser-2"]
     );
-    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
     assert_eq!(
-        mode.leave(&overlay, "browser-2", true),
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
+        (vec![], Ok(()))
+    );
+    assert_eq!(
+        mode.leave(&overlay, "browser-2", Exit::Reveal),
         (vec![off("browser-2")], Ok(()))
     );
 }
@@ -124,22 +150,37 @@ fn a_refused_start_leaves_annotate_off_but_still_announces_the_previous_tab() {
         mode.start(&overlay, "browser-2"),
         (vec![off("browser-1")], Err("start refused".into()))
     );
-    assert_eq!(mode.leave(&overlay, "browser-2", true), (vec![], Ok(())));
-    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-2", Exit::Reveal),
+        (vec![], Ok(()))
+    );
+    assert_eq!(
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
+        (vec![], Ok(()))
+    );
 }
 
 #[test]
 fn leaving_stops_the_overlay_once_and_ignores_tabs_that_are_not_annotating() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();
-    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
-    mode.start(&overlay, "browser-1").1.unwrap();
-    assert_eq!(mode.leave(&overlay, "browser-2", true), (vec![], Ok(())));
     assert_eq!(
-        mode.leave(&overlay, "browser-1", true),
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
+        (vec![], Ok(()))
+    );
+    mode.start(&overlay, "browser-1").1.unwrap();
+    assert_eq!(
+        mode.leave(&overlay, "browser-2", Exit::Reveal),
+        (vec![], Ok(()))
+    );
+    assert_eq!(
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
         (vec![off("browser-1")], Ok(()))
     );
-    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
+        (vec![], Ok(()))
+    );
     assert_eq!(overlay.calls(), ["start browser-1", "stop browser-1"]);
 }
 
@@ -150,15 +191,18 @@ fn a_failed_stop_still_ends_the_mode_and_a_closing_tab_skips_the_overlay() {
     mode.start(&overlay, "browser-1").1.unwrap();
     overlay.refuse_stop = true;
     assert_eq!(
-        mode.leave(&overlay, "browser-1", true),
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
         (vec![off("browser-1")], Err("stop refused".into()))
     );
-    assert_eq!(mode.leave(&overlay, "browser-1", true), (vec![], Ok(())));
+    assert_eq!(
+        mode.leave(&overlay, "browser-1", Exit::Reveal),
+        (vec![], Ok(()))
+    );
 
     overlay.refuse_stop = false;
     mode.start(&overlay, "browser-3").1.unwrap();
     assert_eq!(
-        mode.leave(&overlay, "browser-3", false),
+        mode.leave(&overlay, "browser-3", Exit::Closed),
         (vec![off("browser-3")], Ok(()))
     );
     assert_eq!(
@@ -186,7 +230,9 @@ fn changes_are_announced_before_the_mode_lock_is_released() {
         .run(announce, |mode| mode.start(&overlay, "browser-2"))
         .unwrap();
     annotate
-        .run(announce, |mode| mode.leave(&overlay, "browser-2", true))
+        .run(announce, |mode| {
+            mode.leave(&overlay, "browser-2", Exit::Reveal)
+        })
         .unwrap();
     assert_eq!(
         announced.into_inner(),
@@ -211,6 +257,12 @@ fn racing_starts_and_leaves_announce_the_final_state_last() {
             std::thread::yield_now();
             Ok(())
         }
+        fn pick(&self, label: &str, _: u64) -> Result<Selection, String> {
+            Ok(selection::tests::selection(label))
+        }
+        fn release(&self, _: &str, _: bool, _: bool) -> Result<(), String> {
+            Ok(())
+        }
     }
     let annotate = Annotate::default();
     let announced = Mutex::new(Vec::new());
@@ -225,7 +277,7 @@ fn racing_starts_and_leaves_announce_the_final_state_last() {
                             if on {
                                 mode.start(&Slow, "browser-1")
                             } else {
-                                mode.leave(&Slow, "browser-1", true)
+                                mode.leave(&Slow, "browser-1", Exit::Reveal)
                             }
                         },
                     );
@@ -259,7 +311,10 @@ fn the_lock_free_tab_copy_follows_the_mode() {
     assert!(!annotate.is_annotating("browser-1"));
     assert!(!annotate.is_annotating("main"));
     annotate
-        .run(|_| (), |mode| mode.leave(&overlay, "browser-12", false))
+        .run(
+            |_| (),
+            |mode| mode.leave(&overlay, "browser-12", Exit::Closed),
+        )
         .unwrap();
     assert!(!annotate.is_annotating("browser-12"));
 }
