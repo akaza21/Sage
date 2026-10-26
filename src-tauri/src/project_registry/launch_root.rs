@@ -60,6 +60,19 @@ impl ProjectRootAuthority {
         &self.canonical_path
     }
 
+    /// The retained root directory, so a launch can enter it by descriptor
+    /// rather than by a path that could be replaced after revalidation.
+    #[cfg_attr(
+        not(any(target_os = "linux", target_os = "macos")),
+        allow(
+            dead_code,
+            reason = "only the Unix terminal enters the root by descriptor"
+        )
+    )]
+    pub(crate) fn directory(&self) -> &fs::File {
+        &self.directory
+    }
+
     pub(crate) fn identity_bytes(&self) -> [u8; 24] {
         self.identity.stable_bytes()
     }
