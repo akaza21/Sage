@@ -206,12 +206,6 @@ impl ActiveDispatch {
         Ok(mutation)
     }
 
-    pub(crate) fn can_retry_zero_bytes(&self, mutation: &TurnMutation) -> bool {
-        mutation.delivery_state == crate::acp::lifecycle::DeliveryState::ZeroBytes
-            && !mutation.state.is_terminal()
-            && self.attempts < 2
-    }
-
     fn accept_mutation(&mut self, mutation: &TurnMutation) -> Result<(), CoordinatorError> {
         self.command.expected_revision = mutation.revision;
         self.accepted_state = mutation.state;

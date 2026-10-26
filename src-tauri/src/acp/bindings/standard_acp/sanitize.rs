@@ -36,16 +36,6 @@ pub(crate) fn normalized_label_text<const MAX: usize>(
     redacted_text(field, input, true)
 }
 
-pub(crate) fn neutralized_label_text<const MAX: usize>(
-    field: &'static str,
-    input: &str,
-) -> Result<SafeText<MAX>, ContractError> {
-    if input.len() > MAX {
-        return SafeText::new(field, input);
-    }
-    SafeText::new(field, neutralized(input, true).as_ref())
-}
-
 fn redacted_text<const MAX: usize>(
     field: &'static str,
     input: &str,

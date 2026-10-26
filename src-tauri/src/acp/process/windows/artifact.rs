@@ -188,14 +188,6 @@ impl VerifiedArtifact {
             })
     }
 
-    pub(super) fn sha256(&self) -> [u8; 32] {
-        self.digest
-    }
-
-    pub(super) fn byte_len(&self) -> u64 {
-        self.bytes
-    }
-
     pub(super) fn read_launcher_bytes(&self, maximum: u64) -> Result<Vec<u8>, LaunchError> {
         if self.bytes > maximum {
             return Err(LaunchError::IdentityMismatch);

@@ -25,6 +25,7 @@ pub(crate) struct PromptIntent {
 }
 
 impl PromptIntent {
+    #[cfg(test)]
     fn actual_bytes(&self) -> Option<usize> {
         self.prompt
             .as_str()
@@ -55,6 +56,7 @@ impl CancelIntent {
             && self.runtime_epoch == owner.runtime_epoch
     }
 
+    #[cfg(test)]
     fn actual_bytes(&self) -> Option<usize> {
         self.project_id
             .as_str()
@@ -75,7 +77,9 @@ pub(crate) enum ReaderTerminal {
 
 pub(crate) enum ControlMessage {
     StdoutChunk(Vec<u8>),
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     Prompt(PromptIntent),
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     Cancel(CancelIntent),
     Worker(super::WorkerEnvelope),
     ReaderTerminal(ReaderTerminal),
@@ -168,6 +172,7 @@ impl DriverMailbox {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_push_chunk(&self, chunk: Vec<u8>) -> Result<(), MailboxError> {
         if chunk.is_empty() || chunk.len() > reader_chunk_limit() {
             return Err(MailboxError::InvalidChunk);
@@ -185,6 +190,7 @@ impl DriverMailbox {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn submit_cancel(
         &self,
         intent: CancelIntent,
@@ -194,6 +200,7 @@ impl DriverMailbox {
         self.try_push_control(bytes, deadline_ms, || ControlMessage::Cancel(intent))
     }
 
+    #[cfg(test)]
     pub(crate) fn submit_prompt(
         &self,
         prompt: crate::acp::intent::Prompt,

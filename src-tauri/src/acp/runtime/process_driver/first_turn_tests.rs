@@ -62,8 +62,6 @@ struct Adapter {
     config_pending: bool,
 }
 
-struct LateFrameAdapter;
-
 struct ConfigThenLateAdapter {
     reject_next: bool,
 }
@@ -176,36 +174,6 @@ impl HarnessAdapter for Adapter {
             OutboundFrame::new(b"{}".to_vec()).unwrap(),
             EgressToken::request(1),
         )))
-    }
-
-    fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
-        Ok(())
-    }
-
-    fn resolve_egress(
-        &mut self,
-        _: EgressToken,
-        _: EgressResolution,
-    ) -> Result<(), AdapterRuntimeError> {
-        Ok(())
-    }
-}
-
-impl HarnessAdapter for LateFrameAdapter {
-    fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        None
-    }
-
-    fn command(&mut self, _: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        Err(AdapterRuntimeError::Operation)
-    }
-
-    fn ingest(
-        &mut self,
-        _: &Frame,
-        _: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![])
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {

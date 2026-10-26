@@ -13,7 +13,9 @@ use super::decode::{
     category_label, fits_permission_payload, object, object_value, offered_option_kinds, rpc_id,
     string, transition_tool,
 };
-use super::{AdapterEvent, StandardAcpTranslator, TranslationError, decode_frame};
+#[cfg(test)]
+use super::decode_frame;
+use super::{AdapterEvent, StandardAcpTranslator, TranslationError};
 use crate::acp::bindings::command_summary::{CommandSummaryError, sanitize_command_summary};
 
 const MAX_PERMISSION_REQUESTS: usize = 8;
@@ -23,6 +25,7 @@ const COMMAND_HIDDEN: &str =
     "command hidden: contains content Sage will not display; review before approving";
 
 impl StandardAcpTranslator {
+    #[cfg(test)]
     pub(crate) fn translate_permission_request(
         &mut self,
         raw: &[u8],

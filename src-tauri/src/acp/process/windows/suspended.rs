@@ -96,12 +96,6 @@ impl SuspendedLaunch {
             stdio,
         })
     }
-    pub(super) fn process(&self) -> HANDLE {
-        self.process.raw()
-    }
-    pub(super) fn thread(&self) -> HANDLE {
-        self.thread.raw()
-    }
     pub(super) fn into_parts(self) -> (NativeHandle, NativeHandle, StdioSet) {
         (self.process, self.thread, self.stdio)
     }
@@ -167,6 +161,7 @@ fn close_unowned_thread(thread: HANDLE) {
 
 /// No policy adapter may resume before its containment and artifact checks.
 /// Any failure retains local ownership long enough to run its exact recovery.
+#[cfg(test)]
 pub(super) fn finish_before_resume(
     mut assign: impl FnMut() -> Result<(), LaunchError>,
     mut validate: impl FnMut() -> Result<(), LaunchError>,

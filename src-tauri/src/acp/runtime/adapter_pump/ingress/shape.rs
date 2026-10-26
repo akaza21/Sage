@@ -8,6 +8,7 @@ use crate::acp::transport::Frame;
 
 #[derive(Clone, Copy)]
 pub(super) enum IngestMode {
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     Immediate,
     Deferred,
 }

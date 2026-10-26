@@ -30,9 +30,6 @@ where
     pub(crate) fn config_pending(&self) -> bool {
         self.pump.config_pending()
     }
-    pub(crate) fn goal_pending(&self) -> bool {
-        self.pump.goal_pending()
-    }
     pub(crate) fn native_rpc_pending(&self) -> bool {
         self.pump.native_rpc_pending()
     }

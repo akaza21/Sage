@@ -10,9 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
 
-use super::{
-    CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT, ManifestError, validate_research_candidate,
-};
+use super::{CandidateManifest, ENTRYPOINT, ManifestError, validate_research_candidate};
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[path = "fixture_admission.rs"]
@@ -110,9 +108,6 @@ impl AdmittedClaudeBinding {
         })
     }
 
-    pub(crate) fn binding_id(&self) -> &'static str {
-        CLAUDE_BINDING_ID
-    }
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.binding_digest
     }
@@ -287,6 +282,7 @@ impl ClaudeBindingRegistration {
         }
     }
 
+    #[cfg(test)]
     fn from_discovery(discovery: ClaudeLaunchDiscovery) -> Self {
         Self {
             state: Mutex::new(Self::state_from_discovery(discovery)),
