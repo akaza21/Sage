@@ -112,9 +112,11 @@ impl SearchEngine {
             counters.partial = true;
             return;
         }
+        // Binary files are skipped like symlinks: counted, but the search stays
+        // complete, as in VS Code. Text that is not UTF-8 was not searched, so it
+        // still marks the root partial.
         if bytes.iter().take(8_192).any(|byte| *byte == 0) {
             counters.skipped_files += 1;
-            counters.partial = true;
             return;
         }
         let Ok(content) = std::str::from_utf8(&bytes) else {
