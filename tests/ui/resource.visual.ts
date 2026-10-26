@@ -413,14 +413,23 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .fill("ChatSurface");
     await expectFindContained(agentPage);
     await expect(agentFind.getByRole("status")).toContainText("matches");
+    // Matches are marked in the Agent window too, from the document palette.
+    expect(
+      await agentPage
+        .locator(".cm-findMatch")
+        .first()
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    ).not.toBe("rgba(0, 0, 0, 0)");
     expect(
       await agentFind.evaluate((node) => {
         const query = node.querySelector<HTMLElement>(".editor-find__query");
         const status = node.querySelector<HTMLElement>(".editor-find__status");
         const buttons = Array.from(node.querySelectorAll("button"));
-        if (!query || !status) return null;
+        // The Replace chevron leads the row, as in VS Code.
+        const expand = node.querySelector(".editor-find__expand");
+        if (!query || !status || buttons[0] !== expand) return null;
         const queryBounds = query.getBoundingClientRect();
-        const controlBounds = [status, ...buttons].map((control) =>
+        const controlBounds = [status, ...buttons.slice(1)].map((control) =>
           control.getBoundingClientRect(),
         );
         return {
@@ -444,8 +453,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         };
       }),
     ).toEqual({
-      display: "flex",
-      buttonCount: 4,
+      display: "grid",
+      buttonCount: 7,
       controlsShareQueryRow: true,
       queryLeadsControls: true,
       controlsVisible: true,

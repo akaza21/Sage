@@ -1,4 +1,4 @@
-import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
+import { MAX_EDITABLE_CONTENT_BYTES } from "./editorContent";
 
 export type FileNavigationSelectionIntent =
   { kind: "caret" } | { kind: "match"; query: string; caseSensitive: boolean };

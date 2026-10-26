@@ -39,14 +39,14 @@ export const EDITOR_CATALOG = Object.freeze(
       state: "find-widget",
       supported: false,
       reason:
-        "Ctrl+F and a match counter exist, but FileFindBar / inFileFind support only literal find and Match case, not regex.",
+        "EP-04 FileFindBar ships regex, whole word and Match case, but the native editor driver has no find-widget steps yet.",
       widths: [1888],
     },
     {
       state: "find-replace",
       supported: false,
       reason:
-        "FileFindBar has no replace field or replace operation; the keymap has no Ctrl+H binding.",
+        "EP-04 FileFindBar ships Replace (Ctrl+H), but the native editor driver has no find-replace steps yet.",
       widths: [1888],
     },
     {

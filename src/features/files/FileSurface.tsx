@@ -44,6 +44,7 @@ export function FileSurface({
     openFind,
     closeFind,
     hideFind,
+    findControlRef,
     find,
   } = useFileSurfaceModel(tab, editorInputRef, findInputRef);
   const goToInputRef = useRef<HTMLInputElement>(null);
@@ -80,10 +81,18 @@ export function FileSurface({
     setGoToSessionKey(activeResourceKey);
   }
 
-  function openFindFromSurface() {
+  function openFindFromSurface(replace = false) {
     setGoToSessionKey("");
     setGoToError(false);
-    openFind();
+    openFind(replace);
+  }
+
+  function moveFind(direction: 1 | -1) {
+    if (findOpen && findControlRef.current) {
+      findControlRef.current.move(direction);
+    } else {
+      openFindFromSurface();
+    }
   }
 
   function closeGoToLine() {
@@ -95,18 +104,27 @@ export function FileSurface({
   useEffect(() => {
     if (!readOnly || previewing) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        !matchesPlatformChord(keymapBinding("find"), event, usesMetaModifier())
-      )
-        return;
+      const apple = usesMetaModifier();
+      const matches = (id: string) =>
+        matchesPlatformChord(keymapBinding(id), event, apple);
+      const direction = matches("findNext")
+        ? 1
+        : matches("findPrevious")
+          ? -1
+          : 0;
+      if (!direction && !matches("find")) return;
       event.preventDefault();
       setGoToSessionKey("");
       setGoToError(false);
-      openFind();
+      if (direction && findOpen && findControlRef.current) {
+        findControlRef.current.move(direction);
+      } else {
+        openFind();
+      }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [openFind, previewing, readOnly]);
+  }, [findControlRef, findOpen, openFind, previewing, readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(contentText(findContent), goToQuery);
@@ -204,7 +222,9 @@ export function FileSurface({
           },
           closeFind,
           closeGoToLine,
-          openFind: openFindFromSurface,
+          openFind: () => openFindFromSurface(),
+          openReplace: () => openFindFromSurface(true),
+          moveFind,
           openGoToLine,
           goToLocalSymbol: () => void goToLocalSymbol(),
           save: readOnly ? () => undefined : () => void saveActiveEditor(),

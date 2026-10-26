@@ -91,10 +91,45 @@ export const EDITOR_EDITING_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   },
 ]);
 
+const findToggle = (id: string, label: string, key: string): KeymapBinding => ({
+  id: `find.${id}`,
+  label,
+  description: `Switches ${label} while the find bar has focus.`,
+  scope: "Editor",
+  key,
+  ctrlOrMeta: "forbidden",
+  shift: "forbidden",
+  alt: "required",
+  apple: { ctrlOrMeta: "required", shift: "forbidden", alt: "required" },
+});
+
+/**
+ * Shortcuts the find bar handles itself (EP-04), as in VS Code. A test keeps
+ * `FileFindBar.tsx` answering the same chords.
+ */
+export const FIND_BAR_BINDINGS: readonly KeymapBinding[] = Object.freeze([
+  findToggle("toggleCase", "Match case", "c"),
+  findToggle("toggleWholeWord", "Match whole word", "w"),
+  findToggle("toggleRegex", "Use regular expression", "r"),
+  {
+    id: "find.replaceAll",
+    label: "Replace all",
+    description:
+      "Replaces every match in one step, which one undo reverses. Enter in the replace box replaces the current match.",
+    scope: "Editor",
+    key: "enter",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "required",
+    apple: { shift: "forbidden", alt: "forbidden" },
+  },
+]);
+
 /** Every shortcut the Keyboard settings page lists. */
 export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
   ...KEYMAP_BINDINGS,
   ...EDITOR_EDITING_BINDINGS,
+  ...FIND_BAR_BINDINGS,
 ];
 
 export type SettingsPageId = "editor" | "keyboard";

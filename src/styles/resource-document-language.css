@@ -24,6 +24,8 @@
     --doc-bracket-match-background
   );
   --resource-document-occurrence: var(--doc-occurrence-background);
+  --resource-document-find-match: var(--doc-find-match-background);
+  --resource-document-find-match-border: var(--doc-find-match-border);
   --resource-document-fold-placeholder: var(--doc-fold-placeholder-background);
   --resource-document-error-foreground: var(--doc-error-foreground);
   --color-canvas: var(--doc-canvas);

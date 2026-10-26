@@ -1,20 +1,21 @@
-import type { KeyboardEventHandler, RefObject } from "react";
+import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
 import type { Text } from "@codemirror/state";
 
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import type { ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import {
+  MAX_EDITABLE_CONTENT_BYTES,
   contentText,
   type EditorContent,
   type EditorContentBase,
 } from "./editorContent";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
-import { FileFindBar } from "./FileFindBar";
+import type { FindControl, FindOpenRequest } from "./FileFindBar";
 import { FileGoToLineBar } from "./FileGoToLineBar";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
-import { MAX_EDITABLE_CONTENT_BYTES } from "./inFileFind";
 import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
@@ -45,16 +46,16 @@ export function FileSurfaceResourceState({
 }
 
 interface FileSurfaceFindView {
+  request: FindOpenRequest;
   inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  status: string;
-  caseSensitive: boolean;
-  hasMatches: boolean;
-  onQueryChange: (query: string) => void;
-  onMove: (direction: 1 | -1) => void;
-  onToggleCase: () => void;
+  controlRef: RefObject<FindControl | null>;
+  content: EditorContent;
   onClose: () => void;
 }
+
+// The Find bar, its matching and its worker load apart from the editor (EP-04).
+const loadFindBar = () =>
+  import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
 interface FileSurfaceGoToView {
   inputRef: RefObject<HTMLInputElement | null>;
@@ -108,6 +109,11 @@ export function FileSurfaceContent({
   onSurfaceKeyDown: KeyboardEventHandler<HTMLElement>;
   onTogglePreview: () => void;
 }) {
+  // Loads the Find bar while idle, so the first Ctrl+F types straight into it.
+  useEffect(() => {
+    const timer = setTimeout(() => void loadFindBar(), 1000);
+    return () => clearTimeout(timer);
+  }, []);
   return (
     <section
       className="file-surface resource-document"
@@ -156,16 +162,19 @@ export function FileSurfaceContent({
       ) : (
         <div className="file-editor-stage">
           {find ? (
-            <FileFindBar
-              inputRef={find.inputRef}
-              query={find.query}
-              status={find.status}
-              caseSensitive={find.caseSensitive}
-              hasMatches={find.hasMatches}
-              onQueryChange={find.onQueryChange}
-              onMove={find.onMove}
-              onToggleCase={find.onToggleCase}
-              onClose={find.onClose}
+            <LazyModuleBoundary
+              load={loadFindBar}
+              label="Find"
+              fallback={null}
+              render={(FileFindBar) => (
+                <FileFindBar
+                  {...find}
+                  editorRef={editorInputRef}
+                  canReplace={
+                    !readOnly && !reviewOnly && !transitioning && !editor.saving
+                  }
+                />
+              )}
             />
           ) : null}
           <EditorAdapter

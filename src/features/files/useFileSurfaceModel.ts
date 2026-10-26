@@ -4,11 +4,11 @@ import { tabsWithEditorUpdate } from "../../app/editorSlice";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
-import { contentText } from "./editorContent";
+import { MAX_FIND_QUERY_LENGTH, contentText } from "./editorContent";
 import { useEditorExternalWatch } from "./editorExternalWatch";
 import type { EditorAdapterHandle } from "./EditorAdapter";
+import type { FindControl, FindOpenRequest } from "./FileFindBar";
 import { fileNavigationSelection } from "./fileNavigation";
-import { findLiteralMatches } from "./inFileFind";
 import {
   getFileEditorController,
   useFileEditorLifecycle,
@@ -80,60 +80,8 @@ export function useFileSurfaceModel(
     flushActiveEditor,
   });
   useEditorExternalWatch(watchedResource, watchBridge);
-  const selectedMatchRef = useRef<{ start: number; end: number } | null>(null);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findQuery, setFindQuery] = useState("");
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [matchCursor, setMatchCursor] = useState({ contextKey: "", index: 0 });
-  const revision = editor?.phase === "ready" ? editor.revision : 0;
-  const findContextKey = `${activeResourceKey}\0${revision}`;
-  const findMatches = useMemo(
-    () =>
-      findOpen
-        ? findLiteralMatches(contentText(content), findQuery, caseSensitive)
-        : { offsets: [], truncated: false, contentLimitExceeded: false },
-    [caseSensitive, content, findOpen, findQuery],
-  );
-  const resolvedMatchIndex =
-    findMatches.offsets.length === 0
-      ? 0
-      : matchCursor.contextKey === findContextKey
-        ? Math.min(matchCursor.index, findMatches.offsets.length - 1)
-        : 0;
-  useEffect(() => {
-    if (findOpen) {
-      findInputRef.current?.focus();
-      findInputRef.current?.select();
-    }
-  }, [findInputRef, findOpen]);
-  useEffect(() => {
-    if (!findOpen) return;
-    const input = editorInputRef.current;
-    const offset = findMatches.offsets[resolvedMatchIndex];
-    if (!input) return;
-    if (offset === undefined) {
-      const selected = selectedMatchRef.current;
-      if (
-        selected &&
-        input.selection().start === selected.start &&
-        input.selection().end === selected.end
-      )
-        input.setSelection(selected.start, selected.start);
-      selectedMatchRef.current = null;
-      return;
-    }
-    const start = Math.min(offset, content.length);
-    const end = Math.min(offset + findQuery.length, content.length);
-    input.setSelection(start, end);
-    selectedMatchRef.current = { start, end };
-  }, [
-    content,
-    editorInputRef,
-    findMatches.offsets,
-    findOpen,
-    findQuery.length,
-    resolvedMatchIndex,
-  ]);
+  const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);
+  const findControlRef = useRef<FindControl | null>(null);
   useEffect(() => {
     const input = editorInputRef.current;
     if (
@@ -166,10 +114,20 @@ export function useFileSurfaceModel(
     resource,
   ]);
   const closeFind = () => {
-    setFindOpen(false);
-    setMatchCursor({ contextKey: findContextKey, index: 0 });
-    selectedMatchRef.current = null;
+    setFindRequest(null);
     editorInputRef.current?.focus();
+  };
+  const openFind = (replace = false) => {
+    const view = editorInputRef.current?.view();
+    const typing = findInputRef.current
+      ?.closest(".editor-find")
+      ?.contains(document.activeElement);
+    const { from, to } = view?.state.selection.main ?? { from: 0, to: 0 };
+    const selected = typing ? "" : (view?.state.sliceDoc(from, to) ?? "");
+    // Like VS Code, a one-line selection becomes the search text.
+    const oneLine =
+      selected.length <= MAX_FIND_QUERY_LENGTH && !selected.includes("\n");
+    setFindRequest({ replace, seed: selected && oneLine ? selected : null });
   };
   return {
     resource,
@@ -180,47 +138,17 @@ export function useFileSurfaceModel(
     updateEditorContent,
     saveActiveEditor,
     content,
-    findOpen,
-    openFind: () => {
-      if (findOpen) {
-        findInputRef.current?.focus();
-        findInputRef.current?.select();
-        return;
-      }
-      setFindOpen(true);
-    },
+    findOpen: findRequest !== null,
+    openFind,
     closeFind,
-    hideFind: () => setFindOpen(false),
-    find: findOpen
+    hideFind: () => setFindRequest(null),
+    findControlRef,
+    find: findRequest
       ? {
+          request: findRequest,
           inputRef: findInputRef,
-          query: findQuery,
-          status:
-            findQuery.length === 0
-              ? "No query"
-              : findMatches.contentLimitExceeded
-                ? "File exceeds the 1 MiB Find limit"
-                : findMatches.offsets.length === 0
-                  ? "No matches"
-                  : `${resolvedMatchIndex + 1} of ${findMatches.offsets.length}${findMatches.truncated ? "+" : ""} ${findMatches.offsets.length === 1 && !findMatches.truncated ? "match" : "matches"}`,
-          caseSensitive,
-          hasMatches: findMatches.offsets.length > 0,
-          onQueryChange: (query: string) => {
-            setFindQuery(query);
-            setMatchCursor({ contextKey: findContextKey, index: 0 });
-          },
-          onMove: (direction: 1 | -1) => {
-            const count = findMatches.offsets.length;
-            if (count === 0) return;
-            setMatchCursor({
-              contextKey: findContextKey,
-              index: (resolvedMatchIndex + direction + count) % count,
-            });
-          },
-          onToggleCase: () => {
-            setCaseSensitive((value) => !value);
-            setMatchCursor({ contextKey: findContextKey, index: 0 });
-          },
+          controlRef: findControlRef,
+          content,
           onClose: closeFind,
         }
       : null,

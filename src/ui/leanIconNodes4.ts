@@ -127,3 +127,41 @@ export const X = leanIcon("lucide lucide-x", [
   ["path", { d: "M18 6 6 18" }],
   ["path", { d: "m6 6 12 12" }],
 ]);
+export const Regex = leanIcon("lucide lucide-regex", [
+  ["path", { d: "M17 3v10" }],
+  ["path", { d: "m12.67 5.5 8.66 5" }],
+  ["path", { d: "m12.67 10.5 8.66-5" }],
+  [
+    "path",
+    {
+      d: "M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z",
+    },
+  ],
+]);
+export const Replace = leanIcon("lucide lucide-replace", [
+  ["path", { d: "M14 4a1 1 0 0 1 1-1" }],
+  ["path", { d: "M15 10a1 1 0 0 1-1-1" }],
+  ["path", { d: "M21 4a1 1 0 0 0-1-1" }],
+  ["path", { d: "M21 9a1 1 0 0 1-1 1" }],
+  ["path", { d: "m3 7 3 3 3-3" }],
+  ["path", { d: "M6 10V5a2 2 0 0 1 2-2h2" }],
+  ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }],
+]);
+export const ReplaceAll = leanIcon("lucide lucide-replace-all", [
+  ["path", { d: "M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1" }],
+  ["path", { d: "M14 4a1 1 0 0 1 1-1" }],
+  ["path", { d: "M15 10a1 1 0 0 1-1-1" }],
+  ["path", { d: "M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1" }],
+  ["path", { d: "M21 4a1 1 0 0 0-1-1" }],
+  ["path", { d: "M21 9a1 1 0 0 1-1 1" }],
+  ["path", { d: "m3 7 3 3 3-3" }],
+  ["path", { d: "M6 10V5a2 2 0 0 1 2-2h2" }],
+  ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }],
+]);
+export const WholeWord = leanIcon("lucide lucide-whole-word", [
+  ["circle", { cx: "7", cy: "12", r: "3" }],
+  ["path", { d: "M10 9v6" }],
+  ["circle", { cx: "17", cy: "12", r: "3" }],
+  ["path", { d: "M14 7v8" }],
+  ["path", { d: "M22 17v1c0 .5-.5 1-1 1H3c-.5 0-1-.5-1-1v-1" }],
+]);
