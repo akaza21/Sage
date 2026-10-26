@@ -6,6 +6,7 @@ import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 import { traceCloseStage } from "./workspaceNotifyLifecycle";
+import { errorMessage } from "../domain/errors";
 
 const loadWorkbench = async () => {
   const { Workbench } = await import("../workbench/Workbench");
@@ -96,9 +97,7 @@ export function App() {
             await useWorkbenchStore.getState().closeWorkbench();
           } catch (error) {
             traceCloseStage("closeRequested", "error");
-            setCloseFailure(
-              error instanceof Error ? error.message : String(error),
-            );
+            setCloseFailure(errorMessage(error));
             closing = false;
           }
         },

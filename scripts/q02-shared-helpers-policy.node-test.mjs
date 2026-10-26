@@ -25,19 +25,23 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
-test("default production file cap accepts 480 and rejects 481", async () => {
-  const files = Array.from({ length: 481 }, (_, index) => [
+test("default production file cap accepts 520 and rejects 521", async () => {
+  const files = Array.from({ length: 521 }, (_, index) => [
     `src/f${String(index).padStart(3, "0")}.ts`,
     "",
   ]);
-  await withFixture(Object.fromEntries(files.slice(0, 480)), async (root) => {
+  await withFixture(Object.fromEntries(files.slice(0, 520)), async (root) => {
     assert.deepEqual(await scan(root), []);
   });
   await withFixture(Object.fromEntries(files), async (root) => {
     assert.deepEqual(await scan(root), [
-      "Q02 file limit 480 exceeded at src/f480.ts",
+      "Q02 file limit 520 exceeded at src/f520.ts",
     ]);
   });
+});
+
+test("default aggregate source cap is 2.25 MiB", () => {
+  assert.equal(Q02_LIMITS.aggregateBytes, 2_359_296);
 });
 
 test("clean scope admits exact owners and ignores test/spec/fixture/JS", async () => {
