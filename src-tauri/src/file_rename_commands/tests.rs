@@ -16,7 +16,7 @@ use crate::{
     state::AppState,
 };
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use crate::{domain::FileRenameOutcome, project_commands::persist_project_layout_inner};
 
 struct Fixture {
@@ -147,7 +147,7 @@ impl Drop for Fixture {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn commits_exact_file_and_migrates_only_the_selected_resource() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -163,10 +163,10 @@ fn commits_exact_file_and_migrates_only_the_selected_resource() {
         assert_eq!(result.transition_epoch, 1);
         assert_eq!(result.source.relative_path, "src/old.rs");
         assert_eq!(result.target.relative_path, "src/new.rs");
-        assert_eq!(
-            result.warning.as_deref(),
-            Some("File was renamed, but its durability could not be confirmed.")
-        );
+        // Windows cannot flush a directory through this handle; Unix can.
+        let durability_warning =
+            cfg!(windows).then_some("File was renamed, but its durability could not be confirmed.");
+        assert_eq!(result.warning.as_deref(), durability_warning);
         assert_eq!(
             result.snapshot.as_ref().unwrap().selected_resource.as_ref(),
             Some(&result.target)
@@ -192,7 +192,7 @@ fn commits_exact_file_and_migrates_only_the_selected_resource() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn refuses_empty_folder_rename_without_mutation() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -289,7 +289,7 @@ fn source_or_target_editor_buffers_fail_before_filesystem_mutation() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn post_filesystem_transaction_failure_recovers_as_effect_unknown() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -316,7 +316,7 @@ fn post_filesystem_transaction_failure_recovers_as_effect_unknown() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn replacement_target_is_never_confirmed_or_selected_during_recovery() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -346,7 +346,7 @@ fn replacement_target_is_never_confirmed_or_selected_during_recovery() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn recovery_failure_stays_typed_with_a_safe_snapshot_envelope() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -380,7 +380,7 @@ fn recovery_failure_stays_typed_with_a_safe_snapshot_envelope() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn snapshot_failure_after_commit_stays_typed_with_parent_evidence() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -405,7 +405,7 @@ fn snapshot_failure_after_commit_stays_typed_with_parent_evidence() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn committed_rename_rejects_chat_and_window_layouts_queued_at_the_old_epoch() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -464,7 +464,7 @@ fn committed_rename_rejects_chat_and_window_layouts_queued_at_the_old_epoch() {
     });
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn rename_and_editor_snapshot_are_serialized_in_ticket_order() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {

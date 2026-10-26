@@ -108,7 +108,7 @@ impl Workspace {
         )
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
     pub(crate) fn rename_file_with_hooks<P, L>(
         &self,
         source: &ResourceRef,

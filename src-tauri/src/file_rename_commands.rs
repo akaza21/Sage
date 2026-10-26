@@ -76,7 +76,7 @@ async fn execute_folder(
     .await
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
 async fn execute_with<F>(
     state: &AppState,
     request: RenameProjectFileRequest,
@@ -88,7 +88,7 @@ where
     execute_with_hooks(state, request, after_rename, || Ok(()), || Ok(())).await
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
 async fn execute_with_hooks<F, R, S>(
     state: &AppState,
     request: RenameProjectFileRequest,
