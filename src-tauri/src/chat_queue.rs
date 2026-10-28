@@ -86,6 +86,13 @@ impl Database {
             ));
         }
         let json = admitted_prompts(prompts)?;
+        // Loading checks bounds only, so a stricter redaction rule never stops
+        // a Project from opening; the redaction fixpoints and unique element
+        // numbers are checked here, on the way in.
+        for prompt in prompts {
+            crate::acp::attached_context::admit_browser_elements(&prompt.attached_context)
+                .map_err(|refusal| AppError::InvalidRequest(refusal.message().into()))?;
+        }
         let mut images = HashMap::new();
         for prompt in prompts {
             for context in prompt.attached_context.as_slice() {

@@ -75,7 +75,9 @@ export function ComposerAttachments({
   return (
     <ul className="composer__attachments" aria-label="Attached context">
       {elements.length ? (
-        <BrowserElementChipsSlot {...{ elements, disabled, onRemove }} />
+        <BrowserElementChipsSlot
+          {...{ contexts: elements, disabled, onRemove }}
+        />
       ) : null}
       {others.map((context) => {
         const label = attachmentLabel(context);

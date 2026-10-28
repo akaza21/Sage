@@ -30,10 +30,18 @@ export const browserElementChatSink: BrowserElementSink = {
     while (used.has(ordinal)) ordinal += 1;
     return ordinal;
   },
+  // The number was read when the comment box opened, perhaps for another
+  // Chat or before another tab took it; a taken number is refused, never
+  // merged, so no comment is lost.
   attach(element) {
     const chatId = pinnedAgentChatOwner();
     const state = useWorkbenchStore.getState();
     const intent = chatId ? state.captureChatOwnership(chatId) : null;
-    return Boolean(intent && state.attachChatContext(intent, element));
+    const taken = draft()
+      ?.filter(isBrowserElement)
+      .some(({ ordinal }) => ordinal === element.ordinal);
+    return Boolean(
+      intent && !taken && state.attachChatContext(intent, element),
+    );
   },
 };

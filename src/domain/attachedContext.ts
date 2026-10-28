@@ -242,12 +242,18 @@ export function validateAttachedContexts(
       `Attached context entries exceed ${MAX_ATTACHED_CONTEXTS_PER_TURN}`,
     );
   }
-  return values.map((value) => {
-    const parsed = parseAttachedContext(value);
-    if (!parsed) throw new Error("Attached context is invalid");
-    return parsed;
+  const parsed = values.map((value) => {
+    const context = parseAttachedContext(value);
+    if (!context) throw new Error("Attached context is invalid");
+    return context;
   });
+  // Contract browser-element-context-v1 §2.1: element numbers are unique.
+  const numbers = parsed.filter(isBrowserElement).map(({ ordinal }) => ordinal);
+  if (new Set(numbers).size < numbers.length) throw new Error(REPEATED_ELEMENT);
+  return parsed;
 }
+
+export const REPEATED_ELEMENT = "Two page elements share a number; remove one.";
 
 export function diffLineCommentContext(
   diffRef: AgentDiffRef,

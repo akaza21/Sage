@@ -149,3 +149,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Above a sent turn: read-only, at the bubble's right edge like the sent
+   annotation chip. */
+.browser-sent-context {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: end;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 0 0 calc(8px - var(--space-3));
+  padding: 0;
+  list-style: none;
+}

@@ -96,17 +96,8 @@ fn injection_text_stays_inside_json_quotes() {
 fn admission_rejects_forged_unredacted_and_out_of_contract_items() {
     assert!(serde_json::from_value::<AttachedContext>(element(1)).is_ok());
     for (pointer, value) in [
-        (
-            "/url",
-            serde_json::json!("https://example.com/cb?access_token=abc"),
-        ),
         ("/url", serde_json::json!("https://user:pw@example.com/")),
         ("/url", serde_json::json!("file:///etc/passwd")),
-        ("/name", serde_json::json!("ghp_0123456789abcdefABCDEF")),
-        (
-            "/text",
-            serde_json::json!("key sk-ant-0123456789abcdefABCDEF"),
-        ),
         ("/title", serde_json::json!("Cart\u{202e}")),
         ("/selector", serde_json::json!("")),
         ("/role", serde_json::json!("button role")),
@@ -116,6 +107,9 @@ fn admission_rejects_forged_unredacted_and_out_of_contract_items() {
         ("/target", serde_json::json!("area")),
         ("/box/width", serde_json::json!(0)),
         ("/comment", serde_json::json!("a".repeat(4097))),
+        ("/comment", serde_json::json!("hidden\u{202e}comment")),
+        ("/comment", serde_json::json!("bell\u{7}")),
+        ("/comment", serde_json::json!("line\rbreak")),
     ] {
         let mut candidate = element(1);
         *candidate.pointer_mut(pointer).unwrap() = value;
@@ -132,17 +126,60 @@ fn admission_rejects_forged_unredacted_and_out_of_contract_items() {
             "{key}"
         );
     }
+    let mut multiline = element(1);
+    multiline["comment"] = serde_json::json!("first\n\tsecond");
+    assert!(serde_json::from_value::<AttachedContext>(multiline).is_ok());
+}
+
+/// Stored turns and queued prompts decode on bounds alone, so a value that a
+/// later, stricter redaction rule would change still loads; admission (send,
+/// steer, the durable queue) refuses it.
+#[test]
+fn stored_elements_load_under_a_stricter_rule_but_admission_refuses_them() {
+    for (pointer, value) in [
+        (
+            "/url",
+            serde_json::json!("https://example.com/cb?access_token=abc"),
+        ),
+        ("/name", serde_json::json!("ghp_0123456789abcdefABCDEF")),
+        (
+            "/text",
+            serde_json::json!("key sk-ant-0123456789abcdefABCDEF"),
+        ),
+        (
+            "/selector",
+            serde_json::json!("#ghp_0123456789abcdefABCDEF"),
+        ),
+        ("/title", serde_json::json!("token=abcdef123456")),
+    ] {
+        let mut stored = element(1);
+        *stored.pointer_mut(pointer).unwrap() = value;
+        let decoded = contexts(vec![stored]);
+        assert_eq!(
+            admit_browser_elements(&decoded),
+            Err(BrowserElementRefusal::Unredacted),
+            "{pointer}"
+        );
+    }
+    assert_eq!(
+        admit_browser_elements(&contexts(vec![element(1), element(2)])),
+        Ok(())
+    );
 }
 
 #[test]
-fn duplicate_element_numbers_are_refused() {
+fn duplicate_element_numbers_are_refused_with_their_own_reason() {
     let mut other_tab = element(1);
     other_tab["tabId"] = serde_json::json!("browser-3");
-    assert!(
-        effective_prompt(
-            &Prompt::new("prompt", "Look").unwrap(),
-            &contexts(vec![element(1), other_tab]),
-        )
-        .is_err()
+    let decoded = contexts(vec![element(1), other_tab]);
+    assert_eq!(
+        admit_browser_elements(&decoded),
+        Err(BrowserElementRefusal::RepeatedNumber)
     );
+    assert!(
+        BrowserElementRefusal::RepeatedNumber
+            .message()
+            .contains("share a number")
+    );
+    assert!(effective_prompt(&Prompt::new("prompt", "Look").unwrap(), &decoded).is_err());
 }

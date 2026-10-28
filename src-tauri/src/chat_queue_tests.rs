@@ -267,3 +267,65 @@ fn an_attachment_only_prompt_queues_with_empty_text_and_a_blank_one_does_not() {
     assert!(admitted_prompts(&[prompt("  ", quote)]).is_ok());
     assert!(admitted_prompts(&[prompt("  ", serde_json::json!([]))]).is_err());
 }
+
+fn element_prompt(elements: Vec<(u8, &str)>) -> DurableQueuedPrompt {
+    let context: Vec<_> = elements
+        .into_iter()
+        .map(|(ordinal, name)| {
+            serde_json::json!({
+                "kind": "browserElement", "target": "element", "ordinal": ordinal,
+                "tabId": "browser-1", "url": "https://example.com/", "title": "Home",
+                "selector": "main > button", "role": "button", "name": name,
+                "text": "", "box": {"x": 0, "y": 0, "width": 10, "height": 10},
+                "comment": ""
+            })
+        })
+        .collect();
+    serde_json::from_value(serde_json::json!({
+        "id": "queue-1", "text": "later", "attachedContext": context,
+        "bindingId": "binding", "modelId": null, "status": "queued"
+    }))
+    .unwrap()
+}
+
+/// A queued page element stored before a stricter redaction rule must not
+/// stop its Project from opening; only new queue writes are refused.
+#[test]
+fn a_stored_element_that_fails_a_stricter_rule_still_loads_but_cannot_be_queued_again() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-queue-element-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let stale = element_prompt(vec![(1, "ghp_0123456789abcdefABCDEF")]);
+    connection
+        .execute(
+            "INSERT INTO chat_queued_prompts(project_id,chat_id,prompts_json,updated_at) VALUES('p','c',?1,1)",
+            [serde_json::to_string(&vec![stale.clone()]).unwrap()],
+        )
+        .unwrap();
+    drop(connection);
+    assert_eq!(
+        database.project_chat_queued_prompts("p").unwrap()["c"].len(),
+        1
+    );
+    let refused = database
+        .replace_chat_queued_prompts("p", "c", &[stale])
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("no longer passes redaction"),
+        "{refused}"
+    );
+    let repeated = element_prompt(vec![(1, "Buy"), (1, "Sell")]);
+    let refused = database
+        .replace_chat_queued_prompts("p", "c", &[repeated])
+        .unwrap_err();
+    assert!(refused.to_string().contains("share a number"), "{refused}");
+    database
+        .replace_chat_queued_prompts("p", "c", &[element_prompt(vec![(1, "Buy"), (2, "Sell")])])
+        .unwrap();
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}

@@ -4,8 +4,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   clearAgentChatOwner,
@@ -15,11 +17,14 @@ import { handOffBrowserElement } from "../../app/browserAnnotations";
 import { browserElementChatSink } from "../../app/browserElementChatSink";
 import { useWorkbenchStore } from "../../app/store";
 import {
+  parseBrowserElementContext,
+  REPEATED_ELEMENT,
   validateAttachedContexts,
   type AttachedContext,
   type BrowserElementContext,
 } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
+import { SentAnnotations } from "../chat/AnnotationChip";
 import { ComposerAttachments } from "../chat/ComposerAttachments";
 import { browserElementLabel } from "./BrowserElementChips";
 
@@ -104,7 +109,9 @@ it("collapses several elements into one N annotations chip beside other context"
   };
   renderChips([element(1), page, element(2)]);
   expect(
-    await screen.findByRole("button", { name: "2 annotations" }),
+    await screen.findByRole("button", {
+      name: "2 annotations on the page",
+    }),
   ).toBeInTheDocument();
   expect(screen.queryByText(/Element 1 ·/)).toBeNull();
   expect(screen.getByText("Page · Home")).toBeInTheDocument();
@@ -112,7 +119,9 @@ it("collapses several elements into one N annotations chip beside other context"
 
 it("opens a card on hover with role, name, comment and page, and closes after leaving", async () => {
   renderChips([element(1), element(2, { name: "", comment: "" })]);
-  const chip = await screen.findByRole("button", { name: "2 annotations" });
+  const chip = await screen.findByRole("button", {
+    name: "2 annotations on the page",
+  });
   vi.useFakeTimers();
   fireEvent.mouseEnter(chip.parentElement!);
   const card = screen.getByRole("dialog", { name: "Page annotations" });
@@ -132,13 +141,15 @@ it("opens a card on hover with role, name, comment and page, and closes after le
 
 it("removes one element from the card, or all from the chip", async () => {
   const { onRemove } = renderChips([element(1), element(2)]);
-  const chip = await screen.findByRole("button", { name: "2 annotations" });
+  const chip = await screen.findByRole("button", {
+    name: "2 annotations on the page",
+  });
   fireEvent.focus(chip);
   fireEvent.click(screen.getByRole("button", { name: "Delete element 2" }));
   expect(onRemove).toHaveBeenCalledWith(element(2));
   onRemove.mockClear();
   fireEvent.click(
-    screen.getByRole("button", { name: "Remove all annotations" }),
+    screen.getByRole("button", { name: "Remove all page annotations" }),
   );
   expect(onRemove.mock.calls).toEqual([[element(1)], [element(2)]]);
 });
@@ -176,4 +187,125 @@ it("refuses a ninth context in the draft", () => {
   for (let ordinal = 1; ordinal <= 8; ordinal += 1)
     expect(browserElementChatSink.attach(element(ordinal))).toBe(true);
   expect(browserElementChatSink.nextOrdinal()).toBeNull();
+});
+
+it("refuses an element whose number the draft already holds, keeping both comments", () => {
+  pinAgentChatOwner(chat.id);
+  expect(browserElementChatSink.attach(element(1))).toBe(true);
+  // The same number from the same tab (a stale comment box) or another tab.
+  expect(
+    browserElementChatSink.attach(element(1, { comment: "Second thought" })),
+  ).toBe(false);
+  expect(
+    browserElementChatSink.attach(element(1, { tabId: "browser-2" })),
+  ).toBe(false);
+  expect(
+    useWorkbenchStore.getState().chatUiById[chat.id]!.attachedContext,
+  ).toEqual([element(1)]);
+});
+
+it("refuses repeated element numbers at send with their own reason", () => {
+  expect(() =>
+    validateAttachedContexts([element(1), element(1, { tabId: "browser-2" })]),
+  ).toThrow(REPEATED_ELEMENT);
+});
+
+it("admits tabs and line breaks in a comment but no other control or bidi character", () => {
+  expect(
+    parseBrowserElementContext(element(1, { comment: "one\n\ttwo" })),
+  ).not.toBeNull();
+  for (const comment of ["bell\u0007", "a\rb", "hidden‮comment"])
+    expect(parseBrowserElementContext(element(1, { comment }))).toBeNull();
+});
+
+it("cuts a long label by characters, never inside a surrogate pair", () => {
+  const label = browserElementLabel(
+    element(1, { name: `${"n".repeat(26)}😀😀😀` }),
+  );
+  expect([...label]).toHaveLength(48);
+  expect(label).toMatch(/😀…$/u);
+  expect(label).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/u);
+});
+
+it("shows the URL and selector in the chip and each card entry tooltip", async () => {
+  renderChips([element(1)]);
+  const chip = await screen.findByRole("button", {
+    name: 'Element 1 · button "Place order"',
+  });
+  const tip = "https://example.com/cart\nmain > :nth-child(2 of button)";
+  expect(chip).toHaveAttribute("title", tip);
+  fireEvent.focus(chip);
+  const entry = screen.getByRole("dialog").querySelector("header")!;
+  expect(entry).toHaveAttribute("title", tip);
+});
+
+function Draft({ initial }: { initial: readonly AttachedContext[] }) {
+  const [contexts, setContexts] = useState(initial);
+  return (
+    <form>
+      <textarea aria-label="Message" />
+      <ComposerAttachments
+        contexts={contexts}
+        disabled={false}
+        onRemove={(removed) =>
+          setContexts((current) => current.filter((item) => item !== removed))
+        }
+      />
+    </form>
+  );
+}
+
+it("moves focus into the card container, never onto a delete button, and Tab returns to the chip", async () => {
+  render(<Draft initial={[element(1), element(2)]} />);
+  const chip = await screen.findByRole("button", {
+    name: "2 annotations on the page",
+  });
+  fireEvent.click(chip);
+  const card = screen.getByRole("dialog");
+  await waitFor(() => expect(card).toHaveFocus());
+  fireEvent.keyDown(card, { key: "Tab", shiftKey: true });
+  expect(chip).toHaveFocus();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(chip);
+  const last = screen.getByRole("button", { name: "Delete element 2" });
+  last.focus();
+  fireEvent.keyDown(last, { key: "Tab" });
+  expect(
+    screen.getByRole("button", { name: "Remove all page annotations" }),
+  ).toHaveFocus();
+});
+
+it("keeps focus in the card after a delete, and on the composer after the last", async () => {
+  render(<Draft initial={[element(1), element(2)]} />);
+  fireEvent.focus(
+    await screen.findByRole("button", { name: "2 annotations on the page" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Delete element 1" }));
+  expect(
+    screen.getByRole("button", { name: "Delete element 2" }),
+  ).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Delete element 2" }));
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("shows a sent turn's elements and pages read-only above the bubble", async () => {
+  const page = {
+    kind: "browserPage" as const,
+    tabId: "browser-1",
+    url: "https://example.com/",
+    title: "Home",
+    text: "Hello",
+  };
+  render(<SentAnnotations contexts={[element(1), page, element(2)]} />);
+  const list = await screen.findByRole("list", { name: "Page context" });
+  const chip = within(list).getByRole("button", {
+    name: "2 annotations on the page",
+  });
+  expect(
+    within(list).getByText("Page · Home").closest("[title]"),
+  ).toHaveAttribute("title", "https://example.com/");
+  expect(within(list).queryByRole("button", { name: /Remove/ })).toBeNull();
+  fireEvent.focus(chip);
+  expect(within(screen.getByRole("dialog")).queryByRole("button")).toBeNull();
 });

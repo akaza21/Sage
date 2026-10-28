@@ -49,6 +49,22 @@ export interface BrowserElementContext {
   comment: string;
 }
 
+/** Within `limit` bytes, with no control or bidi character outside `allowed`. */
+function boundedText(
+  value: unknown,
+  limit: number,
+  allowed = "",
+): value is string {
+  return (
+    typeof value === "string" &&
+    utf8ByteLength(value) <= limit &&
+    ![...value].some(
+      (character) =>
+        !allowed.includes(character) && unsafeDisplayCharacter(character),
+    )
+  );
+}
+
 export function parseBrowserPageContext(
   value: unknown,
 ): BrowserPageContext | null {
@@ -59,14 +75,8 @@ export function parseBrowserPageContext(
     !/^browser-[1-9]\d*$/.test(tabId) ||
     typeof url !== "string" ||
     utf8ByteLength(url) > 2048 ||
-    typeof title !== "string" ||
-    utf8ByteLength(title) > 256 ||
-    typeof text !== "string" ||
-    utf8ByteLength(text) > MAX_BROWSER_PAGE_TEXT_BYTES ||
-    [...title].some(unsafeDisplayCharacter) ||
-    [...text].some(
-      (character) => character !== "\n" && unsafeDisplayCharacter(character),
-    )
+    !boundedText(title, 256) ||
+    !boundedText(text, MAX_BROWSER_PAGE_TEXT_BYTES, "\n")
   )
     return null;
   try {
@@ -85,17 +95,6 @@ export function parseBrowserPageContext(
 
 const ELEMENT_KEYS =
   "box,comment,kind,name,ordinal,role,selector,tabId,target,text,title,url";
-
-function boundedText(value: unknown, limit: number, multiline = false) {
-  return (
-    typeof value === "string" &&
-    utf8ByteLength(value) <= limit &&
-    ![...value].some(
-      (character) =>
-        !(multiline && character === "\n") && unsafeDisplayCharacter(character),
-    )
-  );
-}
 
 const between = (value: unknown, low: number, high: number) =>
   Number.isInteger(value) && Number(value) >= low && Number(value) <= high;
@@ -121,9 +120,8 @@ export function parseBrowserElementContext(
     value.selector !== "" &&
     /^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(String(value.role)) &&
     boundedText(value.name, 256) &&
-    boundedText(value.text, 1024, true) &&
-    typeof value.comment === "string" &&
-    utf8ByteLength(value.comment) <= MAX_ELEMENT_COMMENT_BYTES &&
+    boundedText(value.text, 1024, "\n") &&
+    boundedText(value.comment, MAX_ELEMENT_COMMENT_BYTES, "\n\t") &&
     isRecord(box) &&
     Object.keys(box).sort().join() === "height,width,x,y" &&
     between(box.x, 0, 1e7) &&
