@@ -86,6 +86,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  "src/features/chat/acp/TurnFileActivity.tsx",
+  "src/features/chat/acp/TurnEditSummary.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
   // The Chat search dialog loads on the first Search chats request.
@@ -505,7 +507,6 @@ describe("desktop-native chunk topology", () => {
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const files = [
-      "src/features/chat/acp/TurnEditSummary.tsx",
       "src/features/chat/acp/TurnActivityItem.tsx",
       "src/features/chat/acp/ToolActivityRollupView.tsx",
       "src/features/chat/acp/ChatCodeBlock.tsx",

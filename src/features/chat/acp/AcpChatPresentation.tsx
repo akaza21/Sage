@@ -17,8 +17,8 @@ import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
-import { TurnEditSummary } from "./TurnEditSummary";
-import { TurnFileActivity } from "./TurnFileActivity";
+import { DeferredTurnEditSummary as TurnEditSummary } from "./DeferredChatDetails";
+import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
 import {
@@ -76,7 +76,6 @@ const Turn = memo(
     const primary = turn.items.filter(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );
-    const roots = rootActivities(turn);
     const interactive = !inherited && turn.sessionId === page.currentSessionId;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
       hasProjectRoot && page.projectId && page.chatId && page.currentSessionId
@@ -127,7 +126,8 @@ const Turn = memo(
     const workingItems = chronologicalItems.filter(
       (item) =>
         item.id !== finalAnswer?.id &&
-        (item.kind !== "thoughtSummary" || item.id === liveThought?.id),
+        (item.kind !== "thoughtSummary" ||
+          (!terminal && item.id === liveThought?.id)),
     );
     // Earlier/inherited answer menus never fork: Rust forks only the latest Turn (footer).
     const text = finalAnswer?.kind === "text" && finalAnswer.payload.text;
@@ -223,7 +223,7 @@ const Turn = memo(
               />
             ) : null}
             {!inherited && actions}
-            {roots.map((activity) => (
+            {rootActivities(turn).map((activity) => (
               <HarnessActivity
                 key={activity.id}
                 activity={activity}
@@ -253,7 +253,13 @@ const Turn = memo(
                 <span className="acp-live-shimmer">Editing files</span>
               </div>
             ) : null}
-            {terminal ? <TurnFileActivity page={page} turn={turn} /> : null}
+            {terminal ? (
+              <TurnFileActivity
+                page={page}
+                turn={turn}
+                onOpenResource={interactive ? onOpenResource : undefined}
+              />
+            ) : null}
             {stopped ? <TurnHeader turn={turn} /> : null}
             {stopped && !finalAnswer && onRetry ? (
               <button type="button" onClick={onRetry}>
@@ -266,12 +272,11 @@ const Turn = memo(
         {inherited && actions}
       </>
     );
-    return inherited ? (
+    if (!inherited) return content;
+    return (
       <section className="chat-fork-turn" aria-label={`Turn ${turn.ordinal}`}>
         {content}
       </section>
-    ) : (
-      content
     );
   },
   (left, right) =>
@@ -343,10 +348,9 @@ export function AcpChatPresentation({
     />
   );
   const renderTurn = (turn: TurnProjection, index: number) => {
-    const timestamp = dayTimestamps[index];
     return (
       <Fragment key={turn.id}>
-        <TurnDaySeparator timestamp={timestamp} />
+        <TurnDaySeparator timestamp={dayTimestamps[index]} />
         <Turn
           page={page}
           turn={turn}

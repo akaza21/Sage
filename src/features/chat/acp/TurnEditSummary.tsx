@@ -149,14 +149,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                       {change.operation}
                     </span>
                   )}
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                   <span className="acp-file-changes__summary">
                     {change.summary}
                   </span>
@@ -205,14 +198,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
                 {admitted && counted ? null : (
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                 )}
                 <span className="acp-file-changes__summary">
                   {change.summary}

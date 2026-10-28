@@ -1,9 +1,34 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AcpItemIdentity } from "../../../domain/acp";
-import { DeferredInlineSavedDiff } from "./DeferredChatDetails";
+import {
+  DeferredInlineSavedDiff,
+  DeferredTurnFileActivity,
+  DeferredTurnEditSummary,
+} from "./DeferredChatDetails";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 
-const requests = vi.hoisted(() => ({ diff: vi.fn() }));
+const requests = vi.hoisted(() => ({
+  diff: vi.fn(),
+  files: vi.fn(),
+  summary: vi.fn(),
+}));
+vi.mock("./TurnFileActivity", () => {
+  requests.files();
+  return {
+    TurnFileActivity: () => (
+      <section aria-label="Edited files">Edit card ready</section>
+    ),
+  };
+});
+vi.mock("./TurnEditSummary", () => {
+  requests.summary();
+  return {
+    TurnEditSummary: () => (
+      <section aria-label="Changed files">Edit summary ready</section>
+    ),
+  };
+});
 vi.mock("./InlineSavedDiff", () => {
   requests.diff();
   return {
@@ -11,6 +36,33 @@ vi.mock("./InlineSavedDiff", () => {
   };
 });
 afterEach(cleanup);
+
+it("keeps the edit card unloaded until a turn reports edits and lazy-loads the disclosure", async () => {
+  const page = snapshotPage();
+  const { rerender } = render(
+    <DeferredTurnFileActivity
+      page={page}
+      turn={{ ...page.turns[0], items: [] }}
+    />,
+  );
+  expect(requests.files).not.toHaveBeenCalled();
+  rerender(<DeferredTurnFileActivity page={page} turn={page.turns[0]} />);
+  expect(
+    await screen.findByRole("region", { name: "Edited files" }),
+  ).toHaveTextContent("Edit card ready");
+  expect(requests.files).toHaveBeenCalledOnce();
+  expect(requests.summary).not.toHaveBeenCalled();
+  rerender(
+    <DeferredTurnEditSummary
+      page={page}
+      rootLabels={{}}
+      countIncomplete={false}
+    />,
+  );
+  expect(
+    await screen.findByRole("region", { name: "Changed files" }),
+  ).toHaveTextContent("Edit summary ready");
+});
 
 const identity = {
   id: "item-1",

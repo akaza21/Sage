@@ -29,36 +29,33 @@ export async function assertAgentLandmarks(page: Page) {
 export async function expectLiveThinkingFixtureLine(page: Page) {
   const thought = page.locator('[data-activity-kind="thought"]');
   await expect(thought).toHaveCount(1);
-  await expect(thought).toHaveClass("acp-thought");
-  await expect(thought).toHaveText(
-    `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
+  await expect(thought).toHaveClass("acp-thought acp-live-shimmer");
+  await expect(thought).toHaveText("Thinking");
+  const reducedMotion = await page.evaluate(
+    () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  if (!reducedMotion) {
+    await expect(thought).toHaveCSS("color", "rgba(0, 0, 0, 0)");
+    await expect(thought).toHaveCSS("background-clip", "text");
+    await expect(thought).toHaveCSS("animation-name", "acp-live-shimmer");
+  }
   await expect(thought.locator("summary, button, .acp-state")).toHaveCount(0);
   expect(
     await thought.evaluate((node) => {
       const element = node as HTMLElement;
       const style = getComputedStyle(element);
-      const color = style.color;
-      const originalColor = element.style.color;
-      element.style.color = "var(--color-text-muted)";
-      const mutedColor = getComputedStyle(element).color;
-      element.style.color = originalColor;
       return {
-        muted: color === mutedColor,
         clipped: element.scrollWidth > element.clientWidth,
         overflow: style.overflow,
         textOverflow: style.textOverflow,
         whiteSpace: style.whiteSpace,
-        animation: style.animationName,
       };
     }),
   ).toEqual({
-    muted: true,
-    clipped: true,
+    clipped: false,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    animation: "none",
   });
 }
 

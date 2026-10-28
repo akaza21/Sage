@@ -14,7 +14,72 @@ import {
 
 afterEach(cleanup);
 
+it.each([
+  [
+    '[path] -NoProfile -Command "Get-Content -LiteralPath README.md"',
+    "Get-Content -LiteralPath README.md",
+  ],
+  [
+    '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -NonInteractive -Command "Add-Content README.md [redacted]"',
+    "Add-Content README.md [redacted]",
+  ],
+  [
+    "/bin/bash -lc 'npm test -- --token [redacted]'",
+    "npm test -- --token [redacted]",
+  ],
+  ["Get-Content README.md", "Get-Content README.md"],
+])(
+  "names the actual command, not its shell wrapper: %s",
+  (command, expected) => {
+    const item = tool("shell-label", "execute");
+    if (item.payload.presentation.kind !== "execute")
+      throw new Error("Expected command");
+    item.payload.presentation.summary = command;
+    item.payload.outputSummary = "PowerShell profile failed to load";
+    const { container } = render(
+      <ToolActivityRollup
+        rollup={{ kind: "execute", commandActivity: "ordinary", items: [item] }}
+        interactive
+      />,
+    );
+    expect(container.querySelector("summary")).toHaveTextContent(
+      `Ran ${expected}`,
+    );
+    expect(container.querySelector("summary")).not.toHaveTextContent(
+      /NoProfile|NoLogo|NonInteractive|profile failed/,
+    );
+  },
+);
+
 type ToolItem = Extract<AcpItem, { kind: "toolCall" }>;
+
+it("keeps redacted command labels stable across output-only item replacements and updates changed commands", () => {
+  const item = tool("replacement", "execute");
+  if (item.payload.presentation.kind !== "execute")
+    throw new Error("Expected command");
+  item.payload.presentation.summary =
+    '[path] -NoProfile -Command "Get-Content [redacted]"';
+  expect(toolRollupLabel("execute", [item])).toBe("Ran Get-Content [redacted]");
+  const refreshed = {
+    ...item,
+    revision: "2" as never,
+    payload: { ...item.payload, outputSummary: "new output" },
+  };
+  expect(toolRollupLabel("execute", [refreshed])).toBe(
+    "Ran Get-Content [redacted]",
+  );
+  const changed = {
+    ...refreshed,
+    payload: {
+      ...refreshed.payload,
+      presentation: {
+        ...item.payload.presentation,
+        summary: '[path] -NoProfile -Command "npm test"',
+      },
+    },
+  };
+  expect(toolRollupLabel("execute", [changed])).toBe("Ran npm test");
+});
 
 function tool(
   id: string,
