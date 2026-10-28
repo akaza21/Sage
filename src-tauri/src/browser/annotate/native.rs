@@ -91,4 +91,18 @@ impl InspectOverlay for NativeOverlay<'_> {
         };
         shown.and(resumed)
     }
+
+    /// The hidden page keeps Windows keyboard focus until it is moved, so
+    /// the comment box would get no typing, and a page shown again would
+    /// get no Escape.
+    fn focus(&self, label: &str, page: bool) -> Result<(), String> {
+        let webview = if page {
+            self.webview(label)?
+        } else {
+            self.1
+                .get_webview("main")
+                .ok_or("browser annotate unavailable")?
+        };
+        webview.set_focus().map_err(unavailable)
+    }
 }

@@ -98,6 +98,9 @@ pub(crate) trait InspectOverlay {
     /// Shows the frozen page again when `reveal`, and resumes hover
     /// highlighting when `resume`.
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String>;
+    /// Moves native keyboard focus to `label`'s page when `page`, else to
+    /// Sage's own webview, whose comment box takes the typing.
+    fn focus(&self, label: &str, page: bool) -> Result<(), String>;
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -383,6 +386,10 @@ impl InspectOverlay for NativeOverlay<'_> {
     }
 
     fn release(&self, _: &str, _: bool, _: bool) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn focus(&self, _: &str, _: bool) -> Result<(), String> {
         Ok(())
     }
 }
