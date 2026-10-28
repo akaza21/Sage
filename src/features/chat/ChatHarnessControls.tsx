@@ -17,7 +17,6 @@ import {
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
-import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -35,10 +34,7 @@ import {
   useComposerPopovers,
 } from "./useChatHarnessSelection";
 import "../../styles/harness-picker.css";
-import {
-  useHarnessSignInDecorations,
-  withSignIn,
-} from "../harness/harnessSignInBridge";
+import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -202,12 +198,14 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const signIn = useHarnessSignInDecorations(harnesses);
-  const modelRow = confirmedModelLabel
-    ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-    : undefined;
-  const harnessCandidates = harnessPickerCandidates(harnesses).map((row) =>
-    withSignIn(row, row.id === selectedHarnessId ? modelRow : "", signIn),
+  const harnessCandidates = harnessPickerCandidates(harnesses).map(
+    (candidate) => ({
+      ...candidate,
+      subtitle:
+        candidate.id === selectedHarnessId && confirmedModelLabel
+          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+          : undefined,
+    }),
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const hasModes = modeOptions.length > 0;
@@ -296,7 +294,8 @@ export function ChatHarnessControls({
         className="composer__control-trigger composer__harness"
         data-keyboard-focus={keyboardFocus}
       >
-        <SearchablePicker
+        <HarnessSignInPicker
+          harnesses={harnesses}
           ariaLabel="Harness"
           open={active === "harness"}
           onOpenChange={(open) => (open ? toggle("harness") : dismiss())}

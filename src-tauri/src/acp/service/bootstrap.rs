@@ -24,6 +24,7 @@ impl AcpService {
     ) -> Result<Self, StoreError> {
         let store = DatabaseAcpStore::new(database.clone());
         let (journal, runner) = JournalHandle::new(store);
+        let journal = journal.with_workspace_tracking(database.clone());
         let mut journal_thread =
             BoundedThread::spawn("sage-acp-journal", move || runner.run_blocking())
                 .map_err(|_| StoreError::Corrupt("journal thread start"))?;

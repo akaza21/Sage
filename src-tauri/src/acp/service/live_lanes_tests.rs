@@ -1,6 +1,9 @@
 use super::*;
 use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
 
+#[path = "live_lanes_test_engine.rs"]
+mod engine;
+
 fn service() -> AcpService {
     let database =
         crate::persistence::Database::open(std::path::Path::new(":memory:")).expect("database");
@@ -188,6 +191,118 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
     });
 }
 struct AlwaysPublished;
+
+fn idle_lane(
+    service: &AcpService,
+    index: usize,
+    resumable: bool,
+) -> crate::acp::scheduler::TreeLease {
+    occupied_lane(service, index, resumable, true)
+}
+
+fn occupied_lane(
+    service: &AcpService,
+    index: usize,
+    resumable: bool,
+    completed: bool,
+) -> crate::acp::scheduler::TreeLease {
+    let owner = owner(&format!("idle-{index}"), 1);
+    let capabilities = serde_json::json!({
+        "schemaVersion":1,"protocolVersion":"test","newSession":true,
+        "resumeSession":resumable,"loadSession":false,"closeSession":true,
+        "prompt":true,"cancel":true,"nativeSessionFork":false,"activeTurnSteer":false,
+        "childConversationProjection":false,"childTranscriptRead":false,
+        "collaborationEventProjection":false,"multiRootExtensionSchemaId":null,
+        "modelCount":0,"configCount":0
+    })
+    .to_string();
+    let connection = service.database.connection();
+    connection.execute("INSERT OR IGNORE INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-lanes','Lanes',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES(?1,'project-lanes',?2,'Idle',0,1,1)", rusqlite::params![owner.chat_id.as_str(),index as i64]).unwrap();
+    connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,external_session_id,capabilities_json,state,residency,created_at,updated_at) VALUES(?1,'project-lanes',?2,0,'fixture',?3,'external',?4,'ready','hot',1,1)", rusqlite::params![owner.session_id.as_str(),owner.chat_id.as_str(),"a".repeat(64),capabilities]).unwrap();
+    connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project-lanes',?1,?2,1,'running',?3,1)",rusqlite::params![owner.chat_id.as_str(),owner.session_id.as_str(),"d".repeat(64)]).unwrap();
+    if completed {
+        connection.execute("INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,created_at,updated_at,terminal_at) VALUES(?1,'project-lanes',?2,?3,1,0,'completed','completed','correlated',1,1,1)",rusqlite::params![format!("turn-{index}"),owner.chat_id.as_str(),owner.session_id.as_str()]).unwrap();
+    }
+    drop(connection);
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            engine::IdleEngine,
+            Arc::new(engine::Shutdown),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.lanes[index]
+        .runtime
+        .claim(owner.clone(), host)
+        .unwrap();
+    service.lanes[index]
+        .last_activation
+        .store(index as u64, Ordering::Release);
+    service.lanes[index].scheduler.reserve_tree(owner).unwrap()
+}
+
+#[test]
+fn lru_eviction_skips_non_resumable_conversations_and_uses_the_oldest_resumable_idle() {
+    let service = service();
+    let _leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
+        .map(|index| idle_lane(&service, index, index != 0))
+        .collect();
+    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
+}
+
+#[test]
+fn non_resumable_idle_conversations_report_capacity_instead_of_losing_context() {
+    let service = service();
+    let _leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
+        .map(|index| idle_lane(&service, index, false))
+        .collect();
+    assert!(matches!(
+        service.claim_activation_lane(&owner("new", 1)),
+        Err(CodexSessionError::Capacity)
+    ));
+    let (same, _claim) = service.claim_activation_lane(&owner("idle-0", 1)).unwrap();
+    assert!(Arc::ptr_eq(&same.runtime, &service.lanes[0].runtime));
+}
+
+#[test]
+fn retained_recovery_cannot_starve_resumable_idle_capacity() {
+    let service = service();
+    *service.lanes[0].codex_recovery.lock().unwrap() =
+        Some(PendingCodexRecovery::ActivationCommitted {
+            owner: owner("broken", 1),
+        });
+    let _leases: Vec<_> = (1..LIVE_RUNTIME_LANES)
+        .map(|index| idle_lane(&service, index, true))
+        .collect();
+    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
+}
+
+#[test]
+fn a_reserved_turn_is_never_an_idle_eviction_candidate() {
+    let service = service();
+    let leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
+        .map(|index| idle_lane(&service, index, true))
+        .collect();
+    let _turn = leases[0].reserve_turn().unwrap();
+    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
+}
+
+#[test]
+fn never_used_or_unavailable_idle_hosts_do_not_block_parkable_capacity() {
+    let service = service();
+    let _leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
+        .map(|index| occupied_lane(&service, index, true, index != 0))
+        .collect();
+    let first = owner("idle-1", 1);
+    service.lanes[1].runtime.mark_recovery(&first).unwrap();
+    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[2].runtime));
+}
 
 impl crate::acp::runtime::ProjectionPublisher for AlwaysPublished {
     fn publish_committed(

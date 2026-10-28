@@ -45,6 +45,7 @@ pub(crate) enum JournalError {
 #[derive(Debug, Clone)]
 pub(crate) struct JournalHandle {
     queue: Arc<Queue>,
+    workspace_database: Option<crate::persistence::Database>,
 }
 
 pub(crate) struct JournalRunner<S> {
@@ -54,6 +55,7 @@ pub(crate) struct JournalRunner<S> {
 
 pub(crate) struct JournalBatchBuilder {
     queue: Arc<Queue>,
+    workspace_database: Option<crate::persistence::Database>,
     lane: JournalLane,
     mutations: Vec<StoreMutation>,
     reservation: Option<Reservation>,
@@ -80,6 +82,7 @@ struct QueueState {
 
 #[derive(Debug)]
 struct Envelope {
+    workspace_database: Option<crate::persistence::Database>,
     sequence: u64,
     deadline_millis: u64,
     priority_deadline_millis: u64,
@@ -108,9 +111,18 @@ impl JournalHandle {
         (
             Self {
                 queue: Arc::clone(&queue),
+                workspace_database: None,
             },
             JournalRunner { queue, store },
         )
+    }
+
+    pub(crate) fn with_workspace_tracking(
+        mut self,
+        database: crate::persistence::Database,
+    ) -> Self {
+        self.workspace_database = Some(database);
+        self
     }
 
     /// Reserves the batch-count slot before the mutation vector receives its
@@ -119,6 +131,7 @@ impl JournalHandle {
         let reservation = Reservation::acquire(Arc::clone(&self.queue), lane)?;
         Ok(JournalBatchBuilder {
             queue: Arc::clone(&self.queue),
+            workspace_database: self.workspace_database.clone(),
             lane,
             mutations: Vec::new(),
             reservation: Some(reservation),
@@ -230,6 +243,7 @@ impl JournalBatchBuilder {
             .filter(|next| *next <= i64::MAX as u64)
             .ok_or(JournalError::SequenceExhausted)?;
         let envelope = Envelope {
+            workspace_database: self.workspace_database.clone(),
             sequence,
             deadline_millis,
             priority_deadline_millis,
@@ -272,8 +286,22 @@ fn execute_envelope<S: AcpStore>(queue: &Arc<Queue>, store: &mut S, mut envelope
     if !envelope.acknowledgement.begin_execution() {
         return;
     }
-    let result = store.commit(&envelope.mutations);
+    let result = envelope
+        .workspace_database
+        .as_ref()
+        .map_or(Ok(()), |database| {
+            let budget = Duration::from_millis(
+                envelope
+                    .deadline_millis
+                    .saturating_sub(now_millis())
+                    .saturating_sub(500)
+                    .min(500),
+            );
+            crate::turn_workspace::prepare_terminal(database, &envelope.mutations, budget)
+        })
+        .and_then(|()| store.commit(&envelope.mutations));
     let store_commit_unknown = matches!(&result, Err(StoreError::CommitUnknown));
+    crate::turn_workspace::discard_rejected_staging(envelope.workspace_database.as_ref(), &result);
     let caller_commit_unknown = envelope
         .acknowledgement
         .complete(result.map_err(JournalError::Store));

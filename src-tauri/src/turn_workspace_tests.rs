@@ -8,23 +8,27 @@ fn temp_root() -> std::path::PathBuf {
 
 #[test]
 fn porcelain_records_become_a_bounded_fingerprint() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
     let root = temp_root();
     std::fs::write(root.join("a.txt"), b"one").unwrap();
-    let mark = parse_mark(&root, b" M a.txt\0?? new.txt\0bad\0", false);
+    let anchor = directory::Directory::root(&root).unwrap();
+    let mark = parse_mark(&anchor, b" M a.txt\0?? new.txt\0bad\0", false).unwrap();
     assert_eq!(mark.entries.len(), 2);
     assert_eq!(mark.entries["a.txt"].len, Some(3));
     assert_eq!(mark.entries["new.txt"].len, None);
     let many: Vec<u8> = (0..MAX_TURN_WORKSPACE_CHANGES + 5)
         .flat_map(|index| format!("?? f{index}\0").into_bytes())
         .collect();
-    let bounded = parse_mark(&root, &many, false);
+    let bounded = parse_mark(&anchor, &many, false).unwrap();
     assert_eq!(bounded.entries.len(), MAX_TURN_WORKSPACE_CHANGES);
     assert!(bounded.truncated);
+    drop(anchor);
     std::fs::remove_dir_all(root).unwrap();
 }
 
-fn mark(entries: &[(&str, &str, Option<u64>, u128)]) -> WorkspaceMark {
+fn mark(entries: &[(&str, &str, Option<u64>, u64)]) -> WorkspaceMark {
     WorkspaceMark {
+        root_identity: Some([1; 24]),
         entries: entries
             .iter()
             .map(|(path, status, len, modified)| {
@@ -44,6 +48,7 @@ fn mark(entries: &[(&str, &str, Option<u64>, u128)]) -> WorkspaceMark {
 
 #[test]
 fn only_paths_touched_during_the_turn_are_changes() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
     let before = mark(&[
         ("dirty-untouched.rs", " M", Some(10), 1),
         ("dirty-edited.rs", " M", Some(10), 1),
@@ -73,20 +78,8 @@ fn only_paths_touched_during_the_turn_are_changes() {
 }
 
 #[test]
-fn a_turn_settles_once_and_unknown_turns_are_untracked() {
-    let key = format!("turn-{}", uuid::Uuid::new_v4());
-    assert_eq!(settle(&key, None), TurnWorkspaceChanges::untracked());
-    remember(key.clone(), mark(&[]));
-    assert_eq!(is_settled(&key), Some(false));
-    let first = settle(&key, Some(mark(&[("x.rs", " M", Some(1), 1)])));
-    assert_eq!(first.changes.len(), 1);
-    // A later capture never rewrites the settled answer.
-    assert_eq!(settle(&key, Some(mark(&[]))), first);
-    assert_eq!(is_settled(&key), Some(true));
-}
-
-#[test]
 fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
     let root = temp_root();
     let git = |args: &[&str]| {
         assert!(
@@ -120,4 +113,111 @@ fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
         );
     });
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn capture_skips_dependencies_and_ignored_directories_and_fails_closed_at_the_walk_limit() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&root)
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(root.join(".gitignore"), "ignored/\n").unwrap();
+    for directory in [
+        "node_modules/pkg",
+        "nested/node_modules/pkg",
+        "ignored/build",
+    ] {
+        std::fs::create_dir_all(root.join(directory)).unwrap();
+        for index in 0..20 {
+            std::fs::write(root.join(directory).join(format!("f{index}")), "skip").unwrap();
+        }
+    }
+    std::fs::write(root.join("visible.txt"), "keep").unwrap();
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let mark = capture::capture_with_limit(&root, 10).await.unwrap();
+        assert_eq!(
+            mark.entries.keys().map(String::as_str).collect::<Vec<_>>(),
+            [".gitignore", "visible.txt"]
+        );
+        assert!(capture::capture_with_limit(&root, 2).await.is_none());
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn truncated_snapshots_do_not_invent_deleted_or_attributed_files() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let mut before = mark(&[("a.txt", " M", Some(1), 1)]);
+    before.truncated = true;
+    let changes = diff_marks(&before, &mark(&[]));
+    assert!(!changes.tracked && changes.truncated && changes.changes.is_empty());
+}
+
+#[test]
+fn replacing_the_root_at_the_same_path_never_attributes_the_replacement() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let before = mark(&[("first.txt", "??", Some(1), 1)]);
+    let mut after = mark(&[("other.txt", "??", Some(1), 2)]);
+    after.root_identity = Some([2; 24]);
+    let changes = diff_marks(&before, &after);
+    assert!(!changes.tracked && changes.changes.is_empty());
+}
+
+#[test]
+fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    let git = |args: &[&str]| {
+        assert!(
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    git(&["init", "-q"]);
+    std::fs::create_dir(root.join("sub")).unwrap();
+    std::fs::write(root.join("sub/file.txt"), "Tracked child").unwrap();
+    std::fs::write(root.join("keep.txt"), "Keep").unwrap();
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "Initial",
+    ]);
+    let root = root.canonicalize().unwrap();
+    let before = tauri::async_runtime::block_on(capture(&root)).unwrap();
+    std::fs::remove_dir_all(root.join("sub")).unwrap();
+    std::fs::write(root.join("keep.txt"), "Edited unrelated file").unwrap();
+    let after = tauri::async_runtime::block_on(capture(&root)).unwrap();
+    let changes = diff_marks(&before, &after);
+    assert!(changes.tracked);
+    assert_eq!(
+        changes.changes,
+        [
+            TurnWorkspaceChange {
+                relative_path: "keep.txt".to_owned(),
+                operation: TurnWorkspaceOperation::Updated
+            },
+            TurnWorkspaceChange {
+                relative_path: "sub/file.txt".to_owned(),
+                operation: TurnWorkspaceOperation::Deleted
+            }
+        ]
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

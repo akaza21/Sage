@@ -13,6 +13,8 @@ import type * as ChatSearchChunk from "../chatSearch/ChatSearchControl";
 import type * as ForkChunk from "./ForkChat";
 import type * as HandoffChunk from "./ChatHandoffDialog";
 import type * as QueuedChunk from "./ComposerQueuedPrompts";
+import type * as EditSummaryChunk from "./acp/TurnEditSummary";
+import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
 type AnyComponent = ComponentType<any>;
@@ -73,6 +75,12 @@ export const HandoffPart = lazyParts<typeof HandoffChunk>(
 );
 export const QueuedPart = lazyParts<typeof QueuedChunk>(
   () => import("./ComposerQueuedPrompts"),
+);
+export const EditSummaryPart = lazyParts<typeof EditSummaryChunk>(
+  () => import("./acp/TurnEditSummary"),
+);
+export const HarnessSignInPart = lazyParts<typeof HarnessSignInChunk>(
+  () => import("../harness/HarnessSignInStatus"),
 );
 /** Load only with the first queued message. */
 export function QueuedRows(

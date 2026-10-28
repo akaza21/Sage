@@ -147,8 +147,12 @@ pub(crate) async fn send_acp_turn_inner(
     })?;
     // B5: shell edits never reach harness fileChange events, so the turn's
     // workspace changes are diffed against this mark once it is terminal.
-    super::turn_workspace::mark_before_prompt(state, &transition, &client_intent_id).await;
-    state
+    super::turn_workspace::mark_before_prompt(state, &transition, &client_intent_id, &session_id)
+        .await
+        .map_err(prompt_not_dispatched)?;
+    let tracked_session = session_id.clone();
+    let tracked_intent = client_intent_id.clone();
+    let dispatch = state
         .acp
         .dispatch_session_turn(
             &binding_id,
@@ -170,7 +174,11 @@ pub(crate) async fn send_acp_turn_inner(
         .map_err(|failure| SendAcpTurnFailure {
             failure: dispatch_error(failure.error),
             prompt_dispatch: failure.prompt_dispatch,
-        })?;
+        });
+    if dispatch.is_err() {
+        super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);
+    }
+    dispatch?;
     mutation_response(state, project_id, chat_id).map_err(prompt_dispatch_unknown)
 }
 

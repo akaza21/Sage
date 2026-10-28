@@ -54,7 +54,7 @@ impl Lane<'_> {
         let Some(allocation) = self.scheduler.active() else {
             return Ok(false);
         };
-        if allocation.turn_reserved || !self.runtime_has_completed_turn(&allocation.tree) {
+        if !self.can_park_idle_runtime() {
             return Ok(false);
         }
         let owner = allocation.tree;
@@ -83,6 +83,17 @@ impl Lane<'_> {
             phase: LiveHostRecoveryPhase::ReplacementPark,
         }));
         Err(CodexSessionError::Recovery)
+    }
+
+    pub(crate) fn can_park_idle_runtime(&self) -> bool {
+        self.scheduler.active().is_some_and(|allocation| {
+            !allocation.turn_reserved
+                && self.runtime_has_completed_turn(&allocation.tree)
+                && self
+                    .runtime
+                    .for_owner(&allocation.tree)
+                    .is_ok_and(|host| host.has_shutdown_recovery())
+        })
     }
 
     fn runtime_has_completed_turn(&self, owner: &RuntimeOwner) -> bool {

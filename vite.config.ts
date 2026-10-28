@@ -39,7 +39,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|streamTail|turnWorkspaceChanges))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",

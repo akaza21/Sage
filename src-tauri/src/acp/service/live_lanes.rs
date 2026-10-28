@@ -180,7 +180,7 @@ impl AcpService {
     /// Picks the lane for a new activation and reserves it until the claim is
     /// dropped, so concurrent activations never race for one lane. Order:
     /// a lane already holding this session, a free lane, a lane with
-    /// reclaimable recovery, then the least recently activated idle runtime
+    /// resumable idle runtime, then a lane retaining recovery
     /// (which activation parks). Busy lanes are never chosen.
     pub(super) fn claim_activation_lane(
         &self,
@@ -223,19 +223,16 @@ impl AcpService {
                 push(index, &mut order);
             }
         }
-        for (index, lane) in self.lanes.iter().enumerate() {
-            if lane.has_recovery() {
-                push(index, &mut order);
-            }
-        }
         let mut idle: Vec<(u64, usize)> = self
             .lanes
             .iter()
             .enumerate()
-            .filter(|(_, lane)| {
-                lane.scheduler
-                    .active()
-                    .is_some_and(|active| !active.turn_reserved)
+            .filter(|(index, lane)| {
+                lane.scheduler.active().is_some_and(|active| {
+                    !lane.has_recovery()
+                        && self.can_resume(&active.tree)
+                        && self.lane_at(*index).can_park_idle_runtime()
+                })
             })
             .map(|(index, lane)| (lane.last_activation.load(Ordering::Acquire), index))
             .collect();
@@ -243,7 +240,21 @@ impl AcpService {
         for (_, index) in idle {
             push(index, &mut order);
         }
+        for (index, lane) in self.lanes.iter().enumerate() {
+            if lane.has_recovery() {
+                push(index, &mut order);
+            }
+        }
         order
+    }
+
+    fn can_resume(&self, owner: &RuntimeOwner) -> bool {
+        self.database.connection().query_row(
+            "SELECT capabilities_json FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND external_session_id IS NOT NULL",
+            rusqlite::params![owner.project_id.as_str(), owner.chat_id.as_str(), owner.session_id.as_str()],
+            |row| row.get::<_, String>(0),
+        ).ok().and_then(|json| serde_json::from_str::<crate::acp::intent::CapabilitySnapshotV1>(&json).ok())
+            .is_some_and(|capabilities| capabilities.resume_session)
     }
 }
 
