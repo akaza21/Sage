@@ -35,6 +35,10 @@ import {
   useComposerPopovers,
 } from "./useChatHarnessSelection";
 import "../../styles/harness-picker.css";
+import {
+  useHarnessSignInDecorations,
+  withSignIn,
+} from "../harness/harnessSignInBridge";
 interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -198,14 +202,12 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(harnesses).map(
-    (candidate) => ({
-      ...candidate,
-      subtitle:
-        candidate.id === selectedHarnessId && confirmedModelLabel
-          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-          : undefined,
-    }),
+  const signIn = useHarnessSignInDecorations(harnesses);
+  const modelRow = confirmedModelLabel
+    ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+    : undefined;
+  const harnessCandidates = harnessPickerCandidates(harnesses).map((row) =>
+    withSignIn(row, row.id === selectedHarnessId ? modelRow : "", signIn),
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const hasModes = modeOptions.length > 0;

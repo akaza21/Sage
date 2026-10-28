@@ -21,7 +21,7 @@ pub(crate) async fn send_acp_turn_inner(
     request: SendAcpTurnRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let (project_id, generation, chat_id) = send_owner(&request);
-    let (_transition, snapshot) =
+    let (transition, snapshot) =
         snapshot_for(state, project_id.clone(), generation, chat_id.clone())
             .await
             .map_err(prompt_not_dispatched)?;
@@ -145,6 +145,9 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Choose a supported access mode before sending."),
         })
     })?;
+    // B5: shell edits never reach harness fileChange events, so the turn's
+    // workspace changes are diffed against this mark once it is terminal.
+    super::turn_workspace::mark_before_prompt(state, &transition, &client_intent_id).await;
     state
         .acp
         .dispatch_session_turn(

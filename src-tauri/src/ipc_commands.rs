@@ -113,6 +113,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         image_artifacts::commands::upload_chat_image,
         image_artifacts::commands::remove_chat_image,
         commands::acp::cancel_acp_turn,
+        commands::acp::turn_workspace::get_acp_turn_workspace_changes,
         commands::acp::steer_acp_turn,
         commands::acp::close_acp_session,
         commands::acp::end_acp_session,

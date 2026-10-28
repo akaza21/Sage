@@ -223,3 +223,50 @@ it.each(["unsafe path", "nonfinite counts"])(
     expect(summary.rejectedUnsafeOrStale).toBe(true);
   },
 );
+
+it("adds shell-made workspace changes beside harness edits, harness records winning", () => {
+  const page = snapshotPage();
+  const turn = page.turns[0];
+  const saved = turn.items[0];
+  if (saved.kind !== "fileChangeDiff") throw new Error("Expected saved edit");
+  const harnessPath = (
+    saved.payload.changes[0].resource as {
+      resource: { relativePath: string; rootId: string };
+    }
+  ).resource;
+  const summary = projectChatEditSummary(page, [
+    {
+      turnId: turn.id,
+      rootId: harnessPath.rootId,
+      relativePath: harnessPath.relativePath,
+      operation: "updated",
+    },
+    {
+      turnId: turn.id,
+      rootId: harnessPath.rootId,
+      relativePath: "README.md",
+      operation: "updated",
+    },
+    {
+      turnId: "unknown-turn",
+      rootId: harnessPath.rootId,
+      relativePath: "ignored.md",
+      operation: "created",
+    },
+  ]);
+  expect(summary.changes).toHaveLength(2);
+  const shell = summary.changes.find(
+    (change) =>
+      change.resource.kind === "resource" &&
+      change.resource.resource.relativePath === "README.md",
+  );
+  expect(shell?.operation).toBe("updated");
+  expect(shell?.diffRef).toBeUndefined();
+  expect(shell?.turn.id).toBe(turn.id);
+  const harness = summary.changes.find(
+    (change) =>
+      change.resource.kind === "resource" &&
+      change.resource.resource.relativePath === harnessPath.relativePath,
+  );
+  expect(harness?.diffRef).toBeDefined();
+});

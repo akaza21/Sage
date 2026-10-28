@@ -212,3 +212,32 @@
     color: inherit;
   }
 }
+
+/* AP-B B4: sign-in action beside a harness picker row. */
+.searchable-picker__option-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.searchable-picker__option-row > .searchable-picker__option {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchable-picker__option-action {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--composer-control-hover);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--composer-control-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.searchable-picker__option-action:hover,
+.searchable-picker__option-action:focus-visible {
+  background: var(--composer-control-hover);
+}

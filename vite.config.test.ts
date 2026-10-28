@@ -88,6 +88,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/PermissionPrompt.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
+  // A terminal turn's Git workspace changes load after the turn settles.
+  "src/features/chat/acp/turnWorkspaceChanges.ts",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
@@ -95,6 +97,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
+  // Harness sign-in status loads when the desktop picker has harnesses.
+  "src/features/harness/harnessSignIn.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.

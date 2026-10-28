@@ -7,6 +7,7 @@ import {
   type AgentEditSummaryProjection,
 } from "./agentEditSummary";
 import { terminalItemLifecycles } from "./statusSemantics";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
 const retainedTurns = new WeakMap<
   TurnProjection,
@@ -18,7 +19,24 @@ const retainedTurns = new WeakMap<
   }
 >();
 
-export function projectChatEditSummary(page: AcpChatPage) {
+function workspaceChange(change: TurnWorkspaceChange): AgentEditSummaryChange {
+  return {
+    resource: {
+      kind: "resource",
+      resource: { rootId: change.rootId, relativePath: change.relativePath },
+    },
+    operation: change.operation,
+    originalResource: null,
+    summary: "",
+    additions: null,
+    deletions: null,
+  };
+}
+
+export function projectChatEditSummary(
+  page: AcpChatPage,
+  workspaceChanges: readonly TurnWorkspaceChange[] = [],
+) {
   const changeKeys = new Set<string>();
   const changes = new Map<
     string,
@@ -70,6 +88,21 @@ export function projectChatEditSummary(page: AcpChatPage) {
       if (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
         changes.delete(changes.keys().next().value!);
     }
+  }
+  // B5: files changed by shell commands appear beside harness edits; a
+  // harness record for the same file always wins.
+  for (const workspace of workspaceChanges) {
+    const turn = page.turns.find(
+      (candidate) => candidate.id === workspace.turnId,
+    );
+    if (!turn) continue;
+    const change = workspaceChange(workspace);
+    const key = agentEditSummaryChangeKey(change);
+    if (changeKeys.has(key)) continue;
+    changeKeys.add(key);
+    changes.set(key, { ...change, turn });
+    if (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
+      changes.delete(changes.keys().next().value!);
   }
   summary.omittedCount = changeKeys.size - changes.size;
   return {
