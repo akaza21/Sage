@@ -1,6 +1,4 @@
-import { useEffect, useRef, type FormEvent } from "react";
-import { AlertTriangle, Check, CircleAlert, Info, X } from "../ui/leanIcons";
-import { MAX_CHAT_TITLE_BYTES } from "../domain/chatTitle";
+import { AlertTriangle, CircleAlert, Info } from "../ui/leanIcons";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 
 export function AgentTaskStatus({
@@ -57,54 +55,3 @@ export function AgentTaskStatus({
 }
 
 // The header's inline rename, opened by its pencil or the chat actions.
-export function AgentTaskRenameForm({
-  value,
-  error,
-  disabled,
-  onChange,
-  onSubmit,
-  onCancel,
-}: {
-  value: string;
-  error: string | null;
-  disabled: boolean;
-  onChange: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-  onCancel: () => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    input.current?.focus();
-  }, []);
-  return (
-    <form className="agent-task-header__rename" onSubmit={onSubmit}>
-      <input
-        ref={input}
-        aria-label="New chat name"
-        aria-invalid={error ? true : undefined}
-        maxLength={MAX_CHAT_TITLE_BYTES}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onCancel();
-          }
-        }}
-      />
-      <button type="submit" aria-label="Save chat name" disabled={disabled}>
-        <Check size={14} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        aria-label="Cancel chat rename"
-        disabled={disabled}
-        onClick={onCancel}
-      >
-        <X size={14} aria-hidden="true" />
-      </button>
-      {error ? <span role="alert">{error}</span> : null}
-    </form>
-  );
-}

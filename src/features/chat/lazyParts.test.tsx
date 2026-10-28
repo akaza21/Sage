@@ -11,6 +11,35 @@ import { lazyParts, TranscriptPart } from "./lazyParts";
 
 afterEach(cleanup);
 
+it("preloads without rendering, then opens a part without a fallback commit", async () => {
+  const load = vi.fn(async () => ({ Card: () => <p>ready card</p> }));
+  const Part = lazyParts(load);
+  await Part.preload();
+  expect(screen.queryByText("ready card")).toBeNull();
+  render(<Part part="Card" fallback={<p>loading card</p>} />);
+  expect(screen.getByText("ready card")).toBeVisible();
+  expect(screen.queryByText("loading card")).toBeNull();
+  expect(load).toHaveBeenCalledOnce();
+});
+
+it("shares an in-flight prewarm across intent and idle requests", async () => {
+  let finish!: (chunk: { Card: () => ReactNode }) => void;
+  const load = vi.fn(
+    () =>
+      new Promise<{ Card: () => ReactNode }>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const Part = lazyParts(load);
+  const first = Part.preload();
+  const second = Part.preload();
+  expect(load).toHaveBeenCalledOnce();
+  finish({ Card: () => <p>shared card</p> });
+  await Promise.all([first, second]);
+  await Part.preload();
+  expect(load).toHaveBeenCalledOnce();
+});
+
 it("shows the fallback until the chunk first loads", () => {
   render(
     <TranscriptPart
@@ -23,6 +52,18 @@ it("shows the fallback until the chunk first loads", () => {
     />,
   );
   expect(screen.getByText("loading")).toBeVisible();
+});
+
+it("retries on first use after an optional prewarm fails", async () => {
+  const load = vi
+    .fn<() => Promise<{ Card: () => ReactNode }>>()
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValue({ Card: () => <p>recovered card</p> });
+  const Part = lazyParts(load);
+  await expect(Part.preload()).rejects.toThrow("offline");
+  render(<Part part="Card" />);
+  expect(await screen.findByText("recovered card")).toBeVisible();
+  expect(load).toHaveBeenCalledTimes(2);
 });
 
 it("renders a later part of an already loaded chunk in the same commit", async () => {

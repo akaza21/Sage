@@ -156,6 +156,44 @@ function replaceItems(items: AcpItem[], updates: Partial<AcpChatPage> = {}) {
   });
 }
 
+it("keeps expanded Sources across close and reopen, but resets them on an owner change", async () => {
+  const items = Array.from(
+    { length: 4 },
+    (_, index) =>
+      ({
+        ...collaboration(`source-${index}`, index, "started", [], [], []),
+        kind: "toolCall",
+        toolState: "completed",
+        payload: {
+          presentation: {
+            kind: "fetch",
+            label: "Fetched source",
+            url: `https://source-${index}.example`,
+            summary: null,
+          },
+          inputSummary: null,
+        },
+      }) as unknown as AcpItem,
+  );
+  replaceItems(items);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  const trigger = screen.getByRole("button", { name: "Show chat resources" });
+  fireEvent.click(trigger);
+  fireEvent.click(await screen.findByRole("button", { name: "View all" }));
+  expect(screen.getByText("source-0.example")).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+    key: "Escape",
+  });
+  fireEvent.click(trigger);
+  expect(screen.getByText("source-0.example")).toBeVisible();
+  replaceItems(items, {
+    currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
+  });
+  fireEvent.click(trigger);
+  expect(screen.queryByText("source-0.example")).toBeNull();
+  expect(screen.getByRole("button", { name: "View all" })).toBeVisible();
+});
+
 it("counts spawn invocations, not repeated spawn, start, finish, or resource observations", async () => {
   const items = acpProjectionStoreFor(tab.id).getState().page!.turns[0]
     .items as AcpItem[];
@@ -197,8 +235,9 @@ it("counts spawn invocations, not repeated spawn, start, finish, or resource obs
   replaceItems(observations("2"));
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  // The counts are synchronous; only the surrounding region loads lazily.
-  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+  expect(
+    await screen.findByLabelText("Recent subagents done: 2"),
+  ).toBeVisible();
   expect(
     await screen.findByRole("heading", { name: "Subagents" }),
   ).toBeVisible();
