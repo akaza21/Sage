@@ -76,19 +76,20 @@ pub(in crate::browser::devtools) fn mark<T: CdpTransport>(
 }
 
 /// Removes the marker and turns the overlay and DOM domains off again.
-/// While the tab annotates, or Annotate is changing, it only hides the
-/// outline: the hinge is then Annotate's hover outline, and its inspect
-/// overlay needs both domains. Every step runs even if one before it failed.
+/// While this tab annotates the hinge is Annotate's hover outline, so only
+/// the outline goes. The domains are turned off only when no Annotate
+/// change is under way on any tab, since a start enables them; Annotate
+/// busy elsewhere never leaves the cursor dot on this page. Every step runs
+/// even if one before it failed.
 pub(in crate::browser::devtools) fn clear<T: CdpTransport>(transport: &T) {
     let send = |(method, params): (&str, &str)| {
         let _ = transport.observe(method, params, 4096, STEP_TIMEOUT);
     };
     send(CLEAR[0]);
-    transport.unless_annotating(&mut || {
-        [CLEAR[1], DISABLE[0], DISABLE[1]]
-            .into_iter()
-            .for_each(send);
-    });
+    if !transport.annotating() {
+        send(CLEAR[1]);
+    }
+    transport.unless_annotating(&mut || DISABLE.into_iter().for_each(send));
 }
 
 fn rgba(alpha: f64) -> Value {

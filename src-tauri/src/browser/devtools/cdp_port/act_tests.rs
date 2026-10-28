@@ -31,6 +31,8 @@ struct Page {
     marker_times_out: bool,
     stopped: AtomicBool,
     annotating: bool,
+    /// Annotate is changing on some tab: the mode lock is busy.
+    annotate_busy: bool,
 }
 
 impl Page {
@@ -81,6 +83,12 @@ impl CdpTransport for Page {
 
     fn annotating(&self) -> bool {
         self.annotating
+    }
+
+    fn unless_annotating(&self, steps: &mut dyn FnMut()) {
+        if !self.annotating && !self.annotate_busy {
+            steps();
+        }
     }
 
     fn settled(&self, _: DocumentStamp) -> Result<Option<Settled>, BrowserFailure> {
@@ -173,6 +181,20 @@ fn while_the_tab_annotates_the_marker_leaves_annotates_outline_and_overlay_alone
         port.transport.sent(false),
         [MARK[0], MARK[1], MARK[2], "Overlay.hideHighlight"]
     );
+}
+
+#[test]
+fn annotate_busy_on_another_tab_still_removes_the_cursor_dot() {
+    let (_, port) = press(Page {
+        annotate_busy: true,
+        ..Page::default()
+    });
+    let sent = port.transport.sent(false);
+    assert_eq!(
+        sent[sent.len() - 2..],
+        ["Overlay.hideHighlight", "Overlay.setShowHinge"]
+    );
+    assert!(!sent.iter().any(|method| method.ends_with(".disable")));
 }
 
 #[test]
