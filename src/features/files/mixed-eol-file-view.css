@@ -1,0 +1,13 @@
+.mixed-eol-file-view {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  overflow: auto;
+  padding: 12px;
+  border: 0;
+  color: var(--color-text-primary);
+  background: var(--color-canvas);
+  font: var(--editor-font-size, 13px) / 1.5 var(--font-mono);
+  white-space: pre;
+}

@@ -16,15 +16,6 @@ import {
 } from "../app/subagentPaneStore";
 import { ModalDialog } from "../ui/ModalDialog";
 import { resourceKey } from "../domain/resourceIdentity";
-import type { AcpChatPage } from "../domain/acp";
-import {
-  sameAgentArtifactOwner,
-  type AgentArtifactAdmission,
-  type AgentArtifactOpenIntent,
-  type AgentArtifactOwner,
-} from "../domain/agentArtifact";
-import type { ResourceRef, WorkbenchTab } from "../domain/workbench";
-import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
 import {
   pinAgentChatOwner,
   pinnedAgentChatOwner,
@@ -33,80 +24,17 @@ import {
 import { useSideChatState } from "./sideChatState";
 import type { AgentToolLaunch, AgentToolRequest } from "./AgentToolsProvider";
 import "./agent-tool-panel.css";
+import { useAgentChangesState } from "./agentChangesState";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 // Lazy tool launch host: scoped Changes/Files picker, bounded resources and side chat.
 
-export type AgentToolResource = {
-  resource: ResourceRef;
-  label: string;
-  intent?: AgentArtifactOpenIntent;
-  tabId?: string;
-};
-export function agentToolResources(
-  tool: "changes" | "files",
-  page: AcpChatPage | null,
-  owner: AgentArtifactOwner | null,
-  tabs: readonly WorkbenchTab[],
-  admissions: readonly AgentArtifactAdmission[],
-): AgentToolResource[] {
-  if (
-    !page ||
-    !owner ||
-    page.projectId !== owner.projectId ||
-    page.chatId !== owner.chatId ||
-    page.currentSessionId !== owner.sessionId
-  )
-    return [];
-  const entries = new Map<string, AgentToolResource>();
-  for (const turn of page.turns.slice(-32).reverse()) {
-    if (turn.sessionId !== owner.sessionId) continue;
-    for (const change of projectAgentEditSummary(page, turn).changes) {
-      if (change.resource.kind !== "resource") continue;
-      const resource = change.resource.resource;
-      const key = resourceKey(resource);
-      if (entries.has(key)) continue;
-      const available =
-        tool === "changes"
-          ? Boolean(change.diffRef)
-          : change.operation !== "deleted";
-      entries.set(key, {
-        resource,
-        label: resource.relativePath,
-        ...(available
-          ? {
-              intent: {
-                owner,
-                target: tool === "changes" ? "diff" : "file",
-                resource,
-                ...(tool === "changes" && change.diffRef
-                  ? { diffRef: change.diffRef }
-                  : {}),
-              } as AgentArtifactOpenIntent,
-            }
-          : {}),
-      });
-      if (entries.size === 128) return [...entries.values()];
-    }
-  }
-  for (const admission of admissions.slice(-32)) {
-    if (!sameAgentArtifactOwner(admission.owner, owner)) continue;
-    const tab = tabs.find(
-      (candidate) =>
-        candidate.id === admission.tabId &&
-        candidate.kind === (tool === "changes" ? "diff" : "file"),
-    );
-    if (!tab?.resource || entries.has(resourceKey(tab.resource))) continue;
-    entries.set(resourceKey(tab.resource), {
-      resource: tab.resource,
-      label: tab.resource.relativePath,
-      tabId: tab.id,
-    });
-    if (entries.size === 128) break;
-  }
-  return [...entries.values()];
-}
+import {
+  agentToolResources,
+  type AgentToolResource,
+} from "./agentToolResources";
 
-export async function launchSideChat(
+async function launchSideChat(
   chatId: string,
   projectId: string,
   generation: number,
@@ -227,6 +155,27 @@ export function AgentToolHost({ launch }: { launch: AgentToolLaunch }) {
       ? request
       : null;
   if (request && !currentRequest) setRequest(null);
+  useEffect(() => {
+    if (currentRequest?.tool !== "changes") return;
+    const projection = acpProjectionStoreFor(currentRequest.chatId).getState();
+    const valid = validFocusedSubagentPage(
+      projection.page,
+      projection.scope,
+      currentRequest.projectId,
+      currentRequest.chatId,
+      currentRequest.generation,
+      transitioning,
+    );
+    const owner = ownerFromFocusedPage(projection.page, valid);
+    useAgentChangesState.getState().show(
+      owner ?? {
+        projectId: currentRequest.projectId,
+        chatId: currentRequest.chatId,
+        sessionId: null,
+      },
+      currentRequest.generation,
+    );
+  }, [currentRequest, transitioning]);
   // Restore launcher focus only after unmount closes the modal dialog's inertness.
   const restoreFocus = useRef(false);
   useEffect(() => {
@@ -236,7 +185,7 @@ export function AgentToolHost({ launch }: { launch: AgentToolLaunch }) {
   }, [currentRequest, launch]);
   return (
     <>
-      {currentRequest ? (
+      {currentRequest?.tool === "files" ? (
         <AgentToolPanel
           request={currentRequest}
           onDismiss={() => {
@@ -341,6 +290,8 @@ export function AgentToolPanel({
           .pin(owner, { kind: "tab", tabId: entry.tabId });
         await activateTab(entry.tabId);
       }
+      useAgentChangesState.getState().select(false);
+      useSubagentPaneStore.getState().select(false);
       onDismiss();
     } catch (cause) {
       setError(String(cause).slice(0, 512));

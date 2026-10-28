@@ -1,0 +1,100 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { useWorkbenchStore } from "../../app/store";
+import { snapshotPage } from "../../app/agentDiff.fixture";
+import { ChangesSurface } from "./ChangesSurface";
+
+vi.mock("./ChangesFileDiff", () => ({
+  ChangesFileDiff: ({
+    entry,
+  }: {
+    entry: { resource: { relativePath: string } };
+  }) => <div role="table" aria-label={`Diff ${entry.resource.relativePath}`} />,
+}));
+const initial = useWorkbenchStore.getState();
+afterEach(() => {
+  cleanup();
+  useWorkbenchStore.setState(initial, true);
+});
+
+it("renders Last turn as per-file sections, not a resource picker", () => {
+  render(<ChangesSurface page={snapshotPage()} />);
+  expect(screen.getByRole("combobox", { name: "Changes scope" })).toHaveValue(
+    "lastTurn",
+  );
+  expect(
+    screen.getByRole("region", { name: "Changes src/a.ts" }),
+  ).toBeVisible();
+  expect(screen.getByRole("table", { name: "Diff src/a.ts" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /src\/a.ts/ }));
+  expect(screen.queryByRole("table")).toBeNull();
+});
+
+it("offers real Git scopes and mounts at most one file diff", () => {
+  useWorkbenchStore.setState({
+    repositories: {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          elapsedMs: 0,
+          truncated: false,
+          message: null,
+          changes: ["one.ts", "two.ts"].map((path) => ({
+            resource: { rootId: "root-a", relativePath: path },
+            indexStatus: "unchanged",
+            worktreeStatus: "modified",
+            additions: 1,
+            deletions: 0,
+          })),
+        },
+      ],
+      truncated: false,
+      elapsedMs: 0,
+    },
+  });
+  render(<ChangesSurface page={null} />);
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "unstaged" },
+  });
+  expect(screen.getByText(/not attributed to this Chat/)).toBeVisible();
+  expect(screen.getAllByRole("table")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: /two.ts/ }));
+  expect(screen.queryByRole("table", { name: "Diff one.ts" })).toBeNull();
+  expect(screen.getByRole("table", { name: "Diff two.ts" })).toBeVisible();
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "staged" },
+  });
+  expect(screen.getByText("No changes in this scope.")).toBeVisible();
+});
+
+it("disables unavailable Git scopes with a reason", () => {
+  useWorkbenchStore.setState({
+    repositories: { roots: [], elapsedMs: 0, truncated: false },
+  });
+  render(<ChangesSurface page={null} />);
+  expect(
+    screen.getByRole("option", { name: "Staged — Git unavailable" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("option", { name: "Unstaged — Git unavailable" }),
+  ).toBeDisabled();
+});
+
+it("holds a snapshot without rescanning streamed pages until explicit refresh", () => {
+  const page = snapshotPage();
+  const view = render(<ChangesSurface page={page} />);
+  const next = {
+    ...page,
+    turns: [
+      ...page.turns,
+      { ...page.turns[0], id: "new-turn" as never, ordinal: 2, items: [] },
+    ],
+  };
+  view.rerender(<ChangesSurface page={next} />);
+  expect(screen.getByRole("table", { name: "Diff src/a.ts" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh changes" }));
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(screen.getByText("No changes in this scope.")).toBeVisible();
+});

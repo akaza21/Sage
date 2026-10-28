@@ -1,6 +1,6 @@
 import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 import {
@@ -17,6 +17,7 @@ import { FileKindIcon } from "../features/files/FileKindIcon";
 import { BrowserFavicon } from "../features/browser/browserAddress";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
+import { useAgentChangesState } from "./agentChangesState";
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
@@ -32,6 +33,7 @@ type AgentArtifactTabStripProps = {
   availableTargets: readonly AgentArtifactTarget[];
   activateTab: (tabId: string) => Promise<void> | void;
   closeTab: (tabId: string) => void;
+  changesTab?: ReactNode;
 };
 
 export function AgentArtifactTabStrip({
@@ -48,6 +50,7 @@ export function AgentArtifactTabStrip({
   availableTargets,
   activateTab,
   closeTab,
+  changesTab,
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pendingTargets = agentArtifactPendingTargets(record);
@@ -72,6 +75,7 @@ export function AgentArtifactTabStrip({
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
         <div ref={scrollRef} className="tab-strip__scroll">
+          {changesTab}
           {artifacts.map((tab, index) => {
             const selected =
               selectedTarget?.kind === "tab" && tab.id === selectedTarget.tabId;
@@ -115,6 +119,7 @@ export function AgentArtifactTabStrip({
                   data-resource-relative-path={tab.resource?.relativePath}
                   title={accessibleName}
                   onClick={() => {
+                    useAgentChangesState.getState().select(false);
                     useSubagentPaneStore.getState().select(false);
                     if (focusedOwner) {
                       useAgentArtifactFollowStore.getState().pin(focusedOwner, {
@@ -207,6 +212,7 @@ export function AgentArtifactTabStrip({
                   previewPending ? "preview-new-resource" : undefined
                 }
                 onClick={() => {
+                  useAgentChangesState.getState().select(false);
                   useSubagentPaneStore.getState().select(false);
                   useAgentArtifactFollowStore
                     .getState()
@@ -280,6 +286,7 @@ export function AgentArtifactTabStrip({
           aria-pressed={following}
           title={followTitle}
           onClick={() => {
+            useAgentChangesState.getState().select(false);
             useAgentArtifactFollowStore.getState().followLatest(focusedOwner);
             requestAnimationFrame(() => {
               scrollRef.current

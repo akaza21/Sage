@@ -20,6 +20,7 @@ import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+import { MixedEolFileView } from "./MixedEolFileView";
 
 export function FileSurface({
   tab,
@@ -175,6 +176,8 @@ export function FileSurface({
     return <FileSurfaceResourceState path={path} />;
   }
   if (editor.phase === "error") {
+    if (editor.message.includes("mixed LF and CRLF"))
+      return <MixedEolFileView key={activeResourceKey} resource={resource} />;
     return <FileSurfaceResourceState path={path} error={editor.message} />;
   }
 

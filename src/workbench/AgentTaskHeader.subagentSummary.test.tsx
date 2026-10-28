@@ -18,6 +18,7 @@ import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { useAgentChangesState } from "./agentChangesState";
 
 const readChild = vi.hoisted(() => vi.fn());
 vi.mock("../services/acpChildTranscript", () => ({
@@ -197,8 +198,9 @@ it("counts spawn invocations, not repeated spawn, start, finish, or resource obs
   replaceItems(observations("2"));
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  // The counts are synchronous; only the surrounding region loads lazily.
-  expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
+  expect(
+    await screen.findByLabelText("Recent subagents done: 2"),
+  ).toBeVisible();
   expect(
     await screen.findByRole("heading", { name: "Subagents" }),
   ).toBeVisible();
@@ -252,7 +254,10 @@ it("makes a lazily loaded child row keyboard reachable and returns Tab focus", a
   const row = await screen.findByRole("button", {
     name: "Open subagent Reviewer",
   });
-  await waitFor(() => expect(row).toHaveFocus());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Changes" })).toHaveFocus(),
+  );
+  row.focus();
   expect(readChild).not.toHaveBeenCalled();
   expect(useSubagentPaneStore.getState().open).toBeNull();
   fireEvent.keyDown(row, { key: "Tab" });
@@ -532,11 +537,18 @@ it("keeps Task lifecycle metadata readable without a child selection or transcri
 afterEach(() => {
   cleanup();
   useSubagentPaneStore.getState().clear();
+  useAgentChangesState.getState().close();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initialState, true);
 });
 
 it("opens the observed child only after explicit resource selection", async () => {
+  useAgentChangesState
+    .getState()
+    .show(
+      { projectId: "project-a", chatId: tab.id, sessionId: "session-1" },
+      7,
+    );
   const store = acpProjectionStoreFor(tab.id);
   const { scope, page } = store.getState();
   if (!scope || !page) throw new Error("Missing projection");
@@ -576,6 +588,7 @@ it("opens the observed child only after explicit resource selection", async () =
     agentKey: "private-reviewer",
   });
   expect(useSubagentPaneStore.getState().selected).toBe(true);
+  expect(useAgentChangesState.getState().selected).toBe(false);
   expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
@@ -745,13 +758,15 @@ it("portals chat resources outside the header and returns Escape focus to the tr
 });
 
 it.each([false, true])(
-  "returns empty resources-dialog Tab focus to its opener (reverse=%s)",
-  (shiftKey) => {
+  "returns resources-dialog Tab focus to its opener (reverse=%s)",
+  async (shiftKey) => {
     render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
     const trigger = screen.getByRole("button", { name: "Show chat resources" });
     fireEvent.click(trigger);
-    const panel = screen.getByRole("dialog", { name: "Chat resources" });
-    expect(panel).toHaveFocus();
+    const panel = await screen.findByRole("dialog", { name: "Chat resources" });
+    expect(
+      within(panel).getByRole("button", { name: "Changes" }),
+    ).toHaveFocus();
     fireEvent.keyDown(panel, { key: "Tab", shiftKey });
     expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
     expect(trigger).toHaveFocus();

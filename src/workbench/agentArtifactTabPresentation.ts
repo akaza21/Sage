@@ -83,11 +83,13 @@ export function projectTaskResources(
   const latestInvocation = new Map<string, string>();
   const outputs = new Map<string, TaskOutput>();
   const sources = new Map<string, TaskSource>();
+  const changes = new Set<string>();
   if (!page || page.chatId !== chatId)
     return {
       recentAgents: [],
       outputs: [],
       sources: [],
+      changesCount: 0,
     };
   let remainingItems = MAX_RECENT_RESOURCE_ITEMS;
   const recentTurns = [];
@@ -101,6 +103,12 @@ export function projectTaskResources(
   }
   for (const turn of recentTurns.reverse()) {
     for (const change of projectAgentEditSummary(page, turn).changes) {
+      if (
+        turn.sessionId === page.currentSessionId &&
+        change.resource.kind === "resource" &&
+        changes.size < MAX_RESOURCE_ENTRIES
+      )
+        changes.add(resourceKey(change.resource.resource));
       if (change.operation !== "created" || change.resource.kind !== "resource")
         continue;
       const resource = change.resource.resource;
@@ -266,6 +274,7 @@ export function projectTaskResources(
     recentAgents,
     outputs: [...outputs.values()],
     sources: [...sources.values()],
+    changesCount: changes.size,
   };
 }
 

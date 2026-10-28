@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createRef, useState } from "react";
-import { AgentArtifactPaneControls } from "./AgentArtifactHeader";
+import { AgentArtifactPaneControls } from "./AgentArtifactPaneControls";
 
 afterEach(cleanup);
 it("expands the actual resource pane, restores it, and opens a real browser tab", () => {

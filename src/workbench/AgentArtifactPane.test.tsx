@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAgentChangesState } from "./agentChangesState";
 
 const previewBridge = vi.hoisted(() => ({
   discover: vi.fn(),
@@ -240,6 +241,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   clearBrowseSessions();
+  useAgentChangesState.getState().close();
   clearAcpProjectionRegistry();
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
@@ -250,6 +252,21 @@ afterEach(() => {
 });
 
 describe("Agent artifact file chips", () => {
+  it("unmounts Changes when selecting a normal file tab", async () => {
+    admit("file:app");
+    render(<AgentArtifactPane expanded onExpandedChange={vi.fn()} />);
+    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    expect(await screen.findByRole("tab", { name: /Changes/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: /app.ts/ }));
+    expect(useAgentChangesState.getState().selected).toBe(false);
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+  });
   it.each([
     "dismissal",
     "Chat focus round-trip",
@@ -854,14 +871,14 @@ describe("Agent artifact file chips", () => {
     );
   });
 
-  it("opens an Agent file in Editor from the File pane Open menu", () => {
+  it("opens an Agent file in Editor from the File pane Open menu", async () => {
     const onOpenInEditor = vi.fn();
     admit("file:app");
     render(<AgentArtifactPane onOpenInEditor={onOpenInEditor} />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
-    const menu = screen.getByRole("menu", { name: "Open file" });
+    const menu = await screen.findByRole("menu", { name: "Open file" });
     fireEvent.click(
       within(menu).getByRole("menuitem", { name: "Open in Editor" }),
     );
@@ -878,7 +895,7 @@ describe("Agent artifact file chips", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
     fireEvent.click(
-      within(screen.getByRole("menu", { name: "Open file" })).getByRole(
+      within(await screen.findByRole("menu", { name: "Open file" })).getByRole(
         "menuitem",
         { name: "Copy path" },
       ),
