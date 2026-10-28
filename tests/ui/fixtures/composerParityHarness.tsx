@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { useRef } from "react";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { useSessionAccessModeStore } from "../../../src/app/sessionAccessModeStore";
-import { snapshotPage } from "../../../src/app/agentDiff.testFixture";
+import { snapshotPage } from "../../../src/app/agentDiff.fixture";
 import type { AcpSessionConfig } from "../../../src/domain/acpSessionConfig";
 import { ChatComposerRegion } from "../../../src/features/chat/ChatComposerRegion";
 import { ChatTranscript } from "../../../src/features/chat/ChatTranscript";

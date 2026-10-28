@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
 import {
   commitIdentityChatResult,
@@ -11,36 +11,85 @@ import { inheritComposerModel } from "./inheritedComposerModel";
 import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import type { ProjectTransitionResult } from "../../domain/workbench";
-import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
-import type { ForkChatRequest } from "../../ports/workbenchPorts";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { Ellipsis, GitBranch } from "../../ui/leanIcons";
+import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId, useSideChatState } from "../../workbench/sideChatState";
 import "./fork-chat.css";
 
-/**
- * Lazy fork chunk: the answer "…" menu, the "Fork chat from here" dialog and
- * the "Continued from chat" link. Rust owns the fork; this only asks for it
- * and adopts the authoritative Project snapshot it returns.
- */
+/** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
+
+/** Offer Branch only when forkable; otherwise reuse the row's Copy feedback. */
+export function AnswerMoreMenu({
+  onCopy,
+  onBranch,
+  trigger,
+}: {
+  onCopy: () => void;
+  /** Present only when this answer can be forked; true when keyed. */
+  onBranch?: (keyboard: boolean) => void;
+  trigger: RefObject<HTMLButtonElement | null>;
+}) {
+  const menuId = useId();
+  const [open, setOpen] = useState(false);
+  // Only Enter/Space counts as keyboard activation.
+  const keyed = useRef(false);
+  const [Icon, label] = onBranch
+    ? [GitBranch, "Branch in new chat"]
+    : [Copy, "Copy"];
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        aria-label="More actions"
+        title="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <Ellipsis size={14} aria-hidden="true" />
+      </button>
+      <MenuPopover
+        id={menuId}
+        open={open}
+        ariaLabel="Answer actions"
+        className="answer-more-menu"
+        gap={2}
+        placement="above-start"
+        triggerRef={trigger}
+        onDismiss={() => setOpen(false)}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="button--compact answer-more-menu__item"
+          onKeyDown={(event) => {
+            keyed.current = event.key === "Enter" || event.key === " ";
+          }}
+          onClick={() => {
+            setOpen(false);
+            if (onBranch) onBranch(keyed.current);
+            else {
+              trigger.current?.focus();
+              onCopy();
+            }
+            keyed.current = false;
+          }}
+        >
+          <Icon size={14} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      </MenuPopover>
+    </>
+  );
+}
 
 export interface ForkTarget {
   chatId: string;
   turnId: string;
-}
-
-function invokeFork(
-  request: ForkChatRequest,
-): Promise<ProjectTransitionResult> {
-  if (isTauriRuntime())
-    return invokeNative<ProjectTransitionResult>("fork_chat", { ...request });
-  const fork = getWorkbenchPorts().chat.forkChat;
-  return fork
-    ? fork(request)
-    : Promise.reject(new Error("Forking needs the desktop app."));
 }
 
 /** Resolves to null on success or to the reason the fork did not commit. */
@@ -64,13 +113,16 @@ export async function forkChat({
     applyProjection: context.applyProjection,
     loadAuthoritativeProjection: context.loadAuthoritativeProjection,
     failedMessage: "The fork did not commit.",
-    invoke: () =>
-      invokeFork({
+    invoke: () => {
+      const fork = getWorkbenchPorts().chat.forkChat;
+      if (!fork) throw new Error("Forking needs the desktop app.");
+      return fork({
         currentLayout: layout,
         chatId,
         turnId,
         expectedTransitionEpoch: get().nativeTransitionEpoch,
-      }),
+      });
+    },
   });
   if (committed) {
     // Rust activates the fork; it replaces the parent's pane, unpaired.
@@ -87,80 +139,45 @@ export async function forkChat({
   return reason || "Try again.";
 }
 
-/**
- * The Turn a fork may be taken through: Rust forks only the latest completed
- * Turn of the live head session whose capabilities admit a native fork, and
- * never a temporary side chat.
- */
-function forkTarget(page: AcpChatPage): ForkTarget | null {
+export function AnswerMoreActions({
+  page,
+  onCopy,
+  forkable,
+}: {
+  page: AcpChatPage;
+  onCopy: () => void;
+  /** Only the latest answer's row may fork; earlier and inherited never. */
+  forkable?: boolean;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  // null while closed; otherwise whether Enter or Space opened the dialog.
+  const [forking, setForking] = useState<boolean | null>(null);
   const turn = page.turns.at(-1);
-  const forkable =
+  const canFork =
+    forkable &&
     turn?.state === "completed" &&
+    turn.sessionId === page.currentSessionId &&
     !isSideChatId(page.chatId) &&
     page.sessions.some(
       (session) =>
         session.id === turn.sessionId &&
-        session.id === page.currentSessionId &&
         session.residency === "hot" &&
         session.capabilities.nativeSessionFork,
     );
-  return forkable ? { chatId: page.chatId, turnId: turn.id } : null;
-}
-
-/** Codex's answer "…" for a forkable answer, otherwise nothing. */
-export function AnswerMoreActions({ page }: { page: AcpChatPage }) {
-  const target = forkTarget(page);
-  return target ? <AnswerMoreMenu {...target} /> : null;
-}
-
-/** One item, "Branch in new chat". */
-function AnswerMoreMenu(target: ForkTarget) {
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menuId = useId();
-  const [open, setOpen] = useState(false);
-  const [forking, setForking] = useState(false);
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
-        aria-label="More actions"
-        title="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Ellipsis size={14} aria-hidden="true" />
-      </button>
-      <MenuPopover
-        id={menuId}
-        open={open}
-        ariaLabel="Answer actions"
-        className="answer-more-menu"
-        gap={2}
-        placement="above-start"
-        triggerRef={trigger}
-        onDismiss={() => setOpen(false)}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          className="answer-more-menu__item"
-          onClick={() => {
-            setOpen(false);
-            setForking(true);
-          }}
-        >
-          <GitBranch size={14} aria-hidden="true" />
-          <span>Branch in new chat</span>
-        </button>
-      </MenuPopover>
-      {forking ? (
+      <AnswerMoreMenu
+        onCopy={onCopy}
+        trigger={trigger}
+        onBranch={canFork ? setForking : undefined}
+      />
+      {forking !== null && canFork ? (
         <ForkChatDialog
-          {...target}
+          chatId={page.chatId}
+          turnId={turn.id}
+          keyboard={forking}
           onClose={() => {
-            setForking(false);
+            setForking(null);
             trigger.current?.focus();
           }}
         />
@@ -169,63 +186,46 @@ function AnswerMoreMenu(target: ForkTarget) {
   );
 }
 
-/** Whether the control that opened the dialog was reached by keyboard. */
-function openedByKeyboard() {
-  try {
-    return Boolean(document.activeElement?.matches(":focus-visible"));
-  } catch {
-    return false;
-  }
-}
-
-/**
- * "Fork in a new worktree" is deliberately absent: Sage Chats have no
- * worktree support, and worktrees are never the project model.
- */
+/** No worktree fork: Chats lack worktree support; worktrees aren't Projects. */
 export function ForkChatDialog({
   chatId,
   turnId,
   onClose,
+  keyboard = false,
   fork = forkChat,
 }: ForkTarget & {
   onClose: () => void;
+  /** Opened with Enter or Space; a pointer or scripted click is not. */
+  keyboard?: boolean;
   fork?: (target: ForkTarget) => Promise<string | null>;
 }) {
   const title = useId();
   const option = useRef<HTMLButtonElement>(null);
   const busyRef = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // The first option takes focus on open but is not pre-highlighted after a
-  // pointer open (Codex s2/f0055); a keyboard open or key press shows it.
-  const [fresh, setFresh] = useState(() => !openedByKeyboard());
+  const [result, setResult] = useState<string | null | undefined>(null);
+  const busy = result === undefined;
+  // Focus the first option; highlight only for keyboard input (s2/f0055).
+  const [fresh, setFresh] = useState(!keyboard);
   const dismiss = () => {
     if (!busyRef.current) onClose();
   };
-  useEffect(() => option.current?.focus(), []);
   useEffect(() => {
     const dialog = option.current?.closest("dialog");
-    // A click outside the dialog's own box landed on its backdrop.
+    if (!dialog) return;
     const backdrop = (event: MouseEvent) => {
-      const box = dialog?.getBoundingClientRect();
+      if (event.target !== dialog || busyRef.current) return;
+      const box = dialog.getBoundingClientRect();
       if (
-        event.target === dialog &&
-        box &&
-        !busyRef.current &&
-        (event.clientX < box.left ||
-          event.clientX > box.right ||
-          event.clientY < box.top ||
-          event.clientY > box.bottom)
+        event.clientX < box.left ||
+        event.clientX > box.right ||
+        event.clientY < box.top ||
+        event.clientY > box.bottom
       )
         onClose();
     };
-    dialog?.addEventListener("click", backdrop);
-    return () => dialog?.removeEventListener("click", backdrop);
+    dialog.addEventListener("click", backdrop);
+    return () => dialog.removeEventListener("click", backdrop);
   }, [onClose]);
-  const settle = (next: boolean) => {
-    busyRef.current = next;
-    setBusy(next);
-  };
   return (
     <ModalDialog
       className="fork-chat-dialog dialog--scrim"
@@ -236,37 +236,34 @@ export function ForkChatDialog({
       <div
         role="menu"
         aria-labelledby={title}
-        aria-busy={busy || undefined}
-        className="fork-chat-dialog__options"
+        aria-busy={busy}
         onKeyDown={() => setFresh(false)}
       >
         <button
           ref={option}
+          autoFocus
+          className="button--compact"
           type="button"
           role="menuitem"
           data-fresh={fresh || undefined}
           disabled={busy}
           onClick={async () => {
-            settle(true);
-            setError(null);
+            busyRef.current = true;
+            setResult(undefined);
             const reason = await fork({ chatId, turnId });
-            settle(false);
+            busyRef.current = false;
+            setResult(reason);
             if (reason === null) onClose();
-            else setError(reason);
           }}
         >
-          <GitBranch size={14} aria-hidden="true" />
+          <GitBranch size={14} />
           <span>
             <strong>Fork in this workspace</strong>
             <small>Fork from this message in the current workspace</small>
           </span>
         </button>
       </div>
-      {error ? (
-        <p role="alert" className="fork-chat-dialog__error">
-          Couldn&apos;t fork this chat. {error}
-        </p>
-      ) : null}
+      {result && <p role="alert">Couldn&apos;t fork this chat. {result}</p>}
     </ModalDialog>
   );
 }
@@ -287,14 +284,11 @@ export function ForkDivider({
   return (
     <>
       {inherited ? (
-        // The parent's history through the fork point, read-only, as Codex
-        // shows it above the divider (s2/f0066). Turns only: the fork's own
-        // transcript keeps the only navigator, find and virtual list.
+        // Parent Turns are read-only except answer actions; the fork owns the sole navigator, find and virtual list (s2/f0066).
         <div
           className="chat-fork-inherited"
           aria-label="History from the parent chat"
           role="group"
-          inert
         >
           {inherited.earlier ? (
             <p className="acp-history-notice">
@@ -304,14 +298,12 @@ export function ForkDivider({
           <LazyModuleBoundary
             label="Inherited history"
             load={loadInheritedTurns}
-            render={(InheritedTurns) => (
-              <InheritedTurns page={inherited.page} />
-            )}
+            render={(InheritedTurns) => <InheritedTurns page={inherited} />}
           />
         </div>
       ) : null}
       <div className="chat-fork-divider">
-        <GitBranch size={14} aria-hidden="true" />
+        <GitBranch size={14} />
         {open ? (
           <button
             type="button"
@@ -336,21 +328,13 @@ const loadInheritedTurns = () =>
     default: InheritedTurns,
   }));
 
-type Inherited = {
-  parentChatId: string;
+type Inherited = AcpChatPage & {
   forkTurnId: string;
-  page: AcpChatPage;
   /** Parent Turns before the shown ones exist but are not rendered. */
   earlier: boolean;
 };
 
-/**
- * The parent's latest page cut at the fork Turn: one bounded page read, at
- * most MAX_INHERITED_TURNS Turns. Earlier parent history (an older page, or
- * Turns past the cap) is announced, not loaded. A fork point older than the
- * parent's latest page shows nothing. A re-fetch after a Project transition
- * keeps the last render until its answer lands, so it never flashes.
- */
+/** Read one parent page through the fork, capped at MAX_INHERITED_TURNS. Announce omitted history; show nothing if the fork predates the page. Keep the previous render during Project-transition re-fetches. */
 function useInheritedHistory(parentChatId: string, forkTurnId?: string) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -366,26 +350,22 @@ function useInheritedHistory(parentChatId: string, forkTurnId?: string) {
     })
       .then((page) => {
         if (!live || page.chatId !== parentChatId) return;
-        const end = page.turns.findIndex((turn) => turn.id === forkTurnId);
-        if (end < 0) return setInherited(null);
-        const start = Math.max(0, end + 1 - MAX_INHERITED_TURNS);
+        const end = page.turns.findIndex((turn) => turn.id === forkTurnId) + 1;
+        if (!end) return setInherited(null);
+        const start = Math.max(0, end - MAX_INHERITED_TURNS);
         setInherited({
-          parentChatId,
+          ...page,
           forkTurnId,
           earlier: start > 0 || page.nextCursor !== null,
-          page: {
-            ...page,
-            turns: page.turns.slice(start, end + 1),
-            nextCursor: null,
-          },
+          turns: page.turns.slice(start, end),
         });
       })
-      .catch(() => undefined);
+      .catch(() => {});
     return () => {
       live = false;
     };
   }, [projectId, generation, parentChatId, forkTurnId]);
-  return inherited?.parentChatId === parentChatId &&
+  return inherited?.chatId === parentChatId &&
     inherited.forkTurnId === forkTurnId
     ? inherited
     : null;

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-/** A temporary side chat; Rust owns the registry, this is its WebView mirror. */
+/** Rust owns temporary chats; this is the disposable mirror. */
 export interface SideChatEntry {
   id: string;
   projectId: string;
@@ -10,17 +10,14 @@ export interface SideChatEntry {
 
 /** At most one side chat per Project and eight in all (Rust enforces the same). */
 export const MAX_SIDE_CHATS = 8;
-/** Codex opens a side chat at about 43 / 57; the split is never persisted. */
+/** Non-persisted 43/57 split (Codex). */
 export const SIDE_CHAT_SPLIT = 43;
 
 export const useSideChatState = create<{
   sides: readonly SideChatEntry[];
   pendingClose: string | null;
   split: number;
-  /**
-   * A Chat the Agent center shows alone until another Chat is selected: a
-   * just-opened fork replaces its parent pane instead of pairing with it.
-   */
+  /** Show a new fork alone, replacing its parent pane until another Chat is selected. */
   soloChatId: string | null;
 }>(() => ({
   sides: [],
@@ -29,14 +26,11 @@ export const useSideChatState = create<{
   soloChatId: null,
 }));
 
-/** Rust (and the visual fixture) mint temporary Chat ids with this prefix. */
+/** Rust/fixture temporary Chat ID prefix. */
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 
-/**
- * The Chat that names the window and holds the rail highlight: a focused
- * side chat never lists, so its parent keeps both (Codex s2/f0244).
- */
+/** A focused side chat isn't in the rail; its parent retains window title/highlight (s2/f0244). */
 export function useRailChatId(activeId: string | null) {
   return (
     useSideChatState(

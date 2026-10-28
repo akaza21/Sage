@@ -1,98 +1,16 @@
 import type { SessionStatus } from "../../../domain/workbench";
 import { currentLocalBranchName } from "../../git/localBranches";
-import { unreadDotVisible } from "./chatUnread";
+import { createUnreadAcks, unreadDotVisible } from "./chatUnread";
 
 export const MAX_SESSION_RAIL_ACK_SLOTS = 64;
 export const MAX_SESSION_RAIL_GIT_CHARS = 24;
 
-const railAcks = new Map<string, string>();
-const pinnedRailIds = new Set<string>();
-const railActivityAt = new Map<string, number>();
-const railActivityFingerprint = new Map<string, string>();
-
-export function pinSessionRailIds(ids: readonly string[]): void {
-  pinnedRailIds.clear();
-  for (const id of ids) {
-    if (pinnedRailIds.size >= MAX_SESSION_RAIL_ACK_SLOTS) break;
-    pinnedRailIds.add(id);
-  }
-  for (const id of [...railAcks.keys()]) {
-    if (!pinnedRailIds.has(id)) railAcks.delete(id);
-  }
-  for (const id of [...railActivityAt.keys()]) {
-    if (!pinnedRailIds.has(id)) {
-      railActivityAt.delete(id);
-      railActivityFingerprint.delete(id);
-    }
-  }
-}
-
-function evictUnpinnedRailAck(requestedId: string): boolean {
-  for (const id of railAcks.keys()) {
-    if (id !== requestedId && !pinnedRailIds.has(id)) {
-      railAcks.delete(id);
-      return true;
-    }
-  }
-  return false;
-}
-
-export function ackSessionRailUnread(
-  chatId: string,
-  fingerprint: string,
-): void {
-  if (railAcks.has(chatId)) {
-    railAcks.set(chatId, fingerprint);
-    return;
-  }
-  if (railAcks.size >= MAX_SESSION_RAIL_ACK_SLOTS) {
-    if (!evictUnpinnedRailAck(chatId)) {
-      const oldest = railAcks.keys().next().value;
-      if (oldest !== undefined) railAcks.delete(oldest);
-    }
-  }
-  railAcks.set(chatId, fingerprint);
-}
-
-export function seenSessionRailFingerprint(chatId: string): string | undefined {
-  return railAcks.get(chatId);
-}
-
-export function clearSessionRailAcks(): void {
-  railAcks.clear();
-  pinnedRailIds.clear();
-  railActivityAt.clear();
-  railActivityFingerprint.clear();
-}
-
-export function noteSessionRailActivity(
-  chatId: string,
-  fingerprint: string,
-  nowMs: number,
-): void {
-  if (fingerprint.length === 0 || !Number.isFinite(nowMs) || nowMs <= 0) {
-    return;
-  }
-  if (railActivityFingerprint.get(chatId) === fingerprint) {
-    return;
-  }
-  if (
-    !railActivityAt.has(chatId) &&
-    railActivityAt.size >= MAX_SESSION_RAIL_ACK_SLOTS
-  ) {
-    const oldest = railActivityAt.keys().next().value;
-    if (oldest !== undefined) {
-      railActivityAt.delete(oldest);
-      railActivityFingerprint.delete(oldest);
-    }
-  }
-  railActivityFingerprint.set(chatId, fingerprint);
-  railActivityAt.set(chatId, nowMs);
-}
-
-export function sessionRailActivityAt(chatId: string): number | undefined {
-  return railActivityAt.get(chatId);
-}
+export const {
+  pin: pinSessionRailIds,
+  ack: ackSessionRailUnread,
+  seen: seenSessionRailFingerprint,
+  clear: clearSessionRailAcks,
+} = createUnreadAcks(MAX_SESSION_RAIL_ACK_SLOTS);
 
 export function sessionRailRelativeTime(
   updatedAtMs: number,
@@ -131,43 +49,6 @@ export function sessionRailGitLabel(branch: string | null | undefined): string {
   return name.length <= MAX_SESSION_RAIL_GIT_CHARS
     ? name
     : `${name.slice(0, MAX_SESSION_RAIL_GIT_CHARS - 1)}…`;
-}
-
-export function sessionRailDisplayTime(
-  chatId: string,
-  updatedAtMs: number | undefined,
-  nowMs: number,
-): string {
-  const durable =
-    updatedAtMs !== undefined && Number.isFinite(updatedAtMs) && updatedAtMs > 0
-      ? updatedAtMs
-      : sessionRailActivityAt(chatId);
-  return durable === undefined ? "" : sessionRailRelativeTime(durable, nowMs);
-}
-
-export function sessionRailCalendarLabel(updatedAtMs: number): string {
-  if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) {
-    return "";
-  }
-  const date = new Date(updatedAtMs);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-export function sessionRailCardTime(input: {
-  updatedAt?: number;
-  live: boolean;
-}): string {
-  if (input.updatedAt !== undefined) {
-    return sessionRailCalendarLabel(input.updatedAt);
-  }
-  return input.live ? "now" : "";
 }
 
 export function sessionRailStatusLabel(

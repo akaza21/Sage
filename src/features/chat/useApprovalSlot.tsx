@@ -8,7 +8,11 @@ import {
   type RefObject,
 } from "react";
 
-import type { AcpItem, TurnProjection } from "../../domain/acp";
+import type {
+  AcpItem,
+  PermissionDecision,
+  TurnProjection,
+} from "../../domain/acp";
 import { acpDesktop } from "../../services/acpDesktop";
 import { awaitingPermission } from "./acp/statusSemantics";
 import { setChatAwaitingApproval } from "./acp/awaitingApproval";
@@ -79,7 +83,10 @@ export function clearApprovalDecisions() {
   approvalHold.denies.clear();
 }
 
-function denyFirst(item: PermissionItem) {
+export function resolveApproval(
+  item: PermissionItem,
+  decision: PermissionDecision = "deny",
+) {
   return acpDesktop.resolvePermissionDecision({
     projectId: item.projectId,
     chatId: item.chatId,
@@ -87,7 +94,7 @@ function denyFirst(item: PermissionItem) {
     turnId: item.turnId,
     runtimeEpoch: item.runtimeEpoch,
     requestId: item.payload.requestId,
-    decision: "deny",
+    decision,
   });
 }
 
@@ -125,7 +132,7 @@ function ApprovalFallback({
           if (state === "sending") return;
           setState("sending");
           approvalHold.at = Date.now();
-          const sent = denyFirst(item);
+          const sent = resolveApproval(item);
           const { denies } = approvalHold;
           denies.set(item.id, sent);
           if (denies.size > 32) denies.delete(denies.keys().next().value!);

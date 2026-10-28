@@ -80,6 +80,26 @@ export function ChatGoalControl({
       });
     }
   };
+  const actionButton = (
+    action: "pause" | "clear",
+    label: string,
+    Icon: typeof Pause,
+  ) => (
+    <button
+      type="button"
+      className="chat-goal-strip__icon"
+      aria-label={label}
+      title={label}
+      disabled={locked}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void run(action);
+      }}
+    >
+      <Icon size={13} aria-hidden="true" />
+    </button>
+  );
   return (
     <div className="chat-goal-container">
       <details className="chat-goal-strip" ref={detailsRef}>
@@ -96,38 +116,10 @@ export function ChatGoalControl({
           </span>
           <time>{elapsed(snapshot.timeUsedSeconds)}</time>
           <span className="chat-goal-strip__icons">
-            {controls && snapshot.status === "active" && (
-              <button
-                type="button"
-                className="chat-goal-strip__icon"
-                aria-label="Pause goal"
-                title="Pause goal"
-                disabled={locked}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void run("pause");
-                }}
-              >
-                <Pause size={13} aria-hidden="true" />
-              </button>
-            )}
-            {controls && (
-              <button
-                type="button"
-                className="chat-goal-strip__icon"
-                aria-label="Delete goal"
-                title="Delete goal"
-                disabled={locked}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void run("clear");
-                }}
-              >
-                <Trash2 size={13} aria-hidden="true" />
-              </button>
-            )}
+            {controls &&
+              snapshot.status === "active" &&
+              actionButton("pause", "Pause goal", Pause)}
+            {controls && actionButton("clear", "Delete goal", Trash2)}
             <button
               type="button"
               className="chat-goal-strip__icon"

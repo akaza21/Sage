@@ -2,52 +2,43 @@ import type { ChatLiveSnapshot } from "./chatLiveSnapshot";
 
 export const MAX_UNREAD_ACK_SLOTS = 2;
 
-const unreadAcks = new Map<string, string>();
-const pinnedUnreadIds = new Set<string>();
-
-export function pinUnreadAckIds(ids: readonly string[]): void {
-  pinnedUnreadIds.clear();
-  for (const id of ids) {
-    if (pinnedUnreadIds.size >= MAX_UNREAD_ACK_SLOTS) break;
-    pinnedUnreadIds.add(id);
-  }
-  for (const id of [...unreadAcks.keys()]) {
-    if (!pinnedUnreadIds.has(id)) unreadAcks.delete(id);
-  }
+export function createUnreadAcks(maximumSlots: 2 | 64) {
+  const acks = new Map<string, string>();
+  const pinned = new Set<string>();
+  return {
+    pin(ids: readonly string[]) {
+      pinned.clear();
+      for (const id of ids) {
+        if (pinned.size >= maximumSlots) break;
+        pinned.add(id);
+      }
+      for (const id of acks.keys()) if (!pinned.has(id)) acks.delete(id);
+    },
+    ack(chatId: string, fingerprint: string) {
+      if (!acks.has(chatId) && acks.size >= maximumSlots) {
+        const evict =
+          [...acks.keys()].find((id) => !pinned.has(id)) ??
+          acks.keys().next().value;
+        if (evict !== undefined) acks.delete(evict);
+      }
+      acks.set(chatId, fingerprint);
+    },
+    seen(chatId: string) {
+      return acks.get(chatId);
+    },
+    clear() {
+      acks.clear();
+      pinned.clear();
+    },
+  };
 }
 
-function evictUnpinnedAck(requestedId: string): boolean {
-  for (const id of unreadAcks.keys()) {
-    if (id !== requestedId && !pinnedUnreadIds.has(id)) {
-      unreadAcks.delete(id);
-      return true;
-    }
-  }
-  return false;
-}
-
-export function ackChatUnread(chatId: string, fingerprint: string): void {
-  if (unreadAcks.has(chatId)) {
-    unreadAcks.set(chatId, fingerprint);
-    return;
-  }
-  if (unreadAcks.size >= MAX_UNREAD_ACK_SLOTS) {
-    if (!evictUnpinnedAck(chatId)) {
-      const oldest = unreadAcks.keys().next().value;
-      if (oldest !== undefined) unreadAcks.delete(oldest);
-    }
-  }
-  unreadAcks.set(chatId, fingerprint);
-}
-
-export function seenChatUnreadFingerprint(chatId: string): string | undefined {
-  return unreadAcks.get(chatId);
-}
-
-export function clearUnreadAcks(): void {
-  unreadAcks.clear();
-  pinnedUnreadIds.clear();
-}
+export const {
+  pin: pinUnreadAckIds,
+  ack: ackChatUnread,
+  seen: seenChatUnreadFingerprint,
+  clear: clearUnreadAcks,
+} = createUnreadAcks(MAX_UNREAD_ACK_SLOTS);
 
 export function chatActivityFingerprint(snapshot: ChatLiveSnapshot): string {
   if (

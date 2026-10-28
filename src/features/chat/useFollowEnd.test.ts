@@ -298,7 +298,8 @@ describe("useFollowEnd", () => {
     expect(view.result.current.showJumpToLatest).toBe(true);
 
     act(() => view.result.current.jumpToLatest());
-    expect(view.result.current.showJumpToLatest).toBe(false);
+    // The pill stays while the jump travels; the scroll never re-modes it.
+    expect(view.result.current.showJumpToLatest).toBe(true);
     measure(transcript, {
       clientHeight: 400,
       scrollHeight: 2400,
@@ -308,7 +309,7 @@ describe("useFollowEnd", () => {
       view.result.current.updateFollowEnd();
       frames.shift()?.(0);
     });
-    expect(view.result.current.showJumpToLatest).toBe(false);
+    expect(view.result.current.showJumpToLatest).toBe(true);
 
     measure(transcript, {
       clientHeight: 400,
@@ -323,6 +324,11 @@ describe("useFollowEnd", () => {
       frames.shift()?.(0);
     });
     expect(view.result.current.followingEnd).toBe(true);
+    expect(view.result.current.showJumpToLatest).toBe(true);
+    // It lands: only now does the pill go (its 150 ms CSS fade).
+    act(() => {
+      while (frames.length) frames.shift()?.(10_000);
+    });
     expect(view.result.current.showJumpToLatest).toBe(false);
   });
 
@@ -711,7 +717,7 @@ describe("useFollowEnd", () => {
     },
   );
 
-  it("does not re-show the pill from resize while a jump begins", () => {
+  it("does not re-show or re-mode the pill from resize while a jump travels", () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
       frames.push(callback),
@@ -730,6 +736,11 @@ describe("useFollowEnd", () => {
     act(() => {
       view.result.current.jumpToLatest();
       growTranscript();
+    });
+    expect(view.result.current.showJumpToLatest).toBe(true);
+    act(() => {
+      for (let now = 0; frames.length && now <= 10_000; now += 5_000)
+        frames.splice(0).forEach((frame) => frame(now));
     });
     expect(view.result.current.showJumpToLatest).toBe(false);
   });

@@ -25,6 +25,7 @@ const collaborationStateLabels = {
 
 type SubagentRowEntry = SubagentEntry & {
   source?: CollaborationProjectionItem;
+  state?: SubagentRowState;
 };
 
 /** Each name opens its own child; "N more" opens the Subagents list. */
@@ -37,6 +38,19 @@ function SubagentRow({
 }) {
   const labels = agents.map((agent) => agent.label);
   const segments = subagentSegments(labels, state);
+  const finished = agents.filter((agent) => agent.state === "finished");
+  const status =
+    state === "started working" && finished.length
+      ? `${subagentSummary(
+          agents
+            .filter((agent) => agent.state !== "finished")
+            .map((agent) => agent.label),
+          state,
+        )}; ${subagentSummary(
+          finished.map((agent) => agent.label),
+          "finished",
+        )}`
+      : subagentSummary(labels, state);
   const target = (agent?: SubagentRowEntry) =>
     agent?.source && {
       owner: {
@@ -54,12 +68,10 @@ function SubagentRow({
           <span
             key={agent.key}
             className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agent.key)}`}
-          >
-            {agent.label ? [...agent.label][0].toUpperCase() : "✦"}
-          </span>
+          />
         ))}
       </span>
-      <span role="status" aria-label={subagentSummary(labels, state)}>
+      <span role="status" aria-label={status}>
         {segments.map((segment, index) => {
           const open = target(
             segment.more
@@ -103,12 +115,14 @@ function CollaborationItemContent({
   const participants = item.payload.receiverLabels.filter((label) =>
     label.trim(),
   );
-  const rows = new Map<SubagentRowState, Map<string, SubagentRowEntry>>();
+  const agents = new Map<
+    string,
+    SubagentRowEntry & { state: SubagentRowState }
+  >();
   for (const member of items) {
     for (const row of collaborationRows(member)) {
-      const entries = rows.get(row.state) ?? new Map();
       for (const entry of row.entries) {
-        const previous = entries.get(entry.key);
+        const previous = agents.get(entry.key);
         // A grouped event without its own child identity still names each
         // declared key; the pane routes that key to the child's own spawn.
         const source =
@@ -118,26 +132,34 @@ function CollaborationItemContent({
             member.payload.agentKeys?.includes(entry.key))
             ? member
             : undefined;
-        entries.set(entry.key, {
+        agents.set(entry.key, {
           ...(entry.label || !previous ? entry : previous),
+          state: row.state,
           source:
             source?.payload.agentKey && !previous?.source?.payload.agentKey
               ? source
               : (previous?.source ?? source),
         });
       }
-      rows.set(row.state, entries);
     }
+  }
+  // Finished children stay in the run's working row until none is live.
+  const working = [...agents.values()].some(
+    (agent) => agent.state === "started working",
+  );
+  const rows = new Map<SubagentRowState, SubagentRowEntry[]>();
+  for (const agent of agents.values()) {
+    const state =
+      working && agent.state === "finished" ? "started working" : agent.state;
+    const entries = rows.get(state) ?? [];
+    entries.push(agent);
+    rows.set(state, entries);
   }
   if (rows.size > 0) {
     return (
       <>
         {[...rows].map(([state, entries]) => (
-          <SubagentRow
-            key={state}
-            agents={[...entries.values()]}
-            state={state}
-          />
+          <SubagentRow key={state} agents={entries} state={state} />
         ))}
       </>
     );

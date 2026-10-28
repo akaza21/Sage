@@ -252,9 +252,10 @@ export function useFollowEnd({
     cancelFrame();
     jumpingRef.current = true;
     setFollowState({ ownerKey, following: true });
-    setJumpState({ ownerKey, visible: false });
+    const hide = () => setJumpState({ ownerKey, visible: false });
     const transcript = transcriptRef.current;
     if (!transcript || followEndScrollBehavior() === "auto") {
+      hide();
       anchorToEnd("auto");
       jumpingRef.current = false;
       return;
@@ -281,6 +282,8 @@ export function useFollowEnd({
       }
       jumpingRef.current = false;
       anchoringRef.current = distanceFromEnd(current) > 1;
+      // The pill stays through the travel and fades once it lands (s6/f0699).
+      hide();
     };
     frameRef.current = requestAnimationFrame(step);
   }, [anchorToEnd, cancelFrame, ownerKey, transcriptRef]);

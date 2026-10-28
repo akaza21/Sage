@@ -24,7 +24,9 @@ function declaration(path: string, selector: string, media?: string) {
       )
     : rules;
   const rule = scope.find(
-    (rule) => rule instanceof CSSStyleRule && rule.selectorText === selector,
+    (rule) =>
+      rule instanceof CSSStyleRule &&
+      rule.selectorText.replace(/\s+/g, " ") === selector,
   ) as CSSStyleRule | undefined;
   expect(rule, selector).toBeDefined();
   return rule!.style;
@@ -79,7 +81,7 @@ describe("CP-28 transcript style contracts", () => {
     );
     const composer = declaration(
       "src/styles/composer-surface.css",
-      ".composer",
+      ".composer, .chat-surface > .acp-permission-prompt",
     );
     expect(compact(composer.width)).toBe(
       compact(

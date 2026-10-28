@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import type * as InheritedComposerModel from "../features/chat/inheritedComposerModel";
 
 const fake = vi.hoisted(() => {
   const state = {
@@ -27,7 +28,7 @@ const fake = vi.hoisted(() => {
         modelId: "model-selected",
       },
     ],
-    sessionConfig: { sageAgentSessionId: "parent-session" },
+    sessionConfig: { sageAgentSessionId: "parent-session", configOptions: [] },
   };
   const sidePage = { projectionRevision: "2" };
   const projection = {
@@ -90,7 +91,8 @@ vi.mock("../app/acpProjectionRegistry", () => ({
       id === "parent" ? { page: fake.parentPage } : fake.projection,
   }),
 }));
-vi.mock("../features/chat/inheritedComposerModel", () => ({
+vi.mock("../features/chat/inheritedComposerModel", async (importOriginal) => ({
+  ...(await importOriginal<typeof InheritedComposerModel>()),
   inheritComposerModel: fake.inherit,
 }));
 vi.mock("../services/acpDesktop", () => ({
@@ -198,6 +200,26 @@ it("tells the label a side chat starts on no model when the parent's session has
     fake.parentPage.sessionConfig,
     { startsOnModelId: null },
   );
+});
+
+it("starts the side chat on the wire-confirmed model rather than a stale request (R3-02)", async () => {
+  Object.assign(fake.parentPage.sessionConfig, {
+    confirmedModel: { id: "wire-model", name: "Synthetic replay" },
+  });
+  try {
+    await openSideChat("parent", quote);
+    expect(fake.state.setChatHarnessSelection).toHaveBeenCalledWith(
+      { chatId: "side-test" },
+      { harnessId: "custom-acp", modelId: "wire-model" },
+    );
+    expect(fake.inherit).toHaveBeenCalledWith(
+      "side-test",
+      fake.parentPage.sessionConfig,
+      { startsOnModelId: "wire-model" },
+    );
+  } finally {
+    Reflect.deleteProperty(fake.parentPage.sessionConfig, "confirmedModel");
+  }
 });
 
 it("asks before closing and passes the opt-out to Rust only on confirmation", async () => {

@@ -5,6 +5,20 @@ import test from "node:test";
 import { nativeCases } from "./acp-native-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { answer } from "./acp-native-case-events.mjs";
+test("child-header replay supplies the task title and only wire-reported model (R3-11)", () => {
+  for (const id of ["codex-child-opened", "codex-subagent-child-header"]) {
+    const entry = nativeCases().find((entry) => entry.id === id);
+    const spawn = entry.steps.find(
+      (step) => step.params?.item?.tool === "spawnAgent",
+    ).params.item;
+    const child = entry.steps.find(
+      (step) => step.params?.item?.type === "subAgentActivity",
+    ).params.item;
+    assert.equal(child.agentPath, "Count math");
+    assert.equal(spawn.model, "fixture-model");
+    assert.equal(spawn.reasoningEffort, "medium");
+  }
+});
 test("Codex child-opened admits child ownership before completion and keeps the reader alive", () => {
   const entry = nativeCases().find(({ id }) => id === "codex-child-opened");
   const ownerIndex = entry.steps.findIndex(

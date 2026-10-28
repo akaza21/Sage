@@ -1,4 +1,7 @@
 import {
+  Maximize2,
+  PanelRightClose,
+  Plus,
   ChevronLeft,
   Copy,
   FileDiff,
@@ -8,7 +11,7 @@ import {
   ChevronRight,
 } from "../ui/leanIcons";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
 import type { AcpChatPage } from "../domain/acpProjection";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -202,5 +205,82 @@ export function AgentArtifactHeader({
         </button>
       </div>
     </header>
+  );
+}
+
+// While the resource pane covers the Agent body, the Chat and rail behind it
+// leave the tab order and the accessibility tree, and come back on restore.
+function useInertSiblings(
+  active: boolean,
+  anchor: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    const pane = anchor.current?.closest<HTMLElement>(
+      ".agent-artifact-surface",
+    );
+    if (!active || !pane?.parentElement) return;
+    const siblings = Array.from(pane.parentElement.children).filter(
+      (node): node is HTMLElement =>
+        node instanceof HTMLElement &&
+        node !== pane &&
+        !node.hasAttribute("inert"),
+    );
+    for (const node of siblings) node.setAttribute("inert", "");
+    return () => {
+      for (const node of siblings) node.removeAttribute("inert");
+    };
+  }, [active, anchor]);
+}
+
+export function AgentArtifactPaneControls({
+  maximized,
+  onMaximizedChange,
+  disabled,
+  onNewTab,
+  onCollapse,
+}: {
+  maximized: boolean;
+  onMaximizedChange: (maximized: boolean) => void;
+  disabled: boolean;
+  onNewTab: () => void;
+  onCollapse: () => void;
+}) {
+  const expand = useRef<HTMLButtonElement>(null);
+  useInertSiblings(maximized, expand);
+  return (
+    <>
+      <button
+        className="agent-artifact-pane__collapse agent-artifact-pane__new-tab"
+        type="button"
+        aria-label="New browser tab"
+        title="New browser tab"
+        disabled={disabled}
+        onClick={onNewTab}
+      >
+        <Plus size={16} aria-hidden="true" />
+      </button>
+      <button
+        ref={expand}
+        className="agent-artifact-pane__collapse"
+        type="button"
+        aria-label={
+          maximized ? "Restore resource pane" : "Expand resource pane"
+        }
+        title={maximized ? "Restore resource pane" : "Expand resource pane"}
+        aria-pressed={maximized}
+        onClick={() => onMaximizedChange(!maximized)}
+      >
+        <Maximize2 size={14} aria-hidden="true" />
+      </button>
+      <button
+        className="agent-artifact-pane__collapse"
+        type="button"
+        aria-label="Collapse files, changes, and preview"
+        title="Collapse resources"
+        onClick={onCollapse}
+      >
+        <PanelRightClose size={16} aria-hidden="true" />
+      </button>
+    </>
   );
 }

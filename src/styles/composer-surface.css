@@ -7,6 +7,14 @@
   min-height: 0;
   max-height: 100%;
   flex-direction: column;
+  margin: 0;
+  overflow: visible;
+  background: var(--composer-fill);
+  box-shadow: var(--composer-shadow);
+}
+
+.composer,
+.chat-surface > .acp-permission-prompt {
   width: min(
     var(--reading-measure),
     calc(
@@ -14,17 +22,12 @@
         var(--chat-column-trailing)
     )
   );
-  max-width: var(--reading-measure);
-  margin: 0;
   margin-inline-start: max(
     var(--chat-column-gutter),
     calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
   );
-  overflow: visible;
   border: 1px solid var(--composer-border);
   border-radius: var(--radius-xl);
-  background: var(--composer-fill);
-  box-shadow: var(--composer-shadow);
 }
 
 /* Codex draws no focus border on the composer; the caret shows focus

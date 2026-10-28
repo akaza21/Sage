@@ -283,6 +283,7 @@ export function Workbench() {
               onAgentLeftRailWidthChange={(width) =>
                 changeAgentSidebarWidth("left", width)
               }
+              onOpenTerminal={() => setTerminalOpen(true)}
               onAgentArtifactWidthChange={(width) =>
                 changeAgentSidebarWidth("artifact", width)
               }

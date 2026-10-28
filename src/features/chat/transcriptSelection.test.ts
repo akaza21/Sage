@@ -42,8 +42,8 @@ describe("answer projection", () => {
 describe("transcript selection", () => {
   it.each([
     [150, 100, 100],
-    [5, 100, 0],
-    [295, 100, 200],
+    [5, 100, 8],
+    [295, 100, 192],
   ])("clamps selection at %i", (left, width, expected) => {
     expect(
       selectionPopoverPosition(
@@ -53,6 +53,23 @@ describe("transcript selection", () => {
       ).left,
     ).toBe(expected);
   });
+  it.each([
+    [332, 388],
+    [262, 218],
+  ])(
+    "keeps the pill 8px inside both pane edges from %ipx (R3-08)",
+    (left, width) => {
+      const position = (selected: number) =>
+        selectionPopoverPosition(
+          { left: selected, top: 300, bottom: 321 },
+          { left, top: 92, width },
+          { width: 188, height: 28 },
+        ).left;
+      expect(position(left)).toBe(8);
+      expect(position(left + width)).toBe(width - 196);
+      expect(position(left + width) + 188).toBeLessThanOrEqual(width - 8);
+    },
+  );
   it("flips below when there is no room above", () => {
     expect(
       selectionPopoverPosition(

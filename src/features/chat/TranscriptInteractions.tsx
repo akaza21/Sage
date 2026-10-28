@@ -16,9 +16,10 @@ import {
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   type AttachedContext,
 } from "../../domain/attachedContext";
-import type {
-  TranscriptQuote,
-  TranscriptQuoteContext,
+import {
+  isTranscriptQuote,
+  type TranscriptQuote,
+  type TranscriptQuoteContext,
 } from "../../domain/transcriptQuote";
 import { openSideChat } from "../../workbench/sideChatActions";
 import { AnnotationComment } from "./AnnotationComment";
@@ -33,6 +34,8 @@ import "./transcript-interactions.css";
 
 // This module is the one lazy chunk; core reaches it through transcriptLazy.tsx.
 export { ComposerAnnotations, SentAnnotations } from "./AnnotationChip";
+export { openSideChat };
+export { readTranscriptQuote } from "./transcriptSelection";
 export {
   SideChatDialogs,
   SideChatHeader,
@@ -41,8 +44,6 @@ export {
 
 const EMPTY: readonly AttachedContext[] = [];
 const STATUS_MS = 4000;
-const isQuote = (context: AttachedContext): context is TranscriptQuoteContext =>
-  context.kind === "transcriptQuote";
 
 /** Mounted lazily per Chat pane once a selection or a pending annotation exists. */
 export function TranscriptInteractions({
@@ -100,7 +101,7 @@ function Interactions({
     const timer = setTimeout(() => setStatus(""), STATUS_MS);
     return () => clearTimeout(timer);
   }, [status]);
-  const quotes = useMemo(() => contexts.filter(isQuote), [contexts]);
+  const quotes = useMemo(() => contexts.filter(isTranscriptQuote), [contexts]);
   // A fully loaded Chat that has no such Turn quotes another Chat (a side
   // chat seeded from its parent): that answer never mounts in this pane.
   const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);

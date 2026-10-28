@@ -35,4 +35,43 @@ describe("Agent right-pane stylesheet seam", () => {
     expect(css).not.toContain(".agent-artifact-pane--collapsed");
     expect(modeShell).not.toContain(".agent-artifact-pane--collapsed");
   });
+
+  it("draws the Subagents tab person and hides child author rows (s4/f0244, f0485)", async () => {
+    const [css, modeShell] = await Promise.all([
+      readFile(resolve("src/styles/agent-right-pane.css"), "utf8"),
+      readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
+    ]);
+    expect(css).toMatch(/\.tab__person::before\s*\{/);
+    expect(css).toMatch(/\.tab__person::after\s*\{/);
+    expect(modeShell).toMatch(
+      /\.subagent-surface__transcript \.acp-message__meta\s*\{\s*display: none;/,
+    );
+  });
+
+  it('puts the new-tab "+" right after the last tab (Codex 67)', async () => {
+    const modeShell = await readFile(
+      resolve("src/workbench/workbench-window-mode.css"),
+      "utf8",
+    );
+    const strip =
+      /\.agent-artifact-pane__header > \.tab-strip\s*\{([^}]*)\}/.exec(
+        modeShell,
+      )?.[1];
+    expect(strip).toMatch(/width: auto;/);
+    expect(strip).not.toMatch(/flex: 1;/);
+    expect(modeShell).toMatch(
+      /\.agent-artifact-pane__header > \.agent-artifact-pane__new-tab\s*\{\s*order: 1;\s*margin-right: auto;\s*\}/,
+    );
+    expect(modeShell).toMatch(
+      /\.agent-artifact-pane__follow,\s*\.agent-artifact-pane__collapse\s*\{\s*order: 2;\s*\}/,
+    );
+    // Content-sized strip: each tab starts at Codex's ~208 px and shrinks.
+    const chrome = await readFile(
+      resolve("src/styles/workbench-chrome.css"),
+      "utf8",
+    );
+    expect(chrome).toMatch(
+      /\.workbench--agent \.agent-artifact-pane \.tab\s*\{[^}]*min-width: 96px;[^}]*flex: 0 1 208px;/s,
+    );
+  });
 });

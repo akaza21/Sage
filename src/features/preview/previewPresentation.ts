@@ -1,7 +1,6 @@
 import type {
   PreviewFailure,
   PreviewPhase,
-  PreviewProjectionOwner,
 } from "../../domain/previewProjection";
 
 export type PreviewPhaseTone =
@@ -94,35 +93,6 @@ const PHASE_PRESENTATION: Record<
   },
 };
 
-export function samePreviewOwner(
-  left: PreviewProjectionOwner | null,
-  right: PreviewProjectionOwner | null,
-): boolean {
-  return Boolean(
-    left &&
-    right &&
-    left.projectId === right.projectId &&
-    left.projectGeneration === right.projectGeneration &&
-    left.transitionEpoch === right.transitionEpoch &&
-    left.chatId === right.chatId &&
-    left.sessionId === right.sessionId &&
-    left.runtimeEpoch === right.runtimeEpoch,
-  );
-}
-
-export function previewOwnerKey(owner: PreviewProjectionOwner | null): string {
-  return owner
-    ? JSON.stringify([
-        owner.projectId,
-        owner.projectGeneration,
-        owner.transitionEpoch,
-        owner.chatId,
-        owner.sessionId,
-        owner.runtimeEpoch,
-      ])
-    : "";
-}
-
 export function previewFailureLabel(
   failure: PreviewFailure | null | undefined,
 ): string | null {
@@ -154,3 +124,8 @@ export function previewOrigin(value: string): string | null {
     return null;
   }
 }
+
+export {
+  samePreviewOwner,
+  previewOwnerKey,
+} from "../../domain/previewProjection";

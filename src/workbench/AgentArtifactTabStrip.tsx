@@ -1,11 +1,4 @@
-import {
-  Eye,
-  GitCompareArrows,
-  Globe2,
-  Pin,
-  Sparkles,
-  X,
-} from "../ui/leanIcons";
+import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
 
 import { useRef } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
@@ -250,7 +243,7 @@ export function AgentArtifactTabStrip({
                 aria-label="Subagents"
                 onClick={onSelectSubagent}
               >
-                <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />
+                <span className="tab__person" aria-hidden="true" />
                 <span className="tab__path" aria-hidden="true">
                   <span className="tab__basename">Subagents</span>
                 </span>

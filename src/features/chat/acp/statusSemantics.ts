@@ -110,17 +110,10 @@ export function getPermissionStatus(item: PermissionItem) {
                 : item.payload.state === "declinePending"
                   ? "Declining"
                   : "Waiting for approval";
+  const terminal = failedClosed || declined || allowed || cancelled;
   return {
     visual,
-    accessible: failedClosed
-      ? "Permission failed closed"
-      : cancelled
-        ? "Permission cancelled"
-        : allowed
-          ? "Permission allowed"
-          : declined
-            ? "Permission declined"
-            : visual,
-    terminal: failedClosed || declined || allowed || cancelled,
+    accessible: terminal ? `Permission ${visual.toLowerCase()}` : visual,
+    terminal,
   };
 }

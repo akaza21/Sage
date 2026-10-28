@@ -385,6 +385,40 @@ test("parity replays reuse their base events and add only pinned wire shapes", (
     subagents.map(({ status }) => status),
     ["completed", "inProgress"],
   );
+  // Each child names itself on the wire, as Codex's do (s4/f0244).
+  assert.deepEqual(
+    items("codex-subagents-tab-active-done")
+      .filter(({ type }) => type === "subAgentActivity")
+      .map(({ agentPath, kind }) => agentPath + ":" + kind),
+    ["Count math:completed", "Count readme:started"],
+  );
+  // Codex worked-expand: three command rows, each after its own commentary
+  // message, so the opened Worked group staggers sibling rows (s2/f0015).
+  const workedOrder = (id) =>
+    cases
+      .get(id)
+      .flatMap((step) =>
+        step.params?.itemId
+          ? ["text:" + step.params.itemId]
+          : step.method === "item/completed" &&
+              step.params.item.type === "commandExecution"
+            ? ["row"]
+            : [],
+      );
+  assert.deepEqual(workedOrder("codex-motion-worked-expand"), [
+    "text:fixture-commentary-1",
+    "row",
+    "text:fixture-commentary-2",
+    "row",
+    "text:fixture-commentary-3",
+    "row",
+    "text:fixture-answer",
+  ]);
+  // Claude merges a Turn's prose into one message; it keeps the shared replay.
+  assert.deepEqual(
+    cases.get("claude-motion-worked-expand"),
+    cases.get("claude-worked-expanded"),
+  );
   assert.ok(
     cases
       .get("codex-subagents-tab-active-done")
@@ -578,6 +612,36 @@ test("each parity state has a positive and a missing-witness named state", () =>
       "tool-mcp-result"
     ],
     false,
+  );
+});
+
+test("subagents-tab-active-done clicks one name of the row naming both children", () => {
+  // The replay renders one row with a name button per child (C1), and the
+  // click admits exactly one match, so an unqualified name selector never
+  // clicks and the capture times out.
+  const children = nativeCases()
+    .find(({ id }) => id === "codex-subagents-tab-active-done")
+    .steps.filter(({ params }) => params?.item?.type === "subAgentActivity");
+  assert.equal(children.length, 2);
+  const [open] = parityStepsFor("subagents-tab-active-done");
+  assert.equal(open.op, "click");
+  assert.match(open.selector, /\.acp-subagent-name:first-of-type$/u);
+});
+
+test("web-search and mixed-group states are captured with the row opened", () => {
+  for (const state of ["tool-web-search", "tool-mixed-group"])
+    assert.deepEqual(
+      parityStepsFor(state).map(({ selector }) => selector),
+      [
+        ".acp-turn:last-of-type .chat-transcript-work > summary",
+        ".acp-turn:last-of-type .acp-tool-rollup > summary",
+      ],
+      state,
+    );
+  assert.match(PARITY_PANE_SELECTORS.webSearch, /\[open\]$/u);
+  assert.match(
+    PARITY_PANE_SELECTORS.mixedGroup,
+    /\[open\] > \.acp-tool-rollup__items$/u,
   );
 });
 
@@ -885,7 +949,7 @@ test("parity steps pin Turn selectors and drive with real pointer and key input"
   assert.ok(
     evaluated.some((expression) =>
       expression.includes(
-        '.acp-turn[data-turn-id=\\"turn-1\\"] .acp-subagent-row[data-state=\\"finished\\"]',
+        '.acp-turn[data-turn-id=\\"turn-1\\"] .acp-subagent-row .acp-subagent-name:first-of-type',
       ),
     ),
   );

@@ -71,10 +71,6 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
   expect(
     within(turnSection(2)).queryByRole("group", { name: "Message actions" }),
   ).toBeNull();
-  // Fork is offered only from the latest answer.
-  expect(
-    within(row).queryByRole("button", { name: "More actions" }),
-  ).toBeNull();
   await act(async () => {
     fireEvent.click(within(row).getByRole("button", { name: "Copy" }));
   });
@@ -82,14 +78,66 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
   expect(within(row).getByRole("button", { name: "Copied" })).toBeVisible();
 });
 
-it("keeps the copy row on inherited fork answers and offers no fork there (s2/f0066)", async () => {
+/** The menu a row's "…" opens, by its item labels. */
+async function moreItems(row: HTMLElement) {
+  fireEvent.click(
+    await within(row).findByRole("button", { name: "More actions" }),
+  );
+  const menu = await screen.findByRole("menu", { name: "Answer actions" });
+  const items = within(menu)
+    .getAllByRole("menuitem")
+    .map((item) => item.textContent);
+  fireEvent.keyDown(menu, { key: "Escape" });
+  return items;
+}
+
+const forkable = (projection: AcpChatPage): AcpChatPage => ({
+  ...projection,
+  sessions: [
+    {
+      id: "session-1",
+      runtimeEpoch: "2",
+      residency: "hot",
+      capabilities: { nativeSessionFork: true },
+    },
+  ] as never,
+});
+
+it('puts "…" on an earlier answer, offering only Copy there (s2/f0066)', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
-  const projection = twoTurns();
-  render(<InheritedTurns page={projection} />);
+  // The session can fork, but only through its latest Turn.
+  presentation(forkable(twoTurns()));
+  const row = within(turnSection(1)).getByRole("group", {
+    name: "Message actions",
+  });
+  expect(await moreItems(row)).toEqual(["Copy"]);
+  fireEvent.click(within(row).getByRole("button", { name: "More actions" }));
+  await act(async () => {
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy" }));
+  });
+  expect(writeText).toHaveBeenCalledWith("Normalized answer");
+});
+
+it('keeps Copy and "…" usable on inherited fork answers, with no fork there (s2/f0066)', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const { container } = render(<InheritedTurns page={forkable(twoTurns())} />);
   const rows = screen.getAllByRole("group", { name: "Message actions" });
   expect(rows).toHaveLength(2);
-  expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+  rows.forEach((row, index) => {
+    const turn = row.closest("section");
+    expect(turn).not.toBeNull();
+    expect(turn).toHaveAccessibleName(`Turn ${index + 1}`);
+    expect(turn).toContainElement(
+      container.querySelectorAll<HTMLElement>(".acp-turn")[index],
+    );
+  });
+  // The Turn is inert; its answer's own row is not inside it.
+  for (const turn of container.querySelectorAll(".acp-turn"))
+    expect(turn).toHaveAttribute("inert");
+  for (const row of rows) expect(row.closest("[inert]")).toBeNull();
+  expect(await moreItems(rows[1])).toEqual(["Copy"]);
   await act(async () => {
     fireEvent.click(within(rows[1]).getByRole("button", { name: "Copy" }));
   });
@@ -177,8 +225,22 @@ it("pitches action buttons 24 px apart, fills the open menu trigger and reveals 
   expect(transcript).toMatch(
     /\.chat-transcript-actions:hover > \.chat-transcript-actions__time,\s*\.chat-transcript-actions:focus-within > \.chat-transcript-actions__time\s*\{\s*opacity:\s*1;/s,
   );
-  // A tight icon-to-label gap in the "Branch in new chat" item.
+  // Hovering the answer, not only its row, shows the time (s2/f0093).
+  expect(transcript).toMatch(
+    /\.acp-turn:hover \.chat-transcript-actions__time,\s*\.acp-turn:hover \+ \.chat-transcript-actions > \.chat-transcript-actions__time,\s*\.message-list__content:has\(\s*> \.acp-chat-projection > \.acp-turn:last-of-type:hover\s*\)\s*> \.chat-transcript-actions\s*> \.chat-transcript-actions__time\s*\{\s*opacity:\s*1;/s,
+  );
+  // The open "…" dots and its menu label are white (s2/f0053).
+  expect(transcript).toMatch(
+    /\.chat-transcript-actions > button\[aria-expanded="true"\]\s*\{\s*color:\s*var\(--color-text-emphasis\);/s,
+  );
   expect(css("src/features/chat/fork-chat.css")).toMatch(
-    /\.answer-more-menu__item\s*\{[^}]*gap:\s*var\(--space-1\);/s,
+    /\.answer-more-menu__item,\s*\.fork-chat-dialog button\s*\{[^}]*color:\s*var\(--color-status-foreground\);/s,
+  );
+  // A tight icon-to-label gap in the "Branch in new chat" item.
+  expect(css("src/features/chat/ForkChat.tsx")).toContain(
+    'className="button--compact answer-more-menu__item"',
+  );
+  expect(css("src/styles/shared-controls.css")).toMatch(
+    /\.button--compact\s*\{[^}]*gap:\s*4px;/s,
   );
 });

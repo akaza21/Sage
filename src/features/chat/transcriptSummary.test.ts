@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
-  groupTranscriptActivities,
-  summarizeActivityKinds,
 } from "./transcriptSummary";
 
 describe("transcript summaries", () => {
@@ -18,38 +16,5 @@ describe("transcript summaries", () => {
       "Working for 13h 36m",
     );
     expect(formatWorkingDuration(1_000, 4_000)).toBe("Working for 3s");
-  });
-
-  it("summarizes adjacent activity kinds in their observed order", () => {
-    expect(
-      summarizeActivityKinds([
-        { kind: "edit", count: 1 },
-        { kind: "execute", count: 2 },
-      ]),
-    ).toBe("Edited a file, ran commands");
-    expect(summarizeActivityKinds([{ kind: "execute", count: 2 }])).toBe(
-      "Ran commands",
-    );
-    expect(summarizeActivityKinds([{ kind: "read", count: 4 }])).toBe(
-      "Explored 4 files",
-    );
-    expect(summarizeActivityKinds([])).toBeNull();
-  });
-
-  it("keeps edit and command work together and separates later activity groups", () => {
-    const groups = groupTranscriptActivities([
-      { kind: "edit", count: 1 },
-      { kind: "execute", count: 2 },
-      null,
-      { kind: "execute", count: 1 },
-      null,
-      { kind: "read", count: 4 },
-    ]);
-
-    expect(groups.map((group) => summarizeActivityKinds(group))).toEqual([
-      "Edited a file, ran commands",
-      "Ran commands",
-      "Explored 4 files",
-    ]);
   });
 });

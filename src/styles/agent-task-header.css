@@ -21,23 +21,6 @@
   font-size: var(--font-size-md);
 }
 
-.agent-task-header__project {
-  min-width: 0;
-  max-width: 30%;
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-task-header__separator {
-  flex: 0 0 auto;
-}
-
-.agent-task-header__separator {
-  color: var(--color-text-disabled);
-}
-
 .agent-task-header__title {
   min-width: 0;
   overflow: hidden;
@@ -45,6 +28,77 @@
   font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.agent-task-header__breadcrumb > svg {
+  flex: none;
+}
+.agent-task-header__pencil {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.agent-task-header__pencil:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+/* Codex 68: the open or focused "…" keeps a rounded accent ring inside its
+   28 px box. Codex draws it 2 px; Sage keeps its 1 px focus-ring token, since
+   the highlight policy reserves 2 px rings for forced colours. */
+.agent-header-more > button:focus-visible,
+.agent-header-more > button[aria-expanded="true"] {
+  outline: var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+  border-radius: var(--radius-md);
+}
+/* Codex 68: 272 x 72, 8 px under the header rule, its end aligned with the
+   resources button (36 px past the trigger), two 28 px rows. */
+.agent-header-more__menu.menu-popover {
+  width: 272px;
+  margin-left: 36px;
+  padding: 8px;
+  gap: 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-panel-raised);
+}
+.agent-header-more__menu .menu-item {
+  min-height: 28px;
+  gap: 12px;
+  padding: 4px 12px;
+  color: var(--color-text-primary);
+}
+.agent-header-more__project {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 0 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+.agent-header-more__project .project-chat__actions {
+  width: 24px;
+  height: 24px;
+  opacity: 1;
+}
+.agent-header-more__project > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (forced-colors: active) {
+  .agent-header-more > button[aria-expanded="true"],
+  .agent-header-more > button:focus-visible,
+  .agent-task-header__pencil:focus-visible {
+    outline: 2px solid Highlight;
+  }
 }
 
 .agent-task-header__status {

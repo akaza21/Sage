@@ -288,12 +288,47 @@ fn codex_subagent_list_case_keeps_one_child_done_and_one_running() {
         .map(|frame| frame["params"]["item"]["status"].clone())
         .collect();
     assert_eq!(states, [json!("completed"), json!("inProgress")]);
+    // Each child names itself by `agentPath`, as Codex's do (s4/f0244).
+    let names: Vec<_> = frames
+        .iter()
+        .filter(|frame| frame["params"]["item"]["type"] == "subAgentActivity")
+        .map(|frame| frame["params"]["item"]["agentPath"].clone())
+        .collect();
+    assert_eq!(names, [json!("Count math"), json!("Count readme")]);
     let interrupt = frames.iter().position(|frame| frame["id"] == 5).unwrap();
     assert!(
         frames[..interrupt]
             .iter()
             .all(|frame| frame["method"] != "turn/completed"),
         "the parent Turn stays live until Stop"
+    );
+}
+
+#[test]
+fn codex_worked_expand_case_interleaves_commentary_and_three_command_rows() {
+    let frames = replay_native(
+        "codex-motion-worked-expand",
+        &codex_requests(&[json!({"id":5,"method":"thread/unsubscribe"})]),
+    );
+    let order: Vec<_> = frames
+        .iter()
+        .filter_map(|frame| match frame["method"].as_str() {
+            Some("item/agentMessage/delta") => frame["params"]["itemId"].as_str(),
+            Some("item/completed") => frame["params"]["item"]["id"].as_str(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            "fixture-commentary-1",
+            "fixture-tool-1",
+            "fixture-commentary-2",
+            "fixture-tool-2",
+            "fixture-commentary-3",
+            "fixture-tool-3",
+            "fixture-answer",
+        ]
     );
 }
 

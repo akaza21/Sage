@@ -11,7 +11,7 @@ type ToolKind = ToolPresentation["kind"];
 
 const MAX_TOOL_ROLLUP_ITEMS = 64;
 const COMPACTED = "Context automatically compacted";
-/** Web search is presented as an integration, as the harness UI names it. */
+/** Present web search as a harness integration. */
 const WEB_SEARCH_INTEGRATION = "Search Service";
 
 export type ToolRollup = {
@@ -40,7 +40,6 @@ function commandActivity(
   return presentation.kind === "execute" ? presentation.activity : "ordinary";
 }
 
-/** Live verb, finished verb, then the singular and plural clause. */
 const fileVerbs: Partial<Record<ToolKind, readonly string[]>> = {
   read: ["Reading", "Read", "read a file", "read files"],
   edit: ["Editing", "Edited", "edited a file", "edited files"],
@@ -63,11 +62,7 @@ function itemFile(presentation: ToolPresentation): string | null {
     : null;
 }
 
-/**
- * The latest tool still at work. A call waiting on approval or not yet
- * started is live too (Codex s6/f0526 "Running curl.exe ..."), unless its
- * Turn has already ended.
- */
+/** Latest live call includes waiting/unstarted calls unless the Turn ended (s6/f0526). */
 export function liveToolItem(
   items: readonly ToolProjectionItem[],
   turnEnded = false,
@@ -78,7 +73,6 @@ export function liveToolItem(
     .find((item) => !terminalToolStates.has(item.toolState));
 }
 
-/** One tool's own row label, in the live or finished form. */
 export function toolItemLabel(
   item: ToolProjectionItem,
   live = Boolean(liveToolItem([item])),
@@ -111,7 +105,7 @@ export function toolItemLabel(
   }
 }
 
-/** Clauses in first-occurrence order, joined with ", ". */
+/** Join clauses in first-occurrence order. */
 function mixedClauses(items: readonly ToolProjectionItem[]): string {
   const counts = new Map<string, number>();
   const integrations = new Set<string>();
@@ -257,10 +251,7 @@ export function groupPrimaryActivities(
       continue;
     }
 
-    // Result linking can later alter a call's effective state; until bindings
-    // admit callItemId, the projection's own toolState is the only authority.
-    // Consecutive tools share one row; subagent tasks group only with their
-    // own lifecycle kind.
+    // Until bindings admit callItemId, only projected toolState is authoritative. Group consecutive tools; subagents group only within their lifecycle kind.
     const toolKind = item.payload.presentation.kind;
     const activity = commandActivity(item);
     const tools = [item];

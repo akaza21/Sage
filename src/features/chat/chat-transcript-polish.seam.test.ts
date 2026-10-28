@@ -20,7 +20,7 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.message-list__content \.acp-turn > \.acp-turn__header,\s*\.message-list__content \.acp-turn > \.acp-turn__items\s*\{[^}]*grid-column:\s*1;/s,
     );
     expect(transcriptCss).toMatch(
-      /\.message-list__content:has\(> \.acp-chat-projection\) > \.chat-transcript-actions\s*\{[^}]*width:\s*min\(calc\(100% - var\(--space-3\)\), var\(--reading-measure\)\);[^}]*margin-inline-start:\s*max\(\s*0px,\s*calc\(\(100% - var\(--space-3\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
+      /\.message-list__content:has\(> \.acp-chat-projection\) > \.chat-transcript-actions,\s*\.message-list__content > \.chat-fork-divider,\s*\.chat-fork-inherited > \.chat-transcript-actions\s*\{[^}]*width:\s*min\(calc\(100% - var\(--space-3\)\), var\(--reading-measure\)\);[^}]*margin-inline-start:\s*max\(\s*0px,\s*calc\(\(100% - var\(--space-3\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
     );
   });
 

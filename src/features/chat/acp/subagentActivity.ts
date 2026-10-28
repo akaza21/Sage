@@ -118,40 +118,45 @@ export function collaborationRows(
   return [...rows].map(([state, entries]) => ({ state, entries }));
 }
 
-export function collaborationGroupState(
-  item: CollaborationProjectionItem,
-): SubagentRowState | null {
-  const rows = collaborationRows(item);
-  return rows.length === 1 ? rows[0].state : null;
+function entryCount(item: CollaborationProjectionItem): number {
+  return collaborationRows(item).flatMap((row) => row.entries).length;
 }
 
+/** The Chat, Session, Turn, epoch, origin and activity an item belongs to. */
+const runOwner = (item: AcpItem) =>
+  [
+    item.projectId,
+    item.chatId,
+    item.sessionId,
+    item.turnId,
+    item.runtimeEpoch,
+    item.origin,
+    item.activityId,
+  ].join("\0");
+
+/**
+ * One adjacent run of child observations in one Turn. Starts and finishes
+ * share it: Codex keeps a single row per run (s4/f0244, f0485).
+ */
 export function collaborationRun(
   items: readonly AcpItem[],
   start: number,
 ): CollaborationProjectionItem[] | null {
   const item = items[start];
   if (item?.kind !== "collaboration") return null;
-  const state = collaborationGroupState(item);
-  if (!state) return null;
+  let count = entryCount(item);
+  if (!count) return null;
   const members = [item];
-  let count = collaborationRows(item)[0].entries.length;
   while (members.length < MAX_SUBAGENT_GROUP_ITEMS) {
     const candidate = items[start + members.length];
     if (
-      !candidate ||
-      candidate.kind !== "collaboration" ||
-      candidate.projectId !== item.projectId ||
-      candidate.chatId !== item.chatId ||
-      candidate.sessionId !== item.sessionId ||
-      candidate.turnId !== item.turnId ||
-      candidate.runtimeEpoch !== item.runtimeEpoch ||
-      candidate.origin !== item.origin ||
-      candidate.activityId !== item.activityId ||
-      collaborationGroupState(candidate) !== state
+      candidate?.kind !== "collaboration" ||
+      runOwner(candidate) !== runOwner(item)
     )
       break;
-    const candidateCount = collaborationRows(candidate)[0].entries.length;
-    if (count + candidateCount > MAX_SUBAGENT_GROUP_ITEMS) break;
+    const candidateCount = entryCount(candidate);
+    if (!candidateCount || count + candidateCount > MAX_SUBAGENT_GROUP_ITEMS)
+      break;
     count += candidateCount;
     members.push(candidate);
   }

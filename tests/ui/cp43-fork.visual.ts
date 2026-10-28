@@ -58,7 +58,30 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
     "Fork from this message in the current workspace",
   );
   await expect(dialog.getByText(/worktree/i)).toHaveCount(0);
+  // Codex s2/f0055: a #2a2a2a dialog whose focused first option shows no
+  // fill or ring after a pointer open; hover fills it.
+  await expect(dialog).toHaveCSS("background-color", "rgb(42, 42, 42)");
+  await expect(options.first()).toBeFocused();
+  await expect(options.first()).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(options.first()).toHaveCSS("outline-style", "none");
   await expect(workbench).toHaveScreenshot("fork-dialog.png");
+  await options.first().hover();
+  await expect(options.first()).toHaveCSS(
+    "background-color",
+    "rgb(53, 53, 53)",
+  );
+  await page.mouse.move(0, 0);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(options.first()).not.toHaveAttribute("data-fresh");
+  await expect(options.first()).toHaveCSS("outline-style", "solid");
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect(options.first()).toHaveCSS("outline-style", "solid");
+  await expect(options.first()).toHaveCSS("outline-width", "2px");
+  await page.emulateMedia({ forcedColors: "none" });
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
@@ -103,10 +126,16 @@ test("CP-43: Branch in new chat forks above the parent and links back", async ({
   const historyBox = (await inherited.boundingBox())!;
   const linkBox = (await link.boundingBox())!;
   expect(historyBox.y + historyBox.height).toBeLessThanOrEqual(linkBox.y);
-  await expect(
-    forkPane.getByRole("button", { name: "More actions", exact: true }),
-  ).toHaveCount(0);
   await expect(workbench).toHaveScreenshot("fork-thread-divider.png");
+  // The inherited answer keeps a usable "…", offering only Copy (s2/f0066).
+  await inherited
+    .getByRole("button", { name: "More actions", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("menu", { name: "Answer actions" }).getByRole("menuitem"),
+  ).toHaveText(["Copy"]);
+  await page.keyboard.press("Escape");
 
   await link.click();
   await expect(page.locator(".agent-task-header__title").first()).toHaveText(

@@ -61,16 +61,7 @@ interface OutlineSink {
 
 type Collect = (node: SyntaxNode, sink: OutlineSink) => void;
 
-/**
- * Builds the top-level Outline of a document from the same Lezer grammar the
- * File editor highlights with.  Returns null when the language has no Outline
- * (plain text, HTML), the document is over the editable limit, or the request
- * stopped being current, so callers show an honest state instead of a guess.
- *
- * Parsing never blocks the main thread for more than one slice, and the last
- * tree is reused for the text an edit left unchanged, so re-outlining after a
- * keystroke costs about the size of the edit, not the size of the File.
- */
+/** Outline uses the editor's Lezer grammar. Return null for unsupported languages, oversized Files or stale requests. Yield between slices; reuse unchanged trees. */
 export async function syntaxOutline(
   path: string,
   source: string,
@@ -282,7 +273,6 @@ const collectRust: Collect = (node, sink) => {
     case "TypeItem":
       return emitNamed(node, "TypeIdentifier", "type", sink);
     case "ImplItem": {
-      // "impl Display for Point" reads as one entry, as in other outlines.
       const body = node.getChild("DeclarationList");
       return sink.emit(
         sink.text(node.from, body?.from ?? node.to),
@@ -311,8 +301,7 @@ const collectMarkdown: Collect = (node, sink) => {
 
 const collectJson: Collect = (node, sink) => {
   if (node.name !== "Object") return;
-  // Walk lazily and stop at the cap: a 1 MiB object can hold tens of thousands
-  // of keys, and materialising them all would block one slice for too long.
+  // Walk lazily to the cap; materialising large objects would overrun a slice.
   for (
     let property = node.firstChild;
     property && !sink.full();
@@ -338,11 +327,7 @@ function symbolName(raw: string): string {
     : name;
 }
 
-/**
- * Monotonic offset-to-position lookup; symbols arrive in document order.
- * Columns count code points, as File navigation and the status bar do, so an
- * emoji before a name does not shift the caret past it.
- */
+/** Monotonic lookup in document order; code-point columns match File navigation, including emoji. */
 function positionCounter(
   source: string,
 ): (offset: number) => { line: number; column: number } {

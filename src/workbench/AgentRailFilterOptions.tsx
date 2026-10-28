@@ -65,14 +65,8 @@ export function AgentRailFilterPopover({
       triggerRef={triggerRef}
       onDismiss={onDismiss}
     >
-      <div
-        className="menu-group"
-        role="group"
-        aria-labelledby={`${menuId}-grouping`}
-      >
-        <p id={`${menuId}-grouping`} className="menu-group-label">
-          Grouping
-        </p>
+      <div className="menu-group" role="group" aria-label="Grouping">
+        <p className="menu-group-label">Grouping</p>
         {AGENT_RAIL_GROUPINGS.map((grouping) => (
           <button
             className="menu-item"
@@ -87,14 +81,8 @@ export function AgentRailFilterPopover({
           </button>
         ))}
       </div>
-      <div
-        className="menu-group"
-        role="group"
-        aria-labelledby={`${menuId}-ordering`}
-      >
-        <p id={`${menuId}-ordering`} className="menu-group-label">
-          Ordering
-        </p>
+      <div className="menu-group" role="group" aria-label="Ordering">
+        <p className="menu-group-label">Ordering</p>
         {AGENT_RAIL_ORDERINGS.map((ordering) => (
           <button
             className="menu-item"
@@ -109,14 +97,8 @@ export function AgentRailFilterPopover({
           </button>
         ))}
       </div>
-      <div
-        className="menu-group"
-        role="group"
-        aria-labelledby={`${menuId}-show`}
-      >
-        <p id={`${menuId}-show`} className="menu-group-label">
-          Show
-        </p>
+      <div className="menu-group" role="group" aria-label="Show">
+        <p className="menu-group-label">Show</p>
         {AGENT_RAIL_SHOW_FIELDS.map((field) => (
           <button
             className="menu-item"
@@ -131,14 +113,8 @@ export function AgentRailFilterPopover({
           </button>
         ))}
       </div>
-      <div
-        className="menu-group"
-        role="group"
-        aria-labelledby={`${menuId}-filters`}
-      >
-        <p id={`${menuId}-filters`} className="menu-group-label">
-          Filters
-        </p>
+      <div className="menu-group" role="group" aria-label="Filters">
+        <p className="menu-group-label">Filters</p>
         {(["all", ...AGENT_RAIL_STATUS_SECTIONS] as const).map((status) => (
           <button
             key={status}

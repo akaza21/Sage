@@ -76,7 +76,7 @@ async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
 }
 
 async function expectSingleHeaderRow(page: Page, width: number) {
-  await expect(page.locator(".agent-task-header__project")).toBeVisible();
+  await expect(page.locator(".agent-task-header__title")).toBeVisible();
   const header = page.locator(".agent-task-header");
   await expect(header).toBeVisible();
   const geometry = await header.evaluate((element) => {

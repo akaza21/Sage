@@ -15,7 +15,8 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
-import { createAcpSessionActions, currentSession } from "./acpSessionActions";
+import { createAcpSessionActions, typedError } from "./acpSessionActions";
+import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
@@ -97,14 +98,6 @@ function configOwner(page: AcpChatPage): {
         runtimeEpoch: config.runtimeEpoch,
       }
     : null;
-}
-
-function typedError(error: unknown): AcpDesktopError {
-  if (error instanceof AcpDesktopError) return error;
-  return new AcpDesktopError({
-    kind: "internal",
-    message: "The ACP action failed safely.",
-  });
 }
 
 function localFailure(message: string): AcpDesktopError {

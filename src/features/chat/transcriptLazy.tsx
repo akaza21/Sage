@@ -3,20 +3,10 @@ import { useWorkbenchStore } from "../../app/store";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import { TranscriptPart } from "./lazyParts";
 
-/**
- * Core entry points for transcript selection, annotations and side chats.
- * Everything else lives in one lazy chunk (TranscriptInteractions.tsx) that
- * loads on the first selection, a pending annotation or an open side chat.
- */
+/** Lazy interactions load on selection, pending annotation or open side chat. */
 export { TranscriptPart };
 
-/**
- * Tiny core trigger. Pointer-up or a Shift+Arrow key-up with a live
- * selection, or the menu key (Shift+F10 / ContextMenu) on an answer, arms
- * the lazy chunk once (1 = pointer, 2 = keyboard); a
- * pending annotation arms it straight away. The chunk decides whether the
- * selection is quotable. Listeners detach once armed or on unmount.
- */
+/** Arm once on selected pointer-up/Shift+Arrow key-up, answer context-menu key, or pending annotation (1=pointer, 2=keyboard). Chunk validates quotes; detach listeners on arm/unmount. */
 export function TranscriptInteractionsGate({
   chatId,
   focused,
@@ -38,8 +28,7 @@ export function TranscriptInteractionsGate({
       if (event.type === "pointerup") {
         if (getSelection()?.isCollapsed === false) setArmed(1);
       } else if (event.type === "keyup") {
-        // Only a Shift+Arrow selection is a keyboard selection; Ctrl+C and
-        // other keys after a mouse selection never arm keyboard mode.
+        // Only Shift+Arrow arms keyboard selection, never Ctrl+C after pointer selection.
         if (
           shiftKey &&
           key?.startsWith("Arrow") &&

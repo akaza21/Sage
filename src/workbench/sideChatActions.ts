@@ -9,7 +9,10 @@ import {
 import type { TranscriptQuote } from "../domain/transcriptQuote";
 import type { ProjectTransitionResult } from "../domain/workbench";
 import { quoteContext } from "../features/chat/transcriptSelection";
-import { inheritComposerModel } from "../features/chat/inheritedComposerModel";
+import {
+  confirmedComposerModel,
+  inheritComposerModel,
+} from "../features/chat/inheritedComposerModel";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import {
@@ -19,14 +22,9 @@ import {
   type SideChatEntry,
 } from "./sideChatState";
 
-/**
- * Temporary side chats: a new Sage Chat in the parent's Project, harness and
- * model, seeded with the selection as attached context. Rust creates, hides
- * and deletes it; the first send starts its session like any new Chat, so no
- * fork capability is needed and every harness works the same way.
- */
+/** Side chats share parent Project/harness/model and attach the selection. Rust owns lifecycle; first send starts a new session, requiring no fork capability. */
 let pending = false;
-/** Browser fixtures have no Rust preference store; native uses settings. */
+/** Fixtures lack Rust preferences; native uses settings. */
 let confirmInBrowser = true;
 let replacement: { parent: string; quote: TranscriptQuote } | null = null;
 
@@ -66,10 +64,7 @@ async function applyTransition(
   return snapshot;
 }
 
-/**
- * An IPC failure may still have committed: adopt the authoritative snapshot
- * when it shows exactly one more transition with the expected tab change.
- */
+/** Failed IPC may commit: adopt only an authoritative snapshot with exactly one expected tab transition. */
 async function nativeTransition(
   command: string,
   args: Record<string, unknown>,
@@ -141,7 +136,11 @@ export async function openSideChat(
           harness.bindingId === session.bindingId,
       )?.id
     : (parentUi?.harnessId ?? state.selectedHarnessId);
-  const modelId = session?.modelId ?? parentUi?.modelId ?? null;
+  const modelId =
+    confirmedComposerModel(source?.sessionConfig)?.id ??
+    session?.modelId ??
+    parentUi?.modelId ??
+    null;
   if (!harnessId) throw new Error("Select a harness before opening side chat");
   const expected = state.nativeTransitionEpoch;
   const ownershipEpoch = state.chatOwnershipEpoch;
@@ -218,7 +217,7 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
   const expected = state.nativeTransitionEpoch;
   await exclusive(async () => {
     if (isTauriRuntime()) {
-      // Rust cancels a running Turn, ends the runtime and deletes the Chat.
+      // Rust cancels the Turn, ends runtime and deletes Chat.
       const result = await nativeTransition(
         "close_side_chat",
         {

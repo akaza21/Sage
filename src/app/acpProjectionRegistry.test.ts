@@ -14,6 +14,16 @@ afterEach(() => {
 });
 
 describe("ACP projection registry", () => {
+  it("retains a pinned projection through a subscription cleanup (R3-13)", () => {
+    pinAcpProjectionIds(["chat-a"]);
+    const visible = acpProjectionStoreFor("chat-a");
+    releaseAcpProjectionStore("chat-a");
+    expect(acpProjectionStoreFor("chat-a")).toBe(visible);
+    pinAcpProjectionIds([]);
+    releaseAcpProjectionStore("chat-a");
+    expect(acpProjectionStoreFor("chat-a")).not.toBe(visible);
+  });
+
   it("keeps the unbound store on the singleton and isolates two visible chats", () => {
     expect(acpProjectionStoreFor()).toBe(useAcpProjectionStore);
     const first = acpProjectionStoreFor("chat-a");

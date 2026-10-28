@@ -16,6 +16,12 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/browser/BrowserNewTab.tsx",
+        "maxGzipBytes": 3750,
+        "maxCssGzipBytes": 966,
+        "reason": "New-tab tools, chat resource picker and the Agent tool launch host (moved from core); loads on New tab or a chat-tool action. Measured JS 3409 B and CSS 878 B plus 10%."
+      },
+      {
         "entry": "src/features/chat/ChatNavigation.tsx",
         "maxGzipBytes": 7000,
         "maxCssGzipBytes": 1300,
@@ -113,6 +119,11 @@
         "entry": "src/features/files/editorLanguageRust.ts",
         "maxGzipBytes": 27100,
         "reason": "Editor pack: Rust grammar; loads when a Rust file opens."
+      },
+      {
+        "entry": "src/features/chat/acp/streamTail.ts",
+        "maxGzipBytes": 490,
+        "reason": "Stream-fade run tracker for streamed answers (Codex s5/f0309); its import starts with the transcript, off the first-Chat path."
       }
     ],
     "windowsInstallerMb": 45,

@@ -66,9 +66,12 @@ describe("Codex chrome parity (w9 group B)", () => {
         interactions,
         ".close-side-chat-dialog .dirty-dialog__actions .button",
       ),
-    ).toMatch(/var\(--chat-dialog-cancel-fill\)[\s\S]*font-size:\s*13px;/);
-    expect(rule(fork, ".fork-chat-dialog__options > button")).toMatch(
-      /color:\s*var\(--color-status-foreground\);/,
+    ).toMatch(/var\(--chat-dialog-cancel-fill\)/);
+    expect(rule(interactions, ".close-side-chat-dialog")).toMatch(
+      /font-size:\s*13px;/,
+    );
+    expect(fork).toMatch(
+      /\.answer-more-menu__item,\s*\.fork-chat-dialog button\s*\{[^}]*color:\s*var\(--color-status-foreground\);/s,
     );
   });
 });

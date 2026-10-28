@@ -1,4 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
@@ -76,6 +79,15 @@ describe("integration results", () => {
     expect(
       result?.querySelector(".acp-code-block__language"),
     ).toHaveTextContent("JSON");
+    // Codex labels the result block with the bare, lowercase id (s5/f0390).
+    expect(
+      readFileSync(
+        resolve("src/features/chat/acp/acp-activity-details.css"),
+        "utf8",
+      ),
+    ).toMatch(
+      /\.acp-tool-result \.acp-code-block__language\s*\{\s*text-transform:\s*lowercase;/,
+    );
     expect(result).toHaveTextContent('"hits"');
     expect(container.querySelector(".acp-tool-command-frame")).toBeNull();
   });
@@ -125,6 +137,13 @@ describe("integration results", () => {
       result?.querySelector(".acp-code-block__language"),
     ).toHaveTextContent("plaintext");
     expect(result).toHaveTextContent("https://nodejs.org/api/test.html");
+    expect(result?.querySelector("pre")).toHaveStyle({
+      whiteSpace: "pre-wrap",
+    });
+    const wrap = screen.getByRole("button", { name: "Wrap code" });
+    expect(wrap).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(wrap);
+    expect(result?.querySelector("pre")).toHaveStyle({ whiteSpace: "pre" });
   });
 
   it("shows a web search's query in the plaintext block when no result came back", () => {

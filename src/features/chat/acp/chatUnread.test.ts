@@ -149,6 +149,19 @@ describe("unread ack slots", () => {
     expect(seenChatUnreadFingerprint("chat-c")).toBe("Completed:Done.");
   });
 
+  it("evicts an unpinned full slot while preserving a pinned ack", () => {
+    pinUnreadAckIds(["chat-a"]);
+    ackChatUnread("chat-a", "Completed:pinned");
+    ackChatUnread("chat-b", "Completed:unfocused");
+    ackChatUnread("chat-c", "Completed:new");
+    expect(seenChatUnreadFingerprint("chat-a")).toBe("Completed:pinned");
+    expect(seenChatUnreadFingerprint("chat-b")).toBeUndefined();
+    expect(seenChatUnreadFingerprint("chat-c")).toBe("Completed:new");
+    ackChatUnread("chat-c", "Completed:updated");
+    expect(seenChatUnreadFingerprint("chat-a")).toBe("Completed:pinned");
+    expect(seenChatUnreadFingerprint("chat-c")).toBe("Completed:updated");
+  });
+
   it("evicts the oldest ack when a third chat is seen and every slot is pinned", () => {
     pinUnreadAckIds(["chat-a", "chat-b"]);
     ackChatUnread("chat-a", "Idle:");

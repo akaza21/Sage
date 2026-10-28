@@ -10,6 +10,7 @@ import type { GoalMutationOutcome } from "../ChatGoalControl";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentContext } from "./useAcpChatActions";
 import type { AcpActionContext } from "./acpActionController";
+import { sameScope } from "./acpActionProjection";
 
 const GOAL_PROTOCOL = "codex-app-server-observed-0.146.0";
 
@@ -35,6 +36,13 @@ export function createGoalMutationController(deps: {
 }) {
   let pending = false;
   let unknown = false;
+  const outcomeUnknown = (): GoalMutationOutcome => {
+    unknown = true;
+    return {
+      kind: "outcomeUnknown",
+      message: "Goal outcome unknown. Reload this Chat to verify.",
+    };
+  };
   return async (action: Action): Promise<GoalMutationOutcome> => {
     if (pending || unknown) {
       return {
@@ -63,13 +71,7 @@ export function createGoalMutationController(deps: {
     try {
       const current = deps.getContext();
       if (
-        !current ||
-        current.scope.projectId !== captured.scope.projectId ||
-        current.scope.chatId !== captured.scope.chatId ||
-        current.scope.projectGeneration !== captured.scope.projectGeneration ||
-        current.ownershipEpoch !== captured.ownershipEpoch ||
-        current.commandProjectGeneration !==
-          captured.commandProjectGeneration ||
+        !sameScope(current, captured) ||
         current.page.currentSessionId !== session.id ||
         current.page.sessions.find((item) => item.id === session.id)
           ?.runtimeEpoch !== session.runtimeEpoch ||
@@ -92,29 +94,20 @@ export function createGoalMutationController(deps: {
         ? deps.pause(request)
         : deps.clear(request));
       if (!deps.apply(captured, result)) {
-        unknown = true;
-        return {
-          kind: "outcomeUnknown",
-          message: "Goal outcome unknown. Reload this Chat to verify.",
-        };
+        return outcomeUnknown();
       }
       return { kind: "applied" };
     } catch (error) {
-      const kind =
-        error instanceof AcpDesktopError ? error.failure.kind : "internal";
-      if (kind === "recoveryRequired" || kind === "internal") {
-        unknown = true;
-        return {
-          kind: "outcomeUnknown",
-          message: "Goal outcome unknown. Reload this Chat to verify.",
-        };
+      if (
+        !(error instanceof AcpDesktopError) ||
+        error.failure.kind === "recoveryRequired" ||
+        error.failure.kind === "internal"
+      ) {
+        return outcomeUnknown();
       }
       return {
         kind: "refused",
-        message:
-          error instanceof AcpDesktopError
-            ? error.message
-            : "Native Goal refused the action.",
+        message: error.message,
       };
     } finally {
       pending = false;
@@ -132,14 +125,7 @@ export function useGoalMutation(boundChatId?: string | null) {
         apply: (captured, result) => {
           const current = currentContext(boundChatId);
           if (
-            !current ||
-            current.ownershipEpoch !== captured.ownershipEpoch ||
-            current.commandProjectGeneration !==
-              captured.commandProjectGeneration ||
-            current.scope.projectId !== captured.scope.projectId ||
-            current.scope.chatId !== captured.scope.chatId ||
-            current.scope.projectGeneration !==
-              captured.scope.projectGeneration ||
+            !sameScope(current, captured) ||
             current.page.currentSessionId !== captured.page.currentSessionId ||
             current.page.sessions.find(
               (session) => session.id === current.page.currentSessionId,

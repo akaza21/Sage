@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useContext, useEffect, useRef, useState } from "react";
+import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useWorkbenchStore } from "../../app/store";
 import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -31,7 +32,6 @@ import {
   BrowserFindControls,
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
-import { BrowserNewTab } from "./BrowserNewTab";
 import {
   performBrowserShortcut,
   useBrowserShortcuts,
@@ -39,16 +39,18 @@ import {
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
+const BrowserNewTab = lazy(() =>
+  import("./BrowserNewTab").then((module) => ({
+    default: module.BrowserNewTab,
+  })),
+);
+
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
-  store.updateBrowserTabFavicon(tabId, status.favicon, status.revision);
-  if (!status.loading && !status.error && status.url)
-    store.updateBrowserTabTitle(
-      tabId,
-      status.url,
-      status.title,
-      status.revision,
-    );
+  const { favicon, url, title, revision, loading, error } = status;
+  store.updateBrowserTabFavicon(tabId, favicon, revision);
+  if (!loading && !error && url)
+    store.updateBrowserTabTitle(tabId, url, title, revision);
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -58,6 +60,7 @@ export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
+  const tools = useContext(AgentToolsContext);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const chats = tabs
@@ -108,7 +111,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           .getState()
           .tabs.filter(
             (item) => item.kind === "browser" && item.status !== "closed",
-          );
+          )
+          .slice(0, 8);
         const statuses = await Promise.allSettled(
           openTabs.map((item) => browserStatus(item.id)),
         );
@@ -379,14 +383,18 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         onClose={() => setDownloadsOpen(false)}
       />
       {newTab ? (
-        <BrowserNewTab
-          suggestions={suggestions}
-          onNavigate={(url) =>
-            void pageAction(() => browserNavigate(tab.id, url))
-          }
-          onAddress={() => addressField.current?.focus()}
-          onNewTab={() => void openBrowser()}
-        />
+        <Suspense fallback={<p role="status">Loading new tab…</p>}>
+          <BrowserNewTab
+            suggestions={suggestions}
+            onNavigate={(url) =>
+              void pageAction(() => browserNavigate(tab.id, url))
+            }
+            onNewTab={() => void openBrowser()}
+            onTool={tools.launch}
+            chatAvailable={tools.chatAvailable}
+            terminalAvailable={tools.terminalAvailable}
+          />
+        </Suspense>
       ) : null}
       <div
         ref={frame}

@@ -1,3 +1,4 @@
+import { errorMessage } from "./errors";
 import type { FileChange, GitFileMutationAction } from "./workbench";
 
 export function isConflictedChange(change: FileChange) {
@@ -28,4 +29,30 @@ export function isSafeDiscardChange(change: FileChange) {
       change.worktreeStatus === "typeChanged" ||
       change.worktreeStatus === "deleted")
   );
+}
+
+export function rejectedGitCommand(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "kind" in error &&
+    "message" in error &&
+    (error.kind === "failed" || error.kind === "containment") &&
+    typeof error.message === "string"
+  ) {
+    if (
+      error.kind === "containment" &&
+      "processState" in error &&
+      (error.processState === "terminatedUnreaped" ||
+        error.processState === "potentiallyRunning")
+    ) {
+      return {
+        kind: error.kind,
+        message: error.message,
+        processState: error.processState,
+      } as const;
+    }
+    return { kind: error.kind, message: error.message } as const;
+  }
+  return { kind: "failed", message: errorMessage(error) } as const;
 }

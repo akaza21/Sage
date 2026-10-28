@@ -122,6 +122,32 @@ describe("answer More actions", () => {
   });
 
   it.each([
+    ["a pointer or scripted click", false, "true"],
+    ["Enter on the menu item", true, null],
+  ])(
+    "pre-fills the dialog option only when Enter or Space opened it, not after %s (s2/f0055)",
+    async (_, byKey, fresh) => {
+      await renderFooter(forkablePage());
+      fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+      const item = await screen.findByRole("menuitem", {
+        name: "Branch in new chat",
+      });
+      // A scripted click focuses programmatically, which can match
+      // :focus-visible; only a real Enter or Space counts as keyboard.
+      const matches = vi
+        .spyOn(Element.prototype, "matches")
+        .mockReturnValue(true);
+      if (byKey) fireEvent.keyDown(item, { key: "Enter" });
+      fireEvent.click(item);
+      const option = await screen.findByRole("menuitem", {
+        name: /Fork in this workspace/,
+      });
+      matches.mockRestore();
+      expect(option.getAttribute("data-fresh")).toBe(fresh);
+    },
+  );
+
+  it.each([
     ["the capability is false", forkablePage({ fork: false })],
     ["the runtime is parked", forkablePage({ residency: "cold" })],
     [
@@ -135,11 +161,26 @@ describe("answer More actions", () => {
         turns: [{ ...forkablePage().turns[0], state: "failed" }],
       } as AcpChatPage,
     ],
-  ])("is absent when %s", async (_, acpPage) => {
-    await renderFooter(acpPage);
-    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
-  });
+  ])(
+    "still opens, offering only Copy, when %s (no action that can't be done)",
+    async (_, acpPage) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      await renderFooter(acpPage);
+      const more = screen.getByRole("button", { name: "More actions" });
+      fireEvent.click(more);
+      const menu = await screen.findByRole("menu", { name: "Answer actions" });
+      const items = within(menu).getAllByRole("menuitem");
+      expect(items.map((item) => item.textContent)).toEqual(["Copy"]);
+      await act(async () => {
+        fireEvent.click(items[0]);
+      });
+      expect(writeText).toHaveBeenCalledWith("Normalized answer");
+      expect(screen.queryByRole("menu", { name: "Answer actions" })).toBeNull();
+      expect(more).toHaveFocus();
+      vi.unstubAllGlobals();
+    },
+  );
 });
 
 describe("Fork chat from here", () => {
@@ -292,7 +333,8 @@ describe("Continued from chat", () => {
     const history = await screen.findByRole("group", {
       name: "History from the parent chat",
     });
-    expect(history).toHaveAttribute("inert");
+    // Each inherited Turn is inert itself, so its answer row stays usable.
+    expect(history).not.toHaveAttribute("inert");
     expect(
       (await within(history).findAllByRole("listitem")).map(
         (item) => item.textContent,

@@ -128,30 +128,13 @@ button.subagent-list__row:focus-visible {
   font-size: var(--font-size-xs);
 }
 
-/* Codex s4/f0244: a 20 px disc in the child's colour (16 px in the child
-   header, f0487); the initial or sparkle is cut out in the canvas colour. */
+/* Codex s4/f0244: the row's shape at 20 px (16 px in the child header, f0487). */
 .acp-subagent-row__glyph.subagent-avatar {
   width: 20px;
   height: 20px;
-  flex: none;
-  border-radius: var(--radius-circle);
-  background: currentColor;
-  -webkit-text-fill-color: var(--color-canvas);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
 }
 
 .subagent-surface__bar .acp-subagent-row__glyph.subagent-avatar {
   width: 16px;
   height: 16px;
-  font-size: 9px;
-}
-
-@media (forced-colors: active) {
-  .acp-subagent-row__glyph.subagent-avatar {
-    border: 1px solid CanvasText;
-    background: Canvas;
-    -webkit-text-fill-color: CanvasText;
-  }
 }

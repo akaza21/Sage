@@ -70,7 +70,7 @@ export function hasActiveAcpTurn(activeChatId: string | null): boolean {
 }
 
 export function releaseAcpProjectionStore(chatId: string): void {
-  slots.delete(chatId);
+  if (!pinnedIds.has(chatId)) slots.delete(chatId);
 }
 
 export function clearAcpProjectionRegistry(): void {

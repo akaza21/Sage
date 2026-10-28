@@ -72,6 +72,12 @@
 .agent-artifact-surface {
   display: contents;
 }
+.workbench--agent .workbench__body .agent-artifact-pane--maximized {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  width: 100%;
+}
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
   position: absolute;
@@ -124,8 +130,10 @@
   grid-column: 1;
 }
 
+/* About 8 px from the divider, which sits mid-splitter (Codex s2/f0244). */
 .agent-chat-center__header--split > .agent-chat-center__side-tab {
   grid-column: 2;
+  padding-inline-start: var(--space-1);
 }
 
 .agent-chat-center__header--panes > .agent-artifact-header-slot {
@@ -141,6 +149,13 @@
   align-items: center;
   padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* The right-pane toggle shares the side tab's cell: reserve its 36 px slot
+   plus a 4 px gap, so the tab shrinks and its ✕ stays clickable at 480. */
+.agent-chat-center__header--panes:has(> .agent-artifact-header-slot:not(:empty))
+  > .agent-chat-center__side-tab {
+  padding-inline-end: 40px;
 }
 
 .agent-artifact-header-slot {
@@ -167,6 +182,7 @@
 @container chat (max-width: 520px) {
   /* The approval card holds the composer slot at the composer's width. */
   .workbench--agent .acp-permission-prompt,
+  .workbench--agent .chat-follow-end,
   .workbench--agent .message-list,
   .workbench--agent .composer {
     --chat-column-trailing: 0px;
@@ -185,7 +201,9 @@
 
   .workbench--agent
     .message-list__content:has(> .acp-chat-projection)
-    > .chat-transcript-actions {
+    > .chat-transcript-actions,
+  .workbench--agent .message-list__content > .chat-fork-divider,
+  .workbench--agent .chat-fork-inherited > .chat-transcript-actions {
     width: min(100%, var(--reading-measure));
     margin-inline-start: max(0px, calc((100% - var(--reading-measure)) / 2));
   }
@@ -283,9 +301,16 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+/* Codex 67: "+" follows the last tab; the other controls stay at the end. */
 .agent-artifact-pane__header > .tab-strip {
+  width: auto;
   min-width: 0;
-  flex: 1;
+}
+
+/* Outranks the shared .agent-artifact-pane__collapse order below. */
+.agent-artifact-pane__header > .agent-artifact-pane__new-tab {
+  order: 1;
+  margin-right: auto;
 }
 
 .agent-artifact-pane__header > strong {
@@ -333,6 +358,7 @@
   background: var(--color-surface-active);
 }
 
+.agent-artifact-pane__follow,
 .agent-artifact-pane__collapse {
   order: 2;
 }
@@ -557,4 +583,8 @@
 .subagent-surface li small {
   display: block;
   color: var(--color-text-muted);
+}
+/* Codex child transcripts carry no author row (s4/f0485, spec section 7). */
+.subagent-surface__transcript .acp-message__meta {
+  display: none;
 }

@@ -46,25 +46,20 @@ export function composerDisabledReason({
   return null;
 }
 
-/** The limit Rust puts on the prompt it dispatches, attached context included. */
+/** Rust prompt cap includes attached context. */
 export const MAX_EFFECTIVE_PROMPT_BYTES = 100_000;
-// Drafts come from the store; tolerate a field an older draft lacks.
+// Tolerate missing fields in older drafts.
 const quoted = (value: string | undefined) =>
   utf8ByteLength(JSON.stringify(value ?? ""));
 const plain = (value: string | undefined) => utf8ByteLength(value ?? "");
 
-// Per draft (its context array keeps its identity until it changes): repeat
-// calls in one render, and renders that change neither its text nor its
-// context, never re-measure.
+// Cache per draft text/context identity; don't remeasure unchanged renders.
 const measured = new WeakMap<
   readonly AttachedContext[],
   [string, string | null]
 >();
 
-/**
- * Why this draft cannot be sent because of its rendered size, or null.
- * Memoised: measured once until its text or context changes.
- */
+/** Size refusal reason, or null; memoised by text/context. */
 export function sizeReason(
   text: string,
   contexts: readonly AttachedContext[],
@@ -80,11 +75,7 @@ export function sizeReason(
   return reason;
 }
 
-/**
- * An upper bound on the UTF-8 size of the prompt Rust renders from this
- * draft (acp/attached_context.rs effective_prompt), so the composer can
- * refuse an oversized send before dispatch with a clear reason.
- */
+/** UTF-8 upper bound of Rust's acp/attached_context.rs effective_prompt; reject oversize before dispatch. */
 export function effectivePromptBytes(
   text: string,
   contexts: readonly AttachedContext[],

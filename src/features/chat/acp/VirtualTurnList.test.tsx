@@ -117,6 +117,17 @@ function turns(first = 1, count = 100) {
   }));
 }
 
+it("marks only the true final Turn for footer hover time, not a window's last row", () => {
+  render(<History turns={turns()} />);
+  scrollTo(scrollHeight());
+  const last = document.querySelector("[data-last-turn]");
+  expect(last).not.toBeNull();
+  expect(last).toHaveAttribute("aria-posinset", "100");
+  expect(last).toHaveAttribute("aria-setsize", "100");
+  scrollTo(0);
+  expect(document.querySelector("[data-last-turn]")).toBeNull();
+});
+
 function History({
   turns,
   onCommit,

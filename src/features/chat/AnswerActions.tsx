@@ -1,21 +1,29 @@
 import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy } from "../../ui/leanIcons";
 
+import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
+import { ForkPart } from "./lazyParts";
 import { chatTimestamp, timeOfDayLabel } from "./chatTimestamp";
 
 /**
- * Codex's row under a finished answer (s2/f0053, f0093): Copy, any extra
- * actions, then the answer's own time, muted, on hover or focus. Copy acts
- * on this answer's text only.
+ * Codex's row under a finished answer (s2/f0053, f0093): Copy, "…" for a
+ * native Chat's answer, any extra actions, then the answer's own time,
+ * muted, on hover or focus. Copy acts on this answer's text only.
  */
 export function AnswerActions({
   text,
   createdAt,
+  page,
+  forkable = false,
   children,
 }: {
   text: string;
   createdAt?: number;
+  /** The native Chat whose answer this is: its row gets the "…" menu. */
+  page?: AcpChatPage | null;
+  /** Only the latest answer can fork; its menu then offers the branch. */
+  forkable?: boolean;
   children?: ReactNode;
 }) {
   const onCopyFeedback = useContext(AnswerCopyFeedback);
@@ -62,6 +70,14 @@ export function AnswerActions({
       >
         <CopyIcon size={14} aria-hidden="true" />
       </button>
+      {page ? (
+        <ForkPart
+          part="AnswerMoreActions"
+          page={page}
+          onCopy={copyAnswer}
+          forkable={forkable}
+        />
+      ) : null}
       {children}
       {time ? (
         <time

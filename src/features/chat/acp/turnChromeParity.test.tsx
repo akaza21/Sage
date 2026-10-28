@@ -70,6 +70,16 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", ()
   expect(read).not.toHaveAttribute("open");
   expect(screen.queryByText("fixture output")).toBeNull();
   expect(screen.getByText("Intro prose")).toBeVisible();
+  // Prose streamed before the tool sits above its row (s2/f0015), and the
+  // final answer stays after Worked.
+  expect(
+    screen.getByText("Intro prose").compareDocumentPosition(read) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    read.compareDocumentPosition(screen.getByText("Normalized answer")) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   read.open = true;
   fireEvent(read, new Event("toggle"));
   expect(screen.getByText("fixture output")).toBeVisible();

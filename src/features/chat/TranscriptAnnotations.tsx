@@ -18,12 +18,7 @@ type Resolved = {
   foreign?: boolean;
 };
 
-/**
- * Badges and the open comment's highlight for pending annotations. Ranges
- * are cached per quote; only a quoted answer's own subtree is observed, so
- * streaming elsewhere never re-resolves them, and scroll or resize only
- * repositions. Updates coalesce to at most one per animation frame.
- */
+/** Cache ranges per quote; observe only its answer subtree. Scroll/resize only reposition; coalesce updates to one per frame. */
 const notForeign = () => false;
 
 export function TranscriptAnnotations({
@@ -39,7 +34,6 @@ export function TranscriptAnnotations({
   quotes: readonly TranscriptQuoteContext[];
   editingKey: string | null;
   onOpen: () => void;
-  /** True for a quote whose answer is known to live outside this surface. */
   isForeign?: (quote: TranscriptQuoteContext) => boolean;
 }) {
   const [badges, setBadges] = useState<
@@ -54,9 +48,7 @@ export function TranscriptAnnotations({
   const cache = useRef(new Map<string, Resolved>());
   useEffect(() => {
     let frame = 0;
-    // Look up unmounted or replaced answers only after a mount signal: the
-    // first pass, a content resize, a quoted answer's parent changing its
-    // children, or (only while some quote waits) a node added anywhere.
+    // Resolve missing/replaced answers only on mount, resize, parent child-list changes or additions while waiting.
     let relookup = true;
     const resolved = cache.current;
     const observed = new Set<Node>();
@@ -83,8 +75,7 @@ export function TranscriptAnnotations({
           entry.answer?.isConnected ? [entry.answer] : [],
         ),
       );
-      // A disconnected answer (its turn row unmounted) waits for a remount;
-      // a foreign one never mounts here, so it is never waited for.
+      // Wait for disconnected answers to remount, never foreign answers.
       const wait = entries.some(
         (entry) => !entry.foreign && !entry.answer?.isConnected,
       );
@@ -119,7 +110,7 @@ export function TranscriptAnnotations({
         if (!keys.has(key)) resolved.delete(key);
       const bounds = scrollport.getBoundingClientRect();
       const ranges: Range[] = [];
-      // Numbers follow the draft order, matching the prompt's "Annotation N".
+      // Badge numbers follow draft order (Annotation N).
       const next = quotes.flatMap((quote, index) => {
         const key = attachedContextKey(quote);
         if (isForeign(quote)) {
@@ -164,7 +155,6 @@ export function TranscriptAnnotations({
         registry?.set(name, new Highlight(...ranges));
       }
     }
-    // Answers mount and unmount as the list virtualises: content resizes.
     const resize =
       typeof ResizeObserver === "undefined"
         ? null

@@ -1,3 +1,4 @@
+import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import type { GitProcessState } from "../domain/workbench";
@@ -26,34 +27,6 @@ export interface RepositoryRemoteSlice {
   pullRepository: (rootId: string) => Promise<boolean>;
   pushRemote: (rootId: string, remote: string) => Promise<boolean>;
   clearRepositoryRemoteError: (rootId: string) => void;
-}
-
-function rejectedRemote(
-  error: unknown,
-): Omit<RepositoryRemoteError, "rootId" | "remote" | "action"> {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    "message" in error &&
-    (error.kind === "failed" || error.kind === "containment") &&
-    typeof error.message === "string"
-  ) {
-    if (
-      error.kind === "containment" &&
-      "processState" in error &&
-      (error.processState === "terminatedUnreaped" ||
-        error.processState === "potentiallyRunning")
-    ) {
-      return {
-        kind: error.kind,
-        message: error.message,
-        processState: error.processState,
-      };
-    }
-    return { kind: error.kind, message: error.message };
-  }
-  return { kind: "failed", message: errorMessage(error) };
 }
 
 export const createRepositoryRemoteSlice: StateCreator<
@@ -131,7 +104,7 @@ export const createRepositoryRemoteSlice: StateCreator<
             rootId,
             remote,
             action,
-            ...rejectedRemote(error),
+            ...rejectedGitCommand(error),
           },
         });
       } else if (get().repositoryRemote === transport) {
@@ -154,4 +127,3 @@ export const createRepositoryRemoteSlice: StateCreator<
     pushRemote: (rootId, remote) => transportRemote(rootId, remote, "push"),
   };
 };
-import { errorMessage } from "../domain/errors";

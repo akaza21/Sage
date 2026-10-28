@@ -64,6 +64,15 @@ afterEach(() => {
 });
 
 describe("Subagent activity rows", () => {
+  it("announces a finished child's actual state while its sibling keeps working", () => {
+    activities([child("a", "Builder"), child("b", "Reviewer", "completed")]);
+    expect(
+      screen.getByRole("status", {
+        name: "Builder started working; Reviewer finished",
+      }),
+    ).toHaveTextContent("Builder and Reviewer started working");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
   it("refreshes an already-rendered unnamed group when later lifecycle observations emit names", () => {
     const spawn = [child("a", ""), child("b", "")];
     const view = activities(spawn);
@@ -92,7 +101,53 @@ describe("Subagent activity rows", () => {
         }
       />,
     );
-    expect(row("Reviewer and Builder started working")).toBeVisible();
+    // Codex s4/f0485: once every child settled the same row reads finished.
+    expect(row("Reviewer and Builder finished")).toBeVisible();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("keeps one row per run that reads started working until every child finished (s4/f0244, f0485)", () => {
+    const spawn = (key: string, state: string) => ({
+      ...child(key, "", state),
+      id: `spawn-${key}` as Collaboration["id"],
+    });
+    const activity = (key: string, name: string, operation: string) =>
+      ({
+        ...child(key, ""),
+        id: `activity-${key}-${operation}`,
+        payload: {
+          ...child(key, "").payload,
+          operation,
+          agentKey: key,
+          label: name,
+          agentKeys: [],
+          receiverLabels: [],
+          agentStates: [],
+        },
+      }) as unknown as Collaboration;
+    const live = [
+      spawn("math", "completed"),
+      activity("math", "Count math", "completed"),
+      spawn("readme", "running"),
+      activity("readme", "Count readme", "started"),
+    ];
+    const view = activities(live);
+    expect(
+      row("Count readme started working; Count math finished"),
+    ).toHaveTextContent("Count math and Count readme started working");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(
+      document.querySelector(".acp-subagent-row")?.getAttribute("data-state"),
+    ).toBe("started working");
+    view.rerender(
+      <PrimaryActivities
+        items={[...live, activity("readme", "Count readme", "completed")]}
+        interactive
+        renderItem={() => null}
+      />,
+    );
+    expect(row("Count math and Count readme finished")).toBeVisible();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("deduplicates spawn and native completion and opens the owner-bearing activity", () => {
@@ -352,6 +407,18 @@ describe("Subagent activity rows", () => {
       agentKey: "a",
     });
   });
+  it("draws each child as its coloured shape, never a letter (s4/f0485)", () => {
+    activities([
+      child("math", "Count math", "completed"),
+      child("readme", "Count readme", "completed"),
+    ]);
+    const glyphs = [
+      ...document.querySelectorAll(".acp-subagent-row__glyph"),
+    ] as HTMLElement[];
+    expect(glyphs).toHaveLength(2);
+    for (const glyph of glyphs) expect(glyph).toBeEmptyDOMElement();
+  });
+
   it("renders no subagent row for an empty activity list", () => {
     activities([]);
     expect(screen.queryByRole("status")).toBeNull();
@@ -406,14 +473,15 @@ describe("Subagent activity rows", () => {
       ["b", "completed"],
     ];
     const { container } = render(<CollaborationItem item={item} />);
-    expect(row("B finished")).toBeVisible();
-    expect(row("A started working")).toBeVisible();
+    expect(row("A started working; B finished")).toHaveTextContent(
+      "A and B started working",
+    );
     expect(container.querySelector(".acp-live-shimmer")).toBeNull();
     expect(
       container.querySelector('[data-state="started working"]'),
-    ).toContainElement(row("A started working"));
+    ).toContainElement(row("A started working; B finished"));
   });
-  it("shows both named started and finished children in a mixed spawn event", () => {
+  it("shows named started and finished children of a mixed spawn event in one row", () => {
     const item = child("a", "A");
     item.payload.agentKeys = ["a", "b"];
     item.payload.receiverLabels = ["A", "B"];
@@ -422,8 +490,10 @@ describe("Subagent activity rows", () => {
       ["b", "completed"],
     ];
     render(<CollaborationItem item={item} />);
-    expect(row("A started working")).toBeVisible();
-    expect(row("B finished")).toBeVisible();
+    expect(row("A started working; B finished")).toHaveTextContent(
+      "A and B started working",
+    );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
     // One grouped event: each declared key routes to its own spawn.
     expect(
       screen
@@ -432,7 +502,7 @@ describe("Subagent activity rows", () => {
     ).toEqual(["Open subagent A", "Open subagent B"]);
   });
 
-  it("groups adjacent starts and completions separately without merging across prose", () => {
+  it("merges a run's starts and completions into one row but never across prose", () => {
     activities([
       child("a", "A"),
       child("b", "B"),
@@ -441,11 +511,12 @@ describe("Subagent activity rows", () => {
       { ...child("prose", ""), kind: "text" } as unknown as AcpItem,
       child("e", "E", "completed"),
     ]);
-    expect(row("A and B started working")).toBeVisible();
-    expect(row("C and D finished")).toBeVisible();
+    expect(row("A and B started working; C and D finished")).toHaveTextContent(
+      "A, B and 2 more started working",
+    );
     expect(row("E finished")).toBeVisible();
-    expect(screen.getAllByRole("status")).toHaveLength(3);
-    expect(screen.getAllByRole("button")).toHaveLength(5);
+    expect(screen.getAllByRole("status")).toHaveLength(2);
+    expect(screen.getAllByRole("button")).toHaveLength(4);
   });
 
   it("retains known names beside unnamed children without exposing identity keys", () => {

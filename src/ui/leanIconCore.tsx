@@ -1,7 +1,7 @@
 import { createElement, forwardRef } from "react";
 import type { LucideProps } from "lucide-react";
 
-type IconNode = readonly [string, Record<string, string>];
+type IconNode = string | readonly [string, Record<string, string>];
 
 export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
   const Component = forwardRef<SVGSVGElement, LucideProps>(
@@ -40,8 +40,10 @@ export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
           {...(!children && !hasA11yProp ? { "aria-hidden": "true" } : {})}
           {...rest}
         >
-          {nodes.map(([tag, attributes], index) =>
-            createElement(tag, { ...attributes, key: index }),
+          {nodes.map((node, index) =>
+            typeof node === "string"
+              ? createElement("path", { d: node, key: index })
+              : createElement(node[0], { ...node[1], key: index }),
           )}
           {children}
         </svg>
@@ -49,4 +51,8 @@ export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
     },
   );
   return Component;
+}
+
+export function lucideIcon(name: string, nodes: readonly IconNode[]) {
+  return leanIcon(`lucide lucide-${name}`, nodes);
 }

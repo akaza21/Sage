@@ -534,6 +534,9 @@ test.describe("ED02 picker visual states", () => {
       .locator(".agent-task-header")
       .getByRole("button", { name: /^Chat actions for / });
     await taskActions.click();
+    await page
+      .getByRole("menuitem", { name: /^More chat actions in / })
+      .click();
     const handoffTrigger = page.getByRole("menuitem", {
       name: "Hand off chat",
       exact: true,
@@ -1613,6 +1616,9 @@ test.describe("Wave 2 200% zoom state", () => {
     await page
       .locator(".agent-task-header")
       .getByRole("button", { name: /^Chat actions for / })
+      .click();
+    await page
+      .getByRole("menuitem", { name: /^More chat actions in / })
       .click();
     const handoffTrigger = page.getByRole("menuitem", {
       name: "Hand off chat",

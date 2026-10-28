@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
-import type { AcpChatPage } from "../domain/acpProjection";
+import type { AcpChatPage, AcpItem } from "../domain/acpProjection";
 import { avatarColor } from "../features/chat/acp/subagentActivity";
 import { subscribeChildProjectionChanges } from "../services/acpChildTranscript";
 import { isTauriRuntime } from "../ports/nativeInvoke";
@@ -16,12 +16,7 @@ type RecentAgent = ReturnType<
 >["recentAgents"][number];
 export type SubagentTime = { startedAt: number; updatedAt: number };
 
-/**
- * The newest child epoch: the page's, or a later child-only notice's. It is
- * `null` until the child-notice listener is attached, so the first read
- * starts only once no notice can be missed between the read and the listen.
- * Outside the desktop runtime no notice can arrive, so nothing waits.
- */
+/** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
 // eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
 export function useChildEpoch(page: AcpChatPage): number | null {
   const [notice, setNotice] = useState({ chat: "", epoch: 0, attached: false });
@@ -37,7 +32,7 @@ export function useChildEpoch(page: AcpChatPage): number | null {
             : { chat, epoch: 0, attached: true },
         );
     };
-    // A torn-down listener's late notice must not overwrite the next chat's.
+    // Ignore notices from torn-down Chat listeners.
     subscribeChildProjectionChanges(page.projectId, page.chatId, (epoch) => {
       if (live) setNotice({ chat, epoch, attached: true });
     }).then(
@@ -46,7 +41,7 @@ export function useChildEpoch(page: AcpChatPage): number | null {
         stop = unlisten;
         attached();
       },
-      // No listener at all: reads still run, on page epochs alone.
+      // Without a listener, use page epochs.
       attached,
     );
     return () => {
@@ -64,7 +59,7 @@ export function useChildEpoch(page: AcpChatPage): number | null {
 /** A live child re-reads at most once per this window, and within it. */
 const CHILD_REFRESH_MS = 1_000;
 
-/** One open child's single-flight, throttled transcript reads. */
+/** Single-flight, throttled reads for one open child. */
 export type ChildRefresh = {
   identity: string;
   inFlight: boolean;
@@ -88,18 +83,22 @@ export function childRefresh(): ChildRefresh {
   };
 }
 
-/**
- * Leading and trailing throttle: a change a window after the last read
- * reads at once; one inside the window reads when it ends. A pending read
- * is never pushed back, so continuous child activity still reads about
- * once a second.
- */
+/** Leading/trailing throttle; never postpone a pending read during activity. */
 // eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
 export function scheduleChildRefresh(state: ChildRefresh) {
   if (state.timer !== undefined) return;
   const wait = state.startedAt + CHILD_REFRESH_MS - performance.now();
   if (wait <= 0) return state.send();
   state.timer = setTimeout(() => state.send(), wait);
+}
+
+export function childActivityLabel(item: AcpItem): string {
+  if (item.kind === "toolCall") return item.payload.presentation.label;
+  if (item.kind === "collaboration") return item.payload.label;
+  if (item.kind === "thoughtSummary") return "Thought summary";
+  if (item.kind === "plan") return "Plan";
+  if (item.kind === "error") return item.payload.code;
+  return item.kind === "text" ? "Message" : "Activity";
 }
 
 const statusText = {
@@ -120,7 +119,6 @@ export function useNow(live: boolean): number {
   return now;
 }
 
-/** A harness-named choice for the wire value, or the value itself. */
 export function choiceName(page: AcpChatPage, category: string, value: string) {
   for (const option of page.sessionConfig?.configOptions ?? [])
     if (option.type === "select" && (option.category ?? option.id) === category)
@@ -131,10 +129,7 @@ export function choiceName(page: AcpChatPage, category: string, value: string) {
   return value;
 }
 
-/**
- * The spawn invocation an observation belongs to: the latest spawn of its key
- * at or before it, so a reused child key never relabels an earlier child.
- */
+/** Bind observations to the latest preceding spawn, not a later reused key. */
 export function invocationOf(
   page: AcpChatPage,
   itemId: string,
@@ -154,10 +149,7 @@ export function invocationOf(
   return null;
 }
 
-/**
- * Spawn time and last observed update per retained invocation. A child key's
- * later events belong to its latest spawn, the same rule the counts use.
- */
+/** Per-invocation times; later events belong to the key's latest spawn. */
 export function subagentTimes(
   page: AcpChatPage,
   agents: readonly RecentAgent[],
@@ -205,24 +197,15 @@ export function subagentAge(updatedAt: number, now: number, active: boolean) {
         : `${minutes}m`;
 }
 
-export function SubagentAvatar({
-  agentKey,
-  label,
-}: {
-  agentKey: string;
-  label: string;
-}) {
+export function SubagentAvatar({ agentKey }: { agentKey: string }) {
   return (
     <span
       className={`acp-subagent-row__glyph acp-subagent-row__glyph--${avatarColor(agentKey)} subagent-avatar`}
       aria-hidden="true"
-    >
-      {label && label !== "Subagent" ? [...label][0].toUpperCase() : "✦"}
-    </span>
+    />
   );
 }
 
-/** The plural tab's Active · N / Done · N lists; rows move as states land. */
 export function SubagentList({ page }: { page: AcpChatPage }) {
   const agents = projectTaskResources(page, page.chatId).recentAgents;
   const times = subagentTimes(page, agents);
@@ -241,10 +224,7 @@ export function SubagentList({ page }: { page: AcpChatPage }) {
             agent.status === "done" ? null : statusText[agent.status];
           const content = (
             <>
-              <SubagentAvatar
-                agentKey={agent.agentKey ?? agent.id}
-                label={agent.label}
-              />
+              <SubagentAvatar agentKey={agent.agentKey ?? agent.id} />
               <span className="subagent-list__text">
                 <span>{agent.label}</span>
                 {status ? (

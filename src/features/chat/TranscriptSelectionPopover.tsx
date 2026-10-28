@@ -124,7 +124,8 @@ export function TranscriptSelectionPopover({
     if (!selected || !element) return;
     const rects = selected.range.getClientRects();
     if (!rects.length) return;
-    const column = selected.answer.getBoundingClientRect();
+    // Centred on the selection start, the pill may overhang the answer
+    // column but stays inside the scrollport (Codex s2/f0093).
     const viewport = scrollport.getBoundingClientRect();
     const point = selectionPopoverPosition(
       {
@@ -132,15 +133,19 @@ export function TranscriptSelectionPopover({
         top: rects[0].top,
         bottom: rects[rects.length - 1].bottom,
       },
-      { left: column.left, top: viewport.top, width: column.width },
-      // Fractional sizes, so a column-wide clamp never overhangs by a pixel.
+      {
+        left: viewport.left,
+        top: viewport.top,
+        width: scrollport.clientWidth,
+      },
+      // Fractional sizes, so the clamp never overhangs by a pixel.
       {
         width: element.getBoundingClientRect().width || 172,
         height: element.offsetHeight || 28,
       },
     );
     setPosition({
-      left: column.left + point.left,
+      left: viewport.left + point.left,
       top: viewport.top + point.top,
     });
     if (selected.keyboard) element.querySelector("button")?.focus();

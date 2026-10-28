@@ -19,11 +19,7 @@ function sameIds(left: readonly string[], right: readonly string[]) {
   );
 }
 
-/**
- * Tracks which Turns are on screen without measuring every Turn on scroll:
- * the virtual list answers from its offsets, and mounted rows report through
- * an IntersectionObserver. Geometry is read only when the scrollport resizes.
- */
+/** Use virtual offsets/row IntersectionObserver, not per-Turn scroll measurements; read geometry only on resize. */
 export function useChatViewport(
   scrollport: HTMLElement | null,
   turns: readonly TurnProjection[],
@@ -78,8 +74,7 @@ export function useChatViewport(
         observeRows(rows);
       }
       let visibleIds = navigationRef.current?.visibleTurnIds();
-      // Every supported WebView has IntersectionObserver; without it (jsdom)
-      // dashes simply keep their off-screen colour.
+      // Without IntersectionObserver (jsdom), keep offscreen dash colors.
       visibleIds ??= [...observed]
         .map((row) => (row as HTMLElement).dataset.turnId!)
         .filter((id) => intersecting.has(id));
@@ -116,7 +111,6 @@ export function useChatViewport(
             request();
           });
     resize?.observe(scrollport);
-    // Virtual lists answer from offsets; mounted rows report via observer.
     const onScroll = () => {
       if (navigationRef.current) request();
     };
@@ -132,8 +126,7 @@ export function useChatViewport(
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [scrollport, navigationRef]);
-  // New or re-measured Turns move offsets; re-read once per later change
-  // (the mount read above already covers the first Turns).
+  // Re-read moved offsets after later changes; mount already covers initial Turns.
   const seenTurns = useRef(turns);
   useEffect(() => {
     if (seenTurns.current === turns) return;

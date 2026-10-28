@@ -37,7 +37,8 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
   await expect(current).not.toHaveAttribute("title", /Side chat/);
   await expect(right.locator(".chat-home__scope")).toHaveCount(0);
   const homeIcon = (await right.locator(".side-chat-home svg").boundingBox())!;
-  expect(homeIcon.width).toBe(20);
+  // Codex s2/f0244 draws the empty-state icon at about 23 px; Sage uses 24.
+  expect(homeIcon.width).toBe(24);
   await expect(
     right.getByRole("button", { name: "1 selection", exact: true }),
   ).toBeVisible();
@@ -63,9 +64,10 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
   await expect(right).toContainText(
     "This is a temporary discussion of the selected phrase.",
   );
+  // A side chat can't fork, so its "…" offers only Copy (s2/f0244).
   await expect(
     right.getByRole("button", { name: "More actions", exact: true }),
-  ).toBeHidden();
+  ).toBeVisible();
   await expect(sideTab.locator(".spinner")).toBeHidden();
   await expect(workbench).toHaveScreenshot("side-chat-completed.png");
   await sideTab
@@ -82,11 +84,30 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
     .getByRole("checkbox", { name: "Don't ask again" })
     .boundingBox())!;
   expect(checkbox.width).toBe(14);
+  // Codex s2/f0352: an unfilled outline box on the #2a2a2a dialog.
+  const box = dialog.getByRole("checkbox", { name: "Don't ask again" });
+  await expect(box).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(box).toHaveCSS("border-top-color", "rgb(133, 133, 133)");
+  await expect(dialog).toHaveCSS("background-color", "rgb(42, 42, 42)");
   await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCSS(
     "background-color",
     "rgb(53, 53, 53)",
   );
   await expect(workbench).toHaveScreenshot("side-chat-close-confirm.png");
+  await page.emulateMedia({ forcedColors: "active" });
+  const systemText = await dialog.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "CanvasText";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  await expect(box).toHaveCSS("border-top-color", systemText);
+  await box.check();
+  await expect(box).toHaveCSS("background-color", systemText);
+  await box.uncheck();
+  await page.emulateMedia({ forcedColors: "none" });
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await sideTab
@@ -107,6 +128,36 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
     .click();
   await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
   await expect(dialog).toBeHidden();
+});
+
+test("CP-42: at 480 the side tab's ✕ stays clear of the right-pane toggle", async ({
+  page,
+}) => {
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page
+    .getByRole("button", { name: "Ask in side chat", exact: true })
+    .click();
+  await page.setViewportSize({ width: 480, height: 1000 });
+  const close = page
+    .locator(".agent-chat-center__side-tab")
+    .getByRole("button", { name: "Close side chat", exact: true });
+  // Wait for the narrow single-pane layout before measuring.
+  await expect
+    .poll(async () => {
+      const box = await close.boundingBox();
+      return box ? box.x + box.width : Infinity;
+    })
+    .toBeLessThanOrEqual(480);
+  const closeBox = (await close.boundingBox())!;
+  const toggle = (await page
+    .locator(".agent-artifact-header-slot button")
+    .boundingBox())!;
+  expect(closeBox.x + closeBox.width).toBeLessThanOrEqual(toggle.x - 4);
+  // The ✕ takes the pointer itself, never the toggle above it.
+  await close.click({ trial: true });
+  const tab = (await page.locator(".side-chat-tab").boundingBox())!;
+  expect(tab.width).toBeLessThanOrEqual(213);
 });
 
 test("CP-42: a running temporary chat closes only after confirmation", async ({

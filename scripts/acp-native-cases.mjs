@@ -14,6 +14,7 @@ import {
   PARITY_BASE,
   PARITY_LIVE,
   parityOwnEvents,
+  parityOwnsBase,
   parityInitializeShape,
   paritySecondTurn,
   parityForkSteps,
@@ -127,7 +128,8 @@ export const nativeCaptureProductGaps = Object.freeze({
 });
 /** A state's first-Turn wire events, through its parity base when it has one. */
 function caseEvents(harness, state) {
-  if (PARITY_BASE[state]) return events(harness, PARITY_BASE[state]);
+  if (PARITY_BASE[state] && !parityOwnsBase(harness, state))
+    return events(harness, PARITY_BASE[state]);
   if (paritySupported(harness).includes(state))
     return parityOwnEvents(harness, state);
   return events(harness, state);

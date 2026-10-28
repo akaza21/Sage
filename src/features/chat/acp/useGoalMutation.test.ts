@@ -103,3 +103,37 @@ it("separates a refusal from an unknown outcome and locks unknown retries", asyn
   expect((await mutate("clear")).kind).toBe("refused");
   expect(clear).toHaveBeenCalledTimes(2);
 });
+
+it.each([
+  { scope: { projectId: "other-project" } },
+  { scope: { projectGeneration: "4" } },
+  { scope: { chatId: "other-chat" } },
+  { ownershipEpoch: 3 },
+  { commandProjectGeneration: "6" },
+])(
+  "refuses a Goal mutation after its captured owner changes: %j",
+  async (change) => {
+    const captured = context();
+    const changed = {
+      ...captured,
+      ...change,
+      scope: { ...captured.scope, ...change.scope },
+    } as AcpActionContext;
+    const pause = vi.fn();
+    const mutate = createGoalMutationController({
+      getContext: vi
+        .fn()
+        .mockReturnValueOnce(captured)
+        .mockReturnValue(changed),
+      pause,
+      clear: vi.fn(),
+      apply: vi.fn(),
+      nextIntentId: () => "intent-1" as never,
+    });
+    expect(await mutate("pause")).toEqual({
+      kind: "refused",
+      message: "Goal session changed before the action could start.",
+    });
+    expect(pause).not.toHaveBeenCalled();
+  },
+);

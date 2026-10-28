@@ -351,12 +351,18 @@ describe("AgentTaskHeader working status", () => {
       "Live",
     );
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+    );
     expect(
       screen.getByRole("menuitem", { name: "Hand off chat" }),
     ).toBeEnabled();
     fireEvent.click(screen.getByRole("menuitem", { name: "Close session" }));
     expect(closeSession).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+    );
     fireEvent.click(screen.getByRole("menuitem", { name: "End session" }));
     expect(endSession).toHaveBeenCalledTimes(1);
   });
@@ -392,6 +398,9 @@ describe("AgentTaskHeader working status", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+    );
     fireEvent.click(screen.getByRole("menuitem", { name: "Hand off chat" }));
     expect(
       await screen.findByRole("dialog", { name: "Hand off this Chat" }),
@@ -399,6 +408,15 @@ describe("AgentTaskHeader working status", () => {
     expect(
       screen.getByRole("button", { name: /Chat actions for/ }),
     ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.keyDown(
+      screen.getByRole("dialog", { name: "Hand off this Chat" }),
+      { key: "Escape" },
+    );
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Chat actions for/ }),
+      ).toHaveFocus(),
+    );
   });
 
   it("opens and dismisses the Outputs, Subagents, and Sources panel", () => {

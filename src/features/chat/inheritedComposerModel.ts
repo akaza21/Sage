@@ -8,15 +8,10 @@ import { sessionConfigControls } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
 import { composerOptionLabel } from "./composerChrome";
 
-/**
- * The model and effort a side chat or fork inherits from its parent, shown in
- * its composer until its own session reports a configuration (Codex
- * s2/f0244, s2/f0066). Only values the parent's harness confirmed are kept.
- */
+/** Show only parent-harness-confirmed model/effort until the child reports its own config (s2/f0244, s2/f0066). */
 export interface InheritedComposerModel {
   model: string;
   effort: string | null;
-  /** The confirmed model's id, when the harness reported one. */
   id?: string;
 }
 
@@ -30,7 +25,7 @@ const useInheritedStore = create<
 const category = (option: AcpConfigOption) =>
   (option.category ?? option.id).toLocaleLowerCase();
 
-/** The parent's confirmed model and effort labels, or null when unconfirmed. */
+/** Confirmed parent labels, or null. */
 export function confirmedComposerModel(
   config: AcpSessionConfig | null | undefined,
 ): InheritedComposerModel | null {
@@ -56,13 +51,7 @@ export function confirmedComposerModel(
   return { model, effort, id };
 }
 
-/**
- * Records what `chatId` inherits from its parent's session configuration.
- * A fork continues the parent's session, so it inherits model and effort. A
- * side chat starts a new session on `startsOnModelId` with no effort, so it
- * inherits only the model label, and only when that is the parent's
- * confirmed model: the label never names a model the side chat won't use.
- */
+/** Forks continue the parent's model/effort. Side sessions start on startsOnModelId without effort; inherit its label only if the parent confirmed that exact model. */
 export function inheritComposerModel(
   chatId: string,
   parentConfig: AcpSessionConfig | null | undefined,

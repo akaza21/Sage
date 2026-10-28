@@ -1,11 +1,4 @@
-/**
- * The editor settings catalogue (EDIT-0005 AD-2). One closed registry lists
- * each key with its type, default, range and owning ticket, plus the copy and
- * group the Editor settings page renders it with. It mirrors `EDITOR_SETTINGS`
- * in `src-tauri/src/settings_store/editor_settings.rs`, and a parity test keeps
- * the two equal. Adding a setting is one entry here, one there, and its
- * control: never a schema change.
- */
+/** Closed registry; mirror EDITOR_SETTINGS in src-tauri/src/settings_store/editor_settings.rs (parity-tested). Add each setting in both registries plus its control, never a schema change. */
 
 export const EDITOR_SETTING_GROUPS = [
   "Text",
@@ -36,18 +29,16 @@ export interface IntegerSettingSpec extends EntryCopy {
   default: number;
   min: number;
   max: number;
-  /** The only allowed values, offered as a list on the settings page. */
   choices: readonly number[];
-  /** Shown after the number, such as "px". */
   unit: string;
 }
 
 export interface ChoiceSettingSpec extends EntryCopy {
   kind: "choice";
   default: string;
-  /** The allowed names, in the order the settings page lists them. */
+  /** Names in settings-page order. */
   choices: readonly string[];
-  /** Each name's label elsewhere and on macOS, such as "Alt" and "Option". */
+  /** Platform-specific display labels. */
   choiceLabels: Readonly<Record<string, readonly [string, string]>>;
 }
 
@@ -178,12 +169,7 @@ export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
   ) as EditorSettings,
 );
 
-/**
- * The value as the registry allows it, matching the Rust side: whole numbers
- * are clamped to the range, then moved to the nearest choice (the lower one on
- * a tie). A choice must be one of its names. A value of the wrong type is
- * `undefined`.
- */
+/** Match Rust: clamp integers, snap to nearest choice (lower on ties); reject unknown choices/wrong types as undefined. */
 export function admitEditorSetting(
   spec: EditorSettingSpec,
   value: unknown,
@@ -212,10 +198,7 @@ export function admitEditorSetting(
   return nearest;
 }
 
-/**
- * Every registry key with an allowed value. Unknown keys are dropped, and a
- * missing or mistyped value falls back to its default.
- */
+/** Drop unknown keys; default missing/mistyped values. */
 export function admitEditorSettings(input: unknown): EditorSettings {
   const record =
     typeof input === "object" && input !== null

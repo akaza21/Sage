@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { createElement, StrictMode } from "react";
 
-import { clearAcpProjectionRegistry } from "../../../src/app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../../src/app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { getWorkbenchPorts } from "../../../src/ports/workbenchRuntime";
 import { acpDesktop } from "../../../src/services/acpDesktop";
@@ -70,6 +73,7 @@ import {
 } from "./visualScenarioShell";
 import { fixtureTabs, visualSnapshotDiffRef } from "./visualDocumentFixtures";
 import { applyVisualWorkbenchState } from "./visualWorkbenchState";
+import { useAcpChatProjection } from "../../../src/features/chat/acp/useAcpChatProjection";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -665,6 +669,53 @@ describe("visual scenario surface ownership", () => {
     if (!owner) throw new Error("Preview fixture browse owner was absent.");
     expect(browseSessionForOwner(owner)?.href).toBe(visualPreviewUrl());
     expect(listBrowseSessions()).toHaveLength(1);
+  });
+
+  it("keeps Preview selected when a late Chat subscription replays its StrictMode cleanup (R3-13)", async () => {
+    function LateChatSubscription() {
+      useAcpChatProjection(true, "visual-chat-preview");
+      return null;
+    }
+    const panes = createElement(
+      "div",
+      null,
+      createElement(AgentChatPanes),
+      createElement(AgentArtifactPane),
+    );
+    const view = render(createElement("div", null, panes));
+    await act(async () => {
+      await installVisualScenario("preview");
+    });
+    await waitFor(() =>
+      expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    const store = acpProjectionStoreFor("visual-chat-preview");
+    const page = store.getState().page!;
+    let completeLoad!: (value: typeof page) => void;
+    const delayedPage = new Promise<typeof page>((resolve) => {
+      completeLoad = resolve;
+    });
+    vi.spyOn(acpDesktop, "getChatPage").mockReturnValue(delayedPage);
+    view.rerender(
+      createElement(
+        "div",
+        null,
+        panes,
+        createElement(StrictMode, null, createElement(LateChatSubscription)),
+      ),
+    );
+    await act(async () => {
+      completeLoad(page);
+    });
+    expect(view.getByRole("tab", { name: "Preview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(acpProjectionStoreFor("visual-chat-preview")).toBe(store);
+    expect(harnessBrowseOwner()?.chatId).toBe("visual-chat-preview");
   });
 
   it("removes Preview after the mounted fixture clears browsing", async () => {

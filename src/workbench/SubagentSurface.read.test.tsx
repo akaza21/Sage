@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type {
   AcpChatPage,
@@ -453,6 +460,97 @@ it("keeps a finished child readable and stops refreshing once it settles", async
   expect(screen.getByText("Both counts done")).toBeVisible();
   expect(screen.getByText("Worked for 25s")).toBeVisible();
 });
+
+it("offers Copy under a settled child's answer and only for that answer (s4/f0485)", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  readChild.mockResolvedValueOnce(
+    childRead([
+      {
+        status: "completed",
+        items: [
+          text("a", "Counting first"),
+          text("b", "README.md has 2 lines."),
+        ],
+      },
+    ]),
+  );
+  render(
+    <SubagentSurface
+      page={spawnPage("completed")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  expect(await screen.findByText("README.md has 2 lines.")).toBeVisible();
+  const actions = screen.getAllByRole("group", { name: "Message actions" });
+  expect(actions).toHaveLength(1);
+  await act(async () => {
+    within(actions[0]).getByRole("button", { name: "Copy" }).click();
+  });
+  expect(writeText).toHaveBeenCalledWith("README.md has 2 lines.");
+  // Codex child answers offer no "…" menu (spec section 7).
+  expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+  vi.unstubAllGlobals();
+});
+
+it("offers no Copy while the child is still working", async () => {
+  readChild.mockResolvedValueOnce(
+    childRead([{ status: "inProgress", items: [text("a", "Still counting")] }]),
+  );
+  render(
+    <SubagentSurface
+      page={spawnPage("running")}
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  expect(await screen.findByText("Still counting")).toBeVisible();
+  expect(screen.queryByRole("group", { name: "Message actions" })).toBeNull();
+});
+
+it.each([
+  [256, false, true],
+  [257, false, false],
+  [2, true, false],
+] as const)(
+  "only copies the actual final child row when all %i rows are retained (%s)",
+  async (count, retentionLimited, copyable) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    try {
+      const result = childRead([
+        {
+          status: "completed",
+          items: Array.from({ length: count }, (_, index) =>
+            text(`answer-${index}`, `Answer ${index}`),
+          ),
+        },
+      ]);
+      result.snapshot.retentionLimited = retentionLimited;
+      readChild.mockResolvedValueOnce(result);
+      render(
+        <SubagentSurface
+          page={spawnPage("completed")}
+          projectGeneration="3"
+          itemId="spawn"
+          agentKey="child"
+        />,
+      );
+      expect(await screen.findByText("Answer 0")).toBeVisible();
+      const copy = screen.queryByRole("button", { name: "Copy" });
+      if (copyable) {
+        expect(copy).not.toBeNull();
+        await act(async () => copy!.click());
+        expect(writeText).toHaveBeenCalledWith("Answer 255");
+      } else expect(copy).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
 
 it("keeps the last full read when a later refresh is stale", async () => {
   readChild.mockResolvedValueOnce(

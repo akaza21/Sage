@@ -277,16 +277,16 @@ describe("Composer surface stylesheet seam", () => {
       /\.chat-surface\s*\{[^}]*--reading-measure:\s*660px;/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*max-width:\s*var\(--reading-measure\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*border:\s*1px solid var\(--composer-border\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*1px solid var\(--composer-border\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.send-button\s*\{[^}]*border-radius:\s*var\(--radius-circle\);[^}]*background:\s*var\(--color-status-foreground\);/s,
@@ -344,7 +344,7 @@ describe("Composer surface stylesheet seam", () => {
     const surfaceCss = await composerRules();
 
     expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),[\s\S]*?margin-inline-start:\s*max\(\s*var\(--chat-column-gutter\),\s*calc\(\(100% - var\(--chat-column-trailing\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),[^}]*margin-inline-start:\s*max\(\s*var\(--chat-column-gutter\),\s*calc\(\(100% - var\(--chat-column-trailing\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer textarea\s*\{[^}]*min-height:\s*44px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,

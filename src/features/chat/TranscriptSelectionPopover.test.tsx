@@ -170,3 +170,30 @@ it("attaches dismiss listeners only while shown and detaches everything on unmou
     documentRemove.mock.calls.filter(([type]) => type === "selectionchange"),
   ).toHaveLength(1);
 });
+
+it("centres on the selection start and overhangs the column inside the scrollport (s2/f0093)", async () => {
+  const answer = content.querySelector<HTMLElement>('[data-item-id="i"]')!;
+  const box = (left: number, width: number) =>
+    ({
+      left,
+      top: 0,
+      width,
+      height: 28,
+      right: left + width,
+      bottom: 28,
+    }) as DOMRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this === scrollport) return box(0, 600);
+      if (this === answer) return box(160, 300);
+      return box(0, this.getAttribute("role") === "toolbar" ? 172 : 0);
+    },
+  );
+  Object.defineProperty(scrollport, "clientWidth", { value: 600 });
+  mount();
+  select(text('[data-item-id="i"] p'), 2, text('[data-item-id="i"] p'), 10);
+  fireEvent.pointerUp(content);
+  const toolbar = await screen.findByRole("toolbar");
+  // 180 - 172 / 2: left of the 160 px answer column, not clamped to it.
+  await waitFor(() => expect(toolbar.style.left).toBe("94px"));
+});

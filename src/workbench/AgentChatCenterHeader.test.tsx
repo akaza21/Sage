@@ -93,9 +93,16 @@ it("keeps the parent's own live session chrome while its side chat is focused", 
   expect(screen.getByLabelText("Harness status: Parent live")).toBeVisible();
   expect(screen.queryByLabelText("Harness status: Side live")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+  );
   expect(
     screen.getByRole("menuitem", { name: "Close session" }),
   ).toBeInTheDocument();
+  const more = screen.getByRole("button", { name: /Chat actions for/ });
+  fireEvent.click(more);
+  fireEvent.click(more);
+  expect(screen.queryByRole("menuitem", { name: "Close session" })).toBeNull();
 });
 
 it("shows no session chrome the parent did not publish", () => {
@@ -112,5 +119,8 @@ it("shows no session chrome the parent did not publish", () => {
   );
   expect(screen.queryByLabelText(/^Harness status:/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+  );
   expect(screen.queryByRole("menuitem", { name: "Close session" })).toBeNull();
 });

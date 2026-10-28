@@ -2,8 +2,46 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { AgentTaskStatus } from "./AgentTaskStatus";
 
 const initialState = useWorkbenchStore.getState();
+
+it.each([
+  ["waiting", "lucide-triangle-alert"],
+  ["failed", "lucide-circle-alert"],
+  ["working", null],
+  ["idle", null],
+] as const)(
+  "keeps the %s status glyph and accessible label",
+  (tone, iconClass) => {
+    render(
+      <AgentTaskStatus
+        snapshot={{
+          chatId: "chat:chrome",
+          statusLabel: tone,
+          statusTone: tone,
+          latestText: "",
+          streaming: false,
+          waiting: tone === "waiting",
+          working: tone === "working",
+        }}
+      />,
+    );
+    const status = screen.getByRole("status", { name: `Chat status: ${tone}` });
+    expect(status).toHaveAttribute("title", tone);
+    expect(status).toHaveTextContent(tone);
+    const icons = status.querySelectorAll("svg");
+    expect(icons).toHaveLength(iconClass ? 1 : 0);
+    if (iconClass) {
+      expect(icons[0]).toHaveClass(iconClass, "agent-task-header__status-icon");
+      expect(icons[0]).toHaveAttribute("width", "12");
+      expect(icons[0]).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(status.querySelector(".agent-chat-chip__spinner") !== null).toBe(
+      tone === "working",
+    );
+  },
+);
 
 afterEach(() => {
   cleanup();

@@ -136,7 +136,58 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     expect(model).toHaveTextContent("Synthetic replay");
     expect(model).toHaveTextContent("medium");
     expect(model).not.toHaveTextContent(/^Model$/);
+    expect(model).toHaveAttribute("data-readonly-label", "true");
   });
+
+  it.each(["pending", "no choices", "transition", "locked"])(
+    "dims a known model for %s unless it is an inherited or locked label",
+    (state) => {
+      useWorkbenchStore.setState({
+        projectTransitioning: state === "transition",
+      });
+      renderControls({
+        inheritScope: "no-inheritance",
+        sessionHarnessId: "fixture",
+        sessionModelId: "fixture-model",
+        sessionConfig: parentConfig(),
+        modePending: state === "pending",
+        turnBusy: state === "locked",
+        ...(state === "no choices"
+          ? {
+              sessionConfig: {
+                ...parentConfig(),
+                configOptions: [],
+                confirmedModel: {
+                  id: "fixture-model",
+                  name: "Synthetic replay",
+                },
+              },
+            }
+          : {}),
+      });
+      const model = screen.getByRole("button", { name: "Model" });
+      expect(model).toBeDisabled();
+      expect(model.getAttribute("title")).toMatch(/^Synthetic replay/);
+      if (state === "locked")
+        expect(model).toHaveAttribute("data-readonly-label", "true");
+      else expect(model).not.toHaveAttribute("data-readonly-label", "true");
+    },
+  );
+
+  it.each(["pending", "transition"])(
+    "dims even an inherited label during %s",
+    (state) => {
+      inheritComposerModel("side-1", parentConfig());
+      useWorkbenchStore.setState({
+        projectTransitioning: state === "transition",
+      });
+      renderControls({ modePending: state === "pending" });
+      const model = screen.getByRole("button", { name: "Model" });
+      expect(model).toBeDisabled();
+      expect(model).toHaveTextContent("Synthetic replay");
+      expect(model).not.toHaveAttribute("data-readonly-label", "true");
+    },
+  );
 
   it("labels a side chat with the parent's model only, never its effort", () => {
     inheritComposerModel("side-1", parentConfig(), {
@@ -146,6 +197,28 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     const model = screen.getByRole("button", { name: "Model" });
     expect(model).toHaveTextContent("Synthetic replay");
     expect(model).not.toHaveTextContent("medium");
+    expect(model).toHaveAttribute("data-readonly-label", "true");
+  });
+
+  it("keeps the inherited model through an empty initial configuration (R3-02)", () => {
+    inheritComposerModel("side-empty", parentConfig(), {
+      startsOnModelId: "fixture-model",
+    });
+    renderControls({
+      inheritScope: "side-empty",
+      sessionHarnessId: "fixture",
+      sessionModelId: "fixture-model",
+      sessionConfig: {
+        ...parentConfig(),
+        configOptions: [],
+        confirmedEffort: "high",
+      },
+    });
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toHaveTextContent("Synthetic replay");
+    expect(model).toHaveTextContent("High");
+    expect(model).not.toHaveTextContent("medium");
+    expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
   it.each([null, "other-model"])(
@@ -169,6 +242,16 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     const model = screen.getByRole("button", { name: "Model" });
     expect(model).toHaveTextContent("Own model");
     expect(model).not.toHaveTextContent("Synthetic replay");
+  });
+
+  it("drops the inherited label after selecting a different model id (R3-02)", () => {
+    inheritComposerModel("side-1", parentConfig(), {
+      startsOnModelId: "fixture-model",
+    });
+    renderControls({ selectedModelId: "other-model" });
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      /^Model$/,
+    );
   });
 
   it("shows the plain placeholder when nothing was inherited", () => {

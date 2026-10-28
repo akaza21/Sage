@@ -7,16 +7,16 @@ import {
 import { utf8ByteLength } from "../../domain/text";
 
 export const SELECTABLE_ANSWER = "[data-selectable-answer]";
-/** Answer chrome that is never quoted: meta header, code-block header, buttons. */
+/** Never quote answer/header/button chrome. */
 const CHROME =
   'button, header, [role="toolbar"], [aria-hidden="true"], .acp-message__partial';
-/** One answer is bounded by the transcript retention limits; fail closed past them. */
+/** Fail closed beyond transcript retention limits. */
 const MAX_ANSWER_TEXT_NODES = 20_000;
 const MAX_ANSWER_CHARACTERS = 1_000_000;
 
 type Box = { left: number; top: number; bottom: number };
 
-/** Centred on the selection start, 6 px above it, clamped to the column; flips below when clipped. */
+/** Center 6 px above selection; clamp to column scrollport, flipping below if clipped. */
 export function selectionPopoverPosition(
   rect: Box,
   column: { left: number; top: number; width: number },
@@ -25,9 +25,9 @@ export function selectionPopoverPosition(
   const above = rect.top - column.top - size.height - 6;
   return {
     left: Math.max(
-      0,
+      8,
       Math.min(
-        column.width - size.width,
+        column.width - size.width - 8,
         rect.left - column.left - size.width / 2,
       ),
     ),
@@ -55,7 +55,7 @@ function textNodes(answer: HTMLElement): Text[] {
   return nodes;
 }
 
-/** Character offset of a DOM point in the answer's plain-text projection. */
+/** Plain-text offset of a DOM point. */
 function offsetAt(
   answer: HTMLElement,
   nodes: Text[],
@@ -83,7 +83,7 @@ function answerOf(node: Node | null, content: HTMLElement) {
   return answer && content.contains(answer) ? answer : null;
 }
 
-/** The selection as a bounded quote, or null unless it lies inside one answer. */
+/** Bounded quote, or null unless within one answer. */
 export function readTranscriptQuote(
   selection: Selection | null,
   content: HTMLElement,
@@ -134,7 +134,7 @@ export function readTranscriptQuote(
   return { quote, range: range.cloneRange(), answer };
 }
 
-/** Keyboard path: with focus on an answer and no selection, quote the whole answer. */
+/** With answer focus and no selection, quote the whole answer. */
 export function selectAnswerText(focused: HTMLElement, content: HTMLElement) {
   const answer = answerOf(focused, content);
   const nodes = answer && answer === focused ? textNodes(answer) : [];
@@ -148,7 +148,7 @@ export function selectAnswerText(focused: HTMLElement, content: HTMLElement) {
   return readTranscriptQuote(selection, content);
 }
 
-/** The mounted answer a quote was taken from, or null while it is not mounted. */
+/** Quoted answer, or null while unmounted. */
 export function quoteAnswer(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -162,7 +162,7 @@ export function quoteAnswer(
   );
 }
 
-/** Re-resolves a stored quote against the mounted answer; null when the text moved. */
+/** Resolve stored quote; null if text moved. */
 export function quoteRange(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -171,7 +171,7 @@ export function quoteRange(
   return answer ? quoteRangeIn(answer, quote) : null;
 }
 
-/** The quote's range inside one known answer; null when the text moved. */
+/** Range in a known answer; null if text moved. */
 export function quoteRangeIn(
   answer: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -209,11 +209,7 @@ export function quoteContext(quote: TranscriptQuote): TranscriptQuoteContext {
   };
 }
 
-/**
- * In-chunk channel between the composer chip and the transcript decorations of
- * one Chat. Requests are disposable UI intents; the attached context itself
- * stays in the workbench store.
- */
+/** Per-Chat disposable chip/decoration intents; attached context stays in the store. */
 const bus = new EventTarget();
 
 export type AnnotationRequest = "edit" | "show";

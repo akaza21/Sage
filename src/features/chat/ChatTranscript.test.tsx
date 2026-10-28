@@ -16,7 +16,7 @@ import { page, textItem } from "./acp/acpProjection.fixture";
 import * as acpTurnState from "./acp/acpTurnState";
 import { ChatTranscript } from "./ChatTranscript";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
-import { snapshotPage } from "../../app/agentDiff.testFixture";
+import { snapshotPage } from "../../app/agentDiff.fixture";
 
 afterEach(() => {
   cleanup();
@@ -84,6 +84,8 @@ it("offers an icon-only, named jump button that follows the latest turn", async 
   expect(jump).toHaveAttribute("title", "Jump to latest");
   expect(jump.textContent).toBe("");
   expect(jump.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  expect(jump.querySelector("svg")).toHaveAttribute("width", "24");
+  expect(jump.querySelector("svg")).toHaveAttribute("height", "24");
   fireEvent.click(jump);
   expect(onJumpToLatest).toHaveBeenCalledOnce();
 });

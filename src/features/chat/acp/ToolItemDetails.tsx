@@ -33,7 +33,11 @@ function ToolResult({
   }
   return (
     <div className="acp-tool-result">
-      <ChatCodeBlock language={language} source={output} />
+      <ChatCodeBlock
+        language={language}
+        source={output}
+        wrapInitially={plain}
+      />
     </div>
   );
 }

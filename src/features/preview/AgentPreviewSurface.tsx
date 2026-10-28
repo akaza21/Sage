@@ -31,11 +31,7 @@ const loadAgentPreviewPresentation = () =>
     default: AgentPreviewPresentation,
   }));
 
-/**
- * A lightweight exact-owner controller. It intentionally stays mounted while
- * the Agent tab is hidden so visibility changes do not rediscover or stop the
- * native child; only the browser canvas below is slept.
- */
+/** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; sleep only the canvas. */
 export function AgentPreviewSurface({
   owner,
   browseOwner,
@@ -114,9 +110,7 @@ export function AgentPreviewSurface({
       return;
     const origin = previewOrigin(projection.origin);
     if (!origin || lastAdmittedNativeOrigin === origin) return;
-    // A health revalidation can emit active again. Do not let that revision
-    // replace a manually opened page at a different origin once this native
-    // origin has already been admitted by the controller.
+    // Repeated active health revisions must not replace a manually opened origin after native-origin admission.
     const admitted = applyBrowseIntent({ owner, url: projection.origin });
     if (admitted)
       queueMicrotask(() => {
@@ -125,9 +119,7 @@ export function AgentPreviewSurface({
       });
   }, [lastAdmittedNativeOrigin, owner, projection]);
 
-  // This is deliberately one coalesced check on an actual hidden-to-visible
-  // resume of a known active target. It is not keyed to revisions: the health
-  // event sequence itself may revise active, and must never create a loop.
+  // Coalesce one known-active hidden-to-visible health check; revision-driven checks would loop.
   useEffect(() => {
     if (!visible) {
       wasVisible.current = false;

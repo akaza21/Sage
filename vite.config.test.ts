@@ -74,6 +74,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // The Agent New tab page and its chat resource picker load on first use.
+  "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
@@ -84,6 +86,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  // The stream-fade run tracker loads beside the transcript, off its path.
+  "src/features/chat/acp/streamTail.ts",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",

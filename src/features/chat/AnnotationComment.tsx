@@ -6,6 +6,7 @@ import {
 import { utf8ByteLength } from "../../domain/text";
 import { quoteRange, SELECTABLE_ANSWER } from "./transcriptSelection";
 import { annotationFieldBox } from "./annotationGeometry";
+import { Check } from "../../ui/leanIcons";
 
 const FIELD_HEIGHT = 44;
 
@@ -106,9 +107,7 @@ export function AnnotationComment({
         }}
       />
       <button type="submit" aria-label="Save annotation">
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-          <path d="m3.5 8.5 3 3 6-7" />
-        </svg>
+        <Check size={12} strokeWidth={2.625} aria-hidden="true" />
       </button>
       {error ? (
         <span className="annotation-comment__error" role="alert">

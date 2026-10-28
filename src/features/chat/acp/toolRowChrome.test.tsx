@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
@@ -66,9 +66,62 @@ it.each([
     );
     const icon = container.querySelector("summary svg[data-activity-icon]");
     expect(icon).toHaveClass("lucide-command");
+    expect(icon).toHaveAttribute("fill", "none");
+    expect(icon).toHaveAttribute("stroke", "currentColor");
+    expect(icon?.querySelector("path")).not.toBeNull();
+    expect(icon?.textContent).toBe("");
     expect(container.querySelector(".lucide-plug")).toBeNull();
   },
 );
+
+it("draws command rows with Codex's terminal-square icon and thin row strokes (s5/f0405, s6/f0526)", () => {
+  const { container } = render(
+    <ToolActivityRollup
+      rollup={{
+        kind: "execute",
+        commandActivity: "ordinary",
+        items: [tool(shell)],
+      }}
+      interactive
+    />,
+  );
+  const icon = container.querySelector("summary svg[data-activity-icon]");
+  expect(icon).toHaveClass("lucide-square-terminal");
+  expect(container.querySelector(".lucide-terminal")).toBeNull();
+  expect(css("src/features/chat/acp/acp-activity-details.css")).toMatch(
+    /\.acp-tool-rollup__summary-copy > svg:first-child\s*\{\s*color:\s*var\(--color-text-muted\);\s*stroke-width:\s*1\.5;/,
+  );
+});
+
+it("opens a Web run row to its plaintext result block (s5/f0405)", () => {
+  const web = tool({ kind: "webSearch", label: "Web search" });
+  web.payload.inputSummary = "synthetic native replay";
+  const { container } = render(
+    <WorkedTurnTerminal value>
+      <ToolActivityRollup
+        rollup={{
+          kind: "webSearch",
+          commandActivity: "ordinary",
+          items: [web],
+        }}
+        interactive
+      />
+    </WorkedTurnTerminal>,
+  );
+  const row = container.querySelector("details.acp-tool-rollup")!;
+  const summary = row.querySelector("summary")!;
+  expect(summary).toHaveTextContent("Web run");
+  // Collapsed at rest, like every row (s2/f0011); it has a chevron to open.
+  expect(row.querySelector(".acp-tool-result")).toBeNull();
+  expect(summary.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
+  (row as HTMLDetailsElement).open = true;
+  fireEvent(row, new Event("toggle"));
+  const result = row.querySelector(".acp-tool-result");
+  expect(result?.querySelector(".acp-code-block__language")).toHaveTextContent(
+    "plaintext",
+  );
+  expect(result).toHaveTextContent("synthetic native replay");
+});
 
 it("draws a right chevron that turns down when the row opens (s5/f0390)", () => {
   const { container } = render(

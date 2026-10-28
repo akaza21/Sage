@@ -1,3 +1,4 @@
+import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
@@ -34,32 +35,6 @@ export interface RepositoryMutationSlice {
     action: GitFileMutationAction,
     discardConfirmed?: boolean,
   ) => Promise<boolean>;
-}
-
-function rejectedMutation(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    "message" in error &&
-    (error.kind === "failed" || error.kind === "containment") &&
-    typeof error.message === "string"
-  ) {
-    if (
-      error.kind === "containment" &&
-      "processState" in error &&
-      (error.processState === "terminatedUnreaped" ||
-        error.processState === "potentiallyRunning")
-    ) {
-      return {
-        kind: error.kind,
-        message: error.message,
-        processState: error.processState,
-      } as const;
-    }
-    return { kind: error.kind, message: error.message } as const;
-  }
-  return { kind: "failed", message: errorMessage(error) } as const;
 }
 
 function eligibleMutation(
@@ -156,7 +131,7 @@ export const createRepositoryMutationSlice: StateCreator<
           repositoryMutation: null,
           repositoryMutationError: {
             ...mutation,
-            ...rejectedMutation(error),
+            ...rejectedGitCommand(error),
           },
         });
       } else if (get().repositoryMutation === mutation) {
@@ -166,4 +141,3 @@ export const createRepositoryMutationSlice: StateCreator<
     }
   },
 });
-import { errorMessage } from "../domain/errors";

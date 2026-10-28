@@ -20,7 +20,7 @@ afterEach(cleanup);
 
 describe("CollaborationItem", () => {
   it.each(["running", "completed"])(
-    "keeps a non-BMP initial and a distinct %s glyph",
+    "names a non-BMP %s child beside its shape glyph, never its initial",
     (state) => {
       const item = {
         kind: "collaboration",
@@ -36,9 +36,13 @@ describe("CollaborationItem", () => {
         },
       } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
       const { container } = render(<CollaborationItem item={item} />);
+      // Codex s4/f0485: the glyph is the child's coloured shape.
       expect(
         container.querySelector(".acp-subagent-row__glyph"),
-      ).toHaveTextContent("𐐀");
+      ).toBeEmptyDOMElement();
+      expect(container.querySelector(".acp-subagent-row")).toHaveTextContent(
+        "𐐀gent",
+      );
       expect(container.querySelector(".acp-subagent-row")).toHaveAttribute(
         "data-state",
         state === "running" ? "started working" : "finished",

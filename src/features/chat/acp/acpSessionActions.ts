@@ -19,7 +19,7 @@ import type {
   AcpActionOutcome,
   AcpActionState,
 } from "./acpActionController";
-import { cancellableTurnId } from "./acpTurnState";
+import { cancellableTurnId, currentSession } from "./acpTurnState";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
 
 interface SessionActionDependencies {
@@ -42,7 +42,7 @@ interface SessionActionDependencies {
   sameScope: (
     context: AcpActionContext | null,
     expected: AcpActionContext,
-  ) => boolean;
+  ) => context is AcpActionContext;
   nextIntentId: () => ClientIntentId;
   cancelTurn: (request: CancelAcpTurnRequest) => Promise<AcpMutationResult>;
   steerTurn: (request: SteerAcpTurnRequest) => Promise<AcpMutationResult>;
@@ -52,15 +52,7 @@ interface SessionActionDependencies {
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
 }
 
-export function currentSession(page: AcpChatPage) {
-  if (!page.currentSessionId) return null;
-  return (
-    page.sessions.find((session) => session.id === page.currentSessionId) ??
-    null
-  );
-}
-
-function typedError(error: unknown): AcpDesktopError {
+export function typedError(error: unknown): AcpDesktopError {
   if (error instanceof AcpDesktopError) return error;
   return new AcpDesktopError({
     kind: "internal",
@@ -99,8 +91,7 @@ export function createAcpSessionActions(
       return Promise.resolve("rejected");
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const current = dependencies.getContext();
-      if (!dependencies.sameScope(current, captured) || !current)
-        return "ignoredStale";
+      if (!dependencies.sameScope(current, captured)) return "ignoredStale";
       const currentTurn = currentNonterminalTurn(current.page);
       const currentSessionValue = currentSession(current.page);
       if (
@@ -149,7 +140,7 @@ export function createAcpSessionActions(
     }
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
-      if (!dependencies.sameScope(context, captured) || !context) {
+      if (!dependencies.sameScope(context, captured)) {
         return "ignoredStale";
       }
       const session = currentSession(context.page);
@@ -201,7 +192,7 @@ export function createAcpSessionActions(
     }
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
-      if (!dependencies.sameScope(context, captured) || !context) {
+      if (!dependencies.sameScope(context, captured)) {
         return "ignoredStale";
       }
       const current = currentSession(context.page);
@@ -239,7 +230,7 @@ export function createAcpSessionActions(
     }
     return dependencies.enqueue(captured, "chat", async (updateState) => {
       const context = dependencies.getContext();
-      if (!dependencies.sameScope(context, captured) || !context) {
+      if (!dependencies.sameScope(context, captured)) {
         return "ignoredStale";
       }
       const current = currentSession(context.page);
@@ -287,8 +278,7 @@ export function createAcpSessionActions(
     }
     return dependencies.enqueue(captured, "mode", async (updateState) => {
       const context = dependencies.getContext();
-      if (!context || !dependencies.sameScope(context, captured))
-        return "ignoredStale";
+      if (!dependencies.sameScope(context, captured)) return "ignoredStale";
       const session = currentSession(context.page);
       const current = context.page.sessionConfig;
       if (

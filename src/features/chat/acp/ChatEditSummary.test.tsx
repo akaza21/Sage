@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AcpItem, TurnProjection } from "../../../domain/acp";
-import { snapshotPage } from "../../../app/agentDiff.testFixture";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import * as fileChip from "./chatFileChip";

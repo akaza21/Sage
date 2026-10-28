@@ -18,7 +18,7 @@ describe("sizing scale tokens", () => {
   it("keeps the composer card at the sixteen-pixel radius token", () => {
     expect(rootBlock).toMatch(/--radius-xl:\s*16px;/);
     expect(composerSource).toMatch(
-      /\.composer\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
     );
   });
 

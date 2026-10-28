@@ -8,16 +8,22 @@ const FIELD_WIDTH = 270;
 const GAP = 4;
 const INSET = 8;
 
-/** A pending annotation's 24 px badge sits over the end of its last line. */
-export function annotationBadgeOrigin(last: { right: number; top: number }) {
-  return { left: last.right - 12, top: last.top - 26 };
+/**
+ * A 24 px badge sits above the range end, its bottom on the highlight top,
+ * in both the open and saved states (Codex s2/f0095, f0113).
+ */
+export function annotationBadgeOrigin(last: Omit<Box, "left">) {
+  return {
+    left: last.right - BADGE / 2,
+    top: last.top - BADGE,
+  };
 }
 
 /**
  * The comment field: min(270 px, column) wide, centred on the selection start
- * 6 px above it and clamped inside the scrollport. When it would cover the
- * badge it moves left of it, or below the line when there is no room there,
- * so the badge stays visible and the field never sits under it.
+ * 6 px above its first line and clamped inside the scrollport. When it fits,
+ * it ends before the badge; it drops below the last line only when there is
+ * no room above. At narrow widths it clears the badge vertically instead.
  */
 export function annotationFieldBox(
   selection: { first: Box; last: Box },
@@ -34,25 +40,20 @@ export function annotationFieldBox(
     ),
   );
   const minLeft = scrollport.left + INSET;
-  const maxLeft = scrollport.right - INSET - width;
   let left = Math.max(
     minLeft,
-    Math.min(maxLeft, selection.first.left - width / 2),
+    Math.min(
+      scrollport.right - INSET - width,
+      selection.first.left - width / 2,
+    ),
   );
-  const below = selection.last.bottom + 6;
-  let top = selection.first.top - height - 6;
-  if (top < scrollport.top) top = below;
   const badge = annotationBadgeOrigin(selection.last);
-  const covers =
-    left < badge.left + BADGE + GAP &&
-    left + width > badge.left - GAP &&
-    top < badge.top + BADGE &&
-    top + height > badge.top;
-  if (covers) {
-    const beside = badge.left - GAP - width;
-    if (beside >= minLeft) left = beside;
-    else top = below;
-  }
+  const beside = badge.left - GAP - width;
+  if (beside >= minLeft) left = Math.min(left, beside);
+  let top = selection.first.top - height - 6;
+  if (left + width > badge.left - GAP)
+    top = Math.min(top, badge.top - height - GAP);
+  if (top < scrollport.top) top = selection.last.bottom + 6;
   return {
     left,
     top: Math.max(scrollport.top, Math.min(scrollport.bottom - height, top)),

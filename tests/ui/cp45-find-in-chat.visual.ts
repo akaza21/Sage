@@ -56,7 +56,10 @@ test("CP-45 find stays labelled and readable in forced colours and reduced motio
   await expect(alpha.locator(".chat-find [role=status]")).toHaveText(
     "1 / 6 results",
   );
-  await expect(alpha).toHaveScreenshot("find-in-chat-forced-colors.png");
+  // The box overlays the pane header (s6/f0676), so the shot includes it.
+  await expect(page.locator(".agent-chat-center")).toHaveScreenshot(
+    "find-in-chat-forced-colors.png",
+  );
   await input.press("Escape");
   expect(await page.evaluate(() => CSS.highlights.size)).toBe(0);
 });
@@ -71,7 +74,9 @@ test("CP-45 scoped chat find counts, highlights, wraps and closes", async ({
   await expect(input).toHaveAttribute("placeholder", "Search chat…");
   await expect(input).toBeFocused();
   await expect(pane(page, "Beta").getByRole("searchbox")).toHaveCount(0);
-  await expect(alpha).toHaveScreenshot("find-in-chat-empty.png");
+  await expect(page.locator(".agent-chat-center")).toHaveScreenshot(
+    "find-in-chat-empty.png",
+  );
   // The journey clock keeps running in real time; pause it so the 200 ms
   // debounce boundary is exact rather than racing the test runner.
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
@@ -112,7 +117,9 @@ test("CP-45 scoped chat find counts, highlights, wraps and closes", async ({
     currentCount: 1,
     otherCount: 5,
   });
-  await expect(alpha).toHaveScreenshot("find-in-chat.png");
+  await expect(page.locator(".agent-chat-center")).toHaveScreenshot(
+    "find-in-chat.png",
+  );
   await input.press("Enter");
   await expect(status).toHaveText("2 / 6 results");
   await input.press("Shift+Enter");

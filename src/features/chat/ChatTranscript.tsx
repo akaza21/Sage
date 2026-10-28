@@ -264,7 +264,7 @@ export function ChatTranscript({
         title={jumpLabel}
         onClick={onJumpToLatest}
       >
-        <ArrowDown size={14} aria-hidden="true" />
+        <ArrowDown size={24} aria-hidden="true" />
       </button>
       {useNativeAcp && !projectTransitioning ? (
         <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>

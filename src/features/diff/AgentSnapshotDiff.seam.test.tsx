@@ -15,7 +15,7 @@ import {
   snapshotPage,
   snapshotRef as ref,
   snapshotResource as resource,
-} from "../../app/agentDiff.testFixture";
+} from "../../app/agentDiff.fixture";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import { useWorkbenchStore } from "../../app/store";

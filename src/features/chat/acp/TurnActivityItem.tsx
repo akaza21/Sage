@@ -104,12 +104,11 @@ export const ItemView = memo(
         );
       }
       case "thoughtSummary":
+      case "error":
         return <TurnActivityItem item={item} />;
       case "plan":
       case "compactionNotice":
         return <TurnActivityItem item={item} workingItems={workingItems} />;
-      case "error":
-        return <TurnActivityItem item={item} />;
       case "toolCall":
         return (
           <ToolItem
@@ -165,17 +164,21 @@ const planStateLabels = {
 } as const;
 
 function PlanStateIcon({ state }: { state: keyof typeof planStateLabels }) {
-  if (state === "completed") return <Check size={14} aria-hidden="true" />;
-  if (state === "inProgress")
-    return (
-      <LoaderCircle
-        className="acp-plan__working"
-        size={14}
-        aria-hidden="true"
-      />
-    );
-  if (state === "failed") return <XCircle size={14} aria-hidden="true" />;
-  return <Circle size={14} aria-hidden="true" />;
+  const Icon =
+    state === "completed"
+      ? Check
+      : state === "inProgress"
+        ? LoaderCircle
+        : state === "failed"
+          ? XCircle
+          : Circle;
+  return (
+    <Icon
+      className={state === "inProgress" ? "acp-plan__working" : undefined}
+      size={14}
+      aria-hidden="true"
+    />
+  );
 }
 
 function PlanActivity({

@@ -6,7 +6,7 @@ import { AcpAnnouncementRegions } from "./AcpAnnouncementRegions";
 import { AcpChatProjection } from "./AcpChatProjection";
 import { TurnHeader } from "./TurnHeader";
 import { StrictMode } from "react";
-import { snapshotPage } from "../../../app/agentDiff.testFixture";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 import * as editingFiles from "./editingFiles";
 
 afterEach(() => {

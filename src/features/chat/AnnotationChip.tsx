@@ -12,9 +12,13 @@ import {
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   type AttachedContext,
 } from "../../domain/attachedContext";
-import type { TranscriptQuoteContext } from "../../domain/transcriptQuote";
+import {
+  isTranscriptQuote,
+  type TranscriptQuoteContext,
+} from "../../domain/transcriptQuote";
 import { requestAnnotation, useAnnotationRequest } from "./transcriptSelection";
 import { leanIcon } from "../../ui/leanIconCore";
+import { X } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import "./transcript-interactions.css";
 
@@ -166,7 +170,7 @@ export function AnnotationChip({
       <button
         ref={trigger}
         type="button"
-        className="annotation-chip__trigger"
+        className="button--compact annotation-chip__trigger"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onFocus={() => {
@@ -192,9 +196,7 @@ export function AnnotationChip({
           disabled={disabled}
           onClick={onClear}
         >
-          <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
-            <path d="m4 4 8 8m0-8-8 8" />
-          </svg>
+          <X size={10} strokeWidth={2.625} aria-hidden="true" />
         </button>
       ) : null}
       {open
@@ -283,10 +285,7 @@ export function SentAnnotations({
       // A side chat's sent quotes are selections, as in its composer
       // (Codex s2/f0260: "1 selection" above the sent bubble).
       selection={isSideChatId(chatId)}
-      quotes={contexts.filter(
-        (context): context is TranscriptQuoteContext =>
-          context.kind === "transcriptQuote",
-      )}
+      quotes={contexts.filter(isTranscriptQuote)}
     />
   );
 }
@@ -304,10 +303,7 @@ export function ComposerAnnotations({
   chatId: string;
 }) {
   const side = isSideChatId(chatId);
-  const quotes = contexts.filter(
-    (context): context is TranscriptQuoteContext =>
-      context.kind === "transcriptQuote",
-  );
+  const quotes = contexts.filter(isTranscriptQuote);
   return (
     <div className="composer__annotation-row">
       <AnnotationChip

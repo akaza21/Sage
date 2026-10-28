@@ -36,7 +36,9 @@ type PortalTarget = "closest-dialog" | "closest-popover" | "document";
 export type MenuDismissReason = "escape" | "outside" | "tab";
 
 function menuItems(container: HTMLElement) {
-  return Array.from(container.querySelectorAll<HTMLElement>(ITEM_SELECTOR));
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(ITEM_SELECTOR),
+  ).filter((item) => item.closest(".menu-popover") === container);
 }
 
 function enabledMenuItems(container: HTMLElement) {
@@ -241,7 +243,9 @@ export function MenuPopover({
         activateMenuItem(popover, next);
       }
     });
-  }, [focusKey, focusStrategy, initialFocus, open, role]);
+    // portalRoot: a nested menu first renders into the body, then moves into
+    // its parent popover; the move remounts it, so focus is placed again.
+  }, [focusKey, focusStrategy, initialFocus, open, role, portalRoot]);
 
   useEffect(() => {
     if (!open) return;
