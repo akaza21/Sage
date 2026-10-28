@@ -7,7 +7,7 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::acp::{
     browser::{redact_console, redact_url, safe_page_text},
@@ -94,8 +94,9 @@ impl Viewport {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub(crate) struct ElementBox {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElementBox {
     pub x: i64,
     pub y: i64,
     pub width: i64,
@@ -119,13 +120,13 @@ pub(crate) struct Picked {
     pub outline: ElementBox,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum Kind {
     #[serde(rename = "browserElement")]
     BrowserElement,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum Target {
     #[serde(rename = "element")]
     Element,
@@ -134,7 +135,7 @@ enum Target {
 /// The wire item, exactly as the contract names its fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct BrowserElement {
+pub struct BrowserElement {
     kind: Kind,
     target: Target,
     pub ordinal: u8,
@@ -148,6 +149,47 @@ pub(crate) struct BrowserElement {
     #[serde(rename = "box")]
     pub bounds: ElementBox,
     pub comment: String,
+}
+
+/// The Chat admission of a draft item runs the same checks as confirm, so a
+/// forged or stale WebView value cannot add a secret or break a limit.
+impl<'de> Deserialize<'de> for BrowserElement {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct Wire {
+            kind: Kind,
+            target: Target,
+            ordinal: u8,
+            tab_id: String,
+            url: String,
+            title: String,
+            selector: String,
+            role: String,
+            name: String,
+            text: String,
+            #[serde(rename = "box")]
+            bounds: ElementBox,
+            comment: String,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let element = BrowserElement {
+            kind: wire.kind,
+            target: wire.target,
+            ordinal: wire.ordinal,
+            tab_id: wire.tab_id,
+            url: wire.url,
+            title: wire.title,
+            selector: wire.selector,
+            role: wire.role,
+            name: wire.name,
+            text: wire.text,
+            bounds: wire.bounds,
+            comment: wire.comment,
+        };
+        validate(&element).map_err(de::Error::custom)?;
+        Ok(element)
+    }
 }
 
 /// Bounds and redacts what the page reported. `role` and `name` come from

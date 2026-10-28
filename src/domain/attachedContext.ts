@@ -5,30 +5,29 @@ import {
   parseTranscriptQuoteContext,
   type TranscriptQuoteContext,
 } from "./transcriptQuote";
+import {
+  parseBrowserElementContext,
+  parseBrowserPageContext,
+  unsafeDisplayCharacter,
+  type BrowserElementContext,
+  type BrowserPageContext,
+} from "./browserContext";
+
+export {
+  MAX_BROWSER_PAGE_TEXT_BYTES,
+  parseBrowserElementContext,
+  parseBrowserPageContext,
+  type BrowserElementContext,
+  type BrowserPageContext,
+} from "./browserContext";
 
 /** One turn may carry only a small review set, not an unbounded file annotation log. */
 export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
-export const MAX_BROWSER_PAGE_TEXT_BYTES = 4 * 1024;
 export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
 
 export type DiffLineSide = "old" | "new";
-
-function unsafeDisplayCharacter(character: string): boolean {
-  const code = character.codePointAt(0) ?? 0;
-  return (
-    code < 32 ||
-    (code >= 0x7f && code <= 0x9f) ||
-    code === 0x061c ||
-    code === 0x200e ||
-    code === 0x200f ||
-    code === 0x2028 ||
-    code === 0x2029 ||
-    (code >= 0x202a && code <= 0x202e) ||
-    (code >= 0x2066 && code <= 0x2069)
-  );
-}
 
 export interface DiffLineCommentContext {
   kind: "diffLineComment";
@@ -37,14 +36,6 @@ export interface DiffLineCommentContext {
   startLine: string;
   endLine: string;
   note: string;
-}
-
-export interface BrowserPageContext {
-  kind: "browserPage";
-  tabId: string;
-  url: string;
-  title: string;
-  text: string;
 }
 
 export interface ImageAttachedContext {
@@ -61,6 +52,7 @@ export interface ImageAttachedContext {
 export type AttachedContext =
   | DiffLineCommentContext
   | BrowserPageContext
+  | BrowserElementContext
   | ImageAttachedContext
   | TranscriptQuoteContext;
 
@@ -114,44 +106,15 @@ export function parseImageAttachedContext(
   };
 }
 
-export function parseBrowserPageContext(
-  value: unknown,
-): BrowserPageContext | null {
-  if (!isRecord(value) || value.kind !== "browserPage") return null;
-  const { tabId, url, title, text } = value;
-  if (
-    typeof tabId !== "string" ||
-    !/^browser-[1-9]\d*$/.test(tabId) ||
-    typeof url !== "string" ||
-    utf8ByteLength(url) > 2048 ||
-    typeof title !== "string" ||
-    utf8ByteLength(title) > 256 ||
-    typeof text !== "string" ||
-    utf8ByteLength(text) > MAX_BROWSER_PAGE_TEXT_BYTES ||
-    [...title].some(unsafeDisplayCharacter) ||
-    [...text].some(
-      (character) => character !== "\n" && unsafeDisplayCharacter(character),
-    )
-  )
-    return null;
-  try {
-    const parsed = new URL(url);
-    if (
-      !["http:", "https:"].includes(parsed.protocol) ||
-      parsed.username ||
-      parsed.password
-    )
-      return null;
-  } catch {
-    return null;
-  }
-  return { kind: "browserPage", tabId, url, title, text };
-}
+export const isBrowserElement = (
+  context: AttachedContext,
+): context is BrowserElementContext => context.kind === "browserElement";
 
 export function parseAttachedContext(value: unknown): AttachedContext | null {
   return (
     parseTranscriptQuoteContext(value) ??
     parseBrowserPageContext(value) ??
+    parseBrowserElementContext(value) ??
     parseDiffLineCommentContext(value) ??
     parseImageAttachedContext(value)
   );
@@ -250,6 +213,8 @@ export function queuedAttachmentCue(context: AttachedContext): {
 } {
   if (context.kind === "transcriptQuote")
     return { kind: "file", label: "Annotation" };
+  if (context.kind === "browserElement")
+    return { kind: "page", label: `Element ${context.ordinal}` };
   if (context.kind === "browserPage") {
     const parsed = parseBrowserPageContext(context);
     return {
@@ -318,6 +283,8 @@ export function attachedContextKey(context: AttachedContext): string {
   if (context.kind === "image") {
     return JSON.stringify([context.kind, context.artifactId, context.sha256]);
   }
+  if (context.kind === "browserElement")
+    return `element:${context.tabId}:${context.ordinal}`;
   const ref = context.diffRef;
   return JSON.stringify([
     ref.projectId,

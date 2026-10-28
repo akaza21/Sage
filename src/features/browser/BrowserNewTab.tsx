@@ -10,7 +10,8 @@ import {
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { AgentTool } from "../../workbench/AgentToolsProvider";
 import { MenuPopover } from "../../ui/MenuPopover";
-import { BrowserFavicon, type BrowserSuggestedSites } from "./browserAddress";
+import type { BrowserSuggestedSites } from "./browserAddress";
+import { BrowserFavicon } from "./browserFavicon";
 import "./BrowserNewTab.css";
 import { useWorkbenchStore } from "../../app/store";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";

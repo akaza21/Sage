@@ -5,12 +5,14 @@ import {
   handOffBrowserElement,
 } from "../../app/browserAnnotations";
 import {
-  browserAnnotateConfirm,
-  browserAnnotateFrame,
   browserControl,
-  type BrowserAnnotateFrame,
   type BrowserAnnotateSelection,
 } from "../../ports/nativeBrowserPort";
+import {
+  browserAnnotateConfirm,
+  browserAnnotateFrame,
+  type BrowserAnnotateFrame,
+} from "../../ports/nativeBrowserAnnotatePort";
 
 const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
@@ -133,7 +135,7 @@ export function BrowserAnnotatePopover({
 }
 
 const NO_SINK = "The composer cannot take page elements yet";
-const FULL = "This message already has 8 page elements";
+const FULL = "Open an Agent Chat whose message has room for this element";
 
 /**
  * Loads the frozen frame and turns the comment into an element item. The

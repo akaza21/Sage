@@ -1,4 +1,4 @@
-import type { BrowserDownload } from "../../ports/nativeBrowserPort";
+import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
 
 export function progressLabel(download: BrowserDownload): string {
   switch (download.state) {

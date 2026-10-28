@@ -76,6 +76,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/event.js",
   // The browser downloads popover body loads on its first open.
   "src/features/browser/BrowserDownloadsPanel.tsx",
+  // Annotate's composer chips and hover card load with the first element.
+  "src/features/browser/BrowserElementChips.tsx",
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",

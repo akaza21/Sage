@@ -14,7 +14,7 @@ import { useWorkbenchStore } from "../app/store";
 import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
-import { BrowserFavicon } from "../features/browser/browserAddress";
+import { BrowserFavicon } from "../features/browser/browserFavicon";
 
 function BrowserTabPresence({
   tabId,

@@ -107,7 +107,7 @@ it("rejects a whole entry over 8 KiB", () => {
 
 it("hands a checked item to the registered sink only", () => {
   expect(handOffBrowserElement(item)).toBe(false);
-  const attach = vi.fn();
+  const attach = vi.fn(() => true);
   const sink = { nextOrdinal: () => 1, attach };
   unregister = registerBrowserElementSink(sink);
   expect(browserElementSink()).toBe(sink);
@@ -117,6 +117,14 @@ it("hands a checked item to the registered sink only", () => {
   expect(attach).toHaveBeenCalledWith(item);
   unregister();
   expect(browserElementSink()).toBeNull();
+});
+
+it("reports a sink that refuses the item", () => {
+  unregister = registerBrowserElementSink({
+    nextOrdinal: () => 1,
+    attach: () => false,
+  });
+  expect(handOffBrowserElement(item)).toBe(false);
 });
 
 it("keeps a newer sink when an older one unregisters", () => {

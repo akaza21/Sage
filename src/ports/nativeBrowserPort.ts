@@ -186,33 +186,6 @@ export interface BrowserAnnotateChange {
   error?: string;
 }
 
-/** What the page area showed when the element was picked; it covers the whole area. */
-export interface BrowserAnnotateFrame {
-  jpegBase64: string;
-  width: number;
-  height: number;
-}
-
-export function browserAnnotateFrame(
-  tabId: string,
-): Promise<BrowserAnnotateFrame> {
-  return invokeNative("browser_control", { tabId, action: "annotateFrame" });
-}
-
-/** Rust numbers, comments and checks the waiting element, then answers with the item. */
-export function browserAnnotateConfirm(
-  tabId: string,
-  ordinal: number,
-  comment: string,
-): Promise<unknown> {
-  return invokeNative("browser_control", {
-    tabId,
-    action: "annotateConfirm",
-    ordinal,
-    comment,
-  });
-}
-
 export function browserControl(
   tabId: string,
   action: BrowserControlAction,
@@ -254,40 +227,6 @@ export function browserCaptureScreenshot(
     tabId,
     expectedRevision,
   });
-}
-
-export interface BrowserDownload {
-  tabId: string;
-  id: number;
-  source: string;
-  fileName: string;
-  state:
-    | "choosingDestination"
-    | "downloading"
-    | "completed"
-    | "interrupted"
-    | "canceled"
-    | "error";
-  receivedBytes: number;
-  totalBytes: number | null;
-}
-
-export function browserDownloads(tabId: string): Promise<BrowserDownload[]> {
-  return invokeNative("browser_downloads", { tabId });
-}
-
-export function browserCancelDownload(
-  tabId: string,
-  id: number,
-): Promise<void> {
-  return invokeNative("browser_cancel_download", { tabId, id });
-}
-
-export function browserShowDownloadInFolder(
-  tabId: string,
-  id: number,
-): Promise<void> {
-  return invokeNative("browser_show_download_in_folder", { tabId, id });
 }
 
 export type BrowserPermissionKind =

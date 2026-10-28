@@ -185,7 +185,7 @@ it("says the composer cannot take elements until Chat registers a sink", async (
 });
 
 it("numbers the comment from the sink, confirms it in Rust, hands the item off, then ends the wait", async () => {
-  const attach = vi.fn();
+  const attach = vi.fn(() => true);
   unregister = registerBrowserElementSink({ nextOrdinal: () => 2, attach });
   invokeNative.mockImplementation(
     async (_: string, args: { action: string }) =>

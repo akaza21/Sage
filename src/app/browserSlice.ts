@@ -10,7 +10,7 @@ import {
   type BrowserNavigation,
 } from "../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../ports/nativeInvoke";
-import { browserFaviconDataUrl } from "../features/browser/browserAddress";
+import { browserFaviconDataUrl } from "../features/browser/browserFavicon";
 import {
   clearBrowserAgentPresence,
   recordBrowserAgentOperation,
