@@ -24,7 +24,8 @@ import {
   suggestedSitesWithTitles,
 } from "./browserAddress";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
-import { BrowserDownloads } from "./BrowserDownloads";
+import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
+import { copyPngToClipboard } from "./browserClipboard";
 import { BrowserDrawers } from "./BrowserSitePermissions";
 import { BrowserClearData } from "./BrowserClearData";
 import {
@@ -82,6 +83,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
@@ -173,7 +175,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  useBrowserPlacement(tab.id, frame, surface, setError);
+  const covered = downloadsOpen || menuOpen;
+  useBrowserPlacement(tab.id, frame, surface, setError, covered);
   async function navigate() {
     try {
       setError(null);
@@ -219,23 +222,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     try {
       const screenshot = await browserCaptureScreenshot(tab.id, revision);
       if (epoch !== screenshotEpoch.current) return;
-      if (
-        !screenshot.pngBase64.startsWith("iVBORw0KGgo") ||
-        screenshot.pngBase64.length > 2_000_000
-      ) {
-        throw new Error("invalid screenshot result");
-      }
-      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        throw new Error("image clipboard unavailable");
-      }
-      const bytes = Uint8Array.from(atob(screenshot.pngBase64), (char) =>
-        char.charCodeAt(0),
-      );
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "image/png": new Blob([bytes], { type: "image/png" }),
-        }),
-      ]);
+      await copyPngToClipboard(screenshot.pngBase64);
       if (epoch !== screenshotEpoch.current) return;
       setScreenshotStatus("Screenshot copied to clipboard");
     } catch (cause) {
@@ -325,6 +312,14 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
           onExternal={() => void pageAction(() => browserOpenExternal(tab.id))}
           clearDataControl={<BrowserClearData menuItem />}
+          onMenuOpenChange={setMenuOpen}
+          downloadsControl={
+            <BrowserDownloadsControl
+              tabId={tab.id}
+              open={downloadsOpen}
+              onOpenChange={setDownloadsOpen}
+            />
+          }
           pageControls={
             <BrowserToolbarPageActions
               projectId={projectId}
@@ -377,11 +372,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         onNavigate={(url) =>
           void pageAction(() => browserNavigate(tab.id, url))
         }
-      />
-      <BrowserDownloads
-        tabId={tab.id}
-        open={downloadsOpen}
-        onClose={() => setDownloadsOpen(false)}
       />
       {newTab ? (
         <Suspense fallback={<p role="status">Loading new tab…</p>}>
