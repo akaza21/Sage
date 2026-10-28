@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 
 vi.mock("../features/chat/ChatSurface", () => ({
@@ -99,6 +100,8 @@ beforeEach(() => {
     repositories: { roots: [], truncated: false, elapsedMs: 0 },
   });
 });
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
@@ -1042,6 +1045,7 @@ describe("compact Workbench project tools", () => {
       JSON.stringify({
         editorToolRailWidth: 320,
         agentChatSplitPercent: 55,
+        windowMode: "editor",
       }),
     );
 

@@ -4,6 +4,7 @@ import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { AgentNewChatButton } from "./AgentNewChatButton";
 import { isSideChatId } from "./sideChatState";
 
 /** Name the focused Chat; side-chat panes each own a column-aligned header cell (s2/f0244). */
@@ -16,6 +17,7 @@ export function AgentChatCenterHeader({
   sessionChromeById,
   splitPercent,
   onArtifactHeaderMount,
+  navigationCollapsed = false,
 }: {
   tabs: readonly WorkbenchTab[];
   /** Displayed panes if any is a side chat, else null. */
@@ -26,6 +28,7 @@ export function AgentChatCenterHeader({
   sessionChromeById: Readonly<Record<string, AgentSessionChrome>>;
   splitPercent: number;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
+  navigationCollapsed?: boolean;
 }) {
   const ids = paneIds ?? (focusedId ? [focusedId] : []);
   const parentId = ids.find((id) => !isSideChatId(id)) ?? null;
@@ -57,6 +60,7 @@ export function AgentChatCenterHeader({
         if (id && isSideChatId(id) && paneIds)
           return (
             <div key={id} className="agent-chat-center__side-tab">
+              {navigationCollapsed && !split ? <AgentNewChatButton /> : null}
               <TranscriptPart
                 part="SideChatHeader"
                 chatId={id}
@@ -73,6 +77,7 @@ export function AgentChatCenterHeader({
             key="task"
             tab={tab}
             chatCount={chatCount}
+            showNewChat={navigationCollapsed}
             snapshot={id === focusedId ? focusedSnapshot : parentSnapshot}
             // Parent status/actions remain its own while the side chat is focused.
             sessionChrome={sessionChromeById[id ?? ""]}

@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  MAX_AGENT_VISIBLE_CHATS,
   type AgentCenterScanTab,
   collectChatTabIds,
   focusedAgentChatId,
   lastArtifactTabId,
-  reconcileVisibleChatIds,
-  selectVisibleChatIds,
 } from "./workbenchWindowMode";
 
 describe("Agent visible chat selection", () => {
@@ -21,23 +18,19 @@ describe("Agent visible chat selection", () => {
     );
     tabs.push({ id: "chat:late", kind: "chat" });
     expect(collectChatTabIds(tabs)).toEqual(["chat:late"]);
-    expect(selectVisibleChatIds(["chat:late"], [], "chat:late")).toEqual([
+    expect(focusedAgentChatId(["chat:late"], "chat:late", null)).toBe(
       "chat:late",
-    ]);
+    );
     const manyChats: AgentCenterScanTab[] = Array.from(
       { length: 64 },
       (_, index) => ({ id: `chat:${index}`, kind: "chat" }),
     );
     const ids = collectChatTabIds(manyChats);
     expect(ids).toHaveLength(64);
-    expect(selectVisibleChatIds(ids, ["chat:0", "chat:1"], "chat:63")).toEqual([
-      "chat:1",
-      "chat:63",
-    ]);
-  });
-
-  it("caps concurrent visible chats at two", () => {
-    expect(MAX_AGENT_VISIBLE_CHATS).toBe(2);
+    expect(focusedAgentChatId(ids, "chat:63", "chat:0")).toBe("chat:63");
+    expect(
+      collectChatTabIds([...manyChats, { id: "overflow", kind: "chat" }]),
+    ).toEqual(ids);
   });
 
   it("collects only in-bound chat tabs", () => {
@@ -51,68 +44,17 @@ describe("Agent visible chat selection", () => {
     expect(collectChatTabIds(tabs)).toEqual(["chat:a", "chat:b", "chat:c"]);
   });
 
-  it("seeds the first two chats when nothing is visible yet", () => {
-    expect(
-      reconcileVisibleChatIds(["chat:a", "chat:b", "chat:c"], [], null),
-    ).toEqual(["chat:a", "chat:b"]);
-  });
-
-  it("keeps a focused chat visible and drops missing ids", () => {
-    expect(
-      reconcileVisibleChatIds(
-        ["chat:b", "chat:c"],
-        ["chat:a", "chat:b"],
-        "chat:c",
-      ),
-    ).toEqual(["chat:b", "chat:c"]);
-  });
-
-  it("adds a third selected chat by replacing the oldest visible pane", () => {
-    expect(
-      selectVisibleChatIds(
-        ["chat:a", "chat:b", "chat:c"],
-        ["chat:a", "chat:b"],
-        "chat:c",
-      ),
-    ).toEqual(["chat:b", "chat:c"]);
-  });
-
-  it("fills a second pane when focusing one chat from an empty visible set", () => {
-    expect(
-      selectVisibleChatIds(["chat:a", "chat:b", "chat:c"], [], "chat:a"),
-    ).toEqual(["chat:a", "chat:b"]);
-  });
-
-  it("does not duplicate a chat that is already visible", () => {
-    expect(
-      selectVisibleChatIds(
-        ["chat:a", "chat:b"],
-        ["chat:a", "chat:b"],
-        "chat:a",
-      ),
-    ).toEqual(["chat:a", "chat:b"]);
-  });
-
-  it("focuses the active chat when it is one of the chats", () => {
-    expect(
-      focusedAgentChatId(
-        ["chat:a", "chat:b"],
-        ["chat:a", "chat:b"],
-        "chat:b",
-        "chat:a",
-      ),
-    ).toBe("chat:b");
-    expect(
-      focusedAgentChatId(
-        ["chat:a", "chat:b"],
-        ["chat:a", "chat:b"],
-        "file:a",
-        "chat:b",
-      ),
-    ).toBe("chat:b");
-    expect(focusedAgentChatId(["chat:a"], ["chat:a"], "file:a", "chat:b")).toBe(
-      "chat:a",
+  it("focuses only within the admitted visible candidates", () => {
+    expect(focusedAgentChatId(["chat:a", "chat:b"], "chat:b", "chat:a")).toBe(
+      "chat:b",
     );
+    expect(focusedAgentChatId(["chat:a", "chat:b"], "file:a", "chat:b")).toBe(
+      "chat:b",
+    );
+    expect(focusedAgentChatId(["chat:b", "side-x"], "file:a", "chat:a")).toBe(
+      "chat:b",
+    );
+    expect(focusedAgentChatId([], "file:a", "chat:a")).toBeNull();
   });
 
   it("prefers the remembered artifact for Editor continuity", () => {

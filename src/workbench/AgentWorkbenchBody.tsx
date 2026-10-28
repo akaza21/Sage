@@ -11,6 +11,7 @@ export function AgentWorkbenchBody({
   layout,
   style,
   drawerOpen,
+  navigationCollapsed = false,
   artifactExpanded,
   onArtifactExpandedChange,
   onAgentLeftRailWidthChange,
@@ -22,6 +23,7 @@ export function AgentWorkbenchBody({
   layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
   drawerOpen: boolean;
+  navigationCollapsed?: boolean;
   artifactExpanded: boolean;
   onArtifactExpandedChange: (expanded: boolean) => void;
   onAgentLeftRailWidthChange: (width: number) => void;
@@ -63,7 +65,8 @@ export function AgentWorkbenchBody({
           aria-hidden={drawerOpen || undefined}
         >
           <AgentChatPanes
-            compact={!layout.navigationResizable}
+            compact={layout.compact}
+            navigationCollapsed={navigationCollapsed}
             onArtifactHeaderMount={setArtifactHeader}
           />
         </div>

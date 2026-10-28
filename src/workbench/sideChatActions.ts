@@ -37,6 +37,7 @@ function rememberSideChat(side: SideChatEntry) {
   useSideChatState.setState({
     sides: [...sides, side],
     split: SIDE_CHAT_SPLIT,
+    pairedId: side.id,
   });
 }
 
@@ -250,6 +251,7 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
     useSideChatState.setState((current) => ({
       sides: current.sides.filter((entry) => entry.id !== id),
       pendingClose: null,
+      pairedId: current.pairedId === id ? null : current.pairedId,
     }));
   });
   if (next) await openSideChat(next.parent, next.quote);

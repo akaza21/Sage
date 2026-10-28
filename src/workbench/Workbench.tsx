@@ -181,8 +181,13 @@ export function Workbench() {
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
+  const [agentNavigationCollapsed, setAgentNavigationCollapsed] =
+    useState(false);
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
-    useAgentDesktopSidebarWidths(agentArtifactExpanded);
+    useAgentDesktopSidebarWidths(
+      agentArtifactExpanded,
+      agentNavigationCollapsed,
+    );
   const resourceModal = windowMode === "agent" && agentLayout.artifactModal;
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
@@ -258,13 +263,17 @@ export function Workbench() {
           };
   return (
     <main
-      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
+      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
       style={workbenchGeometryStyle}
     >
       <TitleBar
         mode={windowMode}
         onModeChange={setWindowMode}
         inert={resourceModal}
+        agentNavigationCollapsed={agentNavigationCollapsed}
+        onToggleAgentNavigation={() =>
+          setAgentNavigationCollapsed((collapsed) => !collapsed)
+        }
       />
       <AgentCenterKeeper windowMode={windowMode} />
       <EditorContinuityKeeper windowMode={windowMode} />
@@ -278,6 +287,7 @@ export function Workbench() {
               layout={agentLayout}
               style={bodyStyle}
               drawerOpen={drawerOpen}
+              navigationCollapsed={agentNavigationCollapsed}
               artifactExpanded={agentArtifactExpanded}
               onArtifactExpandedChange={changeAgentArtifact}
               onAgentLeftRailWidthChange={(width) =>

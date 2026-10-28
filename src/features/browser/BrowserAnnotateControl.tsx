@@ -39,7 +39,12 @@ export function BrowserAnnotateControl({
       disabled={!navigation || Boolean(reason)}
       title={reason ?? undefined}
       onClick={() => set(!active)}
-      onKeyDown={(event) => event.key === "Escape" && active && set(false)}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !active) return;
+        event.preventDefault();
+        event.stopPropagation();
+        set(false);
+      }}
     >
       Annotate
     </button>

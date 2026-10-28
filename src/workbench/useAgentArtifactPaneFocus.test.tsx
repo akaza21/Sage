@@ -3,8 +3,77 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
+import { BrowserNavigationControls } from "../features/browser/BrowserNavigationControls";
 
 afterEach(cleanup);
+
+function BrowserResourceFixture({
+  overlay,
+  onExpandedChange,
+}: {
+  overlay: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}) {
+  const paneRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const addressField = useRef<HTMLInputElement>(null);
+  const onKeyDown = useAgentArtifactPaneFocus({
+    expanded: true,
+    overlay,
+    paneRef,
+    triggerRef,
+    onExpandedChange,
+  });
+  const noop = () => undefined;
+  return (
+    <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
+      <BrowserNavigationControls
+        navigation={null}
+        page={null}
+        address=""
+        addressField={addressField}
+        onAddressChange={noop}
+        onNavigate={noop}
+        onControl={noop}
+        onFind={noop}
+        onPrint={noop}
+        onScreenshot={noop}
+        onZoom={noop}
+        onZoomReset={noop}
+        onDownloads={noop}
+        onHistory={noop}
+        onSettings={noop}
+        onCopy={noop}
+        onExternal={noop}
+        clearDataControl={null}
+      />
+    </aside>
+  );
+}
+
+it.each([false, true])(
+  "closes the real browser More menu before the resource pane (overlay=%s)",
+  (overlay) => {
+    const onExpandedChange = vi.fn();
+    render(
+      <BrowserResourceFixture
+        overlay={overlay}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "More options" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Browser menu" }), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(onExpandedChange).toHaveBeenCalledOnce();
+    expect(onExpandedChange).toHaveBeenCalledWith(false);
+  },
+);
 
 it("focuses resources when an expanded overlay is initially restored", () => {
   render(<ResourceFocusFixture overlay />);
@@ -38,6 +107,13 @@ function ResourceFocusFixture({
       {expanded ? (
         <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
           <button>First resource control</button>
+          <button
+            onKeyDown={(event) => {
+              if (event.key === "Escape") event.preventDefault();
+            }}
+          >
+            Nested layer
+          </button>
           <iframe title="Preview" />
         </aside>
       ) : null}
@@ -88,7 +164,7 @@ it("keeps forward and reverse Tab inside the overlay including Preview", () => {
 });
 
 it.each([false, true])(
-  "only stops Escape propagation for overlay=%s",
+  "consumes Escape after closing the pane for overlay=%s",
   (overlay) => {
     const onParentKeyDown = vi.fn();
     const onExpandedChange = vi.fn();
@@ -101,6 +177,23 @@ it.each([false, true])(
     );
     fireEvent.keyDown(screen.getByRole("complementary"), { key: "Escape" });
     expect(onExpandedChange).toHaveBeenCalledWith(false);
-    expect(onParentKeyDown).toHaveBeenCalledTimes(overlay ? 0 : 1);
+    expect(onParentKeyDown).not.toHaveBeenCalled();
+  },
+);
+
+it.each([false, true])(
+  "leaves the pane open when an inner layer consumes Escape (overlay=%s)",
+  (overlay) => {
+    const onExpandedChange = vi.fn();
+    render(
+      <ResourceFocusFixture
+        overlay={overlay}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "Nested layer" }), {
+      key: "Escape",
+    });
+    expect(onExpandedChange).not.toHaveBeenCalled();
   },
 );

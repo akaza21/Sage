@@ -303,12 +303,12 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       }
     });
   }
-  test(`${harness} split home keeps both project names visible`, async ({
+  test(`${harness} multiple open chats show only the selected home`, async ({
     page,
   }) => {
     await openChrome(page, harness, 1888, "home-split");
     const homes = page.getByRole("region", { name: "New chat", exact: true });
-    await expect(homes).toHaveCount(2);
+    await expect(homes).toHaveCount(1);
     for (const home of await homes.all()) {
       await expect(
         home.getByText("Sage project with a long name", { exact: true }),

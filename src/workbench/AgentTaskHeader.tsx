@@ -39,6 +39,7 @@ import { AgentTaskRenameForm, AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { AgentToolsContext } from "./AgentToolsProvider";
+import { AgentNewChatButton } from "./AgentNewChatButton";
 
 // The Subagents region and its rows load with the lazy SubagentSurface chunk;
 // the header renders the counts synchronously and hands them to it.
@@ -53,11 +54,13 @@ export function AgentTaskHeader({
   chatCount,
   snapshot,
   sessionChrome,
+  showNewChat = false,
 }: {
   tab: WorkbenchTab | null;
   chatCount: number;
   snapshot: ChatLiveSnapshot | null;
   sessionChrome?: AgentSessionChrome | null;
+  showNewChat?: boolean;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
@@ -187,16 +190,20 @@ export function AgentTaskHeader({
 
   return (
     <header className="agent-task-header">
-      <button
-        className="agent-task-header__pencil"
-        type="button"
-        aria-label="Rename chat"
-        title="Rename chat"
-        disabled={projectTransitioning || renaming}
-        onClick={beginRename}
-      >
-        <Pencil size={15} aria-hidden="true" />
-      </button>
+      {showNewChat ? (
+        <AgentNewChatButton />
+      ) : (
+        <button
+          className="agent-task-header__pencil"
+          type="button"
+          aria-label="Rename chat"
+          title="Rename chat"
+          disabled={projectTransitioning || renaming}
+          onClick={beginRename}
+        >
+          <Pencil size={15} aria-hidden="true" />
+        </button>
+      )}
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
         <Folder size={15} aria-hidden="true" />
         {renaming ? (

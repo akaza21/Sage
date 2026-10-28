@@ -11,7 +11,10 @@ type AgentSidebarOverrides = {
   artifact: boolean;
 };
 
-export function useAgentDesktopSidebarWidths(artifactExpanded: boolean) {
+export function useAgentDesktopSidebarWidths(
+  artifactExpanded: boolean,
+  navigationCollapsed = false,
+) {
   const initialLayout = agentWorkbenchLayout({
     viewportWidth: window.innerWidth,
     artifactExpanded: false,
@@ -76,6 +79,7 @@ export function useAgentDesktopSidebarWidths(artifactExpanded: boolean) {
     layout: agentWorkbenchLayout({
       viewportWidth,
       artifactExpanded,
+      navigationCollapsed,
       requestedWidths: widthRequests,
       prioritize: priority,
     }),

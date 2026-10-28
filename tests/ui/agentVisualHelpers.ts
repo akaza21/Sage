@@ -132,37 +132,14 @@ export async function expectFocusedChatIndicator(
   page: Page,
   forcedColors = false,
 ) {
-  const panes = page.locator(".agent-chat-panes--split .agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  const panes = page.locator(".agent-chat-pane");
+  await expect(panes).toHaveCount(1);
   const focused = panes.and(page.locator(".agent-chat-pane--focused"));
   await expect(focused).toHaveCount(1);
   await expect(focused).toBeVisible();
-  expect(
-    await focused.evaluate((node, forced) => {
-      const style = getComputedStyle(node);
-      const probe = document.createElement("span");
-      probe.style.outline = forced
-        ? "2px solid Highlight"
-        : "1px solid var(--color-border-strong)";
-      node.append(probe);
-      const expectedColor = getComputedStyle(probe).outlineColor;
-      probe.remove();
-      return {
-        matchesExpectedColor: style.outlineColor === expectedColor,
-        style: style.outlineStyle,
-        width: style.outlineWidth,
-        offset: style.outlineOffset,
-      };
-    }, forcedColors),
-  ).toEqual({
-    matchesExpectedColor: true,
-    style: "solid",
-    width: forcedColors ? "2px" : "1px",
-    offset: forcedColors ? "-2px" : "-1px",
-  });
-  await expect(
-    panes.and(page.locator(":not(.agent-chat-pane--focused)")),
-  ).toHaveCSS("outline-style", "none");
+  await expect(focused).toHaveCSS("outline-style", "none");
+  if (forcedColors)
+    await expect(focused).toHaveClass(/agent-chat-pane--focused/);
 }
 
 export async function expectAgentImageContained(page: Page) {
@@ -362,7 +339,7 @@ export async function runAgentCanonicalTest(
     await expectLiveThinkingFixtureLine(page);
   }
   if (name === "agent-image") {
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expectAgentImageContained(page);
   }
   if (name === "agent-child-activity") {

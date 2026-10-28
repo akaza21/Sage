@@ -316,9 +316,7 @@ for (const width of [480, 720, 1888]) {
         await openScenario(page, scenario, "agent");
         await installDiagrams(page, source);
         const panes = page.locator(".agent-chat-pane");
-        await expect(panes).toHaveCount(
-          scenario === "agent-dual" && width === 1888 ? 2 : 1,
-        );
+        await expect(panes).toHaveCount(1);
         const figures = page.getByRole("figure", { name: /^Diagram:/u });
         await expect(figures).toHaveCount(await panes.count());
         const names = await figures.evaluateAll((elements) =>
