@@ -143,12 +143,12 @@ fn the_marker_shows_before_the_act_and_is_cleared_after_it() {
     assert_eq!(
         methods,
         [
-            "DOM.focus",
             MARK[0],
             MARK[1],
             MARK[2],
             MARK[3],
             MARK[4],
+            "DOM.focus",
             "Input.dispatchKeyEvent",
             "Input.dispatchKeyEvent",
             "Overlay.hideHighlight",

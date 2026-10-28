@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -10,6 +10,9 @@ use crate::{browser::BrowserState, state::AppState};
 use tauri::State;
 
 const MAX_ATTACHMENTS: usize = 8;
+/// Authorities a settled navigation took out of a lease that Stop and Take
+/// over still end, newest last. A wait outlives at most a few navigations.
+const MAX_RETIRED: usize = 4;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
@@ -26,6 +29,10 @@ pub(crate) struct AttachmentLease {
     sweeping: Arc<AtomicBool>,
     user_control: Arc<AtomicBool>,
     authority: Arc<Mutex<Option<(String, BrowserAuthority)>>>,
+    /// Authorities a settled navigation took out of the slot. Their permits
+    /// count as invalidated by navigation, not stopped, so an in-flight wait
+    /// keeps probing until Stop or Take over stops them too.
+    retired: Arc<Mutex<VecDeque<BrowserAuthority>>>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -68,6 +75,7 @@ impl AttachmentLease {
     }
 
     fn stop(&self) {
+        self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
             return;
@@ -78,8 +86,34 @@ impl AttachmentLease {
         }
     }
 
+    /// Stops the authorities navigations took out of the slot, which ends
+    /// any dispatch still running under them.
+    fn stop_retired(&self) {
+        if let Ok(mut retired) = self.retired.lock() {
+            retired.drain(..).for_each(|authority| authority.stop());
+        }
+    }
+
+    /// Takes the slot's authority out after a settled navigation, keeping it
+    /// where Stop and Take over still reach it.
+    fn retire_slot_authority(&self) {
+        let Ok(mut slot) = self.authority.lock() else {
+            return;
+        };
+        if let Some((_, authority)) = slot.take() {
+            authority.navigation_started();
+            if let Ok(mut retired) = self.retired.lock() {
+                if retired.len() == MAX_RETIRED {
+                    retired.pop_front();
+                }
+                retired.push_back(authority);
+            }
+        }
+    }
+
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
+        self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
         {
@@ -156,6 +190,7 @@ impl BrowserAttachments {
                 sweeping: Arc::new(AtomicBool::new(false)),
                 user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
+                retired: Arc::default(),
             },
         );
         drop(entries);
@@ -242,11 +277,7 @@ impl BrowserAttachments {
                 .values_mut()
                 .filter(|lease| lease.tab_label == tab_label)
             {
-                if let Ok(mut slot) = lease.authority.lock()
-                    && let Some((_, authority)) = slot.take()
-                {
-                    authority.navigation_started();
-                }
+                lease.retire_slot_authority();
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }
@@ -256,11 +287,7 @@ impl BrowserAttachments {
                 .values_mut()
                 .filter(|lease| lease.tab_label == tab_label)
             {
-                if let Ok(mut slot) = lease.authority.lock()
-                    && let Some((_, authority)) = slot.take()
-                {
-                    authority.navigation_started();
-                }
+                lease.retire_slot_authority();
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }

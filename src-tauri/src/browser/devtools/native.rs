@@ -217,6 +217,14 @@ impl CdpTransport for NativeTransport {
             .is_some_and(|permit| !permit.is_live() && !permit.was_invalidated_by_navigation())
     }
 
+    fn unless_annotating(&self, steps: &mut dyn FnMut()) {
+        self.webview
+            .app_handle()
+            .state::<BrowserState>()
+            .annotate
+            .disable_unless_annotating(self.webview.label(), steps);
+    }
+
     fn annotating(&self) -> bool {
         self.webview
             .app_handle()

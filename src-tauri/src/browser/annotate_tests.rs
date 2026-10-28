@@ -127,6 +127,32 @@ fn annotate_starts_only_on_a_known_tab_showing_a_committed_page() {
 }
 
 #[test]
+fn an_agent_marker_clear_never_disables_an_overlay_that_annotate_is_starting_or_using() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    let disabled = RefCell::new(Vec::new());
+    let disable = |label: &str| {
+        annotate.disable_unless_annotating(label, || disabled.borrow_mut().push(label.to_owned()))
+    };
+    // A clear that lands while Annotate's start holds the mode lock, after
+    // its enables ran but before it records the tab, skips the disables.
+    let raced = annotate.run(
+        |_| {},
+        |mode| {
+            let (changes, started) = mode.start(&overlay, "browser-1");
+            (changes, started.map(|()| disable("browser-1")))
+        },
+    );
+    assert_eq!(raced, Ok(false));
+    assert!(
+        !disable("browser-1"),
+        "the annotating tab keeps its overlay"
+    );
+    assert!(disable("browser-2"));
+    assert_eq!(*disabled.borrow(), ["browser-2"]);
+}
+
+#[test]
 fn start_turns_the_overlay_on_and_starting_again_restarts_and_reannounces_it() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();

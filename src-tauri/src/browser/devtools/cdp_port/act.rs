@@ -21,21 +21,23 @@ pub(super) fn perform<T: CdpTransport>(
     }
     match action {
         BrowserAction::Key { key, .. } => {
-            port.call(
-                "DOM.focus",
-                &json!({"backendNodeId": backend_id}).to_string(),
-                4096,
-                Duration::from_secs(5),
-            )?;
-            if port.stamp()? != stamp {
-                return Err(BrowserFailure::StaleHandle);
-            }
             let text = if key.chars().count() == 1 {
                 key.as_str()
             } else {
                 ""
             };
+            // Focus after the marker's lead, right before the keys, so the
+            // page has no extra time to move focus elsewhere.
             marked(port, stamp, backend_id, |port| {
+                port.call(
+                    "DOM.focus",
+                    &json!({"backendNodeId": backend_id}).to_string(),
+                    4096,
+                    Duration::from_secs(5),
+                )?;
+                if port.stamp()? != stamp {
+                    return Err(BrowserFailure::StaleHandle);
+                }
                 for kind in ["keyDown", "keyUp"] {
                     port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
                 }

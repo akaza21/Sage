@@ -75,9 +75,16 @@ impl BrowserCapabilityDispatch for OpenTabPort {
             if !service.browser_owner_precheck_matches(&owner) {
                 return Err(BrowserFailure::Denied);
             }
+            let user_controls =
+                || service.browser_chat_under_user_control(&owner.project_id, &owner.chat_id);
             permit.with_live_lock(|| {
                 if !service.browser_owner_witness_matches(&owner) {
                     return Err(BrowserFailure::Denied);
+                }
+                // The user may have taken over a tab of this chat since the
+                // call was admitted.
+                if user_controls() {
+                    return Err(BrowserFailure::UserControl);
                 }
                 permit.mark_issued();
                 Ok(())
@@ -132,7 +139,7 @@ impl BrowserCapabilityDispatch for OpenTabPort {
             let service = &app.state::<AppState>().acp;
             open_tab_commit::complete_opened_tab(
                 || {
-                    permit.is_live()
+                    let owner_current = permit.is_live()
                         && service
                             .current_browser_owner(
                                 &owner.project_id,
@@ -143,7 +150,14 @@ impl BrowserCapabilityDispatch for OpenTabPort {
                                 current.turn_id == owner.turn_id
                                     && current.runtime_epoch == owner.runtime_epoch
                                     && current.binding_digest == owner.binding_digest
-                            })
+                            });
+                    if !owner_current {
+                        Err(BrowserFailure::Denied)
+                    } else if user_controls() {
+                        Err(BrowserFailure::UserControl)
+                    } else {
+                        Ok(())
+                    }
                 },
                 || {
                     if service.agent_browser_count(

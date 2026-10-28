@@ -25,8 +25,11 @@ impl AttachmentLease {
             return;
         };
         self.user_control.store(on, Ordering::Release);
-        if on && let Some((_, authority)) = slot.take() {
-            authority.stop();
+        if on {
+            if let Some((_, authority)) = slot.take() {
+                authority.stop();
+            }
+            self.stop_retired();
         }
     }
 }
@@ -365,6 +368,62 @@ mod tests {
         );
         assert_eq!(gate.perform(&click(7)), Err(BrowserFailure::Denied));
         assert!(!acted.get());
+    }
+
+    /// Keeps the dispatch permit, as a wait in flight does, so the test can
+    /// ask whether it is stopped after the gate returns.
+    struct Keeps(Rc<std::cell::RefCell<Option<BrowserDispatchPermit>>>);
+
+    impl BrowserCapabilityDispatch for Keeps {
+        fn dispatch(
+            &mut self,
+            _: &BrowserRequest,
+            permit: BrowserDispatchPermit,
+        ) -> Result<PendingBrowserResult, BrowserFailure> {
+            *self.0.borrow_mut() = Some(permit);
+            Ok(Box::new(|| Ok(BrowserResult::Act { applied: true })))
+        }
+    }
+
+    fn stopped(permit: &BrowserDispatchPermit) -> bool {
+        !permit.is_live() && !permit.was_invalidated_by_navigation()
+    }
+
+    #[test]
+    fn take_over_and_stop_end_a_dispatch_a_navigation_already_took_out() {
+        for take_over in [true, false] {
+            let registry = BrowserAttachments::default();
+            let (project, chat) = ids();
+            registry
+                .attach(
+                    project.clone(),
+                    chat.clone(),
+                    "browser-7",
+                    "https://example.com/",
+                    1,
+                )
+                .unwrap();
+            let lease = registry.resolve(&project, &chat).unwrap();
+            let kept = Rc::new(std::cell::RefCell::new(None));
+            let mut gate = BrowserPermissionGate::new(
+                Keeps(kept.clone()),
+                |_: &BrowserPermissionPrompt| BrowserPermissionChoice::AllowOnce,
+                lease.authority_for(&scope(7)).unwrap(),
+            );
+            let _ = gate.perform(&click(7));
+            let permit = kept.borrow_mut().take().unwrap();
+            registry.navigation_settled("browser-7", "https://example.com/next", 2);
+            assert!(
+                !stopped(&permit),
+                "a navigation alone lets a wait keep probing"
+            );
+            if take_over {
+                assert!(registry.take_over("browser-7"));
+            } else {
+                registry.revoke_tab("browser-7");
+            }
+            assert!(stopped(&permit), "take over={take_over}");
+        }
     }
 
     #[test]
