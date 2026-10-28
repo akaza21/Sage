@@ -16,7 +16,7 @@ use super::{
     capability::DevtoolsCapability,
     cdp,
     cdp_port::{
-        CdpPort,
+        CdpPort, highlight,
         outcome::{dispatch_disconnected_failure, dispatch_timeout_failure},
         page_context::{self, CapturedPageContext},
         select::PickedNode,
@@ -71,15 +71,15 @@ pub(crate) fn capture_page_context(
     })
 }
 
+/// Clears the Agent's act marker, trying every step even after a failure.
 pub(crate) fn clear_agent_highlight(webview: &Webview) -> Result<(), BrowserFailure> {
-    cdp::call(
-        webview,
-        "Overlay.hideHighlight",
-        "{}",
-        4096,
-        Duration::from_secs(1),
-    )?;
-    Ok(())
+    let mut outcome = Ok(());
+    for (method, params) in highlight::CLEAR {
+        if let Err(failure) = cdp::call(webview, method, params, 4096, Duration::from_secs(1)) {
+            outcome = Err(failure);
+        }
+    }
+    outcome
 }
 
 /// Turns the user's Annotate hover highlight on or off, outside any Agent

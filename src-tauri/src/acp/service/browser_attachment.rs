@@ -292,6 +292,18 @@ impl super::AcpService {
         self.clear_browser_highlight(label);
     }
 
+    pub(crate) fn take_over_browser_tab(&self, label: &str) -> bool {
+        let taken = self.browser_attachments.take_over(label);
+        if taken {
+            self.clear_browser_highlight(label);
+        }
+        taken
+    }
+
+    pub(crate) fn hand_back_browser_tab(&self, label: &str) -> bool {
+        self.browser_attachments.hand_back(label)
+    }
+
     pub(crate) fn browser_navigation_started(&self, label: &str) {
         self.browser_attachments.navigation_started(label);
     }

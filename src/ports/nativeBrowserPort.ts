@@ -161,7 +161,9 @@ export type BrowserControlAction =
   | "stop"
   | "annotateOn"
   | "annotateOff"
-  | "annotateCancel";
+  | "annotateCancel"
+  | "agentTakeOver"
+  | "agentHandBack";
 
 /** Where the picked element sits in the viewport it was picked in (page CSS px). */
 export interface BrowserAnnotateSelection {

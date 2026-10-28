@@ -42,6 +42,7 @@ impl BrowserAttachments {
                 active: Arc::new(AtomicBool::new(true)),
                 retiring: Arc::new(AtomicBool::new(false)),
                 sweeping: Arc::new(AtomicBool::new(false)),
+                user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
             },
         );

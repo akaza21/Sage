@@ -93,8 +93,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const agentPresence = useBrowserAgentPresence(projectId, tab.id);
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
-  const agentChatTitle =
-    chats.find((chat) => chat.id === agentPresence?.chatId)?.title ?? "Chat";
   const page =
     navigation && !navigation.loading
       ? browserPageIdentity(navigation.url)
@@ -327,7 +325,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
               ready={page !== null}
               chats={chats}
               operation={agentPresence}
-              chatTitle={agentChatTitle}
               attachmentEpoch={attachmentEpoch}
               onStopped={() => setAttachmentEpoch((current) => current + 1)}
               onError={setError}

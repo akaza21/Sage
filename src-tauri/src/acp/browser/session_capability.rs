@@ -277,7 +277,11 @@ impl BrowserCapability for SessionBrowserCapability {
         }
         let authority = lease
             .authority_for(&request.scope)
-            .ok_or(BrowserFailure::Denied)?;
+            .ok_or(if lease.user_controls() {
+                BrowserFailure::UserControl
+            } else {
+                BrowserFailure::Denied
+            })?;
         let owner = app_state
             .acp
             .current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)

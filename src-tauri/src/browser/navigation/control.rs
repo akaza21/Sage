@@ -1,10 +1,11 @@
-//! Back, forward, reload and stop for a browser tab, and the Annotate
-//! actions, which answer with a value.
+//! Back, forward, reload and stop for a browser tab, the user's take over
+//! and hand back of Agent control, and the Annotate actions, which answer
+//! with a value.
 
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
-use tauri::{AppHandle, State, Webview};
+use tauri::{AppHandle, Manager, State, Webview};
 #[cfg(windows)]
 use windows_core::BOOL;
 
@@ -19,10 +20,38 @@ pub(crate) async fn browser_control(
     comment: Option<String>,
     ordinal: Option<u8>,
 ) -> Result<Option<serde_json::Value>, String> {
+    if let Some(take) = match action.as_str() {
+        "agentTakeOver" => Some(true),
+        "agentHandBack" => Some(false),
+        _ => None,
+    } {
+        return agent_control(&app, &state, &tab_id, take).map(|()| None);
+    }
     if let Some(action) = super::super::annotate::action(&action) {
         return super::super::annotate::set(app, tab_id, action, comment, ordinal).await;
     }
     history_control(state, tab_id, action).await.map(|()| None)
+}
+
+/// Rust owns whether the user controls a tab; the chrome only mirrors the
+/// answer. Handing back a tab whose attachment ended is not an error.
+fn agent_control(
+    app: &AppHandle,
+    state: &BrowserState,
+    tab_id: &str,
+    take: bool,
+) -> Result<(), String> {
+    if state.webview_for_tab(tab_id).is_none() {
+        return Err("browser tab unavailable".into());
+    }
+    let acp = &app.state::<crate::state::AppState>().acp;
+    if take && !acp.take_over_browser_tab(tab_id) {
+        return Err("No Agent is using this tab".into());
+    }
+    if !take {
+        acp.hand_back_browser_tab(tab_id);
+    }
+    Ok(())
 }
 
 async fn history_control(

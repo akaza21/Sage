@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Link2,
-  MessageCircleQuestion,
-  Square,
-  Unlink2,
-} from "../../ui/leanIcons";
+import { Link2, MessageCircleQuestion, Unlink2 } from "../../ui/leanIcons";
 import {
   pinnedAgentChatOwner,
   usePinnedAgentChatOwner,
@@ -12,9 +7,15 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import { parseBrowserPageContext } from "../../domain/attachedContext";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
-import { clearBrowserAgentPresence } from "../../app/browserAgentActivityStore";
+import {
+  clearBrowserAgentPresence,
+  setBrowserUserControl,
+  useBrowserUserControl,
+} from "../../app/browserAgentActivityStore";
+import { BrowserAgentPresence } from "./BrowserAgentPresence";
 import {
   attachBrowserTab,
+  browserControl,
   browserAttachmentStatus,
   browserPageContext,
   browserStatus,
@@ -33,7 +34,6 @@ export function BrowserToolbarPageActions({
   ready,
   chats,
   operation,
-  chatTitle,
   attachmentEpoch,
   onStopped,
   onError,
@@ -43,24 +43,22 @@ export function BrowserToolbarPageActions({
   ready: boolean;
   chats: readonly ChatChoice[];
   operation: BrowserOperationProjection | null;
-  chatTitle: string;
   attachmentEpoch: number;
   onStopped: () => void;
   onError: (message: string) => void;
 }) {
-  const [stopping, setStopping] = useState(false);
-  function stopAgent() {
-    if (stopping) return;
-    setStopping(true);
-    void stopBrowserTab(tabId)
-      .then(() => {
-        clearBrowserAgentPresence(tabId);
-        onStopped();
-      })
+  const [busy, setBusy] = useState(false);
+  const userControlChat = useBrowserUserControl(tabId);
+  const agentChatId = userControlChat ?? operation?.chatId ?? null;
+  function run(command: () => Promise<void>, after: () => void) {
+    if (busy) return;
+    setBusy(true);
+    void command()
+      .then(after)
       .catch((cause) => onError(String(cause).slice(0, 512)))
-      .finally(() => setStopping(false));
+      .finally(() => setBusy(false));
   }
-  if (!ready && !operation) return null;
+  if (!ready && !operation && !userControlChat) return null;
   return (
     <div className="browser-surface__page-actions">
       <BrowserAttachmentControls
@@ -70,12 +68,35 @@ export function BrowserToolbarPageActions({
         ready={ready}
         chats={chats}
       />
-      {operation && projectId ? (
+      {agentChatId && projectId ? (
         <BrowserAgentPresence
           operation={operation}
-          chatTitle={chatTitle}
-          busy={stopping}
-          onDetach={stopAgent}
+          userControl={userControlChat !== null}
+          chatTitle={
+            chats.find((chat) => chat.id === agentChatId)?.title ?? "Chat"
+          }
+          busy={busy}
+          onStop={() =>
+            run(
+              () => stopBrowserTab(tabId),
+              () => {
+                clearBrowserAgentPresence(tabId);
+                onStopped();
+              },
+            )
+          }
+          onTakeOver={() =>
+            run(
+              () => browserControl(tabId, "agentTakeOver"),
+              () => setBrowserUserControl(tabId, agentChatId),
+            )
+          }
+          onHandBack={() =>
+            run(
+              () => browserControl(tabId, "agentHandBack"),
+              () => setBrowserUserControl(tabId, null),
+            )
+          }
         />
       ) : null}
     </div>
@@ -126,6 +147,7 @@ export function BrowserAttachmentControls({
     setError(null);
     try {
       await attachBrowserTab(projectId, chosen, tabId);
+      setBrowserUserControl(tabId, null);
       attachmentRevision.current += 1;
       setAttachedChat(chosen);
     } catch {
@@ -253,38 +275,5 @@ function BrowserAskPageButton({
     >
       <MessageCircleQuestion size={16} aria-hidden="true" />
     </button>
-  );
-}
-
-export function BrowserAgentPresence({
-  operation,
-  chatTitle,
-  onDetach,
-  busy = false,
-}: {
-  operation: BrowserOperationProjection;
-  chatTitle: string;
-  onDetach: () => void;
-  busy?: boolean;
-}) {
-  return (
-    <div className="browser-surface__agent-presence">
-      <span className="browser-surface__agent-presence-label" role="status">
-        {operation.phase === "started"
-          ? "Agent has a browser action pending"
-          : "Agent used this tab"}
-        {` · ${chatTitle}`}
-      </span>
-      <button
-        type="button"
-        className="browser-surface__agent-stop"
-        aria-label="Stop / Take over"
-        title="Revoke this chat's browser authority and take over the tab."
-        disabled={busy}
-        onClick={onDetach}
-      >
-        <Square size={14} aria-hidden="true" />
-      </button>
-    </div>
   );
 }

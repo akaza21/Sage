@@ -9,14 +9,18 @@ const MAX_TABS = 8;
 interface BrowserAgentActivityState {
   byTab: Record<string, BrowserOperationProjection>;
   dismissedByTab: Record<string, string>;
+  /** Tabs the user took over, by the chat whose Agent waits. Rust gates. */
+  userControlByTab: Record<string, string>;
   record: (operation: BrowserOperationProjection) => void;
   clear: (tabId: string) => void;
+  setUserControl: (tabId: string, chatId: string | null) => void;
 }
 
 const useBrowserAgentActivityStore = create<BrowserAgentActivityState>(
   (set) => ({
     byTab: {},
     dismissedByTab: {},
+    userControlByTab: {},
     record: (operation) =>
       set((state) => {
         if (state.dismissedByTab[operation.tabId] === operation.operationId)
@@ -35,7 +39,11 @@ const useBrowserAgentActivityStore = create<BrowserAgentActivityState>(
       }),
     clear: (tabId) =>
       set((state) => {
-        if (!(tabId in state.byTab)) return state;
+        const userControlByTab = withoutTab(state.userControlByTab, tabId);
+        if (!(tabId in state.byTab))
+          return userControlByTab === state.userControlByTab
+            ? state
+            : { userControlByTab };
         const byTab = { ...state.byTab };
         const dismissedByTab = Object.fromEntries(
           [
@@ -46,10 +54,33 @@ const useBrowserAgentActivityStore = create<BrowserAgentActivityState>(
           ].slice(-MAX_TABS),
         );
         delete byTab[tabId];
-        return { byTab, dismissedByTab };
+        return { byTab, dismissedByTab, userControlByTab };
       }),
+    setUserControl: (tabId, chatId) =>
+      set((state) => ({
+        userControlByTab: chatId
+          ? Object.fromEntries(
+              [
+                ...Object.entries(state.userControlByTab).filter(
+                  ([key]) => key !== tabId,
+                ),
+                [tabId, chatId],
+              ].slice(-MAX_TABS),
+            )
+          : withoutTab(state.userControlByTab, tabId),
+      })),
   }),
 );
+
+function withoutTab(
+  entries: Record<string, string>,
+  tabId: string,
+): Record<string, string> {
+  if (!(tabId in entries)) return entries;
+  const next = { ...entries };
+  delete next[tabId];
+  return next;
+}
 
 export function recordBrowserAgentOperation(
   operation: BrowserOperationProjection,
@@ -59,6 +90,20 @@ export function recordBrowserAgentOperation(
 
 export function clearBrowserAgentPresence(tabId: string): void {
   useBrowserAgentActivityStore.getState().clear(tabId);
+}
+
+/** Mirrors Rust after a successful take over (chatId) or hand back (null). */
+export function setBrowserUserControl(
+  tabId: string,
+  chatId: string | null,
+): void {
+  useBrowserAgentActivityStore.getState().setUserControl(tabId, chatId);
+}
+
+export function useBrowserUserControl(tabId: string): string | null {
+  return useBrowserAgentActivityStore(
+    (state) => state.userControlByTab[tabId] ?? null,
+  );
 }
 
 export function useBrowserAgentPresence(

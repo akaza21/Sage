@@ -12,6 +12,7 @@ use tauri::State;
 const MAX_ATTACHMENTS: usize = 8;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
+mod control;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -22,6 +23,7 @@ pub(crate) struct AttachmentLease {
     active: Arc<AtomicBool>,
     retiring: Arc<AtomicBool>,
     sweeping: Arc<AtomicBool>,
+    user_control: Arc<AtomicBool>,
     authority: Arc<Mutex<Option<(String, BrowserAuthority)>>>,
 }
 
@@ -49,7 +51,7 @@ impl AttachmentLease {
             return None;
         }
         let mut slot = self.authority.lock().ok()?;
-        if !self.is_live() {
+        if !self.is_live() || self.user_controls() {
             return None;
         }
         if let Some((session, authority)) = slot.as_ref() {
@@ -151,6 +153,7 @@ impl BrowserAttachments {
                 active: Arc::new(AtomicBool::new(true)),
                 retiring: Arc::new(AtomicBool::new(false)),
                 sweeping: Arc::new(AtomicBool::new(false)),
+                user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
             },
         );

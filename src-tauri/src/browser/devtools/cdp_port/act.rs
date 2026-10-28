@@ -1,3 +1,6 @@
+//! Agent acts. The target is marked before the action runs, so the user sees
+//! what the Agent is about to click, type into or scroll.
+
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
@@ -26,6 +29,7 @@ pub(super) fn perform<T: CdpTransport>(
             if port.stamp()? != stamp {
                 return Err(BrowserFailure::StaleHandle);
             }
+            highlight::mark(port, stamp, backend_id);
             let text = if key.chars().count() == 1 {
                 key.as_str()
             } else {
@@ -34,7 +38,6 @@ pub(super) fn perform<T: CdpTransport>(
             for kind in ["keyDown", "keyUp"] {
                 port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
             }
-            highlight::mark(port, stamp, backend_id);
             Ok(true)
         }
         _ => {
@@ -67,6 +70,7 @@ pub(super) fn perform<T: CdpTransport>(
                 );
                 return Err(BrowserFailure::StaleHandle);
             }
+            highlight::mark(port, stamp, backend_id);
             let (function, arguments) = match action {
                 BrowserAction::Click { .. } => {
                     ("function() { this.click(); return true; }", vec![])
@@ -101,11 +105,7 @@ pub(super) fn perform<T: CdpTransport>(
             if response.get("exceptionDetails").is_some() {
                 return Err(BrowserFailure::Unavailable);
             }
-            let applied = response["result"]["value"].as_bool().unwrap_or(false);
-            if applied {
-                highlight::mark(port, stamp, backend_id);
-            }
-            Ok(applied)
+            Ok(response["result"]["value"].as_bool().unwrap_or(false))
         }
     }
 }
