@@ -12,7 +12,8 @@ import BrowserAnnotateComment from "./BrowserAnnotatePopover";
 /**
  * Rust owns the mode, the picked element, the disabled reason, and Escape in
  * the page. While an element waits for a comment the comment box covers the
- * page frame.
+ * page frame. Escape everywhere drops a waiting element first, and only then
+ * turns Annotate off.
  */
 export function BrowserAnnotateControl({
   navigation,
@@ -74,7 +75,11 @@ export function BrowserAnnotateControl({
         disabled={!navigation || Boolean(reason)}
         title={reason ?? undefined}
         onClick={() => set(!active)}
-        onKeyDown={(event) => event.key === "Escape" && active && set(false)}
+        onKeyDown={(event) =>
+          event.key === "Escape" &&
+          active &&
+          (selection ? onControl("annotateCancel") : set(false))
+        }
       >
         Annotate
       </button>

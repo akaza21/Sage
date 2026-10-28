@@ -16,8 +16,9 @@ const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
 /**
  * The comment box over the frozen page (Codex ref 60). Rust hid the live page
- * and kept this frame of it, so the badge and the box sit exactly over the
- * picked element.
+ * and kept this picture of the whole page area, so the badge and the box sit
+ * exactly over the picked element. The stage keeps the picture's proportions
+ * while the window resizes, and everything is placed in its shares.
  */
 export function BrowserAnnotatePopover({
   selection,
@@ -55,73 +56,78 @@ export function BrowserAnnotatePopover({
       ? { bottom: `calc(${pct(viewport.height - top, viewport.height)} + 8px)` }
       : { top: `calc(${pct(bottom, viewport.height)} + 8px)` }),
   };
-  const label = `Comment on ${selection.role}${selection.name ? ` “${selection.name}”` : ""}`;
   return (
     <div
       className="browser-annotate"
       role="dialog"
-      aria-label={label}
+      aria-label={`Comment on ${selection.label}`}
+      tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
         onCancel();
       }}
     >
-      {frame ? (
-        <img
-          className="browser-annotate__frame"
-          src={`data:image/jpeg;base64,${frame.jpegBase64}`}
-          alt=""
-          style={{
-            width: pct(viewport.clientWidth, viewport.width),
-            height: pct(viewport.clientHeight, viewport.height),
-          }}
-          onClick={onCancel}
-        />
-      ) : null}
-      <div className="browser-annotate__outline" style={outline} />
-      <span
-        className="browser-annotate__badge"
-        style={{ left: outline.left, top: outline.top }}
+      <div
+        className="browser-annotate__stage"
+        style={
+          {
+            "--browser-annotate-ratio": viewport.width / viewport.height,
+          } as CSSProperties
+        }
       >
-        {ordinal}
-      </span>
-      <form
-        className="browser-annotate__pill"
-        style={pill}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!reason) onConfirm(comment);
-        }}
-      >
-        <button
-          type="button"
-          className="browser-annotate__adjust"
-          aria-label="Adjust"
-          title="Adjusting styles is not available yet"
-          disabled
-        />
-        <input
-          className="browser-annotate__comment"
-          aria-label="Comment"
-          placeholder="Add a comment…"
-          value={comment}
-          autoFocus
-          onChange={(event) => setComment(event.target.value)}
-        />
-        <button
-          type="submit"
-          className="browser-annotate__confirm"
-          aria-label="Add comment"
-          title={reason ?? undefined}
-          disabled={Boolean(reason)}
-        />
-        {error ? (
-          <p className="browser-annotate__error" role="alert">
-            {error}
-          </p>
+        {frame ? (
+          <img
+            className="browser-annotate__frame"
+            src={`data:image/jpeg;base64,${frame.jpegBase64}`}
+            alt=""
+            onClick={onCancel}
+          />
         ) : null}
-      </form>
+        <div className="browser-annotate__outline" style={outline} />
+        <span
+          className="browser-annotate__badge"
+          style={{ left: outline.left, top: outline.top }}
+        >
+          {ordinal ?? 1}
+        </span>
+        <form
+          className="browser-annotate__pill"
+          style={pill}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!reason) onConfirm(comment);
+          }}
+        >
+          <button
+            type="button"
+            className="browser-annotate__adjust"
+            aria-label="Adjust"
+            title="Adjusting styles is not available yet"
+            disabled
+          />
+          <input
+            className="browser-annotate__comment"
+            aria-label="Comment"
+            placeholder="Add a comment…"
+            value={comment}
+            autoFocus
+            onChange={(event) => setComment(event.target.value)}
+          />
+          <button
+            type="submit"
+            className="browser-annotate__confirm"
+            aria-label="Add comment"
+            title={reason ?? undefined}
+            disabled={Boolean(reason)}
+          />
+          {error ? (
+            <p className="browser-annotate__error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </form>
+      </div>
     </div>
   );
 }

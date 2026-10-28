@@ -4,13 +4,15 @@
 //! nothing Sage draws can sit on the live page.
 
 use serde::Serialize;
+use tauri::{AppHandle, Manager};
 
 use super::{
-    AnnotateChange, AnnotateMode, InspectOverlay, change,
+    AnnotateChange, AnnotateMode, BrowserState, Exit, InspectOverlay, NativeOverlay, change,
     element::{self, BrowserElement, ElementBox, Picked, Viewport},
+    emit,
 };
 
-/// A JPEG of the viewport as it was when the element was picked.
+/// What the webview showed when the element was picked, as a JPEG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Frame {
@@ -31,8 +33,9 @@ pub(crate) struct Selection {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SelectionView {
-    role: String,
-    name: String,
+    /// What the comment box calls the element: its accessible name, or a
+    /// plain word for its role.
+    label: String,
     #[serde(rename = "box")]
     bounds: ElementBox,
     viewport: Viewport,
@@ -41,15 +44,72 @@ pub(crate) struct SelectionView {
 impl Selection {
     fn view(&self) -> SelectionView {
         SelectionView {
-            role: self.picked.role.clone(),
-            name: self.picked.name.clone(),
+            label: label(&self.picked.role, &self.picked.name),
             bounds: self.picked.outline,
             viewport: self.viewport,
         }
     }
 }
 
+/// The element's accessible name, or a plain word for its role; never one of
+/// Chromium's internal role names such as `LabelText`.
+pub(crate) fn label(role: &str, name: &str) -> String {
+    let name = name.trim();
+    if !name.is_empty() {
+        return name.to_owned();
+    }
+    match role {
+        "link" | "button" | "heading" | "paragraph" | "checkbox" | "switch" | "slider" | "list"
+        | "table" | "row" | "cell" | "form" | "navigation" | "dialog" | "tab" | "menu"
+        | "article" | "banner" | "figure" | "region" | "search" | "separator" | "progressbar"
+        | "tooltip" | "main" | "group" | "image" => role,
+        "img" | "graphics-symbol" | "Canvas" | "Svg" | "video" | "Video" => "image",
+        "LabelText" => "label",
+        "StaticText" | "InlineTextBox" | "text" => "text",
+        "textbox" | "searchbox" | "spinbutton" => "text field",
+        "combobox" | "listbox" => "drop-down",
+        "radio" => "radio button",
+        "listitem" | "ListMarker" => "list item",
+        "menuitem" | "menuitemcheckbox" | "menuitemradio" => "menu item",
+        "gridcell" | "columnheader" | "rowheader" => "cell",
+        "RootWebArea" | "WebArea" | "document" => "page",
+        _ => "element",
+    }
+    .to_owned()
+}
+
+/// Escape inside the page: with an element waiting it drops the element and
+/// Annotate stays on; otherwise Annotate turns off. The chrome follows the
+/// same rule. Runs on its own thread, as the page's key handler is on the
+/// main thread that the overlay needs.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn escape(app: &AppHandle, label: &str) {
+    let app = app.clone();
+    let label = label.to_owned();
+    std::thread::spawn(move || {
+        let state = app.state::<BrowserState>();
+        let overlay = NativeOverlay(&state, &app);
+        let _ = state.annotate.run(
+            |change| emit(&app, change),
+            |mode| mode.escape(&overlay, &label),
+        );
+    });
+}
+
 impl AnnotateMode {
+    /// Escape's rule: cancel a waiting element, else leave Annotate.
+    pub(super) fn escape(
+        &mut self,
+        overlay: &impl InspectOverlay,
+        label: &str,
+    ) -> (Vec<AnnotateChange>, Result<(), String>) {
+        if self.pending.is_some() {
+            self.cancel(overlay, label)
+        } else {
+            self.leave(overlay, label, Exit::Reveal)
+        }
+    }
+
     /// Picks the element Chromium reported for a click on `label`. A click
     /// while another element waits, or after Annotate ended, is ignored. A
     /// failed pick keeps Annotate on and tells the chrome why.

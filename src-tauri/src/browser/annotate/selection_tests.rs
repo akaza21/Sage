@@ -75,8 +75,7 @@ fn a_click_while_annotating_picks_the_element_and_announces_where_it_is() {
             "tabId": "browser-1",
             "active": true,
             "selection": {
-                "role": "button",
-                "name": "Press me",
+                "label": "Press me",
                 "box": {"x": 8, "y": 140, "width": 80, "height": 24},
                 "viewport": {
                     "x": 0.0, "y": 100.0, "width": 1280.0, "height": 720.0,
@@ -342,4 +341,47 @@ fn the_outline_keeps_an_element_that_starts_off_the_document() {
     // The item keeps the part inside the document, as the contract asks.
     let bounds = selection.picked.bounds;
     assert_eq!((bounds.x, bounds.width), (0, 60));
+}
+
+#[test]
+fn escape_drops_a_waiting_element_first_and_then_leaves_annotate() {
+    let overlay = Overlay::default();
+    let mut mode = picked(&overlay, "browser-1");
+    assert_eq!(
+        mode.escape(&overlay, "browser-1"),
+        (vec![on("browser-1")], Ok(()))
+    );
+    assert_eq!(mode.pending, None);
+    assert_eq!(mode.tab.as_deref(), Some("browser-1"));
+    assert_eq!(
+        mode.escape(&overlay, "browser-1"),
+        (vec![off("browser-1")], Ok(()))
+    );
+    assert_eq!(mode.tab, None);
+    assert_eq!(
+        overlay.calls()[2..],
+        [
+            "release browser-1 reveal=true resume=true",
+            "stop browser-1"
+        ]
+    );
+}
+
+#[test]
+fn the_comment_box_names_the_element_never_by_an_internal_role() {
+    assert_eq!(label("LabelText", " Email "), "Email");
+    for (role, word) in [
+        ("LabelText", "label"),
+        ("link", "link"),
+        ("button", "button"),
+        ("img", "image"),
+        ("image", "image"),
+        ("StaticText", "text"),
+        ("textbox", "text field"),
+        ("RootWebArea", "page"),
+        ("generic", "element"),
+        ("SomethingNew", "element"),
+    ] {
+        assert_eq!(label(role, ""), word, "{role}");
+    }
 }

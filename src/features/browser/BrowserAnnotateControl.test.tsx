@@ -78,8 +78,7 @@ function rustSays(
 }
 
 const selection: BrowserAnnotateSelection = {
-  role: "button",
-  name: "Press me",
+  label: "Press me",
   box: { x: 8, y: 140, width: 80, height: 24 },
   viewport: {
     x: 0,
@@ -159,15 +158,19 @@ it("follows exits Rust makes itself and ignores other tabs", async () => {
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
 
-it("leaves on Escape at the control only while annotating", async () => {
+it("on Escape at the control drops a waiting element first, then leaves", async () => {
   const button = await renderControl();
   fireEvent.keyDown(button, { key: "Escape" });
   expect(onControl).not.toHaveBeenCalled();
-  rustSays("browser-1", true);
+  rustSays("browser-1", true, { selection });
   fireEvent.keyDown(button, { key: "Enter" });
   expect(onControl).not.toHaveBeenCalled();
   fireEvent.keyDown(button, { key: "Escape" });
-  expect(onControl).toHaveBeenCalledWith("annotateOff");
+  expect(onControl).toHaveBeenLastCalledWith("annotateCancel");
+  // Rust dropped the element and Annotate stays on.
+  rustSays("browser-1", true);
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(onControl).toHaveBeenLastCalledWith("annotateOff");
 });
 
 it("renders disabled with the reason Rust gives", async () => {
@@ -213,7 +216,7 @@ it("covers the page frame with the comment box while an element waits", async ()
   expect(screen.queryByRole("dialog")).toBeNull();
   rustSays("browser-1", true, { selection });
   const dialog = await screen.findByRole("dialog", {
-    name: "Comment on button “Press me”",
+    name: "Comment on Press me",
   });
   expect(screen.getByTestId("frame")).toContainElement(dialog);
   await waitFor(() =>

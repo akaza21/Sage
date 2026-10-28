@@ -321,12 +321,23 @@
   inset: 0;
   overflow: hidden;
   background: var(--browser-start-fill);
+  container-type: size;
+  outline: none;
 }
-.browser-annotate__frame {
+/* The picture's proportions, anchored top left, while the window resizes. */
+.browser-annotate__stage {
   position: absolute;
   top: 0;
   left: 0;
+  width: min(100cqw, calc(100cqh * var(--browser-annotate-ratio)));
+  aspect-ratio: var(--browser-annotate-ratio);
+}
+.browser-annotate__frame {
+  position: absolute;
+  inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
 }
 .browser-annotate__outline {
   position: absolute;

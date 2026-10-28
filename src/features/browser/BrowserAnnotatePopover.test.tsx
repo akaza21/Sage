@@ -24,8 +24,7 @@ vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
 }));
 
 const selection: BrowserAnnotateSelection = {
-  role: "button",
-  name: "Press me",
+  label: "Press me",
   box: { x: 128, y: 172, width: 256, height: 36 },
   viewport: {
     x: 0,
@@ -86,8 +85,12 @@ it("draws the frozen frame, the outline and the numbered badge over the element"
     ".browser-annotate__frame",
   )!;
   expect(image.src).toBe("data:image/jpeg;base64,/9j/AAAA");
-  // The frame covers the viewport without its scrollbar.
-  expect(image.style.width).toBe(`${(1265 / 1280) * 100}%`);
+  // The stage keeps the page area's proportions; the picture fills it.
+  expect(
+    container
+      .querySelector<HTMLElement>(".browser-annotate__stage")!
+      .style.getPropertyValue("--browser-annotate-ratio"),
+  ).toBe(String(1280 / 720));
   const outline = container.querySelector<HTMLElement>(
     ".browser-annotate__outline",
   )!;
@@ -132,14 +135,26 @@ it("confirms the typed comment on Enter or the tick", () => {
   expect(onConfirm).toHaveBeenCalledTimes(2);
 });
 
-it("cancels on Escape or a click on the frozen page", () => {
+it("cancels on Escape in the comment or on the frozen page, or a click on it", () => {
   const { container } = popover({});
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment" }), {
     key: "Escape",
   });
   expect(onCancel).toHaveBeenCalledTimes(1);
-  fireEvent.click(container.querySelector(".browser-annotate__frame")!);
+  // A click inside the box focuses it, so Escape reaches it there too.
+  const dialog = screen.getByRole("dialog", { name: "Comment on Press me" });
+  expect(dialog).toHaveAttribute("tabindex", "-1");
+  fireEvent.keyDown(dialog, { key: "Escape" });
   expect(onCancel).toHaveBeenCalledTimes(2);
+  fireEvent.click(container.querySelector(".browser-annotate__frame")!);
+  expect(onCancel).toHaveBeenCalledTimes(3);
+});
+
+it("numbers the badge even when no composer gives the number", () => {
+  const { container } = popover({ ordinal: null, blocked: "No composer" });
+  expect(container.querySelector(".browser-annotate__badge")).toHaveTextContent(
+    "1",
+  );
 });
 
 it("will not confirm when blocked or over 4 KB, and says why", () => {

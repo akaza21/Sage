@@ -9,18 +9,14 @@ use serde_json::{Value, json};
 
 use crate::{
     acp::browser::BrowserFailure,
-    browser::annotate::{
-        element::{PageElement, Viewport},
-        selection::Frame,
-    },
+    browser::annotate::{element::PageElement, selection::Frame},
 };
 
 use super::{CdpPort, CdpTransport, world::left};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const ELEMENT_BYTES: usize = 65_536;
-/// The frozen frame's largest side in device pixels, and its largest size.
-const FRAME_SIDE: f64 = 4096.0;
+/// The frozen frame's largest size.
 const FRAME_BYTES: usize = 8_000_000;
 
 /// Runs on the clicked element in the isolated world. A step is a tag, or
@@ -112,7 +108,7 @@ impl<T: CdpTransport> CdpPort<T> {
         let picked = self.read_element(backend_node_id, before.navigation_id);
         let picked = picked.and_then(|(page, role, name)| {
             self.pause_inspect()?;
-            let frame = self.capture_frame(&page.viewport)?;
+            let frame = self.capture_frame()?;
             if self.stamp()? != before {
                 return Err(BrowserFailure::StaleHandle);
             }
@@ -187,25 +183,18 @@ impl<T: CdpTransport> CdpPort<T> {
             .map(drop)
     }
 
-    /// The viewport as a JPEG at device resolution, smaller when it would
-    /// exceed the frame limits.
-    fn capture_frame(&self, viewport: &Viewport) -> Result<Frame, BrowserFailure> {
+    /// What the webview shows, as a JPEG at device resolution: no clip, so
+    /// no CSS px to device px conversion can apply page zoom, display
+    /// scaling or pinch zoom twice. A larger image is retried at lower
+    /// quality.
+    fn capture_frame(&self) -> Result<Frame, BrowserFailure> {
         let deadline = Instant::now() + READ_TIMEOUT;
-        let scale = frame_scale(viewport);
-        for factor in [1.0, 0.75, 0.5] {
-            let scale = scale * factor;
+        for quality in [85, 60, 40] {
             let params = json!({
                 "format": "jpeg",
-                "quality": 85,
+                "quality": quality,
                 "fromSurface": true,
                 "captureBeyondViewport": false,
-                "clip": {
-                    "x": viewport.x,
-                    "y": viewport.y,
-                    "width": viewport.client_width,
-                    "height": viewport.client_height,
-                    "scale": scale,
-                },
             });
             let response = match self.transport.observe(
                 "Page.captureScreenshot",
@@ -222,8 +211,6 @@ impl<T: CdpTransport> CdpPort<T> {
                 .as_str()
                 .filter(|data| data.len() <= FRAME_BYTES)
                 .ok_or(BrowserFailure::Unavailable)?;
-            // The JPEG's own size: Chromium rounds a fractional viewport its
-            // own way.
             let (width, height) = jpeg_size(data).ok_or(BrowserFailure::Unavailable)?;
             return Ok(Frame {
                 jpeg_base64: data.to_owned(),
@@ -257,15 +244,6 @@ pub(crate) fn inspected_node(payload: &str) -> Option<u64> {
         .filter(|id| *id > 0)
 }
 
-/// Device pixels per CSS px for the frame, capped so neither side exceeds
-/// `FRAME_SIDE`.
-fn frame_scale(viewport: &Viewport) -> f64 {
-    viewport
-        .scale
-        .min(FRAME_SIDE / viewport.client_width)
-        .min(FRAME_SIDE / viewport.client_height)
-}
-
 /// The width and height in a base64 JPEG's frame header, if it is one.
 fn jpeg_size(data: &str) -> Option<(u32, u32)> {
     use base64::{Engine, engine::general_purpose::STANDARD};
@@ -292,25 +270,6 @@ fn jpeg_size(data: &str) -> Option<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn viewport(width: f64, height: f64, scale: f64) -> Viewport {
-        Viewport {
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-            client_width: width,
-            client_height: height,
-            scale,
-        }
-    }
-
-    #[test]
-    fn the_frame_keeps_device_resolution_within_its_largest_side() {
-        assert_eq!(frame_scale(&viewport(1280.0, 720.0, 1.5)), 1.5);
-        assert_eq!(frame_scale(&viewport(3000.0, 1000.0, 2.0)), 4096.0 / 3000.0);
-        assert_eq!(frame_scale(&viewport(800.0, 5000.0, 1.0)), 4096.0 / 5000.0);
-    }
 
     #[test]
     fn a_click_report_names_one_positive_backend_node() {

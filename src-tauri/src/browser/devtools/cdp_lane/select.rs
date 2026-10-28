@@ -6,7 +6,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::io::Cursor;
 
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::{
     CSRF_CANARY, Lane, PASSWORD_CANARY,
@@ -41,18 +41,6 @@ fn jpeg_size(data: &str) -> (u32, u32) {
     decoder.read_info().expect("frame is a JPEG");
     let info = decoder.info().unwrap();
     (u32::from(info.width), u32::from(info.height))
-}
-
-/// A PNG screenshot as rows of pixel bytes.
-fn png_rows(data: &Value) -> Vec<Vec<u8>> {
-    let bytes = STANDARD.decode(data.as_str().unwrap()).unwrap();
-    let mut reader = png::Decoder::new(Cursor::new(bytes)).read_info().unwrap();
-    let mut pixels = vec![0; reader.output_buffer_size()];
-    let frame = reader.next_frame(&mut pixels).unwrap();
-    pixels[..frame.buffer_size()]
-        .chunks(frame.line_size)
-        .map(<[u8]>::to_vec)
-        .collect()
 }
 
 #[test]
@@ -96,9 +84,10 @@ fn a_click_in_annotate_picks_the_element_without_reaching_the_page() {
         jpeg_size(&picked.frame.jpeg_base64),
         (picked.frame.width, picked.frame.height)
     );
+    // The frame is the whole webview, scrollbar included.
     assert_eq!(
         f64::from(picked.frame.width),
-        (viewport.client_width * viewport.scale).round()
+        (viewport.width * viewport.scale).round()
     );
 
     let url = lane.site.url("/hostile.html");
@@ -177,51 +166,6 @@ fn a_pick_never_reads_form_values_or_hidden_inputs() {
     lane.capability.port_mut().stop_inspect().unwrap();
 }
 
-#[test]
-fn the_frame_shows_the_scrolled_viewport() {
-    let mut lane = Lane::open("/big.html");
-    lane.evaluate("scrollTo(0, 2000); true");
-    lane.capability.port_mut().start_inspect().unwrap();
-    let backend = backend_of(&mut lane, "li:nth-child(120) a");
-    let picked = lane.capability.port_mut().pick_element(backend).unwrap();
-    let viewport = picked.page.viewport;
-    assert_eq!(viewport.y, 2000.0);
-    let top = picked.page.rect.y - viewport.y;
-    assert!(top >= 0.0 && top < viewport.client_height, "{top}");
-    // The frame clip is in page coordinates: it shows the visible viewport,
-    // which a plain screenshot also shows (with the scrollbar beside it).
-    let clip = |x: f64, y: f64| json!({"format": "png", "clip": {"x": x, "y": y, "width": viewport.client_width, "height": viewport.client_height, "scale": 1}});
-    let shown = png_rows(
-        &cdp(
-            &mut lane,
-            "Page.captureScreenshot",
-            json!({"format": "png"}),
-        )["data"],
-    );
-    let framed = png_rows(
-        &cdp(
-            &mut lane,
-            "Page.captureScreenshot",
-            clip(viewport.x, viewport.y),
-        )["data"],
-    );
-    let top = png_rows(&cdp(&mut lane, "Page.captureScreenshot", clip(0.0, 0.0))["data"]);
-    assert_eq!(framed.len(), shown.len());
-    let visible = |rows: &[Vec<u8>]| -> Vec<Vec<u8>> {
-        rows.iter()
-            .map(|row| row[..framed[0].len()].to_vec())
-            .collect()
-    };
-    assert!(
-        visible(&shown) == framed,
-        "the frame matches what the page shows"
-    );
-    assert!(
-        visible(&shown) != top,
-        "a viewport-relative clip would show the top"
-    );
-}
-
 const SHIP_CANARY: &str = "CANARY-SHIP-2a7c58";
 const SELECT_CANARY: &str = "CANARY-SELECT-4e8a13";
 
@@ -272,30 +216,98 @@ fn text_the_user_cannot_see_never_reaches_the_item() {
     assert_eq!(item.text, "Visible words");
 }
 
+/// Where the red block is in a frame, in image pixels: left, top, right,
+/// bottom.
+fn red_box(frame: &Frame) -> (f64, f64, f64, f64) {
+    let bytes = STANDARD.decode(&frame.jpeg_base64).expect("frame base64");
+    let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
+    let pixels = decoder.decode().expect("frame is a JPEG");
+    let width = usize::from(decoder.info().unwrap().width);
+    let (mut left, mut top, mut right, mut bottom) = (usize::MAX, usize::MAX, 0, 0);
+    for (index, pixel) in pixels.chunks(3).enumerate() {
+        if pixel[0] > 200 && pixel[1] < 80 && pixel[2] < 80 {
+            let (x, y) = (index % width, index / width);
+            (left, top) = (left.min(x), top.min(y));
+            (right, bottom) = (right.max(x + 1), bottom.max(y + 1));
+        }
+    }
+    assert!(right > left, "the block is in the frame");
+    (left as f64, top as f64, right as f64, bottom as f64)
+}
+
+/// The chrome draws the frame over the whole page area and places the
+/// outline at the element's share of the viewport. Under display scaling,
+/// pinch zoom and scrolling, that outline must sit on the element in the
+/// picture: within 1 CSS px on every side.
 #[test]
-fn a_pinch_zoomed_page_frames_what_it_shows() {
+fn the_outline_lands_on_the_element_in_the_frozen_frame() {
     let mut lane = Lane::open("/annotate.html");
-    let (plain, _, _) = item_of(&mut lane, "#press");
-    let zoom = |lane: &mut Lane, factor: f64| {
-        cdp(
-            lane,
+    let (plain, _, _) = item_of(&mut lane, "#block");
+    for (setup, undo, device_scale) in [
+        ("", "", 1.0),
+        ("scrollTo(0, 10); true", "scrollTo(0, 0); true", 1.0),
+        (
+            "Emulation.setDeviceMetricsOverride",
+            "Emulation.clearDeviceMetricsOverride",
+            1.5,
+        ),
+        (
             "Emulation.setPageScaleFactor",
-            json!({"pageScaleFactor": factor}),
+            "Emulation.setPageScaleFactor",
+            2.0,
+        ),
+    ] {
+        match setup {
+            "" => {}
+            "Emulation.setDeviceMetricsOverride" => {
+                let (width, height) = (plain.viewport.width, plain.viewport.height);
+                cdp(
+                    &mut lane,
+                    setup,
+                    json!({"width": width, "height": height, "deviceScaleFactor": 1.5, "mobile": false}),
+                );
+            }
+            "Emulation.setPageScaleFactor" => {
+                cdp(&mut lane, setup, json!({"pageScaleFactor": 2}));
+            }
+            script => {
+                lane.evaluate(script);
+            }
+        }
+        let (page, frame, _) = item_of(&mut lane, "#block");
+        let viewport = page.viewport;
+        let scale = f64::from(frame.width) / viewport.width;
+        assert_eq!(viewport.scale, device_scale, "{setup}");
+        assert!((scale - device_scale).abs() < 0.01, "{setup}: {scale}");
+        assert!(
+            (f64::from(frame.height) / viewport.height - scale).abs() < 0.01,
+            "{setup}: the frame keeps the page's proportions"
         );
-    };
-    zoom(&mut lane, 2.0);
-    let (zoomed, frame, _) = item_of(&mut lane, "#press");
-    zoom(&mut lane, 1.0);
-    let (before, after) = (plain.viewport, zoomed.viewport);
-    assert_eq!(after.scale, before.scale * 2.0);
-    assert!((after.width - before.width / 2.0).abs() < 1.0, "{after:?}");
-    assert!(
-        (after.client_width - before.client_width / 2.0).abs() < 8.0,
-        "{after:?}"
-    );
-    assert_eq!(jpeg_size(&frame.jpeg_base64), (frame.width, frame.height));
-    assert_eq!(
-        f64::from(frame.width),
-        (after.client_width * after.scale).round()
-    );
+        let (left, top, right, bottom) = red_box(&frame);
+        let expected = [
+            page.rect.x - viewport.x,
+            page.rect.y - viewport.y,
+            page.rect.x - viewport.x + page.rect.width,
+            page.rect.y - viewport.y + page.rect.height,
+        ];
+        let found = [left, top, right, bottom].map(|side| side / scale);
+        for (found, expected) in found.iter().zip(expected) {
+            assert!(
+                (found - expected).abs() <= 1.0,
+                "{setup}: outline {expected:?} vs picture {found:?}"
+            );
+        }
+        match undo {
+            "" => {}
+            "Emulation.clearDeviceMetricsOverride" => {
+                cdp(&mut lane, undo, json!({}));
+            }
+            "Emulation.setPageScaleFactor" => {
+                cdp(&mut lane, undo, json!({"pageScaleFactor": 1}));
+            }
+            script => {
+                lane.evaluate(script);
+            }
+        }
+    }
 }

@@ -165,8 +165,8 @@ export type BrowserControlAction =
 
 /** Where the picked element sits in the viewport it was picked in (page CSS px). */
 export interface BrowserAnnotateSelection {
-  role: string;
-  name: string;
+  /** The accessible name, or a plain word for the role. */
+  label: string;
   box: { x: number; y: number; width: number; height: number };
   viewport: {
     x: number;
@@ -186,7 +186,7 @@ export interface BrowserAnnotateChange {
   error?: string;
 }
 
-/** The frozen viewport the user comments on; it covers `clientWidth` × `clientHeight`. */
+/** What the page area showed when the element was picked; it covers the whole area. */
 export interface BrowserAnnotateFrame {
   jpegBase64: string;
   width: number;
