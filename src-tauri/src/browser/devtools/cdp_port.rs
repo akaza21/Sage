@@ -15,7 +15,7 @@ use super::{
 
 mod act;
 mod highlight;
-mod inspect;
+pub(super) mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
 pub(super) mod select;

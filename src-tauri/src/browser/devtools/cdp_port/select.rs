@@ -12,7 +12,7 @@ use crate::{
     browser::annotate::{element::PageElement, selection::Frame},
 };
 
-use super::{CdpPort, CdpTransport, world::left};
+use super::{CdpPort, CdpTransport, inspect::HIDE_OUTLINE, world::left};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const ELEMENT_BYTES: usize = 65_536;
@@ -171,7 +171,9 @@ impl<T: CdpTransport> CdpPort<T> {
     }
 
     /// Leaves hover highlighting off while the user comments; DOM and the
-    /// overlay stay enabled so `start_inspect` resumes it.
+    /// overlay stay enabled so `start_inspect` resumes it. The outline goes
+    /// one round trip after hovering ends, as in `stop_inspect`, so the
+    /// frozen frame never shows it.
     fn pause_inspect(&self) -> Result<(), BrowserFailure> {
         let deadline = Instant::now() + READ_TIMEOUT;
         self.read(
@@ -179,8 +181,8 @@ impl<T: CdpTransport> CdpPort<T> {
             json!({"mode": "none", "highlightConfig": {}}),
             deadline,
         )?;
-        self.read("Overlay.hideHighlight", json!({}), deadline)
-            .map(drop)
+        self.read("Overlay.hideHighlight", json!({}), deadline)?;
+        self.read(HIDE_OUTLINE.0, json!({}), deadline).map(drop)
     }
 
     /// What the webview shows, as a JPEG at device resolution: no clip, so
