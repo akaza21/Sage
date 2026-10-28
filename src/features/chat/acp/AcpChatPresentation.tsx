@@ -57,7 +57,7 @@ const Turn = memo(
   function Turn({
     page,
     turn,
-    hasProjectRoot,
+    rootLabels,
     onOpenResource,
     onRetry,
     inherited = false,
@@ -69,7 +69,7 @@ const Turn = memo(
     inherited?: boolean;
     /** Earlier/inherited answers retain Copy (s2/f0066). */
     answerActions?: boolean;
-    hasProjectRoot: boolean;
+    rootLabels?: Readonly<Record<string, string>>;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
     onRetry?: () => void;
   }) {
@@ -78,7 +78,7 @@ const Turn = memo(
     );
     const interactive = !inherited && turn.sessionId === page.currentSessionId;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
-      hasProjectRoot && page.projectId && page.chatId && page.currentSessionId
+      rootLabels && page.projectId && page.chatId && page.currentSessionId
         ? {
             projectId: page.projectId,
             chatId: page.chatId,
@@ -257,6 +257,7 @@ const Turn = memo(
               <TurnFileActivity
                 page={page}
                 turn={turn}
+                rootLabels={rootLabels}
                 onOpenResource={interactive ? onOpenResource : undefined}
               />
             ) : null}
@@ -289,7 +290,7 @@ const Turn = memo(
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
     // `inherited` is fixed per mount: only InheritedTurns passes it.
-    left.hasProjectRoot === right.hasProjectRoot &&
+    left.rootLabels === right.rootLabels &&
     left.answerActions === right.answerActions &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
@@ -347,21 +348,19 @@ export function AcpChatPresentation({
       onRecordDisposition={acpDesktop.recordAgentEditDisposition}
     />
   );
-  const renderTurn = (turn: TurnProjection, index: number) => {
-    return (
-      <Fragment key={turn.id}>
-        <TurnDaySeparator timestamp={dayTimestamps[index]} />
-        <Turn
-          page={page}
-          turn={turn}
-          hasProjectRoot={projectRoots.length > 0}
-          onOpenResource={onOpenResource}
-          onRetry={index === page.turns.length - 1 ? onRetry : undefined}
-          answerActions={index < page.turns.length - 1}
-        />
-      </Fragment>
-    );
-  };
+  const renderTurn = (turn: TurnProjection, index: number) => (
+    <Fragment key={turn.id}>
+      <TurnDaySeparator timestamp={dayTimestamps[index]} />
+      <Turn
+        page={page}
+        turn={turn}
+        rootLabels={projectRoots.length > 0 ? labels : undefined}
+        onOpenResource={onOpenResource}
+        onRetry={index === page.turns.length - 1 ? onRetry : undefined}
+        answerActions={index < page.turns.length - 1}
+      />
+    </Fragment>
+  );
   return (
     <>
       <NavigationPart
@@ -408,7 +407,7 @@ export function InheritedTurns({ page }: { page: AcpChatPage }) {
   return page.turns.map((turn, index) => (
     <Fragment key={turn.id}>
       <TurnDaySeparator timestamp={dayTimestamps[index]} />
-      <Turn page={page} turn={turn} hasProjectRoot={false} inherited />
+      <Turn page={page} turn={turn} inherited />
     </Fragment>
   ));
 }

@@ -17,6 +17,93 @@ import type { AcpItem } from "../../../domain/acp";
 
 afterEach(cleanup);
 
+it("qualifies same-path files across roots and preserves each saved diff identity", () => {
+  const page = snapshotPage();
+  const edit = page.turns[0].items[0];
+  if (edit.kind !== "fileChangeDiff") throw new Error("Expected edit");
+  page.turns[0].items = ["root-a", "root-b"].map((rootId, ordinal) => ({
+    ...edit,
+    id: `edit-${rootId}` as typeof edit.id,
+    ordinal,
+    payload: {
+      ...edit.payload,
+      changes: [
+        {
+          ...edit.payload.changes[0],
+          resource: {
+            kind: "resource" as const,
+            resource: { rootId, relativePath: "src/index.ts" },
+          },
+        },
+      ],
+    },
+  }));
+  const onOpenResource = vi.fn();
+  const props = { page, turn: page.turns[0], onOpenResource };
+  const { rerender } = render(
+    <TurnFileActivity
+      {...props}
+      rootLabels={{ "root-a": "App (root 1)", "root-b": "App (root 2)" }}
+    />,
+  );
+  for (const [ordinal, rootId] of ["root-a", "root-b"].entries()) {
+    const label = `App (root ${ordinal + 1}) / src/index.ts`;
+    const button = screen.getByRole("button", {
+      name: new RegExp(label.replace(/[()]/g, "\\$&")),
+    });
+    expect(button).toHaveAttribute("title", label);
+    fireEvent.click(button);
+    expect(onOpenResource).toHaveBeenLastCalledWith(
+      { rootId, relativePath: "src/index.ts" },
+      "diff",
+      expect.objectContaining({ chatId: page.chatId }),
+      expect.objectContaining({ rootId, relativePath: "src/index.ts" }),
+    );
+  }
+  rerender(<TurnFileActivity {...props} rootLabels={{}} />);
+  expect(
+    screen.getByRole("button", { name: /root-b \/ src\/index.ts/ }),
+  ).toHaveAttribute("title", "root-b / src/index.ts");
+});
+
+it("refreshes root labels in memoized turns without changing their saved diff identity", async () => {
+  const page = snapshotPage();
+  const onOpenResource = vi.fn();
+  const props = {
+    page,
+    onOpenResource,
+    hasEarlier: false,
+    loadingEarlier: false,
+    historyError: null,
+    retentionIncomplete: false,
+  };
+  const { rerender } = render(
+    <AcpChatPresentation
+      {...props}
+      projectRoots={[{ id: "root-a", name: "App", ordinal: 0 }]}
+    />,
+  );
+  expect(
+    await screen.findByRole("button", { name: /App \/ src\/a.ts/ }),
+  ).toBeVisible();
+  rerender(
+    <AcpChatPresentation
+      {...props}
+      projectRoots={[{ id: "root-a", name: "Renamed", ordinal: 0 }]}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Renamed \/ src\/a.ts/ }),
+  );
+  expect(screen.queryByRole("button", { name: /App \/ src\/a.ts/ })).toBeNull();
+  expect(onOpenResource).toHaveBeenCalledWith(
+    snapshotResource,
+    "diff",
+    expect.anything(),
+    snapshotRef,
+  );
+});
+
 it("shows real line counts and opens the originating saved Diff from the edit card", () => {
   const page = snapshotPage();
   const onOpenResource = vi.fn();
@@ -36,7 +123,7 @@ it("shows real line counts and opens the originating saved Diff from the edit ca
   expect(undo).toBeDisabled();
   expect(undo).toHaveAttribute(
     "title",
-    expect.stringContaining("does not support reverting edits"),
+    expect.stringContaining("saved diffs are read-only"),
   );
   fireEvent.click(within(card).getByRole("button", { name: "View changes" }));
   expect(onOpenResource).toHaveBeenLastCalledWith(

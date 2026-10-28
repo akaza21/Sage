@@ -53,6 +53,13 @@ it("keeps the edit card unloaded until a turn reports edits and lazy-loads the d
   expect(requests.files).toHaveBeenCalledOnce();
   expect(requests.summary).not.toHaveBeenCalled();
   rerender(
+    <DeferredTurnFileActivity
+      page={page}
+      turn={{ ...page.turns[0], items: [] }}
+    />,
+  );
+  expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
+  rerender(
     <DeferredTurnEditSummary
       page={page}
       rootLabels={{}}

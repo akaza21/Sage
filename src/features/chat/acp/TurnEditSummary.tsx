@@ -16,6 +16,7 @@ import { chatFileChipBasename } from "./chatFileChip";
 import { projectChatEditSummary } from "./chatEditSummary";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 import { FileChangeTotals } from "./FileChangeTotals";
+import { rootDisplayName } from "./rootDisplayName";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -26,18 +27,6 @@ interface TurnEditSummaryProps {
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
-}
-
-function rootDisplayName(
-  rootLabels: Readonly<Record<string, string>>,
-  rootId: string,
-): string {
-  const projected = Object.prototype.hasOwnProperty.call(rootLabels, rootId)
-    ? rootLabels[rootId]
-    : null;
-  return typeof projected === "string" && projected.length > 0
-    ? projected
-    : rootId;
 }
 
 export const TurnEditSummary = memo(function TurnEditSummary({

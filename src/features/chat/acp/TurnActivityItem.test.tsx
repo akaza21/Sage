@@ -178,7 +178,7 @@ describe("TurnActivityItem", () => {
   );
 
   it.each(["codex", "claude-code", "pi"])(
-    "shows normalized %s reasoning only while the turn is live",
+    "renders normalized reasoning for %s session metadata only while the turn is live (renderer contract)",
     (bindingId) => {
       const page = chatPage("running");
       page.sessions = page.sessions.map((session) => ({

@@ -7,7 +7,7 @@ use tracing_subscriber::fmt::MakeWriter;
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
-    lifecycle::ServerRequestState,
+    lifecycle::{ItemLifecycle, ServerRequestState},
 };
 
 use super::incoming::{ItemUpdateMode, UNPROJECTED_DIAGNOSTIC};
@@ -319,6 +319,7 @@ fn reasoning_summary_deltas_coalesce_into_one_thought_and_complete() {
         let [
             IncomingEvent::Item {
                 payload: NormalizedPayload::ThoughtSummary { summary },
+                lifecycle: ItemLifecycle::Streaming,
                 update_mode,
                 ..
             },
@@ -341,6 +342,7 @@ fn reasoning_summary_deltas_coalesce_into_one_thought_and_complete() {
     let [
         IncomingEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: ItemLifecycle::Completed,
             ..
         },
     ] = events.as_slice()

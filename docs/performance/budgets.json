@@ -19,12 +19,12 @@
         "entry": "src/features/chat/acp/TurnFileActivity.tsx",
         "maxGzipBytes": 1100,
         "maxCssGzipBytes": 650,
-        "reason": "AP-E edited-files card, capped at 32 rows; loads only for a completed Turn with file edits. Measured JS 942 B and CSS 560 B; no dependencies."
+        "reason": "AP-E root-qualified edited-files card, capped at 32 rows; loads only for a completed Turn with file edits. Measured JS 987 B and CSS 562 B; no dependencies."
       },
       {
         "entry": "src/features/chat/acp/TurnEditSummary.tsx",
         "maxGzipBytes": 1900,
-        "reason": "AP-E moves the existing current-chat edit disclosure off the first-Chat static path. Measured exclusive JS 1726 B; saved diff rendering stays click-lazy."
+        "reason": "AP-E moves the existing current-chat edit disclosure off the first-Chat static path. Measured exclusive JS 1677 B; saved diff rendering stays click-lazy."
       },
       {
         "entry": "src/features/browser/BrowserNewTab.tsx",

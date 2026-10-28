@@ -337,18 +337,14 @@ for (const width of [1888, 720, 480]) {
       await expect(card.getByRole("listitem")).toHaveCount(3);
       const undo = card.getByRole("button", { name: "Undo", exact: true });
       await expect(undo).toBeDisabled();
-      await expect(undo).toHaveAttribute(
-        "title",
-        /does not support reverting edits/,
-      );
-      await expect(card).toHaveScreenshot(`ap-e-edited-files-${width}.png`);
+      await expect(undo).toHaveAttribute("title", /saved diffs are read-only/);
       await card.getByRole("button", { name: "View changes" }).click();
       await expect(page.getByLabel("Opened diff")).toHaveText(
         "diff:src/file-0.ts",
       );
       await card.getByRole("button", { name: "Show 2 more files" }).click();
       await expect(card.getByRole("listitem")).toHaveCount(5);
-      await card.getByRole("button", { name: "src/file-4.ts" }).click();
+      await card.getByRole("button", { name: /src\/file-4.ts/ }).click();
       await expect(page.getByLabel("Opened diff")).toHaveText(
         "diff:src/file-4.ts",
       );
@@ -357,6 +353,18 @@ for (const width of [1888, 720, 480]) {
           (element) => element.scrollWidth <= element.clientWidth + 1,
         ),
       ).toBe(true);
+    });
+
+    test("AP-E edited-files appearance (Windows baseline pending)", async ({
+      page,
+    }) => {
+      await open(page, "edits");
+      const card = page.getByRole("region", {
+        name: "Edited files",
+        exact: true,
+      });
+      await expect(card.getByRole("listitem")).toHaveCount(3);
+      await expect(card).toHaveScreenshot(`ap-e-edited-files-${width}.png`);
     });
 
     test("failed compaction uses an icon-led normal row and error tone", async ({

@@ -4,15 +4,18 @@ import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { projectAgentEditSummary } from "./agentEditSummary";
 import { FileChangeTotals } from "./FileChangeTotals";
+import { rootDisplayName } from "./rootDisplayName";
 import "./edited-files-card.css";
 
 export function TurnFileActivity({
   page,
   turn,
+  rootLabels = {},
   onOpenResource,
 }: {
   page: AcpChatPage;
   turn: TurnProjection;
+  rootLabels?: Readonly<Record<string, string>>;
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -62,7 +65,7 @@ export function TurnFileActivity({
           <button
             type="button"
             disabled
-            title="This session does not support reverting edits."
+            title="Undo is not implemented: saved diffs are read-only."
           >
             Undo <RotateCcw size={12} aria-hidden="true" />
           </button>
@@ -85,14 +88,16 @@ export function TurnFileActivity({
           const location = change.resource;
           const label =
             location.kind === "resource"
-              ? location.resource.relativePath
+              ? `${rootDisplayName(rootLabels, location.resource.rootId)} / ${location.resource.relativePath}`
               : location.label;
           return (
             <li key={index}>
               <button
                 type="button"
                 disabled={!open || !change.diffRef}
-                title={!open || !change.diffRef ? unavailable : label}
+                title={
+                  !open || !change.diffRef ? `${label}: ${unavailable}` : label
+                }
                 onClick={() => view(change)}
               >
                 <span className="acp-edited-files__path">{label}</span>
