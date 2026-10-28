@@ -701,7 +701,7 @@ describe("last confirmed model label", () => {
     expect(trigger).toHaveAccessibleDescription("session-model High");
     fireEvent.click(trigger);
     expect(
-      screen.getByRole("option", { name: "session-model" }),
+      await screen.findByRole("option", { name: "session-model" }),
     ).toHaveAttribute("aria-selected", "true");
   });
 
@@ -725,6 +725,7 @@ describe("last confirmed model label", () => {
       /^Model$/,
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    await screen.findByRole("listbox", { name: "Select model" });
     expect(
       screen
         .getAllByRole("option")
@@ -991,7 +992,9 @@ describe("composer permission mode picker", () => {
     const onSelectModel = vi.fn();
     renderControls({ selectedHarnessId: "codex", onSelectModel });
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("option", { name: "Old model" })).toHaveFocus();
+    expect(
+      await screen.findByRole("option", { name: "Old model" }),
+    ).toHaveFocus();
     act(() =>
       useWorkbenchStore.setState({
         models: [{ id: "new", name: "New model" }],
@@ -1019,6 +1022,7 @@ describe("composer permission mode picker", () => {
     renderControls({ selectedHarnessId: "codex", onSelectModel });
     const trigger = screen.getByRole("button", { name: "Model" });
     fireEvent.click(trigger);
+    await screen.findByRole("listbox", { name: "Select model" });
     expect(screen.getAllByRole("option")).toHaveLength(200);
     fireEvent.click(screen.getByRole("option", { name: "Default" }));
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual-default");
@@ -1048,7 +1052,7 @@ describe("composer permission mode picker", () => {
     renderControls({ selectedHarnessId: "codex", selectedModelId: "actual" });
     const trigger = screen.getByRole("button", { name: "Model" });
     fireEvent.click(trigger);
-    const option = screen.getByRole("option", { name: "Actual model" });
+    const option = await screen.findByRole("option", { name: "Actual model" });
     expect(option).toHaveFocus();
     expect(fireEvent.keyDown(option, { key: "Tab" })).toBe(false);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
@@ -1061,7 +1065,9 @@ describe("composer permission mode picker", () => {
     renderControls({ selectedHarnessId: "codex", selectedModelId: "actual" });
     const trigger = screen.getByRole("button", { name: "Model" });
     fireEvent.click(trigger);
-    expect(screen.getByRole("listbox", { name: "Select model" })).toBeVisible();
+    expect(
+      await screen.findByRole("listbox", { name: "Select model" }),
+    ).toBeVisible();
     act(() => useWorkbenchStore.setState({ models: [] }));
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     act(() => useWorkbenchStore.setState({ models }));
@@ -1195,7 +1201,7 @@ describe("composer permission mode picker", () => {
     const trigger = screen.getByRole("button", { name: "Model" });
     trigger.focus();
     fireEvent.click(trigger, { detail: 0 });
-    const selected = screen.getByRole("option", { name: "Luna" });
+    const selected = await screen.findByRole("option", { name: "Luna" });
     expect(selected).toHaveFocus();
     fireEvent.keyDown(selected, { key: "Escape" });
     expect(trigger).toHaveFocus();
@@ -1218,7 +1224,9 @@ describe("composer permission mode picker", () => {
     renderControls({ selectedHarnessId: "codex" });
     const trigger = screen.getByRole("button", { name: "Model" });
     fireEvent.click(trigger);
-    expect(screen.getByRole("listbox", { name: "Select model" })).toBeVisible();
+    expect(
+      await screen.findByRole("listbox", { name: "Select model" }),
+    ).toBeVisible();
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(document.activeElement).toBe(document.body);
@@ -1298,7 +1306,9 @@ describe("composer permission mode picker", () => {
       "composer__access-label--write",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("listbox", { name: "Select model" })).toBeVisible();
+    expect(
+      await screen.findByRole("listbox", { name: "Select model" }),
+    ).toBeVisible();
   });
 
   it("sets the selected session model and thinking through their own pickers", async () => {
@@ -1343,7 +1353,7 @@ describe("composer permission mode picker", () => {
       onSelectModel,
     });
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    fireEvent.click(screen.getByRole("option", { name: /Sonnet/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Sonnet/ }));
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("model", {
       value: "sonnet",
     });
@@ -1351,9 +1361,12 @@ describe("composer permission mode picker", () => {
     fireEvent.click(
       screen.getByRole("button", { description: "Select effort" }),
     );
-    fireEvent.keyDown(screen.getByRole("slider", { name: "Thinking level" }), {
-      key: "End",
-    });
+    fireEvent.keyDown(
+      await screen.findByRole("slider", { name: "Thinking level" }),
+      {
+        key: "End",
+      },
+    );
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("effort", {
       value: "high",
     });
@@ -1647,7 +1660,7 @@ describe("composer permission mode picker", () => {
     expect(screen.getByText("1M context")).toBeVisible();
     const trigger = screen.getByRole("button", { name: "Model" });
     fireEvent.click(trigger);
-    const list = screen.getByRole("listbox", { name: "Select model" });
+    const list = await screen.findByRole("listbox", { name: "Select model" });
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
     expect(trigger).toHaveAttribute("aria-controls", list.id);
     const title = screen.getByText("Select model");
@@ -1705,9 +1718,9 @@ describe("composer permission mode picker", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
     expect(
-      screen
-        .getByRole("listbox", { name: "Select model" })
-        .closest(".menu-popover"),
+      (await screen.findByRole("listbox", { name: "Select model" })).closest(
+        ".menu-popover",
+      ),
     ).toHaveClass("composer__popover");
   });
 
@@ -1757,7 +1770,9 @@ describe("composer permission mode picker", () => {
       "Claude Opus",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("option", { name: /Codex 6/ })).toBeVisible();
+    expect(
+      await screen.findByRole("option", { name: /Codex 6/ }),
+    ).toBeVisible();
     expect(screen.queryByRole("option", { name: /Claude Opus/ })).toBeNull();
   });
 
@@ -1818,7 +1833,9 @@ describe("composer permission mode picker", () => {
       "High",
     );
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByRole("option", { name: /New Model/ })).toBeVisible();
+    expect(
+      await screen.findByRole("option", { name: /New Model/ }),
+    ).toBeVisible();
     expect(screen.queryByText("Old Model")).toBeNull();
     expect(screen.queryByText("High")).toBeNull();
     expect(

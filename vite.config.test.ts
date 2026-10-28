@@ -70,7 +70,13 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
   rust: "src/features/files/editorLanguageRust.ts",
 } as const;
 
+const COMPOSER_MENU_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerAccessMenu.tsx",
+  "src/features/chat/ComposerEffortMenu.tsx",
+  "src/features/chat/ComposerModelMenu.tsx",
+];
 const REQUIRED_DYNAMIC_FACADES = [
+  ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
@@ -450,6 +456,17 @@ describe("desktop-native chunk topology", () => {
         ).toBe(false);
     }
     const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
+    for (const module of COMPOSER_MENU_DYNAMIC_FACADES) {
+      expect(graph.dynamicFacades).toContain(module);
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        graph.initialModules.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+    }
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>

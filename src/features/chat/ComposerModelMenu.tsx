@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
+import "./composer-model-identities.css";
 import {
   ChatModelPicker,
   MAX_VISIBLE_MODELS,

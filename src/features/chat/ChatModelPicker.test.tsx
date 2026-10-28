@@ -65,6 +65,51 @@ it("preserves the harness model groups", () => {
   ).toHaveAttribute("aria-selected", "true");
 });
 
+it("visibly distinguishes colliding human names across groups by exact harness ID", () => {
+  const onSelect = vi.fn();
+  render(
+    <ChatModelPicker
+      listboxId="models"
+      models={[
+        {
+          id: "claude-sonnet-4-20250514",
+          name: "claude-sonnet-4-20250514",
+          group: "Recommended",
+        },
+        {
+          id: "claude-sonnet-4-20250601",
+          name: "Claude Sonnet 4 20250601",
+          group: "Other models",
+        },
+        { id: "private/sonnet", name: "Claude Sonnet 4" },
+        { id: "gpt-5.4-mini", name: "gpt-5.4-mini" },
+      ]}
+      selectedId="claude-sonnet-4-20250514"
+      disabled={false}
+      onSelect={onSelect}
+    />,
+  );
+  const selected = screen.getByRole("option", {
+    name: "Claude Sonnet 4 (claude-sonnet-4-20250514)",
+  });
+  expect(selected).toHaveAttribute("aria-selected", "true");
+  expect(within(selected).getByText("claude-sonnet-4-20250514")).toBeVisible();
+  const snapshot = screen.getByRole("option", {
+    name: "Claude Sonnet 4 (claude-sonnet-4-20250601)",
+  });
+  expect(within(snapshot).getByText("claude-sonnet-4-20250601")).toBeVisible();
+  fireEvent.click(snapshot);
+  fireEvent.click(
+    screen.getByRole("option", { name: "Claude Sonnet 4 (private/sonnet)" }),
+  );
+  expect(onSelect.mock.calls).toEqual([
+    ["claude-sonnet-4-20250601"],
+    ["private/sonnet"],
+  ]);
+  const unique = screen.getByRole("option", { name: "GPT-5.4 Mini" });
+  expect(unique).not.toHaveTextContent("gpt-5.4-mini");
+});
+
 it("uses default metadata for recommendations and caps visible models", () => {
   render(
     <ChatModelPicker

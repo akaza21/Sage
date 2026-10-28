@@ -38,6 +38,7 @@ export type ParityState =
   | "no-default"
   | "pre-turn"
   | "models"
+  | "model-collisions"
   | "access";
 const noop = async () => {};
 const project = {
@@ -263,27 +264,49 @@ Object.assign(window, {
               },
             ],
     };
-    if (state === "models")
+    if (state === "models" || state === "model-collisions")
       config.configOptions.push({
         id: "model",
         name: "Model",
         type: "select",
-        currentValue: "claude-sonnet-4-5-20250929",
+        currentValue:
+          state === "models"
+            ? "claude-sonnet-4-5-20250929"
+            : "claude-sonnet-4-20250514",
         options: [
           {
             group: "default",
             name: "Recommended by harness",
             options: [
               {
-                value: "claude-sonnet-4-5-20250929",
-                name: "Claude Sonnet 4 5 20250929",
+                value:
+                  state === "models"
+                    ? "claude-sonnet-4-5-20250929"
+                    : "claude-sonnet-4-20250514",
+                name:
+                  state === "models"
+                    ? "Claude Sonnet 4 5 20250929"
+                    : "Claude Sonnet 4 20250514",
               },
             ],
           },
           {
             group: "other",
             name: "Other models",
-            options: [{ value: "gpt-5.4-mini", name: "gpt-5.4-mini" }],
+            options:
+              state === "models"
+                ? [{ value: "gpt-5.4-mini", name: "gpt-5.4-mini" }]
+                : [
+                    {
+                      value: "claude-sonnet-4-20250601",
+                      name: "claude-sonnet-4-20250601",
+                    },
+                    {
+                      value:
+                        "private/claude-sonnet-4/workspace-specific-model-with-a-long-identifier",
+                      name: "Claude Sonnet 4",
+                    },
+                  ],
           },
         ],
       });

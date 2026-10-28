@@ -328,6 +328,67 @@ for (const width of [1888, 720, 480]) {
       );
       await expect(access).toBeFocused();
     });
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`fixture model snapshot identities remain visible (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ forcedColors });
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+        await render(page, "Claude Code", "model-collisions");
+        const trigger = page.getByRole("button", {
+          name: "Model",
+          exact: true,
+        });
+        await trigger.focus();
+        await page.keyboard.press("Enter");
+        const menu = page.locator(".composer__model-menu");
+        const first = menu.getByRole("option", {
+          name: "Claude Sonnet 4 (claude-sonnet-4-20250514)",
+          exact: true,
+        });
+        const second = menu.getByRole("option", {
+          name: "Claude Sonnet 4 (claude-sonnet-4-20250601)",
+          exact: true,
+        });
+        await expect(first).toHaveAttribute("aria-selected", "true");
+        await expect(
+          first.getByText("claude-sonnet-4-20250514", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          second.getByText("claude-sonnet-4-20250601", { exact: true }),
+        ).toBeVisible();
+        const subtitles = menu.locator(".searchable-picker__subtitle");
+        await expect(subtitles).toHaveCount(3);
+        await menu.getByRole("option").last().scrollIntoViewIfNeeded();
+        await noClip(
+          page,
+          ".composer__model-menu, .composer-model-picker__list, .composer-model-picker .searchable-picker__subtitle",
+        );
+        await first.scrollIntoViewIfNeeded();
+        await page.keyboard.press("Home");
+        await expect(first).toBeFocused();
+        await expect
+          .poll(() =>
+            first.evaluate((element) => element.matches(":focus-visible")),
+          )
+          .toBe(true);
+        await expect(menu).toHaveScreenshot(
+          `model-collisions-${width}-${forcedColors}.png`,
+        );
+        await page.keyboard.press("ArrowDown");
+        await expect(second).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(
+          menu.getByRole("option", {
+            name: "Claude Sonnet 4 (claude-sonnet-4-20250601)",
+            exact: true,
+          }),
+        ).toHaveAttribute("aria-selected", "true");
+      });
+    }
     test("unconfirmed defaults and unsupported effort never invent controls", async ({
       page,
     }) => {

@@ -23,7 +23,8 @@
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
         "maxGzipBytes": 900,
-        "reason": "Bounded, human-labelled model groups; loads on the first Model request (AP-D)."
+        "maxCssGzipBytes": 250,
+        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; JS and CSS load on the first Model request (AP-D)."
       },
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
