@@ -140,7 +140,10 @@ export interface EditorPort {
 
 export interface RepositoryPort {
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
-  getFileDiff(resource: ResourceRef): Promise<FileDiff>;
+  getFileDiff(
+    resource: ResourceRef,
+    scope?: "staged" | "unstaged",
+  ): Promise<FileDiff>;
   mutateGitFile(
     request: GitFileMutationRequest,
     expectedTransitionEpoch: number,

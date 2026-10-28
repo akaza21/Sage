@@ -92,9 +92,12 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
+  "src/features/diff/ChangesSurface.tsx",
+  "src/features/diff/ChangesTab.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
+  "src/features/files/MixedEolFileView.tsx",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
@@ -105,6 +108,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/search/SearchSurface.tsx",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
+  "src/workbench/AgentArtifactHeader.tsx",
+  "src/workbench/AgentArtifactOpenMenu.tsx",
+  "src/workbench/AgentResourcesPopover.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -114,7 +120,6 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
-  "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",
   "src/features/chat/acp/InlineSavedDiff.tsx",
@@ -136,7 +141,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/features/preview/useHarnessBrowseSession.ts",
   "src/workbench/AgentArtifactCollapsedPane.tsx",
   "src/workbench/AgentArtifactFocusGuard.tsx",
-  "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
   "src/workbench/AgentArtifactTabStrip.tsx",

@@ -114,7 +114,12 @@ const editor: EditorPort = {
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
-  getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
+  getFileDiff: (resource, scope) =>
+    scope
+      ? Promise.reject(
+          new Error("Scoped Git diffs require the native Git backend."),
+        )
+      : browserDesktop.getFileDiff(resource),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>

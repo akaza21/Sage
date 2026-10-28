@@ -16,6 +16,39 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/workbench/AgentArtifactHeader.tsx",
+        "maxGzipBytes": 1500,
+        "reason": "Per-resource artifact header; loads only when an admitted file or diff is visible."
+      },
+      {
+        "entry": "src/workbench/AgentArtifactOpenMenu.tsx",
+        "maxGzipBytes": 450,
+        "reason": "Artifact open/copy choices; loads only when the open menu is requested."
+      },
+      {
+        "entry": "src/features/diff/ChangesSurface.tsx",
+        "maxGzipBytes": 2500,
+        "maxCssGzipBytes": 450,
+        "reason": "Bounded Chat changes sections and scoped Git reads; loads only when Changes is selected. Inactive sections unmount their diff."
+      },
+      {
+        "entry": "src/features/diff/ChangesTab.tsx",
+        "maxGzipBytes": 400,
+        "reason": "Changes tab chrome; loads only after an explicit Changes request."
+      },
+      {
+        "entry": "src/features/files/MixedEolFileView.tsx",
+        "maxGzipBytes": 1250,
+        "maxCssGzipBytes": 230,
+        "reason": "Read-only mixed-EOL viewer with bounded coalesced external refresh; loads only after the editor refuses mixed line endings."
+      },
+      {
+        "entry": "src/workbench/AgentResourcesPopover.tsx",
+        "maxGzipBytes": 1700,
+        "maxCssGzipBytes": 160,
+        "reason": "Chat resource rows from retained projections; mounts only while the resources popover is open."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,

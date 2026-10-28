@@ -13,6 +13,68 @@ import type { AcpChatPage, AcpItem } from "../domain/acp";
 vi.mock("../app/openAgentArtifact", () => ({ openAgentArtifact: vi.fn() }));
 
 const initial = useWorkbenchStore.getState();
+
+it("counts deleted display resources without offering them as file outputs", async () => {
+  const projection = seedSnapshotOwner();
+  const { page, scope } = projection.getState();
+  if (!page || !scope) throw new Error("Missing page");
+  const item = page.turns[0].items[0];
+  if (item.kind !== "fileChangeDiff") throw new Error("Missing changes");
+  projection.getState().applyAuthoritativePage(scope, {
+    ...page,
+    projectionRevision: "2" as AcpChatPage["projectionRevision"],
+    turns: [
+      {
+        ...page.turns[0],
+        items: [
+          {
+            ...item,
+            payload: {
+              ...item.payload,
+              changes: [
+                {
+                  ...item.payload.changes[0],
+                  pairState: undefined,
+                  snapshotRevision: undefined,
+                  contentDigest: undefined,
+                  oldBytes: undefined,
+                  newBytes: undefined,
+                  operation: "deleted",
+                  resource: {
+                    kind: "unavailable",
+                    reason: "missing",
+                    label: "deleted.ts",
+                    displayResource: {
+                      rootId: "root-a",
+                      relativePath: "deleted.ts",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  render(
+    <AgentTaskHeader
+      tab={{
+        id: page.chatId,
+        kind: "chat",
+        title: "Chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      }}
+      chatCount={1}
+      snapshot={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(await screen.findByText("1 recent file")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Open.*deleted.ts/ })).toBeNull();
+});
 afterEach(() => {
   cleanup();
   useAgentChangesState.getState().close();

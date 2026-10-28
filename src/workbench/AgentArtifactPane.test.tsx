@@ -68,6 +68,7 @@ import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { AgentArtifactPane } from "./AgentArtifactPane";
+import { CollaborationItem } from "../features/chat/acp/CollaborationItem";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 
 function mountArtifactHeader() {
@@ -603,6 +604,47 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("tab", { name: /File src\/app.ts/ }));
     expect(tab).toHaveAttribute("aria-selected", "false");
     expect(tab).toBeVisible();
+  });
+  it("navigates from Changes to a child selected by its transcript name", async () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "spawn-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing scope");
+    store.getState().applyAuthoritativePage(scope, {
+      ...base,
+      turns: [{ ...base.turns[0], items: [child] }],
+    });
+    render(
+      <>
+        <CollaborationItem item={child} />
+        <AgentArtifactPane />
+      </>,
+    );
+    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
+    );
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer" }),
+    ).toBeVisible();
   });
   it("opens a historical-session Subagent row in the focused Chat", async () => {
     const base = pageWithEdit();

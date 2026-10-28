@@ -8,6 +8,6 @@
   border: 0;
   color: var(--color-text-primary);
   background: var(--color-canvas);
-  font: var(--editor-font-size, 13px) / 1.5 var(--font-mono);
+  font: var(--font-size-sm) / 1.5 var(--font-family-mono);
   white-space: pre;
 }

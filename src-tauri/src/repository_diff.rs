@@ -10,7 +10,22 @@ use crate::{
 
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
 
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitDiffScope {
+    Staged,
+    Unstaged,
+}
+
 pub async fn file_diff(workspace: &Workspace, resource: &ResourceRef) -> AppResult<FileDiff> {
+    scoped_file_diff(workspace, resource, None).await
+}
+
+pub async fn scoped_file_diff(
+    workspace: &Workspace,
+    resource: &ResourceRef,
+    scope: Option<GitDiffScope>,
+) -> AppResult<FileDiff> {
     if !matches!(
         repository_boundary(workspace.root()).await?,
         RepositoryBoundary::Exact
@@ -19,19 +34,34 @@ pub async fn file_diff(workspace: &Workspace, resource: &ResourceRef) -> AppResu
             "diffs require a selected root that equals the Git top level".into(),
         ));
     }
-    let relative_path = workspace.validate_resource(resource, false)?;
-    let resource = ResourceRef {
-        root_id: workspace.root_id().into(),
-        relative_path: relative_path.clone(),
+    let admitted = workspace.git_resource_identity(resource)?;
+    if admitted.relative_path != resource.relative_path {
+        return Err(AppError::InvalidRequest(
+            "resource path is not the canonical root-relative identity".into(),
+        ));
+    }
+    let resource = admitted;
+    let relative_path = &resource.relative_path;
+    let base = if matches!(scope, Some(GitDiffScope::Unstaged)) {
+        None
+    } else {
+        Some(repository_diff_base(workspace.root()).await?)
     };
-    let base = repository_diff_base(workspace.root()).await?;
     let mut args = vec!["diff", "--no-ext-diff", "--no-color", "--unified=3"];
-    args.push(&base);
+    if matches!(scope, Some(GitDiffScope::Staged)) {
+        args.push("--cached");
+    }
+    if let Some(base) = &base {
+        args.push(base);
+    }
     args.extend(["--", relative_path.as_str()]);
     let output = run_git(workspace.root(), &args, MAX_DIFF_BYTES).await?;
     ensure_success(&output)?;
 
-    if output.stdout.is_empty() && is_untracked(workspace.root(), &relative_path).await? {
+    if !matches!(scope, Some(GitDiffScope::Staged))
+        && output.stdout.is_empty()
+        && is_untracked(workspace.root(), relative_path).await?
+    {
         let document = workspace.read_text_file(&resource)?;
         return Ok(added_file_diff(
             resource,
@@ -46,6 +76,10 @@ pub async fn file_diff(workspace: &Workspace, resource: &ResourceRef) -> AppResu
         output.stdout_truncated,
     )
 }
+
+#[cfg(test)]
+#[path = "repository_diff_tests.rs"]
+mod tests;
 
 pub(crate) async fn repository_diff_base(root: &Path) -> AppResult<String> {
     let head = run_git(root, &["rev-parse", "--verify", "--quiet", "HEAD"], 256).await?;

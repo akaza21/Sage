@@ -153,8 +153,11 @@ const editor: EditorPort = {
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => invokeNative("get_repository_status"),
-  getFileDiff(resource) {
-    return invokeNative("get_file_diff", { resource });
+  getFileDiff(resource, scope) {
+    return invokeNative("get_file_diff", {
+      resource,
+      ...(scope ? { scope } : {}),
+    });
   },
   mutateGitFile(request, expectedTransitionEpoch) {
     return invokeNative("mutate_git_file", {

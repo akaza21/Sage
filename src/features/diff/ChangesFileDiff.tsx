@@ -73,6 +73,7 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
       } else {
         const value = await getWorkbenchPorts().repository.getFileDiff(
           entry.resource,
+          entry.gitScope,
         );
         if (!current()) return;
         if (useWorkbenchStore.getState().repositories !== initial.repositories)

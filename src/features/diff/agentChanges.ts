@@ -5,6 +5,7 @@ import type {
   ResourceRef,
 } from "../../domain/workbench";
 import { projectAgentEditSummary } from "../chat/acp/agentEditSummary";
+import { resourceKey } from "../../domain/resourceIdentity";
 
 export type ChangesScope = "lastTurn" | "unstaged" | "staged";
 export type ChangesEntry = {
@@ -12,6 +13,7 @@ export type ChangesEntry = {
   additions: number | null;
   deletions: number | null;
   diffRef?: AgentDiffRef;
+  gitScope?: "staged" | "unstaged";
   unavailable?: string;
 };
 
@@ -36,23 +38,34 @@ export function projectChanges(
     }
     if (!page || !turn) return { entries, truncated: false };
     const summary = projectAgentEditSummary(page, turn);
+    const byResource = new Map<string, ChangesEntry>();
     for (const change of summary.changes) {
-      if (change.resource.kind !== "resource") continue;
-      entries.push({
-        resource: change.resource.resource,
+      const resource =
+        change.resource.kind === "resource"
+          ? change.resource.resource
+          : change.resource.reason === "missing"
+            ? change.resource.displayResource
+            : null;
+      if (!resource) continue;
+      const key = resourceKey(resource);
+      byResource.delete(key);
+      byResource.set(key, {
+        resource,
         additions: change.additions,
         deletions: change.deletions,
         diffRef: change.diffRef,
         ...(!change.diffRef
           ? {
               unavailable:
-                "The harness did not retain a before/after pair for this file.",
+                change.operation === "deleted"
+                  ? "This file was deleted. The harness did not retain an openable before/after pair."
+                  : "The harness did not retain a before/after pair for this file.",
             }
           : {}),
       });
     }
     return {
-      entries,
+      entries: [...byResource.values()],
       truncated:
         summary.sourceTruncated ||
         summary.omittedCount > 0 ||
@@ -69,16 +82,15 @@ export function projectChanges(
       if (!(scope === "staged" ? indexed : working)) continue;
       if (entries.length === 300) return { entries, truncated: true };
       const unavailable =
-        indexed && working
-          ? "Separate diffs for files with both staged and unstaged changes are not exposed by the Git backend."
-          : change.indexStatus === "conflicted" ||
-              change.worktreeStatus === "conflicted"
-            ? "Resolve this file's merge conflict before viewing its scoped diff."
-            : undefined;
+        change.indexStatus === "conflicted" ||
+        change.worktreeStatus === "conflicted"
+          ? "Resolve this file's merge conflict before viewing its scoped diff."
+          : undefined;
       entries.push({
         resource: change.resource,
-        additions: unavailable ? null : change.additions,
-        deletions: unavailable ? null : change.deletions,
+        additions: null,
+        deletions: null,
+        gitScope: scope,
         unavailable,
       });
     }

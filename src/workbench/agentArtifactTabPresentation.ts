@@ -103,12 +103,16 @@ export function projectTaskResources(
   }
   for (const turn of recentTurns.reverse()) {
     for (const change of projectAgentEditSummary(page, turn).changes) {
+      const changedResource =
+        change.resource.kind === "resource"
+          ? change.resource.resource
+          : change.resource.displayResource;
       if (
         turn.sessionId === page.currentSessionId &&
-        change.resource.kind === "resource" &&
+        changedResource &&
         changes.size < MAX_RESOURCE_ENTRIES
       )
-        changes.add(resourceKey(change.resource.resource));
+        changes.add(resourceKey(changedResource));
       if (change.operation !== "created" || change.resource.kind !== "resource")
         continue;
       const resource = change.resource.resource;

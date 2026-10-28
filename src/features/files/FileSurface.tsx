@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
 import { useWorkbenchStore } from "../../app/store";
@@ -20,7 +20,11 @@ import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
-import { MixedEolFileView } from "./MixedEolFileView";
+const MixedEolFileView = lazy(() =>
+  import("./MixedEolFileView").then((module) => ({
+    default: module.MixedEolFileView,
+  })),
+);
 
 export function FileSurface({
   tab,
@@ -177,7 +181,11 @@ export function FileSurface({
   }
   if (editor.phase === "error") {
     if (editor.message.includes("mixed LF and CRLF"))
-      return <MixedEolFileView key={activeResourceKey} resource={resource} />;
+      return (
+        <Suspense fallback={<p role="status">Loading file viewer...</p>}>
+          <MixedEolFileView key={activeResourceKey} resource={resource} />
+        </Suspense>
+      );
     return <FileSurfaceResourceState path={path} error={editor.message} />;
   }
 

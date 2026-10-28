@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  noticeMatchesWatch,
+  type EditorWatchSubscription,
+} from "../../domain/editorWatch";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
@@ -11,22 +15,78 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
     clipped: boolean;
   } | null>(null);
   const [error, setError] = useState("");
+  const [watchError, setWatchError] = useState("");
+  const refresh = useRef<() => void>(() => undefined);
+  const cancellation = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let cancelled = false;
-    void getWorkbenchPorts()
-      .editor.readTextFile(resource)
-      .then((file) => {
+    let reading = false;
+    let pending = false;
+    let version = 0;
+    let subscription: EditorWatchSubscription | undefined;
+    let unsubscribe: (() => void) | undefined;
+    const editor = getWorkbenchPorts().editor;
+    const requestRead = () => {
+      if (cancelled) return;
+      version += 1;
+      pending = true;
+      setResult(null);
+      setError("");
+      if (reading) return;
+      reading = true;
+      void (async () => {
+        while (pending && !cancelled) {
+          pending = false;
+          const requestedVersion = version;
+          try {
+            const file = await editor.readTextFile(resource);
+            if (cancelled || requestedVersion !== version) continue;
+            setResult({
+              content: file.content.slice(0, MAX_EDITABLE_CONTENT_BYTES),
+              clipped: file.content.length > MAX_EDITABLE_CONTENT_BYTES,
+            });
+          } catch (cause: unknown) {
+            if (!cancelled && requestedVersion === version)
+              setError(String(cause).slice(0, 512));
+          }
+        }
+        reading = false;
+      })();
+    };
+    refresh.current = requestRead;
+    const start = cancellation.current.then(async () => {
+      try {
+        const watch = await editor.watchEditorDocument(resource);
+        if (cancelled) {
+          await watch.cancel();
+          return;
+        }
+        subscription = watch;
+        unsubscribe = watch.delivery.subscribe((notice) => {
+          if (cancelled || !noticeMatchesWatch(notice, resource)) return;
+          if (notice.kind === "deleted") {
+            version += 1;
+            pending = false;
+            setResult(null);
+            setError("This file was deleted outside Sage.");
+          } else requestRead();
+        });
+        setWatchError("");
+      } catch {
         if (!cancelled)
-          setResult({
-            content: file.content.slice(0, MAX_EDITABLE_CONTENT_BYTES),
-            clipped: file.content.length > MAX_EDITABLE_CONTENT_BYTES,
-          });
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(String(cause).slice(0, 512));
-      });
+          setWatchError(
+            "Automatic file watching is unavailable. Use Refresh file to check for changes.",
+          );
+      }
+      requestRead();
+    });
     return () => {
       cancelled = true;
+      pending = false;
+      unsubscribe?.();
+      cancellation.current = start
+        .then(() => subscription?.cancel())
+        .catch(() => undefined);
     };
   }, [resource]);
   return (
@@ -37,6 +97,10 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
       <p role="status">
         Mixed line endings · View only. The file is not normalized or saved.
       </p>
+      <button type="button" onClick={() => refresh.current()}>
+        Refresh file
+      </button>
+      {watchError ? <p role="status">{watchError}</p> : null}
       {error ? (
         <ResourceStateNotice
           state="error"

@@ -72,11 +72,16 @@ it("loads a scoped Git section without activating a hidden Diff tab", async () =
     });
   render(
     <ChangesFileDiff
-      entry={{ resource: snapshotResource, additions: 1, deletions: 0 }}
+      entry={{
+        resource: snapshotResource,
+        additions: 1,
+        deletions: 0,
+        gitScope: "staged",
+      }}
     />,
   );
   expect(await screen.findByRole("table")).toHaveTextContent("scoped content");
-  expect(read).toHaveBeenCalledWith(snapshotResource);
+  expect(read).toHaveBeenCalledWith(snapshotResource, "staged");
   expect(useWorkbenchStore.getState().tabs).toEqual([]);
 });
 
