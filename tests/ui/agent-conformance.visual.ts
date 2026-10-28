@@ -486,9 +486,12 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     await gear.click();
 
     await expect(
-      page.getByRole("radio", { name: "Editor" }),
-      "L15: the rail gear leaves Agent mode so Settings is actually reachable",
+      page.getByRole("radio", { name: "Agent" }),
+      "G1: the rail gear opens Settings inside the Agent window",
     ).toBeChecked();
+    await expect(
+      page.getByRole("region", { name: "Agent settings" }),
+    ).toBeVisible();
   });
 
   test("creates a task from the chord the rail advertises", async ({

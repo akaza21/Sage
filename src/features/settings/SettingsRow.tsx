@@ -1,0 +1,21 @@
+import type { ReactNode } from "react";
+
+export function SettingsRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="agent-settings__row">
+      <div>
+        <strong>{title}</strong>
+        <p>{description}</p>
+      </div>
+      <div className="agent-settings__control">{children}</div>
+    </div>
+  );
+}

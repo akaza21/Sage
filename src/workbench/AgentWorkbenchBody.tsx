@@ -16,7 +16,6 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange,
   onAgentArtifactWidthChange,
   onOpenArtifactInEditor,
-  onOpenSettings,
   onOpenTerminal,
 }: {
   layout: ReturnType<typeof agentWorkbenchLayout>;
@@ -27,7 +26,6 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange: (width: number) => void;
   onAgentArtifactWidthChange: (width: number) => void;
   onOpenArtifactInEditor: (tabId: string) => void;
-  onOpenSettings: () => void;
   onOpenTerminal?: () => void;
 }) {
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
@@ -44,10 +42,7 @@ export function AgentWorkbenchBody({
           } as CSSProperties
         }
       >
-        <LeftSidebar
-          inert={layout.artifactModal}
-          onOpenSettings={onOpenSettings}
-        />
+        <LeftSidebar inert={layout.artifactModal} />
         {layout.navigationResizable ? (
           <WorkbenchSidebarSplitter
             ariaLabel="Resize project and chat rail"

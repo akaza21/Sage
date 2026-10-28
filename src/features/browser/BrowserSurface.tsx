@@ -26,6 +26,7 @@ import {
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 import { BrowserDownloads } from "./BrowserDownloads";
 import { BrowserDrawers } from "./BrowserSitePermissions";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
 import {
   ClosedBrowserSurface,
@@ -83,7 +84,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [findText, setFindText] = useState("");
   const [zoomPending, setZoomPending] = useState(false);
@@ -318,7 +318,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}
           onHistory={openHistory}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() =>
+            useAgentSettingsState.getState().open("Browser", tab.id)
+          }
           onCopy={() =>
             void pageAction(() => navigator.clipboard.writeText(page!.url))
           }
@@ -368,10 +370,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <BrowserDrawers
         tabId={tab.id}
-        settingsOpen={settingsOpen}
         historyOpen={historyOpen}
         historyEntries={historyEntries}
-        onCloseSettings={() => setSettingsOpen(false)}
         onCloseHistory={() => setHistoryOpen(false)}
         onNavigate={(url) =>
           void pageAction(() => browserNavigate(tab.id, url))

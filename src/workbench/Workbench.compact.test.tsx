@@ -10,6 +10,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { useUiAppearanceStore } from "../app/uiAppearanceStore";
+import * as nativeBrowser from "../ports/nativeBrowserPort";
 import { Workbench } from "./Workbench";
 import { settleLazyModules } from "../test/settleLazyModules";
 
@@ -102,10 +105,12 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   localStorage.clear();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   useWorkbenchStore.setState(initialState, true);
+  vi.restoreAllMocks();
 });
 
 describe("compact Workbench project tools", () => {
@@ -782,18 +787,18 @@ describe("compact Workbench project tools", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(openSettings).toHaveBeenCalled();
-    await vi.waitFor(() => {
-      expect(
-        screen.queryByRole("button", {
-          name: "Show files and preview · Waiting",
-        }),
-      ).toBeNull();
-    });
+    expect(openSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
+    expect(
+      await screen.findByRole("region", { name: "Agent settings" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
   });
 
-  it("guides an empty Editor workbench only through implemented entry points", () => {
+  it("guides an empty Editor workbench only through implemented entry points", async () => {
     render(<Workbench />);
+    await settleLazyModules();
 
     const welcome = screen.getByRole("region", { name: "Editor welcome" });
     expect(
@@ -808,6 +813,129 @@ describe("compact Workbench project tools", () => {
     expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
     expect(screen.queryByText("Username")).toBeNull();
   });
+
+  it("keeps the settings shortcut in its window and preserves the focused chat", async () => {
+    const openSettings = vi.fn(async () => undefined);
+    seedResourceChat();
+    useWorkbenchStore.setState({ openSettings });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+    const activeChat = useWorkbenchStore.getState().activeTabId;
+    const tabs = useWorkbenchStore.getState().tabs;
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    expect(
+      await screen.findByRole("region", { name: "Agent settings" }),
+    ).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
+    expect(useWorkbenchStore.getState().activeTabId).toBe(activeChat);
+    expect(useWorkbenchStore.getState().tabs).toEqual(tabs);
+    expect(openSettings).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Back to chats" }), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
+    await selectWindowMode("Editor");
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    expect(openSettings).toHaveBeenCalledOnce();
+  });
+
+  it("projects persisted interface appearance without changing editor settings", async () => {
+    render(<Workbench />);
+    await settleLazyModules();
+    const initialAppearance = useUiAppearanceStore.getState().appearance;
+    act(() =>
+      useUiAppearanceStore.setState({
+        appearance: { fontSize: 16, density: "compact" },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--font-size-md"),
+      ).toBe("16px"),
+    );
+    expect(
+      document.documentElement.style.getPropertyValue("--row-height-default"),
+    ).toBe("28px");
+    act(() => useUiAppearanceStore.setState({ appearance: initialAppearance }));
+    await vi.waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--font-size-md"),
+      ).toBe(`${initialAppearance.fontSize}px`),
+    );
+  });
+
+  it.each([null, "file", "browser"] as const)(
+    "restores the same chat pair and focus after settings with %s active",
+    async (resourceKind) => {
+      compactViewport = false;
+      vi.spyOn(nativeBrowser, "closeBrowser").mockResolvedValue(undefined);
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "A", roots: [] },
+        tabs: ["a", "b", "c", "d"].map((id, position) => ({
+          id: `chat:${id}`,
+          kind: "chat",
+          title: `Chat ${id}`,
+          position,
+          pinned: false,
+          dirty: false,
+        })),
+        activeTabId: "chat:a",
+      });
+      render(<Workbench />);
+      await selectWindowMode("Agent");
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat:c" }));
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat:d" }));
+      const pair = () =>
+        Array.from(
+          document.querySelectorAll<HTMLElement>(".agent-chat-pane"),
+        ).map((pane) => pane.dataset.chatId);
+      expect(pair()).toEqual(["chat:c", "chat:d"]);
+      const focusedPane = screen.getByRole("region", {
+        name: "Chat pane Chat d",
+      });
+      if (resourceKind) {
+        act(() =>
+          useWorkbenchStore.setState((state) => ({
+            tabs: [
+              ...state.tabs,
+              {
+                id: "resource:settings-return",
+                kind: resourceKind,
+                title: "Settings return resource",
+                position: state.tabs.length,
+                pinned: false,
+                dirty: false,
+                resource:
+                  resourceKind === "file"
+                    ? { rootId: "root-a", relativePath: "return.ts" }
+                    : undefined,
+              },
+            ],
+            activeTabId: "resource:settings-return",
+          })),
+        );
+      }
+      expect(focusedPane).toHaveClass("agent-chat-pane--focused");
+      fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+      await screen.findByRole("region", { name: "Agent settings" });
+      expect(screen.queryByRole("region", { name: /^Chat pane / })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+      await settleLazyModules();
+      expect(pair()).toEqual(["chat:c", "chat:d"]);
+      expect(
+        document.querySelector('.agent-chat-pane[data-chat-id="chat:d"]'),
+      ).toBe(focusedPane);
+      expect(focusedPane).toHaveClass("agent-chat-pane--focused");
+    },
+  );
 
   it("exposes only truthful focusable controls in the Project sidebar", async () => {
     useWorkbenchStore.setState({

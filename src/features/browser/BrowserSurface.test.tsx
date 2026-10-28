@@ -15,6 +15,7 @@ import { browserOperationFixture } from "../../domain/browserOperation.fixture";
 import { recordBrowserAgentOperation } from "../../app/browserAgentActivityStore";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
@@ -119,9 +120,22 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   pinAgentChatOwner(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("routes Browser settings to Agent settings with the originating tab", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+  expect(useAgentSettingsState.getState().page).toBe("Browser");
+  expect(useAgentSettingsState.getState().browserTabId).toBe(tab.id);
+  expect(
+    screen.queryByRole("complementary", { name: "Browser settings" }),
+  ).toBeNull();
 });
 
 it("shows a native favicon after an earlier navigation event arrives during status hydration", async () => {

@@ -1,4 +1,5 @@
 import {
+  Activity,
   useCallback,
   useEffect,
   useRef,
@@ -13,7 +14,6 @@ import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
-import { ActiveEditorCanvas } from "./ActiveEditorCanvas";
 import { DirtyTabDialog } from "./DirtyTabDialog";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
@@ -46,6 +46,7 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
 registerWorkbenchSurfaces();
 
@@ -54,10 +55,15 @@ const loadAgentWorkbenchBody = () =>
     default: AgentWorkbenchBody,
   }));
 
+const loadEditorCanvas = () => import("./ActiveEditorCanvas");
+
 const loadTerminalDock = () =>
   import("./TerminalDockShell").then(({ TerminalDockForWorkbench }) => ({
     default: TerminalDockForWorkbench,
   }));
+
+const loadAgentSettings = () =>
+  import("../features/settings/AgentSettingsSurface");
 
 const workbenchGeometryStyle = {
   "--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`,
@@ -173,6 +179,9 @@ function RendererRecreationPacketCollector({
 }
 
 export function Workbench() {
+  const agentSettingsPage = useAgentSettingsState(
+    (state) => state.page !== null,
+  );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const compact = useCompactWorkbenchLayout();
@@ -183,7 +192,8 @@ export function Workbench() {
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
     useAgentDesktopSidebarWidths(agentArtifactExpanded);
-  const resourceModal = windowMode === "agent" && agentLayout.artifactModal;
+  const resourceModal =
+    windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -199,18 +209,19 @@ export function Workbench() {
       const apple = usesMetaModifier();
       if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
         event.preventDefault();
-        setWindowMode("editor");
-        void useWorkbenchStore.getState().openSettings();
+        if (windowMode === "agent") useAgentSettingsState.getState().open();
+        else void useWorkbenchStore.getState().openSettings();
       }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
+        useAgentSettingsState.getState().close();
         setWindowMode("agent");
         void useWorkbenchStore.getState().createChat();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal]);
+  }, [resourceModal, windowMode]);
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -241,10 +252,6 @@ export function Workbench() {
       setWindowMode("editor");
     })();
   }, []);
-  const revealSettings = useCallback(() => {
-    setWindowMode("editor");
-    void useWorkbenchStore.getState().openSettings();
-  }, []);
   const drawerOpen =
     isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
     (windowMode === "agent" && agentLayout.artifactOverlay);
@@ -270,28 +277,38 @@ export function Workbench() {
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
       {windowMode === "agent" ? (
-        <LazyModuleBoundary
-          label="Agent workspace"
-          load={loadAgentWorkbenchBody}
-          render={(AgentWorkbenchBody) => (
-            <AgentWorkbenchBody
-              layout={agentLayout}
-              style={bodyStyle}
-              drawerOpen={drawerOpen}
-              artifactExpanded={agentArtifactExpanded}
-              onArtifactExpandedChange={changeAgentArtifact}
-              onAgentLeftRailWidthChange={(width) =>
-                changeAgentSidebarWidth("left", width)
-              }
-              onOpenTerminal={() => setTerminalOpen(true)}
-              onAgentArtifactWidthChange={(width) =>
-                changeAgentSidebarWidth("artifact", width)
-              }
-              onOpenArtifactInEditor={openArtifactInEditor}
-              onOpenSettings={revealSettings}
+        <>
+          <Activity mode={agentSettingsPage ? "hidden" : "visible"}>
+            <LazyModuleBoundary
+              label="Agent workspace"
+              load={loadAgentWorkbenchBody}
+              render={(AgentWorkbenchBody) => (
+                <AgentWorkbenchBody
+                  layout={agentLayout}
+                  style={bodyStyle}
+                  drawerOpen={drawerOpen}
+                  artifactExpanded={agentArtifactExpanded}
+                  onArtifactExpandedChange={changeAgentArtifact}
+                  onAgentLeftRailWidthChange={(width) =>
+                    changeAgentSidebarWidth("left", width)
+                  }
+                  onOpenTerminal={() => setTerminalOpen(true)}
+                  onAgentArtifactWidthChange={(width) =>
+                    changeAgentSidebarWidth("artifact", width)
+                  }
+                  onOpenArtifactInEditor={openArtifactInEditor}
+                />
+              )}
             />
-          )}
-        />
+          </Activity>
+          {agentSettingsPage ? (
+            <LazyModuleBoundary
+              label="Agent settings"
+              load={loadAgentSettings}
+              render={(AgentSettingsSurface) => <AgentSettingsSurface />}
+            />
+          ) : null}
+        </>
       ) : (
         <div className="workbench__body" style={bodyStyle}>
           <RightSidebar compact={compact} railFirst />
@@ -313,7 +330,15 @@ export function Workbench() {
             <div className="workbench__tabs">
               <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
             </div>
-            <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
+            <LazyModuleBoundary
+              label="Editor"
+              load={loadEditorCanvas}
+              render={(ActiveEditorCanvas) => (
+                <ActiveEditorCanvas
+                  onOpenAgent={() => setWindowMode("agent")}
+                />
+              )}
+            />
           </div>
         </div>
       )}

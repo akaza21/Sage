@@ -13,6 +13,8 @@ const loadSettingsSurface = () =>
     default: SettingsSurface,
   }));
 
+export default ActiveEditorCanvas;
+
 function repositoryMutationTitle(
   error: NonNullable<
     ReturnType<typeof useWorkbenchStore.getState>["repositoryMutationError"]

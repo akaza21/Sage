@@ -75,7 +75,7 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "openSettings",
     label: "Open settings",
-    description: "Opens the Settings tab and switches to Editor.",
+    description: "Opens settings for the current mode.",
     scope: "Global",
     key: ",",
     ctrlOrMeta: "required",

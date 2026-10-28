@@ -179,36 +179,20 @@ export function BrowserSitePermissions({
 
 export function BrowserDrawers({
   tabId,
-  settingsOpen,
   historyOpen,
   historyEntries,
-  onCloseSettings,
   onCloseHistory,
   onNavigate,
 }: {
   tabId: string;
-  settingsOpen: boolean;
   historyOpen: boolean;
   historyEntries: readonly string[];
-  onCloseSettings: () => void;
   onCloseHistory: () => void;
   onNavigate: (url: string) => void;
 }) {
   return (
     <>
-      {settingsOpen ? (
-        <aside
-          className="browser-surface__drawer"
-          aria-label="Browser settings"
-        >
-          <button type="button" onClick={onCloseSettings}>
-            Close settings
-          </button>
-          <BrowserSitePermissions tabId={tabId} showEmpty />
-        </aside>
-      ) : (
-        <BrowserSitePermissions tabId={tabId} />
-      )}
+      <BrowserSitePermissions tabId={tabId} />
       {historyOpen ? (
         <aside className="browser-surface__drawer" aria-label="Browser history">
           <button type="button" onClick={onCloseHistory}>

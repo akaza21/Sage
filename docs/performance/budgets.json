@@ -16,6 +16,17 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/settings/AgentSettingsSurface.tsx",
+        "maxGzipBytes": 4100,
+        "maxCssGzipBytes": 1100,
+        "reason": "AP-G: separate Agent settings navigation and real-backed sections, loaded only by a settings entry. Browser native controls have a second lazy boundary. No existing caps raised."
+      },
+      {
+        "entry": "src/features/settings/AgentBrowserSettings.tsx",
+        "maxGzipBytes": 1700,
+        "reason": "AP-G: live-tab browser settings, history and reused native controls; loaded only by Settings > Browser. No browser commands run on the initial chat path."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,
