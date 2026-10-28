@@ -309,3 +309,20 @@ it("shows a sent turn's elements and pages read-only above the bubble", async ()
   fireEvent.focus(chip);
   expect(within(screen.getByRole("dialog")).queryByRole("button")).toBeNull();
 });
+
+it("keeps two sent pages that share a URL apart", async () => {
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  const page = (title: string) => ({
+    kind: "browserPage" as const,
+    tabId: "browser-1",
+    url: "https://example.com/",
+    title,
+    text: title,
+  });
+  render(<SentAnnotations contexts={[page("Before"), page("After")]} />);
+  const list = await screen.findByRole("list", { name: "Page context" });
+  expect(within(list).getByText("Page · Before")).toBeInTheDocument();
+  expect(within(list).getByText("Page · After")).toBeInTheDocument();
+  expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  errors.mockRestore();
+});

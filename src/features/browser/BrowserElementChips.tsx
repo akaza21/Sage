@@ -64,7 +64,10 @@ export default function BrowserElementChips({
       {chip}
       {contexts.map((context) =>
         context.kind === "browserPage" ? (
-          <li key={context.url} className="browser-element-chip">
+          <li
+            key={attachedContextKey(context)}
+            className="browser-element-chip"
+          >
             <span className="browser-element-chip__trigger" title={context.url}>
               <Globe2 size={12} aria-hidden="true" />
               <span className="browser-element-chip__label">
