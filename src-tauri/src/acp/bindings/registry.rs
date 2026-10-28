@@ -18,6 +18,7 @@ mod codex;
 mod opencode;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod pi;
+mod pi_native;
 mod record;
 mod record_root;
 use record::{Admission, AdmittedBinding, RootPolicy};
@@ -83,6 +84,7 @@ pub(crate) struct BindingRegistry {
     codex: BindingRecord,
     claude: BindingRecord,
     opencode: BindingRecord,
+    pi_native: BindingRecord,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pi: Option<BindingRecord>,
     #[cfg(test)]
@@ -140,7 +142,12 @@ impl BindingRegistry {
 
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     fn isolate_fixture_records(&mut self, active_harness: &str) {
-        for record in [&mut self.codex, &mut self.claude, &mut self.opencode] {
+        for record in [
+            &mut self.codex,
+            &mut self.claude,
+            &mut self.opencode,
+            &mut self.pi_native,
+        ] {
             if record.harness_id != active_harness {
                 record.session_operations_enabled = false;
                 record.model_provider = ModelProvider::NoAccountModels;
@@ -207,6 +214,9 @@ impl BindingRegistry {
                 model_provider: ModelProvider::NoAccountModels,
                 auth_provider: AuthProvider::None,
             },
+            pi_native: pi_native::record(Arc::new(
+                crate::acp::bindings::pi::native_admission::PiBindingRegistration::startup(),
+            )),
             #[cfg(test)]
             test_binding: None,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -245,6 +255,15 @@ impl BindingRegistry {
         &self.opencode
     }
 
+    pub(crate) fn pi_admission(
+        &self,
+    ) -> &Arc<crate::acp::bindings::pi::native_admission::PiBindingRegistration> {
+        let Admission::PiNative(admission) = &self.pi_native.admission else {
+            unreachable!()
+        };
+        admission
+    }
+
     pub(crate) fn opencode_admission(&self) -> &Arc<OpenCodeBindingRegistration> {
         let Admission::OpenCode(admission) = &self.opencode.admission else {
             unreachable!()
@@ -257,21 +276,26 @@ impl BindingRegistry {
         if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
             return Some(record);
         }
-        [self.codex(), self.claude(), self.opencode()]
-            .into_iter()
-            .find(|record| record.harness_id() == id)
-            .or({
-                #[cfg(test)]
-                {
-                    self.test_binding
-                        .as_ref()
-                        .filter(|record| record.harness_id() == id)
-                }
-                #[cfg(not(test))]
-                {
-                    None
-                }
-            })
+        [
+            self.codex(),
+            self.claude(),
+            self.opencode(),
+            &self.pi_native,
+        ]
+        .into_iter()
+        .find(|record| record.harness_id() == id)
+        .or({
+            #[cfg(test)]
+            {
+                self.test_binding
+                    .as_ref()
+                    .filter(|record| record.harness_id() == id)
+            }
+            #[cfg(not(test))]
+            {
+                None
+            }
+        })
     }
 
     pub(crate) fn resolve(
@@ -292,7 +316,7 @@ impl BindingRegistry {
         {
             return Ok(record);
         }
-        [&self.codex, &self.claude, &self.opencode]
+        [&self.codex, &self.claude, &self.opencode, &self.pi_native]
             .into_iter()
             .find(|record| record.binding_id() == binding_id)
             .or({
@@ -363,7 +387,7 @@ impl BindingRegistry {
     pub(crate) fn test_registration(&self) -> Option<CodexBindingRegistration> {
         match self.test_binding.as_ref()?.admission {
             Admission::Codex(ref admission) => Some(admission.clone()),
-            Admission::Claude(_) | Admission::OpenCode(_) => None,
+            Admission::Claude(_) | Admission::OpenCode(_) | Admission::PiNative(_) => None,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             Admission::Pi(_) => None,
         }
@@ -623,5 +647,28 @@ mod tests {
         );
         drop(admitted);
         fs::remove_dir_all(root).expect("remove root");
+    }
+}
+
+#[cfg(test)]
+mod pi_native_tests {
+    use super::*;
+
+    #[test]
+    fn the_registry_routes_pi_to_its_curated_read_only_binding() {
+        let registry = BindingRegistry::default();
+        let record = registry.for_harness("pi").expect("Pi has a curated record");
+        assert_eq!(record.binding_id(), "pi-rpc");
+        assert!(registry.route("pi-rpc").is_ok());
+        // Discovery is pending until the CLI is found; Absent is a reason.
+        assert!(!record.admission_available());
+        registry
+            .pi_admission()
+            .apply_discovery(crate::harness_discovery::PiLaunchDiscovery::Absent);
+        assert_eq!(
+            record.unavailable_reason(),
+            Some(crate::domain::HarnessUnavailableReason::CandidateInvalid)
+        );
+        assert!(registry.resolve("pi-rpc").is_err());
     }
 }
