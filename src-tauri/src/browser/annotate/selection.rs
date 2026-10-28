@@ -128,6 +128,7 @@ impl AnnotateMode {
             Ok(selection) => {
                 announced.selection = Some(selection.view());
                 self.pending = Some(selection);
+                let _ = overlay.focus(label, false);
             }
             Err(error) => announced.error = Some(error),
         }
@@ -144,6 +145,9 @@ impl AnnotateMode {
             return (Vec::new(), Ok(()));
         }
         let released = overlay.release(label, true, true);
+        // The page takes focus back, as in Codex, so the next Escape
+        // reaches it and leaves Annotate.
+        let _ = overlay.focus(label, true);
         (vec![self.resumed(label, &released)], released)
     }
 

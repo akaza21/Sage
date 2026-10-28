@@ -64,6 +64,11 @@ impl InspectOverlay for Overlay {
         }
         Ok(())
     }
+    fn focus(&self, label: &str, page: bool) -> Result<(), String> {
+        let target = if page { label } else { "main" };
+        self.calls.borrow_mut().push(format!("focus {target}"));
+        Ok(())
+    }
 }
 
 impl Overlay {
@@ -311,6 +316,9 @@ fn racing_starts_and_leaves_announce_the_final_state_last() {
             Ok(selection::tests::selection(label))
         }
         fn release(&self, _: &str, _: bool, _: bool) -> Result<(), String> {
+            Ok(())
+        }
+        fn focus(&self, _: &str, _: bool) -> Result<(), String> {
             Ok(())
         }
     }

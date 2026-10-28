@@ -85,7 +85,11 @@ fn a_click_while_annotating_picks_the_element_and_announces_where_it_is() {
         }])
     );
     assert_eq!(mode.pending, Some(selection("browser-1")));
-    assert_eq!(overlay.calls(), ["start browser-1", "pick browser-1 7"]);
+    // Typing goes to the comment box, not the hidden page.
+    assert_eq!(
+        overlay.calls(),
+        ["start browser-1", "pick browser-1 7", "focus main"]
+    );
 }
 
 #[test]
@@ -133,7 +137,7 @@ fn a_failed_pick_keeps_annotate_on_and_says_why() {
 }
 
 #[test]
-fn cancelling_shows_the_page_resumes_hovering_and_clears_the_selection() {
+fn cancelling_shows_the_page_resumes_hovering_and_gives_it_focus_back() {
     let overlay = Overlay::default();
     let mut mode = picked(&overlay, "browser-1");
     assert_eq!(
@@ -141,9 +145,13 @@ fn cancelling_shows_the_page_resumes_hovering_and_clears_the_selection() {
         (vec![on("browser-1")], Ok(()))
     );
     assert_eq!(mode.pending, None);
+    // The page holds focus again, so the next Escape reaches it.
     assert_eq!(
-        overlay.calls().last().unwrap(),
-        "release browser-1 reveal=true resume=true"
+        overlay.calls()[3..],
+        [
+            "release browser-1 reveal=true resume=true",
+            "focus browser-1"
+        ]
     );
     assert_eq!(mode.cancel(&overlay, "browser-1"), (vec![], Ok(())));
 }
@@ -251,7 +259,7 @@ fn leaving_with_an_element_waiting_shows_the_page_unless_the_tab_hid_or_closed()
             (vec![off("browser-1")], Ok(()))
         );
         assert_eq!(mode.pending, None);
-        assert_eq!(overlay.calls()[2..], calls, "{exit:?}");
+        assert_eq!(overlay.calls()[3..], calls, "{exit:?}");
     }
 }
 
@@ -264,7 +272,7 @@ fn starting_another_tab_first_shows_the_frozen_page_of_the_previous_one() {
         (vec![off("browser-1"), on("browser-2")], Ok(()))
     );
     assert_eq!(
-        overlay.calls()[2..],
+        overlay.calls()[3..],
         [
             "release browser-1 reveal=true resume=false",
             "stop browser-1",
@@ -311,7 +319,7 @@ fn the_page_is_marked_frozen_before_it_hides() {
     annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
     assert_eq!(
         overlay.calls()[1..],
-        ["pick browser-4 1", "hide frozen=true"]
+        ["pick browser-4 1", "hide frozen=true", "focus main"]
     );
     assert!(annotate.is_frozen("browser-4"));
 
@@ -359,9 +367,10 @@ fn escape_drops_a_waiting_element_first_and_then_leaves_annotate() {
     );
     assert_eq!(mode.tab, None);
     assert_eq!(
-        overlay.calls()[2..],
+        overlay.calls()[3..],
         [
             "release browser-1 reveal=true resume=true",
+            "focus browser-1",
             "stop browser-1"
         ]
     );
