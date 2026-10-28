@@ -529,3 +529,33 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
     tabs: previous.tabs,
   });
 });
+
+it("hides the native page while a toolbar popover covers it, even across a resize", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+
+  hideBrowser.mockClear();
+  positionBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Downloads" }));
+  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(positionBrowser).not.toHaveBeenCalled();
+
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Downloads" }), {
+    key: "Escape",
+  });
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+
+  hideBrowser.mockClear();
+  positionBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+});

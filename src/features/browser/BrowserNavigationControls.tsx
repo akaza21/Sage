@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Download,
   Ellipsis,
   RotateCw,
   X,
@@ -25,6 +24,7 @@ import type {
 import { useWorkbenchStore } from "../../app/store";
 import type { BrowserPageIdentity } from "./browserAddress";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
+import { useDismissOnOutsidePointer } from "./browserPopover";
 
 interface Props {
   navigation: BrowserNavigation | null;
@@ -47,6 +47,8 @@ interface Props {
   onExternal: () => void;
   clearDataControl: ReactNode;
   pageControls?: ReactNode;
+  downloadsControl?: ReactNode;
+  onMenuOpenChange?: (open: boolean) => void;
 }
 
 export function BrowserNavigationControls({
@@ -70,11 +72,15 @@ export function BrowserNavigationControls({
   onExternal,
   clearDataControl,
   pageControls,
+  downloadsControl,
+  onMenuOpenChange,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
+  useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useLayoutEffect(() => {
     if (editing) addressField.current?.select();
   }, [editing, addressField]);
@@ -98,7 +104,9 @@ export function BrowserNavigationControls({
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!menuOpen) return;
     if (event.key === "Escape") {
+      // The menu is the innermost layer: Escape must not reach the pane.
       event.preventDefault();
+      event.stopPropagation();
       setMenuOpen(false);
       menuTrigger.current?.focus();
       return;
@@ -192,9 +200,7 @@ export function BrowserNavigationControls({
       </form>
       <div className="browser-surface__right-group" onKeyDown={onMenuKeyDown}>
         {pageControls}
-        <button type="button" aria-label="Downloads" onClick={onDownloads}>
-          <Download size={16} aria-hidden="true" />
-        </button>
+        {downloadsControl}
         <button
           ref={menuTrigger}
           type="button"

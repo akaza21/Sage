@@ -74,6 +74,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // The browser downloads popover body loads on its first open.
+  "src/features/browser/BrowserDownloadsPanel.tsx",
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
