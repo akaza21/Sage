@@ -11,7 +11,6 @@ import {
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
-import { agentChatMoveDestinations } from "./agentChatRail";
 
 import { useWorkbenchStore } from "../app/store";
 import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
@@ -90,11 +89,7 @@ export function ProjectChatNavigation({
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
-  const archiveChat = useWorkbenchStore((state) => state.archiveChat);
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
-  const pinChat = useWorkbenchStore((state) => state.pinChat);
-  const moveChat = useWorkbenchStore((state) => state.moveChat);
-  const projects = useWorkbenchStore((state) => state.projects);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -110,7 +105,6 @@ export function ProjectChatNavigation({
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
   const awaitingApprovalIds = useChatsAwaitingApproval();
-  const moveDestinations = agentChatMoveDestinations(projects, projectId);
 
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
@@ -310,6 +304,7 @@ export function ProjectChatNavigation({
               />
               {showActions ? (
                 <ProjectChatActionMenu
+                  chatId={tab.id}
                   chatTitle={displayTitle}
                   pinned={tab.pinned}
                   open={actionMenuChatId === tab.id}
@@ -318,20 +313,15 @@ export function ProjectChatNavigation({
                     projectTransitioning ||
                     (projectChatCount ?? chatTabs.length) <= 1
                   }
-                  destinations={moveDestinations}
+                  projectId={projectId}
                   onOpenChange={(open) =>
                     setActionMenuChatId(open ? tab.id : null)
                   }
-                  onPin={() => void pinChat(tab.id, projectId)}
                   onRename={() => {
                     setRenameError(null);
                     setRenameDraft(displayTitle);
                     setRenamingChatId(tab.id);
                   }}
-                  onMove={(targetProjectId) =>
-                    void moveChat(tab.id, targetProjectId, projectId)
-                  }
-                  onArchive={() => void archiveChat(tab.id, projectId)}
                   triggerRef={(node) => {
                     if (node) renameTriggerRefs.current.set(tab.id, node);
                     else renameTriggerRefs.current.delete(tab.id);

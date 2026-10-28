@@ -22,14 +22,19 @@ type Components = Record<string, AnyComponent>;
 export function lazyParts<Chunk extends Components>(
   load: () => Promise<Chunk>,
 ) {
-  const parts: Partial<Record<keyof Chunk, AnyComponent>> = {};
+  let parts: Partial<Record<keyof Chunk, AnyComponent>> = {};
   let loaded: Chunk | null = null;
+  let pending: Promise<Chunk> | null = null;
   const loadOnce = () =>
-    load().then((chunk) => {
-      loaded = chunk;
-      return chunk;
-    });
-  return function Part<K extends keyof Chunk & string>({
+    (pending ??= load().then(
+      (chunk) => (loaded = chunk),
+      (error: unknown) => {
+        pending = null;
+        parts = {};
+        throw error;
+      },
+    ));
+  function Part<K extends keyof Chunk & string>({
     fallback = null,
     ...props
   }: { part: K; fallback?: ReactNode } & ComponentProps<Chunk[K]>) {
@@ -38,21 +43,16 @@ export function lazyParts<Chunk extends Components>(
     const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
     if (Ready) return <Ready {...props} />;
     const Loaded: AnyComponent = (parts[part] ??= lazy(() =>
-      loadOnce().then(
-        (chunk) => ({ default: chunk[part]! }),
-        (error: unknown) => {
-          // Retry failed imports on the next mount.
-          delete parts[part];
-          throw error;
-        },
-      ),
+      loadOnce().then((chunk) => ({ default: chunk[part]! })),
     ));
     return (
       <Suspense fallback={fallback}>
         <Loaded {...props} />
       </Suspense>
     );
-  };
+  }
+  Part.preload = loadOnce;
+  return Part;
 }
 
 export const TranscriptPart = lazyParts<

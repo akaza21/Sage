@@ -419,13 +419,13 @@ describe("AgentTaskHeader working status", () => {
     );
   });
 
-  it("opens and dismisses the Outputs, Subagents, and Sources panel", () => {
+  it("opens and dismisses the Outputs, Subagents, and Sources panel", async () => {
     renderHeader(null);
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
     expect(
-      screen.getByRole("dialog", { name: "Chat resources" }),
+      await screen.findByRole("dialog", { name: "Chat resources" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("dialog", { name: "Chat resources" }),
@@ -559,7 +559,7 @@ describe("AgentTaskHeader working status", () => {
     });
   }
 
-  it("counts separate verified spawns even when a thread ID is reused", () => {
+  it("counts separate verified spawns even when a thread ID is reused", async () => {
     seedHeaderItems([
       collaborationItem(
         "spawn-1",
@@ -588,7 +588,7 @@ describe("AgentTaskHeader working status", () => {
       screen.getByRole("button", { name: "Show chat resources" }),
     );
     expect(
-      screen.getByLabelText("Recent subagents working: 1"),
+      await screen.findByLabelText("Recent subagents working: 1"),
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText("Recent subagents done: 1"),

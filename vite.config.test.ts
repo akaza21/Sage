@@ -107,6 +107,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/search/SearchSurface.tsx",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
+  "src/workbench/AgentTaskResources.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -149,6 +150,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentRailSections.tsx",
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
+  "src/workbench/agentTaskHeaderLazy.ts",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/agentChatRail.ts",
   "src/workbench/agentRailStatusView.ts",
@@ -556,6 +558,18 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    const resources = "src/workbench/AgentTaskResources.tsx";
+    const resourcesFile = groupedGraph.moduleFiles.get(resources);
+    expect(groupedGraph.chunkNames.get(resourcesFile!)).toBe(
+      "AgentTaskResources",
+    );
+    expect(resourcesFile).not.toBe(agentFile);
+    expect(resourcesFile).not.toBe(sharedFile);
+    for (const facade of [workbench, agent]) {
+      expect(closureForModule(groupedGraph, facade)).not.toContain(
+        path.join(root, resources).split(path.sep).join("/"),
+      );
+    }
     // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",
@@ -777,6 +791,7 @@ describe("desktop-native chunk topology", () => {
       "/src/app/agentDiffLoad.ts",
       "/src/features/diff/snapshotDiff.ts",
       "/src/workbench/AgentWorkbenchBody.tsx",
+      "/src/workbench/AgentTaskResources.tsx",
       "/src/workbench/SettingsSurface.tsx",
       "/src/workbench/SourceControlView.tsx",
       "/src/workbench/Workbench.tsx",
