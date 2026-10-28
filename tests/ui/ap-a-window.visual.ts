@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  expectNoViewportOverflow,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -90,6 +91,10 @@ test("AP-A1/A3: only an explicit side-chat action opens a second titled, closabl
   await expect(panes.first()).toHaveAttribute("data-chat-id", sideId!);
   await page.setViewportSize({ width: 1888, height: 1080 });
   await expect(panes).toHaveCount(1);
+  await page.keyboard.press("Control+Alt+s");
+  await expect(panes).toHaveCount(2);
+  await expect(panes.last()).toHaveAttribute("data-chat-id", sideId!);
+  await expect(header.locator(".side-chat-tab")).toHaveCount(1);
   await expect(
     header.getByRole("button", { name: "Close side chat", exact: true }),
   ).toBeVisible();
@@ -148,8 +153,13 @@ for (const harness of ["codex", "claude-code", "pi"]) {
     await expect(
       navigation.locator(".project-sidebar__icon-rail"),
     ).toBeVisible();
-    await expect(navigation.locator(".project-sidebar__actions")).toBeHidden();
-    await expect(navigation.locator(".project-sidebar__scroll")).toBeHidden();
+    await expect(navigation.locator(".project-sidebar__actions")).toHaveCount(
+      0,
+    );
+    await expect(navigation.locator(".project-sidebar__scroll")).toHaveCount(0);
+    await expect(navigation.locator(".project-sidebar__account")).toHaveCount(
+      0,
+    );
     await expect(
       page
         .locator(".agent-task-header")
@@ -171,6 +181,41 @@ for (const harness of ["codex", "claude-code", "pi"]) {
     await expect(workbench).toHaveScreenshot(
       `agent-sidebar-shown-${harness}.png`,
     );
+  });
+}
+
+for (const [control, section, grouping] of [
+  ["Go to recent chats", "Recent", "folder"],
+  ["Go to projects", "Projects", "folder"],
+  ["Go to projects", "Chats", "status"],
+] as const) {
+  test(`AP-A5: collapsed rail ${control} reveals and focuses ${section}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1888, height: 1080 });
+    await openScenario(page, "agent-single", "agent");
+    await page.evaluate(async (group) => {
+      const { setAgentRailGrouping } =
+        await import("/src/workbench/agentRailViewPrefs.ts");
+      setAgentRailGrouping(group);
+    }, grouping);
+    const target = page.getByRole("region", { name: section, exact: true });
+    const disclosure = target.getByRole("button", {
+      name: section,
+      exact: true,
+    });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("button", { name: "Hide projects and chats" }).click();
+    await expect(page.locator(".project-sidebar__scroll")).toHaveCount(0);
+    await page.getByRole("button", { name: control, exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Hide projects and chats" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(target).toBeVisible();
+    await expect(disclosure).toBeFocused();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expectNoViewportOverflow(page);
   });
 }
 

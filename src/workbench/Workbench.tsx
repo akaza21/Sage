@@ -288,6 +288,7 @@ export function Workbench() {
               style={bodyStyle}
               drawerOpen={drawerOpen}
               navigationCollapsed={agentNavigationCollapsed}
+              onExpandNavigation={() => setAgentNavigationCollapsed(false)}
               artifactExpanded={agentArtifactExpanded}
               onArtifactExpandedChange={changeAgentArtifact}
               onAgentLeftRailWidthChange={(width) =>

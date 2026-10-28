@@ -127,6 +127,7 @@ export async function launchSideChat(
         (side.parentChatId === chatId || side.id === chatId),
     );
   if (existing && state.tabs.some((tab) => tab.id === existing.id)) {
+    useSideChatState.setState({ pairedId: existing.id });
     await state.activateTab(existing.id);
     return;
   }

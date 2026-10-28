@@ -7,28 +7,28 @@ import {
   Settings,
 } from "../ui/leanIcons";
 import { useCallback, useId, useRef, useState } from "react";
+import { agentRailSectionSelectors } from "./agentRailNavigation";
 
 export function AgentPrimaryNavigation({
   onNewChat,
   onSearch,
   onSettings,
   searchDisabled,
+  onNavigate,
 }: {
   onNewChat: () => void;
   onSearch: () => void;
   onSettings: () => void;
   searchDisabled: boolean;
+  onNavigate?: (target: "Recent" | "Projects") => void;
 }) {
   const scrollToSection =
     (target: "Recent" | "Projects") =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
-      const section =
-        target === "Projects"
-          ? '[aria-label="Projects"], [aria-label="Chats"]'
-          : '[aria-label="Recent"]';
+      if (onNavigate) return onNavigate(target);
       event.currentTarget
         .closest(".project-sidebar")
-        ?.querySelector<HTMLElement>(section)
+        ?.querySelector<HTMLElement>(agentRailSectionSelectors[target])
         ?.scrollIntoView?.();
     };
   return (

@@ -42,7 +42,7 @@ afterEach(() => {
   clearAgentChatOwner();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initial, true);
-  useSideChatState.setState({ sides: [] });
+  useSideChatState.setState({ sides: [], pairedId: null });
 });
 function Launcher() {
   const { launch } = useContext(AgentToolsContext);
@@ -131,6 +131,7 @@ it("reopens only this Chat's existing side chat", async () => {
   }));
   useSideChatState.setState({
     sides: [{ id: "side-a", projectId: "project-a", parentChatId: "chat-a" }],
+    pairedId: null,
   });
   render(
     <AgentToolsProvider>
@@ -139,4 +140,5 @@ it("reopens only this Chat's existing side chat", async () => {
   );
   fireEvent.keyDown(window, { key: "s", ctrlKey: true, altKey: true });
   await vi.waitFor(() => expect(activateTab).toHaveBeenCalledWith("side-a"));
+  expect(useSideChatState.getState().pairedId).toBe("side-a");
 });

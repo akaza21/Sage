@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import type {
@@ -23,6 +24,7 @@ import type {
 } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPanes } from "./AgentChatPanes";
+import { launchSideChat } from "./AgentToolPanel";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
@@ -1027,18 +1029,28 @@ describe("AgentChatPanes temporary side chat routing", () => {
     }),
   );
 
-  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", () => {
+  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     expect(
       screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
     ).toEqual(["chat-pane-chat:a", "chat-pane-side-x"]);
-    const splitter = screen.getByRole("separator", {
+    const splitter = await screen.findByRole("separator", {
       name: "Resize chat panes",
     });
     expect(splitter).toHaveAttribute("aria-valuenow", "43");
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     expect(splitter).toHaveAttribute("aria-valuenow", "48");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft", shiftKey: true });
+    expect(splitter).toHaveAttribute("aria-valuenow", "38");
+    fireEvent.keyDown(splitter, { key: "Home" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "End" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
     expect(
       localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY) ?? "",
     ).not.toContain("48");
@@ -1058,16 +1070,17 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(pinnedAgentChatOwner()).toBe("chat:b");
   });
 
-  it("keeps New chat available with a solo side pane and hidden navigation", () => {
+  it("keeps New chat available with a solo side pane and hidden navigation", async () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({ createChat });
     render(<AgentChatPanes navigationCollapsed />);
     reportCenterWidth(859);
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await settleLazyModules();
+    fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
     expect(createChat).toHaveBeenCalledOnce();
   });
 
-  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", () => {
+  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", async () => {
     const { container } = render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     const header = container.querySelector(".agent-chat-center__header")!;
@@ -1078,6 +1091,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(header).toHaveStyle({
       gridTemplateColumns: "minmax(0, 43fr) minmax(0, 57fr)",
     });
+    await within(header as HTMLElement).findByText("Chat A");
     const cells = Array.from(header.children);
     expect(cells[0]).toHaveTextContent("Chat A");
     expect(cells[0]).not.toHaveTextContent("Side chat");
@@ -1124,19 +1138,36 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
   });
 
-  it("does not resurrect a responsive-hidden side pane on widening or right-pane collapse", () => {
-    render(<AgentChatPanes />);
-    reportCenterWidth(1000);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    reportCenterWidth(859);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
-    for (const width of [860, 1200, 600, 1400]) {
-      reportCenterWidth(width);
-      expect(
-        screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
-      ).toEqual(["chat-pane-side-x"]);
-    }
-    act(() => useSideChatState.setState({ pairedId: "side-x" }));
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-  });
+  it.each(["chat:a", "side-x"])(
+    "only reopens a responsive-hidden side pane through an explicit launch from %s",
+    async (owner) => {
+      render(<AgentChatPanes />);
+      reportCenterWidth(1000);
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+      reportCenterWidth(859);
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+      for (const width of [860, 1200, 600, 1400]) {
+        reportCenterWidth(width);
+        expect(
+          screen
+            .getAllByTestId(/chat-pane-/)
+            .map((pane) => pane.dataset.testid),
+        ).toEqual(["chat-pane-side-x"]);
+      }
+      await act(async () => {
+        await useWorkbenchStore.getState().activateTab(owner);
+      });
+      await act(async () => {
+        await launchSideChat(
+          owner,
+          "project-a",
+          useWorkbenchStore.getState().projectGeneration,
+        );
+      });
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+      expect(screen.getByTestId("chat-pane-chat:a")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-pane-side-x")).toBeInTheDocument();
+      expect(useSideChatState.getState().sides).toHaveLength(1);
+    },
+  );
 });

@@ -5,12 +5,6 @@
   grid-template-columns: 54px;
 }
 
-.workbench--agent.workbench--navigation-collapsed .project-sidebar__actions,
-.workbench--agent.workbench--navigation-collapsed .project-sidebar__scroll,
-.workbench--agent.workbench--navigation-collapsed .project-sidebar__account {
-  display: none;
-}
-
 .agent-chat-center {
   display: grid;
   container-name: chat-center;

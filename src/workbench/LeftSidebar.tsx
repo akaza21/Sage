@@ -38,7 +38,7 @@ import {
  * (rail, title bar or shortcut) loads the dialog chunk once; the dialog then
  * takes that pending request on mount and owns every later one.
  */
-function ChatSearchGate({
+export function ChatSearchGate({
   triggerRef,
 }: {
   triggerRef: RefObject<HTMLButtonElement | null>;

@@ -16,6 +16,21 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/workbench/AgentSideChatHeaders.tsx",
+        "maxGzipBytes": 510,
+        "reason": "Parent/side pane titles and status subscriptions; loads only while a side chat is displayed."
+      },
+      {
+        "entry": "src/workbench/AgentChatSplitter.tsx",
+        "maxGzipBytes": 660,
+        "reason": "Pointer and accessible keyboard resizing; loads only for an explicitly paired side chat and unmounts with the split."
+      },
+      {
+        "entry": "src/workbench/AgentCollapsedNavigation.tsx",
+        "maxGzipBytes": 700,
+        "reason": "Rail-only navigation, reveal/focus actions and header New chat; loads only when projects and chats are collapsed. The full sidebar unmounts."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,

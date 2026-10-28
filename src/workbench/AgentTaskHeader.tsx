@@ -39,7 +39,7 @@ import { AgentTaskRenameForm, AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { AgentToolsContext } from "./AgentToolsProvider";
-import { AgentNewChatButton } from "./AgentNewChatButton";
+import { AgentNavigationPart } from "./agentNavigationLazy";
 
 // The Subagents region and its rows load with the lazy SubagentSurface chunk;
 // the header renders the counts synchronously and hands them to it.
@@ -191,7 +191,7 @@ export function AgentTaskHeader({
   return (
     <header className="agent-task-header">
       {showNewChat ? (
-        <AgentNewChatButton />
+        <AgentNavigationPart part="AgentNewChatButton" />
       ) : (
         <button
           className="agent-task-header__pencil"

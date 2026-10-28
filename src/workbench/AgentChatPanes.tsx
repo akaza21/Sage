@@ -5,8 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
-  type PointerEvent,
 } from "react";
 import { useStore } from "zustand";
 
@@ -30,13 +28,14 @@ import { AgentChatPane } from "./AgentChatPane";
 import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
-import {
-  AGENT_CHAT_SPLIT_MAX,
-  AGENT_CHAT_SPLIT_MIN,
-  AGENT_CHAT_SPLIT_MIN_CONTAINER,
-  resizeAgentChatSplit,
-} from "./agentChatSplit";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as SplitterChunk from "./AgentChatSplitter";
+import { AGENT_CHAT_SPLIT_MIN_CONTAINER } from "./agentChatSplit";
 import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
+
+const SplitterPart = lazyParts<typeof SplitterChunk>(
+  () => import("./AgentChatSplitter"),
+);
 
 export function AgentChatPanes({
   compact = false,
@@ -72,7 +71,6 @@ export function AgentChatPanes({
       ),
     [],
   );
-  const [resizing, setResizing] = useState(false);
   const panesRef = useRef<HTMLDivElement>(null);
   const previousFocusedId = usePinnedAgentChatOwner();
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
@@ -96,8 +94,6 @@ export function AgentChatPanes({
       activeTabId === side.id ||
       activeTabId === side.parentChatId),
   );
-  const setSplitPercent = (percent: number) =>
-    useSideChatState.setState({ split: percent });
   const focusCandidates =
     splitRequested && side ? [side.parentChatId, side.id] : chatIds;
   const focusedId = focusedAgentChatId(
@@ -203,49 +199,6 @@ export function AgentChatPanes({
     );
   }
 
-  function setSplitFromPointer(event: PointerEvent<HTMLDivElement>) {
-    const bounds = panesRef.current?.getBoundingClientRect();
-    if (!bounds) return;
-    setSplitPercent(
-      resizeAgentChatSplit({
-        containerWidth: bounds.width,
-        pointerOffset: event.clientX - bounds.left,
-      }),
-    );
-  }
-
-  function beginResize(event: PointerEvent<HTMLDivElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setResizing(true);
-    setSplitFromPointer(event);
-  }
-
-  function endResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setResizing(false);
-  }
-
-  function resizeByKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    const amount = event.shiftKey ? 10 : 5;
-    const next =
-      event.key === "ArrowLeft"
-        ? splitPercent - amount
-        : event.key === "ArrowRight"
-          ? splitPercent + amount
-          : event.key === "Home"
-            ? AGENT_CHAT_SPLIT_MIN
-            : event.key === "End"
-              ? AGENT_CHAT_SPLIT_MAX
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    setSplitPercent(
-      Math.min(AGENT_CHAT_SPLIT_MAX, Math.max(AGENT_CHAT_SPLIT_MIN, next)),
-    );
-  }
-
   const split = displayedIds.length > 1;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
@@ -289,25 +242,7 @@ export function AgentChatPanes({
                   onFocus={() => void activateTab(id)}
                 />
                 {split && index === 0 ? (
-                  <div
-                    className={`agent-chat-splitter${
-                      resizing ? " agent-chat-splitter--active" : ""
-                    }`}
-                    role="separator"
-                    aria-label="Resize chat panes"
-                    aria-orientation="vertical"
-                    aria-valuemin={AGENT_CHAT_SPLIT_MIN}
-                    aria-valuemax={AGENT_CHAT_SPLIT_MAX}
-                    aria-valuenow={splitPercent}
-                    tabIndex={0}
-                    onKeyDown={resizeByKeyboard}
-                    onPointerDown={beginResize}
-                    onPointerMove={(event) => {
-                      if (resizing) setSplitFromPointer(event);
-                    }}
-                    onPointerUp={endResize}
-                    onPointerCancel={endResize}
-                  />
+                  <SplitterPart part="AgentChatSplitter" panesRef={panesRef} />
                 ) : null}
               </Fragment>
             );

@@ -846,6 +846,7 @@ describe("compact Workbench project tools", () => {
     globalSearch.focus();
     expect(globalSearch).toHaveFocus();
     fireEvent.click(globalSearch);
+    await settleLazyModules();
     expect(
       await screen.findByRole("dialog", { name: "Search Chats" }),
     ).toBeInTheDocument();
