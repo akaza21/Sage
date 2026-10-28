@@ -90,7 +90,7 @@ impl<T: CdpTransport> CdpPort<T> {
                 STEP_TIMEOUT,
             )
             .ok()
-            .and_then(|model| outline_params(&model));
+            .and_then(|model| outline_params(&model, 1.0));
         self.inspect_step(HIDE_OUTLINE.0, outline.as_deref().unwrap_or(HIDE_OUTLINE.1))
     }
 
@@ -140,12 +140,13 @@ pub(crate) fn box_model_params(node_id: u64) -> String {
     json!({"nodeId": node_id}).to_string()
 }
 
-/// The hinge outlining a `DOM.getBoxModel` result's border box, in the main
-/// frame's viewport px like the overlay; `None` for a missing, empty or
-/// malformed box. An inline element over several lines gets its bounding
+/// The hinge outlining a `DOM.getBoxModel` result's border box; `None` for
+/// a missing, empty or malformed box. The box is in CSS px, while the hinge
+/// is drawn in unzoomed px, so the rectangle is scaled by the page `zoom`
+/// (1.0 at 100%). An inline element over several lines gets its bounding
 /// rectangle.
-pub(crate) fn outline_params(box_model: &str) -> Option<String> {
-    if box_model.len() > BOX_MODEL_BYTES {
+pub(crate) fn outline_params(box_model: &str, zoom: f64) -> Option<String> {
+    if box_model.len() > BOX_MODEL_BYTES || !zoom.is_finite() || !(0.25..=5.0).contains(&zoom) {
         return None;
     }
     let model = serde_json::from_str::<Value>(box_model).ok()?;
@@ -170,7 +171,12 @@ pub(crate) fn outline_params(box_model: &str) -> Option<String> {
     }
     Some(
         json!({"hingeConfig": {
-            "rect": {"x": left, "y": top, "width": right - left, "height": bottom - top},
+            "rect": {
+                "x": left * zoom,
+                "y": top * zoom,
+                "width": (right - left) * zoom,
+                "height": (bottom - top) * zoom
+            },
             "contentColor": rgba((0, 0, 0), 0.0),
             "outlineColor": rgba(BLUE, 1.0)
         }})
@@ -352,7 +358,7 @@ mod tests {
     fn outline_params_bound_the_border_quad_and_refuse_bad_boxes() {
         // A transformed box gets the rectangle around its quad.
         let skewed = r#"{"model":{"border":[10,20,110,25,105,60,5,55]}}"#;
-        let hinge: Value = serde_json::from_str(&outline_params(skewed).unwrap()).unwrap();
+        let hinge: Value = serde_json::from_str(&outline_params(skewed, 1.0).unwrap()).unwrap();
         assert_eq!(
             hinge["hingeConfig"]["rect"],
             json!({"x": 5.0, "y": 20.0, "width": 105.0, "height": 40.0})
@@ -364,10 +370,23 @@ mod tests {
             r#"{"model":{"border":[1,2,3]}}"#,
             r#"{"model":{"border":[1,2,3,4,5,6,7,"8"]}}"#,
         ] {
-            assert_eq!(outline_params(bad), None, "{bad}");
+            assert_eq!(outline_params(bad, 1.0), None, "{bad}");
         }
         let huge = format!(r#"{{"pad":"{}"}}"#, "x".repeat(BOX_MODEL_BYTES));
-        assert_eq!(outline_params(&huge), None);
+        assert_eq!(outline_params(&huge, 1.0), None);
+        for zoom in [0.0, -1.0, f64::NAN, f64::INFINITY, 9.0] {
+            assert_eq!(outline_params(skewed, zoom), None, "{zoom}");
+        }
+    }
+
+    #[test]
+    fn outline_params_scale_the_css_box_by_the_page_zoom() {
+        // At 150% page zoom a CSS-px box is drawn half again as far and as large.
+        let hinge: Value = serde_json::from_str(&outline_params(BOX_MODEL, 1.5).unwrap()).unwrap();
+        assert_eq!(
+            hinge["hingeConfig"]["rect"],
+            json!({"x": 15.0, "y": 30.0, "width": 150.0, "height": 45.0})
+        );
     }
 
     #[test]

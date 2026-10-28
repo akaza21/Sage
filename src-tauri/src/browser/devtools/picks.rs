@@ -12,7 +12,7 @@ use webview2_com::{
     DevToolsProtocolEventReceivedEventHandler,
     Microsoft::Web::WebView2::Win32::{
         ICoreWebView2, ICoreWebView2CallDevToolsProtocolMethodCompletedHandler,
-        ICoreWebView2DevToolsProtocolEventReceiver,
+        ICoreWebView2Controller, ICoreWebView2DevToolsProtocolEventReceiver,
     },
 };
 use windows_core::{PCWSTR, PWSTR};
@@ -41,13 +41,17 @@ pub(crate) fn watch_picks(
     on_pick: impl Fn(u64) + Send + 'static,
 ) -> Result<(), BrowserFailure> {
     let label = webview.label().to_owned();
-    on_main(webview, move |core| {
+    on_main(webview, move |core, controller| {
         let pick = listen(core, PICK, move |_, payload| {
             if let Some(node) = inspected_node(payload) {
                 on_pick(node);
             }
         })?;
-        let hover = listen(core, HOVER, outline).inspect_err(|_| unregister(pick.clone()))?;
+        let controller = controller.clone();
+        let hover = listen(core, HOVER, move |core, payload| {
+            outline(core, payload, page_zoom(&controller));
+        })
+        .inspect_err(|_| unregister(pick.clone()))?;
         let previous = PICKS.with(|picks| picks.borrow_mut().insert(label, [pick, hover]));
         previous.into_iter().flatten().for_each(unregister);
         Ok(())
@@ -97,14 +101,14 @@ fn listen(
 /// completion; an element without a box removes the outline. Leaving or
 /// pausing inspect mode removes it one round trip after hovering ends, so
 /// this outline always lands first.
-fn outline(core: Option<&ICoreWebView2>, payload: &str) {
+fn outline(core: Option<&ICoreWebView2>, payload: &str, zoom: f64) {
     let (Some(core), Some(node)) = (core, hovered_node(payload)) else {
         return;
     };
     let drawer = core.clone();
     let measured =
         CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |outcome, model| {
-            let hinge = outcome.ok().and_then(|()| outline_params(&model));
+            let hinge = outcome.ok().and_then(|()| outline_params(&model, zoom));
             let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
             call(
                 &drawer,
@@ -115,6 +119,16 @@ fn outline(core: Option<&ICoreWebView2>, payload: &str) {
             Ok(())
         }));
     call(core, "DOM.getBoxModel", &box_model_params(node), &measured);
+}
+
+/// The page zoom WebView2 applies (1.0 at 100%), read when the pointer
+/// reaches an element so Sage's zoom controls and Ctrl+wheel both count.
+fn page_zoom(controller: &ICoreWebView2Controller) -> f64 {
+    let mut zoom = 1.0;
+    match unsafe { controller.ZoomFactor(&mut zoom) } {
+        Ok(()) => zoom,
+        Err(_) => f64::NAN,
+    }
 }
 
 /// Issues one CDP call; `done` hears how it went.
@@ -141,14 +155,17 @@ fn unregister((source, token): Registration) {
 /// Runs `step` on the webview's thread and waits for it.
 fn on_main(
     webview: &Webview,
-    step: impl FnOnce(&ICoreWebView2) -> Result<(), BrowserFailure> + Send + 'static,
+    step: impl FnOnce(&ICoreWebView2, &ICoreWebView2Controller) -> Result<(), BrowserFailure>
+    + Send
+    + 'static,
 ) -> Result<(), BrowserFailure> {
     let (sender, receiver) = mpsc::sync_channel(1);
     webview
         .with_webview(move |platform| {
-            let result = unsafe { platform.controller().CoreWebView2() }
+            let controller = platform.controller();
+            let result = unsafe { controller.CoreWebView2() }
                 .map_err(|_| BrowserFailure::Unavailable)
-                .and_then(|core| step(&core));
+                .and_then(|core| step(&core, &controller));
             let _ = sender.send(result);
         })
         .map_err(|_| BrowserFailure::Unavailable)?;
