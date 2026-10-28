@@ -105,4 +105,8 @@ impl InspectOverlay for NativeOverlay<'_> {
         };
         webview.set_focus().map_err(unavailable)
     }
+
+    fn clear_outline(&self, label: &str) -> Result<(), String> {
+        devtools::clear_annotate_outline(&self.webview(label)?).map_err(unavailable)
+    }
 }

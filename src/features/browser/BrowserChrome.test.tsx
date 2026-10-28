@@ -79,6 +79,7 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserAgentControl: vi.fn(async () => null),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
   hideBrowser: (tabId: string) => hideBrowser(tabId),
+  coverBrowser: vi.fn(async () => undefined),
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));

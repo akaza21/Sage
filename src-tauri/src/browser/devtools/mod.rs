@@ -27,6 +27,8 @@ pub(crate) use native::capture_user_png;
 #[cfg(windows)]
 pub(crate) use native::clear_agent_highlight;
 #[cfg(windows)]
+pub(crate) use native::clear_annotate_outline;
+#[cfg(windows)]
 pub(crate) use native::pick_element;
 #[cfg(windows)]
 pub(crate) use native::set_annotate;

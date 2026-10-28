@@ -182,7 +182,7 @@ impl AnnotateMode {
             .ok_or("no browser element is waiting".into())
     }
 
-    fn resumed(&self, label: &str, released: &Result<(), String>) -> AnnotateChange {
+    pub(super) fn resumed(&self, label: &str, released: &Result<(), String>) -> AnnotateChange {
         let mut announced = change(label.to_owned(), true);
         announced.error = released.clone().err();
         announced

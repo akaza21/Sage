@@ -394,3 +394,78 @@ fn the_comment_box_names_the_element_never_by_an_internal_role() {
         assert_eq!(label(role, ""), word, "{role}");
     }
 }
+
+#[test]
+fn a_zoom_keeps_annotate_on_and_clears_the_outline_drawn_before_it() {
+    let overlay = Overlay::default();
+    let mut mode = annotating(&overlay, "browser-1");
+    // Nothing to announce: the chrome still shows Annotate on.
+    assert_eq!(mode.zoomed(&overlay, "browser-1", false), (vec![], Ok(())));
+    assert_eq!(mode.tab.as_deref(), Some("browser-1"));
+    assert_eq!(overlay.calls()[1..], ["clear outline browser-1"]);
+}
+
+#[test]
+fn a_zoom_drops_a_waiting_element_and_resumes_hovering() {
+    for (covered, calls) in [
+        (
+            false,
+            vec![
+                "release browser-1 reveal=true resume=true",
+                "focus browser-1",
+            ],
+        ),
+        // A popover covers the page: it stays hidden and takes no focus
+        // until the popover closes and the page is placed again.
+        (true, vec!["release browser-1 reveal=false resume=true"]),
+    ] {
+        let overlay = Overlay::default();
+        let mut mode = picked(&overlay, "browser-1");
+        assert_eq!(
+            mode.zoomed(&overlay, "browser-1", covered),
+            (vec![on("browser-1")], Ok(())),
+            "covered={covered}"
+        );
+        assert_eq!(mode.pending, None);
+        assert_eq!(mode.tab.as_deref(), Some("browser-1"));
+        assert_eq!(overlay.calls()[3..], calls, "covered={covered}");
+    }
+}
+
+#[test]
+fn a_zoom_on_a_tab_that_does_not_annotate_changes_nothing() {
+    let overlay = Overlay::default();
+    let mut mode = AnnotateMode::default();
+    assert_eq!(mode.zoomed(&overlay, "browser-1", false), (vec![], Ok(())));
+    let mut mode = picked(&overlay, "browser-1");
+    assert_eq!(mode.zoomed(&overlay, "browser-2", false), (vec![], Ok(())));
+    assert!(mode.pending.is_some());
+    assert_eq!(
+        overlay.calls(),
+        ["start browser-1", "pick browser-1 7", "focus main"]
+    );
+}
+
+#[test]
+fn a_zoom_unfreezes_a_covered_page_so_placing_it_shows_it_again() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-4"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
+    assert_eq!(annotate.hiding("browser-4", true), None);
+    let announced = std::cell::RefCell::new(Vec::new());
+    annotate
+        .zoomed(&overlay, "browser-4", |change| {
+            announced.borrow_mut().push(change)
+        })
+        .unwrap();
+    assert_eq!(announced.into_inner(), [on("browser-4")]);
+    assert!(annotate.is_annotating("browser-4"));
+    assert!(!annotate.is_frozen("browser-4"));
+    assert_eq!(
+        overlay.calls().last().map(String::as_str),
+        Some("release browser-4 reveal=false resume=true")
+    );
+}

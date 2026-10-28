@@ -100,9 +100,14 @@ pub(crate) async fn browser_hide(
     app: AppHandle,
     state: State<'_, BrowserState>,
     tab_id: String,
+    cover: Option<bool>,
 ) -> Result<(), String> {
     let webview = active_webview(&state, &tab_id)?;
-    super::annotate::leave(&app, &tab_id, super::annotate::Exit::Hidden);
+    // A toolbar popover only covers the page for a moment, so Annotate stays
+    // on; any other hide ends it.
+    if let Some(exit) = state.annotate.hiding(&tab_id, cover == Some(true)) {
+        super::annotate::leave(&app, &tab_id, exit);
+    }
     webview.hide().map_err(|error| error.to_string())
 }
 

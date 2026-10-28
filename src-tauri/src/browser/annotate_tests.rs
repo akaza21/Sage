@@ -69,6 +69,12 @@ impl InspectOverlay for Overlay {
         self.calls.borrow_mut().push(format!("focus {target}"));
         Ok(())
     }
+    fn clear_outline(&self, label: &str) -> Result<(), String> {
+        self.calls
+            .borrow_mut()
+            .push(format!("clear outline {label}"));
+        Ok(())
+    }
 }
 
 impl Overlay {
@@ -347,6 +353,9 @@ fn racing_starts_and_leaves_announce_the_final_state_last() {
         fn focus(&self, _: &str, _: bool) -> Result<(), String> {
             Ok(())
         }
+        fn clear_outline(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
     }
     let annotate = Annotate::default();
     let announced = Mutex::new(Vec::new());
@@ -415,4 +424,35 @@ fn the_chrome_is_told_why_annotate_is_unavailable() {
     assert_eq!(reason(&tabs), no_page, "a loading tab");
     assert!(tabs.finish_navigation("browser-1", 1, Some("https://example.com/")));
     assert_eq!(reason(&tabs), UNAVAILABLE_REASON, "a shown page");
+}
+
+#[test]
+fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-3"))
+        .unwrap();
+    // The "…" menu or the downloads popover covers the page.
+    assert_eq!(annotate.hiding("browser-3", true), None);
+    assert!(annotate.is_annotating("browser-3"));
+    assert!(annotate.is_covered("browser-3"));
+    // Placing another tab does not uncover this one; placing it does.
+    annotate.uncover("browser-2");
+    assert!(annotate.is_covered("browser-3"));
+    annotate.uncover("browser-3");
+    assert!(!annotate.is_covered("browser-3"));
+    assert!(annotate.is_annotating("browser-3"));
+    assert_eq!(overlay.calls(), ["start browser-3"]);
+
+    // A tab switch, a hidden centre pane or an unmount still leaves.
+    let exit = annotate.hiding("browser-3", false);
+    assert_eq!(exit, Some(Exit::Hidden));
+    annotate
+        .run(
+            |_| (),
+            |mode| mode.leave(&overlay, "browser-3", Exit::Hidden),
+        )
+        .unwrap();
+    assert!(!annotate.is_annotating("browser-3"));
 }
