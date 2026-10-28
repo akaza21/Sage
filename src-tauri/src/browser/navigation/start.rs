@@ -8,6 +8,10 @@ pub(super) fn begin<T>(
     uri: &str,
 ) -> (bool, Vec<u64>) {
     let started = tabs.start_navigation(tab_id, navigation_id, uri);
+    if !started {
+        // WebView2 raises NavigationStarting again, same id, per redirect.
+        tabs.note_redirect(tab_id, navigation_id, uri);
+    }
     let denied = permissions.navigation_to(tab_id, uri);
     (started, denied)
 }

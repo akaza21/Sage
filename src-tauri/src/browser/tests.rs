@@ -429,7 +429,6 @@ fn failed_completion(web_error: i32, source: &str) -> navigation::outcome::Compl
     navigation::outcome::Completion {
         success: false,
         web_error,
-        http_status: 0,
         source: Some(source),
     }
 }
@@ -453,7 +452,7 @@ fn navigation_that_became_a_download_keeps_the_previous_page() {
     // A superseding start while loading must not lose the remembered page.
     assert!(tabs.start_navigation("browser-1", 3, "https://a.example/report.pdf"));
     assert!(tabs.start_navigation("browser-1", 4, "https://a.example/report.pdf"));
-    tabs.note_download("browser-1");
+    tabs.note_download("browser-1", "https://a.example/report.pdf");
     // WebView2 reports the download's navigation as unsuccessful while it
     // still shows the page it left.
     assert!(
@@ -559,4 +558,135 @@ fn real_load_failure_is_reported_instead_of_a_blank_new_tab() {
     assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
     assert!(tabs.finish_navigation("browser-1", 3, Some("https://a.example/")));
     assert_eq!(tabs.snapshot("browser-1").unwrap().error, None);
+}
+
+const CANCELED: i32 = navigation::outcome::WEB_ERROR_OPERATION_CANCELED;
+
+#[test]
+fn cancel_after_hash_drift_is_abandoned_and_never_counts_as_a_commit() {
+    // The page changes its hash while the user's navigation is pending;
+    // `committed_url` does not follow it during the load.
+    let mut tabs = committed_tab(&["https://a.example/page"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/file.bin"));
+    assert!(!tabs.source_changed("browser-1", "https://a.example/page#drift"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://a.example/page#drift")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading && after.error.is_none());
+    // What is on screen is adopted as a same-document change.
+    assert_eq!(
+        after.committed_url.as_deref(),
+        Some("https://a.example/page#drift")
+    );
+    assert!(after.can_go_back);
+}
+
+#[test]
+fn cancel_after_a_failed_load_keeps_reporting_the_failure() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://missing.example/"));
+    tabs.note_content_loading("browser-1", 2, true);
+    assert!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(13, "https://missing.example/")
+        )
+        .is_some()
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://c.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(CANCELED, "https://missing.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.error, Some("The site's address could not be found"));
+    assert!(after.committed_url.is_none());
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn unrelated_download_does_not_hide_a_failed_reload() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
+    // An `<a download>` / blob download that is not this navigation.
+    tabs.note_download("browser-1", "blob:https://a.example/123");
+    tabs.note_content_loading("browser-1", 2, true);
+    assert_eq!(
+        tabs.settle_navigation("browser-1", 2, failed_completion(11, "https://a.example/")),
+        Some(navigation::outcome::Settled::Failed)
+    );
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().error,
+        Some("The site could not be reached")
+    );
+}
+
+#[test]
+fn redirected_navigation_that_became_a_download_keeps_the_page() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/get"));
+    tabs.note_redirect("browser-1", 2, "https://cdn.example/file.zip");
+    tabs.note_download("browser-1", "https://cdn.example/file.zip");
+    assert_eq!(
+        tabs.settle_navigation("browser-1", 2, failed_completion(9, "https://a.example/")),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().committed_url.as_deref(),
+        Some("https://a.example/")
+    );
+}
+
+#[test]
+fn committed_error_documents_and_auth_pages_keep_their_url() {
+    for web_error in [0, 17, 18] {
+        let mut tabs = committed_tab(&["https://a.example/"]);
+        assert!(tabs.start_navigation("browser-1", 2, "https://b.example/private"));
+        tabs.note_content_loading("browser-1", 2, false);
+        assert_eq!(
+            tabs.settle_navigation(
+                "browser-1",
+                2,
+                failed_completion(web_error, "https://b.example/private")
+            ),
+            Some(navigation::outcome::Settled::Committed),
+            "status {web_error}"
+        );
+        let after = tabs.snapshot("browser-1").unwrap();
+        assert_eq!(after.error, None);
+        assert_eq!(
+            after.committed_url.as_deref(),
+            Some("https://b.example/private")
+        );
+    }
+}
+
+#[test]
+fn stopped_reload_that_already_committed_does_not_restore_the_old_title() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://a.example/", "Old"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://a.example/")
+        ),
+        Some(navigation::outcome::Settled::Committed)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.title, None);
+    assert_eq!(after.committed_url.as_deref(), Some("https://a.example/"));
 }

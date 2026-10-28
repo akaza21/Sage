@@ -97,11 +97,6 @@ fn start_download(
     tab_id: &str,
     args: ICoreWebView2DownloadStartingEventArgs,
 ) -> windows_core::Result<()> {
-    // Allowed or denied, the navigation that produced this download will not
-    // commit; the tab keeps its page (`navigation::outcome`).
-    if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
-        tabs.note_download(tab_id);
-    }
     let prepared = (|| {
         let operation = unsafe { args.DownloadOperation()? };
         let mut source = PWSTR::null();
@@ -123,6 +118,11 @@ fn start_download(
             return Err(error);
         }
     };
+    // Allowed or denied, a navigation whose response this is will not commit;
+    // the tab keeps its page (`navigation::outcome`).
+    if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
+        tabs.note_download(tab_id, &source);
+    }
     let file_name = Path::new(&suggested)
         .file_name()
         .and_then(|name| name.to_str())

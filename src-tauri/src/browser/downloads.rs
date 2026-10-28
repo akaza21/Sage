@@ -148,7 +148,7 @@ impl DownloadRegistry {
                 tab_id: tab_id.to_owned(),
                 id,
                 source,
-                file_name: file_name.to_owned(),
+                file_name,
                 state: "choosingDestination",
                 received_bytes: 0,
                 total_bytes: None,
@@ -210,7 +210,7 @@ impl DownloadRegistry {
         if entry.file_name == name {
             return false;
         }
-        entry.file_name = name.to_owned();
+        entry.file_name = name;
         true
     }
 
@@ -311,7 +311,15 @@ impl DownloadRegistry {
     }
 }
 
-fn admitted_file_name(name: &str) -> Option<&str> {
+/// The row name: bidi override and format characters are dropped (as for
+/// page titles) so a name cannot disguise its extension; then bounded.
+fn admitted_file_name(name: &str) -> Option<String> {
+    let name = name
+        .chars()
+        .filter(|character| {
+            !matches!(character, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        })
+        .collect::<String>();
     (!name.is_empty()
         && name.len() <= 255
         && !name

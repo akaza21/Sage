@@ -120,8 +120,7 @@ struct BrowserTab<T> {
     history: BrowserHistory,
     fallback_url: Option<String>,
     last_error: Option<&'static str>,
-    restore: Option<navigation::PageRestore>,
-    download_navigation: Option<u64>,
+    evidence: navigation::NavigationEvidence,
 }
 
 #[derive(Clone)]
@@ -208,8 +207,7 @@ impl<T> BrowserTabs<T> {
                 history: BrowserHistory::default(),
                 fallback_url: None,
                 last_error: None,
-                restore: None,
-                download_navigation: None,
+                evidence: navigation::NavigationEvidence::default(),
             },
         );
     }
@@ -262,7 +260,7 @@ impl<T> BrowserTabs<T> {
         }) {
             return false;
         }
-        self.remember_page(label);
+        self.begin_evidence(label, navigation_id, url);
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
         };

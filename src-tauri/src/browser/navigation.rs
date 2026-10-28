@@ -9,6 +9,8 @@ use windows_core::BOOL;
 
 use super::{BrowserState, admit_url};
 
+#[cfg(windows)]
+mod commit;
 pub(crate) mod control;
 mod emit;
 #[cfg(windows)]
@@ -21,7 +23,7 @@ mod status;
 mod title;
 use emit::emit_snapshot;
 pub(super) use emit::navigation_state;
-pub(super) use settle::PageRestore;
+pub(super) use settle::NavigationEvidence;
 pub(crate) use status::BrowserNavigation;
 #[cfg(windows)]
 use status::emit_or_retry;
@@ -39,11 +41,11 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     use webview2_com::{
         Microsoft::Web::WebView2::Win32::{
             COREWEBVIEW2_WEB_ERROR_STATUS, COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED,
-            COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN, ICoreWebView2NavigationCompletedEventArgs2,
+            COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN,
         },
         NavigationCompletedEventHandler, NavigationStartingEventHandler, SourceChangedEventHandler,
     };
-    use windows_core::{Interface, PWSTR};
+    use windows_core::PWSTR;
 
     const _: () = assert!(
         COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED.0 == outcome::WEB_ERROR_OPERATION_CANCELED
@@ -140,20 +142,9 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                 core.Source(&mut source)?;
                             }
                             let source = webview2_com::CoTaskMemPWSTR::from(source).to_string();
-                            let http_status = args
-                                .cast::<ICoreWebView2NavigationCompletedEventArgs2>()
-                                .ok()
-                                .and_then(|args| {
-                                    let mut status = 0;
-                                    unsafe { args.HttpStatusCode(&mut status) }
-                                        .ok()
-                                        .map(|()| status)
-                                })
-                                .unwrap_or(0);
                             let completion = outcome::Completion {
                                 success: success.as_bool(),
                                 web_error: web_error.0,
-                                http_status,
                                 source: Some(&source),
                             };
                             let settled = completed_app
@@ -274,9 +265,19 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                     let _ = unsafe { core.remove_NavigationStarting(start_token) };
                     return Err(error.to_string());
                 }
+                let content_token = match commit::register(app.clone(), label.clone(), &core) {
+                    Ok(token) => token,
+                    Err(error) => {
+                        let _ = unsafe { core.remove_SourceChanged(source_token) };
+                        let _ = unsafe { core.remove_NavigationCompleted(complete_token) };
+                        let _ = unsafe { core.remove_NavigationStarting(start_token) };
+                        return Err(error);
+                    }
+                };
                 if let Err(error) =
                     title::register(app.clone(), event_webview.clone(), label.clone(), &core)
                 {
+                    let _ = unsafe { core.remove_ContentLoading(content_token) };
                     let _ = unsafe { core.remove_SourceChanged(source_token) };
                     let _ = unsafe { core.remove_NavigationCompleted(complete_token) };
                     let _ = unsafe { core.remove_NavigationStarting(start_token) };
