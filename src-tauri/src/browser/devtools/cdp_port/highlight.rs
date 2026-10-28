@@ -3,7 +3,14 @@
 //! page's main world runs nothing. The overlay keeps one highlight tool, so
 //! the dot is the overlay's separate hinge rectangle, which Chromium draws
 //! alongside a node highlight and which does not change the page's viewport
-//! segments. Annotate shares the same overlay (BP-M1a-b).
+//! segments. Annotate shares the same overlay (BP-M1a-b) and draws its hover
+//! outline with that one hinge (BP-H2, `inspect::HIDE_OUTLINE`). So while the
+//! tab annotates the marker is the outline alone: it neither draws nor
+//! clears the hinge, and its clear leaves the overlay and DOM domains on.
+//!
+//! The marker shows for `LEAD` before the act and is cleared once the act
+//! returns, so it is never left on the page, never scrolls out of place and
+//! never reaches a capture; captures clear it first as well.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -13,34 +20,73 @@ use crate::browser::devtools::snapshot::DocumentStamp;
 
 const BLUE: (u8, u8, u8) = (74, 143, 255);
 const CURSOR_PX: f64 = 10.0;
+/// Each marker step is a permitless read with this budget: a slow or lost
+/// step never revokes the Agent's permit or fails the act it marks.
+const STEP_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long the marker shows before the act runs, so the user sees the
+/// target first and can still take over.
+pub(super) const LEAD: Duration = Duration::from_millis(300);
 
-/// What clears the marker: on Stop, Take over, detach and navigation start.
+/// What removes the marker: after each act and before each capture, and on
+/// Stop, Take over, detach and navigation start.
 pub(in crate::browser::devtools) const CLEAR: [(&str, &str); 2] = [
     ("Overlay.hideHighlight", "{}"),
     ("Overlay.setShowHinge", "{}"),
 ];
 
-pub(super) fn mark<T: CdpTransport>(port: &CdpPort<T>, stamp: DocumentStamp, backend_id: u64) {
-    if port.stamp().ok() != Some(stamp) {
-        return;
+/// What turns the overlay off once the marker is gone, unless the tab
+/// annotates: its inspect overlay needs both domains.
+pub(in crate::browser::devtools) const DISABLE: [(&str, &str); 2] =
+    [("Overlay.disable", "{}"), ("DOM.disable", "{}")];
+
+/// Draws the marker; true when the outline is on the page. Best effort: it
+/// sends nothing once the permit is stopped, and every step is permitless,
+/// so it can neither revoke the permit nor fail the act.
+pub(in crate::browser::devtools) fn mark<T: CdpTransport>(
+    port: &CdpPort<T>,
+    stamp: DocumentStamp,
+    backend_id: u64,
+) -> bool {
+    if port.transport.stopped() || port.stamp().ok() != Some(stamp) {
+        return false;
     }
-    let call =
-        |method: &str, params: String| port.call(method, &params, 4096, Duration::from_secs(1));
+    let step =
+        |method: &str, params: String| port.transport.observe(method, &params, 4096, STEP_TIMEOUT);
     // Chromium refuses `Overlay.enable` until the DOM domain is on.
-    if call("DOM.enable", "{}".into()).is_err()
-        || call("Overlay.enable", "{}".into()).is_err()
-        || call("Overlay.highlightNode", highlight_params(backend_id)).is_err()
+    if step("DOM.enable", "{}".into()).is_err()
+        || step("Overlay.enable", "{}".into()).is_err()
+        || step("Overlay.highlightNode", highlight_params(backend_id)).is_err()
     {
-        return;
+        clear(&port.transport);
+        return false;
     }
-    let centre = call(
+    if port.transport.annotating() {
+        return true;
+    }
+    let centre = step(
         "DOM.getBoxModel",
         json!({"backendNodeId": backend_id}).to_string(),
     )
     .ok()
     .and_then(|model| border_centre(&model));
     if let Some((x, y)) = centre {
-        let _ = call("Overlay.setShowHinge", cursor_params(x, y));
+        let _ = step("Overlay.setShowHinge", cursor_params(x, y));
+    }
+    true
+}
+
+/// Removes the marker and turns the overlay and DOM domains off again.
+/// While the tab annotates it only hides the outline: the hinge is then
+/// Annotate's hover outline, and its inspect overlay needs both domains.
+/// Every step runs even if one before it failed.
+pub(in crate::browser::devtools) fn clear<T: CdpTransport>(transport: &T) {
+    let steps: &[(&str, &str)] = if transport.annotating() {
+        &CLEAR[..1]
+    } else {
+        &[CLEAR[0], CLEAR[1], DISABLE[0], DISABLE[1]]
+    };
+    for (method, params) in steps {
+        let _ = transport.observe(method, params, 4096, STEP_TIMEOUT);
     }
 }
 

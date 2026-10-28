@@ -16,7 +16,7 @@ impl AttachmentLease {
 
     /// Flips under the authority slot lock so `authority_for` cannot admit an
     /// authority between the flag and the stop.
-    fn set_user_control(&self, on: bool) {
+    pub(super) fn set_user_control(&self, on: bool) {
         let Ok(mut slot) = self.authority.lock() else {
             self.user_control.store(on, Ordering::Release);
             if on {
@@ -31,7 +31,62 @@ impl AttachmentLease {
     }
 }
 
+/// Who may drive a tab, for the chrome's Stop, Take over and Hand back.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentControl {
+    pub(crate) project_id: SageProjectId,
+    pub(crate) chat_id: SageChatId,
+    pub(crate) user_control: bool,
+}
+
 impl BrowserAttachments {
+    /// The live Agent attachment on `tab_label`, the user's own first, so
+    /// the chrome shows its controls for as long as an Agent is attached,
+    /// not only while it acts.
+    pub(crate) fn agent_control(&self, tab_label: &str) -> Option<AgentControl> {
+        let found = |project: &SageProjectId, chat: &SageChatId, lease: &AttachmentLease| {
+            (lease.tab_label == tab_label && lease.is_live()).then(|| AgentControl {
+                project_id: project.clone(),
+                chat_id: chat.clone(),
+                user_control: lease.user_controls(),
+            })
+        };
+        if let Some(control) = self.entries.lock().ok().and_then(|entries| {
+            entries
+                .iter()
+                .find_map(|((project, chat), lease)| found(project, chat, lease))
+        }) {
+            return Some(control);
+        }
+        self.agent_entries.lock().ok().and_then(|entries| {
+            entries
+                .iter()
+                .find_map(|((project, chat, _, _), lease)| found(project, chat, lease))
+        })
+    }
+
+    /// Whether a live attachment of this chat, the user's or one its Agent
+    /// opened, is under user control.
+    pub(crate) fn chat_under_user_control(
+        &self,
+        project: &SageProjectId,
+        chat: &SageChatId,
+    ) -> bool {
+        let held = |lease: &AttachmentLease| lease.is_live() && lease.user_controls();
+        self.entries.lock().is_ok_and(|entries| {
+            entries
+                .get(&(project.clone(), chat.clone()))
+                .is_some_and(held)
+        }) || self.agent_entries.lock().is_ok_and(|entries| {
+            entries
+                .iter()
+                .any(|((owner_project, owner_chat, _, _), lease)| {
+                    owner_project == project && owner_chat == chat && held(lease)
+                })
+        })
+    }
+
     /// Returns whether the tab had an Agent attachment to pause.
     pub(crate) fn take_over(&self, tab_label: &str) -> bool {
         self.set_user_control(tab_label, true)
@@ -201,6 +256,56 @@ mod tests {
         );
         registry.revoke_tab("browser-8");
         assert!(!registry.hand_back("browser-8"), "Stop ends the attachment");
+    }
+
+    #[test]
+    fn the_chrome_reads_who_controls_a_tab_from_rust_while_attached() {
+        let registry = BrowserAttachments::default();
+        let (project, chat) = ids();
+        assert_eq!(registry.agent_control("browser-8"), None);
+        registry
+            .attach_agent(
+                project.clone(),
+                chat.clone(),
+                "session-1",
+                "browser-8",
+                "https://example.com/",
+                1,
+            )
+            .unwrap();
+        let control = |user_control| {
+            Some(AgentControl {
+                project_id: project.clone(),
+                chat_id: chat.clone(),
+                user_control,
+            })
+        };
+        assert_eq!(registry.agent_control("browser-8"), control(false));
+        assert!(!registry.chat_under_user_control(&project, &chat));
+        registry.take_over("browser-8");
+        assert_eq!(registry.agent_control("browser-8"), control(true));
+        assert!(
+            registry.chat_under_user_control(&project, &chat),
+            "the Agent opens no parallel tab while the user holds one"
+        );
+        // The user attaching the same tab is a new grant for every lease on it.
+        registry
+            .attach(
+                project.clone(),
+                chat.clone(),
+                "browser-8",
+                "https://example.com/",
+                1,
+            )
+            .unwrap();
+        assert_eq!(registry.agent_control("browser-8"), control(false));
+        assert!(!registry.chat_under_user_control(&project, &chat));
+        let agent = registry
+            .agent_resolve(&project, &chat, "session-1", 8)
+            .unwrap();
+        assert!(agent.authority_for(&scope(8)).is_some());
+        registry.revoke_tab("browser-8");
+        assert_eq!(registry.agent_control("browser-8"), None);
     }
 
     #[test]

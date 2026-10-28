@@ -324,6 +324,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
               tabId={tab.id}
               ready={page !== null}
               chats={chats}
+              pageRevision={String(navigation?.revision ?? "")}
               operation={agentPresence}
               attachmentEpoch={attachmentEpoch}
               onStopped={() => setAttachmentEpoch((current) => current + 1)}

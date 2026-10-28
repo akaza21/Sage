@@ -61,7 +61,7 @@ impl super::AcpService {
                     .webview_for_tab(label)
             }) {
                 std::thread::spawn(move || {
-                    let _ = crate::browser::devtools::clear_agent_highlight(&webview);
+                    crate::browser::devtools::clear_agent_highlight(&webview);
                 });
             }
         }
@@ -302,6 +302,24 @@ impl super::AcpService {
 
     pub(crate) fn hand_back_browser_tab(&self, label: &str) -> bool {
         self.browser_attachments.hand_back(label)
+    }
+
+    pub(crate) fn browser_agent_control(
+        &self,
+        label: &str,
+    ) -> Option<crate::acp::browser::attachment::AgentControl> {
+        self.browser_attachments.agent_control(label)
+    }
+
+    /// Whether the user took over any tab this chat's Agent may drive; the
+    /// Agent then opens no other tab either.
+    pub(crate) fn browser_chat_under_user_control(
+        &self,
+        project: &SageProjectId,
+        chat: &SageChatId,
+    ) -> bool {
+        self.browser_attachments
+            .chat_under_user_control(project, chat)
     }
 
     pub(crate) fn browser_navigation_started(&self, label: &str) {

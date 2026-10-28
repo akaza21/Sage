@@ -227,6 +227,14 @@ impl BrowserCapability for SessionBrowserCapability {
         }
         let app_state = self.app.state::<AppState>();
         if let crate::acp::browser::BrowserCommand::OpenTab { url } = &request.command {
+            // While the user holds one of this chat's tabs the Agent waits;
+            // a parallel tab would route around the pause.
+            if app_state
+                .acp
+                .browser_chat_under_user_control(&self.project_id, &self.chat_id)
+            {
+                return Err(BrowserFailure::UserControl);
+            }
             if app_state.acp.agent_browser_count(
                 &self.project_id,
                 &self.chat_id,

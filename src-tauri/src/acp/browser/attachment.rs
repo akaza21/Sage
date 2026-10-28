@@ -13,6 +13,7 @@ const MAX_ATTACHMENTS: usize = 8;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
+pub(crate) use control::AgentControl;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -157,6 +158,17 @@ impl BrowserAttachments {
                 authority: Arc::new(Mutex::new(None)),
             },
         );
+        drop(entries);
+        // Attaching is the user's new grant, so it also ends user control of
+        // tabs this chat's Agent opened under the same label.
+        if let Ok(agent_entries) = self.agent_entries.lock() {
+            for lease in agent_entries
+                .values()
+                .filter(|lease| lease.tab_label == tab_label)
+            {
+                lease.set_user_control(false);
+            }
+        }
         Ok(())
     }
 

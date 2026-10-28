@@ -20,12 +20,13 @@ pub(crate) async fn browser_control(
     comment: Option<String>,
     ordinal: Option<u8>,
 ) -> Result<Option<serde_json::Value>, String> {
-    if let Some(take) = match action.as_str() {
-        "agentTakeOver" => Some(true),
-        "agentHandBack" => Some(false),
+    if let Some(change) = match action.as_str() {
+        "agentControl" => Some(None),
+        "agentTakeOver" => Some(Some(true)),
+        "agentHandBack" => Some(Some(false)),
         _ => None,
     } {
-        return agent_control(&app, &state, &tab_id, take).map(|()| None);
+        return agent_control(&app, &state, &tab_id, change).map(Some);
     }
     if let Some(action) = super::super::annotate::action(&action) {
         return super::super::annotate::set(app, tab_id, action, comment, ordinal).await;
@@ -33,25 +34,31 @@ pub(crate) async fn browser_control(
     history_control(state, tab_id, action).await.map(|()| None)
 }
 
-/// Rust owns whether the user controls a tab; the chrome only mirrors the
-/// answer. Handing back a tab whose attachment ended is not an error.
+/// Rust owns who controls a tab; the chrome shows what this answers: the
+/// tab's live Agent attachment and whether the user took it over, or null.
+/// `take` takes over (`Some(true)`) or hands back (`Some(false)`) first.
+/// Handing back a tab whose attachment ended is not an error.
 fn agent_control(
     app: &AppHandle,
     state: &BrowserState,
     tab_id: &str,
-    take: bool,
-) -> Result<(), String> {
+    take: Option<bool>,
+) -> Result<serde_json::Value, String> {
     if state.webview_for_tab(tab_id).is_none() {
         return Err("browser tab unavailable".into());
     }
     let acp = &app.state::<crate::state::AppState>().acp;
-    if take && !acp.take_over_browser_tab(tab_id) {
-        return Err("No Agent is using this tab".into());
+    match take {
+        Some(true) if !acp.take_over_browser_tab(tab_id) => {
+            return Err("No Agent is using this tab".into());
+        }
+        Some(false) => {
+            acp.hand_back_browser_tab(tab_id);
+        }
+        _ => {}
     }
-    if !take {
-        acp.hand_back_browser_tab(tab_id);
-    }
-    Ok(())
+    serde_json::to_value(acp.browser_agent_control(tab_id))
+        .map_err(|_| "browser tab unavailable".into())
 }
 
 async fn history_control(

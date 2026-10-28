@@ -71,15 +71,14 @@ pub(crate) fn capture_page_context(
     })
 }
 
-/// Clears the Agent's act marker, trying every step even after a failure.
-pub(crate) fn clear_agent_highlight(webview: &Webview) -> Result<(), BrowserFailure> {
-    let mut outcome = Ok(());
-    for (method, params) in highlight::CLEAR {
-        if let Err(failure) = cdp::call(webview, method, params, 4096, Duration::from_secs(1)) {
-            outcome = Err(failure);
-        }
-    }
-    outcome
+/// Clears the Agent's act marker, trying every step even after a failure,
+/// and turns the overlay off again unless the tab annotates.
+pub(crate) fn clear_agent_highlight(webview: &Webview) {
+    highlight::clear(&NativeTransport {
+        webview: webview.clone(),
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    });
 }
 
 /// Turns the user's Annotate hover highlight on or off, outside any Agent
@@ -212,12 +211,22 @@ impl CdpTransport for NativeTransport {
         self.issued.load(Ordering::Acquire)
     }
 
-    fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure> {
-        if self
-            .permit
+    fn stopped(&self) -> bool {
+        self.permit
             .as_ref()
             .is_some_and(|permit| !permit.is_live() && !permit.was_invalidated_by_navigation())
-        {
+    }
+
+    fn annotating(&self) -> bool {
+        self.webview
+            .app_handle()
+            .state::<BrowserState>()
+            .annotate
+            .is_annotating(self.webview.label())
+    }
+
+    fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure> {
+        if self.stopped() {
             return Err(self.permit.as_ref().unwrap().revoked_failure());
         }
         let state = self.webview.app_handle().state::<BrowserState>();

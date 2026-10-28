@@ -161,9 +161,7 @@ export type BrowserControlAction =
   | "stop"
   | "annotateOn"
   | "annotateOff"
-  | "annotateCancel"
-  | "agentTakeOver"
-  | "agentHandBack";
+  | "annotateCancel";
 
 /** Where the picked element sits in the viewport it was picked in (page CSS px). */
 export interface BrowserAnnotateSelection {
@@ -192,6 +190,22 @@ export function browserControl(
   tabId: string,
   action: BrowserControlAction,
 ): Promise<void> {
+  return invokeNative("browser_control", { tabId, action });
+}
+
+/** The tab's live Agent attachment as Rust holds it; null when none. */
+export interface BrowserAgentControl {
+  projectId: string;
+  chatId: string;
+  /** The user took the tab over; the Agent waits until Hand back. */
+  userControl: boolean;
+}
+
+/** Reads, takes over or hands back the tab; Rust answers with the state after it. */
+export function browserAgentControl(
+  tabId: string,
+  action: "agentControl" | "agentTakeOver" | "agentHandBack",
+): Promise<BrowserAgentControl | null> {
   return invokeNative("browser_control", { tabId, action });
 }
 

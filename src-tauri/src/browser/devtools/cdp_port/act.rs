@@ -1,5 +1,6 @@
 //! Agent acts. The target is marked before the action runs, so the user sees
-//! what the Agent is about to click, type into or scroll.
+//! what the Agent is about to click, type into or scroll, and the marker is
+//! cleared once the action returns.
 
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -29,16 +30,17 @@ pub(super) fn perform<T: CdpTransport>(
             if port.stamp()? != stamp {
                 return Err(BrowserFailure::StaleHandle);
             }
-            highlight::mark(port, stamp, backend_id);
             let text = if key.chars().count() == 1 {
                 key.as_str()
             } else {
                 ""
             };
-            for kind in ["keyDown", "keyUp"] {
-                port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
-            }
-            Ok(true)
+            marked(port, stamp, backend_id, |port| {
+                for kind in ["keyDown", "keyUp"] {
+                    port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
+                }
+                Ok(true)
+            })
         }
         _ => {
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -70,7 +72,6 @@ pub(super) fn perform<T: CdpTransport>(
                 );
                 return Err(BrowserFailure::StaleHandle);
             }
-            highlight::mark(port, stamp, backend_id);
             let (function, arguments) = match action {
                 BrowserAction::Click { .. } => {
                     ("function() { this.click(); return true; }", vec![])
@@ -88,12 +89,14 @@ pub(super) fn perform<T: CdpTransport>(
                 BrowserAction::Key { .. } => unreachable!(),
             };
             let params = json!({"objectId":object_id,"functionDeclaration":function,"arguments":arguments,"returnByValue":true});
-            let response = port.call(
-                "Runtime.callFunctionOn",
-                &params.to_string(),
-                4096,
-                Duration::from_secs(5),
-            );
+            let response = marked(port, stamp, backend_id, |port| {
+                port.call(
+                    "Runtime.callFunctionOn",
+                    &params.to_string(),
+                    4096,
+                    Duration::from_secs(5),
+                )
+            });
             let _ = port.call(
                 "Runtime.releaseObject",
                 &json!({"objectId":object_id}).to_string(),
@@ -109,3 +112,25 @@ pub(super) fn perform<T: CdpTransport>(
         }
     }
 }
+
+/// Runs `action` with its target marked: the marker shows for
+/// `highlight::LEAD` first and is cleared however the action ends. Marking
+/// is best effort and never fails or delays the action past that lead.
+fn marked<T: CdpTransport, R>(
+    port: &mut CdpPort<T>,
+    stamp: DocumentStamp,
+    backend_id: u64,
+    action: impl FnOnce(&mut CdpPort<T>) -> Result<R, BrowserFailure>,
+) -> Result<R, BrowserFailure> {
+    if !highlight::mark(port, stamp, backend_id) {
+        return action(port);
+    }
+    std::thread::sleep(highlight::LEAD);
+    let result = action(port);
+    highlight::clear(&port.transport);
+    result
+}
+
+#[cfg(test)]
+#[path = "act_tests.rs"]
+mod tests;

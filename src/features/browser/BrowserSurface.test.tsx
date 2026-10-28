@@ -40,10 +40,23 @@ const browserHistory = vi.fn(async (_tabId: string) => [
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
-const stopBrowserTab = vi.fn(async (_tabId: string) => undefined);
-const browserControl = vi.fn(
-  async (_tabId: string, _action: string) => undefined,
-);
+/** The tab's Agent attachment as Rust holds it. */
+let rustAgentControl: {
+  projectId: string;
+  chatId: string;
+  userControl: boolean;
+} | null = null;
+const stopBrowserTab = vi.fn(async (_tabId: string) => {
+  rustAgentControl = null;
+});
+const browserAgentControl = vi.fn(async (_tabId: string, action: string) => {
+  if (rustAgentControl && action !== "agentControl")
+    rustAgentControl = {
+      ...rustAgentControl,
+      userControl: action === "agentTakeOver",
+    };
+  return rustAgentControl && { ...rustAgentControl };
+});
 
 vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
 vi.mock("../../ports/nativeBrowserPort", () => ({
@@ -70,8 +83,9 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     pending: [],
     decisions: [],
   })),
-  browserControl: (tabId: string, action: string) =>
-    browserControl(tabId, action),
+  browserControl: vi.fn(),
+  browserAgentControl: (tabId: string, action: string) =>
+    browserAgentControl(tabId, action),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
   hideBrowser: (tabId: string) => hideBrowser(tabId),
   positionBrowser: (tabId: string, bounds: unknown) =>
@@ -103,6 +117,7 @@ it("shows a closed placeholder for a restored browser without contacting native 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rustAgentControl = null;
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -452,6 +467,11 @@ it("stops the tab's current authority even when presence names a previous chat",
       },
     ],
   });
+  rustAgentControl = {
+    projectId: "project-1",
+    chatId: "chat-1",
+    userControl: false,
+  };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
     tabId: tab.id,
@@ -480,7 +500,13 @@ it("stops the tab's current authority even when presence names a previous chat",
       updatedAt: Date.now() + 1,
     }),
   );
-  expect(screen.queryByText(/Agent used this tab/)).toBeNull();
+  await waitFor(() =>
+    expect(browserAgentControl).toHaveBeenLastCalledWith(
+      tab.id,
+      "agentControl",
+    ),
+  );
+  expect(screen.queryByText(/Agent attached/)).toBeNull();
   useWorkbenchStore.setState({
     project: previous.project,
     tabs: previous.tabs,
@@ -503,6 +529,11 @@ it("takes over the tab until the user hands it back", async () => {
       },
     ],
   });
+  rustAgentControl = {
+    projectId: "project-1",
+    chatId: "chat-1",
+    userControl: false,
+  };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
     operationId: "take-over-operation",
@@ -510,12 +541,12 @@ it("takes over the tab until the user hands it back", async () => {
     phase: "started",
     updatedAt: Date.now(),
   });
-  render(<BrowserSurface tab={tab} />);
+  const view = render(<BrowserSurface tab={tab} />);
   fireEvent.click(await screen.findByRole("button", { name: "Take over" }));
   expect(
     await screen.findByText("You're in control · Research chat"),
   ).toBeInTheDocument();
-  expect(browserControl).toHaveBeenCalledWith(tab.id, "agentTakeOver");
+  expect(browserAgentControl).toHaveBeenCalledWith(tab.id, "agentTakeOver");
   act(() =>
     recordBrowserAgentOperation({
       ...browserOperationFixture,
@@ -526,16 +557,55 @@ it("takes over the tab until the user hands it back", async () => {
     }),
   );
   expect(
-    screen.getByText("You're in control · Research chat"),
+    await screen.findByText("You're in control · Research chat"),
+  ).toBeInTheDocument();
+  // A reloaded chrome reads user control back from Rust.
+  view.unmount();
+  render(<BrowserSurface tab={tab} />);
+  expect(
+    await screen.findByText("You're in control · Research chat"),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
   await waitFor(() =>
-    expect(browserControl).toHaveBeenCalledWith(tab.id, "agentHandBack"),
+    expect(browserAgentControl).toHaveBeenCalledWith(tab.id, "agentHandBack"),
   );
   expect(
     await screen.findByRole("button", { name: "Take over" }),
   ).toBeInTheDocument();
   expect(stopBrowserTab).not.toHaveBeenCalled();
+  useWorkbenchStore.setState({
+    project: previous.project,
+    tabs: previous.tabs,
+  });
+});
+
+it("offers Stop and Take over for as long as an Agent is attached, idle or not", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    project: { id: "project-1" } as typeof previous.project,
+    tabs: [
+      ...previous.tabs,
+      {
+        id: "chat-1",
+        kind: "chat",
+        title: "Research chat",
+        position: 1,
+        pinned: false,
+        dirty: false,
+      },
+    ],
+  });
+  rustAgentControl = {
+    projectId: "project-1",
+    chatId: "chat-1",
+    userControl: false,
+  };
+  render(<BrowserSurface tab={tab} />);
+  expect(
+    await screen.findByText("Agent attached · Research chat"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Take over" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Stop agent" })).toBeEnabled();
   useWorkbenchStore.setState({
     project: previous.project,
     tabs: previous.tabs,
@@ -550,6 +620,11 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
       { ...tab, id: "chat-toolbar", kind: "chat", title: "Research chat" },
     ],
   });
+  rustAgentControl = {
+    projectId: "project-1",
+    chatId: "chat-toolbar",
+    userControl: false,
+  };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
     operationId: "toolbar-operation",

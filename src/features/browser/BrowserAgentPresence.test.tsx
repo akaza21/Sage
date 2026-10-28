@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { browserOperationFixture } from "../../domain/browserOperation.fixture";
 import { BrowserAgentPresence } from "./BrowserAgentPresence";
 
 afterEach(cleanup);
@@ -14,7 +13,7 @@ function renderPresence(userControl: boolean) {
   };
   render(
     <BrowserAgentPresence
-      operation={{ ...browserOperationFixture, phase: "started" }}
+      pending
       userControl={userControl}
       chatTitle="Research chat"
       {...handlers}

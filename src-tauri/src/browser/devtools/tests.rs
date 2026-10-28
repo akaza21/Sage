@@ -416,4 +416,61 @@ fn native_port_implements_the_same_browser_capability_seam() {
     assert_capability::<super::native::NativeDevtools>();
 }
 
+/// A page that never shows the text and whose dispatch the user stops
+/// after `stop_after` probes.
+#[derive(Clone)]
+struct StoppedWhileWaiting {
+    probes: Arc<Mutex<u32>>,
+    stop_after: u32,
+}
+
+impl DevtoolsPort for StoppedWhileWaiting {
+    fn snapshot(&mut self) -> Result<(DocumentStamp, Vec<NativeNode>), BrowserFailure> {
+        Err(BrowserFailure::Unavailable)
+    }
+    fn capture(&mut self, _: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure> {
+        Err(BrowserFailure::Unavailable)
+    }
+    fn matches(
+        &mut self,
+        _: &WaitCondition,
+        _: std::time::Duration,
+    ) -> Result<bool, BrowserFailure> {
+        *self.probes.lock().unwrap() += 1;
+        Ok(false)
+    }
+    fn stopped(&self) -> bool {
+        *self.probes.lock().unwrap() >= self.stop_after
+    }
+}
+
+#[test]
+fn a_wait_stops_probing_the_page_once_the_user_stops_or_takes_over() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let probes = Arc::new(Mutex::new(0));
+    let mut capability = DevtoolsCapability::new(
+        scope.clone(),
+        StoppedWhileWaiting {
+            probes: probes.clone(),
+            stop_after: 2,
+        },
+    );
+    let started = std::time::Instant::now();
+    let wait = capability.perform(&BrowserRequest {
+        scope,
+        command: BrowserCommand::WaitFor {
+            condition: WaitCondition::Text {
+                text: "ready".into(),
+            },
+            timeout_ms: 5_000,
+        },
+    });
+    assert_eq!(wait, Err(BrowserFailure::Denied));
+    assert_eq!(*probes.lock().unwrap(), 2);
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+}
+
 mod handle_invalidation;

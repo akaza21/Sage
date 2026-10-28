@@ -1,12 +1,12 @@
 import { Square } from "../../ui/leanIcons";
-import type { BrowserOperationProjection } from "../../domain/browserOperation";
 
 /**
- * Who controls this tab. Stop ends the chat's browser authority; Take over
- * pauses it until Hand back, and the Agent's next call asks permission again.
+ * Who controls this tab, shown for as long as a chat's Agent is attached to
+ * it. Stop ends the chat's browser authority; Take over pauses it until Hand
+ * back, and the Agent's next call asks permission again.
  */
 export function BrowserAgentPresence({
-  operation,
+  pending,
   userControl,
   chatTitle,
   busy = false,
@@ -14,7 +14,7 @@ export function BrowserAgentPresence({
   onTakeOver,
   onHandBack,
 }: {
-  operation: BrowserOperationProjection | null;
+  pending: boolean;
   userControl: boolean;
   chatTitle: string;
   busy?: boolean;
@@ -24,9 +24,9 @@ export function BrowserAgentPresence({
 }) {
   const label = userControl
     ? "You're in control"
-    : operation?.phase === "started"
+    : pending
       ? "Agent has a browser action pending"
-      : "Agent used this tab";
+      : "Agent attached";
   return (
     <div
       className="browser-surface__agent-presence"
