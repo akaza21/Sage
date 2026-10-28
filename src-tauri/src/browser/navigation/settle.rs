@@ -25,6 +25,13 @@ pub(in crate::browser) struct NavigationEvidence {
     became_download: bool,
     /// `ContentLoading` for this navigation id: a document committed.
     commit: Option<Commit>,
+    /// A navigation this one superseded (or a Back/Forward attempt this
+    /// retry follows) already committed: the page changed since the last
+    /// settle, so this navigation can never be abandoned.
+    page_changed: Option<Commit>,
+    /// The admitted URL on screen while the tab reports a failure; kept
+    /// across settles so a later abandon compares against it.
+    shown_failure: Option<String>,
 }
 
 impl<T> BrowserTabs<T> {
@@ -33,8 +40,17 @@ impl<T> BrowserTabs<T> {
     /// record; everything else is per navigation.
     pub(in crate::browser) fn begin_evidence(&mut self, label: &str, _id: u64, uri: &str) {
         if let Some(tab) = self.entries.get_mut(label) {
+            let page_changed = if tab.loading {
+                tab.evidence.commit.or(tab.evidence.page_changed)
+            } else {
+                None
+            };
             let restore = if tab.loading {
-                tab.evidence.restore.take()
+                // Nothing to restore once a superseded navigation committed.
+                tab.evidence
+                    .restore
+                    .take()
+                    .filter(|_| page_changed.is_none())
             } else {
                 Some(PageRestore {
                     title: tab.title.clone(),
@@ -45,6 +61,8 @@ impl<T> BrowserTabs<T> {
             tab.evidence = NavigationEvidence {
                 restore,
                 uris: vec![uri.to_owned()],
+                page_changed,
+                shown_failure: tab.evidence.shown_failure.take(),
                 ..NavigationEvidence::default()
             };
         }
@@ -102,11 +120,17 @@ impl<T> BrowserTabs<T> {
         if tab.navigation_id != Some(navigation_id) || !tab.loading {
             return None;
         }
-        let outcome = classify(
-            completion,
-            tab.evidence.commit,
-            tab.evidence.became_download,
-        );
+        let commit = tab.evidence.commit.or(tab.evidence.page_changed);
+        let mut outcome = classify(completion, commit, tab.evidence.became_download);
+        let shown = completion.source.filter(|source| admit_url(source).is_ok());
+        if outcome == Outcome::Abandoned && !abandon_consistent(tab, shown) {
+            // Whatever the events said, the screen does not show the page
+            // the tab would restore: never report the old address.
+            outcome = shown.map_or(
+                Outcome::Failed("The page could not be loaded"),
+                Outcome::Committed,
+            );
+        }
         let settled = match outcome {
             Outcome::Committed(url) => self
                 .finish_navigation(label, navigation_id, Some(url))
@@ -122,7 +146,17 @@ impl<T> BrowserTabs<T> {
         if let Some(tab) = self.entries.get_mut(label)
             && !tab.loading
         {
-            tab.evidence = NavigationEvidence::default();
+            let shown_failure = if tab.last_error.is_none() {
+                None
+            } else if settled == Some(Settled::Abandoned) {
+                tab.evidence.shown_failure.take()
+            } else {
+                shown.map(str::to_owned)
+            };
+            tab.evidence = NavigationEvidence {
+                shown_failure,
+                ..NavigationEvidence::default()
+            };
         }
         settled
     }
@@ -167,6 +201,31 @@ impl<T> BrowserTabs<T> {
             tab.committed_url = Some(source.to_owned());
         }
         tab.revision = tab.revision.wrapping_add(1);
+    }
+}
+
+/// An abandon may only leave on screen what the tab will report: the
+/// failure it shows, its committed URL, a same-origin same-document change
+/// of it, or nothing admitted on a tab with no committed page.
+fn abandon_consistent<T>(tab: &crate::browser::BrowserTab<T>, shown: Option<&str>) -> bool {
+    let error = tab
+        .evidence
+        .restore
+        .as_ref()
+        .map_or(tab.last_error, |restore| restore.error);
+    if error.is_some() {
+        return shown.is_none() || shown == tab.evidence.shown_failure.as_deref();
+    }
+    match (shown, tab.committed_url.as_deref()) {
+        (None, None) => true,
+        (Some(shown), Some(committed)) => {
+            shown == committed
+                || matches!(
+                    (admit_url(shown), admit_url(committed)),
+                    (Ok(next), Ok(current)) if next.origin() == current.origin()
+                )
+        }
+        _ => false,
     }
 }
 

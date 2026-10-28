@@ -690,3 +690,114 @@ fn stopped_reload_that_already_committed_does_not_restore_the_old_title() {
     assert_eq!(after.title, None);
     assert_eq!(after.committed_url.as_deref(), Some("https://a.example/"));
 }
+
+fn superseded_after_commit(
+    next: &str,
+    completion_error: i32,
+    download: bool,
+) -> BrowserTabs<usize> {
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://bank.example/", "Bank"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    // Before navigation 2 completes, the new document starts navigation 3.
+    assert!(tabs.start_navigation("browser-1", 3, next));
+    if download {
+        tabs.note_download("browser-1", next);
+    }
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(completion_error, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Committed)
+    );
+    tabs
+}
+
+fn assert_shows_evil(tabs: &BrowserTabs<usize>) {
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(
+        after.committed_url.as_deref(),
+        Some("https://evil.example/")
+    );
+    assert_ne!(after.title.as_deref(), Some("Bank"));
+    assert_eq!(
+        tabs.openable_url("browser-1").unwrap(),
+        "https://evil.example/"
+    );
+}
+
+#[test]
+fn download_superseding_a_committed_navigation_reports_the_new_page() {
+    let tabs = superseded_after_commit("https://evil.example/x.bin", 9, true);
+    assert_shows_evil(&tabs);
+}
+
+#[test]
+fn cancel_superseding_a_committed_navigation_reports_the_new_page() {
+    let tabs = superseded_after_commit("https://evil.example/nc", CANCELED, false);
+    assert_shows_evil(&tabs);
+}
+
+#[test]
+fn back_fallback_that_becomes_a_download_never_restores_the_old_page() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    tabs.note_content_loading("browser-1", 3, false);
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://unexpected.example/"),
+    };
+    assert!(tabs.settle_navigation("browser-1", 3, landed).is_some());
+    assert_eq!(
+        tabs.take_fallback("browser-1").as_deref(),
+        Some("https://a.example/")
+    );
+    assert!(tabs.start_navigation("browser-1", 4, "https://a.example/"));
+    tabs.note_download("browser-1", "https://a.example/");
+    assert_ne!(
+        tabs.settle_navigation(
+            "browser-1",
+            4,
+            failed_completion(9, "https://unexpected.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_ne!(after.committed_url.as_deref(), Some("https://b.example/"));
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn abandon_without_commit_evidence_never_keeps_a_cross_origin_page() {
+    // Defensive: even if ContentLoading was missed, a cancel that leaves
+    // another origin on screen cannot restore the old address.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/nc"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Committed)
+    );
+    assert_shows_evil(&tabs);
+    // With no admitted source on screen, it is a failure, not the old page.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/nc"));
+    assert_eq!(
+        tabs.settle_navigation("browser-1", 2, failed_completion(CANCELED, "about:blank")),
+        Some(navigation::outcome::Settled::Failed)
+    );
+    assert!(tabs.openable_url("browser-1").is_err());
+}
