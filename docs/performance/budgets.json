@@ -75,6 +75,11 @@
         "reason": "Editor pack: editing features of an editable File (EP-03 bracket matching, auto-close, folding, multiple cursors, occurrences); loads with the first editable File."
       },
       {
+        "entry": "src/features/files/FileFindBar.tsx",
+        "maxGzipBytes": 4000,
+        "reason": "Editor pack: Find and Replace bar of a File (EP-04 options, replace one and all, match marks, regex worker client); preloaded while the File surface is idle."
+      },
+      {
         "entry": "src/features/files/editorLanguageJavaScript.ts",
         "maxGzipBytes": 400,
         "reason": "Editor pack: JavaScript and TypeScript grammar; loads when a file of that language opens."

@@ -16,9 +16,7 @@ pub(crate) use environment::{
     CodexLaunchEnvironment, EnvironmentAuthorityError, build_codex_launch_environment,
     build_system_codex_launch_environment,
 };
-pub(crate) use retention::{
-    ResidueMarker, RetentionDecision, RetentionError, classify_codex_state_path,
-};
+pub(crate) use retention::{ResidueMarker, RetentionDecision, classify_codex_state_path};
 pub(crate) use storage::{
     CodexAuthorityPrerequisite, StateAuthorityError, inspect_codex_authority,
 };

@@ -53,10 +53,13 @@ export function LazyModuleBoundary<Props extends object>({
   load,
   label,
   render,
+  fallback = <p role="status">Loading {label}…</p>,
 }: {
   load: () => Promise<Module<Props>>;
   label: string;
   render: (Surface: ComponentType<Props>) => ReactNode;
+  /** An overlay passes `null`, so loading never moves the content under it. */
+  fallback?: ReactNode;
 }) {
   const [attempt, setAttempt] = useState(0);
   const Surface = useMemo(() => {
@@ -78,9 +81,7 @@ export function LazyModuleBoundary<Props extends object>({
 
   return (
     <ModuleLoadErrorBoundary label={label} onRetry={retry} resetKey={attempt}>
-      <Suspense fallback={<p role="status">Loading {label}…</p>}>
-        {content}
-      </Suspense>
+      <Suspense fallback={fallback}>{content}</Suspense>
     </ModuleLoadErrorBoundary>
   );
 }

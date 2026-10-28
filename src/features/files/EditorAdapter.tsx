@@ -1,4 +1,5 @@
 import type { Text } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import {
   forwardRef,
   useImperativeHandle,
@@ -25,6 +26,7 @@ export interface EditorAdapterHandle {
   focus: () => void;
   selection: () => EditorSelection;
   setSelection: (start: number, end: number) => void;
+  view: () => EditorView | null;
 }
 
 interface EditorAdapterProps {
@@ -162,6 +164,7 @@ export const EditorAdapter = forwardRef<
         pendingSelectionRef.current = { start, end };
         runtimeRef.current?.setSelection(start, end);
       },
+      view: () => runtimeRef.current?.view ?? null,
     }),
     [],
   );

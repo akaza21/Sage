@@ -137,7 +137,7 @@ fn apply_updated_file_allows_empty_content_to_truncate() {
     );
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn apply_renamed_file_uses_workspace_rename() {
     let fixture = Fixture::new();
@@ -174,7 +174,7 @@ fn apply_deleted_file_uses_workspace_trash() {
     assert!(!fixture.root.join("deleted.txt").exists());
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[test]
 fn apply_renamed_file_fails_closed_without_mutating_the_source() {
     let fixture = Fixture::new();

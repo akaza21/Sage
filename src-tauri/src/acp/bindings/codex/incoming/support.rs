@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::acp::{
-    contract::{RequiredText, SafeText},
+    contract::SafeText,
     intent::{NormalizedPayload, SafeResourceLocation},
     limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };

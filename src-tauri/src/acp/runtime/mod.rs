@@ -51,8 +51,8 @@ pub(crate) mod terminal_detail;
 
 #[allow(unused_imports)]
 pub(crate) use coordinator::{
-    ActiveDispatch, AmbiguousTurnReservation, CoordinatorError, PrepareDispatch, PrepareFailure,
-    PrepareRecovery, ProjectIntentAuthority, SendCoordinator,
+    ActiveDispatch, CoordinatorError, PrepareDispatch, PrepareFailure, PrepareRecovery,
+    ProjectIntentAuthority, SendCoordinator,
 };
 #[allow(unused_imports)]
 pub(crate) use journal::{JournalError, JournalHandle, JournalLane, JournalRunner};
@@ -100,8 +100,8 @@ pub(crate) use runtime_host::{
 };
 #[allow(unused_imports)]
 pub(crate) use session_coordinator::{
-    ActivationFailure, ActivationRecovery, SessionCoordinator, SessionCoordinatorError,
-    SessionTreeLease, ZeroProcessProof,
+    ActivationRecovery, SessionCoordinator, SessionCoordinatorError, SessionTreeLease,
+    ZeroProcessProof,
 };
 
 #[cfg(test)]

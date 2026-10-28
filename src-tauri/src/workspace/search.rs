@@ -208,6 +208,69 @@ mod tests {
     }
 
     #[test]
+    fn binary_files_are_skipped_without_making_the_search_partial() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle needle\n").unwrap();
+        fs::write(path.join("image.bin"), b"needle\0\x89PNG").unwrap();
+        let complete = SearchEngine::new(test_limits())
+            .search(request("needle"), vec![root])
+            .unwrap();
+        assert_eq!(complete.matches.len(), 3);
+        assert_eq!(complete.roots[0].skipped_files, 1);
+        assert_eq!(
+            complete.roots[0].state,
+            super::types::SearchRootState::Complete
+        );
+        assert!(!complete.truncated);
+        assert!(complete.limit_reasons.is_empty());
+
+        // A continued page that walks past the same files stays complete too.
+        let limits = SearchLimits {
+            max_results: 2,
+            ..test_limits()
+        };
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let root_with = |workspace| SearchRoot {
+            root_id: "root-test".into(),
+            root_name: "fixture".into(),
+            source: SearchRootSource::Available(workspace),
+        };
+        let first = SearchEngine::new(limits)
+            .search(request("needle"), vec![root_with(workspace.clone())])
+            .unwrap();
+        let second = SearchEngine::new(limits)
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token.clone(),
+                    ..request("needle")
+                },
+                vec![root_with(workspace)],
+            )
+            .unwrap();
+        assert_eq!(second.matches.len(), 1);
+        assert_eq!(second.matches[0].column_number, 15);
+        assert_eq!(second.roots[0].skipped_files, 1);
+        assert_eq!(
+            second.roots[0].state,
+            super::types::SearchRootState::Complete
+        );
+        assert!(second.continuation_token.is_none());
+
+        // Text that is not UTF-8 was never searched, so the root says so.
+        fs::write(path.join("latin1.txt"), b"needle caf\xe9\n").unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let partial = SearchEngine::new(test_limits())
+            .search(request("needle"), vec![root_with(workspace)])
+            .unwrap();
+        assert_eq!(partial.roots[0].skipped_files, 2);
+        assert_eq!(
+            partial.roots[0].state,
+            super::types::SearchRootState::Partial
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
     fn every_scan_budget_returns_a_bounded_partial_response() {
         let (path, root) = fixture_root();
         fs::write(path.join("another.txt"), "needle needle\n").unwrap();

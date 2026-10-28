@@ -10,10 +10,7 @@ use crate::acp::{
     transport::{Frame, request_payload_digest},
 };
 
-use super::{
-    AdapterError, ModelSummary, Operation, Outbound, PiTranslator, ResearchPiBinding,
-    TerminalOutcome,
-};
+use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator, ResearchPiBinding};
 
 mod ingress;
 mod support;

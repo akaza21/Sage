@@ -25,7 +25,7 @@ describe("File editor surface stylesheet seam", () => {
       /\.editor-find--overlay\s*\{[^}]*position:\s*absolute;[^}]*right:\s*12px;[^}]*width:\s*min\(440px, calc\(100% - 24px\)\);/s,
     );
     expect(surfaceCss).toMatch(
-      /@container \(max-width: 420px\)\s*\{[\s\S]*\.editor-find--overlay\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) repeat\(4, 26px\);/,
+      /@container \(max-width: 420px\)\s*\{[\s\S]*\.editor-find--overlay\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\) repeat\(3, 24px\);[\s\S]*\.editor-find--overlay > \.editor-find__field\s*\{[^}]*grid-column:\s*2 \/ -1;/,
     );
     expect(surfaceCss).toMatch(
       /@media \(forced-colors: active\)\s*\{\s*\.editor-input \.cm-focused\s*\{[^}]*outline:\s*var\(--focus-ring\);[^}]*box-shadow:\s*none;[^}]*\}[\s\S]*\.editor-find--overlay\s*\{[^}]*border-color:\s*CanvasText;[^}]*box-shadow:\s*none;/s,

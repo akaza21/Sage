@@ -19,13 +19,13 @@ function chordEvent(binding: KeymapBinding) {
     key:
       binding.key === "escape"
         ? "Escape"
-        : binding.key === "f12"
-          ? "F12"
+        : binding.key === "f12" || binding.key === "f3"
+          ? binding.key.toUpperCase()
           : binding.key,
     altKey: false,
     ctrlKey: binding.ctrlOrMeta === "required",
     metaKey: false,
-    shiftKey: false,
+    shiftKey: binding.shift === "required",
     preventDefault: () => {},
   };
 }
@@ -41,6 +41,8 @@ function fileActions(
     closeFind: vi.fn(),
     closeGoToLine: vi.fn(),
     openFind: vi.fn(),
+    openReplace: vi.fn(),
+    moveFind: vi.fn(),
     openGoToLine: vi.fn(),
     goToLocalSymbol: vi.fn(),
     save: vi.fn(),
@@ -68,6 +70,9 @@ describe("keymap registry conformance", () => {
   > = [
     ["save", "save", {}],
     ["find", "openFind", {}],
+    ["replace", "openReplace", {}],
+    ["findNext", "moveFind", {}],
+    ["findPrevious", "moveFind", {}],
     ["goToLine", "openGoToLine", {}],
     ["goToSymbol", "goToLocalSymbol", {}],
     ["dismiss", "closeFind", { findOpen: true }],
@@ -141,6 +146,16 @@ describe("keymap registry conformance", () => {
     expect(formatKeymapChords(keymapBinding("dismiss"), false)).toEqual([
       "Esc",
     ]);
+  });
+
+  it("labels Replace and Find next the way VS Code does on each platform", () => {
+    const labels = (id: string) =>
+      [false, true].map((apple) =>
+        formatKeymapChords(keymapBinding(id), apple).join(" "),
+      );
+    expect(labels("replace")).toEqual(["Ctrl+H", "Cmd+Option+F"]);
+    expect(labels("findNext")).toEqual(["F3", "Cmd+G"]);
+    expect(labels("findPrevious")).toEqual(["Shift+F3", "Cmd+Shift+G"]);
   });
 
   it("labels Go to Line with Control on every platform", () => {

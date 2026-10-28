@@ -4,6 +4,7 @@ import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 
 function event(overrides: {
   key: string;
+  code?: string;
   altKey?: boolean;
   ctrlKey?: boolean;
   metaKey?: boolean;
@@ -22,6 +23,7 @@ function event(overrides: {
 function actions(
   overrides: Partial<Parameters<typeof handleFileSurfaceCommandKey>[1]> = {},
 ) {
+  const moveFind = vi.fn<(direction: 1 | -1) => void>();
   return {
     previewing: false,
     findOpen: false,
@@ -30,10 +32,12 @@ function actions(
     closeFind: vi.fn(),
     closeGoToLine: vi.fn(),
     openFind: vi.fn(),
+    openReplace: vi.fn(),
     openGoToLine: vi.fn(),
     goToLocalSymbol: vi.fn(),
     save: vi.fn(),
     ...overrides,
+    moveFind,
   };
 }
 
@@ -64,14 +68,9 @@ describe("handleFileSurfaceCommandKey", () => {
     }
     // Command+G is Find Next on macOS, so it never opens Go to Line.
     const mac = actions();
-    expect(
-      handleFileSurfaceCommandKey(
-        event({ key: "g", metaKey: true }),
-        mac,
-        true,
-      ),
-    ).toBe(false);
+    handleFileSurfaceCommandKey(event({ key: "g", metaKey: true }), mac, true);
     expect(mac.openGoToLine).not.toHaveBeenCalled();
+    expect(mac.moveFind).toHaveBeenCalledWith(1);
 
     const preview = actions({ previewing: true });
     handleFileSurfaceCommandKey(
@@ -158,6 +157,62 @@ describe("handleFileSurfaceCommandKey", () => {
     expect(handlers.save).toHaveBeenCalledOnce();
     expect(handlers.openFind).not.toHaveBeenCalled();
     expect(handlers.openGoToLine).not.toHaveBeenCalled();
+  });
+
+  it("opens Replace on Control+H, or Command+Option+F on macOS where Command+H hides the app", () => {
+    const pc = actions();
+    handleFileSurfaceCommandKey(event({ key: "h", ctrlKey: true }), pc, false);
+    handleFileSurfaceCommandKey(
+      event({ key: "h", ctrlKey: true, altKey: true }),
+      pc,
+      false,
+    );
+    expect(pc.openReplace).toHaveBeenCalledOnce();
+
+    const mac = actions();
+    handleFileSurfaceCommandKey(event({ key: "h", metaKey: true }), mac, true);
+    expect(mac.openReplace).not.toHaveBeenCalled();
+    // Option makes the typed character "ƒ", so the physical key decides.
+    expect(
+      handleFileSurfaceCommandKey(
+        event({ key: "ƒ", code: "KeyF", metaKey: true, altKey: true }),
+        mac,
+        true,
+      ),
+    ).toBe(true);
+    expect(mac.openReplace).toHaveBeenCalledOnce();
+    expect(mac.openFind).not.toHaveBeenCalled();
+
+    const preview = actions({ previewing: true });
+    handleFileSurfaceCommandKey(
+      event({ key: "h", ctrlKey: true }),
+      preview,
+      false,
+    );
+    expect(preview.openReplace).not.toHaveBeenCalled();
+  });
+
+  it("steps through matches on F3 and Shift+F3, or Command+G and Shift+Command+G on macOS", () => {
+    const pc = actions();
+    handleFileSurfaceCommandKey(event({ key: "F3" }), pc, false);
+    handleFileSurfaceCommandKey(
+      event({ key: "F3", shiftKey: true }),
+      pc,
+      false,
+    );
+    handleFileSurfaceCommandKey(event({ key: "F3", ctrlKey: true }), pc, false);
+    handleFileSurfaceCommandKey(event({ key: "g", ctrlKey: true }), pc, false);
+    expect(pc.moveFind.mock.calls).toEqual([[1], [-1]]);
+
+    const mac = actions();
+    handleFileSurfaceCommandKey(event({ key: "g", metaKey: true }), mac, true);
+    handleFileSurfaceCommandKey(
+      event({ key: "G", metaKey: true, shiftKey: true }),
+      mac,
+      true,
+    );
+    handleFileSurfaceCommandKey(event({ key: "F3" }), mac, true);
+    expect(mac.moveFind.mock.calls).toEqual([[1], [-1]]);
   });
 
   it("ignores F12 with Command on macOS", () => {

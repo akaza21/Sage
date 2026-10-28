@@ -39,7 +39,6 @@ mod fork;
 mod ingress;
 mod session_config;
 mod support;
-use ingress::terminal_state;
 use support::*;
 
 const MAX_PENDING_REQUESTS: usize = 16;
