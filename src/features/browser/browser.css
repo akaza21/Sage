@@ -14,6 +14,7 @@
 }
 .browser-surface__toolbar {
   display: flex;
+  container-type: inline-size;
   height: 44px;
   flex: 0 0 44px;
   align-items: center;
@@ -73,6 +74,15 @@
 }
 .browser-surface__toolbar .browser-surface__annotate:disabled {
   opacity: 0.5;
+}
+/* A narrow pane keeps the address legible: the pill drops its label. */
+@container (max-width: 640px) {
+  .browser-surface__toolbar .browser-surface__annotate {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
 }
 .browser-surface__address {
   position: relative;
