@@ -43,15 +43,15 @@ describe("Agent rail stylesheet seam", () => {
     );
   });
 
-  it("keeps the inline field, section controls, and active status tokenized", async () => {
+  it("keeps the palette trigger, section controls, and active status tokenized", async () => {
     const [component, surfaceCss, chatCss] = await Promise.all([
       readFile(resolve("src/workbench/LeftSidebar.tsx"), "utf8"),
       readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
       readFile(resolve("src/styles/chat-navigation-surface.css"), "utf8"),
     ]);
 
-    expect(component).toContain('placeholder="Search tasks…"');
-    expect(component).toContain('aria-label="Search tasks"');
+    expect(component).toContain('aria-label="Search chats"');
+    expect(component).not.toContain("<input");
     expect(surfaceCss).toMatch(
       /\.agent-rail-search\s*\{[^}]*height:\s*var\(--control-height-default\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );

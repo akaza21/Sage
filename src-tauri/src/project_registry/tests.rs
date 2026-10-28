@@ -573,6 +573,17 @@ fn project_list_includes_bounded_chats_for_every_project() {
             .create_chat(&snapshot_layout(&database.bootstrap_snapshot().unwrap()))
             .unwrap();
     }
+    let latest: String = database.connection().query_row(
+        "SELECT id FROM workbench_tabs WHERE project_id=?1 AND kind='chat' ORDER BY position DESC LIMIT 1",
+        [&sage.id], |row| row.get(0),
+    ).unwrap();
+    database
+        .connection()
+        .execute(
+            "UPDATE chats SET updated_at=?3 WHERE project_id=?1 AND id=?2",
+            rusqlite::params![sage.id, latest, crate::persistence::now_millis() + 10_000],
+        )
+        .unwrap();
     let projects = database.project_list().unwrap();
     let cross_item = projects.iter().find(|item| item.id == cross.id).unwrap();
     let sage_item = projects.iter().find(|item| item.id == sage.id).unwrap();
@@ -584,6 +595,7 @@ fn project_list_includes_bounded_chats_for_every_project() {
     );
     assert!(!cross_item.rail_chats_truncated);
     assert_eq!(sage_item.rail_chats.len(), 8);
+    assert_eq!(sage_item.rail_chats[0].id, latest);
     assert!(sage_item.rail_chats_truncated);
     fs::remove_dir_all(base).unwrap();
 }

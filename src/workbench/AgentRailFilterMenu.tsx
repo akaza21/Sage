@@ -1,27 +1,16 @@
-import {
-  FolderOpen,
-  History,
-  Home,
-  ListFilter,
-  Search,
-  Settings,
-} from "../ui/leanIcons";
+import { FolderOpen, History, Home, ListFilter } from "../ui/leanIcons";
 import { useCallback, useId, useRef, useState } from "react";
+import { expandAgentRailSection } from "./agentRailViewPrefs";
 
 export function AgentPrimaryNavigation({
   onNewChat,
-  onSearch,
-  onSettings,
-  searchDisabled,
 }: {
   onNewChat: () => void;
-  onSearch: () => void;
-  onSettings: () => void;
-  searchDisabled: boolean;
 }) {
   const scrollToSection =
     (target: "Recent" | "Projects") =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
+      expandAgentRailSection(target === "Projects" ? "projects" : "recent");
       const section =
         target === "Projects"
           ? '[aria-label="Projects"], [aria-label="Chats"]'
@@ -56,23 +45,6 @@ export function AgentPrimaryNavigation({
         onClick={scrollToSection("Projects")}
       >
         <FolderOpen size={18} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        aria-label="Search chats"
-        title="Search chats"
-        disabled={searchDisabled}
-        onClick={onSearch}
-      >
-        <Search size={18} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        aria-label="Open settings from rail"
-        title="Settings"
-        onClick={onSettings}
-      >
-        <Settings size={18} aria-hidden="true" />
       </button>
     </nav>
   );

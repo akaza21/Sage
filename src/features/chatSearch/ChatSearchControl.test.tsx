@@ -104,7 +104,77 @@ describe("ChatSearchControl", () => {
 
   afterEach(() => clearChatSearchFolderRequest());
 
-  it("submits explicitly, edits criteria, and navigates attached and archived results", async () => {
+  it("debounces live typing, keeps the query editable, and coalesces pending searches", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = deferred<ProjectChatSearchResponse>();
+      const search = vi
+        .spyOn(projectChatSearchDesktop, "search")
+        .mockReturnValueOnce(pending.promise)
+        .mockImplementation(async (request) => ({
+          ...response,
+          query: request.query,
+        }));
+      render(<ChatSearchControl />);
+      fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+      const query = screen.getByRole("searchbox", { name: "Search Chats" });
+      expect(query).toHaveFocus();
+      fireEvent.change(query, { target: { value: "ne" } });
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      fireEvent.change(query, { target: { value: "needle" } });
+      await act(() => vi.advanceTimersByTimeAsync(199));
+      expect(search).not.toHaveBeenCalled();
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(search).toHaveBeenCalledTimes(1);
+      expect(query).toBeEnabled();
+      fireEvent.change(query, { target: { value: "latest" } });
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(search).toHaveBeenCalledTimes(1);
+      await act(async () => pending.resolve(response));
+      expect(
+        screen.queryByRole("listbox", { name: "Chat search results" }),
+      ).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(search.mock.calls[1][0].query).toBe("latest");
+      const results = screen.getAllByRole("option");
+      fireEvent.keyDown(query, { key: "ArrowDown" });
+      expect(results[0]).toHaveFocus();
+      fireEvent.keyDown(results[0], { key: "ArrowDown" });
+      expect(results[1]).toHaveFocus();
+      fireEvent.keyDown(results[1], { key: "ArrowUp" });
+      fireEvent.keyDown(results[0], { key: "ArrowUp" });
+      expect(query).toHaveFocus();
+      fireEvent.change(query, { target: { value: "  " } });
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(search).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts a mounted palette with query focus and invalidates its pending search", async () => {
+    const pending = deferred<typeof response>();
+    const search = vi
+      .spyOn(projectChatSearchDesktop, "search")
+      .mockReturnValue(pending.promise);
+    render(<ChatSearchControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    const query = screen.getByRole("searchbox", { name: "Search Chats" });
+    fireEvent.change(query, { target: { value: "needle" } });
+    fireEvent.submit(query.closest("form")!);
+    screen.getByRole("button", { name: "Cancel" }).focus();
+    act(() => requestChatSearchInFolder("project-a"));
+    expect(query).toHaveFocus();
+    expect(query).toHaveValue("");
+    await act(async () => pending.resolve(response));
+    expect(
+      screen.queryByRole("listbox", { name: "Chat search results" }),
+    ).toBeNull();
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports immediate Enter, edits criteria, and navigates attached and archived results", async () => {
     const search = vi
       .spyOn(projectChatSearchDesktop, "search")
       .mockResolvedValue(response);
@@ -486,7 +556,8 @@ describe("ChatSearchControl", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
     const select = screen.getByRole("button", { name: "Search in" });
-    const search = screen.getByRole("button", { name: "Search" });
+    const search = screen.getByRole("button", { name: "Cancel" });
+    const query = screen.getByRole("searchbox", { name: "Search Chats" });
 
     fireEvent.click(select);
     const pickerInput = screen.getByRole("combobox", { name: "Search in" });
@@ -506,7 +577,7 @@ describe("ChatSearchControl", () => {
       shiftKey: true,
     });
     fireEvent(reverseInput, reverseTab);
-    expect(reverseTab.defaultPrevented).toBe(true);
+    expect(reverseTab.defaultPrevented).toBe(false);
     expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
     fireEvent.click(select);
     const escapeInput = screen.getByRole("combobox", { name: "Search in" });
@@ -518,9 +589,9 @@ describe("ChatSearchControl", () => {
 
     search.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(select).toHaveFocus();
+    expect(query).toHaveFocus();
 
-    select.focus();
+    query.focus();
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
     expect(search).toHaveFocus();
   });

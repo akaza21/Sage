@@ -40,13 +40,13 @@ pub(super) fn seed_project(
         "INSERT INTO workbench_tabs
          (id, project_id, kind, title, position, pinned, dirty, status,
           metadata_json, created_at, updated_at)
-         VALUES (?1, ?2, 'chat', 'Chat: New project', 0, 1, 0, 'idle',
+         VALUES (?1, ?2, 'chat', 'Chat: Chat', 0, 0, 0, 'idle',
                  '{}', ?3, ?3)",
         params![tab_id, project_id, now],
     )?;
     transaction.execute(
         "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
-         VALUES (?1,?2,0,'Chat: New project',0,?3,?3)",
+         VALUES (?1,?2,0,'Chat: Chat',0,?3,?3)",
         params![tab_id, project_id, now],
     )?;
     attach_chat_tab_in(transaction, project_id, tab_id, now)?;

@@ -49,10 +49,11 @@ function seedResourceChat() {
   });
 }
 
-function openChatActions(title: string) {
+async function openChatActions(title: string) {
   fireEvent.click(
     screen.getByRole("button", { name: `Chat actions for ${title}` }),
   );
+  await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
 const initialState = useWorkbenchStore.getState();
@@ -489,9 +490,11 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     fireEvent.change(input, { target: { value: "Release notes" } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
 
@@ -541,9 +544,11 @@ describe("compact Workbench project tools", () => {
     expect(sidebarScroll).not.toBeNull();
     sidebarScroll!.scrollTop = 72;
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     fireEvent.change(input, {
       target: { value: "Release notes" },
     });
@@ -599,20 +604,25 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel chat rename" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cancel chat rename" }),
+    );
     let trigger: HTMLElement;
     await vi.waitFor(() => {
       trigger = screen.getByRole("button", { name: "Chat actions for B" });
       expect(trigger).toHaveFocus();
     });
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "New name for B" }), {
-      key: "Escape",
-    });
+    fireEvent.keyDown(
+      await screen.findByRole("textbox", { name: "New name for B" }),
+      {
+        key: "Escape",
+      },
+    );
     await vi.waitFor(() => {
       expect(
         screen.getByRole("button", { name: "Chat actions for B" }),
@@ -652,7 +662,7 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
     expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
     const disclosure = screen.getByRole("button", {
@@ -672,7 +682,7 @@ describe("compact Workbench project tools", () => {
         tabs: [{ ...useWorkbenchStore.getState().tabs[0], pinned: false }],
       });
     });
-    openChatActions("A");
+    await openChatActions("A");
     expect(
       screen.getByRole("menuitem", { name: "Archive chat" }),
     ).toBeDisabled();
@@ -713,9 +723,11 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     expect(input).toHaveAttribute("maxlength", "128");
     fireEvent.change(input, { target: { value: " \t " } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
@@ -835,9 +847,8 @@ describe("compact Workbench project tools", () => {
     const searchChats = within(
       screen.getByRole("complementary", { name: "Projects and chats" }),
     );
-    fireEvent.click(searchChats.getByRole("button", { name: "Filter tasks" }));
     const globalSearch = searchChats.getByRole("button", {
-      name: "Search all chats",
+      name: "Search chats",
     });
     expect(globalSearch).toBeEnabled();
     globalSearch.focus();

@@ -108,6 +108,8 @@
 
 .project-chat-row:hover .project-chat__actions,
 .project-chat-row:focus-within .project-chat__actions,
+.project-entry__header:hover .project-chat__actions,
+.project-entry__header:focus-within .project-chat__actions,
 .project-chat__actions[aria-expanded="true"] {
   opacity: 1;
 }

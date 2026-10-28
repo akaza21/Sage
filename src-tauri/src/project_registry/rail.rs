@@ -45,7 +45,7 @@ pub(super) fn attach_rail_chats(
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
          WHERE w.project_id = ?1 AND w.kind = 'chat' AND w.id NOT GLOB 'side-*'
-         ORDER BY w.pinned DESC, w.position, w.id
+         ORDER BY COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id
          LIMIT ?2",
     )?;
     for project in projects.iter_mut() {

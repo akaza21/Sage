@@ -1,5 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
+mod auto_title;
+pub(crate) use auto_title::auto_title_first_prompt_in;
 
 use crate::{
     acp::limits::LIMITS,
@@ -259,7 +261,7 @@ pub(crate) fn insert_new_chat(
     let title = if parent.is_some() {
         "Chat: Side chat".to_owned()
     } else {
-        format!("Chat: New chat {}", ordinal + 1)
+        "Chat: Chat".to_owned()
     };
     let now = now_millis();
     transaction.execute(
