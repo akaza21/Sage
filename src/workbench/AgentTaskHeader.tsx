@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   useContext,
+  useCallback,
 } from "react";
 import { useStore } from "zustand";
 
@@ -16,7 +17,6 @@ import { chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
-import { agentChatMoveDestinations } from "./agentChatRail";
 import {
   AgentHeaderMore,
   ProjectChatActionMenu,
@@ -45,10 +45,6 @@ export function AgentTaskHeader({
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
-  const projects = useWorkbenchStore((state) => state.projects);
-  const archiveChat = useWorkbenchStore((state) => state.archiveChat);
-  const pinChat = useWorkbenchStore((state) => state.pinChat);
-  const moveChat = useWorkbenchStore((state) => state.moveChat);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -64,21 +60,24 @@ export function AgentTaskHeader({
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
   const resourcesId = useId();
   const renameId = `${resourcesId}-rename`;
+  const dismissPending = useCallback(() => {
+    if (!document.getElementById(resourcesId)) setResourcesOpen(false);
+    if (!document.getElementById(renameId)) setRenaming(false);
+  }, [resourcesId, renameId]);
   useEffect(() => {
     if (!resourcesOpen && !renaming) return;
-    const dismissPending = (event: Event) => {
+    const dismissOutside = (event: Event) => {
       if (
         event.target instanceof Node &&
         resourcesTriggerRef.current?.contains(event.target)
       )
         return;
-      if (!document.getElementById(resourcesId)) setResourcesOpen(false);
-      if (!document.getElementById(renameId)) setRenaming(false);
+      dismissPending();
     };
-    document.addEventListener("pointerdown", dismissPending, true);
+    document.addEventListener("pointerdown", dismissOutside, true);
     return () =>
-      document.removeEventListener("pointerdown", dismissPending, true);
-  }, [resourcesOpen, renaming, resourcesId, renameId]);
+      document.removeEventListener("pointerdown", dismissOutside, true);
+  }, [resourcesOpen, renaming, dismissPending]);
   const page = useStore(
     acpProjectionStoreFor(tab?.id ?? null),
     (state) => state.page,
@@ -92,27 +91,25 @@ export function AgentTaskHeader({
       ?.runtimeEpoch,
     projectTransitioning,
   ].join("\u0000");
-  const [previousScope, setPreviousScope] = useState({
-    key: resourcesScope,
-    restoreFocus: false,
-  });
-  if (previousScope.key !== resourcesScope) {
-    setPreviousScope({
-      key: resourcesScope,
-      restoreFocus:
-        resourcesOpen &&
+  const [[previousScope, restoreFocus], setPreviousScope] = useState<
+    [scope: string, restoreFocus: boolean]
+  >([resourcesScope, false]);
+  if (previousScope !== resourcesScope) {
+    setPreviousScope([
+      resourcesScope,
+      resourcesOpen &&
         !!document
           .getElementById(resourcesId)
           ?.contains(document.activeElement),
-    });
+    ]);
     setResourcesOpen(false);
     setShowAllSources(false);
     setRenaming(false);
     setMenuOpen(false);
   }
   useLayoutEffect(() => {
-    if (previousScope.restoreFocus) resourcesTriggerRef.current?.focus();
-  }, [previousScope]);
+    if (restoreFocus) resourcesTriggerRef.current?.focus();
+  }, [previousScope, restoreFocus]);
   if (!tab || !project) return null;
   const currentTab = tab;
   const currentProject = project;
@@ -122,7 +119,6 @@ export function AgentTaskHeader({
       {title}
     </strong>
   );
-  const destinations = agentChatMoveDestinations(projects, currentProject.id);
 
   return (
     <header
@@ -131,8 +127,7 @@ export function AgentTaskHeader({
       onFocus={preloadResources}
       onKeyDownCapture={(event) => {
         if (!["Escape", "Tab"].includes(event.key)) return;
-        if (!document.getElementById(resourcesId)) setResourcesOpen(false);
-        if (!document.getElementById(renameId)) setRenaming(false);
+        dismissPending();
       }}
     >
       <button
@@ -176,20 +171,15 @@ export function AgentTaskHeader({
           onDismiss={() => setMenuOpen(false)}
         >
           <ProjectChatActionMenu
+            chatId={currentTab.id}
             chatTitle={`${title} task`}
             pinned={currentTab.pinned}
             open={menuOpen}
             disabled={projectTransitioning || renaming}
             archiveDisabled={projectTransitioning || chatCount <= 1}
-            destinations={destinations}
+            projectId={currentProject.id}
             onOpenChange={setMenuOpen}
-            onPin={() => void pinChat(currentTab.id, currentProject.id)}
             onRename={() => setRenaming(true)}
-            onMove={(targetProjectId) =>
-              void moveChat(currentTab.id, targetProjectId, currentProject.id)
-            }
-            onArchive={() => void archiveChat(currentTab.id, currentProject.id)}
-            triggerRef={() => undefined}
             sessionChrome={sessionChrome}
             triggerLabel={`More chat actions in ${currentProject.name}`}
             triggerRole="menuitem"

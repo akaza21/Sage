@@ -17,37 +17,34 @@ import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 import { MenuPopover } from "../ui/MenuPopover";
 import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
-import type { AgentChatMoveDestination } from "./agentChatRail";
+import { agentChatMoveDestinations } from "./agentChatRail";
+import { useWorkbenchStore } from "../app/store";
 
 export function ProjectChatActionMenu({
+  chatId,
   chatTitle,
   pinned,
   open,
   disabled,
   archiveDisabled,
-  destinations,
+  projectId,
   onOpenChange,
-  onPin,
   onRename,
-  onMove,
-  onArchive,
   triggerRef,
   sessionChrome,
   triggerLabel,
   triggerRole,
 }: {
+  chatId: string;
   chatTitle: string;
   pinned: boolean;
   open: boolean;
   disabled: boolean;
   archiveDisabled: boolean;
-  destinations: readonly AgentChatMoveDestination[];
+  projectId: string;
   onOpenChange: (open: boolean) => void;
-  onPin: () => void;
   onRename: () => void;
-  onMove: (projectId: string) => void;
-  onArchive: () => void;
-  triggerRef: (node: HTMLButtonElement | null) => void;
+  triggerRef?: (node: HTMLButtonElement | null) => void;
   sessionChrome?: AgentSessionChrome | null;
   triggerLabel?: string;
   triggerRole?: "menuitem";
@@ -56,7 +53,14 @@ export function ProjectChatActionMenu({
   const headerMenu = useContext(AgentHeaderMenuContext);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
   const [moving, setMoving] = useState(false);
+  const projects = useWorkbenchStore((state) =>
+    moving ? state.projects : null,
+  );
+  const destinations = projects
+    ? agentChatMoveDestinations(projects, projectId)
+    : [];
   const menuId = useId();
+  const PinIcon = pinned ? PinOff : Pin;
 
   const closeAndRestoreFocus = () => {
     setMoving(false);
@@ -76,7 +80,7 @@ export function ProjectChatActionMenu({
       <button
         ref={(node) => {
           localTriggerRef.current = node;
-          triggerRef(node);
+          triggerRef?.(node);
         }}
         className="project-chat__actions"
         role={triggerRole}
@@ -138,7 +142,13 @@ export function ProjectChatActionMenu({
                   type="button"
                   role="menuitem"
                   aria-label={`Move chat to ${destination.name}`}
-                  onClick={() => completeAction(() => onMove(destination.id))}
+                  onClick={() =>
+                    completeAction(() => {
+                      void useWorkbenchStore
+                        .getState()
+                        .moveChat(chatId, destination.id, projectId);
+                    })
+                  }
                 >
                   {destination.kind === "local" ? (
                     <Laptop size={14} aria-hidden="true" />
@@ -207,13 +217,13 @@ export function ProjectChatActionMenu({
               className="menu-item"
               type="button"
               role="menuitem"
-              onClick={() => completeAction(onPin)}
+              onClick={() =>
+                completeAction(() => {
+                  void useWorkbenchStore.getState().pinChat(chatId, projectId);
+                })
+              }
             >
-              {pinned ? (
-                <PinOff size={14} aria-hidden="true" />
-              ) : (
-                <Pin size={14} aria-hidden="true" />
-              )}
+              <PinIcon size={14} aria-hidden="true" />
               <span>{pinned ? "Unpin chat" : "Pin chat"}</span>
             </button>
             <button
@@ -242,7 +252,13 @@ export function ProjectChatActionMenu({
               type="button"
               role="menuitem"
               disabled={archiveDisabled}
-              onClick={() => completeAction(onArchive)}
+              onClick={() =>
+                completeAction(() => {
+                  void useWorkbenchStore
+                    .getState()
+                    .archiveChat(chatId, projectId);
+                })
+              }
             >
               <Archive size={14} aria-hidden="true" />
               <span>Archive chat</span>
