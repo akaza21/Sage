@@ -155,10 +155,13 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                 .and_then(|mut tabs| {
                                     tabs.settle_navigation(&completed_label, id, completion)
                                 });
-                            let committed = settled == Some(outcome::Settled::Committed);
                             completed_app
                                 .state::<BrowserState>()
-                                .user_navigation_finished(&completed_label, id, committed);
+                                .user_navigation_finished(
+                                    &completed_label,
+                                    id,
+                                    outcome::Settled::own_commit(settled),
+                                );
                             if settled.is_some() {
                                 let committed_url = completed_app
                                     .state::<BrowserState>()
@@ -175,7 +178,7 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                     &completed_label,
                                     committed_url.as_deref(),
                                 );
-                                if committed {
+                                if outcome::Settled::shows_new_document(settled) {
                                     title::capture_completed_title(
                                         &completed_app,
                                         &completed_label,

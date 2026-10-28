@@ -120,6 +120,8 @@ impl<T> BrowserTabs<T> {
         if tab.navigation_id != Some(navigation_id) || !tab.loading {
             return None;
         }
+        // Only this id's own evidence may count as a user navigation landing.
+        let own_commit = completion.success || tab.evidence.commit == Some(Commit::Document);
         let commit = tab.evidence.commit.or(tab.evidence.page_changed);
         let mut outcome = classify(completion, commit, tab.evidence.became_download);
         let shown = completion.source.filter(|source| admit_url(source).is_ok());
@@ -134,7 +136,11 @@ impl<T> BrowserTabs<T> {
         let settled = match outcome {
             Outcome::Committed(url) => self
                 .finish_navigation(label, navigation_id, Some(url))
-                .then_some(Settled::Committed),
+                .then_some(if own_commit {
+                    Settled::Committed
+                } else {
+                    Settled::Adopted
+                }),
             Outcome::Failed(reason) => self
                 .fail_navigation(label, navigation_id, reason)
                 .then_some(Settled::Failed),
@@ -157,6 +163,10 @@ impl<T> BrowserTabs<T> {
                 shown_failure,
                 ..NavigationEvidence::default()
             };
+        } else if let Some(tab) = self.entries.get_mut(label) {
+            // A Back/Forward fallback is pending; if it aborts, the tab
+            // reports a failure while this page stays on screen.
+            tab.evidence.shown_failure = shown.map(str::to_owned);
         }
         settled
     }

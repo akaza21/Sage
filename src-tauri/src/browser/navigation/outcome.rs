@@ -56,9 +56,29 @@ pub(crate) enum Outcome<'a> {
 /// How a tab settled, for the native handler's follow-up work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Settled {
+    /// This navigation id committed (`IsSuccess`, or its own
+    /// `ContentLoading`).
     Committed,
+    /// The tab now reports `Source()` as committed, but the commit was not
+    /// this navigation's: a superseded navigation's (`page_changed`) or the
+    /// abandon invariant's. Never evidence that a user navigation landed.
+    Adopted,
     Abandoned,
     Failed,
+}
+
+impl Settled {
+    /// Whether this navigation id itself committed a document; the only
+    /// outcome that may count as a completed user navigation.
+    pub(crate) fn own_commit(settled: Option<Self>) -> bool {
+        settled == Some(Self::Committed)
+    }
+
+    /// Whether a new document is on screen at the reported URL, so its
+    /// title and favicon should be captured.
+    pub(crate) fn shows_new_document(settled: Option<Self>) -> bool {
+        matches!(settled, Some(Self::Committed | Self::Adopted))
+    }
 }
 
 pub(crate) fn classify<'a>(

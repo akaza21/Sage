@@ -711,7 +711,7 @@ fn superseded_after_commit(
             3,
             failed_completion(completion_error, "https://evil.example/")
         ),
-        Some(navigation::outcome::Settled::Committed)
+        Some(navigation::outcome::Settled::Adopted)
     );
     tabs
 }
@@ -789,7 +789,7 @@ fn abandon_without_commit_evidence_never_keeps_a_cross_origin_page() {
             2,
             failed_completion(CANCELED, "https://evil.example/")
         ),
-        Some(navigation::outcome::Settled::Committed)
+        Some(navigation::outcome::Settled::Adopted)
     );
     assert_shows_evil(&tabs);
     // With no admitted source on screen, it is a failure, not the old page.
@@ -800,4 +800,108 @@ fn abandon_without_commit_evidence_never_keeps_a_cross_origin_page() {
         Some(navigation::outcome::Settled::Failed)
     );
     assert!(tabs.openable_url("browser-1").is_err());
+}
+
+/// Settles a user navigation the way the native handler does and reports
+/// whether the tab's downloads are still denied (Agent provenance).
+fn user_navigation_keeps_agent_provenance(
+    tabs: &mut BrowserTabs<usize>,
+    id: u64,
+    url: &str,
+    completion: navigation::outcome::Completion<'_>,
+) -> (Option<navigation::outcome::Settled>, bool) {
+    let mut downloads = downloads::DownloadRegistry::default();
+    downloads.set_provenance("browser-1", downloads::NavigationProvenance::Agent);
+    downloads.request_user_navigation("browser-1", url);
+    assert!(tabs.start_navigation("browser-1", id, url));
+    downloads.start_user_navigation("browser-1", id, url);
+    let settled = tabs.settle_navigation("browser-1", id, completion);
+    downloads.finish_user_navigation(
+        "browser-1",
+        id,
+        navigation::outcome::Settled::own_commit(settled),
+    );
+    (settled, downloads.is_agent("browser-1"))
+}
+
+#[test]
+fn borrowed_commit_of_a_superseded_navigation_never_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    // The Agent page navigates itself; its document commits but keeps
+    // loading on a hanging subresource.
+    assert!(tabs.start_navigation("browser-1", 2, "https://b.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    // The user's own navigation is then cancelled.
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        3,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://b.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Adopted));
+    assert!(agent, "provenance flipped to User on a borrowed commit");
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().committed_url.as_deref(),
+        Some("https://b.example/")
+    );
+}
+
+#[test]
+fn invariant_fallback_commit_never_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        2,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://other.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Adopted));
+    assert!(
+        agent,
+        "provenance flipped to User on the invariant's commit"
+    );
+}
+
+#[test]
+fn own_commit_still_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://user.example/"),
+    };
+    let (settled, agent) =
+        user_navigation_keeps_agent_provenance(&mut tabs, 2, "https://user.example/", landed);
+    assert_eq!(settled, Some(navigation::outcome::Settled::Committed));
+    assert!(!agent);
+}
+
+#[test]
+fn aborted_back_fallback_remembers_the_page_it_shows() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://unexpected.example/"),
+    };
+    assert!(tabs.settle_navigation("browser-1", 3, landed).is_some());
+    assert!(tabs.take_fallback("browser-1").is_some());
+    tabs.abort_fallback("browser-1");
+    assert!(tabs.snapshot("browser-1").unwrap().error.is_some());
+    // A later cancelled user navigation keeps the reported failure rather
+    // than adopting the page as a commit.
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        4,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://unexpected.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Abandoned));
+    assert!(agent);
+    assert!(tabs.snapshot("browser-1").unwrap().error.is_some());
 }
