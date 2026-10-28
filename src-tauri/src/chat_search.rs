@@ -23,6 +23,7 @@ const MAX_CHAT_SEARCH_DURATION: Duration = Duration::from_millis(250);
 const MAX_SAFE_JAVASCRIPT_INTEGER: u64 = 9_007_199_254_740_991;
 
 mod legacy_welcome;
+mod reader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -124,11 +125,6 @@ pub fn validate_chat_search_request(request: &ProjectChatSearchRequest) -> AppRe
         ));
     }
     let query = request.query.trim();
-    if query.is_empty() {
-        return Err(AppError::InvalidRequest(
-            "Chat search query must not be empty".into(),
-        ));
-    }
     if query.len() > MAX_CHAT_SEARCH_QUERY_BYTES {
         return Err(AppError::ResourceLimit(format!(
             "Chat search query exceeds the {MAX_CHAT_SEARCH_QUERY_BYTES}-byte limit"
@@ -156,72 +152,66 @@ fn search_with_limits(
 ) -> AppResult<ProjectChatSearchResponse> {
     let query = validate_chat_search_request(request)?;
     let started = Instant::now();
-    let deadline = started + limits.deadline;
-    let connection = database.connection();
-    connection.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    struct ResetProgress<'a>(&'a rusqlite::Connection);
-    impl Drop for ResetProgress<'_> {
-        fn drop(&mut self) {
-            let _ = self.0.progress_handler(0, None::<fn() -> bool>);
-        }
-    }
-    let _reset = ResetProgress(&connection);
-    ensure_deadline(started, limits.deadline)?;
+    reader::with_snapshot(database, started + limits.deadline, |connection| {
+        ensure_deadline(started, limits.deadline)?;
 
-    let mut chats = load_chats(&connection, &request.project_id, &query, limits)?;
-    preflight_items(&connection, &request.project_id, limits)?;
-    load_primary_text_matches(
-        &connection,
-        &request.project_id,
-        &query,
-        &mut chats,
-        started,
-        limits.deadline,
-    )?;
-    ensure_deadline(started, limits.deadline)?;
-
-    let mut results = Vec::with_capacity(limits.max_results);
-    let mut has_more = false;
-    for chat in chats {
-        if !chat.matched_title && chat.snippet.is_none() {
-            continue;
-        }
-        let result = ProjectChatSearchResult {
-            chat_id: chat.id,
-            title: chat.title,
-            attached: chat.attached,
-            matched_title: chat.matched_title,
-            snippet: chat.snippet,
-        };
-        if results.len() == limits.max_results
-            || !fits_response_budget(
-                request,
+        let mut chats = load_chats(connection, &request.project_id, &query, limits)?;
+        if !query.is_empty() {
+            preflight_items(connection, &request.project_id, limits)?;
+            load_primary_text_matches(
+                connection,
+                &request.project_id,
                 &query,
-                &results,
-                &result,
-                limits.max_response_bytes,
-            )?
-        {
-            has_more = true;
-            continue;
+                &mut chats,
+                started,
+                limits.deadline,
+            )?;
         }
-        results.push(result);
-    }
-    let response = ProjectChatSearchResponse {
-        project_id: request.project_id.clone(),
-        project_generation: request.project_generation,
-        transition_epoch: request.expected_transition_epoch,
-        query,
-        results,
-        has_more,
-        elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-    };
-    if response_bytes(&response)? > limits.max_response_bytes {
-        return Err(AppError::ResourceLimit(
-            "Chat search response exceeds its byte ceiling".into(),
-        ));
-    }
-    Ok(response)
+        ensure_deadline(started, limits.deadline)?;
+
+        let mut results = Vec::with_capacity(limits.max_results);
+        let mut has_more = false;
+        for chat in chats {
+            if !chat.matched_title && chat.snippet.is_none() {
+                continue;
+            }
+            let result = ProjectChatSearchResult {
+                chat_id: chat.id,
+                title: chat.title,
+                attached: chat.attached,
+                matched_title: chat.matched_title,
+                snippet: chat.snippet,
+            };
+            if results.len() == limits.max_results
+                || !fits_response_budget(
+                    request,
+                    &query,
+                    &results,
+                    &result,
+                    limits.max_response_bytes,
+                )?
+            {
+                has_more = true;
+                continue;
+            }
+            results.push(result);
+        }
+        let response = ProjectChatSearchResponse {
+            project_id: request.project_id.clone(),
+            project_generation: request.project_generation,
+            transition_epoch: request.expected_transition_epoch,
+            query,
+            results,
+            has_more,
+            elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+        };
+        if response_bytes(&response)? > limits.max_response_bytes {
+            return Err(AppError::ResourceLimit(
+                "Chat search response exceeds its byte ceiling".into(),
+            ));
+        }
+        Ok(response)
+    })
 }
 
 fn load_chats(
@@ -230,7 +220,12 @@ fn load_chats(
     query: &str,
     limits: SearchLimits,
 ) -> AppResult<Vec<ChatRow>> {
-    let limit = i64::try_from(limits.max_chat_rows.saturating_add(1)).unwrap_or(i64::MAX);
+    let row_limit = if query.is_empty() {
+        limits.max_results
+    } else {
+        limits.max_chat_rows
+    };
+    let limit = i64::try_from(row_limit.saturating_add(1)).unwrap_or(i64::MAX);
     let mut statement = connection.prepare(
         "SELECT c.id,c.title,EXISTS(
            SELECT 1 FROM chat_tabs a WHERE a.project_id=c.project_id AND a.chat_id=c.id
@@ -249,7 +244,7 @@ fn load_chats(
         })
     })?;
     let chats = rows.collect::<Result<Vec<_>, _>>()?;
-    if chats.len() > limits.max_chat_rows {
+    if !query.is_empty() && chats.len() > limits.max_chat_rows {
         return Err(AppError::ResourceLimit(
             "Chat search Chat-row ceiling was exceeded".into(),
         ));

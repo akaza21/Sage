@@ -147,10 +147,47 @@ describe("ChatSearchControl", () => {
       expect(query).toHaveFocus();
       fireEvent.change(query, { target: { value: "  " } });
       await act(() => vi.advanceTimersByTimeAsync(500));
-      expect(search).toHaveBeenCalledTimes(2);
+      expect(search).toHaveBeenCalledTimes(3);
+      expect(search.mock.calls[2][0].query).toBe("");
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("browses hidden attached and archived chats without guessing query text", async () => {
+    const search = vi
+      .spyOn(projectChatSearchDesktop, "search")
+      .mockImplementation(async (request) => ({
+        ...response,
+        query: request.query,
+        results: [
+          {
+            chatId: "chat-old",
+            title: "Hidden archived chat",
+            attached: false,
+            matchedTitle: true,
+            snippet: null,
+          },
+        ],
+      }));
+    const restoreChat = vi.fn(async () => true);
+    useWorkbenchStore.setState({ restoreChat });
+    render(<ChatSearchControl />);
+    act(() => requestChatSearchInFolder("project-a"));
+    expect(screen.getByRole("searchbox", { name: "Search Chats" })).toHaveValue(
+      "",
+    );
+    fireEvent.click(
+      await screen.findByRole("option", { name: /^Hidden archived chat/ }),
+    );
+    expect(search).toHaveBeenCalledWith({
+      projectId: "project-a",
+      projectGeneration: 3,
+      expectedTransitionEpoch: 2,
+      query: "",
+    });
+    expect(restoreChat).toHaveBeenCalledWith("chat-old", "project-a");
+    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
   });
 
   it("restarts a mounted palette with query focus and invalidates its pending search", async () => {
@@ -188,11 +225,6 @@ describe("ChatSearchControl", () => {
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
     const input = screen.getByRole("searchbox", { name: "Search Chats" });
     expect(input).toHaveFocus();
-    fireEvent.submit(input.closest("form")!);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Enter text to search for.",
-    );
-
     fireEvent.change(input, { target: { value: "needle" } });
     expect(search).not.toHaveBeenCalled();
     fireEvent.submit(input.closest("form")!);
@@ -349,6 +381,56 @@ describe("ChatSearchControl", () => {
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "cross");
     expect(switchProject).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().project?.id).toBe("project-a");
+  });
+
+  it("opens an inactive project's hidden attached result through authoritative project activation", async () => {
+    const openRailChat = vi.fn(async () => undefined);
+    const restoreChat = vi.fn(async () => true);
+    useWorkbenchStore.setState({
+      openRailChat,
+      restoreChat,
+      projects: [
+        ...useWorkbenchStore.getState().projects,
+        {
+          id: "cross",
+          name: "Cross",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railChats: Array.from({ length: 8 }, (_, position) => ({
+            id: `visible-${position}`,
+            title: `Visible ${position}`,
+            pinned: false,
+            position,
+          })),
+          railChatsTruncated: true,
+        },
+      ],
+    });
+    vi.spyOn(projectChatSearchDesktop, "search").mockImplementation(
+      async (request) => ({
+        ...response,
+        projectId: request.projectId,
+        query: request.query,
+        results: [
+          {
+            chatId: "hidden-ninth",
+            title: "Hidden ninth chat",
+            attached: true,
+            matchedTitle: true,
+            snippet: null,
+          },
+        ],
+      }),
+    );
+    render(<ChatSearchControl />);
+    act(() => requestChatSearchInFolder("cross"));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /^Hidden ninth chat/ }),
+    );
+    expect(openRailChat).toHaveBeenCalledWith("cross", "hidden-ninth");
+    expect(restoreChat).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
   });
 
   it("fans out All folders and restores without switching", async () => {

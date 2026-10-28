@@ -51,6 +51,7 @@ impl WalConvergenceReceipt {
 #[derive(Debug, Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
+    search_path: Option<Arc<PathBuf>>,
     physical_storage: Arc<PhysicalStorage>,
     _live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
@@ -79,6 +80,7 @@ impl Database {
         });
         let database = Self {
             connection: Arc::new(Mutex::new(connection)),
+            search_path: (path != Path::new(":memory:")).then(|| Arc::new(path.to_path_buf())),
             physical_storage,
             _live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
@@ -107,6 +109,21 @@ impl Database {
         self.connection
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(crate) fn chat_search_reader(&self) -> AppResult<Option<Connection>> {
+        self.search_path
+            .as_ref()
+            .map(|path| {
+                let connection = Connection::open_with_flags(
+                    path.as_path(),
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )?;
+                connection.busy_timeout(std::time::Duration::from_millis(250))?;
+                Ok(connection)
+            })
+            .transpose()
     }
 
     #[cfg(test)]

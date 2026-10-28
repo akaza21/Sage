@@ -599,3 +599,39 @@ fn project_list_includes_bounded_chats_for_every_project() {
     assert!(sage_item.rail_chats_truncated);
     fs::remove_dir_all(base).unwrap();
 }
+
+#[test]
+fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database
+        .create_project_from_root(&folders.root("pinned"))
+        .unwrap();
+    let pinned = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    for _ in 0..8 {
+        database
+            .create_chat(&snapshot_layout(&database.bootstrap_snapshot().unwrap()))
+            .unwrap();
+    }
+    database
+        .connection()
+        .execute("UPDATE workbench_tabs SET pinned=1 WHERE id=?1", [&pinned])
+        .unwrap();
+    database
+        .connection()
+        .execute("UPDATE chats SET updated_at=1 WHERE id=?1", [&pinned])
+        .unwrap();
+    database
+        .create_project_from_root(&folders.root("active"))
+        .unwrap();
+    let projects = database.project_list().unwrap();
+    let item = projects.iter().find(|item| item.id == project.id).unwrap();
+    assert_eq!(item.rail_chats.len(), 8);
+    assert_eq!(item.rail_chats[0].id, pinned);
+    assert!(item.rail_chats[0].pinned);
+    assert!(item.rail_chats_truncated);
+}

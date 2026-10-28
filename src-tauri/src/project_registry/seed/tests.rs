@@ -53,7 +53,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     assert_eq!(result.messages[0].text, "first prompt");
     assert_eq!(result.messages[1].text, "real answer");
     let history = page(&reopened, &project.id, &chat);
-    assert_eq!(history.title, "Chat: first prompt");
+    assert_eq!(history.title.as_str(), "Chat: first prompt");
     assert_eq!(history.turns.as_slice().len(), 1);
     assert_eq!(history.turns.as_slice()[0].items.as_slice().len(), 2);
     let counters = usage(&reopened);

@@ -166,3 +166,32 @@ it("does not offer Undo for an archive rejected by the durable store", async () 
   await act(async () => undefined);
   expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
 });
+
+it("classifies all admitted chats before applying the folder row cap", async () => {
+  seed();
+  useWorkbenchStore.setState({
+    tabs: Array.from({ length: 10 }, (_, position) => ({
+      id: `chat-${position}`,
+      kind: "chat",
+      title: `Task ${position}`,
+      position,
+      pinned: false,
+      dirty: false,
+      status: position === 8 ? "waiting" : position === 9 ? "working" : "idle",
+    })),
+  });
+  render(<LeftSidebar />);
+  fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Status" }));
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "Needs Attention" }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Open chat Task 8" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Open chat Task 0" })).toBeNull();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Working" }));
+  expect(
+    screen.getByRole("button", { name: "Open chat Task 9" }),
+  ).toBeVisible();
+});

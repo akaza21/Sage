@@ -176,11 +176,6 @@ export function ChatSearchControl({
   const searchQuery = useCallback(async () => {
     if (!scope || searching.current) return;
     const normalized = query.trim();
-    if (!normalized) {
-      setPhase("error");
-      setError("Enter text to search for.");
-      return;
-    }
     if (!matchesScope(scope)) {
       close(false);
       return;
@@ -214,7 +209,7 @@ export function ChatSearchControl({
   }, [close, query, scope]);
 
   useEffect(() => {
-    if (!open || !query.trim() || phase !== "idle") return;
+    if (!open || phase !== "idle") return;
     const timer = setTimeout(() => void searchQuery(), 200);
     return () => clearTimeout(timer);
   }, [open, phase, query, searchQuery, settledRequest]);
@@ -235,7 +230,10 @@ export function ChatSearchControl({
       result.projectId,
       result.chatId,
     );
-    if (result.attached !== attached || (!attached && !archived)) {
+    if (
+      result.projectId === state.project?.id &&
+      (result.attached !== attached || (!attached && !archived))
+    ) {
       requestGeneration.current += 1;
       setResponse(null);
       setPhase("error");
@@ -243,7 +241,7 @@ export function ChatSearchControl({
       return;
     }
     close(false);
-    if (attached) {
+    if (result.attached) {
       if (result.projectId === state.project?.id) {
         await activateChat(result.chatId);
       } else {

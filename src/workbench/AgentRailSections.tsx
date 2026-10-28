@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
+import { MAX_AGENT_RAIL_CHATS_PER_PROJECT } from "./agentChatRail";
 import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
 import { groupAgentRailByStatus } from "./agentRailStatusView";
 import {
@@ -286,7 +287,13 @@ export function AgentRailSections({
           : projects.map((group) => (
               <ProjectEntry
                 key={group.id}
-                group={group}
+                group={{
+                  ...group,
+                  chats: group.chats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT),
+                  truncated:
+                    group.truncated ||
+                    group.chats.length > MAX_AGENT_RAIL_CHATS_PER_PROJECT,
+                }}
                 selected={group.id === currentProjectId}
                 prefs={prefs}
                 createChat={createChat}

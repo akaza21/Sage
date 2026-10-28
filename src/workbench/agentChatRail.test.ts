@@ -228,14 +228,12 @@ describe("agent chat rail", () => {
     expect(sections.projects[0]?.chats).toEqual([
       expect.objectContaining({ id: "pin:64", pinned: true }),
       expect.objectContaining({ id: "pin:65", pinned: true }),
-      ...Array.from(
-        { length: MAX_AGENT_RAIL_CHATS_PER_PROJECT - 2 },
-        (_, index) =>
-          expect.objectContaining({ id: `recent:${index}`, pinned: false }),
+      ...Array.from({ length: MAX_AGENT_RAIL_RECENT_CHATS + 2 }, (_, index) =>
+        expect.objectContaining({ id: `recent:${index}`, pinned: false }),
       ),
     ]);
     expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS);
-    expect(sections.projects[0]?.truncated).toBe(true);
+    expect(sections.projects[0]?.truncated).toBe(false);
     expect(sections.recent.map((item) => item.chat.id)).toEqual(
       Array.from(
         { length: MAX_AGENT_RAIL_RECENT_CHATS },

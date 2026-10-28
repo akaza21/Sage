@@ -221,10 +221,7 @@ export function deriveAgentRailSections(
     }
     projects.push({
       ...group,
-      chats: projectChats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT),
-      truncated:
-        group.truncated ||
-        projectChats.length > MAX_AGENT_RAIL_CHATS_PER_PROJECT,
+      chats: projectChats,
       totalChatCount: projectChatCount,
     });
   }

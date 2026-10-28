@@ -1,8 +1,56 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   openScenario,
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
+
+async function installRailBrowseFixture(page: Page) {
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { projectChatSearchDesktop } =
+      await import("/src/features/chatSearch/chatSearchDesktop.ts");
+    const state = useWorkbenchStore.getState();
+    const chats = Array.from({ length: 10 }, (_, position) => ({
+      id: `rail-fixture-${position}`,
+      title: `Agent rail task ${position}`,
+      kind: "chat" as const,
+      position: state.tabs.length + position,
+      pinned: false,
+      dirty: false,
+      status:
+        position === 8
+          ? ("waiting" as const)
+          : position === 9
+            ? ("working" as const)
+            : ("idle" as const),
+      updatedAt: Date.UTC(2026, 7, 31, 9, 29, 0) + position,
+    }));
+    useWorkbenchStore.setState({
+      tabs: [...state.tabs, ...chats],
+      activateChat: state.activateTab,
+    });
+    projectChatSearchDesktop.search = async (request) => ({
+      projectId: request.projectId,
+      projectGeneration: request.projectGeneration,
+      transitionEpoch: request.expectedTransitionEpoch,
+      query: request.query,
+      results:
+        request.projectId === state.project?.id
+          ? chats
+              .filter((chat) => chat.title.includes(request.query))
+              .map((chat) => ({
+                chatId: chat.id,
+                title: chat.title,
+                attached: true,
+                matchedTitle: true,
+                snippet: null,
+              }))
+          : [],
+      hasMore: false,
+      elapsedMs: 1,
+    });
+  });
+}
 
 test("AP-C project disclosure, context actions, and honest project menu", async ({
   page,
@@ -56,6 +104,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   page,
 }) => {
   await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
   const sidebar = page.getByRole("complementary", {
     name: "Projects and chats",
   });
@@ -82,4 +131,75 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await page.keyboard.press("Control+k");
   await expect(query).toBeFocused();
   await expect(query).toHaveValue("");
+});
+
+test("AP-C status filters find approval and running chats beyond eight idle rows", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await sidebar.getByRole("button", { name: "Chat list options" }).click();
+  await page
+    .getByRole("menuitemradio", { name: "Status", exact: true })
+    .click();
+  await page.getByRole("menuitemradio", { name: "Needs Attention" }).click();
+  await page.keyboard.press("Escape");
+  await expect(
+    sidebar.getByRole("button", {
+      name: "Open chat Agent rail task 8",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await takeCanonicalScreenshot(page, "ap-c-attention-overflow.png");
+  await sidebar.getByRole("button", { name: "Chat list options" }).click();
+  await page
+    .getByRole("menuitemradio", { name: "Working", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(
+    sidebar.getByRole("button", {
+      name: "Open chat Agent rail task 9",
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test("AP-C Show more browses and opens a hidden chat without query text", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  const projects = sidebar.getByRole("region", { name: "Projects" });
+  await expect(
+    projects.getByRole("button", {
+      name: "Open chat Agent rail task 8",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await projects.getByRole("button", { name: "Show more" }).click();
+  const query = page.getByRole("searchbox", { name: "Search Chats" });
+  await expect(query).toBeFocused();
+  await expect(query).toHaveValue("");
+  await page.clock.runFor(250);
+  const result = page.getByRole("option", { name: /^Agent rail task 8/ });
+  await expect(result).toBeVisible();
+  await takeCanonicalScreenshot(page, "ap-c-browse-hidden-chats.png");
+  await result.click();
+  await expect(page.getByRole("dialog", { name: "Search Chats" })).toHaveCount(
+    0,
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        return useWorkbenchStore.getState().activeTabId;
+      }),
+    )
+    .toBe("rail-fixture-8");
 });
