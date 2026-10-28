@@ -244,3 +244,28 @@ fn agent_provenance_clears_only_after_matching_user_navigation_completes() {
             .is_err()
     );
 }
+
+#[test]
+fn download_row_shows_the_name_the_file_was_saved_under() {
+    let mut downloads = DownloadRegistry::default();
+    downloads.set_provenance("browser-1", NavigationProvenance::User);
+    let id = downloads
+        .begin("browser-1", "https://example.com/report", "report.pdf")
+        .unwrap();
+    assert_eq!(downloads.views("browser-1")[0].file_name, "report.pdf");
+    let folder = std::env::temp_dir().join("sage-saved-as");
+    assert!(downloads.record_destination(id, folder.join("report (1).pdf")));
+    assert_eq!(downloads.views("browser-1")[0].file_name, "report (1).pdf");
+    assert!(downloads.destination_chosen(id));
+    // WebView2's final ResultFilePath wins when it differs again.
+    assert!(downloads.saved_as(id, &folder.join("report (2).pdf")));
+    assert!(!downloads.saved_as(id, &folder.join("bad\u{7}name.pdf")));
+    assert!(downloads.settle(id, "completed"));
+    let view = &downloads.views("browser-1")[0];
+    assert_eq!(view.file_name, "report (2).pdf");
+    assert!(
+        !serde_json::to_string(view)
+            .unwrap()
+            .contains("sage-saved-as")
+    );
+}

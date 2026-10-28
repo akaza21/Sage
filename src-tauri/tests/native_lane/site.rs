@@ -21,6 +21,9 @@ const BODY_BYTES: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_TARGETS: usize = 256;
 const MAX_REPORTS: usize = 64;
+/// A response the browser must turn into a download, not a page.
+pub const DOWNLOAD: &str = "/download.bin";
+const DOWNLOAD_BODY: &[u8] = b"sage native lane download\n";
 
 const PAGES: &[(&str, &str)] = &[
     (
@@ -160,6 +163,15 @@ fn respond(mut stream: TcpStream, log: &Mutex<Log>) {
                 }
             }
             ("204 No Content", "")
+        }
+        ("GET", _) if target.split('?').next() == Some(DOWNLOAD) => {
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=\"sage-lane.bin\"\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                DOWNLOAD_BODY.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(DOWNLOAD_BODY);
+            return;
         }
         ("GET", _) => {
             let path = target.split('?').next().unwrap_or(target);

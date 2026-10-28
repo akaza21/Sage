@@ -130,14 +130,7 @@ impl DownloadRegistry {
             .map_err(str::to_owned)?
             .origin()
             .ascii_serialization();
-        if file_name.is_empty()
-            || file_name.len() > 255
-            || file_name
-                .chars()
-                .any(|character| character.is_control() || matches!(character, '/' | '\\' | ':'))
-        {
-            return Err("invalid download name".into());
-        }
+        let file_name = admitted_file_name(file_name).ok_or("invalid download name")?;
         if self
             .entries
             .values()
@@ -196,7 +189,28 @@ impl DownloadRegistry {
         {
             return false;
         }
+        self.saved_as(id, &path);
         self.destinations.insert(id, path);
+        true
+    }
+
+    /// Shows the name the file is (or was) actually saved under, which can
+    /// differ from the server's suggestion (user rename, ` (1)` suffix).
+    pub(super) fn saved_as(&mut self, id: u64, path: &std::path::Path) -> bool {
+        let Some(name) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(admitted_file_name)
+        else {
+            return false;
+        };
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return false;
+        };
+        if entry.file_name == name {
+            return false;
+        }
+        entry.file_name = name.to_owned();
         true
     }
 
@@ -295,6 +309,15 @@ impl DownloadRegistry {
         self.destinations.remove(&id);
         true
     }
+}
+
+fn admitted_file_name(name: &str) -> Option<&str> {
+    (!name.is_empty()
+        && name.len() <= 255
+        && !name
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '\\' | ':')))
+    .then_some(name)
 }
 
 fn is_active(state: &str) -> bool {

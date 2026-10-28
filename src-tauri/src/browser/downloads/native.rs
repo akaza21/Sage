@@ -97,6 +97,11 @@ fn start_download(
     tab_id: &str,
     args: ICoreWebView2DownloadStartingEventArgs,
 ) -> windows_core::Result<()> {
+    // Allowed or denied, the navigation that produced this download will not
+    // commit; the tab keeps its page (`navigation::outcome`).
+    if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
+        tabs.note_download(tab_id);
+    }
     let prepared = (|| {
         let operation = unsafe { args.DownloadOperation()? };
         let mut source = PWSTR::null();
@@ -317,7 +322,15 @@ fn install_progress(
                         } else {
                             "interrupted"
                         };
+                        let mut raw = PWSTR::null();
+                        let saved = sender
+                            .ResultFilePath(&mut raw)
+                            .ok()
+                            .map(|()| CoTaskMemPWSTR::from(raw).to_string());
                         if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock() {
+                            if let Some(saved) = saved.filter(|saved| !saved.is_empty()) {
+                                registry.saved_as(id, Path::new(&saved));
+                            }
                             registry.settle(id, terminal);
                         }
                         ACTIVE.with_borrow_mut(|active| {
