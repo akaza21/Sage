@@ -22,7 +22,9 @@ use crate::acp::{
     },
 };
 
-use super::{AcpService, CodexSessionError, codex_operation::ActiveCodexOperation};
+#[cfg(test)]
+use super::AcpService;
+use super::{CodexSessionError, codex_operation::ActiveCodexOperation, live_lanes::Lane};
 
 struct DatabaseAuthority(crate::persistence::Database);
 
@@ -49,6 +51,7 @@ mod live_recovery;
 mod native_end;
 mod projection_recovery;
 mod recovery;
+mod settle;
 mod steer;
 
 #[cfg(all(test, windows))]

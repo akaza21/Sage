@@ -22,29 +22,34 @@ pub(crate) fn recover_after_restart(
     connection: &mut rusqlite::Connection,
     now_millis: i64,
 ) -> Result<RecoveryReport, StoreError> {
-    let candidates = load_recovery_candidates(connection)?;
-    let Some(candidate) = candidates.into_iter().next() else {
-        return Ok(RecoveryReport {
-            recovered_sessions: 0,
-            terminal_turn: None,
-            projection_revision: None,
-        });
+    // Every bounded live tree from the previous process is recovered; each
+    // candidate commits in its own transaction, oldest first.
+    let mut report = RecoveryReport {
+        recovered_sessions: 0,
+        terminal_turn: None,
+        projection_revision: None,
     };
-    recover_candidate(connection, candidate, now_millis)
+    for candidate in load_recovery_candidates(connection)? {
+        let recovered = recover_candidate(connection, candidate, now_millis)?;
+        report.recovered_sessions += recovered.recovered_sessions;
+        report.terminal_turn = recovered.terminal_turn.or(report.terminal_turn);
+        report.projection_revision = recovered.projection_revision;
+    }
+    Ok(report)
 }
 
 pub(crate) fn recover_runtime_after_zero_process(
     connection: &mut rusqlite::Connection,
     command: RecoverRuntimeCommand,
 ) -> Result<RecoveryReport, StoreError> {
-    let mut candidates = load_recovery_candidates(connection)?;
-    match candidates.pop() {
-        Some(candidate) if exact_candidate(&candidate, &command) => {
-            recover_candidate(connection, candidate, command.now_millis)
-        }
-        Some(_) => Err(StoreError::Conflict {
-            resource: "runtimeRecovery",
-        }),
+    // Other bounded live trees may coexist; only this exact owner's epoch is
+    // recovered, and a missing candidate replays an exact postcondition.
+    let candidates = load_recovery_candidates(connection)?;
+    match candidates
+        .into_iter()
+        .find(|candidate| exact_candidate(candidate, &command))
+    {
+        Some(candidate) => recover_candidate(connection, candidate, command.now_millis),
         None => replay_recovered_runtime(connection, &command),
     }
 }

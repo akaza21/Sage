@@ -74,13 +74,15 @@ impl BrowserPermissionDecider for ServiceBrowserPermissionDecider<'_> {
 
 impl super::AcpService {
     pub(crate) fn browser_owner_witness_matches(&self, owner: &BrowserPermissionOwner) -> bool {
-        self.scheduler.active().is_some_and(|active| {
-            active.tree.project_id == owner.project_id
-                && active.tree.chat_id == owner.chat_id
-                && active.tree.session_id == owner.session_id
-                && active.tree.runtime_epoch == owner.runtime_epoch
-                && active.turn_id.as_ref() == Some(&owner.turn_id)
-                && self.runtime.for_owner(&active.tree).is_ok()
+        self.lanes().any(|lane| {
+            lane.scheduler.active().is_some_and(|active| {
+                active.tree.project_id == owner.project_id
+                    && active.tree.chat_id == owner.chat_id
+                    && active.tree.session_id == owner.session_id
+                    && active.tree.runtime_epoch == owner.runtime_epoch
+                    && active.turn_id.as_ref() == Some(&owner.turn_id)
+                    && lane.runtime.for_owner(&active.tree).is_ok()
+            })
         })
     }
 

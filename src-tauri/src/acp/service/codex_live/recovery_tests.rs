@@ -21,24 +21,26 @@ fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
     tauri::async_runtime::block_on(async {
         let (service, owner, lease) = activating_session_fixture("recovery-test").await;
         let turn = lease.reserve_turn_for_test().unwrap();
-        service.retain_codex_recovery(PendingCodexRecovery::Abort {
-            abort: ActivationAbortIntent {
-                owner: owner.clone(),
-                binding_digest: "11".repeat(32),
-                artifact_digest: "22".repeat(32),
-            },
-            category: ActivationAbortCategory::AssemblyFailure,
-            lease,
-            proof: ZeroProcessProof::confirmed(owner),
-        });
+        service
+            .lane_at(0)
+            .retain_codex_recovery(PendingCodexRecovery::Abort {
+                abort: ActivationAbortIntent {
+                    owner: owner.clone(),
+                    binding_digest: "11".repeat(32),
+                    artifact_digest: "22".repeat(32),
+                },
+                category: ActivationAbortCategory::AssemblyFailure,
+                lease,
+                proof: ZeroProcessProof::confirmed(owner),
+            });
 
         assert!(
             service
                 .shutdown_codex_recovery(Instant::now() + Duration::from_secs(1))
                 .is_err()
         );
-        assert!(service.codex_recovery.lock().unwrap().is_some());
-        assert!(service.scheduler.active().is_some());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
+        assert!(service.lane_at(0).scheduler.active().is_some());
 
         turn.abort_before_durable_commit().unwrap();
         assert!(
@@ -46,8 +48,8 @@ fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
                 .shutdown_codex_recovery(Instant::now() + Duration::from_secs(1))
                 .unwrap()
         );
-        assert!(service.codex_recovery.lock().unwrap().is_none());
-        assert!(service.scheduler.active().is_none());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+        assert!(service.lane_at(0).scheduler.active().is_none());
         service.shutdown_blocking().unwrap();
     });
 }
@@ -56,31 +58,41 @@ fn shutdown_failure_reinserts_exact_recovery_and_retry_releases_capacity() {
 fn retained_activation_recovery_releases_capacity_before_another_live_admission() {
     tauri::async_runtime::block_on(async {
         let (service, owner, lease) = activating_session_fixture("activation-reclaim").await;
-        service.runtime.reserve_start(owner.clone()).unwrap();
-        service.runtime.mark_recovery(&owner).unwrap();
-        service.retain_codex_recovery(PendingCodexRecovery::Abort {
-            abort: ActivationAbortIntent {
-                owner: owner.clone(),
-                binding_digest: "11".repeat(32),
-                artifact_digest: "22".repeat(32),
-            },
-            category: ActivationAbortCategory::AssemblyFailure,
-            lease,
-            proof: ZeroProcessProof::confirmed(owner.clone()),
-        });
+        service
+            .lane_at(0)
+            .runtime
+            .reserve_start(owner.clone())
+            .unwrap();
+        service.lane_at(0).runtime.mark_recovery(&owner).unwrap();
+        service
+            .lane_at(0)
+            .retain_codex_recovery(PendingCodexRecovery::Abort {
+                abort: ActivationAbortIntent {
+                    owner: owner.clone(),
+                    binding_digest: "11".repeat(32),
+                    artifact_digest: "22".repeat(32),
+                },
+                category: ActivationAbortCategory::AssemblyFailure,
+                lease,
+                proof: ZeroProcessProof::confirmed(owner.clone()),
+            });
 
         assert!(
             service
                 .reclaim_zero_process_capacity(Instant::now() + Duration::from_secs(1))
                 .unwrap()
         );
-        assert!(service.codex_recovery.lock().unwrap().is_none());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
         let next = RuntimeOwner {
             runtime_epoch: RuntimeEpoch::new(owner.runtime_epoch.get() + 1).unwrap(),
             ..owner
         };
-        service.runtime.reserve_start(next.clone()).unwrap();
-        service.runtime.abandon_start(&next).unwrap();
+        service
+            .lane_at(0)
+            .runtime
+            .reserve_start(next.clone())
+            .unwrap();
+        service.lane_at(0).runtime.abandon_start(&next).unwrap();
         service.shutdown_blocking().unwrap();
     });
 }
@@ -104,6 +116,7 @@ async fn activating_session_fixture(
         .unwrap()
         .projection_revision;
     let started = service
+        .lane_at(0)
         .sessions
         .start_session(StartSessionCommand {
             project_id: project_id.clone(),
@@ -125,6 +138,7 @@ async fn activating_session_fixture(
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
     let lease = service
+        .lane_at(0)
         .sessions
         .activate_session(ActivateSessionCommand {
             project_id,
@@ -156,19 +170,19 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
         let prepared = service.codex_gate.prepare_live().unwrap();
         let active = service.codex_gate.begin(&prepared).unwrap();
         super::super::observe_runner_failure_for_test(
-            &service.runtime,
+            &service.lane_at(0).runtime,
             &owner,
             &runner,
-            &service.codex_recovery,
+            &service.lane_at(0).codex_recovery,
             Arc::new(std::sync::Mutex::new(Some(active))),
         );
 
         assert!(matches!(
-            service.runtime.for_owner(&owner),
+            service.lane_at(0).runtime.for_owner(&owner),
             Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
         ));
-        assert!(service.scheduler.active().is_some());
-        assert!(service.codex_recovery.lock().unwrap().is_some());
+        assert!(service.lane_at(0).scheduler.active().is_some());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
         assert!(matches!(
             service.cancel_codex_turn(crate::acp::runtime::HostCancelIntent {
                 owner: owner.clone(),
@@ -178,9 +192,9 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
             }),
             Err(CodexSessionError::Recovery)
         ));
-        assert!(service.scheduler.active().is_none());
+        assert!(service.lane_at(0).scheduler.active().is_none());
         assert!(matches!(
-            service.runtime.for_owner(&owner),
+            service.lane_at(0).runtime.for_owner(&owner),
             Err(super::super::super::runtime_slot::RuntimeSlotError::Foreign)
         ));
         let page = service
@@ -215,22 +229,23 @@ fn zero_process_runner_failure_is_reclaimed_before_another_live_admission() {
         let prepared = service.codex_gate.prepare_live().unwrap();
         let active = service.codex_gate.begin(&prepared).unwrap();
         super::super::observe_runner_failure_for_test(
-            &service.runtime,
+            &service.lane_at(0).runtime,
             &owner,
             &runner,
-            &service.codex_recovery,
+            &service.lane_at(0).codex_recovery,
             Arc::new(std::sync::Mutex::new(Some(active))),
         );
 
         assert!(
             service
+                .lane_at(0)
                 .reclaim_zero_process_runner_capacity(Instant::now() + Duration::from_secs(1))
                 .unwrap()
         );
-        assert!(service.codex_recovery.lock().unwrap().is_none());
-        assert!(service.scheduler.active().is_none());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+        assert!(service.lane_at(0).scheduler.active().is_none());
         assert!(matches!(
-            service.runtime.for_owner(&owner),
+            service.lane_at(0).runtime.for_owner(&owner),
             Err(super::super::super::runtime_slot::RuntimeSlotError::Foreign)
         ));
         service.shutdown_blocking().unwrap();
@@ -251,20 +266,21 @@ fn live_process_runner_failure_remains_capacity_blocked() {
         let prepared = service.codex_gate.prepare_live().unwrap();
         let active = service.codex_gate.begin(&prepared).unwrap();
         super::super::observe_runner_failure_for_test(
-            &service.runtime,
+            &service.lane_at(0).runtime,
             &owner,
             &runner,
-            &service.codex_recovery,
+            &service.lane_at(0).codex_recovery,
             Arc::new(std::sync::Mutex::new(Some(active))),
         );
 
         assert!(matches!(
             service
+                .lane_at(0)
                 .reclaim_zero_process_runner_capacity(Instant::now() + Duration::from_millis(50)),
             Err(crate::acp::runtime::HostError::RecoveryRequired)
         ));
-        assert!(service.codex_recovery.lock().unwrap().is_some());
-        assert!(service.scheduler.active().is_some());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
+        assert!(service.lane_at(0).scheduler.active().is_some());
         service.shutdown_blocking().unwrap();
     });
 }
@@ -300,6 +316,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
         .unwrap()
         .projection_revision;
     let started = service
+        .lane_at(0)
         .sessions
         .start_session(StartSessionCommand {
             project_id: project_id.clone(),
@@ -321,6 +338,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
     let mut lease = service
+        .lane_at(0)
         .sessions
         .activate_session(ActivateSessionCommand {
             project_id,
@@ -365,20 +383,24 @@ fn drop_attempts_persistent_recovery_at_most_twice_before_forced_cleanup() {
     service
         .codex_runtime_release_fail_always
         .store(true, std::sync::atomic::Ordering::Release);
-    service.retain_codex_recovery(PendingCodexRecovery::RuntimeProjection {
-        owner: RuntimeOwner {
-            project_id: SageProjectId::parse("project-drop").unwrap(),
-            chat_id: SageChatId::parse("chat-drop").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop").unwrap(),
-            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        },
-        proof: ZeroProcessProof::confirmed_for_test(RuntimeOwner {
-            project_id: SageProjectId::parse("project-drop").unwrap(),
-            chat_id: SageChatId::parse("chat-drop").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop").unwrap(),
-            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        }),
-    });
+    service
+        .lane_at(0)
+        .retain_codex_recovery(PendingCodexRecovery::RuntimeProjection {
+            owner: RuntimeOwner {
+                project_id: SageProjectId::parse("project-drop").unwrap(),
+                chat_id: SageChatId::parse("chat-drop").unwrap(),
+                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                    .unwrap(),
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            },
+            proof: ZeroProcessProof::confirmed_for_test(RuntimeOwner {
+                project_id: SageProjectId::parse("project-drop").unwrap(),
+                chat_id: SageChatId::parse("chat-drop").unwrap(),
+                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                    .unwrap(),
+                runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            }),
+        });
     drop(service);
     let attempts = super::super::super::shutdown::DROP_RECOVERY_ATTEMPTS
         .load(std::sync::atomic::Ordering::Acquire)
@@ -396,10 +418,10 @@ fn effect_unknown_send_retains_the_exact_host_until_bounded_shutdown_without_rep
     ));
     assert_eq!(trace.lock().unwrap().send, 1);
     assert!(matches!(
-        service.runtime.for_owner(&owner),
+        service.lane_at(0).runtime.for_owner(&owner),
         Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
     assert!(matches!(
         service.send_codex_turn(prepare_turn(&owner)),
         Err(CodexSessionError::Recovery)
@@ -410,8 +432,8 @@ fn effect_unknown_send_retains_the_exact_host_until_bounded_shutdown_without_rep
         service.close_codex_session(command),
         Err(CodexSessionError::Recovery)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.runtime.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.active().is_none());
     let trace = trace.lock().unwrap();
     assert_eq!(trace.send, 1, "prompt was replayed");
     assert_eq!(trace.close, 0, "normal close was dispatched");
@@ -435,8 +457,8 @@ fn native_end_proves_zero_process_and_terminalizes_the_exact_runtime() {
 
     service.end_session_natively(owner.clone()).unwrap();
 
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.scheduler.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     service.shutdown_blocking().unwrap();
 }
@@ -473,7 +495,7 @@ fn temporary_disposal_retries_supervisor_shutdown_without_protocol_close() {
         .dispose_temporary_runtime(&owner.project_id, &owner.chat_id)
         .unwrap();
     assert_eq!(attempts.load(Ordering::Acquire), 2);
-    assert!(service.scheduler.active().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     let page = service
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
@@ -519,19 +541,21 @@ fn native_end_refuses_to_replace_an_existing_recovery() {
     );
     host.activate(owner.clone()).unwrap();
     service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
-    service.runtime.mark_recovery(&owner).unwrap();
-    service.retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
-        owner: owner.clone(),
-        host,
-        phase: LiveHostRecoveryPhase::SendEffect,
-    }));
+    service.lane_at(0).runtime.mark_recovery(&owner).unwrap();
+    service
+        .lane_at(0)
+        .retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+            owner: owner.clone(),
+            host,
+            phase: LiveHostRecoveryPhase::SendEffect,
+        }));
 
     assert!(matches!(
         service.end_session_natively(owner.clone()),
         Err(CodexSessionError::Recovery)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_some());
-    assert!(service.scheduler.active().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).scheduler.active().is_some());
     service.shutdown_blocking().unwrap();
 }
 
@@ -547,10 +571,10 @@ fn native_end_without_native_proof_refuses_without_mutating_the_runtime() {
         service.end_session_natively(owner.clone()),
         Err(CodexSessionError::Recovery)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.scheduler.active().is_some());
-    assert!(service.runtime.for_owner(&owner).is_ok());
-    assert!(service.runtime.for_owner(&owner).is_ok());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_some());
+    assert!(service.lane_at(0).runtime.for_owner(&owner).is_ok());
+    assert!(service.lane_at(0).runtime.for_owner(&owner).is_ok());
     service.shutdown_blocking().unwrap();
 }
 
@@ -577,11 +601,11 @@ fn native_end_retries_its_exact_retained_recovery() {
         Err(CodexSessionError::Recovery)
     ));
     assert_eq!(attempts.load(Ordering::Acquire), 1);
-    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
 
     service.end_session_natively(owner.clone()).unwrap();
     assert_eq!(attempts.load(Ordering::Acquire), 2);
-    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     service.shutdown_blocking().unwrap();
 }
@@ -614,23 +638,23 @@ fn native_end_preserves_its_terminal_outcome_against_inflight_and_late_config_re
 
         assert_native_end_in_flight(&service, &owner, &host);
         service.retain_config_effect_recovery(owner.clone(), Arc::clone(&host));
-        service.forget_stale_owner_recovery(&owner);
+        service.lane_at(0).forget_stale_owner_recovery(&owner);
         assert!(matches!(
             service.reclaim_zero_process_capacity(Instant::now() + Duration::from_millis(50)),
             Err(crate::acp::runtime::HostError::RecoveryRequired)
         ));
         assert_native_end_in_flight(&service, &owner, &host);
-        assert!(service.scheduler.active().is_some());
+        assert!(service.lane_at(0).scheduler.active().is_some());
 
         release_sender.send(()).unwrap();
         worker.join().unwrap()
     });
 
     result.unwrap();
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.scheduler.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_none());
     service.retain_config_effect_recovery(owner.clone(), host);
-    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     service.shutdown_blocking().unwrap();
 }
@@ -654,12 +678,14 @@ fn shutdown_retry_keeps_native_end_inflight_when_a_runner_fails() {
     );
     host.activate(owner.clone()).unwrap();
     service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
-    service.runtime.mark_recovery(&owner).unwrap();
-    service.retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
-        owner: owner.clone(),
-        host: Arc::clone(&host),
-        phase: LiveHostRecoveryPhase::NativeEnd,
-    }));
+    service.lane_at(0).runtime.mark_recovery(&owner).unwrap();
+    service
+        .lane_at(0)
+        .retain_codex_recovery(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+            owner: owner.clone(),
+            host: Arc::clone(&host),
+            phase: LiveHostRecoveryPhase::NativeEnd,
+        }));
     let running = crate::acp::process::launch_fixture_for_test(owner.runtime_epoch.get());
     let (_, _, control) = running.into_parts();
     control
@@ -674,10 +700,10 @@ fn shutdown_retry_keeps_native_end_inflight_when_a_runner_fails() {
             .recv_timeout(Duration::from_secs(1))
             .unwrap();
         super::super::observe_runner_failure_for_test(
-            &service.runtime,
+            &service.lane_at(0).runtime,
             &owner,
             &runner,
-            &service.codex_recovery,
+            &service.lane_at(0).codex_recovery,
             Arc::new(std::sync::Mutex::new(None)),
         );
         assert_native_end_in_flight(&service, &owner, &host);
@@ -687,8 +713,8 @@ fn shutdown_retry_keeps_native_end_inflight_when_a_runner_fails() {
     });
 
     assert!(result.unwrap());
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.scheduler.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     service.shutdown_blocking().unwrap();
 }
@@ -725,13 +751,13 @@ fn close_recovery_keeps_live_authority_inflight_when_a_runner_fails() {
             .recv_timeout(Duration::from_secs(1))
             .unwrap();
         super::super::observe_runner_failure_for_test(
-            &service.runtime,
+            &service.lane_at(0).runtime,
             &owner,
             &runner,
-            &service.codex_recovery,
+            &service.lane_at(0).codex_recovery,
             Arc::new(std::sync::Mutex::new(None)),
         );
-        service.retain_live_failure_recovery(
+        service.lane_at(0).retain_live_failure_recovery(
             owner.clone(),
             Arc::clone(&host),
             LiveHostRecoveryPhase::SendEffect,
@@ -745,8 +771,8 @@ fn close_recovery_keeps_live_authority_inflight_when_a_runner_fails() {
         result,
         Ok(crate::acp::runtime::HostOutcome::Closed)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.runtime.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.active().is_none());
     service.shutdown_blocking().unwrap();
 }
 
@@ -755,7 +781,8 @@ fn assert_native_end_in_flight(
     owner: &RuntimeOwner,
     host: &Arc<RuntimeHost>,
 ) {
-    let retained = service.codex_recovery.lock().unwrap();
+    let lane = service.lane_at(0);
+    let retained = lane.codex_recovery.lock().unwrap();
     let Some(PendingCodexRecovery::LiveHost(LiveHostRecovery {
         owner: current_owner,
         host: current_host,
@@ -799,9 +826,9 @@ fn public_close_retries_managed_shutdown_without_replaying_the_uncertain_effect(
         Err(CodexSessionError::Recovery)
     ));
     assert_eq!(attempts.load(Ordering::Acquire), 1);
-    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
     assert!(matches!(
-        service.runtime.for_owner(&owner),
+        service.lane_at(0).runtime.for_owner(&owner),
         Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
     ));
 
@@ -810,9 +837,9 @@ fn public_close_retries_managed_shutdown_without_replaying_the_uncertain_effect(
         Err(CodexSessionError::Recovery)
     ));
     assert_eq!(attempts.load(Ordering::Acquire), 2);
-    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
     assert!(matches!(
-        service.runtime.for_owner(&owner),
+        service.lane_at(0).runtime.for_owner(&owner),
         Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
     ));
 
@@ -821,8 +848,8 @@ fn public_close_retries_managed_shutdown_without_replaying_the_uncertain_effect(
         Err(CodexSessionError::Recovery)
     ));
     assert_eq!(attempts.load(Ordering::Acquire), 2);
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.runtime.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.active().is_none());
     let trace = trace.lock().unwrap();
     assert_eq!(trace.send, 1, "send was replayed");
     assert_eq!(trace.close, 0, "normal close was dispatched");
@@ -848,7 +875,7 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
     host.without_timeout_override(|| host.activate(owner.clone()))
         .unwrap();
     service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
-    assert!(service.scheduler.active().is_some());
+    assert!(service.lane_at(0).scheduler.active().is_some());
 
     let timed_out = {
         let host = Arc::clone(&host);
@@ -868,18 +895,18 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
     assert!(host.is_awaiting_exit());
     release_sender.send(()).unwrap();
 
-    service.retain_live_failure_recovery(
+    service.lane_at(0).retain_live_failure_recovery(
         owner.clone(),
         Arc::clone(&host),
         LiveHostRecoveryPhase::ReplacementPark,
     );
-    assert!(service.scheduler.active().is_some());
+    assert!(service.lane_at(0).scheduler.active().is_some());
     assert!(matches!(
         service.shutdown_codex_recovery(Instant::now() + Duration::from_secs(1)),
         Ok(true)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.scheduler.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).scheduler.active().is_none());
     assert_recovered_runtime_is_cold(&service, &owner);
     service.shutdown_blocking().unwrap();
 }
@@ -917,14 +944,14 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
     };
 
     let error = host.steer(intent.clone()).unwrap_err();
-    let _ = service.retain_live_host_error(
+    let _ = service.lane_at(0).retain_live_host_error(
         owner.clone(),
         Arc::clone(&host),
         LiveHostRecoveryPhase::SendEffect,
         error,
     );
-    assert!(service.runtime.for_owner(&owner).is_ok());
-    assert!(service.codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.for_owner(&owner).is_ok());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
     assert_eq!(
         host.steer(intent),
         Ok(crate::acp::runtime::HostOutcome::SteerQueued)
@@ -958,7 +985,7 @@ fn projection_journal_conversion_failure_retains_the_exact_handoff() {
         let (service, abort, journal, host) = projection_start_fixture(false).await;
 
         assert!(matches!(
-            service.recover_projection_authorities(
+            service.lane_at(0).recover_projection_authorities(
                 &abort,
                 journal,
                 crate::acp::process::ZeroProcessToken::for_test(1),
@@ -967,9 +994,9 @@ fn projection_journal_conversion_failure_retains_the_exact_handoff() {
             ),
             Err(CodexSessionError::Recovery)
         ));
-        assert!(service.codex_recovery.lock().unwrap().is_some());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
         assert!(matches!(
-            service.runtime.for_owner(&abort.owner),
+            service.lane_at(0).runtime.for_owner(&abort.owner),
             Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
         ));
     });
@@ -981,7 +1008,7 @@ fn projection_zero_proof_conversion_failure_retains_lease_token_and_host() {
         let (service, abort, journal, host) = projection_start_fixture(true).await;
 
         assert!(matches!(
-            service.recover_projection_authorities(
+            service.lane_at(0).recover_projection_authorities(
                 &abort,
                 journal,
                 crate::acp::process::ZeroProcessToken::for_test(2),
@@ -990,9 +1017,9 @@ fn projection_zero_proof_conversion_failure_retains_lease_token_and_host() {
             ),
             Err(CodexSessionError::Recovery)
         ));
-        assert!(service.codex_recovery.lock().unwrap().is_some());
+        assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
         assert!(matches!(
-            service.runtime.for_owner(&abort.owner),
+            service.lane_at(0).runtime.for_owner(&abort.owner),
             Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
         ));
     });
@@ -1018,6 +1045,7 @@ async fn projection_start_fixture(
         .unwrap()
         .projection_revision;
     let started = service
+        .lane_at(0)
         .sessions
         .start_session(StartSessionCommand {
             project_id: project_id.clone(),
@@ -1039,6 +1067,7 @@ async fn projection_start_fixture(
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
     };
     let lease = service
+        .lane_at(0)
         .sessions
         .activate_session(ActivateSessionCommand {
             project_id,
@@ -1088,8 +1117,8 @@ fn effect_unknown_cancel_retains_its_exact_host_without_redispatch() {
         service.close_codex_session(close_session(&owner)),
         Err(CodexSessionError::Recovery)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.runtime.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.active().is_none());
     let trace = trace.lock().unwrap();
     assert_eq!(trace.cancel, 1, "cancel was redispatched");
     assert_eq!(trace.close, 0, "normal close was dispatched");
@@ -1110,9 +1139,9 @@ fn close_effect_retry_failure_reinserts_the_exact_close_authority() {
         service.close_codex_session(command),
         Err(CodexSessionError::Intent)
     ));
-    assert!(service.codex_recovery.lock().unwrap().is_some());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
     assert!(matches!(
-        service.runtime.for_owner(&owner),
+        service.lane_at(0).runtime.for_owner(&owner),
         Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
     ));
     assert_eq!(trace.lock().unwrap().close, 2);
@@ -1141,8 +1170,8 @@ fn shutdown_failure_after_close_retries_shutdown_without_closing_twice() {
     assert_eq!(trace.close, 1, "close was repeated after it completed");
     assert_eq!(trace.shutdown, 2);
     drop(trace);
-    assert!(service.codex_recovery.lock().unwrap().is_none());
-    assert!(service.runtime.active().is_none());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_none());
+    assert!(service.lane_at(0).runtime.active().is_none());
     service.shutdown_blocking().unwrap();
 }
 
@@ -1152,6 +1181,8 @@ enum OperationFailure {
     Cancel,
     CloseEffect,
     Shutdown,
+    /// The harness refuses the prompt before writing it (B1).
+    SignIn,
 }
 
 #[derive(Default)]
@@ -1408,6 +1439,9 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         _: &RuntimeOwner,
         turn: &crate::acp::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
+        if matches!(self.script, Some((OperationFailure::SignIn, _))) {
+            return Err(crate::acp::runtime::HostError::SignInRequired);
+        }
         self.script
             .as_ref()
             .map(|_| crate::acp::runtime::PromptWrite::Complete(turn.clone()))
@@ -1530,5 +1564,95 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         } else {
             Ok(())
         }
+    }
+}
+
+/// Inserts the durable turn a real prepare would have committed.
+fn insert_sending_turn(service: &AcpService, owner: &RuntimeOwner) {
+    service
+        .database
+        .connection()
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
+                 state,delivery_state,revision,created_at,updated_at,terminal_at)
+             VALUES('turn-operation-recovery',?1,?2,?3,?4,0,'intent-sign-in','sending','notWritten',0,1,1,NULL)",
+            rusqlite::params![
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                owner.runtime_epoch.get() as i64
+            ],
+        )
+        .unwrap();
+}
+
+fn turn_state(service: &AcpService, owner: &RuntimeOwner) -> crate::acp::lifecycle::TurnState {
+    service
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .turns
+        .as_slice()
+        .iter()
+        .find(|turn| turn.id.as_str() == "turn-operation-recovery")
+        .unwrap()
+        .state
+}
+
+#[test]
+fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
+    let (service, owner, trace) = service_with_operation_recovery(OperationFailure::SignIn);
+    insert_sending_turn(&service, &owner);
+    let failure = service
+        .send_session_turn(crate::acp::runtime::HostPromptIntent {
+            command: prepare_turn(&owner),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap_err();
+    assert!(matches!(failure.error, CodexSessionError::SignInRequired));
+    assert_eq!(trace.lock().unwrap().send, 1);
+    assert!(turn_state(&service, &owner).is_terminal());
+    assert!(service.lane_for(&owner).is_none(), "the lane is free again");
+    assert_recovered_runtime_is_cold(&service, &owner);
+    // A late Cancel for the settled turn succeeds instead of reporting a
+    // stale identity.
+    assert!(matches!(
+        service.cancel_codex_turn(cancel_intent(&owner)),
+        Ok(crate::acp::runtime::HostOutcome::CancelQueued)
+    ));
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn cancel_settles_a_turn_whose_host_failed_closed() {
+    let (service, owner, _trace) = service_with_operation_recovery(OperationFailure::SignIn);
+    insert_sending_turn(&service, &owner);
+    let host = service.host_for(&owner).unwrap();
+    // Drive the host directly so only Cancel can settle the wedged turn.
+    assert_eq!(
+        host.send(crate::acp::runtime::HostPromptIntent {
+            command: prepare_turn(&owner),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        }),
+        Err(crate::acp::runtime::HostError::SignInRequired)
+    );
+    assert!(matches!(
+        host.cancel(cancel_intent(&owner)),
+        Err(crate::acp::runtime::HostError::Intent)
+    ));
+    assert!(matches!(
+        service.cancel_codex_turn(cancel_intent(&owner)),
+        Ok(crate::acp::runtime::HostOutcome::CancelQueued)
+    ));
+    assert!(turn_state(&service, &owner).is_terminal());
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
+
+fn cancel_intent(owner: &RuntimeOwner) -> crate::acp::runtime::HostCancelIntent {
+    crate::acp::runtime::HostCancelIntent {
+        owner: owner.clone(),
+        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        client_intent_id: ClientIntentId::new(),
+        now_millis: crate::persistence::now_millis(),
     }
 }

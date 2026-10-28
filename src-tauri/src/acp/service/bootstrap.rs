@@ -13,9 +13,7 @@ use crate::{
     persistence::Database,
 };
 
-use super::{
-    AcpService, CodexAuthManager, CodexDiscoveryManager, RuntimeSlot, ServiceConfiguration,
-};
+use super::{AcpService, CodexAuthManager, CodexDiscoveryManager, ServiceConfiguration};
 
 impl AcpService {
     pub(super) fn build(
@@ -62,9 +60,11 @@ impl AcpService {
                 crate::persistence::now_millis(),
             )?;
         }
-        let scheduler = Scheduler::new();
-        let sessions =
-            SessionCoordinator::new(journal.clone(), scheduler.clone(), Arc::clone(&publisher));
+        let session_starts =
+            SessionCoordinator::new(journal.clone(), Scheduler::new(), Arc::clone(&publisher));
+        let lanes = (0..super::LIVE_RUNTIME_LANES)
+            .map(|_| super::live_lanes::LiveLane::new(&journal, &publisher))
+            .collect();
         if let Some(notifier) = &notifier
             && let Ok(Some(project_id)) = database.active_project_id()
             && let Ok(project_id) = SageProjectId::parse(project_id)
@@ -87,11 +87,10 @@ impl AcpService {
             #[cfg(windows)]
             browser_app: std::sync::Mutex::new(None),
             database,
-            scheduler,
             journal,
             journal_thread: std::sync::Mutex::new(Some(journal_thread)),
-            sessions,
-            runtime: Arc::new(RuntimeSlot::new()),
+            session_starts,
+            lanes,
             publisher,
             notifier,
             page_reads: super::PageReadAdmission::default(),
@@ -99,7 +98,6 @@ impl AcpService {
             codex_gate,
             codex_discovery,
             codex_auth,
-            codex_recovery: Arc::new(std::sync::Mutex::new(None)),
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             codex_runtime_identity: Arc::new(super::CodexRuntimeIdentityLedger::new()),
             #[cfg(test)]

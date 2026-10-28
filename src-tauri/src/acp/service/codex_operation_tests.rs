@@ -1,0 +1,149 @@
+use super::*;
+use std::{sync::mpsc, thread};
+
+struct TestCancellation {
+    requested: AtomicBool,
+}
+
+impl CodexOperationCancellation for TestCancellation {
+    fn request_parent_shutdown_until(
+        &self,
+        _deadline: Instant,
+    ) -> Result<(), CodexDiscoveryRunError> {
+        self.requested.store(true, Ordering::Release);
+        Ok(())
+    }
+}
+
+#[test]
+fn admission_is_shared_non_waiting_and_transferable() {
+    let gate = CodexOperationGate::new();
+    let held = gate.prepare().unwrap();
+    let concurrent = Arc::clone(&gate);
+    let (send, receive) = mpsc::sync_channel(1);
+    let worker = thread::spawn(move || send.send(concurrent.prepare().map(drop)).unwrap());
+    assert_eq!(
+        receive.recv_timeout(Duration::from_millis(100)),
+        Ok(Err(CodexDiscoveryRunError::Busy))
+    );
+    drop(held);
+    worker.join().unwrap();
+    let transferable = gate.prepare().unwrap();
+    thread::spawn(move || drop(transferable)).join().unwrap();
+    assert!(gate.prepare().is_ok());
+}
+
+#[test]
+fn invalidation_cancels_active_work_and_requires_settlement() {
+    let gate = CodexOperationGate::new();
+    let prepared = gate.prepare().unwrap();
+    let active = gate.begin(&prepared).unwrap();
+    let cancellation = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    active.register_cancellation(cancellation.clone()).unwrap();
+    let invalidating = Arc::clone(&gate);
+    let worker = thread::spawn(move || invalidating.invalidate_and_wait(Duration::from_secs(1)));
+    while !cancellation.requested.load(Ordering::Acquire) {
+        thread::yield_now();
+    }
+    active.settle(Ok(()));
+    assert_eq!(worker.join().unwrap(), Ok(()));
+    assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
+}
+
+#[test]
+fn project_switch_invalidates_ephemeral_work_but_preserves_a_live_session() {
+    let gate = CodexOperationGate::new();
+    let prepared = gate.prepare_live().unwrap();
+    let active = gate.begin(&prepared).unwrap();
+    let cancellation = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    active.register_cancellation(cancellation.clone()).unwrap();
+
+    assert_eq!(
+        gate.invalidate_ephemeral_and_wait_until(Instant::now() + Duration::from_millis(10)),
+        Ok(())
+    );
+    assert!(!cancellation.requested.load(Ordering::Acquire));
+    assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
+    active.settle(Ok(()));
+}
+
+#[test]
+fn shutdown_does_not_wait_for_a_live_operation() {
+    let gate = CodexOperationGate::new();
+    let prepared = gate.prepare_live().unwrap();
+    let active = gate.begin(&prepared).unwrap();
+    let cancellation = Arc::new(TestCancellation {
+        requested: AtomicBool::new(false),
+    });
+    active.register_cancellation(cancellation.clone()).unwrap();
+
+    assert_eq!(gate.shutdown(Duration::from_millis(10)), Ok(()));
+    assert!(!cancellation.requested.load(Ordering::Acquire));
+    active.settle(Ok(()));
+}
+
+#[test]
+fn live_operations_run_concurrently_up_to_the_lane_count_and_exclude_ephemeral_work() {
+    let gate = CodexOperationGate::new();
+    let mut live = Vec::new();
+    for _ in 0..LIVE_OPERATIONS {
+        let prepared = gate.prepare_live().unwrap();
+        live.push(gate.begin(&prepared).unwrap());
+    }
+    assert!(matches!(
+        gate.begin(&gate.prepare_live().unwrap()),
+        Err(CodexDiscoveryRunError::Busy)
+    ));
+    assert!(gate.prepare().is_ok());
+    let ephemeral = gate.prepare().unwrap();
+    assert!(matches!(
+        gate.begin(&ephemeral),
+        Err(CodexDiscoveryRunError::Busy)
+    ));
+    drop(ephemeral);
+    live.pop().unwrap().settle(Ok(()));
+    let replacement = gate.prepare_live().unwrap();
+    live.push(gate.begin(&replacement).unwrap());
+    // A held live admission also excludes ephemeral admission.
+    assert!(matches!(gate.prepare(), Err(CodexDiscoveryRunError::Busy)));
+    drop(replacement);
+    for operation in live {
+        operation.settle(Ok(()));
+    }
+    let ephemeral = gate.prepare().unwrap();
+    gate.begin(&ephemeral).unwrap().settle(Ok(()));
+}
+
+#[test]
+fn binding_invalidation_cancels_every_live_operation() {
+    let gate = CodexOperationGate::new();
+    let cancellations: Vec<_> = (0..2)
+        .map(|_| {
+            Arc::new(TestCancellation {
+                requested: AtomicBool::new(false),
+            })
+        })
+        .collect();
+    let live: Vec<_> = cancellations
+        .iter()
+        .map(|cancellation| {
+            let prepared = gate.prepare_live().unwrap();
+            let active = gate.begin(&prepared).unwrap();
+            active.register_cancellation(cancellation.clone()).unwrap();
+            active
+        })
+        .collect();
+    gate.invalidate();
+    assert!(
+        cancellations
+            .iter()
+            .all(|cancellation| cancellation.requested.load(Ordering::Acquire))
+    );
+    for operation in live {
+        operation.settle(Ok(()));
+    }
+}

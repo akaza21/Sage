@@ -202,7 +202,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                 assert_eq!(stopped.state, SessionState::Ready);
                 assert_eq!(stopped.residency, Residency::Cold);
                 assert_eq!(stopped.runtime_epoch, None);
-                assert!(!setup.service.runtime.is_active());
+                assert!(!setup.service.lane_at(0).runtime.is_active());
                 SessionState::Ready
             } else {
                 let closed = setup

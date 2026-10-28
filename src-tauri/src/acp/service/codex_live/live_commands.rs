@@ -1,35 +1,7 @@
 use super::live_recovery::{ClosedShutdownAuthority, LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
-impl AcpService {
-    #[cfg(test)]
-    pub(crate) fn send_codex_turn(
-        &self,
-        command: PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.send_session_turn(crate::acp::runtime::HostPromptIntent {
-            command,
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })
-        .map_err(|failure| failure.error)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn cancel_codex_turn(
-        &self,
-        intent: crate::acp::runtime::HostCancelIntent,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.cancel_session_turn(intent)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn close_codex_session(
-        &self,
-        command: crate::acp::store::CloseSessionCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.close_session(command)
-    }
-
+impl Lane<'_> {
     pub(crate) fn send_session_turn(
         &self,
         intent: crate::acp::runtime::HostPromptIntent,
@@ -50,6 +22,15 @@ impl AcpService {
             .map_err(crate::acp::service::PromptSendError::not_started)?;
         match host.send(intent) {
             Ok(outcome) => Ok(outcome),
+            Err(crate::acp::runtime::HostError::SignInRequired) => {
+                // The harness refused the prompt before any byte was written
+                // and its host failed closed. Settle the turn and free the
+                // lane now instead of leaving an uncancellable turn (B1).
+                self.settle_refused_prompt(owner, host);
+                Err(crate::acp::service::PromptSendError::unknown(
+                    CodexSessionError::SignInRequired,
+                ))
+            }
             Err(error) => Err(crate::acp::service::PromptSendError::unknown(
                 self.retain_live_host_error(owner, host, LiveHostRecoveryPhase::SendEffect, error),
             )),
@@ -68,7 +49,7 @@ impl AcpService {
                 let deadline = Instant::now()
                     + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
                 let _ = self.shutdown_codex_recovery(deadline);
-                return Err(CodexSessionError::Recovery);
+                return self.settled_cancel_outcome(&owner, &turn_id);
             }
             Err(error) => return Err(map_slot_error(error)),
         };
@@ -78,6 +59,11 @@ impl AcpService {
             // for it here incorrectly turns an admitted owner's cancellation
             // into recovery solely because the runner has not replied yet.
             Ok(outcome) => self.finish_cancelled_shutdown(owner, turn_id, host, outcome),
+            Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State)
+                if self.host_failed_closed(&host) =>
+            {
+                self.settle_cancel_on_failed_host(owner, turn_id, host)
+            }
             Err(error) => Err(self.retain_live_host_error(
                 owner,
                 host,

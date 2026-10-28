@@ -29,7 +29,7 @@ pub(in crate::acp::service) enum ClosedShutdownAuthority {
     Release(Option<ZeroProcessProof>),
 }
 
-impl AcpService {
+impl Lane<'_> {
     pub(super) fn take_live_host_recovery(&self, owner: &RuntimeOwner) -> Option<LiveHostRecovery> {
         let mut retained = self
             .codex_recovery

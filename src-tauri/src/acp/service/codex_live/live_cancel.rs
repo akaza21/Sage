@@ -1,7 +1,7 @@
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
-impl AcpService {
+impl Lane<'_> {
     pub(crate) fn dispose_temporary_runtime(
         &self,
         project: &crate::acp::contract::SageProjectId,
