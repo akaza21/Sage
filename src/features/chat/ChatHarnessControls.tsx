@@ -21,6 +21,8 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
+import { useComposerModelName } from "./composerModelName";
+import { useComposerModelChoices } from "./useComposerModelChoices";
 import { ComposerAccessControl } from "./ComposerAccessControl";
 import { ComposerAddActions } from "./ComposerAddActions";
 import { ProjectScopeChip } from "./ProjectScopeChip";
@@ -104,6 +106,7 @@ export function ChatHarnessControls({
     optionsTrigger: optionsTriggerRef,
     toggle,
     dismiss,
+    setHarnessOpen,
   } = useComposerPopovers(turnBusy || projectTransitioning);
   const { effort: compactEffort, project: compactProject } =
     useComposerCompaction(optionsTriggerRef);
@@ -170,19 +173,16 @@ export function ChatHarnessControls({
     (!inherited?.id || inherited.id === selectedModelId)
       ? inherited
       : undefined;
-  const modelLabel = knownModelLabel ?? inheriting?.model ?? "Model";
+  const modelLabel = useComposerModelName(
+    knownModelLabel ?? inheriting?.model ?? "Model",
+  );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortLabel =
     composerOptionLabel(effortOption) ??
     (confirmedEffort
       ? capitalizeLabel(confirmedEffort)
       : (inheriting?.effort ?? null));
-  const modelChoices = hasSessionModel
-    ? flattenChoices(modelOption).map((choice) => ({
-        id: choice.value,
-        name: choice.name || choice.value,
-      }))
-    : models;
+  const modelChoices = useComposerModelChoices(modelOption, models);
   const currentModelId = hasSessionModel
     ? modelOption.currentValue
     : (selectedSessionConfig?.confirmedModel?.id ?? selectedModelId);
@@ -208,7 +208,6 @@ export function ChatHarnessControls({
     }),
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
-  const hasModes = modeOptions.length > 0;
   const modeCandidates = modeOptions.map((mode) => ({
     id: mode.id,
     label: mode.name || mode.id,
@@ -225,7 +224,7 @@ export function ChatHarnessControls({
     onOpenGoal ||
     (compactProject && projectName) ||
     (canSelectEffort && compactEffort) ||
-    hasModes ||
+    modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
   const actionsKey = JSON.stringify([
@@ -297,7 +296,7 @@ export function ChatHarnessControls({
         <SearchablePicker
           ariaLabel="Harness"
           open={active === "harness"}
-          onOpenChange={(open) => (open ? toggle("harness") : dismiss())}
+          onOpenChange={setHarnessOpen}
           triggerIcon={<Settings size={16} aria-hidden="true" />}
           candidates={harnessCandidates}
           popoverClassName="composer__popover composer__harness-menu"
@@ -330,6 +329,11 @@ export function ChatHarnessControls({
         effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
         contextWindow={contextWindow}
         effortOption={effortOption}
+        awaitingSession={
+          sessionHarnessId === null &&
+          selectedHarnessId !== null &&
+          availableBinding
+        }
         disabled={turnBusy || projectTransitioning || !canPrompt}
         pending={modePending}
         readOnlyLabel={

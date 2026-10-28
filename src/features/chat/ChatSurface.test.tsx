@@ -1525,7 +1525,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
   });
 
-  it("renders advertised config options without restating the mode picker", () => {
+  it("renders advertised config options without restating the mode picker", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1583,10 +1583,12 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("menuitemcheckbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: /Sonnet 5/ }),
+    ).toBeTruthy();
   });
 
-  it("omits unsupported config actions instead of enabling an inert Add menu", () => {
+  it("omits unsupported config actions instead of enabling an inert Add menu", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1627,7 +1629,9 @@ describe("ChatSurface ACP resource integration", () => {
       screen.queryByRole("checkbox", { name: "Session thinking budget" }),
     ).toBeNull();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: /Sonnet 5/ }),
+    ).toBeTruthy();
   });
 
   it("lets a prompt-capable harness without a model catalog use its own default", () => {

@@ -1,9 +1,12 @@
-import { useId } from "react";
+import { Fragment, useId } from "react";
 import { PickerOption } from "../../ui/PickerOption";
+import { composerModelName } from "./composerModelName";
 
 export interface ComposerModelChoice {
   id: string;
   name: string;
+  group?: string;
+  isDefault?: boolean;
 }
 export const MAX_VISIBLE_MODELS = 200;
 
@@ -21,6 +24,17 @@ export function ChatModelPicker({
   onSelect: (modelId: string) => void;
 }) {
   const id = useId();
+  const visible = models.slice(0, MAX_VISIBLE_MODELS);
+  const recommended = visible.some((model) => model.isDefault);
+  const groups = new Map<string, ComposerModelChoice[]>();
+  for (const model of visible) {
+    const group =
+      model.group ??
+      (recommended ? (model.isDefault ? "Recommended" : "Other models") : "");
+    const choices = groups.get(group) ?? [];
+    choices.push(model);
+    groups.set(group, choices);
+  }
   return (
     <>
       <p id={`${id}-title`} className="composer-model-picker__title">
@@ -32,18 +46,30 @@ export function ChatModelPicker({
         role="listbox"
         aria-labelledby={`${id}-title`}
       >
-        {models.slice(0, MAX_VISIBLE_MODELS).map((model) => (
-          <PickerOption
-            key={model.id}
-            id={`${id}-${encodeURIComponent(model.id)}`}
-            candidate={{ id: model.id, label: model.name }}
-            active={false}
-            selected={model.id === selectedId}
-            showSelectedCheck
-            disabled={disabled}
-            onSelect={onSelect}
-          />
-        ))}
+        {Array.from(groups, ([group, choices]) => {
+          const options = choices.map((model) => (
+            <PickerOption
+              key={model.id}
+              id={`${id}-${encodeURIComponent(model.id)}`}
+              candidate={{ id: model.id, label: composerModelName(model.name) }}
+              active={false}
+              selected={model.id === selectedId}
+              showSelectedCheck
+              disabled={disabled}
+              onSelect={onSelect}
+            />
+          ));
+          return group ? (
+            <div key={group} role="group" aria-label={group}>
+              <p className="menu-group-label" aria-hidden="true">
+                {group}
+              </p>
+              {options}
+            </div>
+          ) : (
+            <Fragment key={group}>{options}</Fragment>
+          );
+        })}
       </div>
       {models.length > MAX_VISIBLE_MODELS ? (
         <p className="menu-empty" role="status">

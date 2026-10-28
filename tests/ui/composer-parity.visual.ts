@@ -244,6 +244,90 @@ for (const width of [1888, 720, 480]) {
         ".markdown-table, .markdown-table th, .markdown-table td",
       );
     });
+    test("pre-turn chips remain truthful and compact without truncation", async ({
+      page,
+    }) => {
+      await render(page, "Claude Code", "pre-turn");
+      const composer = page.locator("form.composer");
+      await expect(
+        composer.getByRole("button", { name: "Model", exact: true }),
+      ).toHaveText("Claude Sonnet 4.5");
+      const effort = composer.getByRole("button", {
+        name: "Thinking level",
+        exact: true,
+      });
+      await expect(effort).toBeDisabled();
+      await expect(effort).toHaveAttribute(
+        "title",
+        "Available when the harness advertises effort controls for this session.",
+      );
+      await expectCompactComposerTargets(composer);
+      await expect(
+        composer.getByRole("button", { name: "Send message" }),
+      ).toBeDisabled();
+    });
+    test("model groups use human labels and retain exact selection IDs", async ({
+      page,
+    }) => {
+      await render(page, "Pi", "models");
+      await page.getByRole("button", { name: "Model", exact: true }).click();
+      const recommended = page.getByRole("group", {
+        name: "Recommended by harness",
+      });
+      await expect(
+        recommended.getByRole("option", {
+          name: "Claude Sonnet 4.5",
+          exact: true,
+        }),
+      ).toHaveAttribute("aria-selected", "true");
+      const other = page
+        .getByRole("group", { name: "Other models" })
+        .getByRole("option", { name: "GPT-5.4 Mini", exact: true });
+      await expect(other).toHaveAttribute("data-option-id", "gpt-5.4-mini");
+      await other.click();
+      await expect(
+        page.getByRole("button", { name: "Model", exact: true }),
+      ).toHaveText("GPT-5.4 Mini");
+    });
+    test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
+      page,
+    }) => {
+      await render(page, "Codex", "access");
+      const access = page.getByRole("button", {
+        name: "Access options",
+        exact: true,
+      });
+      await access.click();
+      await expect(
+        page.getByRole("menuitemradio", { name: "Full access", exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Switch to Workspace edits?",
+      });
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: "Cancel", exact: true }),
+      ).toBeFocused();
+      await expect(access).toHaveAttribute("data-selected-id", "readOnly");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(access).toBeFocused();
+      await access.click();
+      await page
+        .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
+        .click();
+      await dialog
+        .getByRole("button", { name: "Switch access", exact: true })
+        .click();
+      await expect(access).toHaveAttribute(
+        "data-selected-id",
+        "workspaceWrite",
+      );
+      await expect(access).toBeFocused();
+    });
     test("unconfirmed defaults and unsupported effort never invent controls", async ({
       page,
     }) => {

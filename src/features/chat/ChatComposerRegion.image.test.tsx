@@ -352,6 +352,24 @@ describe("composer image input", () => {
     expect(send).toBeEnabled();
   });
 
+  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", () => {
+    const page = {
+      kind: "browserPage" as const,
+      tabId: "browser-1",
+      url: "https://example.com",
+      title: "Example page",
+      text: "Page text",
+    };
+    const { rerenderComposer } = renderComposer({
+      text: "  ",
+      attachedContext: [page],
+    });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+    expect(screen.getByText("Page · Example page")).toBeVisible();
+    rerenderComposer({ text: "  ", attachedContext: [] });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
+
   it("does not submit with an unsupported image or while upload is pending", () => {
     const onSubmit = vi.fn((event) => event.preventDefault());
     const image = {
