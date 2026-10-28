@@ -16,6 +16,21 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chat/ChatQueueExecution.tsx",
+        "maxGzipBytes": 600,
+        "reason": "AP-G: queue execution and turn-start timeout effects load only with queued messages or a pending turn barrier; shared by awake chats and the Settings continuity keeper."
+      },
+      {
+        "entry": "src/features/settings/AgentKeyboardSettings.tsx",
+        "maxGzipBytes": 900,
+        "reason": "AP-G: complete workbench/editor and browser shortcut registry display; loaded only on Settings > Keyboard shortcuts."
+      },
+      {
+        "entry": "src/features/settings/AgentSettingsExecution.tsx",
+        "maxGzipBytes": 850,
+        "reason": "AP-G: headless continuity for at most two pinned chats while Settings sleeps heavy workspace views; loaded only on Settings entry."
+      },
+      {
         "entry": "src/features/settings/AgentSettingsSurface.tsx",
         "maxGzipBytes": 4100,
         "maxCssGzipBytes": 1100,

@@ -79,6 +79,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
+  "src/features/chat/ChatQueueExecution.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
   "src/features/chat/ForkChat.tsx",
@@ -103,6 +104,12 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
   "src/features/search/SearchSurface.tsx",
+  "src/features/settings/AgentBrowserSettings.tsx",
+  "src/features/settings/AgentKeyboardSettings.tsx",
+  "src/features/settings/AgentSettingsExecution.tsx",
+  "src/features/settings/AgentSettingsSurface.tsx",
+  "src/features/settings/openEditorSettings.ts",
+  "src/workbench/ActiveEditorCanvas.tsx",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
   "src/workbench/SettingsSurface.tsx",

@@ -110,6 +110,23 @@ it("does not fake browser settings outside the native runtime", () => {
   ).toBeNull();
 });
 
+it("reports closed-tab history and download management as unavailable rather than inventing persistent records", async () => {
+  vi.mocked(browserLiveTabs).mockResolvedValueOnce([]);
+  render(<AgentBrowserSettings />);
+  await screen.findByText("No live browser tabs");
+  expect(
+    screen.getByText(
+      /Closed-tab history and download management are not available yet/,
+    ),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Manage browsing history" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Manage downloads" })).toBeNull();
+  expect(browserHistory).not.toHaveBeenCalled();
+  expect(browserDownloads).not.toHaveBeenCalled();
+});
+
 it("shows native history failure rather than claiming history is empty", async () => {
   vi.mocked(browserHistory).mockRejectedValueOnce(
     new Error("History unavailable"),

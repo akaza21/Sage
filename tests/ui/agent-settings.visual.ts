@@ -29,8 +29,19 @@ for (const width of [480, 1380]) {
       page.getByRole("complementary", { name: "Projects and chats" }),
     ).toHaveCount(0);
     await expect(
-      settings.getByRole("combobox", { name: "Default effort" }),
-    ).toBeDisabled();
+      settings.getByRole("combobox", { name: "Current harness" }),
+    ).toBeVisible();
+    await expect(
+      settings.getByRole("combobox", {
+        name: /Default (harness|model|effort)/,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      settings.getByText("Effort defaults unavailable"),
+    ).toBeVisible();
+    await expect(settings).toHaveScreenshot(
+      `agent-settings-general-${width}.png`,
+    );
     const geometry = await settings.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return {
@@ -66,7 +77,13 @@ for (const width of [480, 1380]) {
     }
     await expect(
       settings.getByRole("button", { name: "Reset Don't ask again" }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
+    await expect(
+      settings.getByText(/does not expose a reset command/),
+    ).toBeVisible();
+    await expect(settings).toHaveScreenshot(
+      `agent-settings-approvals-${width}.png`,
+    );
     await nav
       .getByRole("button", { name: "Keyboard shortcuts", exact: true })
       .click();
@@ -76,6 +93,18 @@ for (const width of [480, 1380]) {
     await expect(
       settings.getByRole("row", { name: /Open settings/ }),
     ).toContainText("Ctrl+,");
+    await expect(
+      settings.getByRole("row", { name: "New browser tab Ctrl+T" }),
+    ).toBeVisible();
+    await expect(
+      settings.getByRole("row", { name: "Browser zoom in Ctrl++" }),
+    ).toBeVisible();
+    await settings
+      .getByRole("heading", { name: "Browser", exact: true })
+      .scrollIntoViewIfNeeded();
+    await expect(settings).toHaveScreenshot(
+      `agent-settings-keyboard-${width}.png`,
+    );
     await nav.getByRole("button", { name: "Back to chats" }).click();
     await expect(settings).toHaveCount(0);
     expect(

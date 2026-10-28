@@ -30,7 +30,7 @@ export function BrowserDownloads({
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        unlisten = await listen<{
+        const dispose = await listen<{
           tabId: string;
           downloads: BrowserDownload[];
         }>("browser:downloads", (event) => {
@@ -39,6 +39,11 @@ export function BrowserDownloads({
             setDownloads(event.payload.downloads);
           }
         });
+        if (!mounted) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
         const initial = await browserDownloads(tabId);
         if (mounted && !sawEvent) setDownloads(initial);
       })

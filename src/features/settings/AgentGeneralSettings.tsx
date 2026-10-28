@@ -32,11 +32,11 @@ export function AgentGeneralSettings() {
       </p>
       <div className="agent-settings__card">
         <SettingsRow
-          title="Default harness"
+          title="Current harness"
           description="Choose the harness before choosing one of its discovered models."
         >
           <select
-            aria-label="Default harness"
+            aria-label="Current harness"
             className="input"
             disabled={disabled}
             value={harnessId ?? ""}
@@ -57,7 +57,7 @@ export function AgentGeneralSettings() {
           </select>
         </SettingsRow>
         <SettingsRow
-          title="Default model"
+          title="Current model"
           description={
             models.length
               ? "Only models reported by the selected harness are available."
@@ -65,7 +65,7 @@ export function AgentGeneralSettings() {
           }
         >
           <select
-            aria-label="Default model"
+            aria-label="Current model"
             className="input"
             disabled={disabled || phase !== "ready" || !models.length}
             value={modelId ?? ""}
@@ -82,12 +82,10 @@ export function AgentGeneralSettings() {
           </select>
         </SettingsRow>
         <SettingsRow
-          title="Default effort"
-          description="Effort is configured per chat when advertised by its harness. Sage does not expose an app-wide effort default."
+          title="Effort defaults unavailable"
+          description="Effort is configured per chat when advertised by its harness. App-wide harness, model and effort defaults require native persistence and new-chat configuration support that Sage does not expose yet."
         >
-          <select aria-label="Default effort" className="input" disabled>
-            <option>Use chat configuration</option>
-          </select>
+          <span>Unavailable</span>
         </SettingsRow>
         <SettingsRow
           title="Default access"

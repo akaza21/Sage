@@ -20,10 +20,8 @@ import {
   useAcpChatLoadFailure,
   useRendererRecreationFocus,
 } from "./acp";
-import {
-  useBoundChatComposer,
-  useQueuedPromptDrain,
-} from "./useBoundChatComposer";
+import { useBoundChatComposer } from "./useBoundChatComposer";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
@@ -31,6 +29,7 @@ import { bindingNoticeAllowed } from "./composerBindingNotice";
 import { isNewProjectChat } from "./newProjectChat";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
+const loadQueueExecution = () => import("./ChatQueueExecution");
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -55,6 +54,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queuedPrompts,
     queuedTurnBarrier,
     knownTurnOrder,
+    observedOrder,
     sending,
     chatError,
     setComposerText,
@@ -64,8 +64,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     updateQueuedPrompt,
     steerQueuedPrompt,
     setQueuedTurnBarrier,
-    rememberTurnOrder,
-  } = useBoundChatComposer(chatId);
+  } = useBoundChatComposer(chatId, acpPage ?? null);
   const projectTransitioning = useWorkbenchStore((s) => s.projectTransitioning);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   const project = useWorkbenchStore((state) => state.project);
@@ -134,7 +133,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       (prompt) => prompt.status === "saving",
     ),
   });
-  useQueuedPromptDrain({
+  const queueExecution = {
     queuedPrompts,
     queuedTurnBarrier,
     knownTurnOrder,
@@ -143,12 +142,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
     canPrompt,
     useNativeAcp,
-    page: acpPage ?? null,
+    observedOrder,
     submit: acpActions.submit,
     updateQueuedPrompt,
     setQueuedTurnBarrier,
-    rememberTurnOrder,
-  });
+  };
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
     chatId,
@@ -235,6 +233,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
+      {queuedPrompts.length || queuedTurnBarrier ? (
+        <LazyModuleBoundary
+          label="Queued messages"
+          load={loadQueueExecution}
+          fallback={null}
+          render={(Execution) => <Execution {...queueExecution} />}
+        />
+      ) : null}
       {!setAgentSessionChrome ? (
         <header className="surface-header">
           <SessionWorkingPill

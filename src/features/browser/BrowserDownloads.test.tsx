@@ -1,4 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { Activity } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { expect, it, vi } from "vitest";
 
 import type { BrowserDownload } from "../../ports/nativeBrowserPort";
@@ -52,4 +60,31 @@ it("reveals a completed download's folder only after an explicit click", async (
   await waitFor(() =>
     expect(showInFolder).toHaveBeenCalledWith("browser-1", 1),
   );
+});
+
+it("disposes late downloads registration after Activity sleeps without reading hidden state", async () => {
+  browserDownloads.mockClear();
+  let finish: ((dispose: () => void) => void) | undefined;
+  const dispose = vi.fn();
+  vi.mocked(listen).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = render(
+    <Activity mode="visible">
+      <BrowserDownloads tabId="browser-1" open />
+    </Activity>,
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(
+    <Activity mode="hidden">
+      <BrowserDownloads tabId="browser-1" open />
+    </Activity>,
+  );
+  await act(async () => finish?.(dispose));
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(browserDownloads).not.toHaveBeenCalled();
+  view.unmount();
 });

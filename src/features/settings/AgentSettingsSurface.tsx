@@ -8,8 +8,6 @@ import { AgentGeneralSettings } from "./AgentGeneralSettings";
 import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
-import { SettingsKeyboardPage } from "../../workbench/settings/SettingsKeyboardPage";
-import { SETTINGS_KEYMAP_BINDINGS } from "../../domain/settingsNavigation";
 import { SettingsRow } from "./SettingsRow";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 
@@ -18,11 +16,8 @@ const loadBrowserSettings = () =>
     default: AgentBrowserSettings,
   }));
 
-const allShortcuts = new Set(
-  SETTINGS_KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map(
-    (binding) => binding.id,
-  ),
-);
+const loadExecution = () => import("./AgentSettingsExecution");
+const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
 
@@ -95,6 +90,12 @@ export function AgentSettingsSurface() {
         {!matching.length ? <p role="status">No matching sections.</p> : null}
       </nav>
       <div className="agent-settings__content">
+        <LazyModuleBoundary
+          label="Chat execution"
+          load={loadExecution}
+          fallback={null}
+          render={(Execution) => <Execution />}
+        />
         <div className="agent-settings__page" key={page}>
           <h2>{page}</h2>
           {page === "General" ? <AgentGeneralSettings /> : null}
@@ -109,7 +110,11 @@ export function AgentSettingsSurface() {
           {page === "Archived chats" ? <AgentArchivedSettings /> : null}
           {page === "Appearance" ? <AgentAppearanceSettings /> : null}
           {page === "Keyboard shortcuts" ? (
-            <SettingsKeyboardPage visible={allShortcuts} />
+            <LazyModuleBoundary
+              label="Keyboard shortcuts"
+              load={loadKeyboardSettings}
+              render={(KeyboardSettings) => <KeyboardSettings />}
+            />
           ) : null}
           {page === "Approvals" ? (
             <div className="agent-settings__card">
@@ -117,13 +122,7 @@ export function AgentSettingsSurface() {
                 title="Remembered approvals"
                 description="Sage does not expose a reset command for harness-managed 'Don't ask again' decisions. Manage these in your harness; access defaults do not revoke remembered approvals."
               >
-                <button
-                  className="button button--compact"
-                  type="button"
-                  disabled
-                >
-                  Reset Don't ask again
-                </button>
+                <span>Unavailable</span>
               </SettingsRow>
             </div>
           ) : null}
@@ -133,13 +132,7 @@ export function AgentSettingsSurface() {
                 title="Desktop notifications"
                 description="Sage does not expose notification preferences yet."
               >
-                <input
-                  type="checkbox"
-                  aria-label="Desktop notifications"
-                  disabled
-                  checked={false}
-                  readOnly
-                />
+                <span>Unavailable</span>
               </SettingsRow>
             </div>
           ) : null}

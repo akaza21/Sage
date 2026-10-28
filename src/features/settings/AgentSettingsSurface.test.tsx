@@ -12,6 +12,7 @@ import { useUiAppearanceStore } from "../../app/uiAppearanceStore";
 import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { useAgentSettingsState } from "./agentSettingsState";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import type { SessionAccessModes } from "../../domain/sessionAccessMode";
 
 const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
@@ -103,20 +104,50 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
   expect(screen.queryByRole("checkbox", { name: "Code folding" })).toBeNull();
 });
 
-it("shares the complete keymap and honestly disables unavailable approval reset", () => {
+it("shares the workbench keymap without pretending approval reset is implemented", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
-  expect(screen.getByText("Save file").closest("tr")).toHaveTextContent(
-    "Ctrl+S",
-  );
+  expect(
+    (await screen.findByText("Save file")).closest("tr"),
+  ).toHaveTextContent("Ctrl+S");
   expect(screen.getByText("Open settings").closest("tr")).toHaveTextContent(
     "Ctrl+,",
   );
   fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
   expect(
-    screen.getByRole("button", { name: /Reset.*ask again/i }),
-  ).toBeDisabled();
+    screen.queryByRole("button", { name: /Reset.*ask again/i }),
+  ).toBeNull();
   expect(screen.getByText(/does not expose a reset command/)).toBeVisible();
+});
+
+it("lists every implemented browser shortcut with its browser-only scope", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  await screen.findByText("New browser tab");
+  for (const [label, chord] of [
+    ["Focus browser address", "Ctrl+L"],
+    ["New browser tab", "Ctrl+T"],
+    ["Close browser tab", "Ctrl+W"],
+    ["Reload browser page", "Ctrl+R"],
+    ["Reload browser page (function key)", "F5"],
+    ["Find in browser page", "Ctrl+F"],
+    ["Browser back", "Alt+Left"],
+    ["Browser forward", "Alt+Right"],
+    ["Browser zoom in", "Ctrl++"],
+    ["Browser zoom out", "Ctrl+-"],
+    ["Reset browser zoom", "Ctrl+0"],
+    ["Stop loading browser page", "Esc"],
+    ["Native page zoom in", "Ctrl+="],
+    ["Native page zoom out", "Ctrl+Subtract"],
+    ["Leave browser annotation", "Esc"],
+  ])
+    expect(screen.getByText(label).closest("tr")).toHaveTextContent(chord);
+  expect(
+    screen.getByText(/Only while focus is inside the browser pane/),
+  ).toBeVisible();
+  expect(
+    screen.getByText(/Esc leaves annotation mode first, even while idle/),
+  ).toBeVisible();
 });
 afterEach(() => {
   cleanup();
@@ -127,18 +158,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("uses discovered harness models and advertised access without inventing effort defaults", () => {
+it("labels transient harness/model selection honestly and exposes only real access defaults", () => {
   const selectHarness = vi.fn(async () => undefined);
   const selectModel = vi.fn();
   const setMode = vi.fn();
   useWorkbenchStore.setState({ selectHarness, selectModel });
   useSessionAccessModeStore.setState({ setMode });
   render(<AgentSettingsSurface />);
-  fireEvent.change(screen.getByRole("combobox", { name: "Default harness" }), {
+  fireEvent.change(screen.getByRole("combobox", { name: "Current harness" }), {
     target: { value: "adapter-a" },
   });
   expect(selectHarness).toHaveBeenCalledWith("adapter-a");
-  fireEvent.change(screen.getByRole("combobox", { name: "Default model" }), {
+  fireEvent.change(screen.getByRole("combobox", { name: "Current model" }), {
     target: { value: "model-a" },
   });
   expect(selectModel).toHaveBeenCalledWith("model-a");
@@ -147,23 +178,73 @@ it("uses discovered harness models and advertised access without inventing effor
   });
   expect(setMode).toHaveBeenCalledWith("binding-a", "readOnly");
   expect(
-    screen.getByRole("combobox", { name: "Default effort" }),
-  ).toBeDisabled();
+    screen.queryByRole("combobox", { name: /Default (harness|model|effort)/ }),
+  ).toBeNull();
+  expect(screen.getByText(/not a saved app-wide default/)).toBeVisible();
   expect(screen.getByText(/Effort is configured per chat/)).toBeVisible();
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("does not offer reserved shortcuts or pretend notification preferences are available", () => {
+it("does not offer reserved shortcuts or pretend notification preferences are available", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  await screen.findByText("New browser tab");
   expect(screen.queryByText("Quick Open")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
   expect(
-    screen.getByRole("checkbox", { name: "Desktop notifications" }),
-  ).toBeDisabled();
+    screen.queryByRole("checkbox", { name: "Desktop notifications" }),
+  ).toBeNull();
   expect(
     screen.getByText(/does not expose notification preferences/),
   ).toBeVisible();
+});
+
+it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {
+  let stored: SessionAccessModes = {};
+  const settings = getWorkbenchPorts().settings;
+  vi.spyOn(settings, "getSessionAccessModes").mockImplementation(
+    async () => stored,
+  );
+  vi.spyOn(settings, "setSessionAccessModes").mockImplementation(
+    async (modes) => {
+      stored = modes;
+      return modes;
+    },
+  );
+  useWorkbenchStore.setState((state) => ({
+    harnesses: [
+      {
+        ...state.harnesses[0],
+        accessModes: [
+          {
+            id: "readOnly",
+            label: "Read only",
+            description: "Read",
+            fallback: true,
+          },
+          {
+            id: "workspaceWrite",
+            label: "Workspace edits",
+            description: "Write workspace files",
+          },
+        ],
+      },
+    ],
+  }));
+  await useSessionAccessModeStore.getState().restore();
+  const first = render(<AgentSettingsSurface />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
+    target: { value: "workspaceWrite" },
+  });
+  await useSessionAccessModeStore.getState().settle();
+  first.unmount();
+  useSessionAccessModeStore.setState({ ready: false, modes: {} });
+  await useSessionAccessModeStore.getState().restore();
+  render(<AgentSettingsSurface />);
+  expect(screen.getByRole("combobox", { name: "Default access" })).toHaveValue(
+    "workspaceWrite",
+  );
+  expect(stored).toEqual({ "binding-a": "workspaceWrite" });
 });
 
 it("filters settings navigation without changing the current section", () => {

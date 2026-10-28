@@ -155,7 +155,8 @@ export function AgentBrowserSettings() {
     <>
       <p>
         Manage the built-in browser's real data and permissions. History,
-        downloads and permission status are scoped to a live tab.
+        downloads and permission status are scoped to a live tab. Closed-tab
+        history and download management are not available yet.
       </p>
       <div className="agent-settings__card">
         <SettingsRow

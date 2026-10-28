@@ -55,9 +55,7 @@ function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
-  if (tab.status === "closed") {
-    return <ClosedBrowserSurface tabId={tab.id} />;
-  }
+  if (tab.status === "closed") return <ClosedBrowserSurface tabId={tab.id} />;
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -134,7 +132,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        unlisten = await listen<BrowserNavigation>(
+        const dispose = await listen<BrowserNavigation>(
           "browser:navigation",
           (event) => {
             if (!mounted || event.payload.tabId !== tab.id) return;
@@ -152,6 +150,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
             projectBrowserTabStatus(tab.id, event.payload);
           },
         );
+        if (!mounted) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
         const status = await browserStatus(tab.id);
         if (mounted) {
           if (!/^(0|[1-9]\d{0,19})$/.test(status.revision)) return;
