@@ -7,21 +7,30 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type * as NativeInvoke from "../../ports/nativeInvoke";
 import { createRef } from "react";
-import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
+import type {
+  BrowserAnnotateChange,
+  BrowserAnnotateSelection,
+  BrowserNavigation,
+} from "../../ports/nativeBrowserPort";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserNavigationControls } from "./BrowserNavigationControls";
 
 const onControl = vi.fn();
-let announce:
-  | ((event: { payload: { tabId: string; active: boolean } }) => void)
-  | undefined;
+const onError = vi.fn();
+const invokeNative = vi.fn();
+let announce: ((event: { payload: BrowserAnnotateChange }) => void) | undefined;
 const unlisten = vi.fn();
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (name: string, handler: typeof announce) => {
     if (name === "browser:annotate") announce = handler;
     return unlisten;
   }),
+}));
+vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof NativeInvoke>()),
+  invokeNative: (...args: unknown[]) => invokeNative(...args),
 }));
 
 const navigation: BrowserNavigation = {
@@ -37,19 +46,50 @@ const navigation: BrowserNavigation = {
 beforeEach(() => {
   announce = undefined;
   onControl.mockClear();
+  onError.mockClear();
   unlisten.mockClear();
+  invokeNative.mockReset();
+  invokeNative.mockResolvedValue({
+    jpegBase64: "/9j/AAAA",
+    width: 1265,
+    height: 720,
+  });
 });
 afterEach(cleanup);
 
 async function renderControl(current: BrowserNavigation | null = navigation) {
-  render(<BrowserAnnotateControl navigation={current} onControl={onControl} />);
+  render(
+    <BrowserAnnotateControl
+      navigation={current}
+      onControl={onControl}
+      onError={onError}
+    />,
+  );
   await act(async () => undefined);
   return screen.getByRole("button", { name: "Annotate" });
 }
 
-function rustSays(tabId: string, active: boolean) {
-  act(() => announce?.({ payload: { tabId, active } }));
+function rustSays(
+  tabId: string,
+  active: boolean,
+  more: Partial<BrowserAnnotateChange> = {},
+) {
+  act(() => announce?.({ payload: { tabId, active, ...more } }));
 }
+
+const selection: BrowserAnnotateSelection = {
+  label: "Press me",
+  box: { x: 8, y: 140, width: 80, height: 24 },
+  viewport: {
+    x: 0,
+    y: 100,
+    width: 1280,
+    height: 720,
+    clientWidth: 1265,
+    clientHeight: 720,
+    scale: 1,
+  },
+};
 
 it("sits between the navigation group and the address", () => {
   render(
@@ -66,6 +106,7 @@ it("sits between the navigation group and the address", () => {
         onAddressChange={vi.fn()}
         onNavigate={vi.fn()}
         onControl={onControl}
+        onError={onError}
         onFind={vi.fn()}
         onPrint={vi.fn()}
         onScreenshot={vi.fn()}
@@ -117,15 +158,19 @@ it("follows exits Rust makes itself and ignores other tabs", async () => {
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
 
-it("leaves on Escape at the control only while annotating", async () => {
+it("on Escape at the control drops a waiting element first, then leaves", async () => {
   const button = await renderControl();
   fireEvent.keyDown(button, { key: "Escape" });
   expect(onControl).not.toHaveBeenCalled();
-  rustSays("browser-1", true);
+  rustSays("browser-1", true, { selection });
   fireEvent.keyDown(button, { key: "Enter" });
   expect(onControl).not.toHaveBeenCalled();
   fireEvent.keyDown(button, { key: "Escape" });
-  expect(onControl).toHaveBeenCalledWith("annotateOff");
+  expect(onControl).toHaveBeenLastCalledWith("annotateCancel");
+  // Rust dropped the element and Annotate stays on.
+  rustSays("browser-1", true);
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(onControl).toHaveBeenLastCalledWith("annotateOff");
 });
 
 it("renders disabled with the reason Rust gives", async () => {
@@ -153,4 +198,54 @@ it("stops listening and forgets the state when the surface goes away", async () 
   expect(button).toHaveAttribute("aria-pressed", "true");
   cleanup();
   await waitFor(() => expect(unlisten).toHaveBeenCalledTimes(1));
+});
+
+it("covers the page frame with the comment box while an element waits", async () => {
+  render(
+    <section className="browser-surface">
+      <BrowserAnnotateControl
+        navigation={navigation}
+        onControl={onControl}
+        onError={onError}
+      />
+      <div className="browser-surface__frame" data-testid="frame" />
+    </section>,
+  );
+  await act(async () => undefined);
+  rustSays("browser-1", true);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  rustSays("browser-1", true, { selection });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Comment on Press me",
+  });
+  expect(screen.getByTestId("frame")).toContainElement(dialog);
+  await waitFor(() =>
+    expect(invokeNative).toHaveBeenCalledWith("browser_control", {
+      tabId: "browser-1",
+      action: "annotateFrame",
+    }),
+  );
+  // Rust resumes hovering once the comment is done or cancelled.
+  rustSays("browser-1", true);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  rustSays("browser-1", true, { selection });
+  await screen.findByRole("dialog");
+  rustSays("browser-1", false);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("reports a failed pick through the surface's error banner", async () => {
+  await renderControl();
+  rustSays("browser-1", true, { error: "browser element unavailable" });
+  expect(onError).toHaveBeenCalledWith("browser element unavailable");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("drops an element left waiting by an earlier chrome once it listens", async () => {
+  await renderControl();
+  expect(announce).toBeDefined();
+  expect(invokeNative).toHaveBeenCalledWith("browser_control", {
+    tabId: "browser-1",
+    action: "annotateCancel",
+  });
 });

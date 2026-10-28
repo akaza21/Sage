@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser annotate visual fixture</title>
+  </head>
+  <body style="margin: 0">
+    <!-- The page area of Codex ref 60: x 830-1872, y 130-1080. -->
+    <div
+      class="browser-surface__frame"
+      style="
+        position: absolute;
+        left: 830px;
+        top: 130px;
+        width: 1040px;
+        height: 950px;
+      "
+    ></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserAnnotatePopover } from "/src/features/browser/BrowserAnnotatePopover.tsx";
+      import "/src/styles/global.css";
+      import "/src/features/browser/browser.css";
+
+      // The "History" heading picked in ref 60: x 1068-1138, y 718-742.
+      const selection = {
+        label: "History",
+        box: { x: 238, y: 1588, width: 70, height: 24 },
+        viewport: {
+          x: 0,
+          y: 1000,
+          width: 1040,
+          height: 950,
+          clientWidth: 1025,
+          clientHeight: 950,
+          scale: 1,
+        },
+      };
+      createRoot(document.querySelector(".browser-surface__frame")).render(
+        React.createElement(BrowserAnnotatePopover, {
+          selection,
+          frame: null,
+          ordinal: 3,
+          blocked: null,
+          error: null,
+          onConfirm: () => {},
+          onCancel: () => {},
+        }),
+      );
+    </script>
+  </body>
+</html>

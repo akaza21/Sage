@@ -101,7 +101,11 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                 std::thread::spawn(move || {
                                     let _ = super::devtools::clear_agent_highlight(&clear_webview);
                                 });
-                                super::annotate::leave(&start_app, &start_label, true);
+                                super::annotate::leave(
+                                    &start_app,
+                                    &start_label,
+                                    super::annotate::Exit::Reveal,
+                                );
                                 emit_snapshot(start_app.clone(), start_webview.clone());
                             }
                         }

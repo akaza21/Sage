@@ -119,20 +119,16 @@ test("loaded browser address remains legible in a 560 px right-pane toolbar", as
   await expect(toolbar).toHaveCSS("height", "44px");
   await expect(address).toHaveCSS("height", "32px");
   await expect(address).toHaveValue("en.wikipedia.org");
-  const geometry = await address.evaluate((element) => {
-    const addressBox = element.getBoundingClientRect();
-    const toolbarBox = element
-      .closest(".browser-surface__toolbar")!
-      .getBoundingClientRect();
-    return {
-      width: addressBox.width,
-      offsetFromToolbarCenter:
-        (addressBox.left + addressBox.right) / 2 -
-        (toolbarBox.left + toolbarBox.right) / 2,
-    };
-  });
+  // Codex ref 59a: the Annotate pill sits between reload and the address,
+  // so the field starts after it and its text is centred inside the field.
+  const geometry = await address.evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    textAlign: getComputedStyle(element).textAlign,
+  }));
   expect(geometry.width).toBeGreaterThanOrEqual(280);
-  expect(Math.abs(geometry.offsetFromToolbarCenter)).toBeLessThanOrEqual(1);
+  expect(geometry.textAlign).toBe("center");
+  const annotate = page.getByRole("button", { name: "Annotate" });
+  await expect(annotate).toHaveCSS("width", "28px");
 
   await address.click();
   await expect(address).toHaveValue(

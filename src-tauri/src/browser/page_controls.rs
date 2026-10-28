@@ -102,7 +102,7 @@ pub(crate) async fn browser_hide(
     tab_id: String,
 ) -> Result<(), String> {
     let webview = active_webview(&state, &tab_id)?;
-    super::annotate::leave(&app, &tab_id, true);
+    super::annotate::leave(&app, &tab_id, super::annotate::Exit::Hidden);
     webview.hide().map_err(|error| error.to_string())
 }
 

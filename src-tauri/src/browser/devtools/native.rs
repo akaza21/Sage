@@ -19,6 +19,7 @@ use super::{
         CdpPort,
         outcome::{dispatch_disconnected_failure, dispatch_timeout_failure},
         page_context::{self, CapturedPageContext},
+        select::PickedNode,
     },
     events,
     snapshot::DocumentStamp,
@@ -94,6 +95,20 @@ pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFai
     } else {
         port.stop_inspect()
     }
+}
+
+/// Reads the element the user clicked in Annotate and freezes its frame.
+pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<PickedNode, String> {
+    NativePort::new(NativeTransport {
+        webview: webview.clone(),
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    })
+    .pick_element(backend_node_id)
+    .map_err(|error| match error {
+        BrowserFailure::StaleHandle => "browser page changed; pick the element again".into(),
+        _ => "browser element unavailable".into(),
+    })
 }
 
 pub(crate) type NativePort = CdpPort<NativeTransport>;

@@ -28,7 +28,13 @@ pub(crate) use native::capture_user_png;
 #[cfg(windows)]
 pub(crate) use native::clear_agent_highlight;
 #[cfg(windows)]
+pub(crate) use native::pick_element;
+#[cfg(windows)]
 pub(crate) use native::set_annotate;
+#[cfg(windows)]
+mod picks;
+#[cfg(windows)]
+pub(crate) use picks::{unwatch_picks, watch_picks};
 mod screenshot;
 mod snapshot;
 #[cfg(any(windows, test))]

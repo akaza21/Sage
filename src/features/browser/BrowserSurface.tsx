@@ -311,6 +311,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onAddressChange={setAddress}
           onNavigate={() => void navigate()}
           onControl={(action) => void control(action)}
+          onError={setError}
           onFind={() => setFindOpen(true)}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
           onScreenshot={() => void copyScreenshot()}

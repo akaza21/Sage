@@ -11,6 +11,7 @@
 mod annotate;
 mod chromium;
 mod isolation;
+mod select;
 mod site;
 
 use std::time::Duration;

@@ -27,9 +27,13 @@ export const UI_RULE_DIRECTORY = "docs/work-items/BROWSER-FIRST-CLASS/ui-rules";
 export const UI_RULE_MAX_TOLERANCE_PX = 4;
 const UI_RULE_MEASURES = {
   height: "number",
+  width: "number",
   "background-color": "string",
+  "border-radius": "string",
   "text-align": "string",
+  placeholder: "string",
   "left-of": "other",
+  below: "other",
   "right-inset": "number",
 };
 const REFERENCE_DIRECTORY = "docs/work-items/CODEX-PARITY/reference";

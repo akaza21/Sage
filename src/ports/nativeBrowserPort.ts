@@ -155,7 +155,63 @@ export function browserNavigate(tabId: string, url: string): Promise<void> {
 }
 
 export type BrowserControlAction =
-  "back" | "forward" | "reload" | "stop" | "annotateOn" | "annotateOff";
+  | "back"
+  | "forward"
+  | "reload"
+  | "stop"
+  | "annotateOn"
+  | "annotateOff"
+  | "annotateCancel";
+
+/** Where the picked element sits in the viewport it was picked in (page CSS px). */
+export interface BrowserAnnotateSelection {
+  /** The accessible name, or a plain word for the role. */
+  label: string;
+  box: { x: number; y: number; width: number; height: number };
+  viewport: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    clientWidth: number;
+    clientHeight: number;
+    scale: number;
+  };
+}
+
+export interface BrowserAnnotateChange {
+  tabId: string;
+  active: boolean;
+  selection?: BrowserAnnotateSelection;
+  error?: string;
+}
+
+/** What the page area showed when the element was picked; it covers the whole area. */
+export interface BrowserAnnotateFrame {
+  jpegBase64: string;
+  width: number;
+  height: number;
+}
+
+export function browserAnnotateFrame(
+  tabId: string,
+): Promise<BrowserAnnotateFrame> {
+  return invokeNative("browser_control", { tabId, action: "annotateFrame" });
+}
+
+/** Rust numbers, comments and checks the waiting element, then answers with the item. */
+export function browserAnnotateConfirm(
+  tabId: string,
+  ordinal: number,
+  comment: string,
+): Promise<unknown> {
+  return invokeNative("browser_control", {
+    tabId,
+    action: "annotateConfirm",
+    ordinal,
+    comment,
+  });
+}
 
 export function browserControl(
   tabId: string,

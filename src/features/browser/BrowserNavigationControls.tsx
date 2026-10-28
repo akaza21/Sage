@@ -34,6 +34,7 @@ interface Props {
   onAddressChange: (value: string) => void;
   onNavigate: () => void;
   onControl: (action: BrowserControlAction) => void;
+  onError: (message: string) => void;
   onFind: () => void;
   onPrint: () => void;
   onScreenshot: () => void;
@@ -56,6 +57,7 @@ export function BrowserNavigationControls({
   onAddressChange,
   onNavigate,
   onControl,
+  onError,
   onFind,
   onPrint,
   onScreenshot,
@@ -152,7 +154,11 @@ export function BrowserNavigationControls({
           )}
         </button>
       </div>
-      <BrowserAnnotateControl navigation={navigation} onControl={onControl} />
+      <BrowserAnnotateControl
+        navigation={navigation}
+        onControl={onControl}
+        onError={onError}
+      />
       <form
         className="browser-surface__address"
         onSubmit={(event) => {
