@@ -39,7 +39,7 @@ export function BrowserSitePermissions({
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        unlisten = await listen<BrowserPermissionSnapshot>(
+        const dispose = await listen<BrowserPermissionSnapshot>(
           "browser:permissions",
           (event) => {
             if (mounted && event.payload.tabId === tabId) {
@@ -48,6 +48,11 @@ export function BrowserSitePermissions({
             }
           },
         );
+        if (!mounted) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
         const initial = await browserPermissionStatus(tabId);
         if (mounted && !sawEvent) setSnapshot(initial);
       })
@@ -179,36 +184,20 @@ export function BrowserSitePermissions({
 
 export function BrowserDrawers({
   tabId,
-  settingsOpen,
   historyOpen,
   historyEntries,
-  onCloseSettings,
   onCloseHistory,
   onNavigate,
 }: {
   tabId: string;
-  settingsOpen: boolean;
   historyOpen: boolean;
   historyEntries: readonly string[];
-  onCloseSettings: () => void;
   onCloseHistory: () => void;
   onNavigate: (url: string) => void;
 }) {
   return (
     <>
-      {settingsOpen ? (
-        <aside
-          className="browser-surface__drawer"
-          aria-label="Browser settings"
-        >
-          <button type="button" onClick={onCloseSettings}>
-            Close settings
-          </button>
-          <BrowserSitePermissions tabId={tabId} showEmpty />
-        </aside>
-      ) : (
-        <BrowserSitePermissions tabId={tabId} />
-      )}
+      <BrowserSitePermissions tabId={tabId} />
       {historyOpen ? (
         <aside className="browser-surface__drawer" aria-label="Browser history">
           <button type="button" onClick={onCloseHistory}>

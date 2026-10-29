@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
+import { Activity } from "react";
 
 import type { WorkbenchTab } from "../../domain/workbench";
 import { BrowserSurface } from "./BrowserSurface";
@@ -15,6 +16,7 @@ import { browserOperationFixture } from "../../domain/browserOperation.fixture";
 import { recordBrowserAgentOperation } from "../../app/browserAgentActivityStore";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
@@ -119,9 +121,50 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   pinAgentChatOwner(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("routes Browser settings to Agent settings with the originating tab", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+  expect(useAgentSettingsState.getState().page).toBe("Browser");
+  expect(useAgentSettingsState.getState().browserTabId).toBe(tab.id);
+  expect(
+    screen.queryByRole("complementary", { name: "Browser settings" }),
+  ).toBeNull();
+});
+
+it("disposes a navigation subscription that resolves after Activity sleeps without bootstrapping hidden browser state", async () => {
+  let finish: ((dispose: () => void) => void) | undefined;
+  const lateDispose = vi.fn();
+  vi.mocked(listen).mockImplementation(async (name) =>
+    name === "browser:navigation"
+      ? new Promise<() => void>((resolve) => {
+          finish = resolve;
+        })
+      : () => undefined,
+  );
+  const view = render(
+    <Activity mode="visible">
+      <BrowserSurface tab={tab} />
+    </Activity>,
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(
+    <Activity mode="hidden">
+      <BrowserSurface tab={tab} />
+    </Activity>,
+  );
+  await act(async () => finish?.(lateDispose));
+  expect(lateDispose).toHaveBeenCalledOnce();
+  expect(browserStatus).not.toHaveBeenCalled();
+  view.unmount();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
 });
 
 it("shows a native favicon after an earlier navigation event arrives during status hydration", async () => {

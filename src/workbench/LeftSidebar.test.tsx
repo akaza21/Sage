@@ -9,6 +9,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
   clearChatSearchFolderRequest,
   hasChatSearchFolderRequest,
@@ -127,12 +128,13 @@ it("keeps open and running chats keyboard-reachable in the sidebar", () => {
   ).toBeEnabled();
 });
 
-it("opens the durable Settings tab from the rail footer", () => {
+it("opens Agent settings from the rail footer without opening an Editor tab", () => {
   const openSettings = vi.fn();
   useWorkbenchStore.setState({ openSettings });
   render(<LeftSidebar />);
   fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-  expect(openSettings).toHaveBeenCalled();
+  expect(openSettings).not.toHaveBeenCalled();
+  expect(useAgentSettingsState.getState().page).toBe("General");
 });
 
 const initialState = useWorkbenchStore.getState();
@@ -140,6 +142,7 @@ const initialState = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
   resetAgentRailInteractions();
+  useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
   clearSessionRailAcks();
   resetAgentRailViewPrefs();

@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
@@ -54,6 +55,7 @@ export function AgentTaskHeader({
   const [renaming, setRenaming] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
+  const resourcesSession = useRef("");
   useEffect(() => {
     const timer = setTimeout(preloadResources, 1000);
     return () => clearTimeout(timer);
@@ -193,7 +195,20 @@ export function AgentTaskHeader({
           aria-haspopup="dialog"
           aria-expanded={resourcesOpen}
           title="Changes, Subagents, Background processes, and Sources"
-          onClick={() => setResourcesOpen((open) => !open)}
+          onClick={() => {
+            const page = acpProjectionStoreFor(currentTab.id).getState().page;
+            const session = page?.sessions.find(
+              (entry) => entry.id === page.currentSessionId,
+            );
+            const scope = [
+              resourcesScope,
+              page?.currentSessionId,
+              session?.runtimeEpoch,
+            ].join("\u0000");
+            if (resourcesSession.current !== scope) setShowAllSources(false);
+            resourcesSession.current = scope;
+            setResourcesOpen((open) => !open);
+          }}
         >
           <ListChecks size={16} aria-hidden="true" />
         </button>

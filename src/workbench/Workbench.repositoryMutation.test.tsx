@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
+import { settleLazyModules } from "../test/settleLazyModules";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <div>Chat surface</div>,
@@ -51,7 +52,7 @@ afterEach(() => {
 describe("Workbench repository mutation errors", () => {
   it.each(["file", "diff"] as const)(
     "renders the exact Source Control error on the active %s surface",
-    (kind) => {
+    async (kind) => {
       const activeTab = tab(kind);
       useWorkbenchStore.setState({
         tabs: [activeTab],
@@ -66,6 +67,7 @@ describe("Workbench repository mutation errors", () => {
       });
 
       render(<Workbench />);
+      await settleLazyModules();
 
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Source Control could not stage src/file.txt",
@@ -76,7 +78,7 @@ describe("Workbench repository mutation errors", () => {
     },
   );
 
-  it("does not project a repository mutation error into an active Chat", () => {
+  it("does not project a repository mutation error into an active Chat", async () => {
     const activeTab = tab("chat");
     useWorkbenchStore.setState({
       tabs: [activeTab],
@@ -91,11 +93,12 @@ describe("Workbench repository mutation errors", () => {
     });
 
     render(<Workbench />);
+    await settleLazyModules();
 
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows containment context on the active File without claiming final Git state", () => {
+  it("shows containment context on the active File without claiming final Git state", async () => {
     const activeTab = tab("file");
     useWorkbenchStore.setState({
       tabs: [activeTab],
@@ -110,6 +113,7 @@ describe("Workbench repository mutation errors", () => {
     });
 
     render(<Workbench />);
+    await settleLazyModules();
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Source Control containment blocked stage for src/file.txt",

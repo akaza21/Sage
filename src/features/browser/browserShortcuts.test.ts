@@ -32,6 +32,8 @@ describe("browser chrome shortcuts", () => {
       [{ key: "ArrowRight", altKey: true }, "forward"],
       [{ key: "f", ctrlKey: true }, "find"],
       [{ key: "+", ctrlKey: true, shiftKey: true }, "zoomIn"],
+      [{ key: "=", code: "Equal", ctrlKey: true, shiftKey: true }, "zoomIn"],
+      [{ key: "Add", code: "NumpadAdd", ctrlKey: true }, "zoomIn"],
       [{ key: "-", ctrlKey: true }, "zoomOut"],
       [{ key: "0", ctrlKey: true }, "zoomReset"],
       [{ key: "t", ctrlKey: true }, "newTab"],
@@ -55,6 +57,9 @@ describe("browser chrome shortcuts", () => {
       press(root, address, { key: "Escape" }),
       press(root, composer, { key: "l", ctrlKey: true }),
       press(root, address, { key: "t", ctrlKey: true, shiftKey: true }),
+      press(root, address, { key: "r", ctrlKey: true, shiftKey: true }),
+      press(root, address, { key: "ArrowLeft", altKey: true, shiftKey: true }),
+      press(root, address, { key: "t", metaKey: true }),
     ];
     for (const event of events) {
       dispatchBrowserChromeShortcut(root, event, false, dispatch);
