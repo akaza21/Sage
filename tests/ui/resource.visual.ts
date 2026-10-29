@@ -161,9 +161,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Chat pane Editor consistency pass",
       exact: true,
     });
-    await expect(
-      secondPane.getByRole("textbox", { name: "Message agent" }),
-    ).toBeDisabled();
+    // AP-A1: the centre shows one Chat; selecting another replaces it.
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
+    await expect(secondPane).toHaveCount(0);
     await page
       .getByRole("button", { name: /^Open chat Editor consistency pass$/ })
       .click();
@@ -182,7 +182,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await resourceSplitter.focus();
     await page.keyboard.press("Home");
     await expect(resourceSplitter).toHaveAttribute("aria-valuenow", "280");
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     const tabs = resources.getByRole("tab");
     const previewTab = resources.getByRole("tab", {
       name: "Preview",
@@ -238,7 +238,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Agent navigation polish/ })
       .click();
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Agent navigation polish",
@@ -254,7 +254,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Editor consistency pass/ })
       .click();
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Editor consistency pass",

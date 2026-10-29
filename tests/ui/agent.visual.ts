@@ -134,7 +134,7 @@ async function expectComposerControlRow(page: Page) {
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
 }
 
-async function expectComposerToolbarLaidOut(form: Locator) {
+async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
   const geometry = await toolbar.evaluate((node) => {
@@ -180,7 +180,11 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     };
   });
   // Wave 5: at 280px and below Project folds into the composer options menu.
-  expect(geometry.buttons).toHaveLength(geometry.composerWidth <= 280 ? 6 : 7);
+  // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
+  // rather than in the composer.
+  expect(geometry.buttons).toHaveLength(
+    !projectChip || geometry.composerWidth <= 280 ? 6 : 7,
+  );
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -439,9 +443,13 @@ test.describe("Tool activity rollup summary containment", () => {
     expect(geometry.summaryHeight).toBeLessThanOrEqual(geometry.lineHeight * 2);
     expect(geometry.cardOverflow).toBeLessThanOrEqual(1);
     expect(geometry.labelOverflow).toBeLessThanOrEqual(1);
+    // AP-E1: rows name the program Codex-style, without the shell wrapper.
     await expect(rollup).toContainText(
-      "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
+      "Ran Get-Content -Path alpha.txt -TotalCount 40",
     );
+    await expect(
+      rollup.locator(":scope > .acp-tool-rollup__items"),
+    ).not.toContainText("powershell -NoProfile");
   });
 });
 
@@ -1203,8 +1211,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         await expect
           .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
           .toBeLessThanOrEqual(280);
-        for (const pane of await panes.all()) {
-          await expectComposerToolbarLaidOut(pane.locator("form.composer"));
+        for (const [index, pane] of (await panes.all()).entries()) {
+          // The second pane is the new, turnless side chat.
+          await expectComposerToolbarLaidOut(
+            pane.locator("form.composer"),
+            index === 0,
+          );
           await expect(
             pane.getByRole("textbox", { name: "Message agent" }),
           ).toBeVisible();

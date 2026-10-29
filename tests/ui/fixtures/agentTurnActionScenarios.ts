@@ -32,7 +32,8 @@ export function registerAgentTurnActionScenarios() {
     const betaComposer = beta.getByRole("textbox", { name: "Message agent" });
     await betaComposer.fill("Preserve this Beta draft");
     await focusPane(page, "Alpha");
-    await expect(betaComposer).toHaveValue("Preserve this Beta draft");
+    // AP-A1: one Chat in the centre; Beta's draft is proven on return.
+    await expect(beta).toHaveCount(0);
 
     await alphaComposer.fill("Run Alpha once");
     await alphaSend.click();
@@ -43,7 +44,7 @@ export function registerAgentTurnActionScenarios() {
         exact: true,
       }),
     ).toBeVisible();
-    await expect(betaComposer).toHaveValue("Preserve this Beta draft");
+    await expect(beta).toHaveCount(0);
     await evidence("alpha-send-pending");
 
     await alphaSend.click({ force: true });
@@ -60,14 +61,12 @@ export function registerAgentTurnActionScenarios() {
       state: "sending",
     });
     await expectTurnState(page, alpha, 1, "sending");
-    await expect(betaComposer).toHaveValue("Preserve this Beta draft");
     await evidence("alpha-sending");
 
     await runEvent(page, { type: "publish", chat: "alpha", state: "running" });
     await expectTurnState(page, alpha, 1, "running");
     await expectRunningComposerReadyToQueue(alpha);
     await expectRequestCount(page, "sendRequests", 1);
-    await expect(betaComposer).toHaveValue("Preserve this Beta draft");
     await evidence("alpha-running");
 
     await focusPane(page, "Beta");
@@ -93,10 +92,10 @@ export function registerAgentTurnActionScenarios() {
     });
     await runEvent(page, { type: "publish", chat: "beta", state: "running" });
     await expectTurnState(page, beta, 1, "running");
-    await expectTurnState(page, alpha, 1, "running");
     await evidence("independent-beta-running");
 
     await focusPane(page, "Alpha");
+    await expectTurnState(page, alpha, 1, "running");
     await expectRunningComposerReadyToQueue(alpha);
     await alpha.getByRole("button", { name: "Cancel turn" }).click();
     await expect(alphaComposer).toBeDisabled();
@@ -115,6 +114,7 @@ export function registerAgentTurnActionScenarios() {
     });
     await expectTurnState(page, alpha, 1, "cancelled");
     await expect(alphaComposer).toBeEnabled();
+    await focusPane(page, "Beta");
     await expectTurnState(page, beta, 1, "running");
     await evidence("alpha-cancelled-beta-unaffected");
 

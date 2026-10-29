@@ -183,6 +183,17 @@
   justify-self: end;
 }
 
+/* A project header keeps its row in the first column and the "…" menu in
+   the reserved second column; the chat-row overlay placement above would
+   push the project row into the 24 px column and hide its name. */
+.project-entry__header > .project-row {
+  grid-area: 1 / 1;
+}
+
+.project-entry__header > .project-chat-actions {
+  grid-area: 1 / 2;
+}
+
 .project-chat-actions__menu {
   width: 190px;
 }

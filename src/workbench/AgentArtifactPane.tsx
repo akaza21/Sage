@@ -41,14 +41,13 @@ import {
 } from "./AgentArtifactPaneControls";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
-import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
+import {
+  useAgentArtifactFollowLifecycle,
+  useFocusedBrowse,
+} from "./useAgentArtifactFollowLifecycle";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
-import {
-  useHarnessBrowseOwner,
-  useHarnessBrowseSession,
-} from "../features/preview/useHarnessBrowseSession";
 import {
   renderFileOrDiffCanvas,
   renderRegisteredCanvas,
@@ -180,8 +179,7 @@ export function AgentArtifactPane({
       ),
     [admissions, focusedOwner, focusedPage, tabs],
   );
-  const browseOwner = useHarnessBrowseOwner();
-  const browseSession = useHarnessBrowseSession(browseOwner);
+  const { browseOwner, browseSession } = useFocusedBrowse(focusedOwner);
   const browseRevision = browseSession?.revision ?? 0;
   const previewOpen = browseSession !== null;
   const availableTargets = useMemo<AgentArtifactTarget[]>(
@@ -257,6 +255,7 @@ export function AgentArtifactPane({
   useAgentArtifactFollowLifecycle({
     availableTargets,
     browseSession,
+    browseOwnerChatId: browseOwner?.chatId ?? null,
     focusedOwner,
   });
 

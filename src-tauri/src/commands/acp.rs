@@ -12,7 +12,6 @@ pub(crate) mod read_text_file;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
 pub(crate) mod session_config;
-mod session_lifecycle;
 mod session_operations;
 mod session_routes;
 pub(crate) mod turn_workspace;
@@ -181,9 +180,9 @@ pub async fn send_acp_turn(
     send_acp_turn_inner(&state, request).await
 }
 
-pub(crate) use session_lifecycle::{close_acp_session_inner, end_acp_session_inner};
 pub(crate) use session_operations::{
-    cancel_acp_turn_inner, send_acp_turn_inner, steer_acp_turn_inner,
+    cancel_acp_turn_inner, close_acp_session_inner, end_acp_session_inner, send_acp_turn_inner,
+    steer_acp_turn_inner,
 };
 
 #[tauri::command]

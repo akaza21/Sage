@@ -3,6 +3,10 @@ import {
   expectNoViewportOverflow,
   openScenario,
 } from "./shared/visualBrowserPrimitives";
+import {
+  dragAnswerPhrase,
+  openSelectionScenario,
+} from "./shared/transcriptSelection";
 
 for (const width of [480, 1380]) {
   test(`Agent settings stay contained and separate from Editor at ${width}px`, async ({
@@ -119,48 +123,69 @@ for (const width of [480, 1380]) {
     await settings.getByRole("button", { name: "Back to chats" }).focus();
     await page.keyboard.press("Escape");
     await expect(settings).toHaveCount(0);
-    await page.getByRole("radio", { name: "Editor", exact: true }).check();
+    // The radio is visually hidden inside its label, which takes the click.
+    await page
+      .getByRole("radiogroup", { name: "Window mode" })
+      .locator("label", { hasText: "Editor" })
+      .click();
+    await expect(
+      page.getByRole("radio", { name: "Editor", exact: true }),
+    ).toBeChecked();
     await page
       .getByRole("button", { name: "Open settings", exact: true })
       .click();
-    const editor = page.getByRole("region", { name: "Settings", exact: true });
+    // At 480px the compact Editor's open tool drawer is modal, so the
+    // canvas behind it is hidden from the accessibility tree while visible.
+    const editor = page.getByRole("region", {
+      name: "Settings",
+      exact: true,
+      includeHidden: true,
+    });
     await expect(editor).toBeVisible();
     await expect(
-      editor.getByRole("tab", { name: "Editor", exact: true }),
+      editor.getByRole("tab", {
+        name: "Editor",
+        exact: true,
+        includeHidden: true,
+      }),
     ).toBeVisible();
-    await expect(editor.getByRole("button", { name: "Harnesses" })).toHaveCount(
-      0,
-    );
+    await expect(
+      editor.getByRole("button", { name: "Harnesses", includeHidden: true }),
+    ).toHaveCount(0);
   });
 }
 
 test("Agent settings are loaded on demand rather than with the first chat", async ({
   page,
 }) => {
+  // Observe module requests from the network: the scenario's fake clock
+  // replaces performance, so resource timing entries are not available.
+  let settingsRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/features/settings/AgentSettingsSurface"))
+      settingsRequests += 1;
+  });
   await openScenario(page, "agent-single", "agent");
-  const requestedSettings = () =>
-    page.evaluate(() =>
-      performance
-        .getEntriesByType("resource")
-        .some((entry) =>
-          entry.name.includes("/features/settings/AgentSettingsSurface"),
-        ),
-    );
-  expect(await requestedSettings()).toBe(false);
+  const requestedSettings = () => settingsRequests > 0;
+  expect(requestedSettings()).toBe(false);
   await page
     .getByRole("button", { name: "Open settings", exact: true })
     .click();
   await expect(
     page.getByRole("region", { name: "Agent settings" }),
   ).toBeVisible();
-  expect(await requestedSettings()).toBe(true);
+  expect(requestedSettings()).toBe(true);
 });
 
 test("settings preserve the focused chat and split while a shared resource is active", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1680, height: 960 });
-  await openScenario(page, "agent-dual", "agent");
+  // AP-A1: a split exists only after an explicit side-chat action.
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page
+    .getByRole("button", { name: "Ask in side chat", exact: true })
+    .click();
   const panes = page.locator(".agent-chat-pane");
   await expect(panes).toHaveCount(2);
   const chatIds = await panes.evaluateAll((elements) =>
