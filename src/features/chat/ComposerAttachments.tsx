@@ -3,9 +3,11 @@ import { FileText, Globe2, Image, MessageSquare, X } from "../../ui/leanIcons";
 import {
   attachedContextKey,
   type AttachedContext,
+  isBrowserElement,
   parseDiffLineCommentContext,
   queuedAttachmentCue,
 } from "../../domain/attachedContext";
+import { BrowserElementChipsSlot } from "../browser/BrowserElementChipsSlot";
 
 export function QueuedAttachmentPreview({
   contexts,
@@ -46,6 +48,7 @@ export function attachmentLabel(context: AttachedContext): string {
   if (context.kind === "browserPage")
     return `Page · ${context.title || new URL(context.url).host}`;
   if (context.kind === "image") return `Image · ${context.label}`;
+  if (context.kind === "browserElement") return `Element ${context.ordinal}`;
   const path = context.diffRef.relativePath;
   const file = parseDiffLineCommentContext(context) ? path : "Unavailable file";
   const range =
@@ -67,9 +70,16 @@ export function ComposerAttachments({
   imagePreviews?: Readonly<Record<string, string>>;
 }) {
   if (contexts.length === 0) return null;
+  const elements = contexts.filter(isBrowserElement);
+  const others = contexts.filter((context) => !isBrowserElement(context));
   return (
     <ul className="composer__attachments" aria-label="Attached context">
-      {contexts.map((context) => {
+      {elements.length ? (
+        <BrowserElementChipsSlot
+          {...{ contexts: elements, disabled, onRemove }}
+        />
+      ) : null}
+      {others.map((context) => {
         const label = attachmentLabel(context);
         return (
           <li

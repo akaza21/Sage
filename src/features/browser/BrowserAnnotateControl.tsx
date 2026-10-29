@@ -7,7 +7,13 @@ import {
   type BrowserControlAction,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
+import { registerBrowserElementSink } from "../../app/browserAnnotations";
+import { browserElementChatSink } from "../../app/browserElementChatSink";
 import BrowserAnnotateComment from "./BrowserAnnotatePopover";
+
+// Stateless: it reads the pinned Agent Chat at each pick, so one
+// registration serves every browser tab.
+registerBrowserElementSink(browserElementChatSink);
 
 /**
  * Rust owns the mode, the picked element, the disabled reason, and Escape in

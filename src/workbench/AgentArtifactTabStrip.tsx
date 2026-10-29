@@ -14,7 +14,7 @@ import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import type { WorkbenchTab } from "../domain/workbench";
 import { FileKindIcon } from "../features/files/FileKindIcon";
-import { BrowserFavicon } from "../features/browser/browserAddress";
+import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 

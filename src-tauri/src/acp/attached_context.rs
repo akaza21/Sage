@@ -7,7 +7,7 @@ use super::{
     limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES},
 };
 
-use crate::image_attachment::ImageAttachedContext;
+use crate::{browser::annotate::element::BrowserElement, image_attachment::ImageAttachedContext};
 
 pub type AttachedContexts = BoundedVec<AttachedContext, ATTACHED_CONTEXT_LIMIT>;
 
@@ -31,6 +31,7 @@ pub enum AttachedContext {
     TranscriptQuote(super::transcript_quote::TranscriptQuoteContext),
     DiffLineComment(DiffLineCommentContext),
     BrowserPage(BrowserPageContext),
+    BrowserElement(BrowserElement),
     Image(ImageAttachedContext),
 }
 
@@ -248,6 +249,62 @@ pub(crate) enum AttachedContextError {
     Snapshot(SnapshotReadError),
 }
 
+/// Why a prompt's page elements were refused at admission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BrowserElementRefusal {
+    RepeatedNumber,
+    Unredacted,
+}
+
+impl BrowserElementRefusal {
+    pub(crate) fn message(self) -> &'static str {
+        match self {
+            Self::RepeatedNumber => "Two page elements share a number; remove one.",
+            Self::Unredacted => {
+                "A page element no longer passes redaction; remove it and pick it again."
+            }
+        }
+    }
+}
+
+/// The checks a prompt's page elements pass where Sage admits them (send,
+/// steer and the durable queue), on top of the bounds every decode checks:
+/// unique numbers (contract §2.1) and the redaction fixpoints (§2.2).
+pub(crate) fn admit_browser_elements(
+    contexts: &AttachedContexts,
+) -> Result<(), BrowserElementRefusal> {
+    let elements = browser_elements(contexts);
+    if repeated_number(&elements) {
+        return Err(BrowserElementRefusal::RepeatedNumber);
+    }
+    if elements
+        .iter()
+        .any(|element| crate::browser::annotate::element::redacted(element).is_err())
+    {
+        return Err(BrowserElementRefusal::Unredacted);
+    }
+    Ok(())
+}
+
+fn browser_elements(contexts: &AttachedContexts) -> Vec<&BrowserElement> {
+    contexts
+        .as_slice()
+        .iter()
+        .filter_map(|context| match context {
+            AttachedContext::BrowserElement(element) => Some(element),
+            _ => None,
+        })
+        .collect()
+}
+
+fn repeated_number(elements: &[&BrowserElement]) -> bool {
+    (1..elements.len()).any(|index| {
+        elements[..index]
+            .iter()
+            .any(|earlier| earlier.ordinal == elements[index].ordinal)
+    })
+}
+
 pub(crate) fn effective_prompt(
     prompt: &Prompt,
     contexts: &AttachedContexts,
@@ -264,6 +321,12 @@ pub(crate) fn effective_prompt(
     if contexts.as_slice().is_empty() {
         return Ok(prompt.clone());
     }
+    let elements = browser_elements(contexts);
+    if repeated_number(&elements) {
+        return Err(ContractError::ForbiddenContent {
+            field: "browserElementOrdinal",
+        });
+    }
     let mut rendered = String::with_capacity(
         prompt.as_str().len()
             + contexts
@@ -279,12 +342,17 @@ pub(crate) fn effective_prompt(
                     AttachedContext::TranscriptQuote(quote) => {
                         quote.text.len() + quote.comment.as_ref().map_or(0, String::len) + 256
                     }
+                    // JSON quoting can double a field; the block adds labels.
+                    AttachedContext::BrowserElement(element) => {
+                        serde_json::to_vec(element).map_or(0, |bytes| bytes.len()) * 2 + 384
+                    }
                     AttachedContext::Image(_) => 0,
                 })
                 .sum::<usize>(),
     );
     rendered.push_str(prompt.as_str());
     let mut annotation = 0;
+    let mut rendered_elements = false;
     for context in contexts.as_slice() {
         match context {
             // Every annotation renders under one header, at the first one's
@@ -334,18 +402,29 @@ pub(crate) fn effective_prompt(
                 rendered
                     .push_str(&serde_json::to_string(&page.text).expect("string serialization"));
             }
+            // Every element renders under one header, at the first one's place.
+            AttachedContext::BrowserElement(_) if rendered_elements => {}
+            AttachedContext::BrowserElement(_) => {
+                rendered_elements = true;
+                crate::browser::annotate::element::render_prompt(&mut rendered, &elements);
+            }
             AttachedContext::Image(_) => unreachable!(),
         }
     }
     let effective = Prompt::new("promptWithAttachedContext", rendered)?;
-    // Annotation turns keep the user's own text durable and project the quotes
-    // as chips; other context keeps the durable text equal to the dispatched one.
-    Ok(if annotation > 0 {
+    // Annotation and browser-element turns keep the user's own text durable
+    // and project the contexts as chips; other context keeps the durable text
+    // equal to the dispatched one.
+    Ok(if annotation > 0 || rendered_elements {
         effective.with_context(prompt, contexts)
     } else {
         effective
     })
 }
+
+#[cfg(test)]
+#[path = "tests/attached_context_element.rs"]
+mod element_tests;
 
 #[cfg(test)]
 mod tests {

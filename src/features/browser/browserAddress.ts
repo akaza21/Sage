@@ -1,36 +1,5 @@
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
-import { createElement, useState, type ReactNode } from "react";
-
-export function browserFaviconDataUrl(
-  value: string | null | undefined,
-): string | null {
-  if (!value || value.length > 22 + Math.ceil((32 * 1024) / 3) * 4) return null;
-  return /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)
-    ? value
-    : null;
-}
-
-export function BrowserFavicon({
-  value,
-  fallback,
-  className,
-}: {
-  value?: string | null;
-  fallback: ReactNode;
-  className?: string;
-}): ReactNode {
-  const [failed, setFailed] = useState(false);
-  const src = browserFaviconDataUrl(value);
-  return src && !failed
-    ? createElement("img", {
-        src,
-        className,
-        alt: "",
-        "aria-hidden": true,
-        onError: () => setFailed(true),
-      })
-    : fallback;
-}
+import { browserFaviconDataUrl } from "./browserFavicon";
 
 const MAX_ADDRESS_LENGTH = 2048;
 

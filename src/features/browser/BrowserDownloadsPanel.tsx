@@ -5,7 +5,7 @@ import {
   browserCancelDownload,
   browserShowDownloadInFolder,
   type BrowserDownload,
-} from "../../ports/nativeBrowserPort";
+} from "../../ports/nativeBrowserDownloadsPort";
 import { progressLabel } from "./browserDownloadLabel";
 import { isActiveDownload } from "./useBrowserDownloads";
 

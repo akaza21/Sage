@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   browserDownloads,
   type BrowserDownload,
-} from "../../ports/nativeBrowserPort";
+} from "../../ports/nativeBrowserDownloadsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 export function isActiveDownload(download: BrowserDownload): boolean {

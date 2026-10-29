@@ -17,6 +17,8 @@ type Rule = {
     | "placeholder"
     | "left-of"
     | "below"
+    | "gap-below"
+    | "left-inset"
     | "right-inset";
   expected?: number | string;
   tolerancePx?: number;
@@ -100,6 +102,23 @@ async function check(page: Page, rule: Rule) {
       const lower = await box(page, rule.selector);
       const upper = await box(page, rule.other!);
       expect(lower.y).toBeGreaterThanOrEqual(upper.y + upper.height);
+      break;
+    }
+    case "gap-below": {
+      const lower = await box(page, rule.selector);
+      const upper = await box(page, rule.other!);
+      const gap = lower.y - (upper.y + upper.height);
+      expect(Math.abs(gap - Number(rule.expected))).toBeLessThanOrEqual(
+        rule.tolerancePx ?? 0,
+      );
+      break;
+    }
+    case "left-inset": {
+      const element = await box(page, rule.selector);
+      const container = await box(page, rule.within!);
+      expect(
+        Math.abs(element.x - container.x - Number(rule.expected)),
+      ).toBeLessThanOrEqual(rule.tolerancePx ?? 0);
       break;
     }
     case "right-inset": {

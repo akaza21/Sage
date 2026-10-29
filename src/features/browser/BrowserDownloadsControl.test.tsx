@@ -8,7 +8,7 @@ import {
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { BrowserDownload } from "../../ports/nativeBrowserPort";
+import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
 import { progressLabel } from "./browserDownloadLabel";
 import { activeDownloadProgress } from "./useBrowserDownloads";
@@ -19,7 +19,7 @@ const browserDownloads = vi.fn(
 const cancelDownload = vi.fn(async (_tabId: string, _id: number) => undefined);
 const showInFolder = vi.fn(async (_tabId: string, _id: number) => undefined);
 vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
-vi.mock("../../ports/nativeBrowserPort", () => ({
+vi.mock("../../ports/nativeBrowserDownloadsPort", () => ({
   browserDownloads: (tabId: string) => browserDownloads(tabId),
   browserCancelDownload: (tabId: string, id: number) =>
     cancelDownload(tabId, id),

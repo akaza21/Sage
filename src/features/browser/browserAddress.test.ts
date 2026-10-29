@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 
-import { browserFaviconDataUrl, resolveBrowserAddress } from "./browserAddress";
+import { resolveBrowserAddress } from "./browserAddress";
+import { browserFaviconDataUrl } from "./browserFavicon";
 
 it("opens web addresses and searches ordinary text", () => {
   expect(resolveBrowserAddress("example.com/docs")).toBe(

@@ -73,6 +73,29 @@ fn admitted_prompts(prompts: &[DurableQueuedPrompt]) -> AppResult<String> {
     Ok(json)
 }
 
+/// The chat's stored queue as JSON by prompt id; unreadable rows count as
+/// absent, so every incoming prompt is then admitted afresh.
+fn stored_prompts(
+    transaction: &rusqlite::Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+) -> AppResult<HashMap<String, serde_json::Value>> {
+    let json: Option<String> = transaction
+        .query_row(
+            "SELECT prompts_json FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2",
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let prompts = json
+        .and_then(|json| serde_json::from_str::<Vec<serde_json::Value>>(&json).ok())
+        .unwrap_or_default();
+    Ok(prompts
+        .into_iter()
+        .filter_map(|prompt| Some((prompt.get("id")?.as_str()?.to_owned(), prompt)))
+        .collect())
+}
+
 impl Database {
     pub(crate) fn replace_chat_queued_prompts(
         &self,
@@ -113,6 +136,21 @@ impl Database {
             return Err(AppError::InvalidRequest(
                 "Queued Chat owner is absent".into(),
             ));
+        }
+        // Loading checks bounds only, so a stricter redaction rule never stops
+        // a Project from opening. The redaction fixpoints and unique element
+        // numbers are checked on the way in, for prompts that are new or
+        // changed: the composer sends the whole queue, and a stale stored
+        // prompt must not block adding or removing the others.
+        let stored = stored_prompts(&transaction, project_id, chat_id)?;
+        for prompt in prompts {
+            let unchanged = stored
+                .get(&prompt.id)
+                .is_some_and(|before| serde_json::to_value(prompt).is_ok_and(|now| &now == before));
+            if !unchanged {
+                crate::acp::attached_context::admit_browser_elements(&prompt.attached_context)
+                    .map_err(|refusal| AppError::InvalidRequest(refusal.message().into()))?;
+            }
         }
         if !images.is_empty() {
             let root = self.image_artifact_root()?;

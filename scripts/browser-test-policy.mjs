@@ -35,6 +35,8 @@ const UI_RULE_MEASURES = {
   "left-of": "other",
   below: "other",
   "right-inset": "number",
+  "left-inset": "number",
+  "gap-below": "number",
 };
 const REFERENCE_DIRECTORY = "docs/work-items/CODEX-PARITY/reference";
 
@@ -130,8 +132,13 @@ export function uiRuleErrors(relativePath, ruleSet, referenceNames) {
         rule,
         `needs a ${kind === "other" ? "comparison selector" : `${kind} expectation`}.`,
       );
-    if (rule.measure === "right-inset" && typeof rule.within !== "string")
+    if (
+      (rule.measure === "right-inset" || rule.measure === "left-inset") &&
+      typeof rule.within !== "string"
+    )
       fail(rule, "needs a containing selector.");
+    if (rule.measure === "gap-below" && typeof rule.other !== "string")
+      fail(rule, "needs a comparison selector.");
     const tolerance = rule.tolerancePx ?? 0;
     if (
       !Number.isFinite(tolerance) ||

@@ -603,6 +603,33 @@ describe("ACP action controller", () => {
     expect(test.cleared).toEqual([{ prompt: "Summarize", attachedContext }]);
   });
 
+  it("sends Annotate's browser elements with the prompt (AP-H1)", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("6", session("hot", "1", null)),
+    });
+    const attachedContext = [1, 2].map((ordinal) => ({
+      kind: "browserElement" as const,
+      target: "element" as const,
+      ordinal,
+      tabId: "browser-1",
+      url: "https://example.com/cart",
+      title: "Cart",
+      selector: "main > :nth-child(2 of button)",
+      role: "button",
+      name: "Place order",
+      text: "Place order",
+      box: { x: 4, y: 8, width: 160, height: 40 },
+      comment: ordinal === 1 ? "Disable until ticked" : "",
+    }));
+    await expect(
+      test.controller.submit("Fix", attachedContext, bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "Fix", attachedContext }),
+    );
+  });
+
   it("activates a cold durable session at nextRuntimeEpoch before sending", async () => {
     const test = harness(page("5", session("cold", null, "4")));
     const active = page("6", session("hot", "4", null));

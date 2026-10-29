@@ -106,6 +106,8 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
     { ...rule, measure: "below" },
     { ...rule, measure: "placeholder" },
     { ...rule, measure: "right-inset" },
+    { ...rule, measure: "left-inset" },
+    { ...rule, measure: "gap-below" },
     { ...rule, tolerancePx: UI_RULE_MAX_TOLERANCE_PX + 1 },
     { ...rule, tolerancePx: -1 },
     { ...rule, tolerancePx: Number.NaN },
