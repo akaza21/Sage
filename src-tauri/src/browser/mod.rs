@@ -120,6 +120,7 @@ struct BrowserTab<T> {
     history: BrowserHistory,
     fallback_url: Option<String>,
     last_error: Option<&'static str>,
+    evidence: navigation::NavigationEvidence,
 }
 
 #[derive(Clone)]
@@ -206,6 +207,7 @@ impl<T> BrowserTabs<T> {
                 history: BrowserHistory::default(),
                 fallback_url: None,
                 last_error: None,
+                evidence: navigation::NavigationEvidence::default(),
             },
         );
     }
@@ -252,15 +254,16 @@ impl<T> BrowserTabs<T> {
     }
 
     fn start_navigation(&mut self, label: &str, navigation_id: u64, url: &str) -> bool {
+        if self.entries.get(label).is_none_or(|tab| {
+            tab.navigation_id
+                .is_some_and(|current| navigation_id <= current)
+        }) {
+            return false;
+        }
+        self.begin_evidence(label, navigation_id);
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
         };
-        if tab
-            .navigation_id
-            .is_some_and(|current| navigation_id <= current)
-        {
-            return false;
-        }
         tab.navigation_id = Some(navigation_id);
         tab.history.start(navigation_id, url);
         tab.loading = true;

@@ -424,3 +424,561 @@ fn only_bounded_http_urls_without_credentials_are_admitted() {
         .is_err()
     );
 }
+
+fn failed_completion(web_error: i32, source: &str) -> navigation::outcome::Completion<'_> {
+    navigation::outcome::Completion {
+        success: false,
+        web_error,
+        source: Some(source),
+    }
+}
+
+fn committed_tab(urls: &[&str]) -> BrowserTabs<usize> {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, true);
+    for (id, url) in urls.iter().enumerate() {
+        assert!(tabs.start_navigation("browser-1", id as u64 + 1, url));
+        assert!(tabs.finish_navigation("browser-1", id as u64 + 1, Some(url)));
+    }
+    tabs
+}
+
+#[test]
+fn navigation_that_became_a_download_keeps_the_previous_page() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://a.example/files"]);
+    assert!(tabs.set_document_title("browser-1", "https://a.example/files", "Files"));
+    tabs.entries.get_mut("browser-1").unwrap().favicon = Some("data:image/png;base64,AA".into());
+    let before = tabs.snapshot("browser-1").unwrap();
+    // A superseding start while loading must not lose the remembered page.
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/report.pdf"));
+    assert!(tabs.start_navigation("browser-1", 4, "https://a.example/report.pdf"));
+    tabs.note_download("browser-1");
+    // WebView2 reports the download's navigation as unsuccessful while it
+    // still shows the page it left.
+    assert!(
+        tabs.settle_navigation(
+            "browser-1",
+            4,
+            failed_completion(9, "https://a.example/files")
+        )
+        .is_some()
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(after.error, None);
+    assert_eq!(
+        after.committed_url.as_deref(),
+        Some("https://a.example/files")
+    );
+    assert_eq!(after.title.as_deref(), Some("Files"));
+    assert_eq!(after.favicon, before.favicon);
+    assert_eq!(
+        (after.can_go_back, after.can_go_forward),
+        (before.can_go_back, before.can_go_forward)
+    );
+    assert!(after.revision > before.revision);
+    assert_eq!(tabs.history_len("browser-1"), Some(2));
+    assert_eq!(
+        tabs.openable_url("browser-1").unwrap(),
+        "https://a.example/files"
+    );
+    assert!(tabs.take_fallback("browser-1").is_none());
+}
+
+#[test]
+fn denied_or_cancelled_navigation_keeps_the_page() {
+    // An Agent download is denied in `begin()` and cancelled; a blocked or
+    // stopped navigation is cancelled. Either way nothing commits.
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert!(tabs.start_navigation("browser-1", 3, "https://b.example/file.bin"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(
+                navigation::outcome::WEB_ERROR_OPERATION_CANCELED,
+                "https://b.example/"
+            )
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.committed_url.as_deref(), Some("https://b.example/"));
+    assert!(!after.loading && after.error.is_none() && after.can_go_back);
+    assert_eq!(tabs.history_len("browser-1"), Some(2));
+}
+
+#[test]
+fn abandoned_back_navigation_keeps_the_cursor_and_allows_another_traversal() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    assert!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(
+                navigation::outcome::WEB_ERROR_OPERATION_CANCELED,
+                "https://b.example/"
+            )
+        )
+        .is_some()
+    );
+    assert!(tabs.take_fallback("browser-1").is_none());
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.committed_url.as_deref(), Some("https://b.example/"));
+    assert!(!after.loading && after.error.is_none());
+    assert!(after.can_go_back && !after.can_go_forward);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+}
+
+#[test]
+fn real_load_failure_is_reported_instead_of_a_blank_new_tab() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://missing.example/"));
+    // Chromium commits its error page for a real load failure.
+    tabs.note_content_loading("browser-1", 2, true);
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(13, "https://missing.example/")
+        ),
+        Some(navigation::outcome::Settled::Failed)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(after.error, Some("The site's address could not be found"));
+    assert!(tabs.openable_url("browser-1").is_err());
+    // The next navigation clears the error as before.
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    assert!(tabs.finish_navigation("browser-1", 3, Some("https://a.example/")));
+    assert_eq!(tabs.snapshot("browser-1").unwrap().error, None);
+}
+
+const CANCELED: i32 = navigation::outcome::WEB_ERROR_OPERATION_CANCELED;
+
+#[test]
+fn cancel_after_hash_drift_is_abandoned_and_never_counts_as_a_commit() {
+    // The page changes its hash while the user's navigation is pending;
+    // `committed_url` does not follow it during the load.
+    let mut tabs = committed_tab(&["https://a.example/page"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/file.bin"));
+    assert!(!tabs.source_changed("browser-1", "https://a.example/page#drift"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://a.example/page#drift")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading && after.error.is_none());
+    // What is on screen is adopted as a same-document change.
+    assert_eq!(
+        after.committed_url.as_deref(),
+        Some("https://a.example/page#drift")
+    );
+    assert!(after.can_go_back);
+}
+
+#[test]
+fn cancel_after_a_failed_load_keeps_reporting_the_failure() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://missing.example/"));
+    tabs.note_content_loading("browser-1", 2, true);
+    assert!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(13, "https://missing.example/")
+        )
+        .is_some()
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://c.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(CANCELED, "https://missing.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.error, Some("The site's address could not be found"));
+    assert!(after.committed_url.is_none());
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn unrelated_download_does_not_hide_a_failed_reload() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
+    // An `<a download>` / blob download that is not this navigation.
+    tabs.note_download("browser-1");
+    tabs.note_content_loading("browser-1", 2, true);
+    assert_eq!(
+        tabs.settle_navigation("browser-1", 2, failed_completion(11, "https://a.example/")),
+        Some(navigation::outcome::Settled::Failed)
+    );
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().error,
+        Some("The site could not be reached")
+    );
+}
+
+#[test]
+fn download_or_stop_without_any_commit_keeps_the_page_whatever_the_status() {
+    // Real WebView2 (BP-H5b native run): neither a download nor a Stop
+    // during a slow load reports OPERATION_CANCELED, and neither commits.
+    for web_error in [0, 9, 11, 12, 16] {
+        let mut tabs = committed_tab(&["https://a.example/", "https://a.example/files"]);
+        assert!(tabs.set_document_title("browser-1", "https://a.example/files", "Files"));
+        assert!(tabs.start_navigation("browser-1", 3, "https://slow.example/"));
+        tabs.note_download("browser-1");
+        assert_eq!(
+            tabs.settle_navigation(
+                "browser-1",
+                3,
+                failed_completion(web_error, "https://a.example/files")
+            ),
+            Some(navigation::outcome::Settled::Abandoned),
+            "status {web_error}"
+        );
+        let after = tabs.snapshot("browser-1").unwrap();
+        assert!(!after.loading);
+        assert_eq!(after.error, None);
+        assert_eq!(
+            after.committed_url.as_deref(),
+            Some("https://a.example/files")
+        );
+        assert_eq!(after.title.as_deref(), Some("Files"));
+        assert!(after.can_go_back);
+    }
+}
+
+#[test]
+fn navigation_trace_is_bounded_and_records_statuses() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    for id in 2..40 {
+        assert!(tabs.start_navigation("browser-1", id, "https://a.example/"));
+        tabs.note_download("browser-1");
+        tabs.settle_navigation("browser-1", id, failed_completion(12, "https://a.example/"));
+    }
+    let trace = tabs.navigation_trace("browser-1");
+    assert_eq!(trace.len(), 16);
+    assert!(
+        trace
+            .last()
+            .unwrap()
+            .starts_with("complete 39 success=false web_error=12 -> Some(Abandoned)")
+    );
+    assert!(trace.iter().all(|event| !event.contains("example")));
+}
+
+#[test]
+fn committed_error_documents_and_auth_pages_keep_their_url() {
+    for web_error in [0, 17, 18] {
+        let mut tabs = committed_tab(&["https://a.example/"]);
+        assert!(tabs.start_navigation("browser-1", 2, "https://b.example/private"));
+        tabs.note_content_loading("browser-1", 2, false);
+        assert_eq!(
+            tabs.settle_navigation(
+                "browser-1",
+                2,
+                failed_completion(web_error, "https://b.example/private")
+            ),
+            Some(navigation::outcome::Settled::Committed),
+            "status {web_error}"
+        );
+        let after = tabs.snapshot("browser-1").unwrap();
+        assert_eq!(after.error, None);
+        assert_eq!(
+            after.committed_url.as_deref(),
+            Some("https://b.example/private")
+        );
+    }
+}
+
+#[test]
+fn stopped_reload_that_already_committed_does_not_restore_the_old_title() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://a.example/", "Old"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://a.example/")
+        ),
+        Some(navigation::outcome::Settled::Committed)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert_eq!(after.title, None);
+    assert_eq!(after.committed_url.as_deref(), Some("https://a.example/"));
+}
+
+fn superseded_after_commit(
+    next: &str,
+    completion_error: i32,
+    download: bool,
+) -> BrowserTabs<usize> {
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://bank.example/", "Bank"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    // Before navigation 2 completes, the new document starts navigation 3.
+    assert!(tabs.start_navigation("browser-1", 3, next));
+    if download {
+        tabs.note_download("browser-1");
+    }
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(completion_error, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    tabs
+}
+
+fn assert_shows_evil(tabs: &BrowserTabs<usize>) {
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(
+        after.committed_url.as_deref(),
+        Some("https://evil.example/")
+    );
+    assert_ne!(after.title.as_deref(), Some("Bank"));
+    assert_eq!(
+        tabs.openable_url("browser-1").unwrap(),
+        "https://evil.example/"
+    );
+}
+
+#[test]
+fn download_superseding_a_committed_navigation_reports_the_new_page() {
+    let tabs = superseded_after_commit("https://evil.example/x.bin", 9, true);
+    assert_shows_evil(&tabs);
+}
+
+#[test]
+fn cancel_superseding_a_committed_navigation_reports_the_new_page() {
+    let tabs = superseded_after_commit("https://evil.example/nc", CANCELED, false);
+    assert_shows_evil(&tabs);
+}
+
+#[test]
+fn back_fallback_that_becomes_a_download_never_restores_the_old_page() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    tabs.note_content_loading("browser-1", 3, false);
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://unexpected.example/"),
+    };
+    assert!(tabs.settle_navigation("browser-1", 3, landed).is_some());
+    assert_eq!(
+        tabs.take_fallback("browser-1").as_deref(),
+        Some("https://a.example/")
+    );
+    assert!(tabs.start_navigation("browser-1", 4, "https://a.example/"));
+    tabs.note_download("browser-1");
+    assert_ne!(
+        tabs.settle_navigation(
+            "browser-1",
+            4,
+            failed_completion(9, "https://unexpected.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_ne!(after.committed_url.as_deref(), Some("https://b.example/"));
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn abandon_without_commit_evidence_never_keeps_a_cross_origin_page() {
+    // Defensive: even if ContentLoading was missed, a cancel that leaves
+    // another origin on screen cannot restore the old address.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/nc"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(CANCELED, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    assert_moved_with_error(&tabs, "The page could not be loaded");
+    // With no admitted source on screen, it is a failure, not the old page.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/nc"));
+    assert_eq!(
+        tabs.settle_navigation("browser-1", 2, failed_completion(CANCELED, "about:blank")),
+        Some(navigation::outcome::Settled::Failed)
+    );
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+/// Settles a user navigation the way the native handler does and reports
+/// whether the tab's downloads are still denied (Agent provenance).
+fn user_navigation_keeps_agent_provenance(
+    tabs: &mut BrowserTabs<usize>,
+    id: u64,
+    url: &str,
+    completion: navigation::outcome::Completion<'_>,
+) -> (Option<navigation::outcome::Settled>, bool) {
+    let mut downloads = downloads::DownloadRegistry::default();
+    downloads.set_provenance("browser-1", downloads::NavigationProvenance::Agent);
+    downloads.request_user_navigation("browser-1", url);
+    assert!(tabs.start_navigation("browser-1", id, url));
+    downloads.start_user_navigation("browser-1", id, url);
+    let settled = tabs.settle_navigation("browser-1", id, completion);
+    downloads.finish_user_navigation(
+        "browser-1",
+        id,
+        navigation::outcome::Settled::own_commit(settled),
+    );
+    (settled, downloads.is_agent("browser-1"))
+}
+
+#[test]
+fn borrowed_commit_of_a_superseded_navigation_never_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    // The Agent page navigates itself; its document commits but keeps
+    // loading on a hanging subresource.
+    assert!(tabs.start_navigation("browser-1", 2, "https://b.example/"));
+    tabs.note_content_loading("browser-1", 2, false);
+    // The user's own navigation is then cancelled.
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        3,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://b.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Adopted));
+    assert!(agent, "provenance flipped to User on a borrowed commit");
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().committed_url.as_deref(),
+        Some("https://b.example/")
+    );
+}
+
+#[test]
+fn invariant_fallback_commit_never_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        2,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://other.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Adopted));
+    assert!(
+        agent,
+        "provenance flipped to User on the invariant's commit"
+    );
+}
+
+#[test]
+fn own_commit_still_grants_user_provenance() {
+    let mut tabs = committed_tab(&["https://a.example/"]);
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://user.example/"),
+    };
+    let (settled, agent) =
+        user_navigation_keeps_agent_provenance(&mut tabs, 2, "https://user.example/", landed);
+    assert_eq!(settled, Some(navigation::outcome::Settled::Committed));
+    assert!(!agent);
+}
+
+#[test]
+fn aborted_back_fallback_remembers_the_page_it_shows() {
+    let mut tabs = committed_tab(&["https://a.example/", "https://b.example/"]);
+    assert_eq!(
+        tabs.traverse("browser-1", -1).unwrap(),
+        "https://a.example/"
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://a.example/"));
+    let landed = navigation::outcome::Completion {
+        success: true,
+        web_error: 0,
+        source: Some("https://unexpected.example/"),
+    };
+    assert!(tabs.settle_navigation("browser-1", 3, landed).is_some());
+    assert!(tabs.take_fallback("browser-1").is_some());
+    tabs.abort_fallback("browser-1");
+    assert!(tabs.snapshot("browser-1").unwrap().error.is_some());
+    // A later cancelled user navigation keeps the reported failure rather
+    // than adopting the page as a commit.
+    let (settled, agent) = user_navigation_keeps_agent_provenance(
+        &mut tabs,
+        4,
+        "https://user.example/",
+        failed_completion(CANCELED, "https://unexpected.example/"),
+    );
+    assert_eq!(settled, Some(navigation::outcome::Settled::Abandoned));
+    assert!(agent);
+    assert!(tabs.snapshot("browser-1").unwrap().error.is_some());
+}
+
+/// The tab moved to evil.example without any commit evidence: it keeps
+/// that URL as its page but reports the failure, never the old page.
+fn assert_moved_with_error(tabs: &BrowserTabs<usize>, reason: &str) {
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(after.error, Some(reason));
+    assert_ne!(after.title.as_deref(), Some("Bank"));
+    assert_eq!(
+        tabs.entries["browser-1"].committed_url.as_deref(),
+        Some("https://evil.example/")
+    );
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn failed_load_that_moved_cross_origin_without_evidence_reports_the_failure() {
+    // A certificate interstitial, say: no ContentLoading, Source() moved.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://bank.example/", "Bank"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(12, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    assert_moved_with_error(&tabs, "The site could not be reached");
+    // A later Stop with that page still on screen keeps the failure.
+    assert!(tabs.start_navigation("browser-1", 3, "https://other.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(11, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    assert_moved_with_error(&tabs, "The site could not be reached");
+}

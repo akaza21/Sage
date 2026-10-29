@@ -21,6 +21,12 @@ const BODY_BYTES: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_TARGETS: usize = 256;
 const MAX_REPORTS: usize = 64;
+/// A response the browser must turn into a download, not a page.
+pub const DOWNLOAD: &str = "/download.bin";
+const DOWNLOAD_BODY: &[u8] = b"sage native lane download\n";
+/// A page whose response is held back long enough to press Stop.
+pub const SLOW: &str = "/slow.html";
+const SLOW_DELAY: Duration = Duration::from_secs(8);
 
 const PAGES: &[(&str, &str)] = &[
     (
@@ -31,6 +37,7 @@ const PAGES: &[(&str, &str)] = &[
         "/plain.html",
         include_str!("../../testdata/native-lane/plain.html"),
     ),
+    (SLOW, include_str!("../../testdata/native-lane/plain.html")),
     (
         "/s3-probe.html",
         include_str!("../../testdata/native-lane/s3-probe.html"),
@@ -149,6 +156,9 @@ fn respond(mut stream: TcpStream, log: &Mutex<Log>) {
         .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
         .and_then(|(_, value)| value.trim().parse::<usize>().ok())
         .unwrap_or(0);
+    if method == "GET" && target.split('?').next() == Some(SLOW) {
+        thread::sleep(SLOW_DELAY);
+    }
     let (status, page) = match (method, target.strip_prefix("/report/")) {
         ("POST", Some(name)) if length <= BODY_BYTES => {
             if read_body(&mut stream, &mut body, length) {
@@ -160,6 +170,15 @@ fn respond(mut stream: TcpStream, log: &Mutex<Log>) {
                 }
             }
             ("204 No Content", "")
+        }
+        ("GET", _) if target.split('?').next() == Some(DOWNLOAD) => {
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename=\"sage-lane.bin\"\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                DOWNLOAD_BODY.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(DOWNLOAD_BODY);
+            return;
         }
         ("GET", _) => {
             let path = target.split('?').next().unwrap_or(target);

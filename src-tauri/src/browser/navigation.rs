@@ -9,16 +9,21 @@ use windows_core::BOOL;
 
 use super::{BrowserState, admit_url};
 
+#[cfg(windows)]
+mod commit;
 pub(crate) mod control;
 mod emit;
 #[cfg(windows)]
 mod favicon;
+pub(crate) mod outcome;
+mod settle;
 mod start;
 mod status;
 #[cfg(windows)]
 mod title;
 use emit::emit_snapshot;
 pub(super) use emit::navigation_state;
+pub(super) use settle::NavigationEvidence;
 pub(crate) use status::BrowserNavigation;
 #[cfg(windows)]
 use status::emit_or_retry;
@@ -34,9 +39,18 @@ pub(crate) async fn browser_status(
 #[cfg(windows)]
 pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<(), String> {
     use webview2_com::{
+        Microsoft::Web::WebView2::Win32::{
+            COREWEBVIEW2_WEB_ERROR_STATUS, COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED,
+            COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN,
+        },
         NavigationCompletedEventHandler, NavigationStartingEventHandler, SourceChangedEventHandler,
     };
     use windows_core::PWSTR;
+
+    const _: () = assert!(
+        COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED.0 == outcome::WEB_ERROR_OPERATION_CANCELED
+            && COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN.0 == outcome::WEB_ERROR_UNKNOWN
+    );
 
     use super::popups::{INITIAL_BLANK, navigation_admitted};
 
@@ -119,34 +133,36 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                         if let (Some(core), Some(args)) = (core, args) {
                             let mut id = 0;
                             let mut success = BOOL(0);
+                            let mut web_error = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+                            let mut source = PWSTR::null();
                             unsafe {
                                 args.NavigationId(&mut id)?;
                                 args.IsSuccess(&mut success)?;
+                                args.WebErrorStatus(&mut web_error)?;
+                                core.Source(&mut source)?;
                             }
-                            let url = if success.as_bool() {
-                                let mut source = PWSTR::null();
-                                unsafe {
-                                    core.Source(&mut source)?;
-                                }
-                                let source = webview2_com::CoTaskMemPWSTR::from(source);
-                                Some(source.to_string())
-                            } else {
-                                None
+                            let source = webview2_com::CoTaskMemPWSTR::from(source).to_string();
+                            let completion = outcome::Completion {
+                                success: success.as_bool(),
+                                web_error: web_error.0,
+                                source: Some(&source),
                             };
-                            let settled =
-                                completed_app.state::<BrowserState>().tabs.lock().is_ok_and(
-                                    |mut tabs| {
-                                        tabs.finish_navigation(&completed_label, id, url.as_deref())
-                                    },
-                                );
+                            let settled = completed_app
+                                .state::<BrowserState>()
+                                .tabs
+                                .lock()
+                                .ok()
+                                .and_then(|mut tabs| {
+                                    tabs.settle_navigation(&completed_label, id, completion)
+                                });
                             completed_app
                                 .state::<BrowserState>()
                                 .user_navigation_finished(
                                     &completed_label,
                                     id,
-                                    settled && success.as_bool(),
+                                    outcome::Settled::own_commit(settled),
                                 );
-                            if settled {
+                            if settled.is_some() {
                                 let committed_url = completed_app
                                     .state::<BrowserState>()
                                     .tabs
@@ -162,11 +178,11 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                     &completed_label,
                                     committed_url.as_deref(),
                                 );
-                                if let Some(url) = url.as_deref() {
+                                if outcome::Settled::shows_new_document(settled) {
                                     title::capture_completed_title(
                                         &completed_app,
                                         &completed_label,
-                                        url,
+                                        &source,
                                         &core,
                                     );
                                     favicon::capture_completed(
@@ -252,9 +268,19 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                     let _ = unsafe { core.remove_NavigationStarting(start_token) };
                     return Err(error.to_string());
                 }
+                let content_token = match commit::register(app.clone(), label.clone(), &core) {
+                    Ok(token) => token,
+                    Err(error) => {
+                        let _ = unsafe { core.remove_SourceChanged(source_token) };
+                        let _ = unsafe { core.remove_NavigationCompleted(complete_token) };
+                        let _ = unsafe { core.remove_NavigationStarting(start_token) };
+                        return Err(error);
+                    }
+                };
                 if let Err(error) =
                     title::register(app.clone(), event_webview.clone(), label.clone(), &core)
                 {
+                    let _ = unsafe { core.remove_ContentLoading(content_token) };
                     let _ = unsafe { core.remove_SourceChanged(source_token) };
                     let _ = unsafe { core.remove_NavigationCompleted(complete_token) };
                     let _ = unsafe { core.remove_NavigationStarting(start_token) };

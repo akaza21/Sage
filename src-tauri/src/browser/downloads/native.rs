@@ -118,6 +118,11 @@ fn start_download(
             return Err(error);
         }
     };
+    // Diagnostic trace only: a navigation that became a download commits
+    // nothing, so it settles as abandoned (`navigation::outcome`).
+    if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
+        tabs.note_download(tab_id);
+    }
     let file_name = Path::new(&suggested)
         .file_name()
         .and_then(|name| name.to_str())
@@ -317,7 +322,15 @@ fn install_progress(
                         } else {
                             "interrupted"
                         };
+                        let mut raw = PWSTR::null();
+                        let saved = sender
+                            .ResultFilePath(&mut raw)
+                            .ok()
+                            .map(|()| CoTaskMemPWSTR::from(raw).to_string());
                         if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock() {
+                            if let Some(saved) = saved.filter(|saved| !saved.is_empty()) {
+                                registry.saved_as(id, Path::new(&saved));
+                            }
                             registry.settle(id, terminal);
                         }
                         ACTIVE.with_borrow_mut(|active| {
