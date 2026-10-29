@@ -304,6 +304,10 @@ impl super::AcpService {
         self.browser_attachments.hand_back(label)
     }
 
+    pub(crate) fn browser_hand_back_generation(&self) -> u64 {
+        self.browser_attachments.hand_back_generation()
+    }
+
     /// Joins a tab that the Agent-driven `opener` opened to the opener's
     /// Agent attachment, now or at its first settled page.
     pub(crate) fn adopt_browser_popup(
@@ -312,7 +316,26 @@ impl super::AcpService {
         child: &str,
         settled: Option<(&str, u64)>,
     ) {
-        self.browser_attachments.adopt_popup(opener, child, settled);
+        self.browser_attachments
+            .adopt_popup(opener, child, settled, &|project, chat, session| {
+                self.browser_turn_running(project, chat, session)
+            });
+    }
+
+    /// Whether the chat is live and `session` has a current owner whose
+    /// turn runs: the same checks `attach_agent_browser_tab` makes, for a
+    /// popup that joins without an owner of its own.
+    fn browser_turn_running(
+        &self,
+        project: &SageProjectId,
+        chat: &SageChatId,
+        session: &str,
+    ) -> bool {
+        self.browser_chat_is_live(project, chat)
+            && crate::acp::contract::SageAgentSessionId::parse(session).is_ok_and(|session| {
+                self.current_browser_owner(project, chat, &session)
+                    .is_some_and(|owner| self.browser_owner_precheck_matches(&owner))
+            })
     }
 
     pub(crate) fn browser_agent_control(
@@ -340,6 +363,10 @@ impl super::AcpService {
     pub(crate) fn browser_navigation_settled(&self, label: &str, url: &str, revision: u64) {
         self.browser_attachments
             .navigation_settled(label, url, revision);
+        self.browser_attachments
+            .join_popup(label, url, revision, &|project, chat, session| {
+                self.browser_turn_running(project, chat, session)
+            });
     }
 }
 

@@ -23,8 +23,9 @@ fn close_attached(
 }
 
 /// `owner_current` answers why the tab may no longer be committed: `Denied`
-/// when the owner moved on, `UserControl` when the user took over a tab of
-/// this chat while the tab opened.
+/// when the owner moved on or the user took over a tab of this chat while
+/// the tab opened. Never `UserControl`: the tab opened, so the call was
+/// issued and must not run again on hand back.
 pub(super) fn complete_opened_tab(
     owner_current: impl Fn() -> Result<(), BrowserFailure>,
     attach: impl FnOnce() -> Result<(), BrowserFailure>,
@@ -124,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn a_take_over_while_the_tab_opens_closes_it_and_reports_user_control() {
+    fn a_take_over_while_the_tab_opens_closes_it_and_never_reruns() {
         let taken_over = Cell::new(false);
         let lease = Cell::new(false);
         let event = Cell::new(false);
@@ -132,7 +133,7 @@ mod tests {
         let result = complete_opened_tab(
             || {
                 if taken_over.get() {
-                    Err(BrowserFailure::UserControl)
+                    Err(BrowserFailure::Denied)
                 } else {
                     Ok(())
                 }
@@ -153,7 +154,9 @@ mod tests {
                 Ok(())
             },
         );
-        assert_eq!(result, Err(BrowserFailure::UserControl));
+        // Not `UserControl`: the pause would open the tab a second time.
+        assert_eq!(result, Err(BrowserFailure::Denied));
+        assert!(!crate::acp::browser::pause::paused(&result, false));
         assert!(!lease.get());
         assert!(!event.get());
         assert!(!tab.get());

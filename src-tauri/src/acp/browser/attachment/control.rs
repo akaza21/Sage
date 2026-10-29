@@ -97,7 +97,16 @@ impl BrowserAttachments {
 
     /// Returns whether the tab still had an Agent attachment to resume.
     pub(crate) fn hand_back(&self, tab_label: &str) -> bool {
-        self.set_user_control(tab_label, false)
+        let found = self.set_user_control(tab_label, false);
+        if found {
+            self.hand_backs.fetch_add(1, Ordering::AcqRel);
+        }
+        found
+    }
+
+    /// Moves on each hand back; a paused call resumes only once it moved.
+    pub(crate) fn hand_back_generation(&self) -> u64 {
+        self.hand_backs.load(Ordering::Acquire)
     }
 
     fn set_user_control(&self, tab_label: &str, on: bool) -> bool {
@@ -111,13 +120,16 @@ impl BrowserAttachments {
                 found = true;
             }
         }
+        // Popups that joined this tab follow it, so handing back the opener
+        // never leaves a child holding the chat paused.
         if let Ok(entries) = self.agent_entries.lock() {
-            for lease in entries
-                .values()
-                .filter(|lease| lease.tab_label == tab_label)
-            {
-                lease.set_user_control(on);
-                found = true;
+            for lease in entries.values() {
+                if lease.tab_label == tab_label {
+                    lease.set_user_control(on);
+                    found = true;
+                } else if lease.opener.as_deref() == Some(tab_label) {
+                    lease.set_user_control(on);
+                }
             }
         }
         found

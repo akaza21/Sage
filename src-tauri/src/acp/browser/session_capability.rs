@@ -151,10 +151,11 @@ impl BrowserCapabilityDispatch for OpenTabPort {
                                     && current.runtime_epoch == owner.runtime_epoch
                                     && current.binding_digest == owner.binding_digest
                             });
-                    if !owner_current {
+                    // The tab was opened, so the call was issued: a take
+                    // over now closes it and reports `Denied`, never the
+                    // `UserControl` that would run it again on hand back.
+                    if !owner_current || user_controls() {
                         Err(BrowserFailure::Denied)
-                    } else if user_controls() {
-                        Err(BrowserFailure::UserControl)
                     } else {
                         Ok(())
                     }
@@ -214,13 +215,6 @@ impl SessionBrowserCapability {
             session_id,
             native: None,
         }
-    }
-
-    fn user_holds_a_tab(&self) -> bool {
-        self.app
-            .state::<AppState>()
-            .acp
-            .browser_chat_under_user_control(&self.project_id, &self.chat_id)
     }
 
     fn perform_once(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
@@ -350,34 +344,41 @@ impl BrowserCapability for SessionBrowserCapability {
 
     /// Take over pauses the call and Hand back resumes it (`pause.rs`).
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
-        let first = self.perform_once(request);
-        if !super::pause::paused(&first, || self.user_holds_a_tab()) {
-            return first;
-        }
-        let service = &self.app.state::<AppState>().acp;
-        let Some(owner) =
-            service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)
-        else {
-            return first;
-        };
-        let resumed = super::pause::wait_for_hand_back(
-            || self.user_holds_a_tab(),
-            || {
-                service
-                    .current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)
-                    .is_some_and(|current| {
-                        current.turn_id == owner.turn_id
-                            && current.runtime_epoch == owner.runtime_epoch
-                            && current.binding_digest == owner.binding_digest
-                    })
-            },
-            std::time::Instant::now() + super::pause::HAND_BACK_WAIT,
-            super::pause::POLL,
+        let app = self.app.clone();
+        let service = &app.state::<AppState>().acp;
+        let (project, chat) = (self.project_id.clone(), self.chat_id.clone());
+        let owner = service.current_browser_owner(&project, &chat, &self.session_id);
+        let open_tab = matches!(
+            request.command,
+            crate::acp::browser::BrowserCommand::OpenTab { .. }
         );
-        if resumed {
-            self.perform_once(request)
-        } else {
-            Err(BrowserFailure::UserControl)
-        }
+        let label = format!("browser-{}", request.scope.tab_id);
+        super::pause::run_with_pause(
+            || self.perform_once(request),
+            |outcome| {
+                // OpenTab's `UserControl` comes only before issue; a tab it
+                // opened and then closed for a take over reports `Denied`.
+                let declined_by_take_over = !open_tab
+                    && service
+                        .browser_agent_control(&label)
+                        .is_some_and(|control| {
+                            control.user_control
+                                && control.project_id == project
+                                && control.chat_id == chat
+                        });
+                super::pause::paused(outcome, declined_by_take_over)
+            },
+            super::pause::PauseSignals {
+                user_holds: || service.browser_chat_under_user_control(&project, &chat),
+                hand_backs: || service.browser_hand_back_generation(),
+                owner_current: || {
+                    owner
+                        .as_ref()
+                        .is_some_and(|owner| service.browser_owner_precheck_matches(owner))
+                },
+            },
+            super::pause::HAND_BACK_WAIT,
+            super::pause::POLL,
+        )
     }
 }

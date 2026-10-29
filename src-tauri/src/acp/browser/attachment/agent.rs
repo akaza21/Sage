@@ -10,6 +10,27 @@ impl BrowserAttachments {
         url: &str,
         revision: u64,
     ) -> Result<(), ()> {
+        self.attach_agent_tab(project, chat, session, tab_label, url, revision, None)
+    }
+
+    /// Attaches an Agent tab; `opener` names the Agent-driven tab a joined
+    /// popup came from, which caps it separately from `openTab`'s tabs.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn attach_agent_tab(
+        &self,
+        project: SageProjectId,
+        chat: SageChatId,
+        session: &str,
+        tab_label: &str,
+        url: &str,
+        revision: u64,
+        opener: Option<&str>,
+    ) -> Result<(), ()> {
+        let cap = if opener.is_some() {
+            MAX_POPUP_TABS_PER_SESSION
+        } else {
+            MAX_AGENT_TABS_PER_SESSION
+        };
         let number = tab_label
             .strip_prefix("browser-")
             .and_then(|value| value.parse::<u64>().ok())
@@ -24,10 +45,15 @@ impl BrowserAttachments {
         }
         let mut entries = self.agent_entries.lock().map_err(|_| ())?;
         if entries
-            .keys()
-            .filter(|(p, c, s, _)| p == &project && c == &chat && s == session)
+            .iter()
+            .filter(|((p, c, s, _), lease)| {
+                p == &project
+                    && c == &chat
+                    && s == session
+                    && lease.opener.is_some() == opener.is_some()
+            })
             .count()
-            >= MAX_AGENT_TABS_PER_SESSION
+            >= cap
             || entries.keys().any(|(_, _, _, id)| *id == number)
         {
             return Err(());
@@ -46,6 +72,7 @@ impl BrowserAttachments {
                 authority: Arc::new(Mutex::new(None)),
                 retired: Arc::default(),
                 last_session: Arc::default(),
+                opener: opener.map(str::to_owned),
             },
         );
         Ok(())
@@ -119,8 +146,13 @@ impl BrowserAttachments {
             .lock()
             .ok()?
             .iter()
+            // A joined popup is never the implicit default tab.
             .filter(|((p, c, s, _), lease)| {
-                p == project && c == chat && s == session && lease.is_live()
+                p == project
+                    && c == chat
+                    && s == session
+                    && lease.is_live()
+                    && lease.opener.is_none()
             })
             .max_by_key(|((_, _, _, number), _)| *number)
             .map(|(_, lease)| lease.clone())
@@ -136,8 +168,10 @@ impl BrowserAttachments {
             .lock()
             .map(|entries| {
                 entries
-                    .keys()
-                    .filter(|(p, c, s, _)| p == project && c == chat && s == session)
+                    .iter()
+                    .filter(|((p, c, s, _), lease)| {
+                        p == project && c == chat && s == session && lease.opener.is_none()
+                    })
                     .count()
             })
             .unwrap_or(MAX_AGENT_TABS_PER_SESSION)

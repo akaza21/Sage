@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use crate::acp::browser::{BrowserScope, permission::BrowserAuthority};
@@ -13,6 +13,9 @@ const MAX_ATTACHMENTS: usize = 8;
 /// Authorities a settled navigation took out of a lease that Stop and Take
 /// over still end, newest last. A wait outlives at most a few navigations.
 const MAX_RETIRED: usize = 4;
+/// Tabs that Agent-driven tabs opened and that joined, per session. They
+/// never count against `openTab`'s cap and never become the default tab.
+pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
@@ -37,6 +40,9 @@ pub(crate) struct AttachmentLease {
     /// The Agent session that last held this lease's authority, which a tab
     /// this one opens joins.
     last_session: Arc<Mutex<Option<String>>>,
+    /// The tab that opened this one, for a popup that joined its opener's
+    /// attachment: Take over, Hand back and Stop on the opener cover it.
+    opener: Option<String>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -147,6 +153,9 @@ pub(crate) struct BrowserAttachments {
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
     /// Tabs an Agent-driven tab opened, by child label, until they join.
     popup_children: Mutex<HashMap<String, String>>,
+    /// Counts hand backs, so a paused call resumes only after one, not after
+    /// Stop or a detach that also leaves no tab held.
+    hand_backs: AtomicU64,
 }
 
 impl BrowserAttachments {
@@ -205,6 +214,7 @@ impl BrowserAttachments {
                 authority: Arc::new(Mutex::new(None)),
                 retired: Arc::default(),
                 last_session: Arc::default(),
+                opener: None,
             },
         );
         drop(entries);
@@ -255,9 +265,10 @@ impl BrowserAttachments {
                 }
             });
         }
+        // Stop on an opener also stops the popups that joined it.
         if let Ok(mut entries) = self.agent_entries.lock() {
             entries.retain(|_, lease| {
-                if lease.tab_label == tab_label {
+                if lease.tab_label == tab_label || lease.opener.as_deref() == Some(tab_label) {
                     lease.stop();
                     false
                 } else {
@@ -307,7 +318,6 @@ impl BrowserAttachments {
                 lease.tab_revision = revision;
             }
         }
-        self.join_popup(tab_label, url, revision);
     }
 
     pub(crate) fn revoke_other_projects(&self, active_project: &SageProjectId) -> Vec<String> {

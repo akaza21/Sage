@@ -3,13 +3,19 @@
 //! it becomes an Agent tab of the same chat and session, with presence and
 //! Take over controls, under the same authority and revocation rules, and it
 //! starts under user control when the user holds the opener. Only children
-//! the browser recorded for a live Agent-attached opener join, at most
-//! `MAX_AGENT_TABS_PER_SESSION` per session; a tab the user opens never does.
+//! the browser recorded for a live Agent-attached opener join, and only
+//! while that session's turn runs (`turn_running`); a tab the user opens
+//! never does. A joined tab is capped apart from `openTab`'s tabs, at
+//! `MAX_POPUP_TABS_PER_SESSION`, is never the implicit default tab, and
+//! follows its opener on Take over, Hand back and Stop.
 
 use super::*;
 
 /// Children waiting for their first settled page, by child label.
-const MAX_POPUP_CHILDREN: usize = 16;
+pub(crate) const MAX_POPUP_CHILDREN: usize = 16;
+
+/// Whether `session` of the chat has a current owner whose turn runs.
+pub(crate) type TurnRunning<'a> = &'a dyn Fn(&SageProjectId, &SageChatId, &str) -> bool;
 
 impl BrowserAttachments {
     /// Records `child` as opened by the Agent-driven `opener` and joins it
@@ -19,8 +25,9 @@ impl BrowserAttachments {
         opener: &str,
         child: &str,
         settled: Option<(&str, u64)>,
+        turn_running: TurnRunning<'_>,
     ) -> bool {
-        if opener == child || self.opener_lease(opener).is_none() {
+        if opener == child || self.opener_lease(opener, turn_running).is_none() {
             return false;
         }
         if let Ok(mut children) = self.popup_children.lock() {
@@ -29,12 +36,18 @@ impl BrowserAttachments {
             }
             children.insert(child.to_owned(), opener.to_owned());
         }
-        settled.is_some_and(|(url, revision)| self.join_popup(child, url, revision))
+        settled.is_some_and(|(url, revision)| self.join_popup(child, url, revision, turn_running))
     }
 
     /// Joins a recorded child to its opener's attachment once the child
     /// shows a settled page. Returns whether it joined.
-    pub(super) fn join_popup(&self, child: &str, url: &str, revision: u64) -> bool {
+    pub(crate) fn join_popup(
+        &self,
+        child: &str,
+        url: &str,
+        revision: u64,
+        turn_running: TurnRunning<'_>,
+    ) -> bool {
         let Some(opener) = self
             .popup_children
             .lock()
@@ -52,18 +65,22 @@ impl BrowserAttachments {
             forget();
             return false;
         }
-        let Some((project, chat, session, opener_lease)) = self.opener_lease(&opener) else {
+        let Some((project, chat, session, opener_lease)) = self.opener_lease(&opener, turn_running)
+        else {
             forget();
             return false;
         };
+        // A popup of a joined popup follows the first opener.
+        let root = opener_lease.opener.clone().unwrap_or(opener);
         let joined = self
-            .attach_agent(
+            .attach_agent_tab(
                 project.clone(),
                 chat.clone(),
                 &session,
                 child,
                 url,
                 revision,
+                Some(&root),
             )
             .is_ok();
         if joined
@@ -96,6 +113,7 @@ impl BrowserAttachments {
     fn opener_lease(
         &self,
         opener: &str,
+        turn_running: TurnRunning<'_>,
     ) -> Option<(SageProjectId, SageChatId, String, AttachmentLease)> {
         let user = self.entries.lock().ok().and_then(|entries| {
             entries.iter().find_map(|((project, chat), lease)| {
@@ -122,6 +140,7 @@ impl BrowserAttachments {
                     })
             })
         })
+        .filter(|(project, chat, session, _)| turn_running(project, chat, session))
     }
 }
 
@@ -142,6 +161,16 @@ mod tests {
             tab_id,
         }
     }
+
+    fn running(_: &SageProjectId, _: &SageChatId, _: &str) -> bool {
+        true
+    }
+
+    fn ended(_: &SageProjectId, _: &SageChatId, _: &str) -> bool {
+        false
+    }
+
+    const PAGE: Option<(&str, u64)> = Some(("https://example.com/next", 3));
 
     /// The user attached `browser-7` and the Agent has used it.
     fn driven_opener() -> BrowserAttachments {
@@ -165,9 +194,15 @@ mod tests {
     fn a_tab_the_agent_driven_tab_opens_joins_its_chat_and_session() {
         let registry = driven_opener();
         let (project, chat) = ids();
-        assert!(!registry.adopt_popup("browser-7", "browser-9", None));
+        assert!(!registry.adopt_popup("browser-7", "browser-9", None, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
         registry.navigation_settled("browser-9", "https://example.com/next", 3);
+        assert_eq!(
+            registry.agent_control("browser-9"),
+            None,
+            "joins only via join_popup"
+        );
+        assert!(registry.join_popup("browser-9", "https://example.com/next", 3, &running));
         assert_eq!(
             registry.agent_control("browser-9"),
             Some(AgentControl {
@@ -186,14 +221,69 @@ mod tests {
     }
 
     #[test]
+    fn no_join_once_the_turn_or_session_ended() {
+        let registry = driven_opener();
+        assert!(!registry.adopt_popup("browser-7", "browser-9", PAGE, &ended));
+        assert_eq!(registry.agent_control("browser-9"), None);
+
+        // Recorded while the turn ran, settled after it ended.
+        let registry = driven_opener();
+        assert!(!registry.adopt_popup("browser-7", "browser-9", None, &running));
+        assert!(!registry.join_popup("browser-9", "https://example.com/next", 3, &ended));
+        assert_eq!(registry.agent_control("browser-9"), None);
+        assert!(
+            !registry.join_popup("browser-9", "https://example.com/next", 4, &running),
+            "a refused child is forgotten"
+        );
+    }
+
+    #[test]
+    fn a_joined_popup_is_never_the_default_tab_nor_counts_against_open_tab() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        registry
+            .attach_agent(
+                project.clone(),
+                chat.clone(),
+                "session-1",
+                "browser-8",
+                "https://example.com/",
+                1,
+            )
+            .unwrap();
+        assert!(registry.adopt_popup("browser-8", "browser-12", PAGE, &running));
+        assert!(registry.agent_control("browser-12").is_some());
+        assert_eq!(
+            registry
+                .agent_latest(&project, &chat, "session-1")
+                .map(|lease| lease.tab_number),
+            Some(8)
+        );
+        assert_eq!(registry.agent_count(&project, &chat, "session-1"), 1);
+        // openTab still has its full cap.
+        for number in 20..20 + MAX_AGENT_TABS_PER_SESSION as u64 - 1 {
+            registry
+                .attach_agent(
+                    project.clone(),
+                    chat.clone(),
+                    "session-1",
+                    &format!("browser-{number}"),
+                    "https://example.com/",
+                    1,
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            registry.agent_count(&project, &chat, "session-1"),
+            MAX_AGENT_TABS_PER_SESSION
+        );
+    }
+
+    #[test]
     fn a_child_opened_while_the_user_holds_the_opener_starts_taken_over() {
         let registry = driven_opener();
         assert!(registry.take_over("browser-7"));
-        assert!(registry.adopt_popup(
-            "browser-7",
-            "browser-9",
-            Some(("https://example.com/next", 3))
-        ));
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
         let control = registry.agent_control("browser-9").unwrap();
         assert!(control.user_control);
         let (project, chat) = ids();
@@ -201,10 +291,67 @@ mod tests {
     }
 
     #[test]
+    fn hand_back_take_over_and_stop_on_the_opener_cover_its_children() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        assert!(registry.take_over("browser-7"));
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
+        let before = registry.hand_back_generation();
+        assert!(registry.hand_back("browser-7"));
+        assert_eq!(registry.hand_back_generation(), before + 1);
+        assert!(!registry.agent_control("browser-9").unwrap().user_control);
+        assert!(!registry.chat_under_user_control(&project, &chat));
+
+        assert!(registry.take_over("browser-7"));
+        assert!(registry.agent_control("browser-9").unwrap().user_control);
+        assert!(registry.hand_back("browser-7"));
+
+        // Grandchildren follow the first opener.
+        let child = registry
+            .agent_resolve(&project, &chat, "session-1", 9)
+            .unwrap();
+        assert!(child.authority_for(&scope(9)).is_some());
+        assert!(registry.adopt_popup("browser-9", "browser-10", PAGE, &running));
+        registry.revoke_tab("browser-7");
+        assert_eq!(registry.agent_control("browser-9"), None);
+        assert_eq!(registry.agent_control("browser-10"), None);
+        assert!(child.authority_for(&scope(9)).is_none());
+    }
+
+    #[test]
+    fn deny_on_one_tab_while_the_user_holds_another_is_not_a_take_over() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        registry
+            .attach_agent(
+                project.clone(),
+                chat.clone(),
+                "session-1",
+                "browser-8",
+                "https://example.com/",
+                1,
+            )
+            .unwrap();
+        assert!(registry.take_over("browser-8"));
+        assert!(registry.chat_under_user_control(&project, &chat));
+        // The call on browser-7 was denied: browser-7 itself is not held.
+        assert!(!registry.agent_control("browser-7").unwrap().user_control);
+        let generation = registry.hand_back_generation();
+        registry.revoke_tab("browser-8");
+        assert!(!registry.chat_under_user_control(&project, &chat));
+        assert_eq!(
+            registry.hand_back_generation(),
+            generation,
+            "Stop is not a hand back"
+        );
+    }
+
+    #[test]
     fn no_scope_widening_for_unattached_or_unused_openers_or_stopped_ones() {
         // An opener with no attachment: the user's own browsing.
         let registry = BrowserAttachments::default();
-        assert!(!registry.adopt_popup("browser-7", "browser-9", Some(("https://a.example/", 1))));
+        let page = Some(("https://a.example/", 1));
+        assert!(!registry.adopt_popup("browser-7", "browser-9", page, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
 
         // Attached, but no Agent session has used it yet.
@@ -212,14 +359,14 @@ mod tests {
         registry
             .attach(project, chat, "browser-7", "https://example.com/", 1)
             .unwrap();
-        assert!(!registry.adopt_popup("browser-7", "browser-9", Some(("https://a.example/", 1))));
+        assert!(!registry.adopt_popup("browser-7", "browser-9", page, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
 
         // Stop on the opener drops a child still waiting for its page.
         let registry = driven_opener();
-        registry.adopt_popup("browser-7", "browser-9", None);
+        registry.adopt_popup("browser-7", "browser-9", None, &running);
         registry.revoke_tab("browser-7");
-        registry.navigation_settled("browser-9", "https://example.com/next", 3);
+        assert!(!registry.join_popup("browser-9", "https://example.com/next", 3, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
     }
 
@@ -228,13 +375,29 @@ mod tests {
         let registry = driven_opener();
         let joined = (10..20)
             .filter(|number| {
-                registry.adopt_popup(
-                    "browser-7",
-                    &format!("browser-{number}"),
-                    Some(("https://example.com/", 1)),
-                )
+                registry.adopt_popup("browser-7", &format!("browser-{number}"), PAGE, &running)
             })
             .count();
-        assert_eq!(joined, MAX_AGENT_TABS_PER_SESSION);
+        assert_eq!(joined, MAX_POPUP_TABS_PER_SESSION);
+    }
+
+    #[test]
+    fn children_waiting_for_a_page_are_capped() {
+        let registry = driven_opener();
+        for number in 0..MAX_POPUP_CHILDREN as u64 {
+            registry.adopt_popup(
+                "browser-7",
+                &format!("browser-{}", 100 + number),
+                None,
+                &running,
+            );
+        }
+        let extra = "browser-999";
+        registry.adopt_popup("browser-7", extra, None, &running);
+        assert!(
+            !registry.join_popup(extra, "https://example.com/", 1, &running),
+            "the seventeenth waiting child was never recorded"
+        );
+        assert!(registry.join_popup("browser-100", "https://example.com/", 1, &running));
     }
 }
