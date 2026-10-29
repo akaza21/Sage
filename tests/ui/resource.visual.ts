@@ -847,6 +847,8 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByText(/Open a file or change from the conversation/),
     ).toBeVisible();
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-resource-empty.png");
     const collapse = page.getByRole("button", {
       name: "Collapse files, changes, and preview",
@@ -926,6 +928,8 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByRole("alert").filter({ hasText: "Could not open" }),
     ).toContainText("The file is temporarily unavailable.");
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-file-error.png");
     await expectNoViewportOverflow(page);
   });
@@ -1247,6 +1251,8 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       resources.getByRole("tab", { name: `File ${longPath}` }),
     ).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-artifacts-long-paths.png");
   });
 });
