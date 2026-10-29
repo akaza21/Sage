@@ -77,7 +77,7 @@ it("keeps lazy resources and menu rename available beside the collapsed-navigati
   fireEvent.click(
     screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
   );
-  fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename chat" }));
   expect(
     await screen.findByRole("textbox", { name: "New chat name" }),
   ).toHaveFocus();
@@ -141,25 +141,26 @@ it("prewarms on pointer intent and keeps inline rename focused and authoritative
   expect(screen.queryByRole("textbox", { name: "New chat name" })).toBeNull();
 });
 
-it("keeps header mutations scoped and refreshes the open move destinations", () => {
+it("keeps header mutations scoped and refreshes the open move destinations", async () => {
   const pinChat = vi.fn(async () => undefined);
   const moveChat = vi.fn(async () => undefined);
   const archiveChat = vi.fn(async () => true);
   useWorkbenchStore.setState({ pinChat, moveChat, archiveChat, projects: [] });
   render(<AgentTaskHeader tab={tab} chatCount={2} snapshot={null} />);
-  const openActions = () => {
+  const openActions = async () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Chat actions for Lazy header task" }),
     );
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
+    await screen.findByRole("menu", { name: "Actions for Lazy header task" });
   };
 
-  openActions();
+  await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith(tab.id, "project-lazy");
-  openActions();
+  await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
   expect(screen.getByText("No other project available.")).toBeVisible();
   act(() =>
@@ -171,7 +172,7 @@ it("keeps header mutations scoped and refreshes the open move destinations", () 
   );
   fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith(tab.id, "destination", "project-lazy");
-  openActions();
+  await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy");
 });

@@ -363,7 +363,7 @@ describe("AgentChatPanes browse ownership across independent generation counters
 });
 
 describe("AgentTaskHeader working status", () => {
-  it("keeps session actions and live status reachable from the header", () => {
+  it("keeps session actions and live status reachable from the header", async () => {
     const closeSession = vi.fn();
     const endSession = vi.fn();
     const chrome: AgentSessionChrome = {
@@ -399,7 +399,7 @@ describe("AgentTaskHeader working status", () => {
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
     expect(
-      screen.getByRole("menuitem", { name: "Hand off chat" }),
+      await screen.findByRole("menuitem", { name: "Hand off chat" }),
     ).toBeEnabled();
     fireEvent.click(screen.getByRole("menuitem", { name: "Close session" }));
     expect(closeSession).toHaveBeenCalledTimes(1);
@@ -445,7 +445,9 @@ describe("AgentTaskHeader working status", () => {
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hand off chat" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hand off chat" }),
+    );
     expect(
       await screen.findByRole("dialog", { name: "Hand off this Chat" }),
     ).toBeInTheDocument();

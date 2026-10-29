@@ -32,10 +32,6 @@
   cursor: pointer;
 }
 
-.workbench--agent .project-sidebar__icon-rail button:last-child {
-  margin-top: auto;
-}
-
 .workbench--agent .project-sidebar__icon-rail button:hover:not(:disabled) {
   color: var(--color-text-primary);
   background: var(--agent-shell-hover);

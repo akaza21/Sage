@@ -416,22 +416,18 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toBeVisible();
 
     const filter = sidebar.getByRole("button", {
-      name: "Filter tasks",
+      name: "Search chats",
       exact: true,
     });
-    const search = sidebar.getByRole("searchbox", { name: "Search tasks" });
     await expect(filter).toBeVisible();
-    await expect(filter).toHaveAttribute("aria-expanded", "false");
-    await expect(search).toHaveCount(0);
     await filter.click();
-    await expect(filter).toHaveAttribute("aria-expanded", "true");
+    const search = page.getByRole("searchbox", { name: "Search Chats" });
     await expect(search).toBeVisible();
     await expect(search).toBeFocused();
     await expect(
-      sidebar.getByRole("button", { name: "Search all chats" }),
-    ).toBeVisible();
+      sidebar.locator(".project-sidebar__icon-rail button"),
+    ).toHaveCount(3);
     await search.press("Escape");
-    await expect(filter).toHaveAttribute("aria-expanded", "false");
     await expect(search).toHaveCount(0);
     await expect(filter).toBeFocused();
 
@@ -553,7 +549,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     const recent = rail(page).getByRole("region", { name: "Recent" });
 
     const entries = recent.locator(".project-chat-row");
-    await expect(entries).toHaveCount(1);
+    await expect(entries).toHaveCount(2);
     await expect(entries.first().locator(".project-chat__state")).toHaveCount(
       1,
     );

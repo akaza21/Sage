@@ -7,6 +7,7 @@ import {
   Settings,
 } from "../ui/leanIcons";
 import { useCallback, useId, useRef, useState } from "react";
+import { expandAgentRailSection } from "./agentRailViewPrefs";
 import { agentRailSectionSelectors } from "./agentRailNavigation";
 
 export function AgentPrimaryNavigation({
@@ -17,14 +18,15 @@ export function AgentPrimaryNavigation({
   onNavigate,
 }: {
   onNewChat: () => void;
-  onSearch: () => void;
-  onSettings: () => void;
-  searchDisabled: boolean;
+  onSearch?: () => void;
+  onSettings?: () => void;
+  searchDisabled?: boolean;
   onNavigate?: (target: "Recent" | "Projects") => void;
 }) {
   const scrollToSection =
     (target: "Recent" | "Projects") =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
+      expandAgentRailSection(target === "Projects" ? "projects" : "recent");
       if (onNavigate) return onNavigate(target);
       event.currentTarget
         .closest(".project-sidebar")
@@ -57,23 +59,27 @@ export function AgentPrimaryNavigation({
       >
         <FolderOpen size={18} aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        aria-label="Search chats"
-        title="Search chats"
-        disabled={searchDisabled}
-        onClick={onSearch}
-      >
-        <Search size={18} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        aria-label="Open settings from rail"
-        title="Settings"
-        onClick={onSettings}
-      >
-        <Settings size={18} aria-hidden="true" />
-      </button>
+      {onSearch ? (
+        <button
+          type="button"
+          aria-label="Search chats"
+          title="Search chats"
+          disabled={searchDisabled}
+          onClick={onSearch}
+        >
+          <Search size={18} aria-hidden="true" />
+        </button>
+      ) : null}
+      {onSettings ? (
+        <button
+          type="button"
+          aria-label="Open settings from rail"
+          title="Settings"
+          onClick={onSettings}
+        >
+          <Settings size={18} aria-hidden="true" />
+        </button>
+      ) : null}
     </nav>
   );
 }

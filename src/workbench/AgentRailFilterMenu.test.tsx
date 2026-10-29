@@ -1,100 +1,67 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
 import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import {
-  agentRailViewPrefs,
+  agentRailSectionCollapsed,
   resetAgentRailViewPrefs,
+  toggleAgentRailSection,
 } from "./agentRailViewPrefs";
-import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
 
 afterEach(() => {
   cleanup();
   resetAgentRailViewPrefs();
 });
 
-describe("AgentRailFilterMenu", () => {
-  it("uses the shared menu lifecycle and roving keyboard focus", async () => {
-    render(
-      <>
-        <AgentRailFilterMenu onMarkAllRead={vi.fn()} />
-        <button type="button">Outside</button>
-      </>,
-    );
+it("keeps expanded navigation free of duplicate search and settings controls", () => {
+  const onNewChat = vi.fn();
+  render(<AgentPrimaryNavigation onNewChat={onNewChat} />);
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  expect(onNewChat).toHaveBeenCalledOnce();
+  expect(screen.getAllByRole("button")).toHaveLength(3);
+  expect(screen.queryByRole("button", { name: "Search chats" })).toBeNull();
+});
 
-    const trigger = screen.getByRole("button", { name: "Chat list options" });
-    fireEvent.click(trigger);
-
-    // The open menu is a lazy chunk, loaded on its first open.
-    const menu = await screen.findByRole("menu", { name: "Chat list options" });
-    expect(screen.getByRole("group", { name: "Grouping" })).toBeVisible();
-    expect(screen.getByRole("group", { name: "Ordering" })).toBeVisible();
-    expect(screen.getByRole("group", { name: "Show" })).toBeVisible();
-    expect(screen.getByRole("group", { name: "Filters" })).toBeVisible();
-    const folder = screen.getByRole("menuitemradio", { name: "Folder" });
-    const status = screen.getByRole("menuitemradio", { name: "Status" });
-    expect(menu).toHaveClass("menu-popover", "agent-rail-filter__menu");
-    expect(menu.parentElement).toBe(document.body);
-    expect(folder).toHaveFocus();
-    expect(folder).toHaveAttribute("tabindex", "0");
-    expect(status).toHaveAttribute("tabindex", "-1");
-
-    fireEvent.keyDown(menu, { key: "ArrowDown" });
-    expect(status).toHaveFocus();
-    fireEvent.keyDown(menu, { key: "End" });
-    expect(
-      screen.getByRole("menuitem", { name: "Mark All as Read" }),
-    ).toHaveFocus();
-    fireEvent.keyDown(menu, { key: "Escape" });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-
-    fireEvent.keyDown(trigger, { key: "ArrowUp" });
-    expect(
-      screen.getByRole("menuitem", { name: "Mark All as Read" }),
-    ).toHaveFocus();
-
-    const outside = screen.getByRole("button", { name: "Outside" });
-    outside.focus();
-    fireEvent.pointerDown(outside);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(outside).toHaveFocus();
+it("expands each section before delegating collapsed-rail navigation", () => {
+  toggleAgentRailSection("recent");
+  toggleAgentRailSection("projects");
+  const onNavigate = vi.fn((target: "Recent" | "Projects") => {
+    expect(agentRailSectionCollapsed(target.toLowerCase())).toBe(false);
   });
+  render(
+    <AgentPrimaryNavigation onNewChat={vi.fn()} onNavigate={onNavigate} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Go to recent chats" }));
+  fireEvent.click(screen.getByRole("button", { name: "Go to projects" }));
+  expect(onNavigate.mock.calls).toEqual([["Recent"], ["Projects"]]);
+});
 
-  it("keeps status filters inside the menu's radio interaction model", async () => {
-    render(<AgentRailFilterMenu onMarkAllRead={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-
-    const all = await screen.findByRole("menuitemradio", {
-      name: "All statuses",
-    });
-    const working = screen.getByRole("menuitemradio", { name: "Working" });
-    expect(all).toHaveAttribute("aria-checked", "true");
-    expect(working).toHaveAttribute("aria-checked", "false");
-
-    fireEvent.click(working);
-    expect(agentRailViewPrefs().statusFilter).toBe("working");
-    expect(all).toHaveAttribute("aria-checked", "false");
-    expect(working).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("runs terminal actions once, closes, and restores trigger focus", async () => {
-    const onMarkAllRead = vi.fn();
-    render(<AgentRailFilterMenu onMarkAllRead={onMarkAllRead} />);
-
-    const trigger = screen.getByRole("button", { name: "Chat list options" });
-    fireEvent.click(trigger);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Mark All as Read" }),
-    );
-
-    expect(onMarkAllRead).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    await waitFor(() => expect(trigger).toHaveFocus());
-  });
+it("retains search and settings actions for the collapsed rail", () => {
+  const onSearch = vi.fn();
+  const onSettings = vi.fn();
+  const mounted = render(
+    <AgentPrimaryNavigation
+      onNewChat={vi.fn()}
+      onSearch={onSearch}
+      onSettings={onSettings}
+      searchDisabled
+    />,
+  );
+  const search = screen.getByRole("button", { name: "Search chats" });
+  expect(search).toBeDisabled();
+  fireEvent.click(search);
+  expect(onSearch).not.toHaveBeenCalled();
+  mounted.rerender(
+    <AgentPrimaryNavigation
+      onNewChat={vi.fn()}
+      onSearch={onSearch}
+      onSettings={onSettings}
+      searchDisabled={false}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open settings from rail" }),
+  );
+  expect(onSearch).toHaveBeenCalledOnce();
+  expect(onSettings).toHaveBeenCalledOnce();
 });

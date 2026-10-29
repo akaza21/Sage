@@ -85,7 +85,7 @@ export function validateProjectChatSearchRequest(
   }
   const query = request.query.trim();
   if (
-    !boundedString(query, MAX_CHAT_SEARCH_QUERY_BYTES) ||
+    utf8ByteLength(query) > MAX_CHAT_SEARCH_QUERY_BYTES ||
     containsControl(query)
   ) {
     throw new Error("Project Chat search query must be 1-256 UTF-8 bytes");
@@ -142,7 +142,9 @@ export function parseProjectChatSearchResponse(
     !boundedString(value.projectId, MAX_IDENTIFIER_BYTES) ||
     !safeCount(value.projectGeneration) ||
     !safeCount(value.transitionEpoch) ||
-    !boundedString(value.query, MAX_CHAT_SEARCH_QUERY_BYTES) ||
+    typeof value.query !== "string" ||
+    utf8ByteLength(value.query) > MAX_CHAT_SEARCH_QUERY_BYTES ||
+    containsControl(value.query) ||
     value.query !== value.query.trim() ||
     !Array.isArray(value.results) ||
     value.results.length > MAX_CHAT_SEARCH_RESULTS ||

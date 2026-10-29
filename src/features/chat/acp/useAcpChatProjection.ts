@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useAgentRailProjection } from "../../../workbench/useAgentRailProjection";
 import { useStore } from "zustand";
 
 import {
@@ -68,6 +69,15 @@ export function useAcpChatProjection(
   const takeProjectionChange = useStore(
     store,
     (state) => state.takeProjectionChange,
+  );
+  useAgentRailProjection(
+    enabled &&
+      !projectTransitioning &&
+      projectionScope?.projectId === projectId &&
+      projectionScope?.projectGeneration === String(projectGeneration) &&
+      projectionScope?.chatId === resolvedChatId
+      ? page
+      : null,
   );
 
   useEffect(() => {

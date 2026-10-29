@@ -112,10 +112,9 @@ export function classifyAgentRailSection(input: {
   if (input.status === "working" || input.status === "recovering") {
     return "working";
   }
-  if (input.status === "waiting" || input.status === "failed" || input.unread) {
-    return "attention";
-  }
-  return "done";
+  return input.status === "waiting" || input.status === "failed" || input.unread
+    ? "attention"
+    : "done";
 }
 
 export function compareAgentRailViewChats(
@@ -126,10 +125,10 @@ export function compareAgentRailViewChats(
   if (ordering === "title") {
     return left.title.localeCompare(right.title);
   }
-  const leftAt = left.updatedAt ?? 0;
-  const rightAt = right.updatedAt ?? 0;
-  if (leftAt === rightAt) return left.position - right.position;
-  return rightAt - leftAt;
+  return (
+    (right.updatedAt ?? 0) - (left.updatedAt ?? 0) ||
+    left.position - right.position
+  );
 }
 
 export function groupAgentRailByStatus(input: {
@@ -164,7 +163,7 @@ export function groupAgentRailByStatus(input: {
         break;
       }
       const sliced = chats.slice(0, remaining);
-      if (sliced.length < chats.length || group.truncated) truncated = true;
+      truncated ||= sliced.length < chats.length || group.truncated;
       remaining -= sliced.length;
       nextGroups.push({
         ...group,

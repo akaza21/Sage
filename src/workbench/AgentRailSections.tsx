@@ -2,7 +2,6 @@ import {
   FolderOpen,
   GitBranch,
   Plus,
-  SquarePen,
   ChevronDown,
   ChevronRight,
 } from "../ui/leanIcons";
@@ -10,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
+import { MAX_AGENT_RAIL_CHATS_PER_PROJECT } from "./agentChatRail";
 import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
 import { groupAgentRailByStatus } from "./agentRailStatusView";
 import {
@@ -18,6 +18,11 @@ import {
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as ProjectMenuChunk from "./AgentProjectMenu";
+const ProjectMenuPart = lazyParts<typeof ProjectMenuChunk>(
+  () => import("./AgentProjectMenu"),
+);
 
 interface AgentRailSectionProps {
   id: string;
@@ -79,11 +84,7 @@ function ProjectEntry({
   workspaceLabel?: string;
   branchLabel?: string;
 }) {
-  const expanded =
-    selected ||
-    group.chats.length > 0 ||
-    group.archived.length > 0 ||
-    group.truncated;
+  const expanded = !agentRailSectionCollapsed(`project:${group.id}`);
   return (
     <div className="project-entry">
       <div className="project-entry__header">
@@ -91,8 +92,10 @@ function ProjectEntry({
           className={`project-row ${selected ? "project-row--active" : ""}`}
           type="button"
           aria-current={selected ? "page" : undefined}
-          title={`Open project ${group.name}`}
-          onClick={() => void switchProject(group.id)}
+          title={`Project ${group.name}`}
+          aria-label={`Project ${group.name}`}
+          aria-expanded={expanded}
+          onClick={() => toggleAgentRailSection(`project:${group.id}`)}
         >
           <FolderOpen size={16} aria-hidden="true" />
           <span>{group.name}</span>
@@ -110,15 +113,12 @@ function ProjectEntry({
             <ChevronRight size={14} aria-hidden="true" />
           )}
         </button>
-        <button
-          className="project-entry__new-chat"
-          type="button"
-          aria-label={`New task in ${group.name}`}
-          title={`New task in ${group.name}`}
-          onClick={() => void createChat(group.id)}
-        >
-          <SquarePen size={12} aria-hidden="true" />
-        </button>
+        <ProjectMenuPart
+          part="AgentProjectMenu"
+          name={group.name}
+          onCreateChat={() => void createChat(group.id)}
+          onOpenProject={() => void switchProject(group.id)}
+        />
       </div>
       {expanded ? (
         <ProjectChatNavigation
@@ -287,7 +287,13 @@ export function AgentRailSections({
           : projects.map((group) => (
               <ProjectEntry
                 key={group.id}
-                group={group}
+                group={{
+                  ...group,
+                  chats: group.chats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT),
+                  truncated:
+                    group.truncated ||
+                    group.chats.length > MAX_AGENT_RAIL_CHATS_PER_PROJECT,
+                }}
                 selected={group.id === currentProjectId}
                 prefs={prefs}
                 createChat={createChat}
@@ -338,7 +344,6 @@ export function AgentRailSections({
                 projectChatCount={item.projectChatCount}
                 relativeTimeSuffix
                 suppressActive
-                showActions={false}
               />
             ))}
           </div>
