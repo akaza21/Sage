@@ -16,6 +16,7 @@ import {
   focusPopoverDialog,
 } from "./menuPopoverDialogFocus";
 import {
+  inFixedContainingBlock,
   type MenuPlacement,
   menuPopoverPosition,
   PopoverPlacementContext,
@@ -142,13 +143,16 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const next = menuPopoverPosition(
-        trigger,
+      const next = inFixedContainingBlock(
+        menuPopoverPosition(
+          trigger,
+          popover,
+          originRef.current ?? trigger,
+          gap,
+          matchTriggerWidth,
+          preferredPlacement,
+        ),
         popover,
-        originRef.current ?? trigger,
-        gap,
-        matchTriggerWidth,
-        preferredPlacement,
       );
       const current = positionRef.current;
       if (

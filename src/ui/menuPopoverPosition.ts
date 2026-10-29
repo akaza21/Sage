@@ -113,3 +113,47 @@ export function menuPopoverPosition(
     ),
   };
 }
+
+const MAX_CONTAINING_BLOCK_DEPTH = 32;
+
+/**
+ * Positions are computed in viewport coordinates, but a popover portalled
+ * into an element with a transform, filter or backdrop filter (a modal
+ * dialog, for example) is fixed relative to that element instead. Shift the
+ * position into that box so the popover lands where it was measured to fit;
+ * otherwise its placement and the dialog's layout chase each other.
+ */
+export function inFixedContainingBlock(
+  position: CSSProperties,
+  popover: HTMLElement,
+): CSSProperties {
+  let node = popover.parentElement;
+  for (
+    let depth = 0;
+    node && node !== document.body && depth < MAX_CONTAINING_BLOCK_DEPTH;
+    depth += 1, node = node.parentElement
+  ) {
+    const style = getComputedStyle(node);
+    const set = (value: string | undefined) =>
+      Boolean(value) && value !== "none";
+    if (
+      set(style.transform) ||
+      set(style.filter) ||
+      set(style.backdropFilter) ||
+      set(style.perspective) ||
+      /paint|layout|strict|content/.test(style.contain ?? "")
+    ) {
+      const box = node.getBoundingClientRect();
+      const x = box.left + node.clientLeft - node.scrollLeft;
+      const y = box.top + node.clientTop - node.scrollTop;
+      return {
+        ...position,
+        ...(typeof position.left === "number"
+          ? { left: position.left - x }
+          : {}),
+        ...(typeof position.top === "number" ? { top: position.top - y } : {}),
+      };
+    }
+  }
+  return position;
+}
