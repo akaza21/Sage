@@ -1,3 +1,4 @@
+import { Profiler } from "react";
 import {
   act,
   cleanup,
@@ -11,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { settleLazyModules } from "../test/settleLazyModules";
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import type {
@@ -22,6 +24,7 @@ import type {
 } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentChatPanes } from "./AgentChatPanes";
+import { launchSideChat } from "./AgentToolPanel";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
@@ -114,6 +117,7 @@ function seedPreviewOwner(chatId: string, sessionId: string): void {
 }
 
 beforeEach(() => {
+  useSideChatState.setState({ sides: [], pairedId: null });
   vi.mocked(openAgentArtifact).mockClear();
   localStorage.clear();
   clearAcpProjectionRegistry();
@@ -172,21 +176,38 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
   });
 
-  it("keeps two chats wide, shows the focused chat when tight, and restores the split", async () => {
+  it("does not rerender for another project's side-chat status", () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="panes" onRender={onRender}>
+        <AgentChatPanes />
+      </Profiler>,
+    );
+    onRender.mockClear();
+    act(() =>
+      useSideChatState.setState({
+        sides: [
+          {
+            id: "side-other",
+            projectId: "other",
+            parentChatId: "other-chat",
+            running: true,
+          },
+        ],
+      }),
+    );
+    expect(onRender).not.toHaveBeenCalled();
+  });
+
+  it("never grows the visible chat set across 860px or after the right pane collapses", async () => {
     render(<AgentChatPanes />);
-
-    reportCenterWidth(860);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    const splitter = screen.getByRole("separator", {
-      name: "Resize chat panes",
-    });
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    expect(splitter).toHaveAttribute("aria-valuenow", "55");
-
-    reportCenterWidth(859);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
-    expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
-    expect(screen.queryByRole("separator")).toBeNull();
+    for (const width of [859, 860, 1000, 600, 1200]) {
+      reportCenterWidth(width);
+      expect(
+        screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+      ).toEqual(["chat-pane-chat:b"]);
+      expect(screen.queryByRole("separator")).toBeNull();
+    }
 
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:a");
@@ -195,28 +216,51 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     expect(screen.queryByTestId("chat-pane-chat:b")).toBeNull();
 
     reportCenterWidth(1_000);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    expect(screen.getByRole("separator")).toHaveAttribute(
-      "aria-valuenow",
-      "55",
-    );
+    expect(
+      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+    ).toEqual(["chat-pane-chat:a"]);
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 
-  it("disconnects its center-width observer on unmount", () => {
+  it("replaces the center when New chat adds and activates a tab", () => {
+    render(<AgentChatPanes />);
+    reportCenterWidth(1200);
+    act(() =>
+      useWorkbenchStore.setState({
+        tabs: [...tabs, { ...tabs[0]!, id: "chat:new", title: "New chat" }],
+        activeTabId: "chat:new",
+      }),
+    );
+    expect(
+      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+    ).toEqual(["chat-pane-chat:new"]);
+    reportCenterWidth(859);
+    reportCenterWidth(1200);
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+  });
+
+  it("does not observe center width at all for a single chat", () => {
     const view = render(<AgentChatPanes />);
     view.unmount();
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(resizeCallback).toBeNull();
   });
 
-  it("retains both visible Chat browse sessions across a focused page update", () => {
+  it("retains both explicitly visible Chat browse sessions across a focused page update", () => {
     useWorkbenchStore.setState({
+      tabs: [tabs[0]!, { ...tabs[1]!, id: "side-b" }],
+      activeTabId: "side-b",
       project: { id: "project-a", name: "A", roots: [] },
       projectGeneration: 7,
       nativeTransitionEpoch: 7,
       projectTransitioning: false,
     });
     seedPreviewOwner("chat:a", "session-a");
-    seedPreviewOwner("chat:b", "session-b");
+    seedPreviewOwner("side-b", "session-b");
+    useSideChatState.setState({
+      sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+      pairedId: "side-b",
+    });
     const ownerA: HarnessBrowseOwner = {
       projectId: "project-a" as HarnessBrowseOwner["projectId"],
       projectGeneration: "7" as HarnessBrowseOwner["projectGeneration"],
@@ -227,17 +271,17 @@ describe("AgentChatPanes measured focus-only fallback", () => {
     };
     const ownerB: HarnessBrowseOwner = {
       ...ownerA,
-      chatId: "chat:b" as HarnessBrowseOwner["chatId"],
+      chatId: "side-b" as HarnessBrowseOwner["chatId"],
       sessionId: "session-b" as HarnessBrowseOwner["sessionId"],
     };
     render(<AgentChatPanes />);
     expect(harnessBrowseOwner()).toEqual(ownerB);
-    setHarnessBrowseOwner(ownerA, ["chat:a", "chat:b"]);
+    setHarnessBrowseOwner(ownerA, ["chat:a", "side-b"]);
     applyBrowseIntent({ owner: ownerA, url: "http://127.0.0.1:4173/a" });
-    setHarnessBrowseOwner(ownerB, ["chat:a", "chat:b"]);
+    setHarnessBrowseOwner(ownerB, ["chat:a", "side-b"]);
     applyBrowseIntent({ owner: ownerB, url: "http://127.0.0.1:4173/b" });
 
-    const focused = acpProjectionStoreFor("chat:b");
+    const focused = acpProjectionStoreFor("side-b");
     const scope = focused.getState().scope;
     const page = focused.getState().page;
     if (!scope || !page) throw new Error("Focused Chat projection was absent.");
@@ -973,6 +1017,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
     useSideChatState.setState({
       sides: [{ id: "side-x", projectId: "project-a", parentChatId: "chat:a" }],
       split: SIDE_CHAT_SPLIT,
+      pairedId: "side-x",
     });
   });
   afterEach(() =>
@@ -980,28 +1025,62 @@ describe("AgentChatPanes temporary side chat routing", () => {
       sides: [],
       pendingClose: null,
       split: SIDE_CHAT_SPLIT,
-      soloChatId: null,
+      pairedId: null,
     }),
   );
 
-  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", () => {
+  it("pairs the parent left and the side right at an unpersisted 43 / 57 split", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     expect(
       screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
     ).toEqual(["chat-pane-chat:a", "chat-pane-side-x"]);
-    const splitter = screen.getByRole("separator", {
+    const splitter = await screen.findByRole("separator", {
       name: "Resize chat panes",
     });
     expect(splitter).toHaveAttribute("aria-valuenow", "43");
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     expect(splitter).toHaveAttribute("aria-valuenow", "48");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft", shiftKey: true });
+    expect(splitter).toHaveAttribute("aria-valuenow", "38");
+    fireEvent.keyDown(splitter, { key: "Home" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "ArrowLeft" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "30");
+    fireEvent.keyDown(splitter, { key: "End" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    expect(splitter).toHaveAttribute("aria-valuenow", "70");
     expect(
       localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY) ?? "",
     ).not.toContain("48");
   });
 
-  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", () => {
+  it("restores focus inside the explicit pair after an Editor resource roundtrip", () => {
+    useSideChatState.setState({
+      sides: [{ id: "side-x", projectId: "project-a", parentChatId: "chat:b" }],
+    });
+    const view = render(<AgentChatPanes />);
+    view.unmount();
+    useWorkbenchStore.setState({ activeTabId: "file:editor" });
+    render(<AgentChatPanes />);
+    expect(
+      screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
+    ).toEqual(["chat-pane-chat:b", "chat-pane-side-x"]);
+    expect(pinnedAgentChatOwner()).toBe("chat:b");
+  });
+
+  it("keeps New chat available with a solo side pane and hidden navigation", async () => {
+    const createChat = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ createChat });
+    render(<AgentChatPanes navigationCollapsed />);
+    reportCenterWidth(859);
+    await settleLazyModules();
+    fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
+    expect(createChat).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the parent's own header and puts the side tab in the same row (Codex s2/f0244)", async () => {
     const { container } = render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     const header = container.querySelector(".agent-chat-center__header")!;
@@ -1012,6 +1091,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(header).toHaveStyle({
       gridTemplateColumns: "minmax(0, 43fr) minmax(0, 57fr)",
     });
+    await within(header as HTMLElement).findByText("Chat A");
     const cells = Array.from(header.children);
     expect(cells[0]).toHaveTextContent("Chat A");
     expect(cells[0]).not.toHaveTextContent("Side chat");
@@ -1025,18 +1105,15 @@ describe("AgentChatPanes temporary side chat routing", () => {
     ]);
   });
 
-  it("falls back to the ordinary two-pane policy when another Chat takes focus", async () => {
+  it("replaces the center when another Chat takes focus", async () => {
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:b");
     });
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
     expect(screen.getByTestId("chat-pane-chat:b")).toBeInTheDocument();
-    expect(screen.getByRole("separator")).toHaveAttribute(
-      "aria-valuenow",
-      "50",
-    );
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 
   it("shows a just-opened fork alone until the user selects another Chat (P3)", async () => {
@@ -1046,21 +1123,51 @@ describe("AgentChatPanes temporary side chat routing", () => {
     });
     render(<AgentChatPanes />);
     reportCenterWidth(1_000);
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
-    // The fork commit activates the fork and marks it solo.
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+    // The fork commit activates the fork.
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:b");
-      useSideChatState.setState({ soloChatId: "chat:b" });
     });
     expect(
       screen.getAllByTestId(/chat-pane-/).map((pane) => pane.dataset.testid),
     ).toEqual(["chat-pane-chat:b"]);
     expect(screen.queryByRole("separator")).toBeNull();
-    // Selecting another Chat is the user's own choice; pairing resumes.
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:a");
     });
-    expect(useSideChatState.getState().soloChatId).toBeNull();
-    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+    expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
   });
+
+  it.each(["chat:a", "side-x"])(
+    "only reopens a responsive-hidden side pane through an explicit launch from %s",
+    async (owner) => {
+      render(<AgentChatPanes />);
+      reportCenterWidth(1000);
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+      reportCenterWidth(859);
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(1);
+      for (const width of [860, 1200, 600, 1400]) {
+        reportCenterWidth(width);
+        expect(
+          screen
+            .getAllByTestId(/chat-pane-/)
+            .map((pane) => pane.dataset.testid),
+        ).toEqual(["chat-pane-side-x"]);
+      }
+      await act(async () => {
+        await useWorkbenchStore.getState().activateTab(owner);
+      });
+      await act(async () => {
+        await launchSideChat(
+          owner,
+          "project-a",
+          useWorkbenchStore.getState().projectGeneration,
+        );
+      });
+      expect(screen.getAllByTestId(/chat-pane-/)).toHaveLength(2);
+      expect(screen.getByTestId("chat-pane-chat:a")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-pane-side-x")).toBeInTheDocument();
+      expect(useSideChatState.getState().sides).toHaveLength(1);
+    },
+  );
 });

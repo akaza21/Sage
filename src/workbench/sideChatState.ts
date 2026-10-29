@@ -17,13 +17,12 @@ export const useSideChatState = create<{
   sides: readonly SideChatEntry[];
   pendingClose: string | null;
   split: number;
-  /** Show a new fork alone, replacing its parent pane until another Chat is selected. */
-  soloChatId: string | null;
+  pairedId: string | null;
 }>(() => ({
   sides: [],
   pendingClose: null,
   split: SIDE_CHAT_SPLIT,
-  soloChatId: null,
+  pairedId: null,
 }));
 
 /** Rust/fixture temporary Chat ID prefix. */

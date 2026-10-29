@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { Profiler, type ComponentType, type ReactNode } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
@@ -13,6 +13,7 @@ import type * as StatusBarModule from "./StatusBar";
 import type * as TabStripModule from "./TabStrip";
 import type * as TitleBarModule from "./TitleBar";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 // Each region outside the File surface commits under its own Profiler, so a
 // re-render caused by its own store subscription is counted too.
@@ -92,6 +93,8 @@ const tabs: WorkbenchTab[] = [
     resource,
   },
 ];
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();

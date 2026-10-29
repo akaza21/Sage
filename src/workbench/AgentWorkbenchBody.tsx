@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from "react";
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { LeftSidebar } from "./LeftSidebar";
+import { AgentNavigationPart } from "./agentNavigationLazy";
 import { AgentToolsProvider } from "./AgentToolsProvider";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
@@ -11,6 +12,8 @@ export function AgentWorkbenchBody({
   layout,
   style,
   drawerOpen,
+  navigationCollapsed = false,
+  onExpandNavigation,
   artifactExpanded,
   onArtifactExpandedChange,
   onAgentLeftRailWidthChange,
@@ -22,6 +25,8 @@ export function AgentWorkbenchBody({
   layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
   drawerOpen: boolean;
+  navigationCollapsed?: boolean;
+  onExpandNavigation: () => void;
   artifactExpanded: boolean;
   onArtifactExpandedChange: (expanded: boolean) => void;
   onAgentLeftRailWidthChange: (width: number) => void;
@@ -44,10 +49,19 @@ export function AgentWorkbenchBody({
           } as CSSProperties
         }
       >
-        <LeftSidebar
-          inert={layout.artifactModal}
-          onOpenSettings={onOpenSettings}
-        />
+        {navigationCollapsed ? (
+          <AgentNavigationPart
+            part="AgentCollapsedNavigation"
+            inert={layout.artifactModal}
+            onOpenSettings={onOpenSettings}
+            onExpand={onExpandNavigation}
+          />
+        ) : (
+          <LeftSidebar
+            inert={layout.artifactModal}
+            onOpenSettings={onOpenSettings}
+          />
+        )}
         {layout.navigationResizable ? (
           <WorkbenchSidebarSplitter
             ariaLabel="Resize project and chat rail"
@@ -63,7 +77,8 @@ export function AgentWorkbenchBody({
           aria-hidden={drawerOpen || undefined}
         >
           <AgentChatPanes
-            compact={!layout.navigationResizable}
+            compact={layout.compact}
+            navigationCollapsed={navigationCollapsed}
             onArtifactHeaderMount={setArtifactHeader}
           />
         </div>

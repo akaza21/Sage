@@ -1,0 +1,158 @@
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+import { useWorkbenchStore } from "../app/store";
+import { settleLazyModules } from "../test/settleLazyModules";
+import { Workbench } from "./Workbench";
+
+vi.mock("../features/chat/ChatSurface", () => ({
+  ChatSurface: () => <textarea aria-label="Composer" />,
+}));
+
+const initialState = useWorkbenchStore.getState();
+const tabs = ["a", "b"].map((name, position) => ({
+  id: `chat:${name}`,
+  kind: "chat" as const,
+  title: `Chat ${name}`,
+  position,
+  pinned: false,
+  dirty: false,
+}));
+let resizeCenter: (width: number) => void;
+
+beforeEach(() => {
+  resizeCenter = () => undefined;
+  localStorage.clear();
+  vi.stubGlobal("innerWidth", 1800);
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        if (target.id === "agent-chat-panel")
+          resizeCenter = (width) =>
+            act(() =>
+              this.callback(
+                [{ contentRect: { width } } as ResizeObserverEntry],
+                {} as ResizeObserver,
+              ),
+            );
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  useWorkbenchStore.setState({
+    ...initialState,
+    phase: "ready",
+    project: { id: "project-a", name: "A", roots: [] },
+    projects: [{ id: "project-a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
+    tabs,
+    activeTabId: "chat:b",
+    sidebarOpen: true,
+    activateTab: vi.fn(async (activeTabId) =>
+      useWorkbenchStore.setState({ activeTabId }),
+    ),
+    createChat: vi.fn(async () =>
+      useWorkbenchStore.setState({
+        tabs: [...tabs, { ...tabs[0]!, id: "chat:new", title: "New chat" }],
+        activeTabId: "chat:new",
+      }),
+    ),
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  vi.unstubAllGlobals();
+  useWorkbenchStore.setState(initialState, true);
+});
+
+it("starts a fresh profile in Agent, and never adds a chat when resources collapse or the center crosses 860px", async () => {
+  const { container } = render(<Workbench />);
+  await settleLazyModules();
+  expect(
+    screen.getByRole("radio", { name: "Agent", checked: true }),
+  ).toBeInTheDocument();
+  const visibleChats = () =>
+    [...container.querySelectorAll(".agent-chat-pane")].map((pane) =>
+      pane.getAttribute("data-chat-id"),
+    );
+  for (const width of [859, 860, 1200]) {
+    resizeCenter(width);
+    expect(visibleChats()).toEqual(["chat:b"]);
+  }
+  fireEvent.click(
+    screen.getByRole("button", { name: /Show files and preview/ }),
+  );
+  resizeCenter(700);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Collapse files, changes, and preview",
+    }),
+  );
+  resizeCenter(1200);
+  expect(visibleChats()).toEqual(["chat:b"]);
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
+  expect(visibleChats()).toEqual(["chat:new"]);
+});
+
+it("collapses navigation to its icon rail, keeps header New chat usable, and restores the user's divider width", async () => {
+  const { container } = render(<Workbench />);
+  await settleLazyModules();
+  const splitter = screen.getByRole("separator", {
+    name: "Resize project and chat rail",
+  });
+  fireEvent.keyDown(splitter, { key: "End" });
+  const body = container.querySelector(".workbench__body") as HTMLElement;
+  const columns = body.style.gridTemplateColumns;
+  expect(columns).toMatch(/^460px /);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide projects and chats" }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Show projects and chats" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await settleLazyModules();
+  expect(
+    container.querySelector(".project-sidebar__icon-rail"),
+  ).toBeInTheDocument();
+  expect(container.querySelector(".workbench")).toHaveClass(
+    "workbench--navigation-collapsed",
+  );
+  expect(container.querySelector(".project-sidebar__scroll")).toBeNull();
+  expect(container.querySelector(".project-sidebar__actions")).toBeNull();
+  expect(container.querySelector(".project-sidebar__account")).toBeNull();
+  expect(body.style.gridTemplateColumns).toBe("54px minmax(0, 1fr)");
+  expect(
+    screen.queryByRole("separator", { name: "Resize project and chat rail" }),
+  ).toBeNull();
+  const newChat = container.querySelector<HTMLButtonElement>(
+    ".agent-task-header button[aria-label='New chat']",
+  )!;
+  fireEvent.click(newChat);
+  expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show projects and chats" }),
+  );
+  expect(body.style.gridTemplateColumns).toBe(columns);
+  expect(
+    container.querySelector(".agent-task-header button[aria-label='New chat']"),
+  ).toBeNull();
+});

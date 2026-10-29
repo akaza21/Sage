@@ -131,12 +131,17 @@ export async function openComposerOptions(page: Page) {
 export async function expectFocusedChatIndicator(
   page: Page,
   forcedColors = false,
+  paneCount: 1 | 2 = 1,
 ) {
-  const panes = page.locator(".agent-chat-panes--split .agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  const panes = page.locator(".agent-chat-pane");
+  await expect(panes).toHaveCount(paneCount);
   const focused = panes.and(page.locator(".agent-chat-pane--focused"));
   await expect(focused).toHaveCount(1);
   await expect(focused).toBeVisible();
+  if (paneCount === 1) {
+    await expect(focused).toHaveCSS("outline-style", "none");
+    return;
+  }
   expect(
     await focused.evaluate((node, forced) => {
       const style = getComputedStyle(node);
@@ -362,7 +367,7 @@ export async function runAgentCanonicalTest(
     await expectLiveThinkingFixtureLine(page);
   }
   if (name === "agent-image") {
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expectAgentImageContained(page);
   }
   if (name === "agent-child-activity") {

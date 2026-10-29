@@ -266,16 +266,15 @@ for (const width of [720, 480]) {
   );
 }
 
-test("CP-30c two visible chats keep disclosure and activity isolated", async ({
+test("CP-30c switching open chats keeps disclosure and activity isolated", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "agent-dual", "agent");
   await settleChatProjections(page);
   const panes = page.locator(".agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  await expect(panes).toHaveCount(1);
   const first = panes.first();
-  const second = panes.nth(1);
   const owner = await first
     .locator(".acp-chat-projection")
     .getAttribute("data-chat-id");
@@ -284,14 +283,20 @@ test("CP-30c two visible chats keep disclosure and activity isolated", async ({
   await expect(first.locator(".acp-editing-files")).toBeVisible();
   await first.getByRole("button", { name: /^2 files changed/ }).click();
   await expect(first.locator(".acp-file-changes li")).toHaveCount(2);
-  await expect(second.locator(".acp-file-changes")).toHaveCount(0);
-  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: /^Open chat Editor consistency pass/ })
+    .click();
+  await expect(panes).toHaveCount(1);
+  await expect(panes.first().locator(".acp-file-changes")).toHaveCount(0);
+  await expect(panes.first().locator(".acp-editing-files")).toHaveCount(0);
   await edit(page, "completed", owner!);
+  await page
+    .getByRole("button", { name: /^Open chat Agent navigation polish/ })
+    .click();
   await expect(first.locator(".acp-editing-files")).toHaveCount(0);
-  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
 });
 
-test("CP-30d two selected chats keep edit zones and queued trays free of resize loops", async ({
+test("CP-30d the selected chat keeps edit zones and queued trays free of resize loops", async ({
   page,
 }) => {
   // Chromium reports ResizeObserver loops as a window error event without an
@@ -319,7 +324,7 @@ test("CP-30d two selected chats keep edit zones and queued trays free of resize 
   await settleChatProjections(page);
   await collapseArtifactPane(page);
   const panes = page.locator(".agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  await expect(panes).toHaveCount(1);
   for (const pane of await panes.all()) {
     const owner = await pane
       .locator(".acp-chat-projection")

@@ -1,6 +1,10 @@
 @import "./split-chat-controls.css";
 @import "./agent-task-header.css";
 
+.workbench--agent.workbench--navigation-collapsed .project-sidebar {
+  grid-template-columns: 54px;
+}
+
 .agent-chat-center {
   display: grid;
   container-name: chat-center;

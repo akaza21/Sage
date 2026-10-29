@@ -53,10 +53,10 @@ export function useAgentArtifactPaneFocus({
 
   return (event: KeyboardEvent<HTMLElement>) => {
     const pane = paneRef.current;
-    if (!expanded || !pane) return;
+    if (!expanded || !pane || event.defaultPrevented) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      if (overlay) event.stopPropagation();
+      event.stopPropagation();
       onExpandedChange?.(false);
     } else if (overlay && event.key === "Tab") {
       const controls = Array.from(

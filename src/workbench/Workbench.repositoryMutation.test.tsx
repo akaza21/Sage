@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -23,6 +23,7 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
 }));
 
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 const initialState = useWorkbenchStore.getState();
 const resource = { rootId: "root-a", relativePath: "src/file.txt" };
@@ -38,6 +39,8 @@ function tab(kind: WorkbenchTab["kind"]): WorkbenchTab {
     resource: kind === "chat" ? undefined : resource,
   };
 }
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();

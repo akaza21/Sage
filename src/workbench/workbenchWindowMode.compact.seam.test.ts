@@ -6,7 +6,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
@@ -18,6 +18,7 @@ import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -57,6 +58,8 @@ function seedArtifactOwner(): void {
     nextCursor: null,
   } as unknown as AcpChatPage);
 }
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
