@@ -27,6 +27,7 @@ import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
 import { copyPngToClipboard } from "./browserClipboard";
 import { BrowserDrawers } from "./BrowserSitePermissions";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
 import {
   ClosedBrowserSurface,
@@ -55,9 +56,7 @@ function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
-  if (tab.status === "closed") {
-    return <ClosedBrowserSurface tabId={tab.id} />;
-  }
+  if (tab.status === "closed") return <ClosedBrowserSurface tabId={tab.id} />;
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -85,7 +84,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [findText, setFindText] = useState("");
   const [zoomPending, setZoomPending] = useState(false);
@@ -136,7 +134,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
-        unlisten = await listen<BrowserNavigation>(
+        const dispose = await listen<BrowserNavigation>(
           "browser:navigation",
           (event) => {
             if (!mounted || event.payload.tabId !== tab.id) return;
@@ -154,6 +152,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
             projectBrowserTabStatus(tab.id, event.payload);
           },
         );
+        if (!mounted) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
         const status = await browserStatus(tab.id);
         if (mounted) {
           if (!/^(0|[1-9]\d{0,19})$/.test(status.revision)) return;
@@ -306,7 +309,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}
           onHistory={openHistory}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() =>
+            useAgentSettingsState.getState().open("Browser", tab.id)
+          }
           onCopy={() =>
             void pageAction(() => navigator.clipboard.writeText(page!.url))
           }
@@ -364,10 +369,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <BrowserDrawers
         tabId={tab.id}
-        settingsOpen={settingsOpen}
         historyOpen={historyOpen}
         historyEntries={historyEntries}
-        onCloseSettings={() => setSettingsOpen(false)}
         onCloseHistory={() => setHistoryOpen(false)}
         onNavigate={(url) =>
           void pageAction(() => browserNavigate(tab.id, url))

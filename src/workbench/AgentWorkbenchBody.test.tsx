@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import { AgentWorkbenchBody } from "./AgentWorkbenchBody";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
@@ -24,6 +25,7 @@ vi.mock("./AgentArtifactPane", () => ({ AgentArtifactPane: () => null }));
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
   resetAgentRailViewPrefs();
   useWorkbenchStore.setState(initial, true);
@@ -51,11 +53,22 @@ function NavigationWorkbench() {
         onAgentLeftRailWidthChange={() => undefined}
         onAgentArtifactWidthChange={() => undefined}
         onOpenArtifactInEditor={() => undefined}
-        onOpenSettings={() => undefined}
       />
     </>
   );
 }
+
+it("opens Agent settings from collapsed navigation without opening an Editor tab", async () => {
+  const openSettings = vi.fn();
+  useWorkbenchStore.setState({ openSettings });
+  render(<NavigationWorkbench />);
+  fireEvent.click(screen.getByRole("button", { name: "Toggle navigation" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open settings from rail" }),
+  );
+  expect(useAgentSettingsState.getState().page).toBe("General");
+  expect(openSettings).not.toHaveBeenCalled();
+});
 
 it.each([
   ["Go to recent chats", "Recent", "folder", false],

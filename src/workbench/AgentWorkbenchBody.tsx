@@ -7,6 +7,7 @@ import { AgentNavigationPart } from "./agentNavigationLazy";
 import { AgentToolsProvider } from "./AgentToolsProvider";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
 export function AgentWorkbenchBody({
   layout,
@@ -19,7 +20,6 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange,
   onAgentArtifactWidthChange,
   onOpenArtifactInEditor,
-  onOpenSettings,
   onOpenTerminal,
 }: {
   layout: ReturnType<typeof agentWorkbenchLayout>;
@@ -32,9 +32,9 @@ export function AgentWorkbenchBody({
   onAgentLeftRailWidthChange: (width: number) => void;
   onAgentArtifactWidthChange: (width: number) => void;
   onOpenArtifactInEditor: (tabId: string) => void;
-  onOpenSettings: () => void;
   onOpenTerminal?: () => void;
 }) {
+  const openSettings = useAgentSettingsState((state) => state.open);
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
     null,
   );
@@ -53,14 +53,11 @@ export function AgentWorkbenchBody({
           <AgentNavigationPart
             part="AgentCollapsedNavigation"
             inert={layout.artifactModal}
-            onOpenSettings={onOpenSettings}
+            onOpenSettings={() => openSettings()}
             onExpand={onExpandNavigation}
           />
         ) : (
-          <LeftSidebar
-            inert={layout.artifactModal}
-            onOpenSettings={onOpenSettings}
-          />
+          <LeftSidebar inert={layout.artifactModal} />
         )}
         {layout.navigationResizable ? (
           <WorkbenchSidebarSplitter

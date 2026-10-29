@@ -266,62 +266,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     },
 
     openSettings: async () => {
-      const id = "settings:appearance";
-      const sourceActiveTabId = get().activeTabId;
-      const sourceActiveTab = get().tabs.find(
-        (tab) => tab.id === sourceActiveTabId,
+      const source = get();
+      const { openEditorSettings } =
+        await import("../features/settings/openEditorSettings");
+      return openEditorSettings(
+        set,
+        get,
+        source,
+        (tabId) => (settingsReturnTabId = tabId),
       );
-      if (sourceActiveTab?.id === id) return;
-      const sourceProjectId = get().project?.id ?? null;
-      const sourceGeneration = get().projectGeneration;
-      try {
-        await get().flushActiveEditor();
-      } catch (error) {
-        if (
-          get().projectGeneration === sourceGeneration &&
-          (get().project?.id ?? null) === sourceProjectId &&
-          get().activeTabId === sourceActiveTabId
-        ) {
-          set({ error: errorMessage(error) });
-        }
-        return;
-      }
-      if (
-        get().projectTransitioning ||
-        get().fileRenameInFlight ||
-        get().resourceTrashInFlight ||
-        get().projectGeneration !== sourceGeneration ||
-        (get().project?.id ?? null) !== sourceProjectId ||
-        get().activeTabId !== sourceActiveTabId
-      ) {
-        return;
-      }
-      settingsReturnTabId =
-        sourceActiveTab?.kind === "file" || sourceActiveTab?.kind === "diff"
-          ? sourceActiveTab.id
-          : null;
-      if (!get().tabs.some((tab) => tab.id === id)) {
-        set((state) => ({
-          tabs: [
-            ...state.tabs,
-            {
-              id,
-              kind: "settings",
-              title: "Settings",
-              position: state.tabs.length,
-              pinned: false,
-              dirty: false,
-            },
-          ],
-          activeTabId: id,
-          activeEditor: null,
-        }));
-      } else {
-        set({ activeTabId: id, activeEditor: null });
-      }
-      void get()
-        .persistLayout()
-        .catch((error) => set({ error: errorMessage(error) }));
     },
 
     refreshRepository: async () => {

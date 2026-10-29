@@ -3,6 +3,7 @@ import { Search, Settings, SquarePen } from "../ui/leanIcons";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../app/store";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
 import {
@@ -67,10 +68,8 @@ export function ChatSearchGate({
 
 export function LeftSidebar({
   inert = false,
-  onOpenSettings,
 }: {
   inert?: boolean;
-  onOpenSettings?: () => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
@@ -79,7 +78,7 @@ export function LeftSidebar({
   const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const interactions = useAgentRailInteractions();
-  const openSettings = useWorkbenchStore((state) => state.openSettings);
+  const openSettings = useAgentSettingsState((state) => state.open);
   const loadRepositoryInventory = useWorkbenchStore(
     (state) => state.loadRepositoryInventory,
   );
@@ -247,13 +246,7 @@ export function LeftSidebar({
           type="button"
           title="Open settings"
           aria-label="Open settings"
-          onClick={() => {
-            if (onOpenSettings) {
-              onOpenSettings();
-              return;
-            }
-            void openSettings();
-          }}
+          onClick={() => openSettings()}
         >
           <Settings size={16} aria-hidden="true" />
         </button>

@@ -7,6 +7,7 @@ import {
 } from "../domain/uiAppearance";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
+import { projectUiAppearance } from "../features/settings/uiAppearanceProjection";
 
 const LOAD_FAILURE = "Appearance settings could not be loaded.";
 const SAVE_FAILURE = "Appearance settings could not be saved.";
@@ -49,3 +50,7 @@ export const useUiAppearanceStore = create<UiAppearanceStore>((set, get) => ({
     );
   },
 }));
+
+useUiAppearanceStore.subscribe(({ appearance }, previous) => {
+  if (appearance !== previous.appearance) projectUiAppearance(appearance);
+});

@@ -30,6 +30,8 @@ import { acpDesktop } from "../../services/acpDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { useSideChatState } from "../../workbench/sideChatState";
+import { Workbench } from "../../workbench/Workbench";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
 
 const hooks = vi.hoisted(() => ({
@@ -274,6 +276,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   useWorkbenchStore.setState(initialState, true);
   clearAcpProjectionRegistry();
   clearAgentChatOwner();
@@ -631,6 +634,69 @@ describe("ChatSurface ACP resource integration", () => {
       ),
     );
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
+  });
+
+  it("drains a queued follow-up while Settings sleeps the real Chat surface", async () => {
+    localStorage.clear();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    const view = render(<Workbench />);
+    fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+    await settleLazyModules();
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Message agent" }),
+      {
+        target: { value: "Continue while settings is open" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts?.[0]
+          ?.status,
+      ).toBe("queued"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await screen.findByRole("region", { name: "Agent settings" });
+    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    setTurnState("completed");
+    view.rerender(<Workbench />);
+    await waitFor(() =>
+      expect(hooks.actions.submit).toHaveBeenCalledWith(
+        "Continue while settings is open",
+        [],
+        "codex-app-server",
+        null,
+      ),
+    );
+    expect(
+      screen.getByRole("region", { name: "Agent settings" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+    await screen.findByRole("textbox", { name: "Message agent" });
+    expect(hooks.actions.submit).toHaveBeenCalledOnce();
   });
 
   it("keeps one send-slot control while a cancellable Turn can queue by Enter", async () => {
