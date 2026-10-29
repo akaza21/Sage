@@ -13,11 +13,13 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
   browserHistory,
   browserLiveTabs,
-  browserDownloads,
   browserPermissionStatus,
+} from "../../ports/nativeBrowserPort";
+import {
+  browserDownloads,
   browserCancelDownload,
   browserShowDownloadInFolder,
-} from "../../ports/nativeBrowserPort";
+} from "../../ports/nativeBrowserDownloadsPort";
 
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: vi.fn(() => true),
@@ -29,7 +31,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserLiveTabs: vi.fn(async () => ["browser-a", "browser-b"]),
   closeBrowser: vi.fn(async () => undefined),
   browserHistory: vi.fn(async () => ["https://example.com/visited"]),
-  browserDownloads: vi.fn(async () => []),
   browserPermissionStatus: vi.fn(async (tabId: string) => ({
     tabId,
     pending: [],
@@ -37,9 +38,12 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   })),
   browserPermissionRevoke: vi.fn(),
   browserPermissionResolve: vi.fn(),
+  browserClearData: vi.fn(),
+}));
+vi.mock("../../ports/nativeBrowserDownloadsPort", () => ({
+  browserDownloads: vi.fn(async () => []),
   browserCancelDownload: vi.fn(),
   browserShowDownloadInFolder: vi.fn(),
-  browserClearData: vi.fn(),
 }));
 const initial = useWorkbenchStore.getState();
 beforeEach(() => {
