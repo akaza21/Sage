@@ -96,6 +96,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  "src/features/chat/acp/TurnFileActivity.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
   // A terminal turn's Git workspace changes load after the turn settles.

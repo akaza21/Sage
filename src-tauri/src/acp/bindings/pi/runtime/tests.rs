@@ -234,6 +234,24 @@ fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
         batch.events(),
         [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+            ..
+        }] if summary.as_str() == "Check the fixture"
+    ));
+    let completed = runtime
+        .ingest(
+            &frame(json!({
+                "type":"message_update",
+                "assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Check the fixture"}
+            })),
+            &Mapper,
+        )
+        .expect("thinking end");
+    assert!(matches!(
+        completed.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
             ..
         }] if summary.as_str() == "Check the fixture"
     ));

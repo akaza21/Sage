@@ -32,8 +32,8 @@
       },
       {
         "entry": "src/features/chat/acp/TurnEditSummary.tsx",
-        "maxGzipBytes": 2750,
-        "reason": "Edited-files card and Git-change bridge; loads with the transcript footer, outside Agent + one chat's static closure."
+        "maxGzipBytes": 1900,
+        "reason": "AP-E moves the existing current-chat edit disclosure off the first-Chat static path. Measured exclusive JS 1677 B; saved diff rendering stays click-lazy."
       },
       {
         "entry": "src/features/chat/acp/turnWorkspaceChanges.ts",
@@ -103,6 +103,12 @@
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
         "maxGzipBytes": 1450,
         "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager (AP-D)."
+      },
+      {
+        "entry": "src/features/chat/acp/TurnFileActivity.tsx",
+        "maxGzipBytes": 1100,
+        "maxCssGzipBytes": 650,
+        "reason": "AP-E root-qualified edited-files card, capped at 32 rows; loads only for a completed Turn with file edits. Measured JS 987 B and CSS 562 B; no dependencies."
       },
       {
         "entry": "src/features/browser/BrowserNewTab.tsx",

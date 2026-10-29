@@ -19,6 +19,7 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
+import { rootDisplayName } from "./rootDisplayName";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -30,18 +31,6 @@ interface TurnEditSummaryProps {
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
-}
-
-function rootDisplayName(
-  rootLabels: Readonly<Record<string, string>>,
-  rootId: string,
-): string {
-  const projected = Object.prototype.hasOwnProperty.call(rootLabels, rootId)
-    ? rootLabels[rootId]
-    : null;
-  return typeof projected === "string" && projected.length > 0
-    ? projected
-    : rootId;
 }
 
 export const TurnEditSummary = memo(function TurnEditSummary({
@@ -162,14 +151,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                       {change.operation}
                     </span>
                   )}
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                   <span className="acp-file-changes__summary">
                     {change.summary}
                   </span>
@@ -218,14 +200,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
                 {admitted && counted ? null : (
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                 )}
                 <span className="acp-file-changes__summary">
                   {change.summary}
