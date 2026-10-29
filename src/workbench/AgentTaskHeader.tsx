@@ -9,9 +9,7 @@ import {
   useContext,
   useCallback,
 } from "react";
-import { useStore } from "zustand";
 
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -81,17 +79,10 @@ export function AgentTaskHeader({
     return () =>
       document.removeEventListener("pointerdown", dismissOutside, true);
   }, [resourcesOpen, renaming, dismissPending]);
-  const page = useStore(
-    acpProjectionStoreFor(tab?.id ?? null),
-    (state) => state.page,
-  );
   const resourcesScope = [
     project?.id,
     generation,
     tab?.id,
-    page?.currentSessionId,
-    page?.sessions.find((session) => session.id === page.currentSessionId)
-      ?.runtimeEpoch,
     projectTransitioning,
   ].join("\u0000");
   const [[previousScope, restoreFocus], setPreviousScope] = useState<
@@ -201,7 +192,7 @@ export function AgentTaskHeader({
           aria-controls={resourcesId}
           aria-haspopup="dialog"
           aria-expanded={resourcesOpen}
-          title="Outputs, Subagents, and Sources"
+          title="Changes, Subagents, Background processes, and Sources"
           onClick={() => setResourcesOpen((open) => !open)}
         >
           <ListChecks size={16} aria-hidden="true" />
@@ -209,14 +200,12 @@ export function AgentTaskHeader({
         {resourcesOpen ? (
           <AgentTaskResourcesPart
             part="AgentTaskResources"
-            page={page}
             chatId={currentTab.id}
-            projectId={currentProject.id}
-            id={resourcesId}
-            triggerRef={resourcesTriggerRef}
+            resourcesId={resourcesId}
+            resourcesTriggerRef={resourcesTriggerRef}
             showAllSources={showAllSources}
             onToggleSources={() => setShowAllSources((shown) => !shown)}
-            onClose={() => setResourcesOpen(false)}
+            onDismiss={() => setResourcesOpen(false)}
           />
         ) : null}
       </div>

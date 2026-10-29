@@ -31,6 +31,42 @@ afterEach(() => {
 });
 
 describe("DiffSurface resource states", () => {
+  it("caps rendered lines even when an adapter returns more than the native limit", () => {
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      loadDiff: vi.fn(async () => undefined),
+      diffs: {
+        [cacheKey]: {
+          phase: "ready",
+          value: {
+            resource,
+            binary: false,
+            truncated: false,
+            hunks: [
+              {
+                header: "@@",
+                lines: Array.from({ length: 1201 }, (_, index) => ({
+                  kind: "added" as const,
+                  oldLine: null,
+                  newLine: index + 1,
+                  text: "bounded line " + (index + 1),
+                })),
+              },
+            ],
+          },
+        },
+      },
+    });
+    const { container } = render(<DiffSurface tab={tab} />);
+    expect(container.querySelectorAll(".diff-line")).toHaveLength(1200);
+    expect(
+      screen.getByText(
+        "Diff capped at 1,200 lines to protect UI responsiveness.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText("+bounded line 1201")).toBeNull();
+  });
   it("refreshes the current diff and opens its file from the review toolbar", () => {
     const loadDiff = vi.fn(async () => undefined);
     const openFile = vi.fn(async () => undefined);

@@ -222,6 +222,7 @@ function DiffDocument({
           <DiffHunks
             diff={diff.value}
             label="Unified file diff"
+            maxLines={1200}
             limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
             renderComment={
               canComment && tab.diffRef
