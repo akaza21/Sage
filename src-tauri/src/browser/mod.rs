@@ -260,7 +260,7 @@ impl<T> BrowserTabs<T> {
         }) {
             return false;
         }
-        self.begin_evidence(label, navigation_id, url);
+        self.begin_evidence(label, navigation_id);
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
         };

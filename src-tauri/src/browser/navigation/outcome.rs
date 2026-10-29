@@ -11,11 +11,16 @@
 //! raises `ContentLoading` (with the `NavigationId` and `IsErrorPage`) once a
 //! document, or an error page, commits. So:
 //! - committed document: `Committed` at the WebView's `Source()`;
-//! - committed error page: `Failed`, reported with the status's reason;
-//! - no commit, and `OPERATION_CANCELED` or a `DownloadStarting` for this
-//!   navigation's own URI or redirect hop: `Abandoned`, the previous page
-//!   stays;
-//! - no commit otherwise: `Failed`.
+//! - committed error page: `Failed`, reported with the status's reason
+//!   (Chromium commits an error page for real load failures: DNS, refused
+//!   connection, certificate);
+//! - no commit at all: `Abandoned`, the previous page stays. Nothing on
+//!   screen changed, whatever `WebErrorStatus` says: on real WebView2 a
+//!   navigation that became a download, and a Stop during a slow load,
+//!   report a non-`OPERATION_CANCELED` status and no `ContentLoading`.
+//!
+//! The settle step still refuses an abandon whose `Source()` is not the
+//! page the tab will report (`settle::abandon_consistent`).
 //!
 //! `Source()` differing from the committed URL is never taken as proof of a
 //! commit: the page can change its own hash or history while a navigation is
@@ -81,21 +86,16 @@ impl Settled {
     }
 }
 
-pub(crate) fn classify<'a>(
-    completion: Completion<'a>,
-    commit: Option<Commit>,
-    became_download: bool,
-) -> Outcome<'a> {
+pub(crate) fn classify<'a>(completion: Completion<'a>, commit: Option<Commit>) -> Outcome<'a> {
     let source = completion.source.filter(|source| admit_url(source).is_ok());
     let reason = failure_reason(completion.web_error);
     if completion.success || commit == Some(Commit::Document) {
         return source.map_or(Outcome::Failed(reason), Outcome::Committed);
     }
-    if commit.is_none() && (completion.web_error == WEB_ERROR_OPERATION_CANCELED || became_download)
-    {
-        return Outcome::Abandoned;
+    match commit {
+        Some(_) => Outcome::Failed(reason),
+        None => Outcome::Abandoned,
     }
-    Outcome::Failed(reason)
 }
 
 fn failure_reason(web_error: i32) -> &'static str {
@@ -125,32 +125,46 @@ mod tests {
     }
 
     #[test]
-    fn uncommitted_cancel_or_own_download_is_abandoned() {
-        let canceled = failed(WEB_ERROR_OPERATION_CANCELED, PAGE);
-        assert_eq!(classify(canceled, None, false), Outcome::Abandoned);
-        // Whatever status WebView2 gives a download, the correlation holds.
-        assert_eq!(classify(failed(9, PAGE), None, true), Outcome::Abandoned);
+    fn nothing_committed_is_abandoned_whatever_the_status() {
+        // Real WebView2: a download and a Stop report statuses other than
+        // OPERATION_CANCELED (BP-H5b native run); neither committed anything.
+        for web_error in [
+            WEB_ERROR_UNKNOWN,
+            9,
+            11,
+            12,
+            WEB_ERROR_OPERATION_CANCELED,
+            16,
+        ] {
+            assert_eq!(
+                classify(failed(web_error, PAGE), None),
+                Outcome::Abandoned,
+                "status {web_error}"
+            );
+        }
         // A changed Source() alone is not a commit.
         let drifted = failed(WEB_ERROR_OPERATION_CANCELED, "https://example.com/page#x");
-        assert_eq!(classify(drifted, None, false), Outcome::Abandoned);
+        assert_eq!(classify(drifted, None), Outcome::Abandoned);
     }
 
     #[test]
-    fn failures_and_error_pages_are_reported() {
+    fn committed_error_pages_are_reported() {
         assert_eq!(
-            classify(failed(13, "https://missing.example/"), None, false),
+            classify(
+                failed(13, "https://missing.example/"),
+                Some(Commit::ErrorPage)
+            ),
             Outcome::Failed("The site's address could not be found")
         );
         assert_eq!(
-            classify(failed(12, PAGE), Some(Commit::ErrorPage), true),
+            classify(failed(12, PAGE), Some(Commit::ErrorPage)),
             Outcome::Failed("The site could not be reached")
         );
         // A cancel after an error page committed is still that failure.
         assert_eq!(
             classify(
                 failed(WEB_ERROR_OPERATION_CANCELED, PAGE),
-                Some(Commit::ErrorPage),
-                false
+                Some(Commit::ErrorPage)
             ),
             Outcome::Failed("The page could not be loaded")
         );
@@ -160,15 +174,14 @@ mod tests {
     fn committed_documents_keep_their_url_whatever_the_status() {
         for web_error in [WEB_ERROR_UNKNOWN, WEB_ERROR_OPERATION_CANCELED, 17, 18] {
             assert_eq!(
-                classify(failed(web_error, PAGE), Some(Commit::Document), false),
+                classify(failed(web_error, PAGE), Some(Commit::Document)),
                 Outcome::Committed(PAGE)
             );
         }
         assert_eq!(
             classify(
                 failed(WEB_ERROR_UNKNOWN, "file:///C:/secret"),
-                Some(Commit::Document),
-                false
+                Some(Commit::Document)
             ),
             Outcome::Failed("The page could not be loaded")
         );

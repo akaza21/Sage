@@ -452,7 +452,7 @@ fn navigation_that_became_a_download_keeps_the_previous_page() {
     // A superseding start while loading must not lose the remembered page.
     assert!(tabs.start_navigation("browser-1", 3, "https://a.example/report.pdf"));
     assert!(tabs.start_navigation("browser-1", 4, "https://a.example/report.pdf"));
-    tabs.note_download("browser-1", "https://a.example/report.pdf");
+    tabs.note_download("browser-1");
     // WebView2 reports the download's navigation as unsuccessful while it
     // still shows the page it left.
     assert!(
@@ -542,6 +542,8 @@ fn abandoned_back_navigation_keeps_the_cursor_and_allows_another_traversal() {
 fn real_load_failure_is_reported_instead_of_a_blank_new_tab() {
     let mut tabs = committed_tab(&["https://a.example/"]);
     assert!(tabs.start_navigation("browser-1", 2, "https://missing.example/"));
+    // Chromium commits its error page for a real load failure.
+    tabs.note_content_loading("browser-1", 2, true);
     assert_eq!(
         tabs.settle_navigation(
             "browser-1",
@@ -620,7 +622,7 @@ fn unrelated_download_does_not_hide_a_failed_reload() {
     let mut tabs = committed_tab(&["https://a.example/"]);
     assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
     // An `<a download>` / blob download that is not this navigation.
-    tabs.note_download("browser-1", "blob:https://a.example/123");
+    tabs.note_download("browser-1");
     tabs.note_content_loading("browser-1", 2, true);
     assert_eq!(
         tabs.settle_navigation("browser-1", 2, failed_completion(11, "https://a.example/")),
@@ -633,19 +635,52 @@ fn unrelated_download_does_not_hide_a_failed_reload() {
 }
 
 #[test]
-fn redirected_navigation_that_became_a_download_keeps_the_page() {
+fn download_or_stop_without_any_commit_keeps_the_page_whatever_the_status() {
+    // Real WebView2 (BP-H5b native run): neither a download nor a Stop
+    // during a slow load reports OPERATION_CANCELED, and neither commits.
+    for web_error in [0, 9, 11, 12, 16] {
+        let mut tabs = committed_tab(&["https://a.example/", "https://a.example/files"]);
+        assert!(tabs.set_document_title("browser-1", "https://a.example/files", "Files"));
+        assert!(tabs.start_navigation("browser-1", 3, "https://slow.example/"));
+        tabs.note_download("browser-1");
+        assert_eq!(
+            tabs.settle_navigation(
+                "browser-1",
+                3,
+                failed_completion(web_error, "https://a.example/files")
+            ),
+            Some(navigation::outcome::Settled::Abandoned),
+            "status {web_error}"
+        );
+        let after = tabs.snapshot("browser-1").unwrap();
+        assert!(!after.loading);
+        assert_eq!(after.error, None);
+        assert_eq!(
+            after.committed_url.as_deref(),
+            Some("https://a.example/files")
+        );
+        assert_eq!(after.title.as_deref(), Some("Files"));
+        assert!(after.can_go_back);
+    }
+}
+
+#[test]
+fn navigation_trace_is_bounded_and_records_statuses() {
     let mut tabs = committed_tab(&["https://a.example/"]);
-    assert!(tabs.start_navigation("browser-1", 2, "https://a.example/get"));
-    tabs.note_redirect("browser-1", 2, "https://cdn.example/file.zip");
-    tabs.note_download("browser-1", "https://cdn.example/file.zip");
-    assert_eq!(
-        tabs.settle_navigation("browser-1", 2, failed_completion(9, "https://a.example/")),
-        Some(navigation::outcome::Settled::Abandoned)
+    for id in 2..40 {
+        assert!(tabs.start_navigation("browser-1", id, "https://a.example/"));
+        tabs.note_download("browser-1");
+        tabs.settle_navigation("browser-1", id, failed_completion(12, "https://a.example/"));
+    }
+    let trace = tabs.navigation_trace("browser-1");
+    assert_eq!(trace.len(), 16);
+    assert!(
+        trace
+            .last()
+            .unwrap()
+            .starts_with("complete 39 success=false web_error=12 -> Some(Abandoned)")
     );
-    assert_eq!(
-        tabs.snapshot("browser-1").unwrap().committed_url.as_deref(),
-        Some("https://a.example/")
-    );
+    assert!(trace.iter().all(|event| !event.contains("example")));
 }
 
 #[test]
@@ -703,7 +738,7 @@ fn superseded_after_commit(
     // Before navigation 2 completes, the new document starts navigation 3.
     assert!(tabs.start_navigation("browser-1", 3, next));
     if download {
-        tabs.note_download("browser-1", next);
+        tabs.note_download("browser-1");
     }
     assert_eq!(
         tabs.settle_navigation(
@@ -762,7 +797,7 @@ fn back_fallback_that_becomes_a_download_never_restores_the_old_page() {
         Some("https://a.example/")
     );
     assert!(tabs.start_navigation("browser-1", 4, "https://a.example/"));
-    tabs.note_download("browser-1", "https://a.example/");
+    tabs.note_download("browser-1");
     assert_ne!(
         tabs.settle_navigation(
             "browser-1",

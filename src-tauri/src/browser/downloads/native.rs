@@ -118,10 +118,10 @@ fn start_download(
             return Err(error);
         }
     };
-    // Allowed or denied, a navigation whose response this is will not commit;
-    // the tab keeps its page (`navigation::outcome`).
+    // Diagnostic trace only: a navigation that became a download commits
+    // nothing, so it settles as abandoned (`navigation::outcome`).
     if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
-        tabs.note_download(tab_id, &source);
+        tabs.note_download(tab_id);
     }
     let file_name = Path::new(&suggested)
         .file_name()

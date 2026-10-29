@@ -138,7 +138,7 @@ async fn native_history_action(_webview: Webview, _action: String) -> Result<boo
 }
 
 #[cfg(windows)]
-async fn native_stop(webview: Webview) -> Result<(), String> {
+pub(in crate::browser) async fn native_stop(webview: Webview) -> Result<(), String> {
     let (sender, receiver) = mpsc::sync_channel(1);
     webview
         .with_webview(move |platform| {

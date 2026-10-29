@@ -1,14 +1,17 @@
 //! Settling a tab when its native navigation completes. See `outcome` for
 //! how a completion is classified.
 
+use std::collections::VecDeque;
+
 use super::outcome::{Commit, Completion, Outcome, Settled, classify};
 use crate::browser::{BrowserTabs, admit_url};
 
-/// Redirect hops remembered per navigation, for download correlation.
-const MAX_NAVIGATION_URIS: usize = 16;
+/// Native navigation events remembered per tab for diagnosis (ids, flags and
+/// statuses only; no URLs).
+const MAX_TRACE: usize = 16;
 
 /// What the tab showed before a navigation started, so a navigation that
-/// never commits (a download, a cancel) can put it back.
+/// never commits (a download, a cancel, a Stop) can put it back.
 struct PageRestore {
     title: Option<String>,
     favicon: Option<String>,
@@ -19,10 +22,6 @@ struct PageRestore {
 #[derive(Default)]
 pub(in crate::browser) struct NavigationEvidence {
     restore: Option<PageRestore>,
-    /// The navigation's URI and its redirect hops (bounded).
-    uris: Vec<String>,
-    /// `DownloadStarting` named one of `uris` during this navigation.
-    became_download: bool,
     /// `ContentLoading` for this navigation id: a document committed.
     commit: Option<Commit>,
     /// A navigation this one superseded (or a Back/Forward attempt this
@@ -32,13 +31,24 @@ pub(in crate::browser) struct NavigationEvidence {
     /// The admitted URL on screen while the tab reports a failure; kept
     /// across settles so a later abandon compares against it.
     shown_failure: Option<String>,
+    /// Bounded event trace; kept across settles.
+    trace: VecDeque<String>,
+}
+
+impl NavigationEvidence {
+    fn record(&mut self, event: String) {
+        if self.trace.len() == MAX_TRACE {
+            self.trace.pop_front();
+        }
+        self.trace.push_back(event);
+    }
 }
 
 impl<T> BrowserTabs<T> {
     /// Called by `start_navigation` before it clears the page chrome. A
     /// navigation that supersedes one still loading keeps the first restore
     /// record; everything else is per navigation.
-    pub(in crate::browser) fn begin_evidence(&mut self, label: &str, _id: u64, uri: &str) {
+    pub(in crate::browser) fn begin_evidence(&mut self, label: &str, id: u64) {
         if let Some(tab) = self.entries.get_mut(label) {
             let page_changed = if tab.loading {
                 tab.evidence.commit.or(tab.evidence.page_changed)
@@ -60,54 +70,55 @@ impl<T> BrowserTabs<T> {
             };
             tab.evidence = NavigationEvidence {
                 restore,
-                uris: vec![uri.to_owned()],
                 page_changed,
                 shown_failure: tab.evidence.shown_failure.take(),
+                trace: std::mem::take(&mut tab.evidence.trace),
                 ..NavigationEvidence::default()
             };
-        }
-    }
-
-    /// `NavigationStarting` again for the loading id: a redirect hop.
-    pub(in crate::browser) fn note_redirect(&mut self, label: &str, id: u64, uri: &str) {
-        if let Some(tab) = self.entries.get_mut(label)
-            && tab.loading
-            && tab.navigation_id == Some(id)
-            && tab.evidence.uris.len() < MAX_NAVIGATION_URIS
-            && !tab.evidence.uris.iter().any(|known| known == uri)
-        {
-            tab.evidence.uris.push(uri.to_owned());
+            tab.evidence.record(format!(
+                "start {id}{}",
+                if tab.loading { " superseding" } else { "" }
+            ));
         }
     }
 
     /// `ContentLoading` for `id`: a new document (or error page) committed.
     pub(in crate::browser) fn note_content_loading(&mut self, label: &str, id: u64, error: bool) {
-        if let Some(tab) = self.entries.get_mut(label)
-            && tab.loading
-            && tab.navigation_id == Some(id)
-        {
-            tab.evidence.commit = Some(if error {
-                Commit::ErrorPage
-            } else {
-                Commit::Document
-            });
+        if let Some(tab) = self.entries.get_mut(label) {
+            let current = tab.loading && tab.navigation_id == Some(id);
+            tab.evidence.record(format!(
+                "content {id} error_page={error}{}",
+                if current { "" } else { " stale" }
+            ));
+            if current {
+                tab.evidence.commit = Some(if error {
+                    Commit::ErrorPage
+                } else {
+                    Commit::Document
+                });
+            }
         }
     }
 
-    /// `DownloadStarting` for `uri` (allowed or denied). Only a download of
-    /// the loading navigation's own URI or redirect hop counts: `<a
-    /// download>`, blob and subframe downloads are not this navigation.
-    pub(in crate::browser) fn note_download(&mut self, label: &str, uri: &str) {
-        if let Some(tab) = self.entries.get_mut(label)
-            && tab.loading
-            && tab
-                .evidence
-                .uris
-                .iter()
-                .any(|known| without_fragment(known) == without_fragment(uri))
-        {
-            tab.evidence.became_download = true;
+    /// `DownloadStarting` on this tab (allowed or denied). Diagnostic only:
+    /// a navigation that became a download commits nothing, which the
+    /// missing `ContentLoading` already says.
+    pub(in crate::browser) fn note_download(&mut self, label: &str) {
+        if let Some(tab) = self.entries.get_mut(label) {
+            let event = format!(
+                "download loading={} navigation={:?}",
+                tab.loading, tab.navigation_id
+            );
+            tab.evidence.record(event);
         }
+    }
+
+    #[cfg(any(test, feature = "native-lane"))]
+    pub(in crate::browser) fn navigation_trace(&self, label: &str) -> Vec<String> {
+        self.entries
+            .get(label)
+            .map(|tab| tab.evidence.trace.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub(in crate::browser) fn settle_navigation(
@@ -116,14 +127,19 @@ impl<T> BrowserTabs<T> {
         navigation_id: u64,
         completion: Completion<'_>,
     ) -> Option<Settled> {
-        let tab = self.entries.get(label)?;
+        let tab = self.entries.get_mut(label)?;
+        let event = format!(
+            "complete {navigation_id} success={} web_error={}",
+            completion.success, completion.web_error
+        );
         if tab.navigation_id != Some(navigation_id) || !tab.loading {
+            tab.evidence.record(format!("{event} stale"));
             return None;
         }
         // Only this id's own evidence may count as a user navigation landing.
         let own_commit = completion.success || tab.evidence.commit == Some(Commit::Document);
         let commit = tab.evidence.commit.or(tab.evidence.page_changed);
-        let mut outcome = classify(completion, commit, tab.evidence.became_download);
+        let mut outcome = classify(completion, commit);
         let shown = completion.source.filter(|source| admit_url(source).is_ok());
         if outcome == Outcome::Abandoned && !abandon_consistent(tab, shown) {
             // Whatever the events said, the screen does not show the page
@@ -149,9 +165,11 @@ impl<T> BrowserTabs<T> {
                 Some(Settled::Abandoned)
             }
         };
-        if let Some(tab) = self.entries.get_mut(label)
-            && !tab.loading
-        {
+        let Some(tab) = self.entries.get_mut(label) else {
+            return settled;
+        };
+        tab.evidence.record(format!("{event} -> {settled:?}"));
+        if !tab.loading {
             let shown_failure = if tab.last_error.is_none() {
                 None
             } else if settled == Some(Settled::Abandoned) {
@@ -161,9 +179,10 @@ impl<T> BrowserTabs<T> {
             };
             tab.evidence = NavigationEvidence {
                 shown_failure,
+                trace: std::mem::take(&mut tab.evidence.trace),
                 ..NavigationEvidence::default()
             };
-        } else if let Some(tab) = self.entries.get_mut(label) {
+        } else {
             // A Back/Forward fallback is pending; if it aborts, the tab
             // reports a failure while this page stays on screen.
             tab.evidence.shown_failure = shown.map(str::to_owned);
@@ -237,9 +256,4 @@ fn abandon_consistent<T>(tab: &crate::browser::BrowserTab<T>, shown: Option<&str
         }
         _ => false,
     }
-}
-
-/// Fragments never reach the network, so a download URI may lack one.
-fn without_fragment(uri: &str) -> &str {
-    uri.split_once('#').map_or(uri, |(before, _)| before)
 }
