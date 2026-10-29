@@ -826,7 +826,7 @@ fn abandon_without_commit_evidence_never_keeps_a_cross_origin_page() {
         ),
         Some(navigation::outcome::Settled::Adopted)
     );
-    assert_shows_evil(&tabs);
+    assert_moved_with_error(&tabs, "The page could not be loaded");
     // With no admitted source on screen, it is a failure, not the old page.
     let mut tabs = committed_tab(&["https://bank.example/"]);
     assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/nc"));
@@ -939,4 +939,46 @@ fn aborted_back_fallback_remembers_the_page_it_shows() {
     assert_eq!(settled, Some(navigation::outcome::Settled::Abandoned));
     assert!(agent);
     assert!(tabs.snapshot("browser-1").unwrap().error.is_some());
+}
+
+/// The tab moved to evil.example without any commit evidence: it keeps
+/// that URL as its page but reports the failure, never the old page.
+fn assert_moved_with_error(tabs: &BrowserTabs<usize>, reason: &str) {
+    let after = tabs.snapshot("browser-1").unwrap();
+    assert!(!after.loading);
+    assert_eq!(after.error, Some(reason));
+    assert_ne!(after.title.as_deref(), Some("Bank"));
+    assert_eq!(
+        tabs.entries["browser-1"].committed_url.as_deref(),
+        Some("https://evil.example/")
+    );
+    assert!(tabs.openable_url("browser-1").is_err());
+}
+
+#[test]
+fn failed_load_that_moved_cross_origin_without_evidence_reports_the_failure() {
+    // A certificate interstitial, say: no ContentLoading, Source() moved.
+    let mut tabs = committed_tab(&["https://bank.example/"]);
+    assert!(tabs.set_document_title("browser-1", "https://bank.example/", "Bank"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            failed_completion(12, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    assert_moved_with_error(&tabs, "The site could not be reached");
+    // A later Stop with that page still on screen keeps the failure.
+    assert!(tabs.start_navigation("browser-1", 3, "https://other.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            3,
+            failed_completion(11, "https://evil.example/")
+        ),
+        Some(navigation::outcome::Settled::Abandoned)
+    );
+    assert_moved_with_error(&tabs, "The site could not be reached");
 }

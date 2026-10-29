@@ -3,7 +3,7 @@
 
 use std::collections::VecDeque;
 
-use super::outcome::{Commit, Completion, Outcome, Settled, classify};
+use super::outcome::{Commit, Completion, Outcome, Settled, classify, failure_reason};
 use crate::browser::{BrowserTabs, admit_url};
 
 /// Native navigation events remembered per tab for diagnosis (ids, flags and
@@ -141,13 +141,17 @@ impl<T> BrowserTabs<T> {
         let commit = tab.evidence.commit.or(tab.evidence.page_changed);
         let mut outcome = classify(completion, commit);
         let shown = completion.source.filter(|source| admit_url(source).is_ok());
+        // Set when nothing committed by our evidence, yet the screen moved:
+        // the tab reports what is on screen together with the failure.
+        let mut unexplained_failure = None;
         if outcome == Outcome::Abandoned && !abandon_consistent(tab, shown) {
             // Whatever the events said, the screen does not show the page
-            // the tab would restore: never report the old address.
-            outcome = shown.map_or(
-                Outcome::Failed("The page could not be loaded"),
-                Outcome::Committed,
-            );
+            // the tab would restore: never report the old address. A failed
+            // load that left another page on screen without any commit
+            // evidence (a certificate interstitial, say) is still a failure.
+            let reason = failure_reason(completion.web_error);
+            unexplained_failure = Some(reason);
+            outcome = shown.map_or(Outcome::Failed(reason), Outcome::Committed);
         }
         let settled = match outcome {
             Outcome::Committed(url) => self
@@ -168,6 +172,13 @@ impl<T> BrowserTabs<T> {
         let Some(tab) = self.entries.get_mut(label) else {
             return settled;
         };
+        if let Some(reason) = unexplained_failure
+            && settled == Some(Settled::Adopted)
+            && !tab.loading
+            && tab.last_error.is_none()
+        {
+            tab.last_error = Some(reason);
+        }
         tab.evidence.record(format!("{event} -> {settled:?}"));
         if !tab.loading {
             let shown_failure = if tab.last_error.is_none() {

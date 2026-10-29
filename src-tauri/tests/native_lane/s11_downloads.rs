@@ -97,6 +97,35 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         ),
     );
 
+    // Stop during a slow load to another origin (localhost vs 127.0.0.1):
+    // the abandon must still keep this origin's page.
+    let other = site.url(SLOW).replacen("127.0.0.1", "localhost", 1);
+    let hits = site.hits(SLOW);
+    let navigated = lane.navigate(&tab, &other);
+    let requested = wait_for(Duration::from_secs(15), || {
+        (site.hits(SLOW) > hits).then_some(())
+    });
+    let stopped = lane.stop(&tab);
+    let status = wait_for(Duration::from_secs(15), || {
+        lane.status(&tab).filter(|status| !status.loading)
+    });
+    report.check(
+        "s11.stop-cross-origin-keeps-page",
+        other.contains("localhost")
+            && navigated.is_ok()
+            && requested.is_some()
+            && stopped.is_ok()
+            && status.as_ref().is_some_and(|status| {
+                status.committed_url.as_deref() == Some(page.as_str()) && status.error.is_none()
+            })
+            && lane.settled_url(&tab).as_deref() == Some(page.as_str()),
+        format!(
+            "{other}: navigate -> {navigated:?}; stop -> {stopped:?}; {:?}; native events: {:?}",
+            status.map(|status| (status.committed_url, status.error)),
+            lane.navigation_trace(&tab)
+        ),
+    );
+
     // Control: a refused connection is a real failure and is reported.
     let refused = "http://127.0.0.1:1/";
     let navigated = lane.navigate(&tab, refused);

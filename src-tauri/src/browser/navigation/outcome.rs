@@ -98,7 +98,7 @@ pub(crate) fn classify<'a>(completion: Completion<'a>, commit: Option<Commit>) -
     }
 }
 
-fn failure_reason(web_error: i32) -> &'static str {
+pub(crate) fn failure_reason(web_error: i32) -> &'static str {
     match web_error {
         1..=5 => "The site's security certificate is not trusted",
         6 | 9..=12 => "The site could not be reached",
