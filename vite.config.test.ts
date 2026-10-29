@@ -470,6 +470,7 @@ describe("desktop-native chunk topology", () => {
       "src/features/chat/acp/AcpAnnouncementRegions.tsx",
       "src/features/chat/acp/agentEditSummary.ts",
       "src/features/chat/acp/chatEditSummary.ts",
+      "src/features/chat/acp/turnWorkspaceBridge.ts",
       "src/features/chat/acp/editingFiles.ts",
     ];
     for (const facade of [
@@ -719,12 +720,18 @@ describe("desktop-native chunk topology", () => {
     for (const facade of [workbench, agent, presentation]) {
       expect(
         closureForModule(groupedGraph, facade).filter((id) =>
-          /(?:TurnEditSummary\.tsx|turnWorkspace(?:Bridge|Changes)\.ts|HarnessSignInStatus\.tsx|harnessSignIn(?:Bridge)?\.ts|InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
+          /(?:TurnEditSummary\.tsx|turnWorkspaceChanges\.ts|HarnessSignInStatus\.tsx|harnessSignIn(?:Bridge)?\.ts|InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
             id,
           ),
         ),
         facade,
       ).toEqual([]);
+      expect(
+        closureForModule(groupedGraph, facade).some((id) =>
+          id.endsWith("src/features/chat/acp/turnWorkspaceBridge.ts"),
+        ),
+        facade,
+      ).toBe(facade !== workbench);
     }
     for (const facade of [
       workbench,

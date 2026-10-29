@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ChevronDown, FilePenLine, RotateCcw } from "../../../ui/leanIcons";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
-import { projectAgentEditSummary } from "./agentEditSummary";
+import { projectTurnEditSummary } from "./chatEditSummary";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import "./edited-files-card.css";
@@ -11,11 +12,15 @@ export function TurnFileActivity({
   page,
   turn,
   rootLabels = {},
+  workspaceChanges,
+  workspaceIncomplete = false,
   onOpenResource,
 }: {
   page: AcpChatPage;
   turn: TurnProjection;
   rootLabels?: Readonly<Record<string, string>>;
+  workspaceChanges?: readonly TurnWorkspaceChange[];
+  workspaceIncomplete?: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -25,8 +30,12 @@ export function TurnFileActivity({
     sourceTruncated,
     rejectedUnsafeOrStale,
     omittedCount,
-  } = useMemo(() => projectAgentEditSummary(page, turn), [page, turn]);
-  if (!changes.length) return null;
+  } = useMemo(
+    () =>
+      projectTurnEditSummary(page, turn, workspaceChanges, workspaceIncomplete),
+    [page, turn, workspaceChanges, workspaceIncomplete],
+  );
+  if (!changes.length && !workspaceIncomplete) return null;
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;
   const open =
@@ -49,6 +58,11 @@ export function TurnFileActivity({
   }
   return (
     <section className="acp-edited-files" aria-label="Edited files">
+      {workspaceIncomplete ? (
+        <p role="status">
+          Workspace change tracking is incomplete for this turn.
+        </p>
+      ) : null}
       <header className="acp-edited-files__header">
         <FilePenLine size={16} aria-hidden="true" />
         <div className="acp-edited-files__heading">

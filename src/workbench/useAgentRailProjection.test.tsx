@@ -6,7 +6,6 @@ import { createBrowserChatTab } from "../services/browserChat";
 import {
   mirrorAgentRailProjection,
   railStatusForTurn,
-  useAgentRailProjection,
 } from "./useAgentRailProjection";
 import {
   resetAgentRailInteractions,
@@ -57,14 +56,11 @@ it("mirrors real lifecycle status, native first-prompt titles, and approval atte
 
 it("does not update the rail or recency per streamed token, and rejects foreign projects", () => {
   seed();
-  const { rerender } = renderHook(
-    ({ current }) => useAgentRailProjection(current),
-    { initialProps: { current: page("running") } },
-  );
+  mirrorAgentRailProjection(page("running"));
   const tabs = useWorkbenchStore.getState().tabs;
   const next = page("running");
   next.turns = [{ ...next.turns[0], updatedAt: 999 }];
-  rerender({ current: next });
+  mirrorAgentRailProjection(next);
   expect(useWorkbenchStore.getState().tabs).toBe(tabs);
   const foreign = {
     ...page("completed"),

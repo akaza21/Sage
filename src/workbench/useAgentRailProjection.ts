@@ -1,4 +1,3 @@
-import { useEffect, useEffectEvent } from "react";
 import { useWorkbenchStore } from "../app/store";
 import type { AcpChatPage, TurnState } from "../domain/acp";
 import type { SessionStatus } from "../domain/workbench";
@@ -24,28 +23,13 @@ export function mirrorAgentRailProjection(page: AcpChatPage) {
   const turn = page.turns.at(-1);
   const status = railStatusForTurn(turn?.state);
   setAgentRailApproval(page.chatId, turn?.state === "waitingApproval");
+  if (tab.title === page.title && tab.status === status) return;
   const updatedAt = turn
     ? Math.max(tab.updatedAt ?? 0, turn.updatedAt)
     : tab.updatedAt;
-  if (
-    tab.title === page.title &&
-    tab.status === status &&
-    tab.updatedAt === updatedAt
-  )
-    return;
   useWorkbenchStore.setState({
     tabs: state.tabs.map((item) =>
       item === tab ? { ...item, title: page.title, status, updatedAt } : item,
     ),
   });
-}
-
-export function useAgentRailProjection(page: AcpChatPage | null) {
-  const mirror = useEffectEvent(() => {
-    if (page) mirrorAgentRailProjection(page);
-  });
-  const turn = page?.turns.at(-1);
-  useEffect(() => {
-    mirror();
-  }, [page?.projectId, page?.chatId, page?.title, turn?.id, turn?.state]);
 }

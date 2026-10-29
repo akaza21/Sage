@@ -26,6 +26,7 @@ interface TurnEditSummaryProps {
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
   workspaceChanges?: readonly TurnWorkspaceChange[];
+  workspaceIncomplete?: boolean;
   onOpenFile?: (resource: ResourceRef, turn: TurnProjection) => void;
   onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
@@ -38,6 +39,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   rootLabels,
   countIncomplete,
   workspaceChanges,
+  workspaceIncomplete = false,
   onOpenFile,
   onOpenDiff,
   onRecordDisposition,
@@ -46,10 +48,12 @@ export const TurnEditSummary = memo(function TurnEditSummary({
     page,
     workspaceChanges === undefined && isTauriRuntime(),
   );
-  const workspace = workspaceChanges ?? fetchedWorkspaceChanges;
+  const workspace = workspaceChanges ?? fetchedWorkspaceChanges.changes;
+  const incomplete =
+    workspaceIncomplete || fetchedWorkspaceChanges.incompleteTurnIds.size > 0;
   const summary = useMemo(
-    () => projectChatEditSummary(page, workspace),
-    [page, workspace],
+    () => projectChatEditSummary(page, workspace, incomplete),
+    [page, workspace, incomplete],
   );
   const [expanded, setExpanded] = useState(false);
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
@@ -128,7 +132,10 @@ export const TurnEditSummary = memo(function TurnEditSummary({
         {dispositionError ? (
           <span className="acp-file-changes__error">Needs attention</span>
         ) : null}
-        <FileChangeTotals changes={summary.changes} />
+        <FileChangeTotals
+          changes={summary.changes}
+          incomplete={summaryIncomplete}
+        />
       </button>
       {expanded && summary.changes.length > 0 ? (
         <ul>
@@ -279,7 +286,8 @@ export const TurnEditSummary = memo(function TurnEditSummary({
       ) : null}
       {expanded && summary.sourceTruncated ? (
         <p className="acp-file-changes__disclosure">
-          The agent reported further changed files that are not shown.
+          Change tracking is incomplete; additional changed files may not be
+          shown.
         </p>
       ) : null}
       {expanded && summary.rejectedUnsafeOrStale ? (

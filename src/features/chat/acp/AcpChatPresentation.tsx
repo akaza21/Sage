@@ -2,15 +2,9 @@ import { Fragment, memo, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
-import type {
-  AgentArtifactOpenHandler,
-  AgentArtifactOwner,
-} from "../../../domain/agentArtifact";
+import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { AgentDiffRef } from "../../../domain/agentDiff";
-import type {
-  ProjectRootSummary,
-  ResourceRef,
-} from "../../../domain/workbench";
+import type { ResourceRef } from "../../../domain/workbench";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { AnswerActions } from "../AnswerActions";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
@@ -18,6 +12,9 @@ import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
+import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
 import {
@@ -39,24 +36,16 @@ import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { isSideChatId } from "../../../workbench/sideChatState";
 import "./browser-operations.css";
 
-export type AcpChatPresentationProps = {
-  page: AcpChatPage;
-  onOpenResource?: AgentArtifactOpenHandler;
-  hasEarlier: boolean;
-  loadingEarlier: boolean;
-  historyError: string | null;
-  onLoadEarlier?: () => void;
-  projectRoots: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
-  retentionIncomplete: boolean;
-  onRetry?: () => void;
-  editSummaryContainer?: HTMLElement | null;
-};
+import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
+export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 
 const Turn = memo(
   function Turn({
     page,
     turn,
     rootLabels,
+    workspaceChanges,
+    workspaceIncomplete = false,
     onOpenResource,
     onRetry,
     inherited = false,
@@ -69,6 +58,8 @@ const Turn = memo(
     /** Earlier/inherited answers retain Copy (s2/f0066). */
     answerActions?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
+    workspaceChanges?: readonly TurnWorkspaceChange[];
+    workspaceIncomplete?: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
     onRetry?: () => void;
   }) {
@@ -256,6 +247,8 @@ const Turn = memo(
               <TurnFileActivity
                 page={page}
                 turn={turn}
+                workspaceChanges={workspaceChanges}
+                workspaceIncomplete={workspaceIncomplete}
                 rootLabels={rootLabels}
                 onOpenResource={interactive ? onOpenResource : undefined}
               />
@@ -290,6 +283,8 @@ const Turn = memo(
     left.page.currentSessionId === right.page.currentSessionId &&
     // `inherited` is fixed per mount: only InheritedTurns passes it.
     left.rootLabels === right.rootLabels &&
+    left.workspaceChanges === right.workspaceChanges &&
+    left.workspaceIncomplete === right.workspaceIncomplete &&
     left.answerActions === right.answerActions &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
@@ -307,6 +302,8 @@ export function AcpChatPresentation({
   onRetry,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
+  const { changes: workspaceChanges, incompleteTurnIds } =
+    useTurnWorkspaceChanges(page, isTauriRuntime());
   const navigationRef = useRef<TurnListHost | null>(null);
   const countIncomplete = page.nextCursor !== null || retentionIncomplete;
   const dayTimestamps = useTurnDayTimestamps(page.turns);
@@ -343,6 +340,8 @@ export function AcpChatPresentation({
       page={page}
       rootLabels={labels}
       countIncomplete={countIncomplete}
+      workspaceChanges={workspaceChanges}
+      workspaceIncomplete={incompleteTurnIds.size > 0}
       onOpenDiff={onOpenResource ? onOpenDiff : undefined}
       onOpenFile={onOpenResource ? onOpenFile : undefined}
       onRecordDisposition={acpDesktop.recordAgentEditDisposition}
@@ -355,6 +354,8 @@ export function AcpChatPresentation({
         page={page}
         turn={turn}
         rootLabels={projectRoots.length > 0 ? labels : undefined}
+        workspaceChanges={workspaceChanges}
+        workspaceIncomplete={incompleteTurnIds.has(turn.id)}
         onOpenResource={onOpenResource}
         onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         answerActions={index < page.turns.length - 1}

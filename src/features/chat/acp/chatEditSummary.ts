@@ -33,9 +33,58 @@ function workspaceChange(change: TurnWorkspaceChange): AgentEditSummaryChange {
   };
 }
 
+function mergeWorkspaceChanges(
+  summary: AgentEditSummaryProjection,
+  turn: TurnProjection,
+  workspaceChanges: readonly TurnWorkspaceChange[],
+): AgentEditSummaryProjection {
+  const changes = new Map<string, AgentEditSummaryChange>();
+  const changeKeys = new Set(summary.changeKeys);
+  for (const workspace of workspaceChanges) {
+    if (workspace.turnId !== turn.id) continue;
+    const change = workspaceChange(workspace);
+    const key = agentEditSummaryChangeKey(change);
+    if (summary.changeKeys.has(key)) continue;
+    changeKeys.add(key);
+    changes.delete(key);
+    changes.set(key, change);
+  }
+  for (const change of summary.changes) {
+    const key = agentEditSummaryChangeKey(change);
+    changes.delete(key);
+    changes.set(key, change);
+  }
+  while (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
+    changes.delete(changes.keys().next().value!);
+  return {
+    ...summary,
+    changes: [...changes.values()],
+    changeKeys,
+    omittedCount: changeKeys.size - changes.size,
+  };
+}
+
+export function projectTurnEditSummary(
+  page: AcpChatPage,
+  turn: TurnProjection,
+  workspaceChanges: readonly TurnWorkspaceChange[] = [],
+  workspaceIncomplete = false,
+) {
+  const summary = projectAgentEditSummary(page, turn);
+  return mergeWorkspaceChanges(
+    {
+      ...summary,
+      sourceTruncated: summary.sourceTruncated || workspaceIncomplete,
+    },
+    turn,
+    workspaceChanges,
+  );
+}
+
 export function projectChatEditSummary(
   page: AcpChatPage,
   workspaceChanges: readonly TurnWorkspaceChange[] = [],
+  workspaceIncomplete = false,
 ) {
   const changeKeys = new Set<string>();
   const changes = new Map<
@@ -46,7 +95,7 @@ export function projectChatEditSummary(
     changes: [],
     changeKeys,
     omittedCount: 0,
-    sourceTruncated: false,
+    sourceTruncated: workspaceIncomplete,
     rejectedUnsafeOrStale: false,
   };
   for (const turn of page.turns) {
@@ -72,13 +121,14 @@ export function projectChatEditSummary(
         sessionKnown,
         summary: retained,
       });
-    summary.sourceTruncated ||= retained.sourceTruncated;
-    summary.rejectedUnsafeOrStale ||= retained.rejectedUnsafeOrStale;
-    for (const key of retained.changeKeys) {
+    const merged = mergeWorkspaceChanges(retained, turn, workspaceChanges);
+    summary.sourceTruncated ||= merged.sourceTruncated;
+    summary.rejectedUnsafeOrStale ||= merged.rejectedUnsafeOrStale;
+    for (const key of merged.changeKeys) {
       changeKeys.add(key);
       changes.delete(key);
     }
-    for (const change of retained.changes) {
+    for (const change of merged.changes) {
       const key = agentEditSummaryChangeKey(change);
       changes.delete(key);
       changes.set(key, {
@@ -88,21 +138,6 @@ export function projectChatEditSummary(
       if (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
         changes.delete(changes.keys().next().value!);
     }
-  }
-  // B5: files changed by shell commands appear beside harness edits; a
-  // harness record for the same file always wins.
-  for (const workspace of workspaceChanges) {
-    const turn = page.turns.find(
-      (candidate) => candidate.id === workspace.turnId,
-    );
-    if (!turn) continue;
-    const change = workspaceChange(workspace);
-    const key = agentEditSummaryChangeKey(change);
-    if (changeKeys.has(key)) continue;
-    changeKeys.add(key);
-    changes.set(key, { ...change, turn });
-    if (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
-      changes.delete(changes.keys().next().value!);
   }
   summary.omittedCount = changeKeys.size - changes.size;
   return {
