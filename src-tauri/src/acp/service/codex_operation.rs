@@ -61,7 +61,7 @@ struct OperationSlot {
 #[derive(Default)]
 struct ActiveState {
     next_id: u64,
-    // Bounded: one ephemeral operation, or at most `LIVE_OPERATIONS` live ones.
+    // Bounded: at most `LIVE_OPERATIONS` operations, at most one ephemeral.
     running: Vec<OperationSlot>,
     settlement: Option<Result<(), CodexDiscoveryRunError>>,
 }
@@ -167,10 +167,8 @@ impl CodexOperationGate {
                 .admission
                 .lock()
                 .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-            let admitted = match class {
-                OperationClass::Ephemeral => !admission.ephemeral && admission.live == 0,
-                OperationClass::Live => !admission.ephemeral && admission.live < LIVE_OPERATIONS,
-            };
+            let admitted = admission.occupied() < LIVE_OPERATIONS
+                && (class == OperationClass::Live || !admission.ephemeral);
             if !admitted {
                 return Err(CodexDiscoveryRunError::Busy);
             }
@@ -205,12 +203,10 @@ impl CodexOperationGate {
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
         }
-        let admitted = match prepared.class {
-            OperationClass::Ephemeral => active.running.is_empty(),
-            OperationClass::Live => {
-                !active.has(OperationClass::Ephemeral) && active.running.len() < LIVE_OPERATIONS
-            }
-        };
+        // Capacity, not class, bounds admission: ephemeral work (discovery,
+        // sign-in) runs beside live sessions whenever a lane is spare.
+        let admitted = active.running.len() < LIVE_OPERATIONS
+            && (prepared.class == OperationClass::Live || !active.has(OperationClass::Ephemeral));
         if !admitted {
             return Err(CodexDiscoveryRunError::Busy);
         }

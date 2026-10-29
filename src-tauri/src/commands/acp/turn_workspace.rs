@@ -50,20 +50,24 @@ pub(super) async fn mark_before_prompt(
             reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("The selected project root is unavailable."),
         })?;
-    let registered = turn_workspace::remember(
-        &mut state
-            .database
-            .write_connection()
-            .map_err(|_| AcpIpcError::RecoveryRequired {
-                message: safe_message("Workspace tracking could not be saved."),
-            })?,
-        session_id.as_str(),
-        client_intent_id.as_str(),
-        root.scope().2.as_str(),
-        root.as_path(),
-        None,
-    )
-    .map_err(store_error)?;
+    let registered = {
+        let mut connection =
+            state
+                .database
+                .write_connection()
+                .map_err(|_| AcpIpcError::RecoveryRequired {
+                    message: safe_message("Workspace tracking could not be saved."),
+                })?;
+        turn_workspace::remember(
+            &mut connection,
+            session_id.as_str(),
+            client_intent_id.as_str(),
+            root.scope().2.as_str(),
+            root.as_path(),
+            None,
+        )
+        .map_err(store_error)?
+    };
     if registered {
         let mark = turn_workspace::capture(root.as_path()).await;
         turn_workspace::publish_baseline(

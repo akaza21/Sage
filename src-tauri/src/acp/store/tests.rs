@@ -19,7 +19,7 @@ mod request_identity_tests;
 pub(super) fn setup() -> Connection {
     let connection = Connection::open_in_memory().unwrap();
     connection.execute_batch(
-        "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER);
+        "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, updated_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
@@ -33,7 +33,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE acp_session_usage(session_id TEXT PRIMARY KEY, turn_count INTEGER, item_count INTEGER, item_bytes INTEGER, fact_count INTEGER, fact_bytes INTEGER, payload_bytes INTEGER, revision INTEGER);
          CREATE TABLE acp_project_usage(project_id TEXT PRIMARY KEY, turn_count INTEGER, item_count INTEGER, fact_count INTEGER, payload_bytes INTEGER, revision INTEGER);
          CREATE TABLE acp_store_usage(singleton INTEGER PRIMARY KEY, turn_count INTEGER, item_count INTEGER, item_bytes INTEGER, fact_count INTEGER, fact_bytes INTEGER, shared_payload_bytes INTEGER, revision INTEGER);
-         INSERT INTO chats VALUES('chat-one','project-one',0,0);
+         INSERT INTO chats VALUES('chat-one','project-one',0,0,'Chat: Fixture');
          INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','ready','hot',0,0,0,NULL);
          INSERT INTO chat_session_heads VALUES('session-one');
          INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);

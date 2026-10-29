@@ -1,9 +1,9 @@
 use rusqlite::{Connection, params};
 use std::time::Duration;
 
-use super::{TurnWorkspaceChanges, WorkspaceMark, capture, diff_marks};
+use super::{TurnWorkspaceChanges, WorkspaceMark, capture_after, diff_marks};
 use crate::{
-    acp::store::{AdapterInboundEvent, SendObservation, StoreError, StoreMutation},
+    acp::store::{SendObservation, StoreError, StoreMutation},
     persistence::Database,
 };
 
@@ -23,11 +23,50 @@ pub(crate) fn prepare_terminal(
     let deadline = std::time::Instant::now() + budget;
     for mutation in mutations {
         let scope = match mutation {
-            StoreMutation::TurnTerminal { command, terminal, .. } if terminal.is_terminal() => Some((command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),command.runtime_epoch.get(),Some(command.turn_id.as_str()))),
-            StoreMutation::ObserveSend { command, observation: SendObservation::PossibleBytes | SendObservation::ProcessLost, .. } => Some((command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),command.runtime_epoch.get(),Some(command.turn_id.as_str()))),
-            StoreMutation::AdapterInboundBatch(command) if command.events.iter().any(|event| matches!(event,AdapterInboundEvent::Turn { state, .. } if state.is_terminal())) => Some((command.owner.project_id.as_str(),command.owner.chat_id.as_str(),command.owner.session_id.as_str(),command.owner.runtime_epoch.get(),Some(command.owner.turn_id.as_str()))),
-            StoreMutation::FinalizeClose(command) => Some((command.request.project_id.as_str(),command.request.chat_id.as_str(),command.request.session_id.as_str(),command.request.runtime_epoch.get(),None)),
-            StoreMutation::RecoverRuntimeAfterZero(command) => Some((command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),command.runtime_epoch.get(),None)),
+            StoreMutation::TurnTerminal {
+                command, terminal, ..
+            } if terminal.is_terminal() => Some((
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+                command.runtime_epoch.get(),
+                Some(command.turn_id.as_str()),
+            )),
+            StoreMutation::ObserveSend {
+                command,
+                observation: SendObservation::PossibleBytes | SendObservation::ProcessLost,
+                ..
+            } => Some((
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+                command.runtime_epoch.get(),
+                Some(command.turn_id.as_str()),
+            )),
+            StoreMutation::AdapterInboundBatch(command) if command.ends_turn() => {
+                let owner = command.owner();
+                Some((
+                    owner.project_id.as_str(),
+                    owner.chat_id.as_str(),
+                    owner.session_id.as_str(),
+                    owner.runtime_epoch.get(),
+                    Some(owner.turn_id.as_str()),
+                ))
+            }
+            StoreMutation::FinalizeClose(command) => Some((
+                command.request.project_id.as_str(),
+                command.request.chat_id.as_str(),
+                command.request.session_id.as_str(),
+                command.request.runtime_epoch.get(),
+                None,
+            )),
+            StoreMutation::RecoverRuntimeAfterZero(command) => Some((
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+                command.runtime_epoch.get(),
+                None,
+            )),
             _ => None,
         };
         let Some((project, chat, session, epoch, turn)) = scope else {
@@ -88,8 +127,9 @@ fn snapshot(job: &CaptureJob, budget: Duration) -> Result<String, StoreError> {
         TurnWorkspaceChanges::untracked()
     } else if let Some(before) = &job.before {
         let root = job.root.clone();
+        let baseline = before.clone();
         let now = bounded_snapshot(budget, move || {
-            tauri::async_runtime::block_on(capture(std::path::Path::new(&root)))
+            tauri::async_runtime::block_on(capture_after(std::path::Path::new(&root), &baseline))
         });
         now.map_or_else(TurnWorkspaceChanges::untracked, |now| {
             diff_marks(before, &now)

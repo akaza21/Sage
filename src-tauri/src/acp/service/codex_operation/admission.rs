@@ -2,12 +2,19 @@ use std::sync::{Arc, Mutex};
 
 use super::OperationClass;
 
-/// Admission is exclusive for ephemeral work and shared, up to the live lane
-/// count, for live sessions. Ephemeral and live work never overlap.
+/// Admission is bounded by the live lane count across both classes. At most
+/// one ephemeral operation is admitted at a time, and it may run beside live
+/// sessions whenever capacity is spare.
 #[derive(Default)]
 pub(super) struct AdmissionState {
     pub(super) ephemeral: bool,
     pub(super) live: usize,
+}
+
+impl AdmissionState {
+    pub(super) fn occupied(&self) -> usize {
+        self.live + usize::from(self.ephemeral)
+    }
 }
 
 pub(super) struct AdmissionLease {

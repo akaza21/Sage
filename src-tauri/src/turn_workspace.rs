@@ -14,9 +14,10 @@ use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
 pub(crate) const MAX_TURN_WORKSPACE_CHANGES: usize = 300;
 mod capture;
 mod directory;
+mod history;
 mod ledger;
 mod terminal_capture;
-pub(crate) use capture::capture;
+pub(crate) use capture::{capture, capture_after};
 pub(crate) use ledger::{
     forget_unprepared, invalidate_active, load, publish_baseline, remember, settle_terminal,
 };
@@ -44,6 +45,13 @@ pub(crate) struct WorkspaceMark {
     root_identity: Option<[u8; 24]>,
     entries: BTreeMap<String, Fingerprint>,
     truncated: bool,
+    /// HEAD when the mark was captured; absent in marks stored before it was
+    /// recorded.
+    #[serde(default)]
+    head: Option<history::HeadMark>,
+    /// Paths committed since the baseline HEAD (terminal marks only).
+    #[serde(default)]
+    committed: BTreeMap<String, TurnWorkspaceOperation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -116,6 +124,8 @@ fn parse_mark(
         root_identity: anchor.identity(),
         entries,
         truncated,
+        head: None,
+        committed: BTreeMap::new(),
     })
 }
 
@@ -158,7 +168,23 @@ pub(crate) fn diff_marks(before: &WorkspaceMark, after: &WorkspaceMark) -> TurnW
     for path in before.entries.keys() {
         if !after.entries.contains_key(path) {
             // Dirty before, clean now: the turn reverted or committed it.
-            push(path, TurnWorkspaceOperation::Updated);
+            let operation = after
+                .committed
+                .get(path)
+                .copied()
+                .unwrap_or(TurnWorkspaceOperation::Updated);
+            push(path, operation);
+        }
+    }
+    for (path, operation) in &after.committed {
+        // Committed during the turn, unless the dirty-set diff above already
+        // reported it (for example a file clean in both status captures).
+        let reported = match after.entries.get(path) {
+            Some(now) => before.entries.get(path) != Some(now),
+            None => before.entries.contains_key(path),
+        };
+        if !reported {
+            push(path, *operation);
         }
     }
     TurnWorkspaceChanges {
