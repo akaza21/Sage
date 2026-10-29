@@ -786,7 +786,7 @@ describe("AgentTaskHeader working status", () => {
     ).toBeNull();
   });
 
-  it("shows a browser source host and selects its existing tab", () => {
+  it("shows a recorded browser source host without rebinding its existing tab", () => {
     seedHeaderItems([]);
     const store = acpProjectionStoreFor("chat:a");
     const { scope, page } = store.getState();
@@ -838,10 +838,15 @@ describe("AgentTaskHeader working status", () => {
     expect(
       within(screen.getByRole("region", { name: "Sources" })).queryByText("1"),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open source example.com" }),
-    );
-    expect(useWorkbenchStore.getState().activeTabId).toBe("browser-1");
+    expect(
+      screen.getByTitle(
+        "example.com - Recorded source; not a live browser link",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Open source example.com" }),
+    ).toBeNull();
+    expect(useWorkbenchStore.getState().activeTabId).not.toBe("browser-1");
     expect(screen.queryByText(/private/)).toBeNull();
   });
 

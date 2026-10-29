@@ -100,11 +100,14 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
+  "src/features/diff/ChangesSurface.tsx",
+  "src/features/diff/ChangesTab.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
   // Harness sign-in status loads when the desktop picker has harnesses.
   "src/features/harness/harnessSignIn.ts",
+  "src/features/files/MixedEolFileView.tsx",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
@@ -116,6 +119,12 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
   "src/workbench/AgentTaskResources.tsx",
+  "src/workbench/AgentArtifactHeader.tsx",
+  "src/workbench/AgentArtifactOpenMenu.tsx",
+  "src/workbench/AgentChatSplitter.tsx",
+  "src/workbench/AgentCollapsedNavigation.tsx",
+  "src/workbench/AgentResourcesPopover.tsx",
+  "src/workbench/AgentSideChatHeaders.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -125,7 +134,6 @@ const REQUIRED_DYNAMIC_FACADES = [
 
 const ORDINARY_DYNAMIC_FACADES = [
   ...REQUIRED_DYNAMIC_FACADES,
-  "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
   "src/features/chat/acp/AcpChatPresentation.tsx",
   "src/features/chat/acp/InlineSavedDiff.tsx",
@@ -147,7 +155,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/features/preview/useHarnessBrowseSession.ts",
   "src/workbench/AgentArtifactCollapsedPane.tsx",
   "src/workbench/AgentArtifactFocusGuard.tsx",
-  "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
   "src/workbench/AgentArtifactTabStrip.tsx",
@@ -573,9 +580,14 @@ describe("desktop-native chunk topology", () => {
     expect(resourcesFile).not.toBe(agentFile);
     expect(resourcesFile).not.toBe(sharedFile);
     for (const facade of [workbench, agent]) {
-      expect(closureForModule(groupedGraph, facade)).not.toContain(
-        path.join(root, resources).split(path.sep).join("/"),
-      );
+      for (const module of [
+        resources,
+        "src/workbench/AgentResourcesPopover.tsx",
+      ]) {
+        expect(closureForModule(groupedGraph, facade)).not.toContain(
+          path.join(root, module).split(path.sep).join("/"),
+        );
+      }
     }
     // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
@@ -799,6 +811,7 @@ describe("desktop-native chunk topology", () => {
       "/src/features/diff/snapshotDiff.ts",
       "/src/workbench/AgentWorkbenchBody.tsx",
       "/src/workbench/AgentTaskResources.tsx",
+      "/src/workbench/AgentResourcesPopover.tsx",
       "/src/workbench/SettingsSurface.tsx",
       "/src/workbench/SourceControlView.tsx",
       "/src/workbench/Workbench.tsx",

@@ -221,14 +221,19 @@ pub async fn get_repository_status(
 pub async fn get_file_diff(
     state: State<'_, AppState>,
     resource: ResourceRef,
+    scope: Option<crate::repository_diff::GitDiffScope>,
 ) -> Result<FileDiff, String> {
     let workspace = state
         .database
         .resolve_active_resource(&resource)
         .map_err(|error| error.to_string())?;
-    repository::file_diff(&workspace, &resource)
-        .await
-        .map_err(|error| error.to_string())
+    match scope {
+        Some(scope) => {
+            crate::repository_diff::scoped_file_diff(&workspace, &resource, Some(scope)).await
+        }
+        None => repository::file_diff(&workspace, &resource).await,
+    }
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

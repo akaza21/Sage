@@ -18,6 +18,7 @@ import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem, TurnProjection } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { useAgentChangesState } from "./agentChangesState";
 
 const readChild = vi.hoisted(() => vi.fn());
 vi.mock("../services/acpChildTranscript", () => ({
@@ -156,8 +157,8 @@ function replaceItems(items: AcpItem[], updates: Partial<AcpChatPage> = {}) {
   });
 }
 
-it("keeps expanded Sources across close and reopen, but resets them on an owner change", async () => {
-  const items = Array.from(
+function sourceItems() {
+  return Array.from(
     { length: 4 },
     (_, index) =>
       ({
@@ -175,6 +176,32 @@ it("keeps expanded Sources across close and reopen, but resets them on an owner 
         },
       }) as unknown as AcpItem,
   );
+}
+
+it.each(["session", "runtime"])("resets expanded Sources when the %s changes while resources are closed", async (replacement) => {
+  const items = sourceItems();
+  replaceItems(items);
+  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+  const trigger = screen.getByRole("button", { name: "Show chat resources" });
+  fireEvent.click(trigger);
+  fireEvent.click(await screen.findByRole("button", { name: "View all" }));
+  expect(screen.getByText("source-0.example")).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+    key: "Escape",
+  });
+  const page = acpProjectionStoreFor(tab.id).getState().page!;
+  replaceItems(items, replacement === "session" ? {
+    currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
+  } : {
+    sessions: page.sessions.map((session) => ({ ...session, runtimeEpoch: "4" as typeof session.runtimeEpoch })),
+  });
+  fireEvent.click(trigger);
+  expect(await screen.findByRole("button", { name: "View all" })).toBeVisible();
+  expect(screen.queryByText("source-0.example")).toBeNull();
+});
+
+it("keeps expanded Sources across close and reopen, but resets them on an owner change", async () => {
+  const items = sourceItems();
   replaceItems(items);
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   const trigger = screen.getByRole("button", { name: "Show chat resources" });
@@ -291,7 +318,10 @@ it("makes a lazily loaded child row keyboard reachable and returns Tab focus", a
   const row = await screen.findByRole("button", {
     name: "Open subagent Reviewer",
   });
-  await waitFor(() => expect(row).toHaveFocus());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Changes" })).toHaveFocus(),
+  );
+  row.focus();
   expect(readChild).not.toHaveBeenCalled();
   expect(useSubagentPaneStore.getState().open).toBeNull();
   fireEvent.keyDown(row, { key: "Tab" });
@@ -571,11 +601,18 @@ it("keeps Task lifecycle metadata readable without a child selection or transcri
 afterEach(() => {
   cleanup();
   useSubagentPaneStore.getState().clear();
+  useAgentChangesState.getState().close();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initialState, true);
 });
 
 it("opens the observed child only after explicit resource selection", async () => {
+  useAgentChangesState
+    .getState()
+    .show(
+      { projectId: "project-a", chatId: tab.id, sessionId: "session-1" },
+      7,
+    );
   const store = acpProjectionStoreFor(tab.id);
   const { scope, page } = store.getState();
   if (!scope || !page) throw new Error("Missing projection");
@@ -615,6 +652,7 @@ it("opens the observed child only after explicit resource selection", async () =
     agentKey: "private-reviewer",
   });
   expect(useSubagentPaneStore.getState().selected).toBe(true);
+  expect(useAgentChangesState.getState().selected).toBe(false);
   expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
@@ -784,13 +822,15 @@ it("portals chat resources outside the header and returns Escape focus to the tr
 });
 
 it.each([false, true])(
-  "returns empty resources-dialog Tab focus to its opener (reverse=%s)",
-  (shiftKey) => {
+  "returns resources-dialog Tab focus to its opener (reverse=%s)",
+  async (shiftKey) => {
     render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
     const trigger = screen.getByRole("button", { name: "Show chat resources" });
     fireEvent.click(trigger);
-    const panel = screen.getByRole("dialog", { name: "Chat resources" });
-    expect(panel).toHaveFocus();
+    const panel = await screen.findByRole("dialog", { name: "Chat resources" });
+    expect(
+      within(panel).getByRole("button", { name: "Changes" }),
+    ).toHaveFocus();
     fireEvent.keyDown(panel, { key: "Tab", shiftKey });
     expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
     expect(trigger).toHaveFocus();

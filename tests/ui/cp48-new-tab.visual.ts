@@ -119,10 +119,11 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
     ).toBeFocused();
     await menu.getByRole("menuitem", { name: "Changes", exact: true }).click();
     await expect(
-      page.getByRole("dialog", { name: "Changes", exact: true }),
+      page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(more).toBeFocused();
+    await page
+      .getByRole("button", { name: "Close Changes", exact: true })
+      .click();
     await pencil.click();
     await expect(
       header.getByRole("textbox", { name: "New chat name" }),
