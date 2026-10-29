@@ -12,7 +12,7 @@
 // `maxCssGzipBytes` cap, must stay out of the initial CSS, and must not be
 // carried by any record outside the feature, like the TerminalDock rule.
 
-const MAX_LAZY_FEATURES = 32;
+const MAX_LAZY_FEATURES = 64;
 const MAX_REASON_LENGTH = 200;
 
 // Editor packs (EDIT-0005 D1): on-demand language grammars and editing
