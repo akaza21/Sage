@@ -2332,7 +2332,11 @@ describe("Agent artifact file chips", () => {
       url: "http://127.0.0.1:5174/second",
     });
     render(<AgentArtifactPane />);
-    setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
+    // The pane shows a Preview only once its Chat owns the harness browse.
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    act(() =>
+      setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]),
+    );
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     await settleLazyModules();
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(

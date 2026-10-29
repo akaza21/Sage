@@ -36,6 +36,16 @@ export function TurnFileActivity({
     [page, turn, workspaceChanges, workspaceIncomplete],
   );
   if (!changes.length && !workspaceIncomplete) return null;
+  // With no known file, an incomplete ledger is reported on its own rather
+  // than as an "Edited at least 0 files" card with dead actions.
+  if (!changes.length)
+    return (
+      <section className="acp-edited-files" aria-label="Edited files">
+        <p role="status">
+          Workspace change tracking is incomplete for this turn.
+        </p>
+      </section>
+    );
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;
   const open =

@@ -3,6 +3,8 @@ import {
   openAgentScenario,
   openAgentSnapshotDiff,
 } from "./resourceVisualHelpers";
+import { settleChatProjections } from "./shared/visualBrowserPrimitives";
+import { revealWorkedContent } from "./agentVisualHelpers";
 
 test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
@@ -21,13 +23,21 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
       name: "Chat changes",
       exact: true,
     });
+    const scope = changes.getByRole("combobox", { name: "Changes scope" });
+    await expect(scope).toHaveValue("lastTurn");
+    // The fixture's edit belongs to the first turn; the last turn made none,
+    // so Last turn says so, and Unstaged lists the project's Git change
+    // without attributing it to this Chat. (The browser backend has no
+    // scoped Git diff; the per-file Diff below shows the saved edit.)
+    await expect(changes.getByText("No changes in this scope.")).toBeVisible();
+    await scope.selectOption("unstaged");
     await expect(
-      changes.getByRole("combobox", { name: "Changes scope" }),
-    ).toHaveValue("lastTurn");
-    await expect(
-      changes.getByRole("table", { name: "Unified file diff" }),
+      changes.getByText("Project Git changes · not attributed to this Chat"),
     ).toBeVisible();
-    await expect(pane).toHaveScreenshot("ap-f-changes-last-turn.png");
+    await expect(
+      changes.getByText("src/workbench/AgentChatPanes.tsx", { exact: true }),
+    ).toBeVisible();
+    await scope.selectOption("lastTurn");
     await pane
       .getByRole("tab", {
         name: "Diff src/workbench/AgentChatPanes.tsx",
@@ -42,13 +52,10 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(changes).toBeVisible();
     await openAgentSnapshotDiff(page);
     await expect(changes).toHaveCount(0);
-    await pane
-      .getByRole("button", { name: "New browser tab", exact: true })
-      .click();
+    // "+" opens a native browser tab, which the browser runtime cannot host;
+    // the New tab tools page itself is covered by cp48-new-tab.visual.ts.
     await expect(
-      pane
-        .locator(".browser-new-tab__tools")
-        .getByRole("button", { name: "Changes", exact: true }),
+      pane.getByRole("button", { name: "New browser tab", exact: true }),
     ).toBeVisible();
   });
 
@@ -97,9 +104,10 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
       const { createInjectedEditorWatchDelivery } =
         await import("/src/domain/editorWatch.ts");
       const state = useWorkbenchStore.getState();
-      const tab = state.tabs.find((tab) => tab.kind === "file");
-      if (!tab?.resource) throw new Error("File fixture is missing");
-      const resource = tab.resource;
+      // The shown Agent File is the active editor's resource; the scenario
+      // also holds other File tabs.
+      const resource = state.activeEditor?.resource;
+      if (!resource) throw new Error("File fixture is missing");
       let content = "first\r\nsecond\n";
       getWorkbenchPorts().editor.readTextFile = async () => ({
         resource,
@@ -130,14 +138,15 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
           },
         };
       };
-      useWorkbenchStore.setState({
-        activeEditor: {
-          phase: "error",
-          resource,
-          message:
-            "invalid request: mixed LF and CRLF files are not editable in this slice",
-        },
-      });
+      // Native document opening refuses mixed line endings; reload through
+      // that refusal rather than writing the error state directly.
+      getWorkbenchPorts().editor.openEditorDocument = async () => {
+        throw new Error(
+          "invalid request: mixed LF and CRLF files are not editable in this slice",
+        );
+      };
+      useWorkbenchStore.setState({ activeEditor: null });
+      await useWorkbenchStore.getState().loadEditor(resource);
     });
     const view = page.getByRole("textbox", { name: /^View / });
     await expect(view).toHaveAttribute("readonly", "");
@@ -173,6 +182,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     page,
   }) => {
     await openAgentScenario(page, "agent-single");
+    await settleChatProjections(page);
     await page.evaluate(async () => {
       const { installPopoverSubagents } =
         await import("/tests/ui/fixtures/popoverSubagentsFixture.ts");
@@ -190,6 +200,10 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(
       resources.getByRole("button", { name: "Changes", exact: true }),
     ).toBeFocused();
+    // The Subagents section loads on demand; Tab only reaches it once shown.
+    await expect(
+      resources.getByRole("region", { name: "Subagents" }).getByRole("button"),
+    ).not.toHaveCount(0);
     await page.keyboard.press("Tab");
     await expect(
       resources.getByRole("button", {
@@ -205,10 +219,12 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
       exact: true,
     });
     await expect(changes).toBeVisible();
-    await page
+    // The completed Turn keeps its work under a closed Worked disclosure.
+    const reviewer = page
       .locator(".agent-chat-pane")
-      .getByRole("button", { name: "Open subagent Reviewer", exact: true })
-      .click();
+      .getByRole("button", { name: "Open subagent Reviewer", exact: true });
+    await revealWorkedContent(reviewer);
+    await reviewer.click();
     await expect(changes).toHaveCount(0);
     const pane = page.getByLabel("Agent artifacts", { exact: true });
     await expect(

@@ -1,7 +1,7 @@
 use super::*;
 
-// Session close and native end, split from session_operations.rs to keep
-// each command module focused.
+// Session close and native end, kept beside session_operations.rs so each
+// command module stays focused.
 
 pub(crate) async fn close_acp_session_inner(
     state: &AppState,

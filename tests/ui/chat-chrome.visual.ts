@@ -167,6 +167,8 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
           name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
           exact: true,
         })
+        // AP-C4: Recents lists every chat, so a pinned chat has two rows.
+        .first()
         .click();
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),

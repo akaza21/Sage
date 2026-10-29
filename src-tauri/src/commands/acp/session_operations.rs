@@ -1,6 +1,9 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+mod lifecycle;
+pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
+
 /// Context a prompt cannot carry: images (until CP-26) and page elements that
 /// fail admission.
 fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {

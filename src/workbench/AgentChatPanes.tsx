@@ -20,8 +20,8 @@ import {
 } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
-import { setHarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
+import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import { AgentChatPane } from "./AgentChatPane";
@@ -166,9 +166,14 @@ export function AgentChatPanes({
     projectTransitioning,
   ]);
 
-  useLayoutEffect(() => {
-    setHarnessBrowseOwner(focusedOwner, displayedIds);
-  }, [displayedIds, focusedOwner]);
+  useRetainedHarnessBrowse(
+    focusedOwner,
+    displayedIds,
+    chatIds,
+    Boolean(focusedId) &&
+      !projectTransitioning &&
+      (!focusedScope || focusedPage?.chatId !== focusedId),
+  );
 
   const focusedSnapshot = useAcpChatLiveSnapshot(
     focusedId ?? "",

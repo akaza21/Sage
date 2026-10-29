@@ -36,7 +36,8 @@ export async function expectLiveThinkingFixtureLine(page: Page) {
   );
   if (!reducedMotion) {
     await expect(thought).toHaveCSS("color", "rgba(0, 0, 0, 0)");
-    await expect(thought).toHaveCSS("background-clip", "text");
+    // Both shimmer layers (sweep and muted base) clip to the glyphs.
+    await expect(thought).toHaveCSS("background-clip", "text, text");
     await expect(thought).toHaveCSS("animation-name", "acp-live-shimmer");
   }
   await expect(thought.locator("summary, button, .acp-state")).toHaveCount(0);
