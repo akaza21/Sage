@@ -197,12 +197,9 @@ export function BrowserDrawers({
   return (
     <>
       {settingsOpen ? (
-        <aside
-          className="browser-surface__drawer"
-          aria-label="Browser settings"
-        >
+        <aside className="browser-surface__drawer" aria-label="Site settings">
           <button type="button" onClick={onCloseSettings}>
-            Close settings
+            Close site settings
           </button>
           <BrowserSitePermissions tabId={tabId} showEmpty />
         </aside>

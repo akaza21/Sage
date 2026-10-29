@@ -17,10 +17,7 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   closeBrowser: vi.fn(),
 }));
 
-import {
-  DEFAULT_BROWSER_PREFERENCES,
-  useBrowserPreferencesStore,
-} from "../../features/browser/browserPreferencesStore";
+import { resetBrowserPreferencesForTests } from "../../features/browser/browserPreferencesStore";
 import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { SettingsBrowserPage } from "./SettingsBrowserPage";
 
@@ -31,11 +28,7 @@ beforeEach(() => {
   runtime.desktop = true;
   getPreferences.mockResolvedValue({ showFullUrl: false });
   setPreferences.mockImplementation(async (value: unknown) => value);
-  useBrowserPreferencesStore.setState({
-    preferences: DEFAULT_BROWSER_PREFERENCES,
-    ready: false,
-    error: null,
-  });
+  resetBrowserPreferencesForTests();
 });
 
 afterEach(cleanup);
@@ -49,9 +42,11 @@ it("lists the General settings that Sage's browser supports", async () => {
   expect(toggle).toHaveAccessibleDescription(
     "Include the path, query, and fragment in the address bar. Default: Off",
   );
-  expect(
-    screen.getByRole("button", { name: "Clear browsing data" }),
-  ).toBeEnabled();
+  const clear = screen.getByRole("button", { name: "Clear browsing data" });
+  expect(clear).toBeEnabled();
+  expect(clear).toHaveAccessibleDescription(
+    "Clear browsing history, cookies, site data, and cache from the built-in browser. Every browser tab closes.",
+  );
   expect(general).toHaveTextContent("Browsing data");
 });
 

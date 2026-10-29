@@ -91,12 +91,15 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
             <div className="settings-surface__row">
               <div className="settings-surface__copy">
                 <span>Browsing data</span>
-                <p>
+                <p id="browser-clear-data-description">
                   Clear browsing history, cookies, site data, and cache from the
                   built-in browser. Every browser tab closes.
                 </p>
               </div>
-              <BrowserClearData buttonClassName="button button--compact" />
+              <BrowserClearData
+                buttonClassName="button button--compact"
+                describedBy="browser-clear-data-description"
+              />
             </div>
           ) : null}
         </section>

@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -378,6 +379,39 @@ it("loads the stored Show full URL choice when the browser opens", async () => {
   render(<BrowserSurface tab={tab} />);
   await screen.findByRole("textbox", { name: "Address or search" });
   expect(browserPreferences).toHaveBeenCalled();
+});
+it("opens Settings on the Browser page from the menu, as Codex does", async () => {
+  const openSettings = vi.fn(async () => undefined);
+  const previous = useWorkbenchStore.getState().openSettings;
+  useWorkbenchStore.setState({ openSettings });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await screen.findByRole("textbox", { name: "Address or search" });
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+    expect(openSettings).toHaveBeenCalledWith("browser");
+    expect(
+      screen.queryByRole("complementary", { name: "Site settings" }),
+    ).toBeNull();
+  } finally {
+    useWorkbenchStore.setState({ openSettings: previous });
+  }
+});
+it("keeps this tab's site permissions one menu item away", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("textbox", { name: "Address or search" });
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
+  const drawer = await screen.findByRole("complementary", {
+    name: "Site settings",
+  });
+  expect(drawer).toHaveTextContent("No site permissions saved for this tab.");
+  fireEvent.click(
+    within(drawer).getByRole("button", { name: "Close site settings" }),
+  );
+  expect(
+    screen.queryByRole("complementary", { name: "Site settings" }),
+  ).toBeNull();
 });
 it("groups supported page controls in an overflow menu without dead features", async () => {
   render(<BrowserSurface tab={tab} />);

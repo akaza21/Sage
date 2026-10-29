@@ -304,7 +304,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}
           onHistory={openHistory}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={(target) =>
+            target === "site"
+              ? setSettingsOpen(true)
+              : void useWorkbenchStore.getState().openSettings("browser")
+          }
           onCopy={() =>
             void pageAction(() => navigator.clipboard.writeText(page!.url))
           }

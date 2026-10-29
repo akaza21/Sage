@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getPreferences = vi.fn();
 const setPreferences = vi.fn();
 
+vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => getPreferences(),
   browserSetPreferences: (value: unknown) => setPreferences(value),
@@ -11,16 +12,15 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
 import {
   admitBrowserPreferences,
   DEFAULT_BROWSER_PREFERENCES,
+  ensureBrowserPreferences,
+  MAX_AUTOMATIC_LOADS,
+  resetBrowserPreferencesForTests,
   useBrowserPreferencesStore,
 } from "./browserPreferencesStore";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useBrowserPreferencesStore.setState({
-    preferences: DEFAULT_BROWSER_PREFERENCES,
-    ready: false,
-    error: null,
-  });
+  resetBrowserPreferencesForTests();
 });
 
 describe("browser preferences", () => {
@@ -84,5 +84,35 @@ describe("browser preferences", () => {
       preferences: { showFullUrl: true },
       error: "Browser settings could not be saved.",
     });
+  });
+
+  it("tries a failed load again on the next reader, a bounded number of times", async () => {
+    getPreferences.mockRejectedValue(new Error("busy"));
+    for (let attempt = 0; attempt < MAX_AUTOMATIC_LOADS + 2; attempt += 1) {
+      ensureBrowserPreferences();
+      await vi.waitFor(() =>
+        expect(useBrowserPreferencesStore.getState().error).not.toBeNull(),
+      );
+    }
+    expect(getPreferences).toHaveBeenCalledTimes(MAX_AUTOMATIC_LOADS);
+
+    // An explicit Retry still loads, and a success re-arms the automatic loads.
+    getPreferences.mockResolvedValue({ showFullUrl: true });
+    await useBrowserPreferencesStore.getState().restore();
+    expect(useBrowserPreferencesStore.getState()).toMatchObject({
+      ready: true,
+      error: null,
+      preferences: { showFullUrl: true },
+    });
+    ensureBrowserPreferences();
+    expect(getPreferences).toHaveBeenCalledTimes(MAX_AUTOMATIC_LOADS + 1);
+  });
+
+  it("shares one load between readers that mount together", async () => {
+    getPreferences.mockResolvedValue({ showFullUrl: false });
+    ensureBrowserPreferences();
+    ensureBrowserPreferences();
+    await useBrowserPreferencesStore.getState().restore();
+    expect(getPreferences).toHaveBeenCalledTimes(1);
   });
 });

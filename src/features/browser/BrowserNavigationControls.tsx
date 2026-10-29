@@ -25,6 +25,7 @@ import type {
 import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
+import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
 import { useDismissOnOutsidePointer } from "./browserPopover";
 
 interface Props {
@@ -43,7 +44,7 @@ interface Props {
   onZoomReset: () => void;
   onDownloads: () => void;
   onHistory: () => void;
-  onSettings: () => void;
+  onSettings: (target: "browser" | "site") => void;
   onCopy: () => void;
   onExternal: () => void;
   clearDataControl: ReactNode;
@@ -300,13 +301,7 @@ export function BrowserNavigationControls({
               {clearDataControl}
             </div>
             <div className="browser-surface__menu-group">
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => run(onSettings)}
-              >
-                Browser settings
-              </button>
+              <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
               {page ? (
                 <>
                   <button

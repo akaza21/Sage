@@ -103,6 +103,57 @@ mod tests {
     }
 
     #[test]
+    fn a_settings_store_from_before_browser_preferences_gains_the_table_and_keeps_its_rows() {
+        let directory = std::env::temp_dir().join(format!(
+            "sage-settings-browser-migrate-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.db");
+        {
+            // The ui_appearance record as an earlier Sage wrote it, with no
+            // browser_preferences table.
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE ui_appearance (
+                       singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                       font_size INTEGER NOT NULL CHECK (font_size IN (12, 13, 14, 16)),
+                       density TEXT NOT NULL CHECK (density IN ('comfortable', 'compact'))
+                     ) STRICT;
+                     INSERT INTO ui_appearance VALUES (1, 16, 'compact');",
+                )
+                .unwrap();
+        }
+        let store = SettingsStore::open(&path).unwrap();
+        assert_eq!(
+            store.browser_preferences().unwrap(),
+            BrowserPreferences::default()
+        );
+        assert_eq!(
+            store.ui_appearance().unwrap(),
+            super::super::UiAppearance {
+                font_size: 16,
+                density: super::super::UiDensity::Compact,
+            }
+        );
+        let value = BrowserPreferences {
+            show_full_url: true,
+        };
+        store.set_browser_preferences(value).unwrap();
+        drop(store);
+        // Opening again leaves the migrated table and its row alone.
+        assert_eq!(
+            SettingsStore::open(&path)
+                .unwrap()
+                .browser_preferences()
+                .unwrap(),
+            value
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn browser_preferences_refuse_unknown_fields_and_wrong_types() {
         for input in [
             serde_json::json!({ "showFullUrl": true, "cookies": "a=b" }),

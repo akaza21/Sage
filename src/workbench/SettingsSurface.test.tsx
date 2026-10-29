@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { DEFAULT_EDITOR_SETTINGS } from "../domain/editorSettingsCatalogue";
 import { SettingsSurface } from "./SettingsSurface";
 
@@ -24,6 +26,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useSettingsPageRequest.setState({ page: null });
   useEditorSettingsStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -41,6 +44,32 @@ describe("SettingsSurface", () => {
       "aria-selected",
       "true",
     );
+  });
+
+  it("opens on a requested page and follows a request while open", async () => {
+    useSettingsPageRequest.setState({ page: "browser" });
+    render(<SettingsSurface />);
+    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Browser" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(useSettingsPageRequest.getState().page).toBeNull(),
+    );
+
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "tab size" },
+    });
+    act(() => useSettingsPageRequest.setState({ page: "keyboard" }));
+    expect(screen.getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(useSettingsPageRequest.getState().page).toBeNull();
   });
 
   it("loads the Browser page on demand", async () => {
