@@ -246,6 +246,16 @@ try {
   );
   await page.goto(url, { waitUntil: "networkidle", timeout: 60_000 });
   await page.waitForTimeout(1500);
+  // A fresh profile opens in Agent (AP-A6); the walk starts in Editor.
+  try {
+    await page
+      .getByRole("radiogroup", { name: "Window mode" })
+      .getByText("Editor", { exact: true })
+      .click({ timeout: 4000 });
+    await page.waitForTimeout(800);
+  } catch {
+    misses.push("Editor mode");
+  }
   await shot("10-editor-welcome");
 
   await reach("README.md", EDITOR_TAB);
