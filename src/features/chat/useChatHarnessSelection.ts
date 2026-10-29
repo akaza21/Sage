@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -56,9 +55,7 @@ export function useComposerPopovers(disabled = false) {
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (disabled) queueMicrotask(() => setActive(null));
-  }, [disabled]);
+  if (disabled && selected !== null) setActive(null);
 
   return {
     active,
@@ -67,6 +64,12 @@ export function useComposerPopovers(disabled = false) {
     optionsId,
     optionsTrigger,
     dismiss: () => setActive(null),
+    setHarnessOpen: (open: boolean) => {
+      if (!disabled)
+        setActive((current) =>
+          open ? "harness" : current === "harness" ? null : current,
+        );
+    },
     toggle: (
       kind: "options" | "access" | "harness" | "model" | "effort" | "project",
     ) => {

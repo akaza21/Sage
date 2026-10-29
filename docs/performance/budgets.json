@@ -89,6 +89,22 @@
         "reason": "Chat resource rows from retained projections; mounts only while the resources popover is open."
       },
       {
+        "entry": "src/features/chat/ComposerAccessMenu.tsx",
+        "maxGzipBytes": 1000,
+        "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request (AP-D)."
+      },
+      {
+        "entry": "src/features/chat/ComposerModelMenu.tsx",
+        "maxGzipBytes": 900,
+        "maxCssGzipBytes": 250,
+        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; JS and CSS load on the first Model request (AP-D)."
+      },
+      {
+        "entry": "src/features/chat/ComposerEffortMenu.tsx",
+        "maxGzipBytes": 1450,
+        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager (AP-D)."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,
