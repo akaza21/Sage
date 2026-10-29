@@ -139,6 +139,26 @@
         "reason": "The open Chat list options menu (grouping, ordering, show, filters, Collapse All, Mark All as Read); loads on the first open."
       },
       {
+        "entry": "src/workbench/AgentProjectMenu.tsx",
+        "maxGzipBytes": 640,
+        "reason": "Project menu surface isolated from the rail's static closure; rendered only in Agent mode. Unavailable native actions remain explicit deferrals."
+      },
+      {
+        "entry": "src/workbench/ProjectChatActionPopover.tsx",
+        "maxGzipBytes": 1120,
+        "reason": "Chat row context actions; mounted only while a row menu is open."
+      },
+      {
+        "entry": "src/workbench/ProjectChatRename.tsx",
+        "maxGzipBytes": 620,
+        "reason": "Chat rename dialog; mounted only during a rename."
+      },
+      {
+        "entry": "src/workbench/AgentRailArchiveNotice.tsx",
+        "maxGzipBytes": 410,
+        "reason": "Undo archive notice; mounted only after an archive has committed."
+      },
+      {
         "entry": "src/features/outline/OutlineSurface.tsx",
         "maxGzipBytes": 1600,
         "reason": "Outline side panel (symbol rows and honest empty states); loads when the Outline view first opens."

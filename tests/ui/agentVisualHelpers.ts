@@ -22,7 +22,7 @@ export async function assertAgentLandmarks(page: Page) {
     }),
   ).toBeVisible();
   await expect(
-    projectSidebar.getByRole("button", { name: "Filter tasks", exact: true }),
+    projectSidebar.getByRole("button", { name: "Search chats", exact: true }),
   ).toBeVisible();
 }
 

@@ -90,6 +90,9 @@ export function ChatSearchControl({
   const [response, setResponse] = useState<ChatSearchFanoutView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
+  const searching = useRef(false);
+  const [settledRequest, setSettledRequest] = useState(0);
+  const queryRef = useRef<HTMLInputElement>(null);
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
   const triggerRef = suppliedTriggerRef ?? localTriggerRef;
   const focusReturnRef = useRef<(() => void) | null>(null);
@@ -130,6 +133,7 @@ export function ChatSearchControl({
   ) => {
     const state = useWorkbenchStore.getState();
     if (!state.project || state.projectTransitioning) return;
+    requestGeneration.current += 1;
     focusReturnRef.current = focusReturn ?? null;
     setScope({
       activeProjectId: state.project.id,
@@ -146,6 +150,7 @@ export function ChatSearchControl({
     setResponse(null);
     setError(null);
     setOpen(true);
+    queryRef.current?.focus();
   };
 
   useEffect(() => {
@@ -168,22 +173,16 @@ export function ChatSearchControl({
     setError(null);
   };
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!scope || phase === "searching") return;
+  const searchQuery = useCallback(async () => {
+    if (!scope || searching.current) return;
     const normalized = query.trim();
-    if (!normalized) {
-      setPhase("error");
-      setError("Enter text to search for.");
-      return;
-    }
     if (!matchesScope(scope)) {
       close(false);
       return;
     }
     const intent = requestGeneration.current + 1;
     requestGeneration.current = intent;
-    setQuery(normalized);
+    searching.current = true;
     setPhase("searching");
     setResponse(null);
     setError(null);
@@ -203,7 +202,21 @@ export function ChatSearchControl({
       if (requestGeneration.current !== intent || !matchesScope(scope)) return;
       setError(boundedError(searchError, 2_048, "utf8"));
       setPhase("error");
+    } finally {
+      searching.current = false;
+      setSettledRequest((value) => value + 1);
     }
+  }, [close, query, scope]);
+
+  useEffect(() => {
+    if (!open || phase !== "idle") return;
+    const timer = setTimeout(() => void searchQuery(), 200);
+    return () => clearTimeout(timer);
+  }, [open, phase, query, searchQuery, settledRequest]);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void searchQuery();
   };
 
   const selectResult = async (result: ChatSearchFanoutPick) => {
@@ -217,7 +230,10 @@ export function ChatSearchControl({
       result.projectId,
       result.chatId,
     );
-    if (result.attached !== attached || (!attached && !archived)) {
+    if (
+      result.projectId === state.project?.id &&
+      (result.attached !== attached || (!attached && !archived))
+    ) {
       requestGeneration.current += 1;
       setResponse(null);
       setPhase("error");
@@ -225,7 +241,7 @@ export function ChatSearchControl({
       return;
     }
     close(false);
-    if (attached) {
+    if (result.attached) {
       if (result.projectId === state.project?.id) {
         await activateChat(result.chatId);
       } else {
@@ -269,40 +285,47 @@ export function ChatSearchControl({
               selected folder, or across listed folders.
             </p>
             <label className="chat-search-dialog__query">
-              <span>Search in</span>
-              <SearchablePicker
-                ariaLabel="Search in"
-                candidates={folderCandidates}
-                disabled={phase === "searching" || projectTransitioning}
-                onSelect={chooseFolder}
-                portalTarget="closest-dialog"
-                selectedId={scope.searchProjectId}
-              />
-            </label>
-            <label className="chat-search-dialog__query">
               <span>Search Chats</span>
               <input
+                ref={queryRef}
                 autoFocus
                 aria-label="Search Chats"
-                disabled={phase === "searching" || projectTransitioning}
+                disabled={projectTransitioning}
                 maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
                 role="searchbox"
                 type="search"
                 value={query}
                 onChange={(event) => editQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown") return;
+                  const result = event.currentTarget
+                    .closest("form")
+                    ?.querySelector<HTMLButtonElement>('[role="option"]');
+                  if (result) {
+                    event.preventDefault();
+                    result.focus();
+                  }
+                }}
+              />
+            </label>
+            <label className="chat-search-dialog__query">
+              <span>Search in</span>
+              <SearchablePicker
+                ariaLabel="Search in"
+                candidates={folderCandidates}
+                disabled={projectTransitioning}
+                onSelect={chooseFolder}
+                portalTarget="closest-dialog"
+                selectedId={scope.searchProjectId}
               />
             </label>
             <div className="chat-search-dialog__actions">
               <button className="button" type="button" onClick={() => close()}>
                 Cancel
               </button>
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={phase === "searching" || projectTransitioning}
-              >
-                {phase === "searching" ? "Searching…" : "Search"}
-              </button>
+              <span role="status">
+                {phase === "searching" ? "Searching…" : "Type to search chats"}
+              </span>
             </div>
             {error ? (
               <div className="composer__error" role="alert">
@@ -316,7 +339,32 @@ export function ChatSearchControl({
                     No Chats matched “{response.query}”.
                   </p>
                 ) : (
-                  <div role="listbox" aria-label="Chat search results">
+                  <div
+                    role="listbox"
+                    aria-label="Chat search results"
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp")
+                        return;
+                      event.preventDefault();
+                      const options = [
+                        ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                          '[role="option"]',
+                        ),
+                      ];
+                      const index = options.indexOf(
+                        document.activeElement as HTMLButtonElement,
+                      );
+                      if (event.key === "ArrowUp" && index <= 0)
+                        queryRef.current?.focus();
+                      else
+                        options[
+                          Math.min(
+                            options.length - 1,
+                            index + (event.key === "ArrowDown" ? 1 : -1),
+                          )
+                        ]?.focus();
+                    }}
+                  >
                     {response.results.map((result) => {
                       const folderName = chatSearchResultFolderName(
                         folders,

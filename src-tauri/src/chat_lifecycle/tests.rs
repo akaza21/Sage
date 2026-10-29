@@ -166,7 +166,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
             .iter()
             .find(|tab| tab.id == second_chat_id)
             .map(|tab| tab.title.as_str()),
-        Some("Chat: New chat 2")
+        Some("Chat: Chat")
     );
 
     database
@@ -493,7 +493,7 @@ fn creates_a_chat_on_a_non_active_project_without_switching() {
         .iter()
         .find(|chat| chat.id == created)
         .unwrap();
-    assert_eq!(created_chat.title, "Chat: New chat 2");
+    assert_eq!(created_chat.title, "Chat: Chat");
     let sessions: i64 = database
         .connection()
         .query_row(

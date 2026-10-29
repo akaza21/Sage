@@ -12,7 +12,7 @@ export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
-export const MAX_AGENT_RAIL_RECENT_CHATS = 8;
+export const MAX_AGENT_RAIL_RECENT_CHATS = 64;
 export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
 export const UNKNOWN_PROJECT_NAME = "Unknown project";
 
@@ -211,15 +211,13 @@ export function deriveAgentRailSections(
         pinned.push(item);
       } else {
         projectChats.push(chat);
-        if (
-          !chat.pinned &&
-          typeof chat.updatedAt === "number" &&
-          Number.isFinite(chat.updatedAt) &&
-          chat.updatedAt > 0
-        ) {
-          recentCandidates.push(item);
-        }
       }
+      if (
+        typeof chat.updatedAt === "number" &&
+        Number.isFinite(chat.updatedAt) &&
+        chat.updatedAt > 0
+      )
+        recentCandidates.push(item);
     }
     projects.push({
       ...group,

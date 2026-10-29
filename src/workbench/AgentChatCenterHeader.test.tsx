@@ -99,7 +99,7 @@ it("keeps the parent's own live session chrome while its side chat is focused", 
     screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
   );
   expect(
-    screen.getByRole("menuitem", { name: "Close session" }),
+    await screen.findByRole("menuitem", { name: "Close session" }),
   ).toBeInTheDocument();
   const more = screen.getByRole("button", { name: /Chat actions for/ });
   fireEvent.click(more);

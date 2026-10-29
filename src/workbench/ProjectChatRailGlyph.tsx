@@ -27,7 +27,7 @@ export function ProjectChatTrailingState({
         <span className="spinner agent-chat-chip__spinner" />
       </span>
     );
-  if (!focused || !state || state.kind === "time")
+  if (!focused || !state || state.kind === "time" || state.kind === "unread")
     return (
       <ProjectChatRailGlyph
         state={state}

@@ -3,17 +3,20 @@ import {
   MessageSquare,
   Pin,
   RotateCcw,
-  Check,
   ChevronDown,
   ChevronRight,
-  X,
 } from "../ui/leanIcons";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 
 import { useWorkbenchStore } from "../app/store";
-import { MAX_CHAT_TITLE_BYTES, chatDisplayTitle } from "../domain/chatTitle";
+import { chatDisplayTitle } from "../domain/chatTitle";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as RenameChunk from "./ProjectChatRename";
+const RenamePart = lazyParts<typeof RenameChunk>(
+  () => import("./ProjectChatRename"),
+);
 import {
   isSideChatId,
   useParentChatStatus,
@@ -36,6 +39,12 @@ import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import {
+  clearAgentRailUnread,
+  markAgentRailUnread,
+  setAgentRailArchiveUndo,
+  useAgentRailInteractions,
+} from "./agentRailInteractions";
 
 export function ProjectChatNavigation({
   projectId,
@@ -52,7 +61,6 @@ export function ProjectChatNavigation({
   projectChatCount,
   relativeTimeSuffix = false,
   suppressActive = false,
-  showActions = true,
 }: {
   projectId: string;
   chats: AgentRailChat[];
@@ -68,7 +76,6 @@ export function ProjectChatNavigation({
   projectChatCount?: number;
   relativeTimeSuffix?: boolean;
   suppressActive?: boolean;
-  showActions?: boolean;
 }) {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -76,6 +83,7 @@ export function ProjectChatNavigation({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
+  const interactions = useAgentRailInteractions();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusChatId = useRef<string | null>(null);
@@ -145,72 +153,36 @@ export function ProjectChatNavigation({
       {chatTabs.map((tab) => {
         const displayTitle = chatDisplayTitle(tab.title);
         if (renamingChatId === tab.id) {
-          const errorId = `chat-rename-error-${tab.id}`;
           return (
-            <form
-              className="project-chat-edit"
+            <RenamePart
+              part="ProjectChatRename"
               key={tab.id}
+              chatId={tab.id}
+              title={displayTitle}
+              draft={renameDraft}
+              saving={renameSaving}
+              error={renameError}
+              inputRef={renameInputRef}
+              onDraft={setRenameDraft}
               onSubmit={(event) => void submitRename(event, tab.id)}
-            >
-              <MessageSquare size={14} aria-hidden="true" />
-              <input
-                ref={renameInputRef}
-                aria-label={`New name for ${displayTitle}`}
-                aria-invalid={renameError ? true : undefined}
-                aria-describedby={renameError ? errorId : undefined}
-                autoFocus
-                disabled={renameSaving}
-                maxLength={MAX_CHAT_TITLE_BYTES}
-                value={renameDraft}
-                onChange={(event) => setRenameDraft(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    closeRename(tab.id);
-                  }
-                }}
-              />
-              <button
-                type="submit"
-                aria-label="Save chat name"
-                title="Save chat name"
-                disabled={renameSaving}
-              >
-                <Check size={14} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                aria-label="Cancel chat rename"
-                title="Cancel chat rename"
-                disabled={renameSaving}
-                onClick={() => closeRename(tab.id)}
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-              {renameError ? (
-                <span
-                  className="project-chat-edit__error"
-                  id={errorId}
-                  role="alert"
-                >
-                  {renameError}
-                </span>
-              ) : null}
-            </form>
+              onCancel={() => closeRename(tab.id)}
+            />
           );
         }
         const focused = !suppressActive && selected && tab.id === activeTabId;
         const status = parentChatStatus(tab.id, tab.status);
-        const fingerprint = sessionRailFingerprint(status);
+        const fingerprint = sessionRailFingerprint(status, tab.updatedAt);
         if (focused && fingerprint.length > 0) {
           ackSessionRailUnread(tab.id, fingerprint);
         }
-        const unread = sessionRailUnreadVisible({
-          focused,
-          status: tab.status,
-          seenFingerprint: seenSessionRailFingerprint(tab.id),
-        });
+        const unread =
+          interactions.unread.has(tab.id) ||
+          sessionRailUnreadVisible({
+            focused,
+            status: tab.status,
+            updatedAt: tab.updatedAt,
+            seenFingerprint: seenSessionRailFingerprint(tab.id),
+          });
         const branchLabel = showBranch ? gitLabel : "";
         const stamp = showUpdated
           ? agentRailAgeStamp({
@@ -224,9 +196,10 @@ export function ProjectChatNavigation({
           unread,
           stamp,
         });
-        const approvalLabel = awaitingApprovalIds.has(tab.id)
-          ? sessionRailStatusLabel(tab.status, true)
-          : "";
+        const approvalLabel =
+          awaitingApprovalIds.has(tab.id) || interactions.approval.has(tab.id)
+            ? sessionRailStatusLabel(tab.status, true)
+            : "";
         const updatedDateTime =
           tab.updatedAt && Number.isFinite(tab.updatedAt)
             ? new Date(tab.updatedAt).toISOString()
@@ -235,17 +208,23 @@ export function ProjectChatNavigation({
           <div
             className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
             key={tab.id}
+            onContextMenu={(event) => {
+              if (projectTransitioning) return;
+              event.preventDefault();
+              setActionMenuChatId(tab.id);
+            }}
           >
             <button
               className={`project-chat ${
                 focused ? "project-chat--active" : ""
               }`}
               type="button"
-              title={`${showActions ? "Open chat" : "Open recent chat"} ${displayTitle}`}
-              aria-label={`${showActions ? "Open chat" : "Open recent chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
+              title={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}`}
+              aria-label={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
+                clearAgentRailUnread(tab.id);
                 ackSessionRailUnread(tab.id, fingerprint);
                 if (selected) {
                   void activateTab(tab.id);
@@ -302,32 +281,44 @@ export function ProjectChatNavigation({
                 dateTime={updatedDateTime}
                 relative={relativeTimeSuffix}
               />
-              {showActions ? (
-                <ProjectChatActionMenu
-                  chatId={tab.id}
-                  chatTitle={displayTitle}
-                  pinned={tab.pinned}
-                  open={actionMenuChatId === tab.id}
-                  disabled={projectTransitioning}
-                  archiveDisabled={
-                    projectTransitioning ||
-                    (projectChatCount ?? chatTabs.length) <= 1
-                  }
-                  projectId={projectId}
-                  onOpenChange={(open) =>
-                    setActionMenuChatId(open ? tab.id : null)
-                  }
-                  onRename={() => {
-                    setRenameError(null);
-                    setRenameDraft(displayTitle);
-                    setRenamingChatId(tab.id);
-                  }}
-                  triggerRef={(node) => {
-                    if (node) renameTriggerRefs.current.set(tab.id, node);
-                    else renameTriggerRefs.current.delete(tab.id);
-                  }}
-                />
-              ) : null}
+              <ProjectChatActionMenu
+                chatId={tab.id}
+                projectId={projectId}
+                chatTitle={displayTitle}
+                pinned={tab.pinned}
+                open={actionMenuChatId === tab.id}
+                disabled={projectTransitioning}
+                archiveDisabled={
+                  projectTransitioning ||
+                  (projectChatCount ?? chatTabs.length) <= 1
+                }
+                onOpenChange={(open) =>
+                  setActionMenuChatId(open ? tab.id : null)
+                }
+                onRename={() => {
+                  setRenameError(null);
+                  setRenameDraft(displayTitle);
+                  setRenamingChatId(tab.id);
+                }}
+                onMarkUnread={() => markAgentRailUnread(tab.id)}
+                onArchive={() => {
+                  void useWorkbenchStore
+                    .getState()
+                    .archiveChat(tab.id, projectId)
+                    .then((committed) => {
+                      if (committed)
+                        setAgentRailArchiveUndo({
+                          projectId,
+                          chatId: tab.id,
+                          title: displayTitle,
+                        });
+                    });
+                }}
+                triggerRef={(node) => {
+                  if (node) renameTriggerRefs.current.set(tab.id, node);
+                  else renameTriggerRefs.current.delete(tab.id);
+                }}
+              />
             </div>
           </div>
         );
