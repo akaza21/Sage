@@ -22,6 +22,7 @@ import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
+import { useAgentRailStatus } from "./useAgentRailStatus";
 import {
   type AgentCenterDecision,
   agentCenterChatAction,
@@ -179,6 +180,7 @@ function RendererRecreationPacketCollector({
 }
 
 export function Workbench() {
+  useAgentRailStatus();
   const agentSettingsPage = useAgentSettingsState(
     (state) => state.page !== null,
   );

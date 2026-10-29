@@ -5,6 +5,8 @@ import { resourceKey } from "../../domain/resourceIdentity";
 import { useWorkbenchStore } from "../../app/store";
 import { ChangesFileDiff } from "./ChangesFileDiff";
 import { projectChanges, type ChangesScope } from "./agentChanges";
+import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
 import "./changes.css";
 
 export const ChangesSurface = memo(function ChangesSurface({
@@ -28,14 +30,27 @@ export const ChangesSurface = memo(function ChangesSurface({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const workspaceChanges = useTurnWorkspaceChanges(
+    page,
+    scope === "lastTurn" && isTauriRuntime(),
+    revision,
+  );
   const result = useMemo(
-    () => projectChanges(scope, page, repositories),
-    [scope, page, repositories],
+    () =>
+      projectChanges(
+        scope,
+        page,
+        repositories,
+        workspaceChanges.changes,
+        workspaceChanges.incompleteTurnIds,
+      ),
+    [scope, page, repositories, workspaceChanges],
   );
   const gitAvailable = repositories.roots.some(
     (root) => root.state === "repository",
   );
   const countsKnown =
+    !result.truncated &&
     result.entries.length > 0 &&
     result.entries.every(
       (entry) => entry.additions !== null && entry.deletions !== null,
@@ -117,7 +132,7 @@ export const ChangesSurface = memo(function ChangesSurface({
         </p>
       )}
       {error ? <p role="alert">{error}</p> : null}
-      {result.entries.length === 0 ? (
+      {result.entries.length === 0 && !result.truncated ? (
         <p className="resource-state">No changes in this scope.</p>
       ) : null}
       {result.truncated ? (

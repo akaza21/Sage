@@ -1,6 +1,8 @@
-import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
+import type { AcpChatPage } from "../../../domain/acp";
+import { isRecord, isShortId } from "../../../domain/guards";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { utf8ByteLength } from "../../../domain/text";
+import { canonicalRelativePath } from "./agentEditSummary";
+import { terminalTurnStates } from "./statusSemantics";
 
 /**
  * AP-B B5: workspace (Git) changes of terminal turns, computed and owned by
@@ -14,120 +16,134 @@ export interface TurnWorkspaceChange {
   operation: "created" | "updated" | "deleted";
 }
 
-export const MAX_TURN_WORKSPACE_CHANGES = 300;
-const MAX_FETCHED_TURNS = 5;
-const MAX_CACHED_TURNS = 64;
-const MAX_PATH_BYTES = 16 * 1024;
-const TERMINAL_TURN_STATES: ReadonlySet<string> = new Set([
-  "completed",
-  "interrupted",
-  "cancelled",
-  "failed",
-  "deliveryUnknown",
-]);
-
-const cache = new Map<string, readonly TurnWorkspaceChange[]>();
-const inFlight = new Set<string>();
-
-function canonicalRelativePath(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    utf8ByteLength(value) <= MAX_PATH_BYTES &&
-    !value.includes("\0") &&
-    !value.includes("\\") &&
-    !value.startsWith("/") &&
-    value.charAt(1) !== ":" &&
-    value
-      .split("/")
-      .every((part) => part.length > 0 && part !== "." && part !== "..")
-  );
+export interface TurnWorkspaceLedger {
+  changes: readonly TurnWorkspaceChange[];
+  incompleteTurnIds: ReadonlySet<string>;
 }
+
+interface TurnWorkspaceResult {
+  changes: readonly TurnWorkspaceChange[];
+  incomplete: boolean;
+}
+
+export const MAX_TURN_WORKSPACE_CHANGES = 300;
+const MAX_CONCURRENT_READS = 5;
+const MAX_CACHED_TURNS = 100;
+
+const cache = new Map<string, TurnWorkspaceResult>();
+const inFlight = new Map<string, { result?: TurnWorkspaceResult }>();
+const waiters = new Set<() => void>();
+const unavailable: TurnWorkspaceResult = { changes: [], incomplete: true };
 
 /** Decodes the native reply, rejecting anything unbounded or unsafe. */
 export function decodeTurnWorkspaceChanges(
-  value: unknown,
+  record: unknown,
   turnId: string,
-): TurnWorkspaceChange[] | null {
-  if (typeof value !== "object" || value === null) return null;
-  const record = value as Record<string, unknown>;
+): TurnWorkspaceResult | null {
+  if (!isRecord(record)) return null;
   if (
-    typeof record.rootId !== "string" ||
-    record.rootId.length === 0 ||
+    !isShortId(record.rootId) ||
     typeof record.tracked !== "boolean" ||
     !Array.isArray(record.changes) ||
-    record.changes.length > MAX_TURN_WORKSPACE_CHANGES
+    record.changes.length > MAX_TURN_WORKSPACE_CHANGES ||
+    record.changes.some(
+      (change) =>
+        !isRecord(change) ||
+        !canonicalRelativePath(change.relativePath) ||
+        !["created", "updated", "deleted"].includes(change.operation as string),
+    )
   )
     return null;
-  const rootId = record.rootId;
-  const changes: TurnWorkspaceChange[] = [];
-  for (const entry of record.changes) {
-    if (typeof entry !== "object" || entry === null) return null;
-    const change = entry as Record<string, unknown>;
-    if (
-      !canonicalRelativePath(change.relativePath) ||
-      !["created", "updated", "deleted"].includes(String(change.operation))
-    )
-      return null;
-    changes.push({
-      turnId,
-      rootId,
-      relativePath: change.relativePath,
-      operation: change.operation as TurnWorkspaceChange["operation"],
+  return {
+    changes: record.tracked
+      ? record.changes.map((change) => ({
+          turnId,
+          rootId: record.rootId as string,
+          relativePath: change.relativePath,
+          operation: change.operation as TurnWorkspaceChange["operation"],
+        }))
+      : [],
+    incomplete: !record.tracked || record.truncated !== false,
+  };
+}
+
+async function loadTurn(
+  request: Parameters<typeof acpDesktop.getTurnWorkspaceChanges>[0],
+  signal: AbortSignal,
+): Promise<TurnWorkspaceResult> {
+  const key = JSON.stringify(request);
+  while (true) {
+    if (signal.aborted || waiters.size >= 32) return unavailable;
+    const retained = cache.get(key);
+    if (retained) return retained;
+    let pending = inFlight.get(key);
+    const changed = new Promise<void>((resolve) => {
+      const done = () => {
+        waiters.delete(done);
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      waiters.add(done);
+      signal.addEventListener("abort", done);
     });
+    if (!pending && inFlight.size < MAX_CONCURRENT_READS) {
+      pending = {};
+      inFlight.set(key, pending);
+      void acpDesktop
+        .getTurnWorkspaceChanges(request)
+        .then(
+          (reply) =>
+            decodeTurnWorkspaceChanges(reply, request.turnId) ?? unavailable,
+        )
+        .catch(() => unavailable)
+        .then((result) => {
+          if (!result.incomplete) {
+            if (cache.set(key, result).size > MAX_CACHED_TURNS)
+              cache.delete(cache.keys().next().value!);
+          }
+          pending!.result = result;
+          inFlight.delete(key);
+          for (const notify of waiters) notify();
+        });
+    }
+    await changed;
+    if (pending?.result) return pending.result;
   }
-  return changes;
 }
 
-function remember(turnId: string, changes: readonly TurnWorkspaceChange[]) {
-  cache.delete(turnId);
-  cache.set(turnId, changes);
-  if (cache.size > MAX_CACHED_TURNS) cache.delete(cache.keys().next().value!);
-}
-
-function candidateTurns(page: AcpChatPage): TurnProjection[] {
-  return page.turns
-    .filter(
-      (turn) =>
-        turn.sessionId === page.currentSessionId &&
-        TERMINAL_TURN_STATES.has(turn.state),
-    )
-    .slice(-MAX_FETCHED_TURNS);
-}
-
-/**
- * Loads the settled workspace changes of the page's latest terminal turns
- * (at most a few, each fetched once) and resolves with every cached change.
- */
-export async function loadTurnWorkspaceChanges(
+export default async function loadTurnWorkspaceChanges(
   page: AcpChatPage,
   projectGeneration: string,
-): Promise<readonly TurnWorkspaceChange[]> {
-  const turns = candidateTurns(page);
-  await Promise.all(
-    turns
-      .filter((turn) => !cache.has(turn.id) && !inFlight.has(turn.id))
-      .map(async (turn) => {
-        inFlight.add(turn.id);
-        try {
-          const changes = decodeTurnWorkspaceChanges(
-            await acpDesktop.getTurnWorkspaceChanges({
-              projectId: page.projectId,
-              projectGeneration,
-              chatId: page.chatId,
-              turnId: turn.id,
-            }),
-            turn.id,
-          );
-          if (changes) remember(turn.id, changes);
-        } catch {
-          // A failed read leaves the turn uncached; it is retried later.
-        } finally {
-          inFlight.delete(turn.id);
-        }
-      }),
-  );
-  return turns.flatMap((turn) => cache.get(turn.id) ?? []);
+  signal: AbortSignal,
+): Promise<TurnWorkspaceLedger> {
+  const turns = page.turns
+    .filter(
+      (turn) =>
+        page.sessions.some((session) => session.id === turn.sessionId) &&
+        terminalTurnStates.has(turn.state),
+    )
+    .slice(-MAX_CACHED_TURNS);
+  const changes: TurnWorkspaceChange[] = [];
+  const incompleteTurnIds = new Set<string>();
+  while (turns.length) {
+    await Promise.all(
+      turns.splice(-MAX_CONCURRENT_READS).map((turn) =>
+        loadTurn(
+          {
+            projectId: page.projectId,
+            projectGeneration,
+            chatId: page.chatId,
+            turnId: turn.id,
+          },
+          signal,
+        ).then((result) => {
+          changes.push(...result.changes);
+          if (result.incomplete) incompleteTurnIds.add(turn.id);
+        }),
+      ),
+    );
+  }
+  return { changes, incompleteTurnIds };
 }
 export function resetTurnWorkspaceChangesForTest() {
   cache.clear();

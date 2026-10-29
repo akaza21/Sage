@@ -10,6 +10,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <textarea aria-label="Composer" />,
@@ -78,10 +80,33 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
+  clearChatSearchFolderRequest();
   localStorage.clear();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
+
+it.each(["button", "shortcut"])(
+  "opens visible Chat search from Agent Settings using the %s",
+  async (trigger) => {
+    render(<Workbench />);
+    await settleLazyModules();
+    act(() => useAgentSettingsState.getState().open());
+    expect(
+      await screen.findByRole("region", { name: "Agent settings" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Composer" })).toBeNull();
+    if (trigger === "button")
+      fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+    else fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(
+      await screen.findByRole("dialog", { name: "Search Chats" }),
+    ).toBeVisible();
+    expect(useAgentSettingsState.getState().page).toBeNull();
+    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
+  },
+);
 
 it("starts a fresh profile in Agent, and never adds a chat when resources collapse or the center crosses 860px", async () => {
   const { container } = render(<Workbench />);

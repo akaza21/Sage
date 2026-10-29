@@ -4,7 +4,8 @@ import type {
   ProjectRepositoryStatus,
   ResourceRef,
 } from "../../domain/workbench";
-import { projectAgentEditSummary } from "../chat/acp/agentEditSummary";
+import { projectTurnEditSummary } from "../chat/acp/chatEditSummary";
+import type { TurnWorkspaceChange } from "../chat/acp/turnWorkspaceChanges";
 import { resourceKey } from "../../domain/resourceIdentity";
 
 export type ChangesScope = "lastTurn" | "unstaged" | "staged";
@@ -21,6 +22,8 @@ export function projectChanges(
   scope: ChangesScope,
   page: AcpChatPage | null,
   repositories: ProjectRepositoryStatus,
+  workspaceChanges: readonly TurnWorkspaceChange[] = [],
+  workspaceIncompleteTurns: ReadonlySet<string> = new Set(),
 ) {
   const entries: ChangesEntry[] = [];
   if (scope === "lastTurn") {
@@ -37,7 +40,12 @@ export function projectChanges(
       }
     }
     if (!page || !turn) return { entries, truncated: false };
-    const summary = projectAgentEditSummary(page, turn);
+    const summary = projectTurnEditSummary(
+      page,
+      turn,
+      workspaceChanges,
+      workspaceIncompleteTurns.has(turn.id),
+    );
     const byResource = new Map<string, ChangesEntry>();
     for (const change of summary.changes) {
       const resource =

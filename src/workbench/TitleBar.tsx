@@ -11,6 +11,7 @@ import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
 import { useRailChatId } from "./sideChatState";
 import {
@@ -116,6 +117,7 @@ export function TitleBar({
     : PanelLeftClose;
   const openChatSearch = useCallback(() => {
     if (!project) return;
+    useAgentSettingsState.getState().close();
     requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
   }, [project]);
   useEffect(() => {

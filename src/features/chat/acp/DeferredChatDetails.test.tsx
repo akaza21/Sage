@@ -4,28 +4,18 @@ import type { AcpItemIdentity } from "../../../domain/acp";
 import {
   DeferredInlineSavedDiff,
   DeferredTurnFileActivity,
-  DeferredTurnEditSummary,
 } from "./DeferredChatDetails";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
 
 const requests = vi.hoisted(() => ({
   diff: vi.fn(),
   files: vi.fn(),
-  summary: vi.fn(),
 }));
 vi.mock("./TurnFileActivity", () => {
   requests.files();
   return {
     TurnFileActivity: () => (
       <section aria-label="Edited files">Edit card ready</section>
-    ),
-  };
-});
-vi.mock("./TurnEditSummary", () => {
-  requests.summary();
-  return {
-    TurnEditSummary: () => (
-      <section aria-label="Changed files">Edit summary ready</section>
     ),
   };
 });
@@ -51,7 +41,6 @@ it("keeps the edit card unloaded until a turn reports edits and lazy-loads the d
     await screen.findByRole("region", { name: "Edited files" }),
   ).toHaveTextContent("Edit card ready");
   expect(requests.files).toHaveBeenCalledOnce();
-  expect(requests.summary).not.toHaveBeenCalled();
   rerender(
     <DeferredTurnFileActivity
       page={page}
@@ -59,16 +48,6 @@ it("keeps the edit card unloaded until a turn reports edits and lazy-loads the d
     />,
   );
   expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
-  rerender(
-    <DeferredTurnEditSummary
-      page={page}
-      rootLabels={{}}
-      countIncomplete={false}
-    />,
-  );
-  expect(
-    await screen.findByRole("region", { name: "Changed files" }),
-  ).toHaveTextContent("Edit summary ready");
 });
 
 const identity = {
