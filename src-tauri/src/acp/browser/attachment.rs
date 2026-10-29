@@ -16,6 +16,7 @@ const MAX_RETIRED: usize = 4;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
+mod popup;
 pub(crate) use control::AgentControl;
 
 #[derive(Clone)]
@@ -33,6 +34,9 @@ pub(crate) struct AttachmentLease {
     /// count as invalidated by navigation, not stopped, so an in-flight wait
     /// keeps probing until Stop or Take over stops them too.
     retired: Arc<Mutex<VecDeque<BrowserAuthority>>>,
+    /// The Agent session that last held this lease's authority, which a tab
+    /// this one opens joins.
+    last_session: Arc<Mutex<Option<String>>>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -71,7 +75,14 @@ impl AttachmentLease {
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
         *slot = Some((scope.session_id.clone(), authority.clone()));
+        if let Ok(mut last) = self.last_session.lock() {
+            *last = Some(scope.session_id.clone());
+        }
         Some(authority)
+    }
+
+    fn last_session(&self) -> Option<String> {
+        self.last_session.lock().ok()?.clone()
     }
 
     fn stop(&self) {
@@ -134,6 +145,8 @@ impl AttachmentLease {
 pub(crate) struct BrowserAttachments {
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
+    /// Tabs an Agent-driven tab opened, by child label, until they join.
+    popup_children: Mutex<HashMap<String, String>>,
 }
 
 impl BrowserAttachments {
@@ -191,6 +204,7 @@ impl BrowserAttachments {
                 user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
                 retired: Arc::default(),
+                last_session: Arc::default(),
             },
         );
         drop(entries);
@@ -230,6 +244,7 @@ impl BrowserAttachments {
     }
 
     pub(crate) fn revoke_tab(&self, tab_label: &str) {
+        self.forget_popups(tab_label);
         if let Ok(mut entries) = self.entries.lock() {
             entries.retain(|_, lease| {
                 if lease.tab_label == tab_label {
@@ -292,6 +307,7 @@ impl BrowserAttachments {
                 lease.tab_revision = revision;
             }
         }
+        self.join_popup(tab_label, url, revision);
     }
 
     pub(crate) fn revoke_other_projects(&self, active_project: &SageProjectId) -> Vec<String> {

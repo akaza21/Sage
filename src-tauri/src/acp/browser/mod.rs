@@ -3,6 +3,7 @@ mod bounds;
 mod contract;
 mod fake;
 pub mod mcp;
+pub(crate) mod pause;
 pub mod permission;
 mod redact;
 #[cfg(windows)]

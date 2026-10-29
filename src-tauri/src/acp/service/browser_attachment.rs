@@ -304,6 +304,17 @@ impl super::AcpService {
         self.browser_attachments.hand_back(label)
     }
 
+    /// Joins a tab that the Agent-driven `opener` opened to the opener's
+    /// Agent attachment, now or at its first settled page.
+    pub(crate) fn adopt_browser_popup(
+        &self,
+        opener: &str,
+        child: &str,
+        settled: Option<(&str, u64)>,
+    ) {
+        self.browser_attachments.adopt_popup(opener, child, settled);
+    }
+
     pub(crate) fn browser_agent_control(
         &self,
         label: &str,

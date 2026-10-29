@@ -215,27 +215,15 @@ impl SessionBrowserCapability {
             native: None,
         }
     }
-}
 
-impl BrowserCapability for SessionBrowserCapability {
-    fn attached_tab_id(&self) -> Option<u64> {
-        let service = &self.app.state::<AppState>().acp;
-        service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)?;
-        service
-            .latest_agent_browser_attachment(
-                &self.project_id,
-                &self.chat_id,
-                self.session_id.as_str(),
-            )
-            .map(|lease| lease.tab_number)
-            .or_else(|| {
-                service
-                    .browser_attachment(&self.project_id, &self.chat_id)
-                    .map(|lease| lease.tab_number)
-            })
+    fn user_holds_a_tab(&self) -> bool {
+        self.app
+            .state::<AppState>()
+            .acp
+            .browser_chat_under_user_control(&self.project_id, &self.chat_id)
     }
 
-    fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
+    fn perform_once(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
         if request.scope.session_id != self.session_id.as_str() {
             return Err(BrowserFailure::Denied);
         }
@@ -339,5 +327,57 @@ impl BrowserCapability for SessionBrowserCapability {
             owner,
         )
         .perform(request)
+    }
+}
+
+impl BrowserCapability for SessionBrowserCapability {
+    fn attached_tab_id(&self) -> Option<u64> {
+        let service = &self.app.state::<AppState>().acp;
+        service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)?;
+        service
+            .latest_agent_browser_attachment(
+                &self.project_id,
+                &self.chat_id,
+                self.session_id.as_str(),
+            )
+            .map(|lease| lease.tab_number)
+            .or_else(|| {
+                service
+                    .browser_attachment(&self.project_id, &self.chat_id)
+                    .map(|lease| lease.tab_number)
+            })
+    }
+
+    /// Take over pauses the call and Hand back resumes it (`pause.rs`).
+    fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
+        let first = self.perform_once(request);
+        if !super::pause::paused(&first, || self.user_holds_a_tab()) {
+            return first;
+        }
+        let service = &self.app.state::<AppState>().acp;
+        let Some(owner) =
+            service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)
+        else {
+            return first;
+        };
+        let resumed = super::pause::wait_for_hand_back(
+            || self.user_holds_a_tab(),
+            || {
+                service
+                    .current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)
+                    .is_some_and(|current| {
+                        current.turn_id == owner.turn_id
+                            && current.runtime_epoch == owner.runtime_epoch
+                            && current.binding_digest == owner.binding_digest
+                    })
+            },
+            std::time::Instant::now() + super::pause::HAND_BACK_WAIT,
+            super::pause::POLL,
+        );
+        if resumed {
+            self.perform_once(request)
+        } else {
+            Err(BrowserFailure::UserControl)
+        }
     }
 }

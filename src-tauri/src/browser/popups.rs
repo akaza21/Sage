@@ -12,6 +12,7 @@ const MAX_PENDING_POPUPS: usize = 8;
 mod native;
 #[cfg(windows)]
 pub(super) use native::register_native;
+mod agent;
 mod opener;
 mod settle;
 #[cfg(all(windows, feature = "native-lane"))]
@@ -206,17 +207,6 @@ impl PopupRequests {
             |_, (_, state)| !matches!(state, PopupState::Opened(opened) if opened == tab_id),
         );
     }
-
-    fn ack(&mut self, id: u64, opener: &str, tab_id: &str) -> bool {
-        if !self.entries.get(&id).is_some_and(|(intent, state)| {
-            intent.opener_tab_id == opener
-                && matches!(state, PopupState::Opened(opened) if opened == tab_id)
-        }) {
-            return false;
-        }
-        self.entries.remove(&id);
-        true
-    }
 }
 
 pub(super) fn popup_target<T>(
@@ -361,22 +351,26 @@ pub(crate) struct PopupOpenResult {
 
 #[tauri::command]
 pub(crate) fn browser_popup_ack(
+    app: AppHandle,
     state: State<'_, BrowserState>,
     intent_id: u64,
     opener_tab_id: String,
     tab_id: String,
 ) -> Result<(), String> {
-    let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
-    if !tabs.entries.contains_key(&tab_id) {
-        return Err("popup tab unavailable".into());
+    {
+        let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
+        if !tabs.entries.contains_key(&tab_id) {
+            return Err("popup tab unavailable".into());
+        }
+        if !state.popups.lock().map_err(|error| error.to_string())?.ack(
+            intent_id,
+            &opener_tab_id,
+            &tab_id,
+        ) {
+            return Err("popup acknowledgement unavailable".into());
+        }
     }
-    if !state.popups.lock().map_err(|error| error.to_string())?.ack(
-        intent_id,
-        &opener_tab_id,
-        &tab_id,
-    ) {
-        return Err("popup acknowledgement unavailable".into());
-    }
+    agent::join_opener_attachment(&app, &state, &opener_tab_id, &tab_id);
     Ok(())
 }
 

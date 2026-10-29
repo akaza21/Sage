@@ -45,6 +45,7 @@ impl BrowserAttachments {
                 user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
                 retired: Arc::default(),
+                last_session: Arc::default(),
             },
         );
         Ok(())
