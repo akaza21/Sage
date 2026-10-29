@@ -309,6 +309,14 @@ impl SessionBrowserCapability {
             attachment: Some(lease),
         };
         let app = self.app.clone();
+        // A popup opened during, or just after, an Agent click, key or
+        // navigation on this tab joins its attachment; any other does not.
+        let _action = matches!(
+            request.command,
+            crate::acp::browser::BrowserCommand::Act { .. }
+                | crate::acp::browser::BrowserCommand::Navigate { .. }
+        )
+        .then(|| app_state.acp.begin_browser_agent_action(&label));
         with_session_owner_guards(
             BrowserPermissionGate::new(native, decider, authority).with_tab_revision_guard(
                 move || {
@@ -370,7 +378,7 @@ impl BrowserCapability for SessionBrowserCapability {
             },
             super::pause::PauseSignals {
                 user_holds: || service.browser_chat_under_user_control(&project, &chat),
-                hand_backs: || service.browser_hand_back_generation(),
+                hand_backs: || service.browser_hand_back_generation(&project, &chat),
                 owner_current: || {
                     owner
                         .as_ref()

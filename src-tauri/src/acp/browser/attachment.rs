@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 
 use crate::acp::browser::{BrowserScope, permission::BrowserAuthority};
@@ -21,6 +21,7 @@ mod agent;
 mod control;
 mod popup;
 pub(crate) use control::AgentControl;
+pub(crate) use popup::AgentAction;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -153,9 +154,12 @@ pub(crate) struct BrowserAttachments {
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
     /// Tabs an Agent-driven tab opened, by child label, until they join.
     popup_children: Mutex<HashMap<String, String>>,
-    /// Counts hand backs, so a paused call resumes only after one, not after
-    /// Stop or a detach that also leaves no tab held.
-    hand_backs: AtomicU64,
+    /// Counts hand backs per chat, so a paused call resumes only after one
+    /// in its own chat, not after Stop, a detach or another chat's hand back.
+    hand_backs: Mutex<HashMap<(SageProjectId, SageChatId), u64>>,
+    /// Agent actions in flight on, or recently ended on, each tab: only a
+    /// popup that opens around one joins (`popup.rs`).
+    agent_actions: Mutex<HashMap<String, popup::AgentActivity>>,
 }
 
 impl BrowserAttachments {
@@ -244,13 +248,14 @@ impl BrowserAttachments {
     }
 
     pub(crate) fn detach(&self, project: &SageProjectId, chat: &SageChatId) -> Option<String> {
-        if let Ok(mut entries) = self.entries.lock()
-            && let Some(lease) = entries.remove(&(project.clone(), chat.clone()))
-        {
-            lease.stop();
-            return Some(lease.tab_label);
-        }
-        None
+        let lease = self
+            .entries
+            .lock()
+            .ok()
+            .and_then(|mut entries| entries.remove(&(project.clone(), chat.clone())))?;
+        lease.stop();
+        self.drop_joined_popups(&lease.tab_label);
+        Some(lease.tab_label)
     }
 
     pub(crate) fn revoke_tab(&self, tab_label: &str) {

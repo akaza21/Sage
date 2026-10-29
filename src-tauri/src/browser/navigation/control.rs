@@ -52,7 +52,12 @@ fn agent_control(
         Some(true) if !acp.take_over_browser_tab(tab_id) => {
             return Err("No Agent is using this tab".into());
         }
-        Some(true) => state.user_took_over(tab_id),
+        Some(true) => {
+            state.user_took_over(tab_id);
+            for child in acp.browser_joined_popups(tab_id) {
+                state.user_took_over(&child);
+            }
+        }
         Some(false) => {
             acp.hand_back_browser_tab(tab_id);
         }

@@ -304,8 +304,26 @@ impl super::AcpService {
         self.browser_attachments.hand_back(label)
     }
 
-    pub(crate) fn browser_hand_back_generation(&self) -> u64 {
-        self.browser_attachments.hand_back_generation()
+    pub(crate) fn browser_hand_back_generation(
+        &self,
+        project: &SageProjectId,
+        chat: &SageChatId,
+    ) -> u64 {
+        self.browser_attachments.hand_back_generation(project, chat)
+    }
+
+    /// The popups that joined `opener`, which follow it on Take over.
+    pub(crate) fn browser_joined_popups(&self, opener: &str) -> Vec<String> {
+        self.browser_attachments.joined_popups(opener)
+    }
+
+    /// Marks an Agent click, key or navigation running on `label`; a popup
+    /// joins only around one.
+    pub(crate) fn begin_browser_agent_action(
+        &self,
+        label: &str,
+    ) -> crate::acp::browser::attachment::AgentAction<'_> {
+        self.browser_attachments.begin_agent_action(label)
     }
 
     /// Joins a tab that the Agent-driven `opener` opened to the opener's

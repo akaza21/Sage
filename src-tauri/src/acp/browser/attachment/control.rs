@@ -92,47 +92,55 @@ impl BrowserAttachments {
 
     /// Returns whether the tab had an Agent attachment to pause.
     pub(crate) fn take_over(&self, tab_label: &str) -> bool {
-        self.set_user_control(tab_label, true)
+        !self.set_user_control(tab_label, true).is_empty()
     }
 
     /// Returns whether the tab still had an Agent attachment to resume.
     pub(crate) fn hand_back(&self, tab_label: &str) -> bool {
-        let found = self.set_user_control(tab_label, false);
-        if found {
-            self.hand_backs.fetch_add(1, Ordering::AcqRel);
+        let chats = self.set_user_control(tab_label, false);
+        if let Ok(mut hand_backs) = self.hand_backs.lock() {
+            for chat in &chats {
+                let count = hand_backs.entry(chat.clone()).or_default();
+                *count = count.wrapping_add(1);
+            }
         }
-        found
+        !chats.is_empty()
     }
 
-    /// Moves on each hand back; a paused call resumes only once it moved.
-    pub(crate) fn hand_back_generation(&self) -> u64 {
-        self.hand_backs.load(Ordering::Acquire)
+    /// Moves on each hand back in this chat; a paused call of the chat
+    /// resumes only once it moved.
+    pub(crate) fn hand_back_generation(&self, project: &SageProjectId, chat: &SageChatId) -> u64 {
+        self.hand_backs
+            .lock()
+            .ok()
+            .and_then(|hand_backs| hand_backs.get(&(project.clone(), chat.clone())).copied())
+            .unwrap_or(0)
     }
 
-    fn set_user_control(&self, tab_label: &str, on: bool) -> bool {
-        let mut found = false;
+    /// The chats whose attachment on `tab_label` changed hands.
+    fn set_user_control(&self, tab_label: &str, on: bool) -> Vec<(SageProjectId, SageChatId)> {
+        let mut chats = Vec::new();
         if let Ok(entries) = self.entries.lock() {
-            for lease in entries
-                .values()
-                .filter(|lease| lease.tab_label == tab_label)
-            {
-                lease.set_user_control(on);
-                found = true;
+            for (key, lease) in entries.iter() {
+                if lease.tab_label == tab_label {
+                    lease.set_user_control(on);
+                    chats.push(key.clone());
+                }
             }
         }
         // Popups that joined this tab follow it, so handing back the opener
         // never leaves a child holding the chat paused.
         if let Ok(entries) = self.agent_entries.lock() {
-            for lease in entries.values() {
+            for ((project, chat, _, _), lease) in entries.iter() {
                 if lease.tab_label == tab_label {
                     lease.set_user_control(on);
-                    found = true;
+                    chats.push((project.clone(), chat.clone()));
                 } else if lease.opener.as_deref() == Some(tab_label) {
                     lease.set_user_control(on);
                 }
             }
         }
-        found
+        chats
     }
 }
 

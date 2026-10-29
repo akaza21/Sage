@@ -24,7 +24,7 @@ impl BrowserAttachments {
         tab_label: &str,
         url: &str,
         revision: u64,
-        opener: Option<&str>,
+        opener: Option<(&str, &AttachmentLease)>,
     ) -> Result<(), ()> {
         let cap = if opener.is_some() {
             MAX_POPUP_TABS_PER_SESSION
@@ -54,6 +54,9 @@ impl BrowserAttachments {
             })
             .count()
             >= cap
+            // Under this lock, so a detach of the opener that stopped it
+            // first either refuses this join or removes the child after.
+            || opener.is_some_and(|(_, lease)| !lease.is_live())
             || entries.keys().any(|(_, _, _, id)| *id == number)
         {
             return Err(());
@@ -72,7 +75,7 @@ impl BrowserAttachments {
                 authority: Arc::new(Mutex::new(None)),
                 retired: Arc::default(),
                 last_session: Arc::default(),
-                opener: opener.map(str::to_owned),
+                opener: opener.map(|(label, _)| label.to_owned()),
             },
         );
         Ok(())
@@ -105,15 +108,17 @@ impl BrowserAttachments {
         session: &str,
         tab_number: u64,
     ) {
-        if let Ok(mut entries) = self.agent_entries.lock()
-            && let Some(lease) = entries.remove(&(
+        let lease = self.agent_entries.lock().ok().and_then(|mut entries| {
+            entries.remove(&(
                 project.clone(),
                 chat.clone(),
                 session.to_owned(),
                 tab_number,
             ))
-        {
+        });
+        if let Some(lease) = lease {
             lease.stop();
+            self.drop_joined_popups(&lease.tab_label);
         }
     }
 
