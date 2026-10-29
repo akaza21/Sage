@@ -384,9 +384,7 @@ for (const profile of profiles) {
           await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
           await prepare(page, profile, two, true);
           const panes = page.locator(".agent-chat-pane");
-          await expect(panes).toHaveCount(
-            two && viewport.width === 1888 ? 2 : 1,
-          );
+          await expect(panes).toHaveCount(1);
           const header = page.locator(".agent-task-header");
           await expectControls(header, header.locator("button"), viewport);
           await expectSiblings(header);
@@ -395,14 +393,18 @@ for (const profile of profiles) {
             : [null]) {
             if (split) {
               await page
-                .getByRole("separator", { name: "Resize chat panes" })
+                .getByRole("separator", {
+                  name: "Resize project and chat rail",
+                })
                 .focus();
               await page.keyboard.press(split);
               await expect(
-                page.getByRole("separator", { name: "Resize chat panes" }),
+                page.getByRole("separator", {
+                  name: "Resize project and chat rail",
+                }),
               ).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "30" : "70",
+                split === "Home" ? "180" : "460",
               );
             }
             for (const pane of await panes.all()) {
@@ -505,21 +507,19 @@ for (const profile of profiles) {
         for (const viewport of viewports) {
           await page.setViewportSize(viewport);
           const panes = page.locator(".agent-chat-pane");
-          await expect(panes).toHaveCount(
-            two && viewport.width === 1888 ? 2 : 1,
-          );
+          await expect(panes).toHaveCount(1);
           for (const split of two && viewport.width === 1888
             ? [null, "Home", "End"]
             : [null]) {
             if (split) {
               const splitter = page.getByRole("separator", {
-                name: "Resize chat panes",
+                name: "Resize project and chat rail",
               });
               await splitter.focus();
               await page.keyboard.press(split);
               await expect(splitter).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "30" : "70",
+                split === "Home" ? "180" : "460",
               );
             }
             for (const pane of await panes.all()) {
@@ -557,19 +557,21 @@ for (const forcedColors of ["none", "active"] as const) {
     }
   });
 
-  test(`options return boundary Tab focus and follow Home/End splitter movement (${forcedColors})`, async ({
+  test(`options return boundary Tab focus and follow navigation splitter movement (${forcedColors})`, async ({
     page,
   }) => {
     const viewport = viewports[2];
     await page.setViewportSize(viewport);
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
     await prepare(page, profiles[0], true, false);
-    await installModeActions(page, 1);
-    const trigger = page.locator("form.composer").nth(1).getByRole("button", {
+    await installModeActions(page, 0);
+    const trigger = page.locator("form.composer").first().getByRole("button", {
       name: "Composer options",
       exact: true,
     });
-    const splitter = page.getByRole("separator", { name: "Resize chat panes" });
+    const splitter = page.getByRole("separator", {
+      name: "Resize project and chat rail",
+    });
     await trigger.click();
     const panel = page.getByRole("menu", { name: "Composer options menu" });
     await expect(panel).toBeVisible();
@@ -590,7 +592,7 @@ for (const forcedColors of ["none", "active"] as const) {
       await page.keyboard.press(key);
       await expect(splitter).toHaveAttribute(
         "aria-valuenow",
-        key === "Home" ? "30" : "70",
+        key === "Home" ? "180" : "460",
       );
       await expect(panel).toBeVisible();
       await expect
@@ -739,7 +741,7 @@ for (const profile of profiles) {
       await page.keyboard.press("Escape");
       await expect(picker).toHaveCount(0);
       await page.setViewportSize(viewports[2]);
-      await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+      await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
       for (const field of await page.locator("form.composer textarea").all()) {
         await expect(field).toHaveValue("Draft survives resizing");
       }

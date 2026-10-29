@@ -169,9 +169,7 @@ for (const geometry of geometries) {
         expect(chat.x + chat.width).toBeLessThanOrEqual(width);
         const inline = resource !== "closed" && width >= 1280;
         expect(chat.width).toBe(resource === "closed" ? closedChat : openChat);
-        await expect(page.locator(".agent-chat-pane")).toHaveCount(
-          two && !inline && width >= 1280 ? 2 : 1,
-        );
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         for (const pane of await page.locator(".agent-chat-pane").all()) {
           const lane = await box(pane);
           const items = pane.locator(".acp-turn__items");
@@ -235,9 +233,7 @@ for (const geometry of geometries) {
         await expect(draft).toHaveValue(
           "CP-27b draft survives resources and resizing",
         );
-        await expect(page.locator(".agent-chat-pane")).toHaveCount(
-          two && width >= 1280 ? 2 : 1,
-        );
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         await expectHitTarget(
           navigation.getByRole("button", { name: "New task", exact: true }),
         );
@@ -334,7 +330,7 @@ for (const forcedColors of ["none", "active"] as const) {
     await expect(trigger).toBeFocused();
   });
 
-  test(`two chats restore drafts, split, and owner after resource-overlay resizing (${forcedColors})`, async ({
+  test(`multiple open chats retain the selected draft and owner without regrowing panes (${forcedColors})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1888, height: 1096 });
@@ -343,23 +339,13 @@ for (const forcedColors of ["none", "active"] as const) {
     await settleChatProjections(page);
     const panes = page.locator(".agent-chat-pane");
     const firstInput = panes.nth(0).locator("form.composer textarea");
-    const secondInput = panes.nth(1).locator("form.composer textarea");
     await firstInput.fill("First draft");
     // The fixture's secondary chat has an active turn; its composer stays
     // disabled and must not gain a draft through resizing.
-    await expect(secondInput).toBeDisabled();
-    const splitter = page.getByRole("separator", { name: "Resize chat panes" });
-    for (const extreme of ["Home", "End"]) {
-      await splitter.focus();
-      await page.keyboard.press(extreme);
-      const left = await box(panes.nth(0));
-      const right = await box(panes.nth(1));
-      expect(right.x).toBe(left.x + left.width + 8);
-      expect(left.width / (left.width + right.width)).toBeCloseTo(
-        extreme === "Home" ? 0.3 : 0.7,
-        2,
-      );
-    }
+    await expect(panes).toHaveCount(1);
+    await expect(
+      page.getByRole("separator", { name: "Resize chat panes" }),
+    ).toHaveCount(0);
     const ownerName = "Chat pane Agent navigation polish";
     const ownerId = "visual-chat-primary";
     await page
@@ -410,9 +396,10 @@ for (const forcedColors of ["none", "active"] as const) {
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
     await page.setViewportSize({ width: 1888, height: 1096 });
-    await expect(panes).toHaveCount(2);
+    await expect(panes).toHaveCount(1);
     await expect(firstInput).toHaveValue("First draft");
-    await expect(secondInput).toHaveValue("");
-    await expect(splitter).toHaveAttribute("aria-valuenow", "70");
+    await expect(
+      page.getByRole("separator", { name: "Resize chat panes" }),
+    ).toHaveCount(0);
   });
 }

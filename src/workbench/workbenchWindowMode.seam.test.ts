@@ -9,13 +9,22 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  beforeEach,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import {
   DEFAULT_WORKBENCH_WINDOW_MODE,
   EDITOR_CANVAS_KINDS,
@@ -41,6 +50,8 @@ beforeAll(async () => {
   await import("./AgentWorkbenchBody");
 });
 
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -59,9 +70,9 @@ async function switchWindowMode(mode: "Agent" | "Editor") {
 }
 
 describe("D0 workbench window mode seam", () => {
-  it("offers exactly Agent and Editor with Editor as the default", () => {
+  it("offers exactly Agent and Editor with Agent as the default", () => {
     expect([...WORKBENCH_WINDOW_MODES]).toEqual(["agent", "editor"]);
-    expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("editor");
+    expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("agent");
     expect(isWorkbenchWindowMode("agent")).toBe(true);
     expect(isWorkbenchWindowMode("editor")).toBe(true);
     expect(isWorkbenchWindowMode("split")).toBe(false);

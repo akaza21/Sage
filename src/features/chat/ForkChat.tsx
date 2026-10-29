@@ -15,7 +15,7 @@ import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
-import { isSideChatId, useSideChatState } from "../../workbench/sideChatState";
+import { isSideChatId } from "../../workbench/sideChatState";
 import "./fork-chat.css";
 
 /** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
@@ -128,7 +128,6 @@ export async function forkChat({
     // Rust activates the fork; it replaces the parent's pane, unpaired.
     const fork = get().activeTabId;
     if (fork && fork !== chatId) {
-      useSideChatState.setState({ soloChatId: fork });
       inheritComposerModel(fork, parentConfig);
     }
     return null;

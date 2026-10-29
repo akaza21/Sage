@@ -19,6 +19,7 @@ import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: ({ paneHeader }: { paneHeader?: ReactNode }) =>
@@ -94,6 +95,8 @@ beforeEach(() => {
   localStorage.clear();
   clearAcpProjectionRegistry();
 });
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
@@ -411,7 +414,7 @@ describe("Agent center workbench window mode seam", () => {
     expect(createChat).toHaveBeenCalledTimes(1);
   });
 
-  it("opens two Agent chats side by side", async () => {
+  it("shows only the selected Agent chat when two chat tabs are open", async () => {
     useWorkbenchStore.setState({
       project,
       tabs: [
@@ -445,19 +448,13 @@ describe("Agent center workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     const paneA = screen.getByRole("region", { name: "Chat pane A" });
-    const paneB = screen.getByRole("region", { name: "Chat pane B" });
+    expect(screen.queryByRole("region", { name: "Chat pane B" })).toBeNull();
     expect(
       within(paneA).getByRole("region", { name: "Agent chat" }),
     ).toBeInTheDocument();
     expect(
-      within(paneB).getByRole("region", { name: "Agent chat" }),
-    ).toBeInTheDocument();
-    expect(
       screen.queryByText(/stays open beside the focused chat/i),
     ).toBeNull();
-    // A pane has no header of its own: the task header names the focused
-    // Chat and carries its status.
-    expect(within(paneB).queryAllByRole("status")).toEqual([]);
     expect(screen.queryByText("Turn continues in the background.")).toBeNull();
   });
 

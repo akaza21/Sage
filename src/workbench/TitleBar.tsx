@@ -1,4 +1,10 @@
-import { FileSearch, Search, Settings } from "../ui/leanIcons";
+import {
+  FileSearch,
+  Search,
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "../ui/leanIcons";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useWorkbenchStore } from "../app/store";
@@ -83,10 +89,14 @@ export function TitleBar({
   inert = false,
   mode,
   onModeChange,
+  agentNavigationCollapsed = false,
+  onToggleAgentNavigation,
 }: {
   inert?: boolean;
   mode: WorkbenchWindowMode;
   onModeChange: (mode: WorkbenchWindowMode) => void;
+  agentNavigationCollapsed?: boolean;
+  onToggleAgentNavigation?: () => void;
 }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -98,6 +108,12 @@ export function TitleBar({
   const openSettings = useWorkbenchStore((state) => state.openSettings);
   const chatSearchRef = useRef<HTMLButtonElement | null>(null);
   const chatSearchDisabled = !project || projectTransitioning;
+  const navigationLabel = agentNavigationCollapsed
+    ? "Show projects and chats"
+    : "Hide projects and chats";
+  const NavigationIcon = agentNavigationCollapsed
+    ? PanelLeftOpen
+    : PanelLeftClose;
   const openChatSearch = useCallback(() => {
     if (!project) return;
     requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
@@ -140,6 +156,18 @@ export function TitleBar({
       <div className="title-bar__start">
         <WorkbenchBrand />
         <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />
+        {mode === "agent" && onToggleAgentNavigation ? (
+          <button
+            className="title-bar__chat-search"
+            type="button"
+            aria-label={navigationLabel}
+            title={navigationLabel}
+            aria-expanded={!agentNavigationCollapsed}
+            onClick={onToggleAgentNavigation}
+          >
+            <NavigationIcon size={16} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       <div className="title-bar__center">
         {mode === "editor" ? (

@@ -213,9 +213,7 @@ for (const width of [1888, 720, 480]) {
       await openScenario(page, scenario, "agent");
       await settleChatProjections(page);
       const panes = page.locator(".agent-chat-pane");
-      await expect(panes).toHaveCount(
-        scenario === "agent-dual" && width === 1888 ? 2 : 1,
-      );
+      await expect(panes).toHaveCount(1);
       await installAnswers(page, "Short completed answer.");
       for (const pane of await panes.all()) {
         expect(

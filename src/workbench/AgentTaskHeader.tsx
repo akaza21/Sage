@@ -27,6 +27,7 @@ import { AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
+import { AgentNavigationPart } from "./agentNavigationLazy";
 
 function preloadResources() {
   void AgentTaskResourcesPart.preload().catch(() => undefined);
@@ -37,11 +38,13 @@ export function AgentTaskHeader({
   chatCount,
   snapshot,
   sessionChrome,
+  showNewChat = false,
 }: {
   tab: WorkbenchTab | null;
   chatCount: number;
   snapshot: ChatLiveSnapshot | null;
   sessionChrome?: AgentSessionChrome | null;
+  showNewChat?: boolean;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
@@ -130,16 +133,20 @@ export function AgentTaskHeader({
         dismissPending();
       }}
     >
-      <button
-        className="agent-task-header__pencil"
-        type="button"
-        aria-label="Rename chat"
-        title="Rename chat"
-        disabled={projectTransitioning || renaming}
-        onClick={() => setRenaming(true)}
-      >
-        <Pencil size={15} aria-hidden="true" />
-      </button>
+      {showNewChat ? (
+        <AgentNavigationPart part="AgentNewChatButton" />
+      ) : (
+        <button
+          className="agent-task-header__pencil"
+          type="button"
+          aria-label="Rename chat"
+          title="Rename chat"
+          disabled={projectTransitioning || renaming}
+          onClick={() => setRenaming(true)}
+        >
+          <Pencil size={15} aria-hidden="true" />
+        </button>
+      )}
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
         <Folder size={15} aria-hidden="true" />
         {renaming ? (

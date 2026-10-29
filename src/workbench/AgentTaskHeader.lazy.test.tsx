@@ -55,6 +55,38 @@ it("keeps the header painted during a cold open without a loading flash", async 
   ).toBeVisible();
 });
 
+it("keeps lazy resources and menu rename available beside the collapsed-navigation New Chat control", async () => {
+  const createChat = vi.fn(async () => undefined);
+  useWorkbenchStore.setState({ createChat });
+  render(
+    <AgentTaskHeader tab={tab} chatCount={1} snapshot={null} showNewChat />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
+  expect(createChat).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: "Rename chat" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
+  expect(
+    await screen.findByRole("dialog", { name: "Chat resources" }),
+  ).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+    key: "Escape",
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Chat actions for Lazy header task" }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+  );
+  fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
+  expect(
+    await screen.findByRole("textbox", { name: "New chat name" }),
+  ).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "New chat name" }), {
+    key: "Escape",
+  });
+  expect(screen.queryByRole("textbox", { name: "New chat name" })).toBeNull();
+});
+
 it("prewarms after first paint without mounting the panel, then opens synchronously", async () => {
   vi.useFakeTimers();
   const preload = vi.spyOn(AgentTaskResourcesPart, "preload");

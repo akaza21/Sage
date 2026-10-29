@@ -41,6 +41,21 @@
         "reason": "Bounded native turn Git-summary decoding and disposable cache; loads only for a desktop edited-files card."
       },
       {
+        "entry": "src/workbench/AgentSideChatHeaders.tsx",
+        "maxGzipBytes": 510,
+        "reason": "Parent/side pane titles and status subscriptions; loads only while a side chat is displayed."
+      },
+      {
+        "entry": "src/workbench/AgentChatSplitter.tsx",
+        "maxGzipBytes": 660,
+        "reason": "Pointer and accessible keyboard resizing; loads only for an explicitly paired side chat and unmounts with the split."
+      },
+      {
+        "entry": "src/workbench/AgentCollapsedNavigation.tsx",
+        "maxGzipBytes": 700,
+        "reason": "Rail-only navigation, reveal/focus actions and header New chat; loads only when projects and chats are collapsed. The full sidebar unmounts."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,
@@ -187,21 +202,13 @@
       "relativeMedianDefinition": "state_private_median_mb - control_private_median_mb",
       "relativeP95Definition": "state_private_p95_mb - control_private_p95_mb",
       "idle": {
-        "states": [
-          "shell",
-          "chat",
-          "explorer"
-        ],
+        "states": ["shell", "chat", "explorer"],
         "absolutePrivateP95Mb": 240,
         "overControlPrivateMedianMb": 58,
         "overControlPrivateP95Mb": 56
       },
       "active": {
-        "states": [
-          "file",
-          "diff",
-          "source-control"
-        ],
+        "states": ["file", "diff", "source-control"],
         "absolutePrivateP95Mb": 253,
         "overControlPrivateMedianMb": 70,
         "overControlPrivateP95Mb": 69
