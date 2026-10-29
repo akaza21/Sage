@@ -270,6 +270,16 @@ export const acpDesktop = {
     await invokeNative("start_claude_auth_login");
   },
 
+  /** AP-B B5: a terminal turn's workspace (Git) changes; decoded by caller. */
+  getTurnWorkspaceChanges(request: {
+    projectId: string;
+    projectGeneration: string;
+    chatId: string;
+    turnId: string;
+  }): Promise<unknown> {
+    return invokeNative("get_acp_turn_workspace_changes", { request });
+  },
+
   async getClaudeAuthStatus(): Promise<{ loggedIn: boolean }> {
     const value: unknown = await invokeNative("get_claude_auth_status");
     if (!isRecord(value) || typeof value.loggedIn !== "boolean") {

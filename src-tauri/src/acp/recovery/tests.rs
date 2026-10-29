@@ -209,20 +209,29 @@ fn recovery_connection() -> Connection {
 }
 
 #[test]
-fn restart_limit_plus_one_fails_without_recovering_either_tree() {
+fn restart_limit_plus_one_fails_without_recovering_any_tree() {
     let mut connection = Connection::open_in_memory().unwrap();
-    connection.execute_batch(
-        "CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT);
-         CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, started_at INTEGER);
-         CREATE TABLE turns(id TEXT, session_id TEXT, runtime_epoch INTEGER, state TEXT, delivery_state TEXT, revision INTEGER);
-         INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','active');
-         INSERT INTO agent_sessions VALUES('session-two','project-one','chat-two','active');
-         INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',0);
-         INSERT INTO session_runtime_epochs VALUES('session-two',1,'running',1);",
-    ).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT);
+             CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, started_at INTEGER);
+             CREATE TABLE turns(id TEXT, session_id TEXT, runtime_epoch INTEGER, state TEXT, delivery_state TEXT, revision INTEGER);",
+        )
+        .unwrap();
+    let trees = crate::acp::limits::LIMITS.process.operational_live_trees as i64 + 1;
+    for index in 0..trees {
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO agent_sessions VALUES('session-{index}','project-one','chat-{index}','active');
+                 INSERT INTO session_runtime_epochs VALUES('session-{index}',1,'running',{index});"
+            ))
+            .unwrap();
+    }
     assert!(matches!(
         recover_after_restart(&mut connection, 50),
-        Err(StoreError::Corrupt("multiple live runtime trees"))
+        Err(StoreError::Corrupt(
+            "live runtime trees exceed the bounded limit"
+        ))
     ));
     let live: i64 = connection
         .query_row(
@@ -231,5 +240,53 @@ fn restart_limit_plus_one_fails_without_recovering_either_tree() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(live, 2);
+    assert_eq!(live, trees);
+}
+
+fn add_second_live_tree(connection: &Connection) {
+    connection
+        .execute_batch(
+            "INSERT INTO chats VALUES('chat-two','project-one',0,0);
+             INSERT INTO agent_sessions VALUES('session-two','project-one','chat-two','active','hot',0,0,0,NULL);
+             INSERT INTO chat_session_heads VALUES('session-two');
+             INSERT INTO session_runtime_epochs VALUES('session-two',1,'running',NULL,NULL,1);
+             INSERT INTO acp_session_usage VALUES('session-two',0,0,0,0);",
+        )
+        .unwrap();
+}
+
+fn running_trees(connection: &Connection) -> Vec<String> {
+    let mut statement = connection
+        .prepare("SELECT session_id FROM session_runtime_epochs WHERE state='running' ORDER BY session_id")
+        .unwrap();
+    statement
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+#[test]
+fn restart_recovers_every_bounded_live_tree() {
+    let mut connection = recovery_connection();
+    add_second_live_tree(&connection);
+    let report = recover_after_restart(&mut connection, 50).unwrap();
+    assert_eq!(report.recovered_sessions, 2);
+    assert!(running_trees(&connection).is_empty());
+}
+
+#[test]
+fn zero_process_recovery_leaves_a_concurrent_live_tree_running() {
+    let mut connection = recovery_connection();
+    add_second_live_tree(&connection);
+    let command = RecoverRuntimeCommand {
+        project_id: crate::acp::contract::SageProjectId::parse("project-one").unwrap(),
+        chat_id: crate::acp::contract::SageChatId::parse("chat-two").unwrap(),
+        session_id: crate::acp::contract::SageAgentSessionId::parse("session-two").unwrap(),
+        runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1).unwrap(),
+        now_millis: 50,
+    };
+    let report = recover_runtime_after_zero_process(&mut connection, command).unwrap();
+    assert_eq!(report.recovered_sessions, 1);
+    assert_eq!(running_trees(&connection), ["session-one"]);
 }

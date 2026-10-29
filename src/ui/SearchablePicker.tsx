@@ -30,6 +30,8 @@ export interface SearchablePickerOption {
   disabledReason?: string;
   icon?: "claude" | "codex" | "opencode";
   logo?: string;
+  /** A secondary action rendered beside the option, e.g. "Sign in". */
+  action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
@@ -347,19 +349,44 @@ export function SearchablePicker({
           />
         ) : null}
         <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-          {rendered.map((candidate) => (
-            <PickerOption
-              key={candidate.id}
-              active={candidate.id === active?.id}
-              candidate={candidate}
-              id={optionId(id, candidate.id)}
-              onActivate={searchable ? setActiveId : undefined}
-              onOptionElement={setOptionElement}
-              onRender={onOptionRender}
-              onSelect={selectCandidate}
-              selected={candidate.id === selectedId}
-            />
-          ))}
+          {rendered.map((candidate) => {
+            const option = (
+              <PickerOption
+                key={candidate.id}
+                active={candidate.id === active?.id}
+                candidate={candidate}
+                id={optionId(id, candidate.id)}
+                onActivate={searchable ? setActiveId : undefined}
+                onOptionElement={setOptionElement}
+                onRender={onOptionRender}
+                onSelect={selectCandidate}
+                selected={candidate.id === selectedId}
+              />
+            );
+            const action = candidate.action;
+            if (!action) return option;
+            return (
+              <div
+                key={candidate.id}
+                className="searchable-picker__option-row"
+                role="none"
+              >
+                {option}
+                <button
+                  type="button"
+                  className="searchable-picker__option-action"
+                  aria-label={action.accessibleLabel ?? action.label}
+                  disabled={disabled}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    action.onAction();
+                  }}
+                >
+                  {action.label}
+                </button>
+              </div>
+            );
+          })}
           {visible.length > rendered.length ? (
             <p className="searchable-picker__limit">
               {visible.length - rendered.length} more — refine

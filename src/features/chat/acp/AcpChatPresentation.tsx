@@ -17,7 +17,6 @@ import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
-import { TurnEditSummary } from "./TurnEditSummary";
 import { TurnFileActivity } from "./TurnFileActivity";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
@@ -36,7 +35,7 @@ import { BrowserOperations } from "./BrowserOperations";
 import { terminalTurnStates } from "./statusSemantics";
 import { VirtualTurnList } from "./VirtualTurnList";
 import type { TurnListHost } from "../chatScroll";
-import { NavigationPart, TranscriptPart } from "../lazyParts";
+import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { isSideChatId } from "../../../workbench/sideChatState";
 import "./browser-operations.css";
 
@@ -332,7 +331,8 @@ export function AcpChatPresentation({
     [onOpenResource, page.projectId, page.chatId],
   );
   const editSummary = (
-    <TurnEditSummary
+    <EditSummaryPart
+      part="TurnEditSummary"
       key={page.projectId + ":" + page.chatId + ":" + page.currentSessionId}
       page={page}
       rootLabels={labels}

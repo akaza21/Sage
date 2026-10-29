@@ -1,23 +1,6 @@
 use super::*;
 
-impl AcpService {
-    #[cfg(all(test, windows))]
-    pub(crate) async fn activate_codex_session(
-        &self,
-        command: ActivateSessionCommand,
-        project_root: crate::acp::bindings::codex::CodexProjectRootAuthority,
-    ) -> Result<(), CodexSessionError> {
-        let admitted = self
-            .refresh_codex_binding()
-            .map_err(CodexSessionError::Binding)?;
-        self.activate_session(
-            admitted,
-            command,
-            crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
-        )
-        .await
-    }
-
+impl Lane<'_> {
     pub(crate) async fn activate_session(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -351,13 +334,5 @@ impl AcpService {
             guard.commit();
         }
         Ok(())
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn fail_next_runtime_port_finish_park(&self) {
-        *self
-            .runtime_port_finish_park_failure
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 }

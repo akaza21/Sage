@@ -43,7 +43,7 @@ fn populated_v17_image_upgrade_preserves_rows_objects_and_original_backup() {
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(item_rows(&upgraded), rows);
     assert_eq!(item_objects(&upgraded), objects);
@@ -94,7 +94,8 @@ fn v17_image_upgrade_rolls_back_rebuild_and_markers_and_restores_foreign_keys() 
 
 #[test]
 fn v18_image_schema_cannot_spoof_exact_v17_markers() {
-    let connection = open_or_migrate(Path::new(":memory:")).unwrap();
+    let mut connection = Connection::open_in_memory().unwrap();
+    schema_upgrade::build_fresh_v18(&mut connection).unwrap();
     let actual = fingerprint::database_fingerprint(&connection).unwrap();
     connection
         .execute("DELETE FROM schema_migrations WHERE version=18", [])
@@ -135,7 +136,7 @@ fn v17_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), earlier_file);
     assert_eq!(
@@ -164,7 +165,7 @@ fn v18_reopen_verifies_versioned_retained_backup_once() {
     assert_eq!(loads.count(), 1);
     assert_eq!(
         fingerprint::classify_connection(&reopened).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
 }
 
@@ -191,7 +192,7 @@ fn v16_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(item_rows(&upgraded), rows);
     assert_eq!(item_objects(&upgraded), objects);
@@ -283,7 +284,7 @@ fn v16_image_upgrade_retries_after_schema_failure_with_original_backup_intact() 
     let retried = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&retried).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(
         file_fingerprint(&versioned.backup_final).unwrap(),
@@ -314,7 +315,7 @@ fn v17_image_upgrade_retries_after_marker_failure_with_original_backup_intact() 
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), backup_file);
 }

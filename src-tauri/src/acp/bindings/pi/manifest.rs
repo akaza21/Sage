@@ -137,11 +137,17 @@ impl ResearchPiBinding {
 }
 
 impl LaunchAdmission {
-    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
-    pub(super) const fn fixture() -> Self {
+    /// The read-only RPC authority shared by the fixture and the curated
+    /// native launch (prompt and abort, no write tools).
+    pub(super) const fn read_only() -> Self {
         Self {
             capabilities: PiBindingCapabilities::read_only_rpc(),
         }
+    }
+
+    #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
+    pub(super) const fn fixture() -> Self {
+        Self::read_only()
     }
 
     pub(super) const fn capabilities(self) -> PiBindingCapabilities {
@@ -233,7 +239,7 @@ impl PiBindingCapabilities {
     }
 }
 
-fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+pub(super) fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
     let mut parts = value.split('.');
     let version = (
         parts.next()?.parse().ok()?,

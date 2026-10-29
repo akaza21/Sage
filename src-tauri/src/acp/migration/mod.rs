@@ -24,6 +24,7 @@ mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
 mod v18_backup;
+mod workspace_changes;
 
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
@@ -110,6 +111,19 @@ impl std::ops::DerefMut for OpenedDatabase {
 }
 
 pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
+    let mut opened = open_through_v18(path)?;
+    let paths = (path != Path::new(":memory:"))
+        .then(|| MigrationPaths::new(path))
+        .transpose()?;
+    let _lock = paths
+        .as_ref()
+        .map(|paths| MigrationLock::acquire(paths.parent()))
+        .transpose()?;
+    workspace_changes::apply(&mut opened.connection)?;
+    Ok(opened)
+}
+
+fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
     if path == Path::new(":memory:") {
         let mut connection = Connection::open_in_memory()?;
         build_fresh_v18(&mut connection)?;
@@ -156,10 +170,10 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18 => {
+        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != SchemaClass::CurrentV18 {
+            if probe::classify_live(&paths)? != source_schema {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
@@ -312,8 +326,11 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV18 {
-        return invalid("database did not reach exact schema v18");
+    if !matches!(
+        fingerprint::classify_connection(connection)?,
+        SchemaClass::CurrentV18 | SchemaClass::CurrentV19
+    ) {
+        return invalid("database did not reach an exact current schema");
     }
     verify_sqlite(connection)?;
     let store_rows: i64 = connection.query_row(

@@ -166,13 +166,25 @@ pub(crate) fn activate_session(
         }
     };
     let head:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2 AND session_id=?3)",params![command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str()],|row|row.get(0))?;
-    let open:i64=transaction.query_row("SELECT COUNT(*) FROM session_runtime_epochs WHERE state IN ('starting','running','terminating')",[],|row|row.get(0))?;
+    // Bounded concurrency (AP-B B2): at most `operational_live_trees` live
+    // epochs exist at once, and never two for one session.
+    let (open, open_for_session): (i64, i64) = transaction.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(session_id=?1),0) FROM session_runtime_epochs
+         WHERE state IN ('starting','running','terminating')",
+        [command.session_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let capacity_available = open_for_session == 0
+        && open < crate::acp::limits::LIMITS.process.operational_live_trees as i64;
     let maximum: i64 = transaction.query_row(
         "SELECT COALESCE(MAX(runtime_epoch),0) FROM session_runtime_epochs WHERE session_id=?1",
         [command.session_id.as_str()],
         |row| row.get(0),
     )?;
-    if !head || open != 0 || maximum.checked_add(1) != Some(command.runtime_epoch.get() as i64) {
+    if !head
+        || !capacity_available
+        || maximum.checked_add(1) != Some(command.runtime_epoch.get() as i64)
+    {
         return Err(StoreError::Conflict {
             resource: "runtimeEpoch",
         });

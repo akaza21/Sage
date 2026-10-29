@@ -16,11 +16,15 @@ import { chatFileChipBasename } from "./chatFileChip";
 import { projectChatEditSummary } from "./chatEditSummary";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 import { FileChangeTotals } from "./FileChangeTotals";
+import { isTauriRuntime } from "../../../ports/desktopRuntime";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
+  workspaceChanges?: readonly TurnWorkspaceChange[];
   onOpenFile?: (resource: ResourceRef, turn: TurnProjection) => void;
   onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
@@ -44,11 +48,20 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   page,
   rootLabels,
   countIncomplete,
+  workspaceChanges,
   onOpenFile,
   onOpenDiff,
   onRecordDisposition,
 }: TurnEditSummaryProps) {
-  const summary = useMemo(() => projectChatEditSummary(page), [page]);
+  const fetchedWorkspaceChanges = useTurnWorkspaceChanges(
+    page,
+    workspaceChanges === undefined && isTauriRuntime(),
+  );
+  const workspace = workspaceChanges ?? fetchedWorkspaceChanges;
+  const summary = useMemo(
+    () => projectChatEditSummary(page, workspace),
+    [page, workspace],
+  );
   const [expanded, setExpanded] = useState(false);
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
     null,

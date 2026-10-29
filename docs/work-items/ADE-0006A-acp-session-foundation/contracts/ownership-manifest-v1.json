@@ -467,6 +467,7 @@
         "src-tauri/src/acp/bindings/registry/claude.rs",
         "src-tauri/src/acp/bindings/registry/codex.rs",
         "src-tauri/src/acp/bindings/registry/pi.rs",
+        "src-tauri/src/acp/bindings/registry/pi_native.rs",
         "src-tauri/src/acp/bindings/registry/record.rs",
         "src-tauri/src/acp/bindings/registry/record_root.rs",
         "src-tauri/src/acp/bindings/registry/test_support.rs",

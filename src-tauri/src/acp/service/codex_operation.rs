@@ -10,6 +10,12 @@ use crate::acp::{
     process::{TreeControl, TreeExit},
 };
 
+/// Live harness operations admitted at once: one per live runtime lane.
+const LIVE_OPERATIONS: usize = super::LIVE_RUNTIME_LANES;
+
+mod admission;
+use admission::{AdmissionLease, AdmissionState};
+
 pub(super) trait CodexOperationCancellation: Send + Sync {
     fn request_parent_shutdown_until(
         &self,
@@ -33,16 +39,6 @@ impl CodexOperationCancellation for TreeCancellation {
     }
 }
 
-struct AdmissionLease {
-    occupied: Arc<AtomicBool>,
-}
-
-impl Drop for AdmissionLease {
-    fn drop(&mut self) {
-        self.occupied.store(false, Ordering::Release);
-    }
-}
-
 pub(super) struct PreparedCodexOperation {
     invalidation_epoch: u64,
     class: OperationClass,
@@ -55,17 +51,34 @@ enum OperationClass {
     Live,
 }
 
-#[derive(Default)]
-struct ActiveState {
-    running: bool,
-    class: Option<OperationClass>,
+struct OperationSlot {
+    id: u64,
+    class: OperationClass,
     cancel_requested: bool,
     cancellation: Option<Arc<dyn CodexOperationCancellation>>,
+}
+
+#[derive(Default)]
+struct ActiveState {
+    next_id: u64,
+    // Bounded: one ephemeral operation, or at most `LIVE_OPERATIONS` live ones.
+    running: Vec<OperationSlot>,
     settlement: Option<Result<(), CodexDiscoveryRunError>>,
+}
+
+impl ActiveState {
+    fn has(&self, class: OperationClass) -> bool {
+        self.running.iter().any(|slot| slot.class == class)
+    }
+
+    fn slot_mut(&mut self, id: u64) -> Option<&mut OperationSlot> {
+        self.running.iter_mut().find(|slot| slot.id == id)
+    }
 }
 
 pub(super) struct ActiveCodexOperation {
     gate: Arc<CodexOperationGate>,
+    id: u64,
     settled: bool,
 }
 
@@ -86,11 +99,12 @@ impl ActiveCodexOperation {
             .active
             .lock()
             .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        if !active.running || active.cancellation.is_some() {
-            return Err(CodexDiscoveryRunError::Cleanup);
-        }
-        active.cancellation = Some(cancellation);
-        if active.cancel_requested || self.gate.shutting_down.load(Ordering::Acquire) {
+        let slot = active
+            .slot_mut(self.id)
+            .filter(|slot| slot.cancellation.is_none())
+            .ok_or(CodexDiscoveryRunError::Cleanup)?;
+        slot.cancellation = Some(cancellation);
+        if slot.cancel_requested || self.gate.shutting_down.load(Ordering::Acquire) {
             Err(CodexDiscoveryRunError::Drift)
         } else {
             Ok(())
@@ -98,7 +112,7 @@ impl ActiveCodexOperation {
     }
 
     pub(super) fn settle(mut self, settlement: Result<(), CodexDiscoveryRunError>) {
-        self.gate.finish_active(settlement);
+        self.gate.finish_active(self.id, settlement);
         self.settled = true;
     }
 }
@@ -107,13 +121,13 @@ impl Drop for ActiveCodexOperation {
     fn drop(&mut self) {
         if !self.settled {
             self.gate
-                .finish_active(Err(CodexDiscoveryRunError::Cleanup));
+                .finish_active(self.id, Err(CodexDiscoveryRunError::Cleanup));
         }
     }
 }
 
 pub(super) struct CodexOperationGate {
-    admission_occupied: Arc<AtomicBool>,
+    admission: Arc<Mutex<AdmissionState>>,
     next_runtime_epoch: AtomicU64,
     invalidation_epoch: AtomicU64,
     shutting_down: AtomicBool,
@@ -124,7 +138,7 @@ pub(super) struct CodexOperationGate {
 impl CodexOperationGate {
     pub(super) fn new() -> Arc<Self> {
         Arc::new(Self {
-            admission_occupied: Arc::new(AtomicBool::new(false)),
+            admission: Arc::new(Mutex::new(AdmissionState::default())),
             next_runtime_epoch: AtomicU64::new(1),
             invalidation_epoch: AtomicU64::new(1),
             shutting_down: AtomicBool::new(false),
@@ -148,11 +162,26 @@ impl CodexOperationGate {
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
         }
-        self.admission_occupied
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| CodexDiscoveryRunError::Busy)?;
+        {
+            let mut admission = self
+                .admission
+                .lock()
+                .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
+            let admitted = match class {
+                OperationClass::Ephemeral => !admission.ephemeral && admission.live == 0,
+                OperationClass::Live => !admission.ephemeral && admission.live < LIVE_OPERATIONS,
+            };
+            if !admitted {
+                return Err(CodexDiscoveryRunError::Busy);
+            }
+            match class {
+                OperationClass::Ephemeral => admission.ephemeral = true,
+                OperationClass::Live => admission.live += 1,
+            }
+        }
         let admission = AdmissionLease {
-            occupied: Arc::clone(&self.admission_occupied),
+            admission: Arc::clone(&self.admission),
+            class,
         };
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
@@ -176,16 +205,27 @@ impl CodexOperationGate {
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(CodexDiscoveryRunError::Unavailable);
         }
-        if active.running {
+        let admitted = match prepared.class {
+            OperationClass::Ephemeral => active.running.is_empty(),
+            OperationClass::Live => {
+                !active.has(OperationClass::Ephemeral) && active.running.len() < LIVE_OPERATIONS
+            }
+        };
+        if !admitted {
             return Err(CodexDiscoveryRunError::Busy);
         }
-        active.running = true;
-        active.class = Some(prepared.class);
-        active.cancel_requested = false;
-        active.cancellation = None;
+        let id = active.next_id;
+        active.next_id = active.next_id.wrapping_add(1);
+        active.running.push(OperationSlot {
+            id,
+            class: prepared.class,
+            cancel_requested: false,
+            cancellation: None,
+        });
         active.settlement = None;
         Ok(ActiveCodexOperation {
             gate: Arc::clone(self),
+            id,
             settled: false,
         })
     }
@@ -234,7 +274,10 @@ impl CodexOperationGate {
         timeout: Duration,
     ) -> Result<(), CodexDiscoveryRunError> {
         let (was_running, cancellation) = self.invalidate_active();
-        cancellation.and(self.wait_for_idle(timeout, was_running))
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or(CodexDiscoveryRunError::Timeout)?;
+        cancellation.and(self.wait_until(deadline, was_running, None))
     }
 
     /// Project replacement owns this absolute deadline before cancellation is
@@ -253,19 +296,14 @@ impl CodexOperationGate {
                 .active
                 .lock()
                 .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-            if !active.running || active.class == Some(OperationClass::Live) {
-                (false, None)
-            } else {
-                active.cancel_requested = true;
-                (true, active.cancellation.clone())
-            }
+            Self::request_ephemeral_cancel(&mut active)
         };
         // Cancellation may call back into gate observation, so it must run
         // after releasing `active` and under the same caller-owned deadline.
         if let Some(cancellation) = cancellation {
             cancellation.request_parent_shutdown_until(deadline)?;
         }
-        self.wait_until(deadline, was_running)
+        self.wait_until(deadline, was_running, Some(OperationClass::Ephemeral))
     }
 
     pub(super) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
@@ -273,81 +311,92 @@ impl CodexOperationGate {
         // Live sessions are parked by runtime shutdown. Waiting on them here
         // spends the whole close budget before park can run.
         let (was_running, cancellation) = self.invalidate_ephemeral();
-        cancellation.and(self.wait_for_idle(timeout, was_running))
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or(CodexDiscoveryRunError::Timeout)?;
+        cancellation.and(self.wait_until(deadline, was_running, Some(OperationClass::Ephemeral)))
     }
 
-    fn invalidate_active(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        self.invalidate_active_with(|| {})
+    fn request_ephemeral_cancel(
+        active: &mut ActiveState,
+    ) -> (bool, Option<Arc<dyn CodexOperationCancellation>>) {
+        match active
+            .running
+            .iter_mut()
+            .find(|slot| slot.class == OperationClass::Ephemeral)
+        {
+            Some(slot) => {
+                slot.cancel_requested = true;
+                (true, slot.cancellation.clone())
+            }
+            None => (false, None),
+        }
     }
 
     fn invalidate_ephemeral(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
         self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-        let cancellation = match self.active.lock() {
-            Ok(mut active) => {
-                if !active.running || active.class == Some(OperationClass::Live) {
-                    return (false, Ok(()));
-                }
-                active.cancel_requested = true;
-                active.cancellation.clone()
-            }
+        let (was_running, cancellation) = match self.active.lock() {
+            Ok(mut active) => Self::request_ephemeral_cancel(&mut active),
             Err(_) => return (true, Err(CodexDiscoveryRunError::Cleanup)),
         };
         let deadline = Instant::now() + Duration::from_millis(1);
         let result = cancellation.map_or(Ok(()), |value| {
             value.request_parent_shutdown_until(deadline)
         });
-        (true, result)
+        (was_running, result)
     }
 
-    fn invalidate_active_with(
-        &self,
-        before_active_lock: impl FnOnce(),
-    ) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        before_active_lock();
-        let cancellation = match self.active.lock() {
+    /// Invalidates the admitted binding: every running operation, ephemeral
+    /// or live, is asked to stop.
+    fn invalidate_active(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
+        let cancellations: Vec<_> = match self.active.lock() {
             Ok(mut active) => {
                 self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-                if !active.running {
+                if active.running.is_empty() {
                     return (false, Ok(()));
                 }
-                active.cancel_requested = true;
-                active.cancellation.clone()
+                active
+                    .running
+                    .iter_mut()
+                    .map(|slot| {
+                        slot.cancel_requested = true;
+                        slot.cancellation.clone()
+                    })
+                    .collect()
             }
             Err(_) => {
                 self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
                 return (true, Err(CodexDiscoveryRunError::Cleanup));
             }
         };
-        let result = cancellation.map_or(Ok(()), |cancellation| {
-            cancellation.request_parent_shutdown_until(Instant::now() + Duration::from_millis(1))
-        });
+        let deadline = Instant::now() + Duration::from_millis(1);
+        let result = cancellations
+            .into_iter()
+            .flatten()
+            .map(|cancellation| cancellation.request_parent_shutdown_until(deadline))
+            .fold(Ok(()), Result::and);
         (true, result)
     }
 
-    fn wait_for_idle(
-        &self,
-        timeout: Duration,
-        require_settlement: bool,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or(CodexDiscoveryRunError::Timeout)?;
-        self.wait_until(deadline, require_settlement)
-    }
-
+    /// Waits until no operation of `class` (any class when `None`) runs.
     fn wait_until(
         &self,
         deadline: Instant,
         require_settlement: bool,
+        class: Option<OperationClass>,
     ) -> Result<(), CodexDiscoveryRunError> {
         if !require_settlement {
             return Ok(());
         }
+        let busy = |active: &ActiveState| match class {
+            Some(class) => active.has(class),
+            None => !active.running.is_empty(),
+        };
         let mut active = self
             .active
             .lock()
             .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        while active.running {
+        while busy(&active) {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(CodexDiscoveryRunError::Timeout);
@@ -357,130 +406,33 @@ impl CodexOperationGate {
                 .wait_timeout(active, remaining)
                 .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
             active = next;
-            if wait.timed_out() && active.running {
+            if wait.timed_out() && busy(&active) {
                 return Err(CodexDiscoveryRunError::Timeout);
             }
         }
-        if require_settlement {
-            active
-                .settlement
-                .take()
-                .unwrap_or(Err(CodexDiscoveryRunError::Cleanup))
-        } else {
-            Ok(())
-        }
+        active
+            .settlement
+            .take()
+            .unwrap_or(Err(CodexDiscoveryRunError::Cleanup))
     }
 
-    fn finish_active(&self, settlement: Result<(), CodexDiscoveryRunError>) {
-        match self.active.lock() {
-            Ok(mut active) => {
-                active.running = false;
-                active.class = None;
-                active.cancel_requested = false;
-                active.cancellation = None;
-                active.settlement = Some(settlement);
-                self.active_changed.notify_all();
-            }
+    fn finish_active(&self, id: u64, settlement: Result<(), CodexDiscoveryRunError>) {
+        let mut active = match self.active.lock() {
+            Ok(active) => active,
             Err(poisoned) => {
                 let mut active = poisoned.into_inner();
-                active.running = false;
-                active.class = None;
-                active.cancellation = None;
+                active.running.retain(|slot| slot.id != id);
                 active.settlement = Some(Err(CodexDiscoveryRunError::Cleanup));
                 self.active_changed.notify_all();
+                return;
             }
-        }
+        };
+        active.running.retain(|slot| slot.id != id);
+        active.settlement = Some(settlement);
+        self.active_changed.notify_all();
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{sync::mpsc, thread};
-
-    struct TestCancellation {
-        requested: AtomicBool,
-    }
-
-    impl CodexOperationCancellation for TestCancellation {
-        fn request_parent_shutdown_until(
-            &self,
-            _deadline: Instant,
-        ) -> Result<(), CodexDiscoveryRunError> {
-            self.requested.store(true, Ordering::Release);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn admission_is_shared_non_waiting_and_transferable() {
-        let gate = CodexOperationGate::new();
-        let held = gate.prepare().unwrap();
-        let concurrent = Arc::clone(&gate);
-        let (send, receive) = mpsc::sync_channel(1);
-        let worker = thread::spawn(move || send.send(concurrent.prepare().map(drop)).unwrap());
-        assert_eq!(
-            receive.recv_timeout(Duration::from_millis(100)),
-            Ok(Err(CodexDiscoveryRunError::Busy))
-        );
-        drop(held);
-        worker.join().unwrap();
-        let transferable = gate.prepare().unwrap();
-        thread::spawn(move || drop(transferable)).join().unwrap();
-        assert!(gate.prepare().is_ok());
-    }
-
-    #[test]
-    fn invalidation_cancels_active_work_and_requires_settlement() {
-        let gate = CodexOperationGate::new();
-        let prepared = gate.prepare().unwrap();
-        let active = gate.begin(&prepared).unwrap();
-        let cancellation = Arc::new(TestCancellation {
-            requested: AtomicBool::new(false),
-        });
-        active.register_cancellation(cancellation.clone()).unwrap();
-        let invalidating = Arc::clone(&gate);
-        let worker =
-            thread::spawn(move || invalidating.invalidate_and_wait(Duration::from_secs(1)));
-        while !cancellation.requested.load(Ordering::Acquire) {
-            thread::yield_now();
-        }
-        active.settle(Ok(()));
-        assert_eq!(worker.join().unwrap(), Ok(()));
-        assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
-    }
-
-    #[test]
-    fn project_switch_invalidates_ephemeral_work_but_preserves_a_live_session() {
-        let gate = CodexOperationGate::new();
-        let prepared = gate.prepare_live().unwrap();
-        let active = gate.begin(&prepared).unwrap();
-        let cancellation = Arc::new(TestCancellation {
-            requested: AtomicBool::new(false),
-        });
-        active.register_cancellation(cancellation.clone()).unwrap();
-
-        assert_eq!(
-            gate.invalidate_ephemeral_and_wait_until(Instant::now() + Duration::from_millis(10)),
-            Ok(())
-        );
-        assert!(!cancellation.requested.load(Ordering::Acquire));
-        assert!(!gate.is_current(CodexOperationGate::prepared_epoch(&prepared)));
-        active.settle(Ok(()));
-    }
-
-    #[test]
-    fn shutdown_does_not_wait_for_a_live_operation() {
-        let gate = CodexOperationGate::new();
-        let prepared = gate.prepare_live().unwrap();
-        let active = gate.begin(&prepared).unwrap();
-        let cancellation = Arc::new(TestCancellation {
-            requested: AtomicBool::new(false),
-        });
-        active.register_cancellation(cancellation.clone()).unwrap();
-
-        assert_eq!(gate.shutdown(Duration::from_millis(10)), Ok(()));
-        assert!(!cancellation.requested.load(Ordering::Acquire));
-        active.settle(Ok(()));
-    }
-}
+#[path = "codex_operation_tests.rs"]
+mod tests;
