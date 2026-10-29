@@ -14,6 +14,7 @@ pub(crate) mod runtime_identity;
 pub(crate) mod session_config;
 mod session_operations;
 mod session_routes;
+pub(crate) mod turn_workspace;
 
 pub(crate) use session_routes::{activate_acp_session_inner, start_acp_session_inner};
 

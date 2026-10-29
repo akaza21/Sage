@@ -96,7 +96,7 @@ fn v16_image_upgrade_recovers_owned_pre_v5_backup_crash_prefixes() {
             .unwrap_or_else(|error| panic!("{prefix}: {error}"));
         assert_eq!(
             fingerprint::classify_connection(&upgraded).unwrap(),
-            SchemaClass::CurrentV18
+            SchemaClass::CurrentV19
         );
         let versioned = v18_backup::paths_for_v18(&paths);
         assert_no_partial_backup(&paths);
@@ -113,7 +113,7 @@ fn v16_image_upgrade_recovers_owned_pre_v5_backup_crash_prefixes() {
         assert_eq!(
             fingerprint::classify_connection(&open_or_migrate(&directory.database()).unwrap())
                 .unwrap(),
-            SchemaClass::CurrentV18
+            SchemaClass::CurrentV19
         );
     }
 }
@@ -137,7 +137,7 @@ fn v16_image_upgrade_reuses_matching_pre_v5_backup_without_a_second_copy() {
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), backup_file);
     assert_eq!(fs::read(&paths.manifest_final).unwrap(), manifest);
@@ -182,7 +182,7 @@ fn v16_image_upgrade_recovers_versioned_prefix_with_matching_pre_v5_backup() {
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV18
+        SchemaClass::CurrentV19
     );
     assert_no_partial_backup(&versioned);
     assert_eq!(

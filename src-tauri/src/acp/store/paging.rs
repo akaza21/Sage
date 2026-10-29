@@ -25,9 +25,10 @@ pub(crate) fn load_recovery_candidates(
          JOIN agent_sessions s ON s.id=e.session_id
          WHERE e.state IN ('starting','running','terminating')
          ORDER BY e.started_at, s.id
-         LIMIT 2",
+         LIMIT ?1",
     )?;
-    let rows = statement.query_map([], |row| {
+    let live_tree_limit = crate::acp::limits::LIMITS.process.operational_live_trees as usize;
+    let rows = statement.query_map([live_tree_limit as i64 + 1], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
@@ -36,10 +37,12 @@ pub(crate) fn load_recovery_candidates(
             row.get::<_, i64>(4)?,
         ))
     })?;
-    let mut candidates = Vec::with_capacity(1);
+    let mut candidates = Vec::with_capacity(live_tree_limit);
     for row in rows {
-        if candidates.len() == 1 {
-            return Err(StoreError::Corrupt("multiple live runtime trees"));
+        if candidates.len() == live_tree_limit {
+            return Err(StoreError::Corrupt(
+                "live runtime trees exceed the bounded limit",
+            ));
         }
         let row = row?;
         let runtime_epoch = u64::try_from(row.4)

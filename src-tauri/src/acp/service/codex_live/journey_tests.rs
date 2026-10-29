@@ -98,144 +98,6 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
     not(feature = "acp-fixture"),
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
-fn two_chats_are_sequential_on_the_one_runtime_slot() {
-    let _serial = crate::test_wait::serial_process_guard();
-    tauri::async_runtime::block_on(async {
-        let setup =
-            FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
-                "characterization-two-turn-success",
-                "characterization-two-turn-success",
-                "characterization-resume-turn-success",
-            ]))
-            .await;
-        let owner_a = setup
-            .start_and_activate(RuntimeEpoch::new(1).unwrap())
-            .await;
-        let chat_b = setup.create_chat();
-        let owner_b = setup
-            .start_session_for_chat(chat_b, RuntimeEpoch::new(1).unwrap())
-            .await;
-
-        assert!(matches!(
-            setup.activate(&owner_b).await,
-            Err(CodexSessionError::Capacity)
-        ));
-        let turns_a = [
-            setup.send_and_wait_completed(&owner_a).await,
-            setup.send_and_wait_completed(&owner_a).await,
-        ];
-
-        setup.activate(&owner_b).await.unwrap();
-        setup.wait_for_ready(&owner_b);
-        let parked_a = setup.page(&owner_a);
-        let parked_a_session = parked_a
-            .sessions
-            .as_slice()
-            .iter()
-            .find(|session| session.id == owner_a.session_id)
-            .unwrap();
-        assert_eq!(parked_a_session.state, SessionState::Ready);
-        assert_eq!(
-            parked_a_session.residency,
-            crate::acp::lifecycle::Residency::Cold
-        );
-        assert_eq!(
-            parked_a_session.next_runtime_epoch,
-            Some(RuntimeEpoch::new(2).unwrap())
-        );
-        let turns_b = [
-            setup.send_and_wait_completed(&owner_b).await,
-            setup.send_and_wait_completed(&owner_b).await,
-        ];
-        assert_completed_turns(&setup, &owner_b, &turns_b);
-        assert_completed_turns(&setup, &owner_a, &turns_a);
-
-        setup.close(&owner_b);
-        assert_job_zero();
-        let resumed_a = RuntimeOwner {
-            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
-            ..owner_a.clone()
-        };
-        setup.activate(&resumed_a).await.unwrap();
-        setup.wait_for_ready(&resumed_a);
-        let resumed_turn = setup.send_and_wait_completed(&resumed_a).await;
-        assert_completed_turns(
-            &setup,
-            &resumed_a,
-            &[turns_a[0].clone(), turns_a[1].clone(), resumed_turn],
-        );
-        setup.close(&resumed_a);
-        assert_job_zero();
-        setup.service.shutdown_blocking().unwrap();
-    });
-}
-
-#[test]
-#[cfg(windows)]
-#[cfg_attr(
-    not(feature = "acp-fixture"),
-    ignore = "requires acp-fixture; run cargo test --all-features"
-)]
-fn failed_replacement_park_retains_recovery_and_retries_without_a_second_tree() {
-    let _serial = crate::test_wait::serial_process_guard();
-    tauri::async_runtime::block_on(async {
-        let setup = FixtureSetup::in_memory_with_shutdown_phase_failure(
-            CodexBindingRegistration::admitted_for_journey_test(&[
-                "characterization-two-turn-success",
-                "characterization-two-turn-success",
-            ]),
-        )
-        .await;
-        let owner_a = setup
-            .start_and_activate(RuntimeEpoch::new(1).unwrap())
-            .await;
-        let completed = setup.send_and_wait_completed(&owner_a).await;
-        let owner_b = setup
-            .start_session_for_chat(setup.create_chat(), RuntimeEpoch::new(1).unwrap())
-            .await;
-
-        assert!(matches!(
-            setup.activate(&owner_b).await,
-            Err(CodexSessionError::Recovery)
-        ));
-        assert!(
-            crate::acp::process::TreeCapacityPool::global()
-                .observation_usage()
-                .0
-                <= 1
-        );
-        assert!(setup.service.has_retained_live_host_recovery_for(&owner_a));
-        assert_completed_turns(&setup, &owner_a, &[completed]);
-
-        setup.activate(&owner_b).await.unwrap();
-        setup.wait_for_ready(&owner_b);
-        let session = setup
-            .page(&owner_a)
-            .sessions
-            .as_slice()
-            .iter()
-            .find(|session| session.id == owner_a.session_id)
-            .unwrap()
-            .clone();
-        assert_eq!(session.state, SessionState::Ready);
-        assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
-        assert_eq!(
-            session.next_runtime_epoch,
-            Some(RuntimeEpoch::new(2).unwrap())
-        );
-        setup.send_and_wait_completed(&owner_b).await;
-        setup.close(&owner_b);
-        assert_job_zero();
-        setup.service.shutdown_blocking().unwrap();
-    });
-}
-
-#[test]
-#[cfg(windows)]
-#[cfg_attr(
-    not(feature = "acp-fixture"),
-    ignore = "requires acp-fixture; run cargo test --all-features"
-)]
 fn restart_resume_then_another_turn_reads_sqlite() {
     let _serial = crate::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
@@ -1186,6 +1048,10 @@ fn assert_completed_turns(setup: &FixtureSetup, owner: &RuntimeOwner, expected: 
 #[cfg(windows)]
 #[path = "journey_shutdown_tests.rs"]
 mod journey_shutdown_tests;
+
+#[cfg(windows)]
+#[path = "journey_tests/lane_tests.rs"]
+mod lane_tests;
 
 #[cfg(all(feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/native_claude_tests.rs"]

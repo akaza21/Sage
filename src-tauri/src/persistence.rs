@@ -63,6 +63,9 @@ impl Database {
 
     fn open_with_limits(path: &Path, limits: StorageLimits) -> AppResult<Self> {
         let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
+        crate::turn_workspace::invalidate_active(&connection).map_err(|_| {
+            crate::error::AppError::InvalidRequest("workspace summary recovery failed".into())
+        })?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "busy_timeout", 5_000)?;

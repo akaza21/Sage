@@ -30,7 +30,9 @@ fn fixture_registry_isolated_and_native_activation_revalidates_without_consuming
         artifact_bytes: 17,
         case: "pi-turn-completed".into(),
     };
-    assert!(BindingRegistry::default().route("pi-rpc").is_err());
+    // The production registry routes pi-rpc to the curated native binding,
+    // which stays unadmitted until discovery finds an installed Pi.
+    assert!(BindingRegistry::default().resolve("pi-rpc").is_err());
     let registry = BindingRegistry::desktop_pi_fixture(selection.clone()).unwrap();
     let catalog = crate::harnesses::HarnessCatalog::with_registry(std::sync::Arc::new(registry));
     catalog.apply_presence(Vec::new());

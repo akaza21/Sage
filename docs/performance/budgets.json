@@ -21,6 +21,26 @@
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 1493 B; cap 1650 B."
       },
       {
+        "entry": "src/features/harness/HarnessSignInStatus.tsx",
+        "maxGzipBytes": 550,
+        "reason": "Harness sign-in status observer and bridge; loads behind the synchronous picker, outside Agent + one chat's static closure."
+      },
+      {
+        "entry": "src/features/harness/harnessSignIn.ts",
+        "maxGzipBytes": 1000,
+        "reason": "Harness sign-in status, actions and bounded polling; loads only for available desktop harnesses."
+      },
+      {
+        "entry": "src/features/chat/acp/TurnEditSummary.tsx",
+        "maxGzipBytes": 2750,
+        "reason": "Edited-files card and Git-change bridge; loads with the transcript footer, outside Agent + one chat's static closure."
+      },
+      {
+        "entry": "src/features/chat/acp/turnWorkspaceChanges.ts",
+        "maxGzipBytes": 800,
+        "reason": "Bounded native turn Git-summary decoding and disposable cache; loads only for a desktop edited-files card."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,
@@ -167,13 +187,21 @@
       "relativeMedianDefinition": "state_private_median_mb - control_private_median_mb",
       "relativeP95Definition": "state_private_p95_mb - control_private_p95_mb",
       "idle": {
-        "states": ["shell", "chat", "explorer"],
+        "states": [
+          "shell",
+          "chat",
+          "explorer"
+        ],
         "absolutePrivateP95Mb": 240,
         "overControlPrivateMedianMb": 58,
         "overControlPrivateP95Mb": 56
       },
       "active": {
-        "states": ["file", "diff", "source-control"],
+        "states": [
+          "file",
+          "diff",
+          "source-control"
+        ],
         "absolutePrivateP95Mb": 253,
         "overControlPrivateMedianMb": 70,
         "overControlPrivateP95Mb": 69

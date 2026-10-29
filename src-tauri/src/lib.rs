@@ -91,6 +91,7 @@ mod side_chat_storage;
 mod state;
 #[cfg(test)]
 mod test_wait;
+mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
 mod workbench_diff_ref;

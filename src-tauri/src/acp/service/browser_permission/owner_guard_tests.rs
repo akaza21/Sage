@@ -22,6 +22,7 @@ fn browser_owner_witness_requires_the_live_turn_even_with_a_stale_sql_owner() {
     assert!(!service.browser_owner_witness_matches(&browser_owner));
 
     let tree = service
+        .lane_at(0)
         .scheduler
         .reserve_tree(runtime_owner.clone())
         .unwrap();
@@ -48,7 +49,11 @@ fn browser_owner_witness_denies_a_rotated_turn_before_issue() {
             &runtime_owner.session_id,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let first = tree
         .reserve_turn()
         .unwrap()
@@ -98,7 +103,11 @@ fn owner_rotation_between_sql_precheck_and_issue_denies_the_call() {
             &runtime_owner.session_id,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let first = tree
         .reserve_turn()
         .unwrap()
@@ -153,7 +162,11 @@ fn session_capability_owner_guard_denies_changed_binding() {
             &runtime_owner.session_id,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let _turn = tree
         .reserve_turn()
         .unwrap()

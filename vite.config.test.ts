@@ -92,6 +92,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/PermissionPrompt.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
+  // A terminal turn's Git workspace changes load after the turn settles.
+  "src/features/chat/acp/turnWorkspaceChanges.ts",
+  "src/features/chat/acp/TurnEditSummary.tsx",
+  "src/features/harness/HarnessSignInStatus.tsx",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
@@ -99,6 +103,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
+  // Harness sign-in status loads when the desktop picker has harnesses.
+  "src/features/harness/harnessSignIn.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
@@ -511,7 +517,6 @@ describe("desktop-native chunk topology", () => {
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const files = [
-      "src/features/chat/acp/TurnEditSummary.tsx",
       "src/features/chat/acp/TurnActivityItem.tsx",
       "src/features/chat/acp/ToolActivityRollupView.tsx",
       "src/features/chat/acp/ChatCodeBlock.tsx",
@@ -673,7 +678,7 @@ describe("desktop-native chunk topology", () => {
     for (const facade of [workbench, agent, presentation]) {
       expect(
         closureForModule(groupedGraph, facade).filter((id) =>
-          /(?:InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
+          /(?:TurnEditSummary\.tsx|turnWorkspace(?:Bridge|Changes)\.ts|HarnessSignInStatus\.tsx|harnessSignIn(?:Bridge)?\.ts|InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
             id,
           ),
         ),

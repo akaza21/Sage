@@ -17,7 +17,6 @@ import {
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
-import { SearchablePicker } from "../../ui/SearchablePicker";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -35,6 +34,7 @@ import {
   useComposerPopovers,
 } from "./useChatHarnessSelection";
 import "../../styles/harness-picker.css";
+import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -294,7 +294,8 @@ export function ChatHarnessControls({
         className="composer__control-trigger composer__harness"
         data-keyboard-focus={keyboardFocus}
       >
-        <SearchablePicker
+        <HarnessSignInPicker
+          harnesses={harnesses}
           ariaLabel="Harness"
           open={active === "harness"}
           onOpenChange={(open) => (open ? toggle("harness") : dismiss())}
