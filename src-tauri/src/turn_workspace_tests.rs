@@ -43,7 +43,130 @@ fn mark(entries: &[(&str, &str, Option<u64>, u64)]) -> WorkspaceMark {
             })
             .collect(),
         truncated: false,
+        head: None,
+        committed: BTreeMap::new(),
     }
+}
+
+fn git_in(root: &std::path::Path, args: &[&str]) {
+    assert!(
+        std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid"
+            ])
+            .args(args)
+            .current_dir(root)
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn a_shell_edit_committed_before_the_turn_ends_is_a_turn_change() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    std::fs::write(root.join("README.md"), b"hello\n").unwrap();
+    std::fs::write(root.join("gone.txt"), b"bye\n").unwrap();
+    git_in(&root, &["add", "."]);
+    git_in(&root, &["commit", "-q", "-m", "init"]);
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        assert!(before.entries.is_empty());
+        std::fs::write(root.join("README.md"), b"hello\nAudited.\n").unwrap();
+        std::fs::write(root.join("added.txt"), b"new\n").unwrap();
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        git_in(&root, &["add", "-A"]);
+        git_in(&root, &["commit", "-q", "-m", "shell commit"]);
+        let after = capture_after(&root, &before).await.unwrap();
+        assert!(after.entries.is_empty(), "both status captures are clean");
+        let changes = diff_marks(&before, &after);
+        assert!(changes.tracked && !changes.truncated);
+        assert_eq!(
+            changes.changes,
+            [
+                TurnWorkspaceChange {
+                    relative_path: "README.md".into(),
+                    operation: TurnWorkspaceOperation::Updated,
+                },
+                TurnWorkspaceChange {
+                    relative_path: "added.txt".into(),
+                    operation: TurnWorkspaceOperation::Created,
+                },
+                TurnWorkspaceChange {
+                    relative_path: "gone.txt".into(),
+                    operation: TurnWorkspaceOperation::Deleted,
+                },
+            ]
+        );
+    });
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn the_first_commit_in_an_unborn_repository_is_a_turn_change() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        assert_eq!(before.head, Some(history::HeadMark::Unborn));
+        std::fs::write(root.join("first.txt"), b"one\n").unwrap();
+        git_in(&root, &["add", "first.txt"]);
+        git_in(&root, &["commit", "-q", "-m", "first"]);
+        let after = capture_after(&root, &before).await.unwrap();
+        let changes = diff_marks(&before, &after);
+        assert_eq!(
+            changes.changes,
+            [TurnWorkspaceChange {
+                relative_path: "first.txt".into(),
+                operation: TurnWorkspaceOperation::Created,
+            }]
+        );
+    });
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn committed_paths_are_bounded_and_deduplicated_with_the_dirty_set() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let many: Vec<u8> = (0..MAX_TURN_WORKSPACE_CHANGES + 5)
+        .flat_map(|index| format!("M\0f{index}\0").into_bytes())
+        .collect();
+    let (paths, truncated) = history::parse_name_status(&many);
+    assert_eq!(paths.len(), MAX_TURN_WORKSPACE_CHANGES);
+    assert!(truncated);
+    let before = mark(&[("dirty.rs", " M", Some(1), 1)]);
+    let mut after = mark(&[]);
+    after.committed = [
+        ("dirty.rs".to_owned(), TurnWorkspaceOperation::Deleted),
+        ("clean.rs".to_owned(), TurnWorkspaceOperation::Updated),
+    ]
+    .into();
+    let changes = diff_marks(&before, &after);
+    assert_eq!(
+        changes.changes,
+        [
+            TurnWorkspaceChange {
+                relative_path: "dirty.rs".into(),
+                operation: TurnWorkspaceOperation::Deleted,
+            },
+            TurnWorkspaceChange {
+                relative_path: "clean.rs".into(),
+                operation: TurnWorkspaceOperation::Updated,
+            },
+        ]
+    );
+    // Marks stored before HEAD was recorded still deserialize.
+    let legacy: WorkspaceMark =
+        serde_json::from_str(r#"{"root_identity":null,"entries":{},"truncated":false}"#).unwrap();
+    assert_eq!(legacy.head, None);
 }
 
 #[test]

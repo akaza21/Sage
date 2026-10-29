@@ -87,7 +87,7 @@ fn shutdown_does_not_wait_for_a_live_operation() {
 }
 
 #[test]
-fn live_operations_run_concurrently_up_to_the_lane_count_and_exclude_ephemeral_work() {
+fn live_operations_run_concurrently_up_to_the_lane_count_and_fill_capacity() {
     let gate = CodexOperationGate::new();
     let mut live = Vec::new();
     for _ in 0..LIVE_OPERATIONS {
@@ -98,7 +98,7 @@ fn live_operations_run_concurrently_up_to_the_lane_count_and_exclude_ephemeral_w
         gate.begin(&gate.prepare_live().unwrap()),
         Err(CodexDiscoveryRunError::Busy)
     ));
-    assert!(gate.prepare().is_ok());
+    // Full capacity rejects ephemeral work at begin.
     let ephemeral = gate.prepare().unwrap();
     assert!(matches!(
         gate.begin(&ephemeral),
@@ -106,16 +106,47 @@ fn live_operations_run_concurrently_up_to_the_lane_count_and_exclude_ephemeral_w
     ));
     drop(ephemeral);
     live.pop().unwrap().settle(Ok(()));
+    // A held live admission plus running work at capacity rejects admission.
     let replacement = gate.prepare_live().unwrap();
     live.push(gate.begin(&replacement).unwrap());
-    // A held live admission also excludes ephemeral admission.
+    let held: Vec<_> = (1..LIVE_OPERATIONS)
+        .map(|_| gate.prepare_live().unwrap())
+        .collect();
     assert!(matches!(gate.prepare(), Err(CodexDiscoveryRunError::Busy)));
+    drop(held);
     drop(replacement);
     for operation in live {
         operation.settle(Ok(()));
     }
     let ephemeral = gate.prepare().unwrap();
     gate.begin(&ephemeral).unwrap().settle(Ok(()));
+}
+
+#[test]
+fn ephemeral_discovery_is_admitted_beside_live_sessions_with_spare_capacity() {
+    let gate = CodexOperationGate::new();
+    // A live session (Claude, Pi, or a retained completed one) holds a lane.
+    let live_prepared = gate.prepare_live().unwrap();
+    let live = gate.begin(&live_prepared).unwrap();
+    let ephemeral = gate.prepare().unwrap();
+    let discovery = gate.begin(&ephemeral).unwrap();
+    // Only one ephemeral operation at a time.
+    assert!(matches!(gate.prepare(), Err(CodexDiscoveryRunError::Busy)));
+    // Live work fills the remaining lanes and then stops at capacity.
+    let mut more = Vec::new();
+    for _ in 2..LIVE_OPERATIONS {
+        let prepared = gate.prepare_live().unwrap();
+        more.push(gate.begin(&prepared).unwrap());
+    }
+    assert!(matches!(
+        gate.begin(&gate.prepare_live().unwrap()),
+        Err(CodexDiscoveryRunError::Busy)
+    ));
+    discovery.settle(Ok(()));
+    live.settle(Ok(()));
+    for operation in more {
+        operation.settle(Ok(()));
+    }
 }
 
 #[test]

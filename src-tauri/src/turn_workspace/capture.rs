@@ -5,7 +5,7 @@ use std::{
 };
 
 use super::directory::Directory;
-use super::{MAX_TURN_WORKSPACE_CHANGES, WorkspaceMark, parse_mark};
+use super::{MAX_TURN_WORKSPACE_CHANGES, WorkspaceMark, history, parse_mark};
 use crate::{
     repository_git::{RepositoryBoundary, repository_boundary, run_git},
     workspace::{
@@ -29,6 +29,24 @@ pub(crate) async fn capture(root: &Path) -> Option<WorkspaceMark> {
     .flatten()
 }
 
+/// The terminal capture: a mark plus the paths committed since `before`'s
+/// HEAD, bounded like the dirty set (overflow marks the result truncated).
+pub(crate) async fn capture_after(root: &Path, before: &WorkspaceMark) -> Option<WorkspaceMark> {
+    tokio::time::timeout(CAPTURE_DEADLINE, async {
+        let mut mark = capture_with_limit(root, MAX_WORKSPACE_FILES).await?;
+        if let (Some(before_head), Some(after_head)) = (&before.head, &mark.head) {
+            let (committed, truncated) =
+                history::committed_between(root, before_head, after_head).await?;
+            mark.committed = committed;
+            mark.truncated |= truncated;
+        }
+        Some(mark)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<WorkspaceMark> {
     let _permit = SNAPSHOTS.try_acquire().ok()?;
     let deadline = Instant::now() + CAPTURE_DEADLINE;
@@ -42,6 +60,7 @@ pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<Worksp
     {
         return None;
     }
+    let head = history::read_head(root).await?;
     let index = run_git(root, &["ls-files", "--cached", "-z"], MAX_INDEX_BYTES)
         .await
         .ok()?;
@@ -79,6 +98,7 @@ pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<Worksp
         return None;
     }
     let mut mark = parse_mark(&anchor, &status.stdout, false)?;
+    mark.head = Some(head);
     let mut pending = vec![(PathBuf::new(), identity)];
     let mut seen = 0;
     while let Some((relative_directory, expected_identity)) = pending.pop() {
@@ -147,13 +167,38 @@ async fn admit_batch(
     if batch.is_empty() {
         return Some(());
     }
-    let mut args = vec!["check-ignore", "--no-index", "-z", "--"];
-    args.extend(batch.iter().map(|entry| entry.0.as_str()));
-    let ignored = run_git(root, &args, MAX_STATUS_BYTES).await.ok()?;
-    if ignored.stdout_truncated || !matches!(ignored.exit_code(), Some(0 | 1)) {
-        return None;
-    }
-    let ignored: BTreeSet<_> = ignored.stdout.split(|byte| *byte == 0).collect();
+    // `-z` is only valid with `--stdin`, which this bounded runner does not
+    // feed; paths come back one per line, unquoted with `core.quotePath`
+    // off. `check-ignore` rejects the runner's literal pathspec magic, so it
+    // is switched off here and names that could read as magic (a leading
+    // `:`) or break the line protocol are not asked about: they stay visible.
+    let mut args = vec![
+        "--no-literal-pathspecs",
+        "-c",
+        "core.quotePath=false",
+        "check-ignore",
+        "--no-index",
+        "--",
+    ];
+    args.extend(
+        batch
+            .iter()
+            .map(|entry| entry.0.as_str())
+            .filter(|path| !path.contains(['\n', '\r']) && !path.starts_with(':')),
+    );
+    let output = if args.len() > 6 {
+        let output = run_git(root, &args, MAX_STATUS_BYTES).await.ok()?;
+        if output.stdout_truncated || !matches!(output.exit_code(), Some(0 | 1)) {
+            return None;
+        }
+        output.stdout
+    } else {
+        Vec::new()
+    };
+    let ignored: BTreeSet<_> = output
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .collect();
     if anchor.child(relative_directory)?.identity()? != directory.identity()? {
         return None;
     }

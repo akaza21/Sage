@@ -1167,6 +1167,7 @@ fn fresh_v18_schema_equals_a_v6_schema_upgraded_in_place() {
     apply_v5(&mut upgraded).unwrap();
     apply_v6(&mut upgraded).unwrap();
     schema_upgrade::apply_through_v18(&mut upgraded).unwrap();
+    workspace_changes::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(fresh_fingerprint.schema, SchemaClass::CurrentV19);
@@ -1527,9 +1528,10 @@ fn committed_wal_data_is_included_in_migration() {
     write_stage(&paths.replacement_manifest, &manifest).unwrap();
     assert!(recover_or_publish(&paths).unwrap());
     let migrated = Connection::open(&paths.live).unwrap();
+    // The replacement publishes v18; v19 is applied in place at open.
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV18
     );
     let name: String = migrated
         .query_row(
