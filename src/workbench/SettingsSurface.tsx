@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import {
@@ -10,6 +10,12 @@ import {
 import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
+
+const SettingsBrowserPage = lazy(() =>
+  import("./settings/SettingsBrowserPage").then(({ SettingsBrowserPage }) => ({
+    default: SettingsBrowserPage,
+  })),
+);
 
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
@@ -91,6 +97,16 @@ export function SettingsSurface() {
         </p>
       ) : activePageId === "keyboard" ? (
         <SettingsKeyboardPage visible={visible} />
+      ) : activePageId === "browser" ? (
+        <Suspense
+          fallback={
+            <p className="settings-surface__loading" role="status">
+              Loading browser settings…
+            </p>
+          }
+        >
+          <SettingsBrowserPage visible={visible} />
+        </Suspense>
       ) : (
         <SettingsEditorPage
           visible={visible}

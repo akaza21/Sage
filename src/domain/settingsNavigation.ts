@@ -133,7 +133,7 @@ export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
   ...FIND_BAR_BINDINGS,
 ];
 
-export type SettingsPageId = "editor" | "keyboard";
+export type SettingsPageId = "editor" | "keyboard" | "browser";
 
 export interface SettingsEntry {
   id: string;
@@ -178,6 +178,24 @@ const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
   ),
 );
 
+// BF-7d: only the Codex Browser settings (refs 45, 47, 65) that Sage's browser
+// backend supports today. The Browser page renders these ids and no others.
+const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
+  {
+    id: "browser.showFullUrl",
+    label: "Show full URL",
+    description: "Include the path, query, and fragment in the address bar.",
+    group: "General",
+  },
+  {
+    id: "browser.clearData",
+    label: "Browsing data",
+    description:
+      "Clear browsing history, cookies, site data, and cache from the built-in browser.",
+    group: "General",
+  },
+]);
+
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
   {
     id: "editor",
@@ -190,6 +208,12 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
     label: "Keyboard",
     description: "Every shortcut Sage listens for today.",
     entries: KEYBOARD_ENTRIES,
+  },
+  {
+    id: "browser",
+    label: "Browser",
+    description: "Manage the built-in browser's preferences and data.",
+    entries: BROWSER_ENTRIES,
   },
 ]);
 

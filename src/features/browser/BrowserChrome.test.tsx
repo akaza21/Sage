@@ -14,6 +14,7 @@ import { BrowserSurface } from "./BrowserSurface";
 import { BrowserNewTab } from "./BrowserNewTab";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
+import { useBrowserPreferencesStore } from "./browserPreferencesStore";
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
 const browserPageContext = vi.fn();
@@ -82,6 +83,11 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   coverBrowser: vi.fn(async () => undefined),
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
+}));
+const browserPreferences = vi.fn(async () => ({ showFullUrl: false }));
+vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
+  browserPreferences: () => browserPreferences(),
+  browserSetPreferences: vi.fn(async (value: unknown) => value),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
@@ -339,6 +345,39 @@ it("selects the full committed URL when the centered host is focused", async () 
   expect(address).toHaveValue("https://example.com/path");
   expect(address.selectionStart).toBe(0);
   expect(address.selectionEnd).toBe("https://example.com/path".length);
+});
+it("shows the full committed URL when Show full URL is on", async () => {
+  useBrowserPreferencesStore.setState({
+    preferences: { showFullUrl: true },
+    ready: true,
+    error: null,
+  });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    const address = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "Address or search",
+    });
+    await waitFor(() =>
+      expect(address).toHaveValue("https://example.com/path"),
+    );
+    act(() =>
+      useBrowserPreferencesStore.setState({
+        preferences: { showFullUrl: false },
+      }),
+    );
+    expect(address).toHaveValue("example.com");
+  } finally {
+    useBrowserPreferencesStore.setState({
+      preferences: { showFullUrl: false },
+      ready: false,
+      error: null,
+    });
+  }
+});
+it("loads the stored Show full URL choice when the browser opens", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("textbox", { name: "Address or search" });
+  expect(browserPreferences).toHaveBeenCalled();
 });
 it("groups supported page controls in an overflow menu without dead features", async () => {
   render(<BrowserSurface tab={tab} />);

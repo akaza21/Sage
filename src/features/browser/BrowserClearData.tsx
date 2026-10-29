@@ -7,7 +7,13 @@ import {
   type BrowserClearDataCompletion,
 } from "../../ports/nativeBrowserPort";
 
-export function BrowserClearData({ menuItem = false }: { menuItem?: boolean }) {
+export function BrowserClearData({
+  menuItem = false,
+  buttonClassName,
+}: {
+  menuItem?: boolean;
+  buttonClassName?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -91,6 +97,7 @@ export function BrowserClearData({ menuItem = false }: { menuItem?: boolean }) {
       }
     >
       <button
+        className={buttonClassName}
         type="button"
         role={menuItem ? "menuitem" : undefined}
         disabled={busy}

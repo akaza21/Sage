@@ -161,7 +161,9 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_zoom,
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
-        browser::page_controls::browser_find
+        browser::page_controls::browser_find,
+        browser::preferences::browser_preferences,
+        browser::preferences::browser_set_preferences
     ];
     handle(invoke)
 }

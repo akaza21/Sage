@@ -36,8 +36,21 @@ describe("SettingsSurface", () => {
       within(nav)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Editor", "Keyboard"]);
+    ).toEqual(["Editor", "Keyboard", "Browser"]);
     expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("loads the Browser page on demand", async () => {
+    render(<SettingsSurface />);
+    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    expect(
+      await screen.findByRole("heading", { name: "Browser" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
