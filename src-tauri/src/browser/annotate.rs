@@ -13,7 +13,7 @@
 
 use std::sync::{
     Mutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use serde::Serialize;
@@ -120,13 +120,17 @@ pub(crate) struct AnnotateChange {
 /// Annotate's place in `BrowserState`: the mode, and lock-free copies of its
 /// tab number and of the tab whose page is frozen (0 for none) for the main
 /// thread, which must never wait on the mode lock while a native step needs
-/// that thread. `covered` is the tab a toolbar popover hides (`zoom.rs`).
+/// that thread. `zoom.rs` keeps the rest: `covered` is the tab a toolbar
+/// popover hides, `deferred` the tab whose show a frozen page put off, and
+/// `zoom_queued` whether a zoom step waits for the lock.
 #[derive(Default)]
 pub(crate) struct Annotate {
     mode: Mutex<AnnotateMode>,
     tab: AtomicU64,
     frozen: AtomicU64,
     covered: AtomicU64,
+    deferred: AtomicU64,
+    zoom_queued: AtomicBool,
 }
 
 impl Annotate {

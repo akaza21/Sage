@@ -697,6 +697,28 @@ it("covers the native page while a toolbar popover is open, even across a resize
   expect(hideBrowser).not.toHaveBeenCalled();
 });
 
+it("still hides the native page for real on unmount or a tab switch while a popover covers it", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  const view = render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  hideBrowser.mockClear();
+  coverBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
+  expect(hideBrowser).not.toHaveBeenCalled();
+  view.rerender(<BrowserSurface tab={{ ...tab, id: "browser-2" }} />);
+  expect(hideBrowser).toHaveBeenCalledWith(tab.id);
+
+  // The menu stays open in the new tab, which is covered from the start.
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith("browser-2"));
+  hideBrowser.mockClear();
+  view.unmount();
+  expect(hideBrowser).toHaveBeenCalledWith("browser-2");
+});
+
 it("still hides the native page for real when the centre pane is hidden", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
     DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),

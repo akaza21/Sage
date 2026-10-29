@@ -6,7 +6,7 @@
 //! outline drawn before it goes, and an element waiting for a comment is
 //! dropped, as its frozen frame and outline no longer match the page.
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tauri::{AppHandle, Manager};
 
@@ -15,27 +15,43 @@ use super::{
     emit, tab_number,
 };
 
+/// Clears `copy` if it names `label`'s tab.
+fn clear(copy: &AtomicU64, label: &str) {
+    if let Some(number) = tab_number(label) {
+        let _ = copy.compare_exchange(number, 0, Ordering::AcqRel, Ordering::Acquire);
+    }
+}
+
 impl Annotate {
     /// Hides `label`'s page: a covering popover keeps Annotate on and is
-    /// remembered until the page is placed again; any other hide answers how
-    /// Annotate leaves.
+    /// remembered until the page is placed again; any other hide forgets the
+    /// cover and answers how Annotate leaves. Either way a show that a frozen
+    /// page put off no longer applies.
     pub(crate) fn hiding(&self, label: &str, cover: bool) -> Option<Exit> {
+        clear(&self.deferred, label);
         if cover {
             self.covered
                 .store(tab_number(label).unwrap_or(0), Ordering::Release);
             None
         } else {
+            clear(&self.covered, label);
             Some(Exit::Hidden)
         }
     }
 
-    /// `label`'s page was placed again, so no popover covers it. Lock-free,
-    /// as placing runs on the main thread.
-    pub(crate) fn uncover(&self, label: &str) {
-        if let Some(number) = tab_number(label) {
-            let _ = self
-                .covered
-                .compare_exchange(number, 0, Ordering::AcqRel, Ordering::Acquire);
+    /// `label`'s page was placed again, so no popover covers it. Answers
+    /// whether to show it: a frozen page stays hidden, and the show is put
+    /// off until a zoom unfreezes it. Lock-free, as placing runs on the main
+    /// thread.
+    pub(crate) fn placed(&self, label: &str) -> bool {
+        clear(&self.covered, label);
+        if self.is_frozen(label) {
+            self.deferred
+                .store(tab_number(label).unwrap_or(0), Ordering::Release);
+            false
+        } else {
+            clear(&self.deferred, label);
+            true
         }
     }
 
@@ -44,15 +60,41 @@ impl Annotate {
         tab_number(label).is_some_and(|number| self.covered.load(Ordering::Acquire) == number)
     }
 
-    /// `label`'s page zoom changed.
+    /// Takes the show a frozen page put off, once it is no longer frozen.
+    /// Runs on the main thread, after any placement or hide queued before it.
+    pub(super) fn take_deferred_show(&self, label: &str) -> bool {
+        let Some(number) = tab_number(label) else {
+            return false;
+        };
+        !self.is_frozen(label)
+            && self
+                .deferred
+                .compare_exchange(number, 0, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+    }
+
+    /// Queues a zoom step; false when one already waits, which will see this
+    /// zoom too. Ctrl+wheel raises a zoom per tick.
+    pub(super) fn queue_zoom(&self) -> bool {
+        !self.zoom_queued.swap(true, Ordering::AcqRel)
+    }
+
+    /// `label`'s page zoom changed. Answers whether the page was left
+    /// hidden because a popover covered it.
     pub(super) fn zoomed(
         &self,
         overlay: &impl InspectOverlay,
         label: &str,
         announce: impl Fn(AnnotateChange),
-    ) -> Result<(), String> {
-        let covered = self.is_covered(label);
-        self.run(announce, |mode| mode.zoomed(overlay, label, covered))
+    ) -> Result<bool, String> {
+        self.run(announce, |mode| {
+            // Under the lock: a zoom after this point queues the next step.
+            self.zoom_queued.store(false, Ordering::Release);
+            let covered = self.is_covered(label);
+            let waiting = mode.pending.is_some();
+            let (changes, result) = mode.zoomed(overlay, label, covered);
+            (changes, result.map(|()| covered && waiting))
+        })
     }
 }
 
@@ -83,16 +125,38 @@ impl AnnotateMode {
 
 /// Keeps Annotate on `label` through a page zoom from any source: the "…"
 /// menu, a shortcut, Ctrl+wheel or a reset. Runs on its own thread, as the
-/// zoom event arrives on the main thread that the overlay needs.
+/// zoom event arrives on the main thread that the overlay needs; at most one
+/// such thread runs and one waits.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn zoomed(app: &AppHandle, label: &str) {
+    if !app.state::<BrowserState>().annotate.queue_zoom() {
+        return;
+    }
     let app = app.clone();
     let label = label.to_owned();
     std::thread::spawn(move || {
         let state = app.state::<BrowserState>();
         let overlay = NativeOverlay(&state, &app);
-        let _ = state
+        let left_hidden = state
             .annotate
             .zoomed(&overlay, &label, |change| emit(&app, change));
+        // The popover may have closed while this step waited: its placement
+        // found the page still frozen and put the show off.
+        let Ok(true) = left_hidden else {
+            return;
+        };
+        let Some(webview) = state.webview_for_tab(&label) else {
+            return;
+        };
+        let main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if main
+                .state::<BrowserState>()
+                .annotate
+                .take_deferred_show(&label)
+            {
+                let _ = webview.show();
+            }
+        });
     });
 }

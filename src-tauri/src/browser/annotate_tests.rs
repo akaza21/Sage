@@ -438,9 +438,9 @@ fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
     assert!(annotate.is_annotating("browser-3"));
     assert!(annotate.is_covered("browser-3"));
     // Placing another tab does not uncover this one; placing it does.
-    annotate.uncover("browser-2");
+    assert!(annotate.placed("browser-2"));
     assert!(annotate.is_covered("browser-3"));
-    annotate.uncover("browser-3");
+    assert!(annotate.placed("browser-3"));
     assert!(!annotate.is_covered("browser-3"));
     assert!(annotate.is_annotating("browser-3"));
     assert_eq!(overlay.calls(), ["start browser-3"]);
@@ -455,4 +455,32 @@ fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
         )
         .unwrap();
     assert!(!annotate.is_annotating("browser-3"));
+}
+
+#[test]
+fn a_real_hide_forgets_a_cover_it_ends() {
+    let annotate = Annotate::default();
+    assert_eq!(annotate.hiding("browser-3", true), None);
+    // Hiding another tab leaves this tab's cover alone.
+    assert_eq!(annotate.hiding("browser-2", false), Some(Exit::Hidden));
+    assert!(annotate.is_covered("browser-3"));
+    // The popover was open when the tab switched away.
+    assert_eq!(annotate.hiding("browser-3", false), Some(Exit::Hidden));
+    assert!(!annotate.is_covered("browser-3"));
+}
+
+#[test]
+fn ctrl_wheel_zooms_coalesce_into_one_running_and_one_waiting_step() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-1"))
+        .unwrap();
+    assert!(annotate.queue_zoom());
+    assert!(!annotate.queue_zoom(), "a step already waits");
+    assert!(!annotate.queue_zoom());
+    // The waiting step takes the lock and runs, so the next tick queues one.
+    annotate.zoomed(&overlay, "browser-1", |_| ()).unwrap();
+    assert!(annotate.queue_zoom());
+    assert_eq!(overlay.calls()[1..], ["clear outline browser-1"]);
 }

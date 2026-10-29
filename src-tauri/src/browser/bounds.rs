@@ -35,10 +35,8 @@ pub(crate) async fn browser_set_bounds(
     let shown = webview.clone();
     app.clone()
         .run_on_main_thread(move || {
-            let annotate = &app.state::<BrowserState>().annotate;
             // Placed again, the page is no longer covered by a popover.
-            annotate.uncover(&tab_id);
-            if !annotate.is_frozen(&tab_id)
+            if app.state::<BrowserState>().annotate.placed(&tab_id)
                 && let Err(error) = shown.show()
             {
                 eprintln!("browser show failed for {tab_id}: {error}");

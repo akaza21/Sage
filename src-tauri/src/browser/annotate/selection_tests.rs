@@ -456,11 +456,12 @@ fn a_zoom_unfreezes_a_covered_page_so_placing_it_shows_it_again() {
     annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
     assert_eq!(annotate.hiding("browser-4", true), None);
     let announced = std::cell::RefCell::new(Vec::new());
-    annotate
+    let left_hidden = annotate
         .zoomed(&overlay, "browser-4", |change| {
             announced.borrow_mut().push(change)
         })
         .unwrap();
+    assert!(left_hidden);
     assert_eq!(announced.into_inner(), [on("browser-4")]);
     assert!(annotate.is_annotating("browser-4"));
     assert!(!annotate.is_frozen("browser-4"));
@@ -468,4 +469,46 @@ fn a_zoom_unfreezes_a_covered_page_so_placing_it_shows_it_again() {
         overlay.calls().last().map(String::as_str),
         Some("release browser-4 reveal=false resume=true")
     );
+    // The popover closes: placing the page shows it.
+    assert!(annotate.placed("browser-4"));
+    assert!(!annotate.take_deferred_show("browser-4"));
+}
+
+#[test]
+fn a_popover_closing_while_a_zoom_waits_still_shows_the_page() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-4"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
+    assert_eq!(annotate.hiding("browser-4", true), None);
+    // The zoom step read the cover, then waited for the lock; meanwhile the
+    // popover closed and placing found the page still frozen.
+    let covered = annotate.is_covered("browser-4");
+    assert!(!annotate.placed("browser-4"));
+    assert!(!annotate.take_deferred_show("browser-4"), "still frozen");
+    annotate
+        .run(|_| (), |mode| mode.zoomed(&overlay, "browser-4", covered))
+        .unwrap();
+    // The step it then posts to the main thread shows the page, once.
+    assert!(annotate.take_deferred_show("browser-4"));
+    assert!(!annotate.take_deferred_show("browser-4"));
+}
+
+#[test]
+fn a_put_off_show_is_dropped_when_the_page_hides_again() {
+    let annotate = Annotate::default();
+    let overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-4"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
+    assert!(!annotate.placed("browser-4"));
+    // A tab switch hides the page before the zoom step's show runs.
+    assert_eq!(annotate.hiding("browser-4", false), Some(Exit::Hidden));
+    annotate
+        .run(|_| (), |mode| mode.zoomed(&overlay, "browser-4", true))
+        .unwrap();
+    assert!(!annotate.take_deferred_show("browser-4"));
 }
