@@ -142,7 +142,11 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
     );
     if (!mode) throw new Error("approval-access-unavailable");
     await clickCapture('button[aria-label="Access options"]');
-    await clickCapture('[role="menuitemradio"][data-option-id="' + mode + '"]');
+    await clickCapture(
+      '[role="menu"][aria-label="Access mode"] [role="menuitemradio"][data-option-id="' +
+        mode +
+        '"]',
+    );
     await submit();
     await waitForState(
       async () => (await evaluate(OBSERVATION)).state === "completed",

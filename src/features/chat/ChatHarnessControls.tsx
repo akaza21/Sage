@@ -17,13 +17,12 @@ import {
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
-import { MenuPopover } from "../../ui/MenuPopover";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { useComposerModelName } from "./composerModelName";
 import { useComposerModelChoices } from "./useComposerModelChoices";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ComposerAddActions } from "./ComposerAddActions";
+import { ComposerOptionsMenu } from "./ComposerAddActions";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
@@ -356,41 +355,32 @@ export function ChatHarnessControls({
         />
       ) : null}
       {active === "options" && hasActions ? (
-        <MenuPopover
+        <ComposerOptionsMenu
           id={optionsId}
-          className="composer__popover composer__options"
-          ariaLabel="Composer options menu"
-          focusKey={active}
-          restoreFocusOnTab
-          open
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}
-          gap={8}
-        >
-          <ComposerAddActions
-            projectAction={
-              compactProject && projectName ? (
-                <ProjectScopeChip projectName={projectName} menuItem />
-              ) : undefined
-            }
-            sessionConfig={selectedSessionConfig}
-            pending={modePending}
-            disabled={turnBusy || projectTransitioning}
-            imageAction={imageAction}
-            onOpenGoal={onOpenGoal}
-            onOpenEffort={
-              canSelectEffort && compactEffort
-                ? () => {
-                    setEffortFromAdd(true);
-                    toggle("effort");
-                  }
-                : undefined
-            }
-            onClose={closeActions}
-            onSetSessionMode={onSetSessionMode}
-            onSetSessionConfigOption={onSetSessionConfigOption}
-          />
-        </MenuPopover>
+          projectAction={
+            compactProject && projectName ? (
+              <ProjectScopeChip projectName={projectName} menuItem />
+            ) : undefined
+          }
+          sessionConfig={selectedSessionConfig}
+          pending={modePending}
+          disabled={turnBusy || projectTransitioning}
+          imageAction={imageAction}
+          onOpenGoal={onOpenGoal}
+          onOpenEffort={
+            canSelectEffort && compactEffort
+              ? () => {
+                  setEffortFromAdd(true);
+                  toggle("effort");
+                }
+              : undefined
+          }
+          onClose={closeActions}
+          onSetSessionMode={onSetSessionMode}
+          onSetSessionConfigOption={onSetSessionConfigOption}
+        />
       ) : null}
       {modePending ? (
         <span className="select-control__reason" role="status">

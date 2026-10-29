@@ -178,27 +178,40 @@ function sourceItems() {
   );
 }
 
-it.each(["session", "runtime"])("resets expanded Sources when the %s changes while resources are closed", async (replacement) => {
-  const items = sourceItems();
-  replaceItems(items);
-  render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
-  const trigger = screen.getByRole("button", { name: "Show chat resources" });
-  fireEvent.click(trigger);
-  fireEvent.click(await screen.findByRole("button", { name: "View all" }));
-  expect(screen.getByText("source-0.example")).toBeVisible();
-  fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
-    key: "Escape",
-  });
-  const page = acpProjectionStoreFor(tab.id).getState().page!;
-  replaceItems(items, replacement === "session" ? {
-    currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
-  } : {
-    sessions: page.sessions.map((session) => ({ ...session, runtimeEpoch: "4" as typeof session.runtimeEpoch })),
-  });
-  fireEvent.click(trigger);
-  expect(await screen.findByRole("button", { name: "View all" })).toBeVisible();
-  expect(screen.queryByText("source-0.example")).toBeNull();
-});
+it.each(["session", "runtime"])(
+  "resets expanded Sources when the %s changes while resources are closed",
+  async (replacement) => {
+    const items = sourceItems();
+    replaceItems(items);
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    const trigger = screen.getByRole("button", { name: "Show chat resources" });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("button", { name: "View all" }));
+    expect(screen.getByText("source-0.example")).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {
+      key: "Escape",
+    });
+    const page = acpProjectionStoreFor(tab.id).getState().page!;
+    replaceItems(
+      items,
+      replacement === "session"
+        ? {
+            currentSessionId: "session-2" as AcpChatPage["currentSessionId"],
+          }
+        : {
+            sessions: page.sessions.map((session) => ({
+              ...session,
+              runtimeEpoch: "4" as typeof session.runtimeEpoch,
+            })),
+          },
+    );
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("button", { name: "View all" }),
+    ).toBeVisible();
+    expect(screen.queryByText("source-0.example")).toBeNull();
+  },
+);
 
 it("keeps expanded Sources across close and reopen, but resets them on an owner change", async () => {
   const items = sourceItems();
