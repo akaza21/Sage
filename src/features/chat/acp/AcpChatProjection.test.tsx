@@ -843,7 +843,7 @@ describe("AcpChatProjection", () => {
       ].map((row) => row.textContent?.trim()),
     ).toEqual([
       "Ran gh --version",
-      "TOOL_RETRYRetry availableRetrying command",
+      "Agent noticeRetry availableRetrying command",
       "Ran gh --version",
     ]);
   });
@@ -1556,7 +1556,7 @@ describe("AcpChatProjection", () => {
     expect(within(summary).queryByLabelText("Line changes")).toBeNull();
     expect(within(summary).getAllByText("+2")).toHaveLength(1);
     expect(within(summary).getAllByText("-1")).toHaveLength(1);
-    expect(within(summary).getAllByText("—")).toHaveLength(2);
+    expect(within(summary).queryByText("—")).toBeNull();
     expect(
       within(summary).getByRole("button", { name: "Mark reviewed" }),
     ).toBeEnabled();
@@ -2181,7 +2181,8 @@ describe("AcpChatProjection", () => {
     const { container } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
-    expect(screen.getByText("Current thinking")).toBeVisible();
+    expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+    expect(screen.queryByText("Current thinking")).toBeNull();
     expect(screen.queryByText("Earlier thinking")).toBeNull();
     expect(container.querySelectorAll(".acp-thought")).toHaveLength(1);
   });
@@ -2202,9 +2203,7 @@ describe("AcpChatProjection", () => {
     const { rerender } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
-    const live = screen.getAllByText(
-      "Checking the workspace before editing.",
-    )[0];
+    const live = screen.getByText("Thinking");
     expect(live).toBeVisible();
     expect(live).toHaveClass("acp-thought");
 

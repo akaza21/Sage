@@ -13,7 +13,6 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
-import { latestMarkdownLine } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
@@ -278,7 +277,13 @@ function ErrorActivity({
       data-activity-state="failed"
     >
       <header>
-        <strong>{item.payload.code}</strong>
+        <strong>
+          {item.payload.code === "browserMcpUnavailable"
+            ? "Browser tools unavailable"
+            : item.payload.code === "clientFileWriteRefused"
+              ? "File write unavailable"
+              : "Agent notice"}
+        </strong>
         <span className="acp-state">
           {item.payload.recoverable ? "Retry available" : "Needs attention"}
         </span>
@@ -299,8 +304,11 @@ export function TurnActivityItem({
     case "thoughtSummary":
       if (terminalItemLifecycles.has(item.lifecycle)) return null;
       return (
-        <p className="acp-thought" data-activity-kind="thought">
-          {latestMarkdownLine(item.payload.summary).slice(0, 256) || "Thinking"}
+        <p
+          className="acp-thought acp-live-shimmer"
+          data-activity-kind="thought"
+        >
+          Thinking
         </p>
       );
     case "plan":
