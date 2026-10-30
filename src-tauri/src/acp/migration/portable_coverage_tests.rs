@@ -145,7 +145,7 @@ fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_r
     let directory = TestDir::new();
     create_v4(&directory.database(), true);
     let mut upgrade = Connection::open(directory.database()).unwrap();
-    apply_through_v13(&mut upgrade).unwrap();
+    apply_through_v18(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
     let database = Database::open(&directory.database()).unwrap();
@@ -221,7 +221,7 @@ fn portable_v4_transform_then_database_runtime_creates_first_empty_chat_prompt()
     let directory = TestDir::new();
     create_v4(&directory.database(), false);
     let mut upgrade = Connection::open(directory.database()).unwrap();
-    apply_through_v13(&mut upgrade).unwrap();
+    apply_through_v18(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
     let database = Database::open(&directory.database()).unwrap();

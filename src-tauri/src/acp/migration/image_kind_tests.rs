@@ -40,6 +40,7 @@ fn populated_v17_image_upgrade_preserves_rows_objects_and_original_backup() {
     assert!(!rows.is_empty());
     let objects = item_objects(&source);
     drop(source);
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -122,6 +123,7 @@ fn v17_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let directory = TestDir::new();
     create_v4(&directory.database(), "Earlier backup", true);
     let paths = MigrationPaths::new(&directory.database()).unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let earlier = ensure(&paths).unwrap();
     let earlier_file = file_fingerprint(&paths.backup_final).unwrap();
     let mut source = Connection::open(directory.database()).unwrap();
@@ -132,6 +134,7 @@ fn v17_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let original = database_fingerprint(&source).unwrap();
     assert_ne!(original, earlier.source.database);
     source.close().unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -158,6 +161,7 @@ fn v17_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
 #[test]
 fn v18_reopen_verifies_versioned_retained_backup_once() {
     let directory = populated_v17();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     drop(open_or_migrate(&directory.database()).unwrap());
     let loads = test_failpoint::observe_retained_pair_loads();
     let reopened = open_or_migrate(&directory.database()).unwrap();
@@ -173,6 +177,7 @@ fn v16_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let directory = TestDir::new();
     create_v4(&directory.database(), "Earlier v16 backup", true);
     let paths = MigrationPaths::new(&directory.database()).unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let earlier = ensure(&paths).unwrap();
     let earlier_file = file_fingerprint(&paths.backup_final).unwrap();
     let earlier_manifest = fs::read(&paths.manifest_final).unwrap();
@@ -188,6 +193,7 @@ fn v16_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let objects = item_objects(&source);
     assert!(!rows.is_empty());
     source.close().unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -258,6 +264,7 @@ fn v16_image_upgrade_retries_after_schema_failure_with_original_backup_intact() 
     let directory = TestDir::new();
     create_v4(&directory.database(), "Earlier v16 retry backup", true);
     let paths = MigrationPaths::new(&directory.database()).unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     ensure(&paths).unwrap();
     let earlier_file = file_fingerprint(&paths.backup_final).unwrap();
     let earlier_manifest = fs::read(&paths.manifest_final).unwrap();
@@ -265,6 +272,7 @@ fn v16_image_upgrade_retries_after_schema_failure_with_original_backup_intact() 
     schema_upgrade::apply_through_v16(&mut source).unwrap();
     let original = database_fingerprint(&source).unwrap();
     source.close().unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     test_failpoint::arm("v17-to-v18-after-schema");
     assert!(open_or_migrate(&directory.database()).is_err());
     assert!(!test_failpoint::is_armed());
@@ -299,6 +307,7 @@ fn v17_image_upgrade_retries_after_marker_failure_with_original_backup_intact() 
     let source = open_read_only(&directory.database()).unwrap();
     let original = database_fingerprint(&source).unwrap();
     drop(source);
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     test_failpoint::arm("v17-to-v18-after-markers");
     assert!(open_or_migrate(&directory.database()).is_err());
     assert!(!test_failpoint::is_armed());
@@ -322,6 +331,7 @@ fn v17_image_upgrade_retries_after_marker_failure_with_original_backup_intact() 
 #[test]
 fn v18_reopen_rejects_incomplete_image_backup_without_mutating_live_database() {
     let directory = populated_v17();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     drop(open_or_migrate(&directory.database()).unwrap());
     let before = file_fingerprint(&directory.database()).unwrap();
     let paths = v18_backup::paths_for_v18(&MigrationPaths::new(&directory.database()).unwrap());
