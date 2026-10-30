@@ -8,7 +8,7 @@ use std::{
 use crate::domain::ResourceRef;
 
 use super::{
-    IndexInputs, ProjectIndex, Readied, claim_generation, ready,
+    IndexInputs, ProjectIndex, Readied, Ticket, claim_generation, ready,
     score::{Query, positions, score},
     superseded,
 };
@@ -22,6 +22,8 @@ const PARALLEL_FROM: usize = 20_000;
 /// The most recent File gets this much extra; each older one a step less.
 const RECENT_BONUS: i32 = 200;
 const RECENT_STEP: i32 = 4;
+/// Bits in the filter that spares most matches a recent-File lookup.
+const RECENT_FILTER_BITS: usize = 8192;
 
 pub(crate) struct QuickOpenQuery<'a> {
     pub(crate) text: &'a str,
@@ -50,15 +52,18 @@ pub(crate) enum Outcome {
         heap_bytes: usize,
         readied: Readied,
     },
-    /// A newer query arrived; this one stopped early.
+    /// A newer query arrived, or the Project closed; this one stopped
+    /// early.
     Superseded,
 }
 
-pub(crate) fn run(inputs: &IndexInputs, query: &QuickOpenQuery<'_>) -> Outcome {
+pub(crate) fn run(inputs: &IndexInputs, query: &QuickOpenQuery<'_>, ticket: Ticket) -> Outcome {
     if !claim_generation(query.generation) {
         return Outcome::Superseded;
     }
-    let (index, readied) = ready(inputs, query.session);
+    let Some((index, readied)) = ready(inputs, query.session, ticket) else {
+        return Outcome::Superseded;
+    };
     if superseded(query.generation) {
         return Outcome::Superseded;
     }
@@ -114,22 +119,62 @@ impl PartialEq for Candidate<'_> {
 
 impl Eq for Candidate<'_> {}
 
+/// A cheap hash of a path's length and last bytes, for the recent filter.
+fn filter_slot(path: &str) -> usize {
+    let bytes = path.as_bytes();
+    let last = |back: usize| {
+        bytes
+            .len()
+            .checked_sub(back)
+            .map_or(0, |at| bytes[at] as usize)
+    };
+    (bytes.len() * 131 + last(1) * 31 + last(2)) % RECENT_FILTER_BITS
+}
+
 /// What every share of a ranking reads.
 struct Ranking<'a> {
     parsed: Option<Query>,
     recent: HashMap<(&'a str, &'a str), usize>,
+    /// Set for every recent File's `filter_slot`; a match whose slot is
+    /// clear needs no lookup, which is most of them.
+    recent_filter: Vec<u64>,
     limit: usize,
     generation: u64,
 }
 
 impl<'a> Ranking<'a> {
-    fn recency(&self, root_id: &str, path: &str) -> i32 {
-        if self.recent.is_empty() {
-            return 0;
+    fn new(query: &QuickOpenQuery<'a>) -> Self {
+        let mut recent_filter = vec![0; RECENT_FILTER_BITS / 64];
+        let mut recent = HashMap::with_capacity(query.recent.len());
+        for (rank, resource) in query.recent.iter().enumerate() {
+            let path = resource.relative_path.as_str();
+            let slot = filter_slot(path);
+            recent_filter[slot / 64] |= 1 << (slot % 64);
+            recent
+                .entry((resource.root_id.as_str(), path))
+                .or_insert(rank);
         }
-        self.recent
-            .get(&(root_id, path))
-            .map_or(0, |rank| RECENT_BONUS - RECENT_STEP * *rank as i32)
+        Self {
+            parsed: Query::new(query.text),
+            recent,
+            recent_filter,
+            limit: query.limit,
+            generation: query.generation,
+        }
+    }
+
+    /// How recently `path` was opened, 0 for the most recent.
+    fn recent_rank(&self, root_id: &str, path: &str) -> Option<usize> {
+        let slot = filter_slot(path);
+        if self.recent_filter[slot / 64] & (1 << (slot % 64)) == 0 {
+            return None;
+        }
+        self.recent.get(&(root_id, path)).copied()
+    }
+
+    fn recency(&self, root_id: &str, path: &str) -> i32 {
+        self.recent_rank(root_id, path)
+            .map_or(0, |rank| RECENT_BONUS - RECENT_STEP * rank as i32)
     }
 
     /// The best `limit` candidates in share `share` of `shares` of every
@@ -158,8 +203,8 @@ impl<'a> Ranking<'a> {
                     },
                     // An empty query lists recently opened Files only, as VS
                     // Code does.
-                    None => match self.recent.get(&(root.root_id.as_str(), stored.path)) {
-                        Some(rank) => -(*rank as i32),
+                    None => match self.recent_rank(&root.root_id, stored.path) {
+                        Some(rank) => -(rank as i32),
                         None => continue,
                     },
                 };
@@ -201,22 +246,7 @@ pub(super) fn rank_in_shares(
     query: &QuickOpenQuery<'_>,
     shares: usize,
 ) -> Option<Vec<Ranked>> {
-    let ranking = Ranking {
-        parsed: Query::new(query.text),
-        recent: query
-            .recent
-            .iter()
-            .enumerate()
-            .map(|(rank, resource)| {
-                (
-                    (resource.root_id.as_str(), resource.relative_path.as_str()),
-                    rank,
-                )
-            })
-            .collect(),
-        limit: query.limit,
-        generation: query.generation,
-    };
+    let ranking = Ranking::new(query);
     let mut kept = Vec::with_capacity(query.limit * shares);
     if shares == 1 {
         kept = ranking.scan(index, 0, 1)?;

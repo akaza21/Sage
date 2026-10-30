@@ -1,7 +1,8 @@
 //! Walks a root for the path index. It keeps what Search would scan:
 //! excluded and ignored folders are not entered, symlinks are skipped, `.git`
 //! and `node_modules` are always left out, and folders deeper than Search
-//! goes are not entered.
+//! goes are not entered. Like Search, it goes breadth first, so a
+//! truncated walk keeps the shallower Files.
 //!
 //! The walk runs on one thread. Four threads walked 200k Files in 0.08 s
 //! instead of 0.2 s, but glibc gives each thread its own memory pool and
@@ -9,8 +10,11 @@
 //! afterwards; on one thread it returns to where it started.
 
 use std::{
-    fs,
+    collections::VecDeque,
+    ffi::OsString,
+    fs::{self, DirEntry},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use crate::workspace::{
@@ -43,18 +47,23 @@ pub(super) struct Walked {
 pub(super) struct Walk<'a> {
     pub(super) rules: &'a IgnoreRules,
     pub(super) excluded: &'a PathGlobs,
+    /// Checked before each folder; once raised, the walk ends.
+    pub(super) stop: &'a AtomicBool,
     /// Files this walk may add.
     pub(super) room: usize,
     /// Paths and bytes the root held last time, to size the arena once.
     pub(super) expect: (usize, usize),
 }
 
-/// How far a walk has got.
+/// How far a walk has got, and buffers every folder reuses.
 #[derive(Default)]
-struct Counts {
+struct Progress {
     files: usize,
     folders: usize,
     full: bool,
+    queue: VecDeque<Folder>,
+    entries: Vec<(DirEntry, OsString)>,
+    relative: String,
 }
 
 impl Walk<'_> {
@@ -62,39 +71,38 @@ impl Walk<'_> {
     pub(super) fn run(&self, root: &Path) -> Walked {
         let (paths, bytes) = self.expect;
         let mut arena = PathArena::with_capacity(paths + paths / 16, bytes + bytes / 16);
-        let mut counts = Counts::default();
-        let mut stack = vec![Folder {
-            path: root.to_path_buf(),
-            relative: String::new(),
-            chain: FolderChain::default(),
-            depth: 0,
-        }];
-        while let Some(folder) = stack.pop() {
-            self.visit(folder, &mut arena, &mut stack, &mut counts);
-            if counts.full {
+        let mut progress = Progress {
+            queue: VecDeque::from([Folder {
+                path: root.to_path_buf(),
+                relative: String::new(),
+                chain: FolderChain::default(),
+                depth: 0,
+            }]),
+            ..Progress::default()
+        };
+        while let Some(folder) = progress.queue.pop_front() {
+            if self.stop.load(Ordering::Relaxed) {
+                break;
+            }
+            self.visit(folder, &mut arena, &mut progress);
+            if progress.full {
                 break;
             }
         }
         arena.trim_slack();
         Walked {
             arena,
-            truncated: counts.full,
+            truncated: progress.full,
         }
     }
 
     /// Lists one folder: its Files go into `found`, its admitted subfolders
-    /// onto `stack`.
-    fn visit(
-        &self,
-        folder: Folder,
-        found: &mut PathArena,
-        stack: &mut Vec<Folder>,
-        counts: &mut Counts,
-    ) {
+    /// onto the queue.
+    fn visit(&self, folder: Folder, found: &mut PathArena, progress: &mut Progress) {
         let Ok(listing) = fs::read_dir(&folder.path) else {
             return;
         };
-        let mut entries = Vec::new();
+        let mut entries = std::mem::take(&mut progress.entries);
         let mut rule_files = RuleFiles::default();
         for entry in listing.flatten() {
             let name = entry.file_name();
@@ -106,53 +114,74 @@ impl Walk<'_> {
         let chain = self
             .rules
             .enter(&folder.chain, &folder.relative, rule_files);
-        for (entry, name) in entries {
-            let Ok(name) = name.into_string() else {
-                continue;
-            };
-            if name.contains('/') || name.contains('\\') {
-                continue;
-            }
-            let relative = if folder.relative.is_empty() {
-                name
-            } else {
-                format!("{}/{name}", folder.relative)
-            };
-            if relative.len() > MAX_INDEXED_PATH_BYTES {
-                continue;
-            }
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_symlink()
-                || self.excluded.matches(&relative)
-                || self.rules.is_ignored(&chain, &relative, file_type.is_dir())
-            {
-                continue;
-            }
-            if file_type.is_dir() {
-                if folder.depth >= MAX_SEARCH_DEPTH {
-                    continue;
-                }
-                if counts.folders >= MAX_WALK_FOLDERS {
-                    counts.full = true;
-                    return;
-                }
-                counts.folders += 1;
-                stack.push(Folder {
-                    path: entry.path(),
-                    relative,
-                    chain: chain.clone(),
-                    depth: folder.depth + 1,
-                });
-            } else if file_type.is_file() {
-                if counts.files >= self.room {
-                    counts.full = true;
-                    return;
-                }
-                counts.files += 1;
-                found.push(&relative);
+        for (entry, name) in entries.drain(..) {
+            if !self.admit(&folder, &chain, &entry, &name, found, progress) {
+                break;
             }
         }
+        progress.entries = entries;
+    }
+
+    /// Adds one entry of `folder` if it is admitted. Returns false once the
+    /// walk is full.
+    fn admit(
+        &self,
+        folder: &Folder,
+        chain: &FolderChain,
+        entry: &DirEntry,
+        name: &OsString,
+        found: &mut PathArena,
+        progress: &mut Progress,
+    ) -> bool {
+        let Some(name) = name.to_str() else {
+            return true;
+        };
+        if name.contains('/') || name.contains('\\') {
+            return true;
+        }
+        // Files are pushed from this one buffer; only folders get a String.
+        let relative = &mut progress.relative;
+        relative.clear();
+        if !folder.relative.is_empty() {
+            relative.push_str(&folder.relative);
+            relative.push('/');
+        }
+        relative.push_str(name);
+        if relative.len() > MAX_INDEXED_PATH_BYTES {
+            return true;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            return true;
+        };
+        if file_type.is_symlink()
+            || self.excluded.matches(relative)
+            || self.rules.is_ignored(chain, relative, file_type.is_dir())
+        {
+            return true;
+        }
+        if file_type.is_dir() {
+            if folder.depth >= MAX_SEARCH_DEPTH {
+                return true;
+            }
+            if progress.folders >= MAX_WALK_FOLDERS {
+                progress.full = true;
+                return false;
+            }
+            progress.folders += 1;
+            progress.queue.push_back(Folder {
+                path: entry.path(),
+                relative: relative.clone(),
+                chain: chain.clone(),
+                depth: folder.depth + 1,
+            });
+        } else if file_type.is_file() {
+            if progress.files >= self.room {
+                progress.full = true;
+                return false;
+            }
+            progress.files += 1;
+            found.push(relative);
+        }
+        true
     }
 }

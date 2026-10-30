@@ -291,15 +291,14 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         .as_str()
         .filter(|item| bounded_identifier(item))
         .ok_or_else(|| reject("schema-invalid"))?;
+    // The Project is closing or being switched away from: free Quick Open's
+    // path index with it, even if it was never watched.
+    crate::workspace::path_index::forget_project(project_id);
     let mut registry = registry();
     let Some(watch) = registry.watches.remove(project_id) else {
         return Err(reject("notify-substituted"));
     };
     watch.cancelled.store(true, Ordering::Release);
-    drop(registry);
-    // The Project is closing or being switched away from: free Quick Open's
-    // path index with it.
-    crate::workspace::path_index::forget_project(project_id);
     Ok(())
 }
 

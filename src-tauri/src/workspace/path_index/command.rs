@@ -13,14 +13,17 @@ use crate::{
 };
 
 use super::{
-    IndexInputs,
+    IndexInputs, Ticket,
+    arena::MAX_INDEXED_PATH_BYTES,
     query::{Outcome, QuickOpenQuery, run},
+    ticket,
 };
 
 pub const MAX_QUICK_OPEN_RESULTS: u32 = 50;
 const MAX_QUICK_OPEN_QUERY_BYTES: usize = 1024;
 const MAX_RECENT_FILES: usize = 50;
 const MAX_PROJECT_ROOTS: usize = 8;
+const MAX_ROOT_ID_BYTES: usize = 512;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -76,19 +79,10 @@ pub async fn quick_open_query(
     state: State<'_, AppState>,
     request: QuickOpenRequest,
 ) -> Result<QuickOpenResponse, String> {
-    execute(&state, request)
+    let (inputs, ticket) = prepare(&state, &request)
         .await
-        .map_err(|error| error.to_string())
-}
-
-async fn execute(state: &AppState, request: QuickOpenRequest) -> AppResult<QuickOpenResponse> {
-    validate(&request)?;
-    let inputs = {
-        let epoch = state.project_transitions.lock().await;
-        check_active(state, &request, *epoch)?;
-        inputs(state, &request.project_id)?
-    };
-    let response = tauri::async_runtime::spawn_blocking(move || {
+        .map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
         let query = QuickOpenQuery {
             text: &request.query,
             limit: request.limit as usize,
@@ -96,11 +90,21 @@ async fn execute(state: &AppState, request: QuickOpenRequest) -> AppResult<Quick
             session: request.session,
             recent: &request.recent,
         };
-        respond(run(&inputs, &query))
+        respond(run(&inputs, &query, ticket))
     })
     .await
-    .map_err(|_| AppError::InvalidRequest("Quick Open stopped unexpectedly".into()))?;
-    Ok(response)
+    .map_err(|error| format!("Quick Open stopped unexpectedly: {error}"))
+}
+
+/// Checks the request and reads what the index is built from. The ticket is
+/// taken before the active-Project check, so a Project closed after that
+/// check keeps no index.
+async fn prepare(state: &AppState, request: &QuickOpenRequest) -> AppResult<(IndexInputs, Ticket)> {
+    validate(request)?;
+    let epoch = state.project_transitions.lock().await;
+    let ticket = ticket();
+    check_active(state, request, *epoch)?;
+    Ok((inputs(state, &request.project_id)?, ticket))
 }
 
 fn validate(request: &QuickOpenRequest) -> AppResult<()> {
@@ -119,9 +123,14 @@ fn validate(request: &QuickOpenRequest) -> AppResult<()> {
             "Quick Open limit must be between 1 and 50".into(),
         ));
     }
-    if request.recent.len() > MAX_RECENT_FILES {
+    if request.recent.len() > MAX_RECENT_FILES
+        || request.recent.iter().any(|resource| {
+            resource.root_id.len() > MAX_ROOT_ID_BYTES
+                || resource.relative_path.len() > MAX_INDEXED_PATH_BYTES
+        })
+    {
         return Err(AppError::InvalidRequest(
-            "Quick Open has too many recent Files".into(),
+            "Quick Open recent Files exceed their bounds".into(),
         ));
     }
     Ok(())

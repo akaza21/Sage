@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::{
         Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -11,7 +11,7 @@ use std::{
 use crate::{domain::ResourceRef, workspace::search::MAX_SEARCH_DEPTH};
 
 use super::{
-    BUILDING, INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex,
+    BUILDING, INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex, WALKER_WAIT,
     arena::PathArena,
     build_index_within, forget_project, lock, on_walker,
     query::{Outcome, QuickOpenQuery, Ranked, rank_in_shares, run},
@@ -92,6 +92,7 @@ fn ask_in(inputs: &IndexInputs, session: u64, text: &str, recent: &[ResourceRef]
             session,
             recent,
         },
+        super::ticket(),
     );
     let Outcome::Ready {
         results,
@@ -237,6 +238,7 @@ fn a_newer_query_supersedes_an_older_one() {
                 session: 1,
                 recent: &[],
             },
+            super::ticket(),
         )
     };
     assert!(matches!(ran(newer), Outcome::Ready { .. }));
@@ -278,6 +280,7 @@ fn a_walk_that_ends_after_a_forget_keeps_nothing() {
     let (release, wait) = std::sync::mpsc::channel::<()>();
     assert!(on_walker(Box::new(move || {
         let _ = wait.recv();
+        false
     })));
     assert!(ask_in(&inputs, 2, "a", &[]).refreshing);
     forget_project(&fixture.project_id);
@@ -291,13 +294,75 @@ fn a_walk_that_ends_after_a_forget_keeps_nothing() {
 }
 
 #[test]
+fn a_query_checked_before_its_project_closed_keeps_nothing() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = Fixture::new(&["a.rs"]);
+    let inputs = fixture.inputs(&[]);
+    // The query passed the active-Project check, then the Project closed
+    // while it waited for another build.
+    let ticket = super::ticket();
+    forget_project(&fixture.project_id);
+    let query = QuickOpenQuery {
+        text: "a",
+        limit: 5,
+        generation: generation(),
+        session: 1,
+        recent: &[],
+    };
+    assert!(matches!(run(&inputs, &query, ticket), Outcome::Superseded));
+    assert!(lock(&INDEX).index.is_none());
+    // A query checked after the forget builds as usual.
+    assert!(ask(&inputs, "a", &[]).built);
+}
+
+#[test]
+fn a_first_build_stops_a_stale_refresh_and_outwaits_a_stuck_walker() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = Fixture::new(&["a.rs", "b.rs"]);
+    let inputs = fixture.inputs(&[]);
+    assert!(ask_in(&inputs, 1, "rs", &[]).built);
+    // The walker is held past `WALKER_WAIT`, with a refresh queued behind.
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    assert!(on_walker(Box::new(move || {
+        let _ = wait.recv();
+        false
+    })));
+    assert!(ask_in(&inputs, 2, "rs", &[]).refreshing);
+    // New settings rebuild at once: on this thread, since the walker
+    // doesn't take the build up in time.
+    let excluding = fixture.inputs(&["b.rs"]);
+    let started = Instant::now();
+    let rebuilt = ask_in(&excluding, 3, "rs", &[]);
+    assert!(rebuilt.built);
+    assert_eq!(rebuilt.paths, ["a.rs"]);
+    assert!(started.elapsed() >= WALKER_WAIT);
+    release.send(()).unwrap();
+    // The stale refresh is stopped and leaves the new index in place.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while lock(&INDEX).refreshing {
+        assert!(Instant::now() < deadline, "the refresh never finished");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(ask_in(&excluding, 3, "rs", &[]).paths, ["a.rs"]);
+    assert!(lock(&INDEX).walks.is_empty());
+}
+
+#[test]
+fn a_stopped_walk_ends_early() {
+    let fixture = Fixture::new(&["a.rs", "b.rs"]);
+    let inputs = fixture.inputs(&[]);
+    let index = build_index_within(&inputs, 1, None, 100, &AtomicBool::new(true));
+    assert_eq!(index.files(), 0);
+}
+
+#[test]
 fn roots_share_the_file_limit() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
     let large = Fixture::new(&["a1.rs", "a2.rs", "a3.rs", "a4.rs", "a5.rs", "a6.rs"]);
     let small = Fixture::new(&["b1.rs", "b2.rs"]);
     let mut inputs = large.inputs(&[]);
     inputs.roots.push(("root-b".into(), small.root.clone()));
-    let index = build_index_within(&inputs, 1, None, 5);
+    let index = build_index_within(&inputs, 1, None, 5, &AtomicBool::new(false));
     let counts = index
         .roots
         .iter()
