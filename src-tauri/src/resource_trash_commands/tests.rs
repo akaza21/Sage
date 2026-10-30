@@ -205,9 +205,12 @@ fn restart_during_effect_preserves_an_identity_mismatched_replacement() {
     );
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, unix))]
 #[test]
 fn restart_during_effect_preserves_a_dangling_reparse_replacement() {
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink as symlink_file;
+    #[cfg(windows)]
     use std::os::windows::fs::symlink_file;
 
     let fixture = Fixture::new();
@@ -215,7 +218,7 @@ fn restart_during_effect_preserves_a_dangling_reparse_replacement() {
     let source = fixture.root.join("src/closed.rs");
     fs::rename(&source, fixture.root.join("src/original.rs")).unwrap();
     symlink_file(fixture.root.join("src/missing-target.rs"), &source)
-        .expect("dangling-reparse regression requires a creatable Windows file symlink");
+        .expect("dangling-link regression requires a creatable file symlink");
 
     let recovered = intent::recover_at_startup(&fixture.state.database)
         .unwrap()
@@ -411,7 +414,7 @@ fn stale_epoch_fails_before_the_test_operation_mutates_the_file() {
     });
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[test]
 fn unsupported_platform_returns_typed_unchanged_result() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {

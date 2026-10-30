@@ -162,7 +162,7 @@ fn apply_renamed_file_uses_workspace_rename() {
     );
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[test]
 fn apply_deleted_file_uses_workspace_trash() {
     let fixture = Fixture::new();
@@ -203,7 +203,7 @@ fn apply_renamed_file_fails_closed_without_mutating_the_source() {
     assert!(!fixture.root.join("after.txt").exists());
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[test]
 fn apply_deleted_file_fails_closed_without_mutating_the_source() {
     let fixture = Fixture::new();

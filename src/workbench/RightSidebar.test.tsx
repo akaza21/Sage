@@ -1462,7 +1462,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
       .fn()
       .mockImplementationOnce(async () => {
         useWorkbenchStore.setState({
-          resourceTrashError: "Recycle Bin operation is unavailable.",
+          resourceTrashError: "Trash operation is unavailable.",
         });
         return false;
       })
@@ -1471,11 +1471,11 @@ describe("RightSidebar Explorer recoverable trash", () => {
 
     render(<RightSidebar compact={false} />);
     const trigger = within(openExplorerActions()).getByRole("menuitem", {
-      name: "Move to Recycle Bin",
+      name: "Move to Trash",
     });
     fireEvent.click(trigger);
     expect(
-      await screen.findByRole("heading", { name: "Move to Recycle Bin?" }),
+      await screen.findByRole("heading", { name: "Move to Trash?" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Path: Beta/src/old.ts")).toBeInTheDocument();
     expect(screen.getByText(/Move this file/)).toBeInTheDocument();
@@ -1498,15 +1498,15 @@ describe("RightSidebar Explorer recoverable trash", () => {
       });
     });
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
     expect(trashProjectResource).toHaveBeenLastCalledWith(source, "file");
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Recycle Bin operation is unavailable.",
+      "Trash operation is unavailable.",
     );
 
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
     await vi.waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -1523,7 +1523,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
 
     render(<RightSidebar compact={false} />);
     const trigger = within(openExplorerActions()).getByRole("menuitem", {
-      name: "Move to Recycle Bin",
+      name: "Move to Trash",
     });
     fireEvent.click(trigger);
     expect(
@@ -1551,7 +1551,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
     });
     const menu = openExplorerActions();
     expect(
-      within(menu).queryByRole("menuitem", { name: "Move to Recycle Bin" }),
+      within(menu).queryByRole("menuitem", { name: "Move to Trash" }),
     ).not.toBeInTheDocument();
     expect(
       within(menu).getByText(
@@ -1590,7 +1590,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
     render(<RightSidebar compact={false} />);
     fireEvent.click(
       within(openExplorerActions()).getByRole("menuitem", {
-        name: "Move to Recycle Bin",
+        name: "Move to Trash",
       }),
     );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -1652,12 +1652,12 @@ describe("RightSidebar Explorer recoverable trash", () => {
     render(<RightSidebar compact={false} />);
     fireEvent.click(
       within(openExplorerActions()).getByRole("menuitem", {
-        name: "Move to Recycle Bin",
+        name: "Move to Trash",
       }),
     );
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Move to Recycle Bin" }),
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
 
     await vi.waitFor(() =>
@@ -1680,7 +1680,7 @@ describe("RightSidebar Explorer recoverable trash", () => {
     render(<RightSidebar compact={false} />);
     fireEvent.click(
       within(openExplorerActions()).getByRole("menuitem", {
-        name: "Move to Recycle Bin",
+        name: "Move to Trash",
       }),
     );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();

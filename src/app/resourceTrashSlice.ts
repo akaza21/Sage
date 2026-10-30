@@ -14,6 +14,7 @@ import type {
 } from "../domain/workbench";
 import { validateResourceTrashResult } from "../features/files/resourceTrashContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { trashName } from "../ui/trashName";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -176,8 +177,7 @@ export const createResourceTrashSlice: StateCreator<
     }
     if (hasOpenResource(state, source)) {
       set({
-        resourceTrashError:
-          "Close File and Diff tabs for the resource and its descendants before moving it to the Recycle Bin.",
+        resourceTrashError: `Close File and Diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
       });
       return false;
     }

@@ -1,10 +1,12 @@
 use std::path::Path;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use std::sync::Arc;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+use super::TRASH_NAME;
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use crate::error::AppError;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use crate::workspace::root_identity_path;
 use crate::{
     domain::{DirectoryListing, TrashResourceKind},
@@ -41,7 +43,7 @@ impl ResourceTrashIdentity {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[derive(Debug, Clone, Copy)]
 struct TrashIdentityProof {
     root: RootIdentity,
@@ -68,7 +70,7 @@ impl ResourceTrashAuthority {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[derive(Debug)]
 pub(super) struct ResourceTrashAuthority;
 
@@ -77,12 +79,14 @@ mod windows;
 #[cfg(windows)]
 pub(super) use windows::{observe_identity, observe_recovery, recycle_one};
 
-#[cfg(windows)]
-pub(crate) const SUPPORTED: bool = true;
-#[cfg(not(windows))]
-pub(crate) const SUPPORTED: bool = false;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod unix;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) use unix::{ResourceTrashAuthority, observe_identity, observe_recovery, recycle_one};
 
-#[cfg(not(windows))]
+pub(crate) const SUPPORTED: bool = cfg!(any(windows, target_os = "linux", target_os = "macos"));
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn recycle_one<C, P, L>(
     authority: ParentAuthority<'_>,
     _source_name: &str,
@@ -107,7 +111,7 @@ where
     ))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn observe_identity(
     authority: ParentAuthority<'_>,
     source_name: &str,
@@ -125,9 +129,9 @@ pub(super) fn observe_identity(
         TrashResourceKind::EmptyFolder => metadata.is_dir(),
     };
     if metadata.file_type().is_symlink() || !kind_matches {
-        return Err(AppError::InvalidRequest(
-            "Recycle Bin source kind changed or is a symbolic link".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "{TRASH_NAME} source kind changed or is a symbolic link"
+        )));
     }
     let identity = ResourceTrashIdentity {
         root: root_identity_path(authority.root)?,
@@ -135,14 +139,14 @@ pub(super) fn observe_identity(
         source: root_identity_path(&source)?,
     };
     if identity.root != authority.expected_root {
-        return Err(AppError::InvalidRequest(
-            "workspace root identity changed before Recycle Bin admission".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "workspace root identity changed before {TRASH_NAME} admission"
+        )));
     }
     Ok(identity)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn observe_recovery<L>(
     _authority: Arc<ResourceTrashAuthority>,
     _root: &Path,
