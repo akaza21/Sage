@@ -1,0 +1,253 @@
+{
+  "comment": "Shared by path_glob/tests.rs and src/domain/pathGlob.test.ts so both matchers agree.",
+  "valid": [
+    "**/.git",
+    "**/*.log",
+    "src/**/*.rs",
+    "a?c",
+    "**",
+    "dist/**",
+    "名前/*.md"
+  ],
+  "invalid": [
+    "",
+    "/abs",
+    "~/home",
+    "a\\b",
+    "C:/x",
+    "a//b",
+    "dist/",
+    "./a",
+    "a/../b",
+    "tab\there",
+    "nul\u0000x",
+    "nelx"
+  ],
+  "matches": [
+    {
+      "pattern": "**/.git",
+      "path": ".git",
+      "expected": true
+    },
+    {
+      "pattern": "**/.git",
+      "path": "a/b/.git",
+      "expected": true
+    },
+    {
+      "pattern": "**/.git",
+      "path": "a/.github",
+      "expected": false
+    },
+    {
+      "pattern": "**/.git",
+      "path": ".git/config",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.log",
+      "path": "debug.log",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.log",
+      "path": "a/b/.log",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.log",
+      "path": "a/log",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.log",
+      "path": "a/b.LOG",
+      "expected": false
+    },
+    {
+      "pattern": "*.log",
+      "path": "debug.log",
+      "expected": true
+    },
+    {
+      "pattern": "*.log",
+      "path": "src/debug.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/**/*.rs",
+      "path": "src/main.rs",
+      "expected": true
+    },
+    {
+      "pattern": "src/**/*.rs",
+      "path": "src/a/b/main.rs",
+      "expected": true
+    },
+    {
+      "pattern": "src/**/*.rs",
+      "path": "lib/main.rs",
+      "expected": false
+    },
+    {
+      "pattern": "dist/**",
+      "path": "dist/a/b.js",
+      "expected": true
+    },
+    {
+      "pattern": "dist/**",
+      "path": "dist",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "anything/at/all",
+      "expected": true
+    },
+    {
+      "pattern": "a?c",
+      "path": "abc",
+      "expected": true
+    },
+    {
+      "pattern": "a?c",
+      "path": "a/c",
+      "expected": false
+    },
+    {
+      "pattern": "a?c",
+      "path": "ac",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules",
+      "path": "web/node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "**/node_modules",
+      "path": "web/node_modules/x",
+      "expected": false
+    },
+    {
+      "pattern": "**/a*b*c",
+      "path": "x/aXbYc",
+      "expected": true
+    },
+    {
+      "pattern": "**/a*b*c",
+      "path": "x/aXbY",
+      "expected": false
+    },
+    {
+      "pattern": "**/Thumbs.db",
+      "path": "pics/thumbs.db",
+      "expected": false
+    },
+    {
+      "pattern": "名前/*.md",
+      "path": "名前/読む.md",
+      "expected": true
+    },
+    {
+      "pattern": "**/?.md",
+      "path": "x/é.md",
+      "expected": true
+    },
+    {
+      "pattern": "src/**/*.gen.ts",
+      "path": "src/a/x.gen.ts",
+      "expected": true
+    },
+    {
+      "pattern": "src/**/*.gen.ts",
+      "path": "lib/a/x.gen.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/**/*.gen.ts",
+      "path": "src/a/x.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/fixtures/**/*.json",
+      "path": "a/fixtures/b/c.json",
+      "expected": true
+    },
+    {
+      "pattern": "**/fixtures/**/*.json",
+      "path": "fixtures/c.json",
+      "expected": true
+    },
+    {
+      "pattern": "**/fixtures/**/*.json",
+      "path": "a/fixture/c.json",
+      "expected": false
+    },
+    {
+      "pattern": "docs/*/draft-*",
+      "path": "docs/v2/draft-one.md",
+      "expected": true
+    },
+    {
+      "pattern": "docs/*/draft-*",
+      "path": "docs/draft-one.md",
+      "expected": false
+    },
+    {
+      "pattern": "**/é?/x",
+      "path": "a/éa/x",
+      "expected": true
+    },
+    {
+      "pattern": "**/é?/x",
+      "path": "a/é/x",
+      "expected": false
+    },
+    {
+      "pattern": "名*/**",
+      "path": "名前/a/b",
+      "expected": true
+    },
+    {
+      "pattern": "build/**",
+      "path": "building/a",
+      "expected": false
+    },
+    {
+      "pattern": "*.log",
+      "path": "*draft.log",
+      "expected": true
+    },
+    {
+      "pattern": "*",
+      "path": "*x",
+      "expected": true
+    },
+    {
+      "pattern": "**/a*",
+      "path": "x/a*",
+      "expected": true
+    },
+    {
+      "pattern": "a?",
+      "path": "a*",
+      "expected": true
+    },
+    {
+      "pattern": "*/**",
+      "path": "*b^{",
+      "expected": true
+    },
+    {
+      "pattern": "**/**/*",
+      "path": "*]]",
+      "expected": true
+    },
+    {
+      "pattern": "**/*a*a*a*a*a*a*a*a*b",
+      "path": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": false
+    }
+  ]
+}

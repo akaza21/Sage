@@ -4,6 +4,7 @@ import {
   admitEditorSettings,
   DEFAULT_EDITOR_SETTINGS,
   type EditorSettings,
+  sameEditorSettingValue,
 } from "../domain/editorSettingsCatalogue";
 import type {
   EditorAppearance,
@@ -205,8 +206,10 @@ export const useEditorSettingsStore = create<EditorSettingsStore>(
       const settings = admitEditorSettings({ ...current, ...changes });
       const changed = Object.keys(changes).filter(
         (key) =>
-          settings[key as keyof EditorSettings] !==
-          current[key as keyof EditorSettings],
+          !sameEditorSettingValue(
+            settings[key as keyof EditorSettings],
+            current[key as keyof EditorSettings],
+          ),
       );
       if (changed.length === 0) return;
       set({ settings });

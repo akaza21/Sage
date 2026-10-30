@@ -450,6 +450,53 @@ describe("Workspace Search view", () => {
     expect(search.mock.calls[1][0]).toMatchObject({ useIgnoreFiles: false });
   });
 
+  it("sends files.exclude only when it differs from the default and retires results when it changes", async () => {
+    const search = vi.fn().mockRejectedValue(new Error("stop"));
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={{ search }}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Search text"), {
+      target: { value: "needle" },
+    });
+    submitWorkspaceSearch();
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(search.mock.calls[0][0]).not.toHaveProperty("filesExclude");
+    expect(await screen.findByText("stop")).toBeVisible();
+
+    act(() => {
+      useEditorSettingsStore.setState({
+        settings: {
+          ...useEditorSettingsStore.getState().settings,
+          "files.exclude": ["**/dist"],
+        },
+      });
+    });
+    expect(screen.queryByText("stop")).toBeNull();
+    submitWorkspaceSearch();
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(search.mock.calls[1][0]).toMatchObject({
+      filesExclude: ["**/dist"],
+    });
+    expect(await screen.findByText("stop")).toBeVisible();
+
+    // An equal list with a new identity is no change.
+    act(() => {
+      useEditorSettingsStore.setState({
+        settings: {
+          ...useEditorSettingsStore.getState().settings,
+          "files.exclude": ["**/dist"],
+        },
+      });
+    });
+    expect(screen.getByText("stop")).toBeVisible();
+  });
+
   it("refreshes the current request and collapses a file group without losing it", async () => {
     const response = {
       requestId: "request-a",

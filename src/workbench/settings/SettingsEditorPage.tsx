@@ -8,12 +8,14 @@ import {
   type EditorSettingKey,
   type EditorSettings,
   type IntegerSettingSpec,
+  sameEditorSettingValue,
 } from "../../domain/editorSettingsCatalogue";
 import {
   EDITOR_SETTING_COPY,
   EDITOR_SETTING_GROUPS,
 } from "../../domain/editorSettingsCopy";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { GlobListSetting } from "./GlobListSetting";
 
 /** `editor.fontSize` becomes `editor-font-size`. */
 function controlId(key: EditorSettingKey) {
@@ -162,8 +164,8 @@ export function SettingsEditorPage({
   const settings = useEditorSettingsStore((state) => state.settings);
   const setSettings = useEditorSettingsStore((state) => state.setSettings);
   const reset = useEditorSettingsStore((state) => state.reset);
-  const atDefaults = EDITOR_SETTINGS.every(
-    (spec) => settings[spec.key] === spec.default,
+  const atDefaults = EDITOR_SETTINGS.every((spec) =>
+    sameEditorSettingValue(settings[spec.key], spec.default),
   );
   return (
     <section
@@ -195,6 +197,15 @@ export function SettingsEditorPage({
                   checked={settings[spec.key]}
                   disabled={controlsDisabled}
                   onChange={(checked) => setSettings({ [spec.key]: checked })}
+                />
+              ) : spec.kind === "globs" ? (
+                <GlobListSetting
+                  key={spec.key}
+                  spec={spec}
+                  id={controlId(spec.key)}
+                  patterns={settings[spec.key]}
+                  disabled={controlsDisabled}
+                  onChange={(patterns) => setSettings({ [spec.key]: patterns })}
                 />
               ) : (
                 <SelectSetting

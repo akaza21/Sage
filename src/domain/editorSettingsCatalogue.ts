@@ -6,8 +6,10 @@
  * words load with the Settings page instead of at startup.
  */
 
+import { validPathGlob } from "./pathGlob";
+
 interface EntryShape {
-  key: `${"editor" | "explorer" | "search"}.${string}`;
+  key: `${"editor" | "explorer" | "files" | "search"}.${string}`;
   ticket: `EP-${number}`;
 }
 
@@ -31,8 +33,21 @@ export interface ChoiceSettingSpec extends EntryShape {
   choices: readonly string[];
 }
 
+/** Path globs (`pathGlob.ts`), each valid on its own. */
+export interface GlobsSettingSpec extends EntryShape {
+  kind: "globs";
+  default: readonly string[];
+}
+
+export const MAX_GLOBS = 50;
+
 export type EditorSettingSpec =
-  BooleanSettingSpec | IntegerSettingSpec | ChoiceSettingSpec;
+  | BooleanSettingSpec
+  | IntegerSettingSpec
+  | ChoiceSettingSpec
+  | GlobsSettingSpec;
+
+export type EditorSettingValue = boolean | number | string | readonly string[];
 
 export const EDITOR_SETTINGS = [
   {
@@ -115,6 +130,19 @@ export const EDITOR_SETTINGS = [
     choices: ["dimmed", "hidden"],
     ticket: "EP-06",
   },
+  {
+    key: "files.exclude",
+    kind: "globs",
+    default: [
+      "**/.git",
+      "**/.svn",
+      "**/.hg",
+      "**/CVS",
+      "**/.DS_Store",
+      "**/Thumbs.db",
+    ],
+    ticket: "EP-06",
+  },
 ] as const satisfies readonly EditorSettingSpec[];
 
 type Entry = (typeof EDITOR_SETTINGS)[number];
@@ -124,14 +152,20 @@ export type EditorSettingKey = Entry["key"];
 export type EditorSettings = {
   [E in Entry as E["key"]]: E extends { kind: "boolean" }
     ? boolean
-    : E extends { choices: readonly (infer Choice)[] }
-      ? Choice
-      : never;
+    : E extends { kind: "globs" }
+      ? readonly string[]
+      : E extends { choices: readonly (infer Choice)[] }
+        ? Choice
+        : never;
 };
 
+// Lists are frozen, so admitting a default keeps its identity.
 export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
   Object.fromEntries(
-    EDITOR_SETTINGS.map((spec) => [spec.key, spec.default]),
+    EDITOR_SETTINGS.map((spec): [string, EditorSettingValue] => [
+      spec.key,
+      Array.isArray(spec.default) ? Object.freeze(spec.default) : spec.default,
+    ]),
   ) as EditorSettings,
 );
 
@@ -139,7 +173,7 @@ export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
 export function admitEditorSetting(
   spec: EditorSettingSpec,
   value: unknown,
-): boolean | number | string | undefined {
+): EditorSettingValue | undefined {
   if (spec.kind === "boolean") {
     return typeof value === "boolean" ? value : undefined;
   }
@@ -148,6 +182,7 @@ export function admitEditorSetting(
       ? value
       : undefined;
   }
+  if (spec.kind === "globs") return admitGlobs(value);
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     return undefined;
   }
@@ -164,6 +199,36 @@ export function admitEditorSetting(
   return nearest;
 }
 
+/** Match Rust: at most MAX_GLOBS valid path globs; a repeated pattern keeps its first place. */
+function admitGlobs(value: unknown): readonly string[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_GLOBS ||
+    !value.every(validPathGlob)
+  ) {
+    return undefined;
+  }
+  const patterns = [...new Set(value as string[])];
+  // Already admitted lists keep their identity, so readers do not re-render.
+  return Object.isFrozen(value) && patterns.length === value.length
+    ? (value as readonly string[])
+    : Object.freeze(patterns);
+}
+
+/** Lists compare by their patterns (which never hold NUL), other values by identity. */
+export function sameEditorSettingValue(
+  a: EditorSettingValue,
+  b: EditorSettingValue,
+): boolean {
+  return (
+    a === b ||
+    (Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.join("\0") === b.join("\0"))
+  );
+}
+
 /** Drop unknown keys; default missing/mistyped values. */
 export function admitEditorSettings(input: unknown): EditorSettings {
   const record =
@@ -173,7 +238,8 @@ export function admitEditorSettings(input: unknown): EditorSettings {
   return Object.fromEntries(
     EDITOR_SETTINGS.map((spec) => [
       spec.key,
-      admitEditorSetting(spec, record[spec.key]) ?? spec.default,
+      admitEditorSetting(spec, record[spec.key]) ??
+        DEFAULT_EDITOR_SETTINGS[spec.key],
     ]),
   ) as EditorSettings;
 }

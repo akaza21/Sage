@@ -66,6 +66,74 @@ mod tests {
             include_patterns: Vec::new(),
             exclude_patterns: Vec::new(),
             use_ignore_files: true,
+            files_exclude: None,
+        }
+    }
+
+    #[test]
+    fn leaves_out_what_files_exclude_names() {
+        let (path, _) = fixture_root();
+        fs::create_dir_all(path.join("web").join("dist")).unwrap();
+        for file in [".DS_Store", "web/dist/app.js", "web/app.tmp", "web/app.ts"] {
+            fs::write(path.join(file), "needle\n").unwrap();
+        }
+        let found = |files_exclude: Option<Vec<String>>| {
+            let root = SearchRoot {
+                root_id: "root-test".into(),
+                root_name: "fixture".into(),
+                source: SearchRootSource::Available(
+                    Workspace::open("project-test", "root-test", &path).unwrap(),
+                ),
+            };
+            let mut paths = SearchEngine::new(test_limits())
+                .search(
+                    WorkspaceSearchRequest {
+                        files_exclude,
+                        ..request("needle")
+                    },
+                    vec![root],
+                )
+                .unwrap()
+                .matches
+                .into_iter()
+                .map(|found| found.resource.relative_path)
+                .collect::<Vec<_>>();
+            paths.sort();
+            paths
+        };
+        // The registry default leaves out `.DS_Store`.
+        assert_eq!(
+            found(None),
+            ["web/app.tmp", "web/app.ts", "web/dist/app.js"]
+        );
+        assert_eq!(
+            found(Some(vec!["**/dist".into(), "**/*.tmp".into()])),
+            [".DS_Store", "web/app.ts"]
+        );
+        assert_eq!(found(Some(Vec::new())).len(), 4);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn refuses_invalid_files_exclude_patterns() {
+        for patterns in [
+            vec!["/absolute".to_string()],
+            vec!["dist/".into()],
+            vec!["**/x".into(); crate::settings_store::MAX_GLOBS + 1],
+        ] {
+            let (path, root) = fixture_root();
+            assert!(
+                SearchEngine::new(test_limits())
+                    .search(
+                        WorkspaceSearchRequest {
+                            files_exclude: Some(patterns),
+                            ..request("needle")
+                        },
+                        vec![root],
+                    )
+                    .is_err()
+            );
+            fs::remove_dir_all(path).unwrap();
         }
     }
 
@@ -521,6 +589,39 @@ mod tests {
                 WorkspaceSearchRequest {
                     continuation_token: first.continuation_token,
                     use_ignore_files: false,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is stale")
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_with_different_files_exclude_patterns_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..test_limits()
+        })
+        .search(request("needle"), vec![root])
+        .unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(test_limits())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    files_exclude: Some(vec!["**/*.md".into()]),
                     ..request("needle")
                 },
                 vec![SearchRoot {

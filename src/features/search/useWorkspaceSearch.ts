@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { subscribeWorkspaceNotifySearch } from "../files/workspaceNotifyCompose";
+import { sameSearchSettings, searchSettingFields } from "./searchSettings";
 import type {
   WorkspaceSearchGateway,
   WorkspaceSearchResponse,
@@ -59,6 +60,9 @@ export function useWorkspaceSearch({
   const useIgnoreFiles = useEditorSettingsStore(
     (store) => store.settings["search.useIgnoreFiles"],
   );
+  const filesExclude = useEditorSettingsStore(
+    (store) => store.settings["files.exclude"],
+  );
   const active = useRef<AbortController | null>(null);
   const generation = useRef(0);
 
@@ -76,13 +80,12 @@ export function useWorkspaceSearch({
     active.current = null;
   }, []);
 
-  // Turning `search.useIgnoreFiles` on or off retires results like any other
-  // criterion, so a page from one mode never continues in the other.
+  // Changing `search.useIgnoreFiles` or `files.exclude` retires results like
+  // any other criterion, so a page never continues under other settings.
   useEffect(
     () =>
       useEditorSettingsStore.subscribe((store, previous) => {
-        const key = "search.useIgnoreFiles";
-        if (store.settings[key] === previous.settings[key]) return;
+        if (sameSearchSettings(store.settings, previous.settings)) return;
         retireCriteria();
         setState((current) => ({
           ...current,
@@ -229,8 +232,7 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
-          // Sent only when off, so the native default (on) needs no field.
-          ...(useIgnoreFiles ? {} : { useIgnoreFiles: false }),
+          ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,
       );
@@ -281,6 +283,7 @@ export function useWorkspaceSearch({
     state.includePatternText,
     state.excludePatternText,
     useIgnoreFiles,
+    filesExclude,
     state.query,
     transitionEpoch,
   ]);
@@ -316,8 +319,7 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
-          // Sent only when off, so the native default (on) needs no field.
-          ...(useIgnoreFiles ? {} : { useIgnoreFiles: false }),
+          ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,
       );
@@ -370,6 +372,7 @@ export function useWorkspaceSearch({
     state.includePatternText,
     state.excludePatternText,
     useIgnoreFiles,
+    filesExclude,
     state.pages,
     state.query,
     transitionEpoch,

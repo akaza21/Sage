@@ -11,11 +11,14 @@ import {
   DEFAULT_EDITOR_SETTINGS,
   EDITOR_SETTINGS,
   type EditorSettingSpec,
+  MAX_GLOBS,
+  sameEditorSettingValue,
 } from "./editorSettingsCatalogue";
 import {
   EDITOR_SETTING_COPY,
   EDITOR_SETTING_GROUPS,
 } from "./editorSettingsCopy";
+import { MAX_PATH_GLOB_BYTES } from "./pathGlob";
 
 const spec = (key: string): EditorSettingSpec => {
   const found = EDITOR_SETTINGS.find((entry) => entry.key === key);
@@ -26,8 +29,8 @@ const spec = (key: string): EditorSettingSpec => {
 /** The comparable part of an entry: what Rust also stores. */
 interface StoredShape {
   key: string;
-  kind: "boolean" | "integer" | "choice";
-  default: boolean | number | string;
+  kind: "boolean" | "integer" | "choice" | "globs";
+  default: boolean | number | string | string[];
   min?: number;
   max?: number;
   choices?: (number | string)[];
@@ -56,8 +59,18 @@ function rustRegistry(): StoredShape[] {
       const flag = /default: SettingValue::Bool\((true|false)\)/u.exec(entry);
       const number = /default: SettingValue::Int\((-?\d+)\)/u.exec(entry);
       const name = /default: SettingValue::Text\("([^"]+)"\)/u.exec(entry);
-      if (!key || !ticket || (!flag && !number && !name)) {
+      const list = /default: SettingValue::Globs\(&\[([^\]]*)\]\)/u.exec(entry);
+      if (!key || !ticket || (!flag && !number && !name && !list)) {
         throw new Error(`unreadable Rust entry: ${entry}`);
+      }
+      if (/kind: SettingKind::Globs,/u.test(entry) && list) {
+        const patterns = [...list[1].matchAll(/"([^"]+)"/gu)];
+        return {
+          key,
+          kind: "globs",
+          default: patterns.map((match) => match[1]),
+          ticket,
+        };
       }
       if (/kind: SettingKind::Bool/u.test(entry)) {
         return { key, kind: "boolean", default: flag?.[1] === "true", ticket };
@@ -99,6 +112,14 @@ function rustRegistry(): StoredShape[] {
 }
 
 function storedShape(entry: EditorSettingSpec): StoredShape {
+  if (entry.kind === "globs") {
+    return {
+      key: entry.key,
+      kind: entry.kind,
+      default: [...entry.default],
+      ticket: entry.ticket,
+    };
+  }
   if (entry.kind === "choice") {
     return {
       key: entry.key,
@@ -143,7 +164,7 @@ describe("editor settings catalogue", () => {
     for (const entry of EDITOR_SETTINGS) {
       const copy = EDITOR_SETTING_COPY[entry.key];
       expect(EDITOR_SETTING_GROUPS).toContain(copy.group);
-      expect(admitEditorSetting(entry, entry.default)).toBe(entry.default);
+      expect(admitEditorSetting(entry, entry.default)).toEqual(entry.default);
       expect(copy.label).not.toBe("");
       expect(copy.description).not.toBe("");
       expect(copy.unit !== undefined).toBe(entry.kind === "integer");
@@ -187,6 +208,57 @@ describe("editor settings catalogue", () => {
     expect(admitEditorSetting(modifier, "ctrlCmd")).toBe("ctrlCmd");
     expect(admitEditorSetting(modifier, "meta")).toBeUndefined();
     expect(admitEditorSetting(modifier, 1)).toBeUndefined();
+  });
+
+  it("admits a bounded list of valid path globs, like the Rust store", () => {
+    const exclude = spec("files.exclude");
+    expect(admitEditorSetting(exclude, ["**/dist", "*.log"])).toEqual([
+      "**/dist",
+      "*.log",
+    ]);
+    expect(admitEditorSetting(exclude, [])).toEqual([]);
+    expect(admitEditorSetting(exclude, ["*.log", "**/dist", "*.log"])).toEqual([
+      "*.log",
+      "**/dist",
+    ]);
+    // A lone surrogate would fail on its way to Rust; a paired one is fine.
+    expect(admitEditorSetting(exclude, ["a\uD800b"])).toBeUndefined();
+    expect(admitEditorSetting(exclude, ["**/\u{1F600}"])).toEqual([
+      "**/\u{1F600}",
+    ]);
+    const full = Array.from({ length: MAX_GLOBS }, (_, index) => `p${index}`);
+    expect(admitEditorSetting(exclude, full)).toEqual(full);
+    for (const bad of [
+      "**/dist",
+      [""],
+      ["a".repeat(MAX_PATH_GLOB_BYTES + 1)],
+      ["é".repeat(MAX_PATH_GLOB_BYTES / 2 + 1)],
+      ["tab\there"],
+      ["\u0085"],
+      ["\uDC00"],
+      ["/absolute"],
+      ["dist/"],
+      ["../outside"],
+      [1],
+      [...full, "one more"],
+      null,
+    ]) {
+      expect(admitEditorSetting(exclude, bad)).toBeUndefined();
+    }
+  });
+
+  it("keeps an admitted list's identity and compares lists by their patterns", () => {
+    const admitted = admitEditorSettings({ "files.exclude": ["**/dist"] });
+    expect(admitEditorSettings(admitted)["files.exclude"]).toBe(
+      admitted["files.exclude"],
+    );
+    expect(admitEditorSettings(null)["files.exclude"]).toBe(
+      DEFAULT_EDITOR_SETTINGS["files.exclude"],
+    );
+    expect(sameEditorSettingValue(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameEditorSettingValue(["a", "b"], ["b", "a"])).toBe(false);
+    expect(sameEditorSettingValue(["a"], "a")).toBe(false);
+    expect(sameEditorSettingValue(2, 2)).toBe(true);
   });
 
   it("admits a whole record: unknown keys dropped, bad values defaulted", () => {
