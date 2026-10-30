@@ -215,7 +215,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required",
     shift: "forbidden",
     alt: "forbidden",
-    reservedFor: "EP-08",
   },
   {
     id: "goToSymbol",

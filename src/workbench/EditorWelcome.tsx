@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { Files, MessageSquare, Search } from "../ui/leanIcons";
 
 import { useWorkbenchStore, type SidebarView } from "../app/store";
+import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 
 // About half a second at 60 Hz.
 const BROWSE_FOCUS_FRAMES = 30;
@@ -58,7 +59,7 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
           <Files size={16} aria-hidden="true" />
           Browse files
         </button>
-        <button type="button" onClick={() => openView("search")}>
+        <button type="button" onClick={openQuickOpen}>
           <Search size={16} aria-hidden="true" />
           Search files
         </button>

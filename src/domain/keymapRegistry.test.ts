@@ -51,9 +51,9 @@ it("keeps chat and editor find as distinct scoped bindings", () => {
   );
 });
 
-it("reserves Quick Open for EP-08 on a chord no live Editor or Global binding uses", () => {
+it("gives Quick Open a chord no other Editor or Global binding uses", () => {
   const quickOpen = keymapBinding("quickOpen");
-  expect(quickOpen.reservedFor).toBe("EP-08");
+  expect(quickOpen.reservedFor).toBeUndefined();
   const event = {
     key: "p",
     ctrlKey: true,
