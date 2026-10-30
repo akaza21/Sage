@@ -115,6 +115,10 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     test(`${harness} header and Archived row at ${width}`, async ({ page }) => {
       await openChrome(page, harness, width);
       await expectSingleHeaderRow(page, width);
+      if (width <= 600)
+        await page
+          .getByRole("button", { name: "Show projects and chats" })
+          .click();
       const archived = page.getByRole("button", { name: "Archived chats: 1" });
       await expect(archived).toHaveText("Archived 1");
       await expect(archived).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");

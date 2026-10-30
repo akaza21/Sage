@@ -29,6 +29,7 @@
 }
 
 .composer__queued-thumbnail {
+  overflow: hidden;
   display: grid;
   width: 28px;
   height: 28px;

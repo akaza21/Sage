@@ -69,6 +69,7 @@ export function AgentWorkbenchBody({
           {navigationCollapsed ? (
             <AgentNavigationPart
               part="AgentCollapsedNavigation"
+              fallback={<div className="project-sidebar" aria-hidden="true" />}
               inert={layout.artifactModal}
               onOpenSettings={() => openSettings()}
               onExpand={onExpandNavigation}

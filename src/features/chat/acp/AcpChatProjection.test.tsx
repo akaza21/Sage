@@ -380,10 +380,15 @@ describe("AcpChatProjection", () => {
       screen.getByRole("status", { name: "Waiting for model" }),
     ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
-    expect(screen.getByText("09:05", { selector: "time" })).toHaveAttribute(
-      "dateTime",
-      "2026-08-31T09:05:00.000Z",
-    );
+    expect(
+      screen.getByText(
+        new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(Date.UTC(2026, 7, 31, 9, 5)),
+        { selector: "time" },
+      ),
+    ).toHaveAttribute("dateTime", "2026-08-31T09:05:00.000Z");
     expect(container.querySelector(".acp-chat-projection")).toMatchObject({
       dataset: {
         projectId: "project-1",

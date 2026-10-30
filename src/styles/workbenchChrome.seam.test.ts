@@ -31,8 +31,9 @@ describe("Workbench chrome stylesheet seam", () => {
       "utf8",
     );
     expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--chrome-row-height:\s*48px;[^}]*--title-bar-fill:\s*#111111;/s,
+      /\.workbench--agent\s*\{[^}]*--title-bar-fill:\s*#111111;/s,
     );
+    expect(css).not.toMatch(/--chrome-row-height:/);
     expect(css).toMatch(
       /\.workbench--agent \.agent-chat-center,\s*\.workbench--agent \.agent-artifact-pane\s*\{[^}]*background:\s*var\(--agent-shell-center\);/s,
     );

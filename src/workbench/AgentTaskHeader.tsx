@@ -45,6 +45,17 @@ export function AgentTaskHeader({
   sessionChrome?: AgentSessionChrome | null;
   showNewChat?: boolean;
 }) {
+  const harnessName = useWorkbenchStore((state) => {
+    const page = sessionChrome?.acpPage;
+    const binding = page?.sessions.find(
+      (session) => session.id === page.currentSessionId,
+    )?.bindingId;
+    const id =
+      state.chatUiById[tab?.id ?? ""]?.harnessId ?? state.selectedHarnessId;
+    return state.harnesses.find((harness) =>
+      binding ? harness.bindingId === binding : harness.id === id,
+    )?.name;
+  });
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
   const projectTransitioning = useWorkbenchStore(
@@ -160,6 +171,7 @@ export function AgentTaskHeader({
       <AgentTaskStatus
         snapshot={snapshot}
         harnessStatus={sessionChrome?.harnessStatus}
+        harnessName={harnessName}
       />
       {isSideChatId(tab?.id) ? null : (
         <AgentHeaderMore

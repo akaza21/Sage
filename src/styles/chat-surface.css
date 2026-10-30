@@ -20,7 +20,8 @@
   grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) fit-content(60%);
 }
 
-.chat-surface--agent > .composer__notice {
+.chat-surface--agent > .composer__notice,
+.chat-surface--agent > .composer__error {
   grid-area: notice;
 }
 

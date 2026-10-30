@@ -1,5 +1,3 @@
-import { Mic } from "../../ui/leanIcons";
-
 import type { FormEventHandler, RefObject } from "react";
 
 import type { ChatUsage } from "./acp/chatUsage";
@@ -25,13 +23,17 @@ import {
 } from "./composerChrome";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { TranscriptPart } from "./transcriptLazy";
-import { QueuedRows } from "./lazyParts";
+import { QueuedRows, lazyParts } from "./lazyParts";
 import { ComposerContext } from "./ComposerContext";
-import { ClaudeAuthActions } from "./ClaudeAuthActions";
 import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import "../../styles/queued-messages.css";
+import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
+
+const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
+  () => import("./ClaudeAuthActions"),
+);
 
 export function ChatComposerRegion({
   hidden = false,
@@ -46,6 +48,7 @@ export function ChatComposerRegion({
   imagePreviews,
   imageUploading = false,
   enabled,
+  sendBlocked = false,
   actionBusy,
   activeTurn,
   queueAvailable,
@@ -102,6 +105,7 @@ export function ChatComposerRegion({
   imagePreviews?: Readonly<Record<string, string>>;
   imageUploading?: boolean;
   enabled: boolean;
+  sendBlocked?: boolean;
   actionBusy: boolean;
   activeTurn: boolean;
   queueAvailable?: boolean;
@@ -149,7 +153,7 @@ export function ChatComposerRegion({
   onSteerQueuedPrompt?: (id: string) => void;
 }) {
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
-  const composerDisabled = !enabled || actionBusy || projectTransitioning;
+  const composerDisabled = !enabled || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
     goal,
     dictationScope,
@@ -164,6 +168,13 @@ export function ChatComposerRegion({
     uploading: imageUploading,
     onAddImages,
   });
+  const dispatchBlocked =
+    composerDisabled ||
+    sendBlocked ||
+    actionBusy ||
+    (activeTurn && !queueAvailable) ||
+    imageUploading ||
+    imageInput.sendBlocked;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
   const shortcutDescriptionId = `${descriptionId}-shortcut`;
   const dictation = useComposerDictation(
@@ -183,12 +194,13 @@ export function ChatComposerRegion({
       onDrop={imageInput.onDrop}
       onPaste={imageInput.onPaste}
       onSubmit={(event) => {
-        if (imageUploading || imageInput.sendBlocked) {
+        if (dispatchBlocked) {
           event.preventDefault();
           return;
         }
         dictation.cancel();
         onSubmit(event);
+        composerRef.current?.focus();
       }}
     >
       {otherContext.length < attachedContext.length ? (
@@ -227,7 +239,7 @@ export function ChatComposerRegion({
           <div className="composer__error" role="alert">
             {chatError}
             {claudeSignInRequired ? (
-              <ClaudeAuthActions key={claudeAuthScope} />
+              <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
             ) : null}
           </div>
         ) : null}
@@ -359,44 +371,14 @@ export function ChatComposerRegion({
           </span>
         ) : null}
         <ComposerContext usage={usage} />
-        <button
-          className="composer__mic"
-          type="button"
-          aria-label={
-            !dictation.supported
-              ? "Voice input unavailable"
-              : dictation.listening
-                ? "Stop dictation"
-                : "Start dictation"
-          }
-          title={
-            dictation.supported
-              ? "Speech may be processed by an online service"
-              : "Voice input is unavailable in this WebView"
-          }
-          disabled={
-            !dictation.supported || (composerDisabled && !dictation.listening)
-          }
-          aria-pressed={dictation.listening}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={dictation.listening ? dictation.stop : dictation.start}
-        >
-          <Mic size={16} aria-hidden="true" />
-        </button>
-        {dictation.error ? (
-          <span className="composer__dictation-error" role="alert">
-            {dictation.error}
-          </span>
-        ) : null}
         <ComposerTurnControl
+          dictation={dictation}
+          disabled={composerDisabled}
           onCancelTurn={onCancelTurn}
           cancelDisabled={actionBusy || projectTransitioning}
           queueing={Boolean(activeTurn && queueAvailable)}
           sendDisabled={
-            composerDisabled ||
-            (!text.trim() && !attachedContext.length) ||
-            imageUploading ||
-            imageInput.sendBlocked
+            dispatchBlocked || (!text.trim() && !attachedContext.length)
           }
         />
       </div>

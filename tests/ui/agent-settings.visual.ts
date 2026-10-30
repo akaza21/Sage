@@ -18,9 +18,7 @@ for (const width of [480, 1380]) {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       return useWorkbenchStore.getState().activeTabId;
     });
-    await page
-      .getByRole("button", { name: "Open settings", exact: true })
-      .click();
+    await page.keyboard.press("Control+,");
     const settings = page.getByRole("region", {
       name: "Agent settings",
       exact: true,
@@ -131,9 +129,7 @@ for (const width of [480, 1380]) {
     await expect(
       page.getByRole("radio", { name: "Editor", exact: true }),
     ).toBeChecked();
-    await page
-      .getByRole("button", { name: "Open settings", exact: true })
-      .click();
+    await page.keyboard.press("Control+,");
     // At 480px the compact Editor's open tool drawer is modal, so the
     // canvas behind it is hidden from the accessibility tree while visible.
     const editor = page.getByRole("region", {

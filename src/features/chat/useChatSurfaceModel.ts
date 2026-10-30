@@ -234,6 +234,8 @@ export function useChatSurfaceModel({
   const actionBusy = model.useNativeAcp ? acpActions.busy : sending;
   const legacyAttachments = !model.useNativeAcp && attachedContext.length > 0;
   const sendBlocked =
+    queueSavePending ||
+    (model.useNativeAcp && chatLoadFailed) ||
     sizeReason(composerText, attachedContext) !== null ||
     imageUploading ||
     (attachedContext.some((context) => context.kind === "image") &&
@@ -248,10 +250,7 @@ export function useChatSurfaceModel({
     queuedPromptCount < MAX_QUEUED_CHAT_PROMPTS,
   );
   const composerEnabled =
-    canPrompt &&
-    !queueSavePending &&
-    (!activeAcpTurn || queueAvailable) &&
-    !legacyAttachments;
+    canPrompt && !(model.useNativeAcp && chatLoadFailed) && !legacyAttachments;
   const sessionPromptUnavailable = Boolean(
     model.useNativeAcp &&
     model.selectedSession &&
@@ -273,7 +272,7 @@ export function useChatSurfaceModel({
                 activeTurn: Boolean(activeAcpTurn),
                 availableBinding: model.availableBinding,
                 canPrompt,
-                chatLoadFailed,
+                chatLoadFailed: model.useNativeAcp && chatLoadFailed,
                 harnessAvailable: model.harnessAvailable,
                 harnessDiscoveryPhase: discoveryPhase,
                 projectTransitioning,
@@ -375,6 +374,7 @@ export function useChatSurfaceModel({
     sessionPromptUnavailable,
     usage,
     composerEnabled,
+    sendBlocked,
     queueAvailable,
     composerHotkeyEnabled:
       focused && composerEnabled && !actionBusy && !projectTransitioning,

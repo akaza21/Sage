@@ -27,6 +27,8 @@ import {
 } from "./agentChatRail";
 import { AgentRailSections } from "./AgentRailSections";
 import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
+import { useRailChatId } from "./sideChatState";
+import { classifyAgentRailSection } from "./agentRailStatusView";
 import {
   clearAgentRailUnread,
   useAgentRailInteractions,
@@ -37,6 +39,8 @@ const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
 );
 import {
   syncAgentRailClock,
+  expandAgentRailSection,
+  agentRailSectionCollapsed,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 
@@ -92,6 +96,36 @@ export function LeftSidebar({
     (state) => state.projectTransitioning,
   );
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const railChatId = useRailChatId(activeTabId);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const previousChatId = useRef(railChatId);
+  useEffect(() => {
+    if (projectTransitioning) return;
+    const scroll = () =>
+      sidebarRef.current
+        ?.querySelector(".project-chat[aria-current='page']")
+        ?.scrollIntoView?.({ block: "nearest" });
+    if (previousChatId.current !== railChatId) {
+      previousChatId.current = railChatId;
+      const active = useWorkbenchStore
+        .getState()
+        .tabs.find((tab) => tab.id === railChatId);
+      const sections = [
+        "projects",
+        `project:${project?.id}`,
+        active?.pinned
+          ? "pinned"
+          : classifyAgentRailSection({ status: active?.status, unread: false }),
+      ];
+      const hidden = sections.some(agentRailSectionCollapsed);
+      sections.forEach(expandAgentRailSection);
+      if (hidden) {
+        const frame = requestAnimationFrame(scroll);
+        return () => cancelAnimationFrame(frame);
+      }
+    }
+    scroll();
+  }, [railChatId, project?.id, projectTransitioning]);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
       (state) =>
@@ -195,8 +229,8 @@ export function LeftSidebar({
         <button
           className="project-action project-action--primary"
           type="button"
-          title="New task"
-          aria-label="New task"
+          title="New chat"
+          aria-label="New chat"
           aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
           disabled={projectTransitioning}
           onClick={() => void createChat()}
@@ -215,6 +249,7 @@ export function LeftSidebar({
           projects={sections.projects}
           recent={sections.recent}
           currentProjectId={project?.id ?? null}
+          currentChatId={railChatId}
           unreadByChatId={unreadByChatId}
           prefs={prefs}
           currentBranchLabel={gitLabel}
@@ -257,6 +292,7 @@ export function LeftSidebar({
   return (
     <aside
       className="project-sidebar"
+      ref={sidebarRef}
       aria-label="Projects and chats"
       inert={inert}
       aria-hidden={inert || undefined}

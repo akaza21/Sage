@@ -1,3 +1,4 @@
+import { SageMark } from "../ui/leanIconCore";
 import { FileCode2, Files, MessageSquare, Search } from "../ui/leanIcons";
 import { useWorkbenchStore, type SidebarView } from "../app/store";
 import { type WorkbenchTab } from "../domain/workbench";
@@ -100,9 +101,7 @@ function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
 
   return (
     <section className="editor-welcome" aria-label="Editor welcome">
-      <div className="editor-welcome__mark" aria-hidden="true">
-        S
-      </div>
+      <SageMark className="editor-welcome__mark" />
       <div className="editor-welcome__actions">
         <button type="button" onClick={() => openView("explorer")}>
           <Files size={16} aria-hidden="true" />

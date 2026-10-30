@@ -163,7 +163,9 @@ it("announces Copy on an inherited answer through the transcript's feedback", as
 it("shows the answer's own time in the row, and none without a real time (s2/f0093)", () => {
   const projection = twoTurns();
   presentation(projection);
-  const time = within(turnSection(1)).getByText(
+  const time = within(
+    within(turnSection(1)).getByRole("group", { name: "Message actions" }),
+  ).getByText(
     new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
       minute: "2-digit",

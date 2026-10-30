@@ -18,6 +18,9 @@ const diagrams = [
 ] as const;
 
 async function installDiagrams(page: Page, source: string) {
+  await expect(
+    page.locator(".acp-chat-projection[data-chat-id]").first(),
+  ).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async (source) => {
     const [{ acpProjectionStoreFor }, ids] = await Promise.all([

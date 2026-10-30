@@ -90,6 +90,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
+  // Recovery notices and sign-in actions stay off the ready Chat path.
+  "src/features/chat/HarnessDiscoveryNotice.tsx",
+  "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
   "src/features/chat/ForkChat.tsx",

@@ -1,5 +1,5 @@
 .composer__harness.composer__control-trigger {
-  height: 40px;
+  height: var(--control-height-compact);
   min-width: 28px;
   max-width: 128px;
   flex: 0 1 128px;
@@ -12,11 +12,15 @@
 
 .composer__harness .searchable-picker__trigger {
   width: 100%;
-  height: 40px;
+  height: var(--control-height-compact);
   padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--composer-control-text);
+  background: transparent;
+}
+
+.composer__harness .searchable-picker__trigger:hover:not(:disabled) {
   background: var(--composer-control-hover);
 }
 
@@ -25,8 +29,8 @@
   box-shadow: none;
 }
 
-.composer__harness .searchable-picker__trigger > img,
-.composer__harness-menu .searchable-picker__option > img {
+.composer__harness .searchable-picker__trigger > :is(img, .harness-icon),
+.composer__harness-menu .searchable-picker__option > :is(img, .harness-icon) {
   width: 20px;
   height: 20px;
   flex: 0 0 20px;

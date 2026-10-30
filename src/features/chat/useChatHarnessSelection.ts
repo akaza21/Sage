@@ -11,7 +11,7 @@ import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
-import { harnessIconKind } from "./composerChrome";
+import { harnessIconKind } from "../../domain/harness";
 import { harnessAvailability } from "./harnessAvailability";
 import type { AcpChatPage } from "../../domain/acp";
 import { useAcpChatProjection } from "./acp";

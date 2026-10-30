@@ -18,6 +18,16 @@ import {
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
+
+function visibleProjectChats(
+  group: AgentRailProjectGroup,
+  activeId: string | null,
+) {
+  const visible = group.chats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
+  const active = group.chats.find((chat) => chat.id === activeId);
+  if (active && !visible.includes(active)) visible[visible.length - 1] = active;
+  return visible;
+}
 import { lazyParts } from "../features/chat/lazyParts";
 import type * as ProjectMenuChunk from "./AgentProjectMenu";
 const ProjectMenuPart = lazyParts<typeof ProjectMenuChunk>(
@@ -173,6 +183,7 @@ export function AgentRailSections({
   projects,
   recent,
   currentProjectId,
+  currentChatId,
   unreadByChatId,
   prefs,
   currentBranchLabel,
@@ -188,6 +199,7 @@ export function AgentRailSections({
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
   currentProjectId: string | null;
+  currentChatId: string | null;
   unreadByChatId: Readonly<Record<string, boolean>>;
   prefs: AgentRailViewPrefs;
   currentBranchLabel: string;
@@ -289,7 +301,10 @@ export function AgentRailSections({
                 key={group.id}
                 group={{
                   ...group,
-                  chats: group.chats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT),
+                  chats: visibleProjectChats(
+                    group,
+                    group.id === currentProjectId ? currentChatId : null,
+                  ),
                   truncated:
                     group.truncated ||
                     group.chats.length > MAX_AGENT_RAIL_CHATS_PER_PROJECT,

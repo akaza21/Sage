@@ -24,33 +24,6 @@ const modeLabels: Record<WorkbenchWindowMode, string> = {
   editor: "Editor",
 };
 
-function WorkbenchBrand() {
-  return (
-    <div className="title-bar__brand">
-      <svg
-        className="title-bar__mark"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path
-          transform="rotate(-17 12 12)"
-          d="M6.03 12.16 A 17 17 0 0 1 18.35 3.22 A 17 17 0 0 1 16.67 8.28 Z"
-        />
-        <path
-          transform="rotate(-17 12 12)"
-          d="M17.97 11.85 A 17 17 0 0 1 5.65 20.79 A 17 17 0 0 1 7.33 15.73 Z"
-        />
-      </svg>
-      <strong className="title-bar__wordmark">Sage</strong>
-    </div>
-  );
-}
-
 function WorkbenchModeSwitch({
   mode,
   onModeChange,
@@ -155,7 +128,6 @@ export function TitleBar({
       aria-hidden={inert || undefined}
     >
       <div className="title-bar__start">
-        <WorkbenchBrand />
         <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />
         {mode === "agent" && onToggleAgentNavigation ? (
           <button

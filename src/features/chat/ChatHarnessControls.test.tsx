@@ -124,8 +124,25 @@ it("keeps Harness and Access mutually exclusive without pointer events", async (
 });
 
 function openOptions() {
-  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  const options = screen.queryByRole("button", { name: "Composer options" });
+  if (options) fireEvent.click(options);
 }
+
+it("labels a catalog-selected model even before the session confirms its name", () => {
+  useWorkbenchStore.setState({
+    selectedHarnessId: "access-test",
+    models: [{ id: "gpt-5", name: "GPT-5" }],
+  });
+  renderControls({ selectedModelId: "gpt-5", sessionModelId: "gpt-5" });
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    "GPT-5",
+  );
+});
+
+it("hides the add button when there are no composer actions", () => {
+  renderControls();
+  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
+});
 
 it("shows the selected harness, human model, effort availability and access before a first turn", async () => {
   useWorkbenchStore.setState({
@@ -513,8 +530,8 @@ describe("last confirmed model label", () => {
   it("does not offer inert effort actions when prompting is unavailable", async () => {
     renderControls({ sessionConfig: confirmedModelConfig(), canPrompt: false });
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
   });
 
   it("shows only the selected harness's confirmed model and effort in its picker row", async () => {
@@ -622,7 +639,7 @@ describe("last confirmed model label", () => {
     ).toBeNull();
   });
 
-  it("does not confirm a requested catalog model until the harness reports identity", async () => {
+  it("shows the requested catalog model until the harness reports another identity", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
       models: [
@@ -638,13 +655,13 @@ describe("last confirmed model label", () => {
     };
     const view = renderControls(selection);
     const trigger = screen.getByRole("button", { name: "Model" });
-    expect(trigger).toHaveTextContent(/^Model$/);
+    expect(trigger).toHaveTextContent(/^Requested model$/);
     fireEvent.click(trigger);
     expect(
       screen.getByRole("option", { name: "Requested model" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("option", { name: "Requested model" }));
-    expect(trigger).toHaveTextContent(/^Model$/);
+    expect(trigger).toHaveTextContent(/^Requested model$/);
     view.rerenderControls({
       ...selection,
       sessionConfig: decodeSessionConfig({
@@ -658,7 +675,7 @@ describe("last confirmed model label", () => {
     });
     expect(trigger).toHaveTextContent(/^Actual model$/);
     view.rerenderControls({ ...selection, selectedModelId: "actual" });
-    expect(trigger).toHaveTextContent(/^Model$/);
+    expect(trigger).toHaveTextContent(/^Actual model$/);
   });
 
   it("retains the matching catalog name while id-only session identity survives catalog removal", async () => {
@@ -1107,8 +1124,8 @@ describe("composer permission mode picker", () => {
     });
     renderControls({ projectName: "Alpha", turnBusy: true });
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Project: Alpha" }),
     ).toBeDisabled();
@@ -1237,8 +1254,9 @@ describe("composer permission mode picker", () => {
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
     renderControls({ projectName: "Alpha" });
-    const trigger = screen.getByRole("button", { name: "Composer options" });
-    fireEvent.click(trigger);
+    expect(
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -1250,7 +1268,6 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Project: Alpha" }),
     ).toHaveFocus();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows effective read-only access when ask is unsupported", async () => {
@@ -1375,8 +1392,8 @@ describe("composer permission mode picker", () => {
   it("keeps access directly beside the harness and model, not nested under plus", async () => {
     renderControls();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Model" })).toBeVisible();
     expect(
@@ -1387,7 +1404,7 @@ describe("composer permission mode picker", () => {
     expect(screen.getByRole("button", { name: "Model" })).toHaveClass(
       "composer__control-trigger",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toBeVisible();
@@ -1430,8 +1447,8 @@ describe("composer permission mode picker", () => {
       screen.queryByRole("menu", { name: "Composer options menu" }),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
   });
 
   it("shows the selected harness even when a previous session belongs to another", async () => {
@@ -1600,7 +1617,7 @@ describe("composer permission mode picker", () => {
     expect(trigger).toHaveTextContent("Claude Code");
     expect(trigger).not.toHaveTextContent("Opus 5 High");
     expect(
-      trigger.querySelector('img[src="/harness-claude.svg"]'),
+      trigger.querySelector('use[href="/harness-claude.svg#mark"]'),
     ).not.toBeNull();
     fireEvent.click(trigger);
     const claudeRow = screen.getByRole("option", { name: /Claude Code/ });
@@ -1619,7 +1636,7 @@ describe("composer permission mode picker", () => {
     ).not.toHaveTextContent("0.146.0");
     expect(codexRow).not.toHaveAccessibleName(/0\.146\.0/);
     expect(
-      codexRow.querySelector('img[src="/harness-codex.svg"]'),
+      codexRow.querySelector('use[href="/harness-codex.svg#mark"]'),
     ).not.toBeNull();
     expect(screen.getByRole("option", { name: /OpenCode/ })).toHaveTextContent(
       /^OpenCode$/,
@@ -1824,7 +1841,7 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      /^Model$/,
+      /^New Model$/,
     );
     expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
       "Old Model",

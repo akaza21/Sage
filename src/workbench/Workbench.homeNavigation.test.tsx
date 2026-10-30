@@ -114,6 +114,13 @@ it.each(["approval", "disabled"] as const)(
         },
       },
     });
+    if (unavailable === "disabled")
+      useWorkbenchStore.setState((state) => ({
+        harnesses: state.harnesses.map((harness) => ({
+          ...harness,
+          installState: "unavailable",
+        })),
+      }));
     if (unavailable === "approval") {
       const page = {
         projectId: before.project!.id,
@@ -243,20 +250,32 @@ it.each(["parent", "side"] as const)(
       ],
       pairedId: sideId,
     });
-    useWorkbenchStore.setState({
+    useWorkbenchStore.setState((state) => ({
+      harnesses: [
+        ...state.harnesses,
+        {
+          ...state.harnesses[0]!,
+          id: "fixture-unavailable",
+          installState: "unavailable",
+        },
+      ],
       chatUiById: {
         [parentId]: {
           ...emptyChatOwnershipEntry(),
           composerText: "Parent draft",
-          sending: owner === "parent",
+          harnessId:
+            owner === "parent"
+              ? "fixture-unavailable"
+              : state.selectedHarnessId,
         },
         [sideId]: {
           ...emptyChatOwnershipEntry(),
           composerText: "Side draft",
-          sending: owner === "side",
+          harnessId:
+            owner === "side" ? "fixture-unavailable" : state.selectedHarnessId,
         },
       },
-    });
+    }));
     render(<Workbench />);
     await settleLazyModules();
     const panes = screen.getAllByRole("region", { name: /^Chat pane / });
@@ -345,7 +364,7 @@ it.each([false, true])(
     await act(async () =>
       fireEvent.click(
         screen.getByRole("button", {
-          name: collapsed ? /^New chat$/ : /^New task$/,
+          name: /^New chat$/,
         }),
       ),
     );

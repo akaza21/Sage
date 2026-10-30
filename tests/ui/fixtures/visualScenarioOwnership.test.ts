@@ -608,6 +608,9 @@ describe("visual scenario surface ownership", () => {
         "true",
       ),
     );
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await waitFor(() =>
       expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
     );

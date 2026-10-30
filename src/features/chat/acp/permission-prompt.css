@@ -4,6 +4,9 @@
 }
 
 .acp-permission-prompt {
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);

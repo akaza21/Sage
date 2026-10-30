@@ -4,7 +4,7 @@ import { Check, Copy } from "../../ui/leanIcons";
 import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import { ForkPart } from "./lazyParts";
-import { chatTimestamp, timeOfDayLabel } from "./chatTimestamp";
+import { chatTimestamp } from "./chatTimestamp";
 
 /**
  * Codex's row under a finished answer (s2/f0053, f0093): Copy, "…" for a
@@ -84,7 +84,7 @@ export function AnswerActions({
           className="chat-transcript-actions__time"
           dateTime={time.dateTime}
         >
-          {timeOfDayLabel(createdAt!)}
+          {time.label}
         </time>
       ) : null}
     </div>

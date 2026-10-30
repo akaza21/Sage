@@ -117,7 +117,7 @@ it("abandons the exact native popup when its Project changes before placement", 
   );
   expect(native.browserPopupAck).not.toHaveBeenCalled();
   expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1"]);
-  expect(state.error).toContain("Project changed");
+  expect(state.error).toBe("Could not open the browser popup. Try again.");
 });
 
 it("replays a popup received before Project bootstrap once the Project is ready", async () => {
@@ -332,7 +332,7 @@ it("removes a just-inserted popup tab when its late ack fails", async () => {
   });
   await vi.waitFor(() =>
     expect(state).toMatchObject({
-      error: "Couldn't open popup: popup tab unavailable",
+      error: "Could not open the browser popup. Try again.",
     }),
   );
   expect(native.browserPopupAck).toHaveBeenCalledWith(

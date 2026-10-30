@@ -1,5 +1,6 @@
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { act, renderHook } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { capabilitySetFixture } from "../../domain/acpProjection.fixture";
@@ -84,6 +85,9 @@ vi.mock("./acp/currentNonterminalTurn", () => ({ currentNonterminalTurn }));
 
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 
+const initialAccess = useSessionAccessModeStore.getState();
+afterEach(() => useSessionAccessModeStore.setState(initialAccess, true));
+
 const page = {
   projectId: "project-a",
   chatId: "chat-a",
@@ -101,6 +105,129 @@ const page = {
     },
   ],
 } as unknown as AcpChatPage;
+
+it("blocks native submission on a failed Chat load and permits it after retry succeeds", () => {
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { "binding-a": "readOnly" },
+  });
+  const submit = vi.fn(async () => undefined);
+  const args = {
+    harnesses: [
+      {
+        id: "harness-a",
+        name: "Harness A",
+        transport: "acp" as const,
+        bindingId: "binding-a",
+        installState: "available" as const,
+        source: "builtIn" as const,
+        accessModes: [
+          {
+            id: "readOnly" as const,
+            label: "Read-only",
+            description: "Read workspace files.",
+            fallback: true,
+          },
+        ],
+      },
+    ],
+    selectedHarnessId: "harness-a",
+    selectedModelId: null,
+    page,
+    discoveryPhase: "ready" as const,
+    composerText: "Keep my draft",
+    attachedContext: [],
+    sending: false,
+    chatError: null,
+    chatLoadFailed: true,
+    projectTransitioning: false,
+    focused: true,
+    acpActions: {
+      busy: false,
+      error: null,
+      cancellableTurnId: null,
+      submit,
+      cancel: vi.fn(),
+      close: vi.fn(),
+      end: vi.fn(),
+    },
+    sendPrompt: vi.fn(),
+  };
+  const { result, rerender } = renderHook(
+    (input) => useChatSurfaceModel(input),
+    { initialProps: args },
+  );
+  expect(result.current.composerEnabled).toBe(false);
+  expect(result.current.disabledReason).toBe(
+    "This Chat failed to load. Retry to send a prompt.",
+  );
+  const event = { preventDefault: vi.fn() } as unknown as FormEvent;
+  result.current.submit(event);
+  expect(submit).not.toHaveBeenCalled();
+  rerender({ ...args, chatLoadFailed: false });
+  expect(result.current.composerEnabled).toBe(true);
+  result.current.submit(event);
+  expect(submit).toHaveBeenCalledOnce();
+});
+
+it("keeps draft editing enabled while a queued prompt is saving without queueing twice", () => {
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { "binding-a": "readOnly" },
+  });
+  currentNonterminalTurn.mockReturnValueOnce({
+    state: "running",
+  } as TurnProjection);
+  const queuePrompt = vi.fn(async () => true);
+  const { result } = renderHook(() =>
+    useChatSurfaceModel({
+      harnesses: [
+        {
+          id: "harness-a",
+          name: "Harness A",
+          transport: "acp",
+          bindingId: "binding-a",
+          installState: "available",
+          source: "builtIn",
+          accessModes: [
+            {
+              id: "readOnly",
+              label: "Read-only",
+              description: "Read workspace files.",
+              fallback: true,
+            },
+          ],
+        },
+      ],
+      selectedHarnessId: "harness-a",
+      selectedModelId: null,
+      page,
+      discoveryPhase: "ready",
+      composerText: "Next draft",
+      attachedContext: [],
+      sending: false,
+      chatError: null,
+      projectTransitioning: false,
+      focused: true,
+      acpActions: {
+        busy: false,
+        error: null,
+        cancellableTurnId: null,
+        submit: vi.fn(),
+        cancel: vi.fn(),
+        close: vi.fn(),
+        end: vi.fn(),
+      },
+      sendPrompt: vi.fn(),
+      queuePrompt,
+      queueSavePending: true,
+    }),
+  );
+  expect(result.current.composerEnabled).toBe(true);
+  expect(result.current.queueAvailable).toBe(false);
+  result.current.submit({ preventDefault: vi.fn() } as unknown as FormEvent);
+  expect(queuePrompt).not.toHaveBeenCalled();
+});
 
 it("does not rescan page turn eligibility for an unrelated composer edit", () => {
   const args = {

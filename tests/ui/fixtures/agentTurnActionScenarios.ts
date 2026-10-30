@@ -38,7 +38,9 @@ export function registerAgentTurnActionScenarios() {
     await alphaComposer.fill("Run Alpha once");
     await alphaSend.click();
     await expect(alphaComposer).toHaveValue("");
-    await expect(alphaComposer).toBeDisabled();
+    await expect(alphaComposer).toBeEnabled();
+    await expect(alphaComposer).toBeFocused();
+    await expect(alphaSend).toBeDisabled();
     await expect(
       alpha.getByText("Wait for the current action to finish.", {
         exact: true,
@@ -83,7 +85,8 @@ export function registerAgentTurnActionScenarios() {
     await expect(betaComposer).toHaveValue("Preserve this Beta draft");
     await betaComposer.fill("Run Beta independently");
     await beta.getByRole("button", { name: "Send message" }).click();
-    await expect(betaComposer).toBeDisabled();
+    await expect(betaComposer).toBeEnabled();
+    await expect(betaComposer).toBeFocused();
     await expectRequestCount(page, "sendRequests", 2);
     await runEvent(page, {
       type: "resolveSend",
@@ -98,7 +101,8 @@ export function registerAgentTurnActionScenarios() {
     await expectTurnState(page, alpha, 1, "running");
     await expectRunningComposerReadyToQueue(alpha);
     await alpha.getByRole("button", { name: "Cancel turn" }).click();
-    await expect(alphaComposer).toBeDisabled();
+    await expect(alphaComposer).toBeEnabled();
+    await expect(alphaSend).toHaveCount(0);
     await expect(
       alpha.getByRole("button", { name: "Cancel turn" }),
     ).toBeDisabled();

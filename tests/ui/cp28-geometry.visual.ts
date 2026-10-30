@@ -8,6 +8,8 @@ import {
 test.use({ deviceScaleFactor: 1 });
 
 async function installAnswers(page: Page, text: string, queued = false) {
+  await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
+  await settleChatProjections(page);
   await page.evaluate(
     async ({ text, queued }) => {
       const [
@@ -357,6 +359,7 @@ test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, 
     ].join("\n"),
   );
   const markdown = page.locator(".acp-message--assistant .acp-markdown");
+  await expect(markdown.locator("th").first()).toHaveText("Database");
   const geometry = await markdown.evaluate((element) => {
     const textRects = (node: Element) => {
       const range = document.createRange();

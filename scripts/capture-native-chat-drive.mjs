@@ -79,7 +79,7 @@ export async function prepareCaptureChat(
       deadline,
       record,
     );
-  await click(cdp, 'button[aria-label="New task"]', deadline, record);
+  await click(cdp, 'button[aria-label="New chat"]', deadline, record);
   let captureChat;
   await waitForState(async () => {
     const observation = await observe();

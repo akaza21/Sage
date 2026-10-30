@@ -77,6 +77,19 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("keeps the draft focused while sending and saving a queued message", () => {
+    const { rerenderComposer } = renderComposer();
+    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    prompt.focus();
+    rerenderComposer({ actionBusy: true });
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    rerenderComposer({ activeTurn: true, queueAvailable: false });
+    expect(prompt).toBeEnabled();
+    expect(prompt).toHaveFocus();
+  });
+
   it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
     "omits Goal actions for %s without admitted mutation capabilities",
     (name) => {
@@ -99,7 +112,10 @@ describe("composer image input", () => {
         sessionHarnessId: "fixture",
       });
       expect(screen.queryByText("Goal", { exact: true })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      const options = screen.queryByRole("button", {
+        name: "Composer options",
+      });
+      if (options) fireEvent.click(options);
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
     },
@@ -175,7 +191,8 @@ describe("composer image input", () => {
       goal,
       imageInputAvailable: true,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    const options = screen.queryByRole("button", { name: "Composer options" });
+    if (options) fireEvent.click(options);
     fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.getByText("Ship safely", { selector: "p" })).toBeVisible();
@@ -187,7 +204,10 @@ describe("composer image input", () => {
       { selectedHarnessId: "another-harness" },
     ]) {
       rerenderComposer(eligibility);
-      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      const options = screen.queryByRole("button", {
+        name: "Composer options",
+      });
+      if (options) fireEvent.click(options);
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
@@ -231,8 +251,9 @@ describe("composer image input", () => {
 
   it("omits unavailable image actions and refuses a dropped image", () => {
     const { onAddImages } = renderComposer();
-    const options = screen.getByRole("button", { name: "Composer options" });
-    fireEvent.click(options);
+    expect(
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(screen.queryByText("Add images", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
@@ -289,7 +310,8 @@ describe("composer image input", () => {
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("four images");
-    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    const options = screen.queryByRole("button", { name: "Composer options" });
+    if (options) fireEvent.click(options);
     expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
   });
 

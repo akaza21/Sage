@@ -3,7 +3,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { errorMessage } from "../../domain/errors";
 import { harnessAvailability } from "../chat/harnessAvailability";
-import { HarnessDiscoveryNotice } from "../chat/HarnessDiscoveryNotice";
+import { LazyHarnessNotice } from "../chat/lazyParts";
 import { SettingsRow } from "./SettingsRow";
 
 export function AgentHarnessSettings() {
@@ -102,7 +102,7 @@ export function AgentHarnessSettings() {
         })}
       </div>
       {!harnesses.length ? <p role="status">No harnesses discovered.</p> : null}
-      <HarnessDiscoveryNotice />
+      <LazyHarnessNotice />
     </>
   );
 }

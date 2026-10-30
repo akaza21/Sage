@@ -21,7 +21,7 @@ const geometries = [
     openChat: 360,
   },
   { width: 720, height: 1000, navigation: 332, closedChat: 388, openChat: 388 },
-  { width: 480, height: 1000, navigation: 262, closedChat: 218, openChat: 218 },
+  { width: 480, height: 1000, navigation: 54, closedChat: 426, openChat: 426 },
 ];
 
 async function box(locator: Locator) {
@@ -52,10 +52,6 @@ async function expectComposerControls(page: Page) {
   for (const composer of await page.locator("form.composer").all()) {
     const bounds = await box(composer);
     const controls = [
-      composer.getByRole("button", {
-        name: "Composer options",
-        exact: true,
-      }),
       composer.getByRole("button", {
         name: "Access options",
         exact: true,
@@ -139,9 +135,12 @@ for (const geometry of geometries) {
         // disabled by the fixture; the draft and resource owner use the
         // primary chat, which stays focused while both chats are selected.
         if (two)
-          await page
-            .getByTitle("Open chat Agent navigation polish", { exact: true })
-            .click();
+          await page.evaluate(async () => {
+            const { useWorkbenchStore } = await import("/src/app/store.ts");
+            await useWorkbenchStore
+              .getState()
+              .activateTab("visual-chat-primary");
+          });
         const ownerId = two
           ? "visual-chat-primary"
           : "visual-chat-agent-single";
@@ -196,7 +195,7 @@ for (const geometry of geometries) {
             chat.x + chat.width,
           );
           if (width === 720) expect(bounds.width).toBe(356);
-          if (width === 480) expect(bounds.width).toBe(186);
+          if (width === 480) expect(bounds.width).toBe(394);
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {
@@ -235,7 +234,7 @@ for (const geometry of geometries) {
         );
         await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         await expectHitTarget(
-          navigation.getByRole("button", { name: "New task", exact: true }),
+          page.getByRole("button", { name: "New chat", exact: true }),
         );
         await expectHitTarget(trigger);
         await expectComposerControls(page);
@@ -288,6 +287,11 @@ for (const width of [720, 480]) {
         .getByRole("button", { name: /^Show files and preview/ })
         .click();
       await page.mouse.click(16, 200);
+      // Collapsed navigation leaves room for a nonmodal resource overlay.
+      await expect(pane).toBeVisible();
+      await pane
+        .getByRole("button", { name: "Collapse files, changes, and preview" })
+        .click();
       await expect(pane).toHaveCount(0);
     }
   });

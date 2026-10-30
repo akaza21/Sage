@@ -239,8 +239,9 @@ describe("Composer surface stylesheet seam", () => {
       /^\.composer__harness \.searchable-picker__trigger\s*\{([^}]*)\}/m,
     );
     const height = (rule: RegExpMatchArray | null) =>
-      rule?.[1].match(/(?:^|;)\s*height:\s*(\d+)px;/)?.[1];
-    expect(height(trigger)).toBe("40");
+      rule?.[1].match(/(?:^|;)\s*height:\s*([^;]+);/)?.[1];
+    expect(height(trigger)).toBe("var(--control-height-compact)");
+    expect(trigger?.[1]).toContain("background: transparent;");
     expect(height(wrapper)).toBe(height(trigger));
   });
   it("keeps a system progress fill visible in forced colors", async () => {
@@ -347,7 +348,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),[^}]*margin-inline-start:\s*max\(\s*var\(--chat-column-gutter\),\s*calc\(\(100% - var\(--chat-column-trailing\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer textarea\s*\{[^}]*min-height:\s*44px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
+      /\.composer textarea\s*\{[^}]*min-height:\s*calc\(2lh \+ var\(--space-3\) \+ var\(--space-1\)\);[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer__shortcut\s*\{[^}]*display:\s*none;/s,

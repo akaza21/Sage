@@ -278,7 +278,7 @@ try {
   await page.waitForTimeout(1200);
   await shot("20-agent-panel");
 
-  await reachComposer("New task");
+  await reachComposer("New chat");
   await shot("21-agent-new-chat");
 
   const composer = page.locator(COMPOSER).first();

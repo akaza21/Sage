@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -50,7 +51,7 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
     ).getByRole("button", { name: "Home" }),
   );
   expect(createChat).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "New task" }));
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
   expect(createChat).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();
@@ -141,6 +142,57 @@ it("opens Agent settings from the rail footer without opening an Editor tab", ()
 
 const initialState = useWorkbenchStore.getState();
 
+it.each([false, true])(
+  "scrolls a newly selected Chat beyond eight rows into view (collapsed: %s) without jumping on status updates",
+  async (collapsed) => {
+    const prior = Element.prototype.scrollIntoView;
+    const seen: string[] = [];
+    Element.prototype.scrollIntoView = function () {
+      seen.push((this as HTMLElement).dataset.chatId ?? "");
+    };
+    const chats = Array.from({ length: 12 }, (_, position) => ({
+      id: `chat-${position}`,
+      kind: "chat" as const,
+      title: `Chat ${position}`,
+      position,
+      pinned: false,
+      dirty: false,
+      status: "idle" as const,
+    }));
+    useWorkbenchStore.setState({
+      project: { id: "sage", name: "Sage", roots: [] },
+      projects: [{ id: "sage", name: "Sage", rootCount: 0, lastOpenedAt: 1 }],
+      tabs: chats,
+      activeTabId: "chat-0",
+      projectTransitioning: false,
+      loadRepositoryInventory: vi.fn(async () => undefined),
+    });
+    try {
+      render(<LeftSidebar />);
+      expect(seen).toEqual(["chat-0"]);
+      if (collapsed)
+        fireEvent.click(screen.getByRole("button", { name: "Project Sage" }));
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat-11" }));
+      await waitFor(() => expect(seen).toEqual(["chat-0", "chat-11"]));
+      expect(
+        within(screen.getByRole("region", { name: "Projects" })).getAllByRole(
+          "button",
+          { name: /^Open chat / },
+        ),
+      ).toHaveLength(8);
+      act(() =>
+        useWorkbenchStore.setState({
+          tabs: chats.map((chat) => ({ ...chat, updatedAt: 10 })),
+        }),
+      );
+      expect(seen).toEqual(["chat-0", "chat-11"]);
+    } finally {
+      if (prior) Element.prototype.scrollIntoView = prior;
+      else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  },
+);
+
 afterEach(() => {
   cleanup();
   resetAgentRailInteractions();
@@ -195,14 +247,14 @@ it("shows a Devin space-header branch chip on the selected project", () => {
   expect(space.querySelector(".project-row__count")).not.toBeInTheDocument();
 });
 
-it("labels the New task action with its keyboard chord", () => {
+it("labels the New chat action with its keyboard chord", () => {
   render(<LeftSidebar />);
-  const button = screen.getByRole("button", { name: "New task" });
+  const button = screen.getByRole("button", { name: "New chat" });
   expect(button).toHaveTextContent("Ctrl+N");
   expect(button).toHaveAttribute("aria-keyshortcuts", "Control+N");
 });
 
-it("keeps New task available when no folder project is open", () => {
+it("keeps New chat available when no folder project is open", () => {
   const createChat = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
     project: null,
@@ -210,7 +262,7 @@ it("keeps New task available when no folder project is open", () => {
     createChat,
   });
   render(<LeftSidebar />);
-  const button = screen.getByRole("button", { name: "New task" });
+  const button = screen.getByRole("button", { name: "New chat" });
   expect(button).toBeEnabled();
   expect(
     screen.getByText(

@@ -1,3 +1,6 @@
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import type { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
+
 import {
   lazy,
   Suspense,
@@ -89,4 +92,36 @@ export function QueuedRows(
   return props.prompts?.length ? (
     <QueuedPart part="ComposerQueuedPrompts" {...props} />
   ) : null;
+}
+
+const loadHarnessNotice = () =>
+  import("./HarnessDiscoveryNotice").then((module) => ({
+    default: module.HarnessDiscoveryNotice,
+  }));
+
+export function LazyHarnessNotice(
+  props: NonNullable<Parameters<typeof HarnessDiscoveryNotice>[0]>,
+) {
+  const { harness, discoveryPhase } = props;
+  // Settings uses the store-backed notice; a bound Chat loads only when needed.
+  if (
+    harness !== undefined &&
+    !(
+      harness?.transport === "acp" &&
+      (harness.installState !== "available" ||
+        harness.characterisation === "uncharacterised" ||
+        (harness.accountModelDiscovery && discoveryPhase !== "ready"))
+    )
+  )
+    return null;
+  return (
+    <LazyModuleBoundary<
+      NonNullable<Parameters<typeof HarnessDiscoveryNotice>[0]>
+    >
+      label="Harness status"
+      load={loadHarnessNotice}
+      fallback={null}
+      render={(Notice) => <Notice {...props} />}
+    />
+  );
 }

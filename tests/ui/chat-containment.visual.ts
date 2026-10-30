@@ -281,18 +281,10 @@ for (const forcedColors of ["none", "active"] as const) {
     const options = page.getByRole("menu", { name: "Composer options menu" });
     const picker = options;
     await expectOverlay(picker, viewports[3]);
-    // At 480 the Project control folds into the composer options menu
-    // (wave 5), so it is reached as a menu item rather than a toolbar chip.
-    await expect(
-      page.locator("form.composer").getByRole("button", {
-        name: "Project: Sage",
-        exact: true,
-      }),
-    ).toHaveCount(0);
-    const project = options.getByRole("menuitem", {
-      name: "Project: Sage",
-      exact: true,
-    });
+    // With the responsive rail collapsed, this composer keeps Project inline.
+    const project = page
+      .locator("form.composer")
+      .getByRole("button", { name: "Project: Sage", exact: true });
     await expect(project).toBeVisible();
     const last = picker.getByRole("menuitemradio").last();
     await last.scrollIntoViewIfNeeded();
@@ -310,7 +302,6 @@ for (const forcedColors of ["none", "active"] as const) {
     await last.click();
     await expect(picker).toHaveCount(0);
     await expect(options).toHaveCount(0);
-    await openComposerOptions(page);
     await project.click();
     const projectPicker = page.locator(".searchable-picker__popover");
     await expectOverlay(projectPicker, viewports[3]);
@@ -361,7 +352,12 @@ test("expanded narrow file changes keep names and totals on one row", async ({
       .locator(".chat-file-chip__root, .tab__count")
       .all()) {
       if ((await detail.getAttribute("class")) === "chat-file-chip__root") {
-        await expect(detail).toBeHidden();
+        const chatWidth = (await page
+          .locator(".agent-chat-pane")
+          .first()
+          .boundingBox())!.width;
+        if (chatWidth <= 400) await expect(detail).toBeHidden();
+        else await expect(detail).toBeVisible();
         continue;
       }
       await expect(detail).toBeVisible();
@@ -420,11 +416,21 @@ for (const profile of profiles) {
               if (viewport.width === 480 && viewport.height === 560) {
                 const body = composer.locator(".composer__body");
                 await expect(body).toHaveCSS("overflow-y", "auto");
-                expect(
+                expect((await body.boundingBox())!.height).toBeLessThanOrEqual(
+                  composerBox!.height,
+                );
+                if (
                   await body.evaluate(
                     (element) => element.scrollHeight > element.clientHeight,
-                  ),
-                ).toBe(true);
+                  )
+                ) {
+                  await body.evaluate((element) => {
+                    element.scrollTop = element.scrollHeight;
+                  });
+                  expect(
+                    await body.evaluate((element) => element.scrollTop),
+                  ).toBeGreaterThan(0);
+                }
               }
               await expectControls(
                 composer,
@@ -445,8 +451,11 @@ for (const profile of profiles) {
                 }),
               ).toBeVisible();
               // Like Codex refs 36/37, the narrowest composer drops the context meter.
+              const contentWidth = await composer.evaluate(
+                (element) => element.clientWidth,
+              );
               await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context && viewport.width > 480 ? 1 : 0,
+                profile.context && contentWidth > 280 ? 1 : 0,
               );
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
@@ -680,7 +689,7 @@ for (const profile of profiles) {
       }
       await expect(
         composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toBeDisabled();
+      ).toHaveCount(0);
       const options = page.getByRole("menu", {
         name: "Composer options menu",
       });

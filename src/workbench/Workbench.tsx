@@ -186,13 +186,20 @@ export function Workbench() {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const compact = useCompactWorkbenchLayout();
+  const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
-  const [agentNavigationCollapsed, setAgentNavigationCollapsed] =
-    useState(false);
+  const [navigation, setNavigation] = useState({
+    narrow: narrowAgent,
+    collapsed: narrowAgent,
+  });
+  const agentNavigationCollapsed =
+    navigation.narrow === narrowAgent ? navigation.collapsed : narrowAgent;
+  if (navigation.narrow !== narrowAgent)
+    setNavigation({ narrow: narrowAgent, collapsed: narrowAgent });
   useAgentRailStatus(
     windowMode === "agent" && !agentSettingsPage && !agentNavigationCollapsed,
   );
@@ -216,6 +223,17 @@ export function Workbench() {
       if (resourceModal) return;
       // Platform modifier only: Control+N on macOS is the editor's next line.
       const apple = usesMetaModifier();
+      if (matchesPlatformChord(keymapBinding("toggleSidebar"), event, apple)) {
+        event.preventDefault();
+        if (windowMode === "agent")
+          setNavigation((value) => ({
+            narrow: narrowAgent,
+            collapsed: !(value.narrow === narrowAgent
+              ? value.collapsed
+              : narrowAgent),
+          }));
+        else useWorkbenchStore.getState().toggleSidebar();
+      }
       if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
         event.preventDefault();
         if (windowMode === "agent") useAgentSettingsState.getState().open();
@@ -230,7 +248,7 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal, windowMode]);
+  }, [narrowAgent, resourceModal, windowMode]);
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -283,7 +301,10 @@ export function Workbench() {
         inert={resourceModal}
         agentNavigationCollapsed={agentNavigationCollapsed}
         onToggleAgentNavigation={() =>
-          setAgentNavigationCollapsed((collapsed) => !collapsed)
+          setNavigation({
+            narrow: narrowAgent,
+            collapsed: !agentNavigationCollapsed,
+          })
         }
       />
       <AgentCenterKeeper windowMode={windowMode} />
@@ -301,7 +322,9 @@ export function Workbench() {
                   style={bodyStyle}
                   drawerOpen={drawerOpen}
                   navigationCollapsed={agentNavigationCollapsed}
-                  onExpandNavigation={() => setAgentNavigationCollapsed(false)}
+                  onExpandNavigation={() =>
+                    setNavigation({ narrow: narrowAgent, collapsed: false })
+                  }
                   artifactExpanded={agentArtifactExpanded}
                   onArtifactExpandedChange={changeAgentArtifact}
                   onAgentLeftRailWidthChange={(width) =>

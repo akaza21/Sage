@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { harnessAvailability } from "../chat/harnessAvailability";
-import { HarnessDiscoveryNotice } from "../chat/HarnessDiscoveryNotice";
+import { LazyHarnessNotice } from "../chat/lazyParts";
 import { SettingsRow } from "./SettingsRow";
 
 export function AgentGeneralSettings() {
@@ -123,7 +123,7 @@ export function AgentGeneralSettings() {
           </select>
         </SettingsRow>
       </div>
-      <HarnessDiscoveryNotice />
+      <LazyHarnessNotice />
       {!project ? (
         <p role="status">Open a project to select a harness and model.</p>
       ) : null}

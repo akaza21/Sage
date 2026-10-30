@@ -288,7 +288,7 @@ describe("compact Workbench project tools", () => {
       name: "Projects and chats",
     });
     const newChat = within(navigation).getByRole("button", {
-      name: "New task",
+      name: "New chat",
     });
     newChat.focus();
     vi.stubGlobal("innerWidth", 480);
@@ -761,7 +761,7 @@ describe("compact Workbench project tools", () => {
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 
-  it("routes the Agent New task control through one creation action", async () => {
+  it("routes the Agent New chat control through one creation action", async () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       createChat,
@@ -771,7 +771,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
 
     const newChatControls = screen.getAllByRole("button", {
-      name: "New task",
+      name: "New chat",
     });
     expect(newChatControls).toHaveLength(1);
     const beforeClick = createChat.mock.calls.length;

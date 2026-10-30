@@ -1,12 +1,45 @@
 import { expect, it, vi } from "vitest";
 
-import { closeBrowser } from "../ports/nativeBrowserPort";
+import { closeBrowser, openBrowser } from "../ports/nativeBrowserPort";
 import { useWorkbenchStore } from "./store";
 
 vi.mock("../ports/nativeBrowserPort", () => ({
   openBrowser: vi.fn(),
   closeBrowser: vi.fn().mockResolvedValue(undefined),
 }));
+
+it("keeps unavailable browser creation local and never exposes invocation exceptions", async () => {
+  const original = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    phase: "ready",
+    project: { id: "project", name: "Project", roots: [] },
+    projectTransitioning: false,
+    flushActiveEditor: vi.fn().mockResolvedValue(undefined),
+    error: null,
+  });
+  try {
+    await useWorkbenchStore.getState().openBrowser();
+    expect(openBrowser).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().error).toBe(
+      "The in-app browser is available in the desktop app.",
+    );
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    vi.mocked(openBrowser).mockRejectedValueOnce(
+      new TypeError("Cannot read properties of undefined (reading 'invoke')"),
+    );
+    await useWorkbenchStore.getState().openBrowser();
+    expect(useWorkbenchStore.getState().phase).toBe("ready");
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Could not open the browser tab. Try again.",
+    );
+  } finally {
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    useWorkbenchStore.setState(original, true);
+  }
+});
 
 it("closes a restored placeholder without a native browser handle", () => {
   const original = useWorkbenchStore.getState();
@@ -127,7 +160,9 @@ it("keeps a browser tab visible after native close failure so Close can retry", 
 
   useWorkbenchStore.getState().closeTab(tab.id);
   await vi.waitFor(() =>
-    expect(useWorkbenchStore.getState().error).toContain("Couldn't close"),
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Could not close the browser tab. Try again.",
+    ),
   );
   expect(useWorkbenchStore.getState().tabs).toContainEqual(tab);
 
@@ -171,7 +206,9 @@ it("keeps title ordering when native close fails and restores the tab", async ()
     );
   useWorkbenchStore.setState({ tabs: original.tabs });
   await vi.waitFor(() =>
-    expect(useWorkbenchStore.getState().error).toContain("close failed"),
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Could not close the browser tab. Try again.",
+    ),
   );
   expect(useWorkbenchStore.getState().tabs).toContainEqual(
     expect.objectContaining({ id: tab.id, title: "New title" }),

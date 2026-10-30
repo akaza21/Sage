@@ -74,7 +74,8 @@ const nativeReadOnly = [
 ];
 
 function openComposerOptions() {
-  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  const options = screen.queryByRole("button", { name: "Composer options" });
+  if (options) fireEvent.click(options);
 }
 
 function openComposerModel() {
@@ -679,6 +680,9 @@ describe("ChatSurface ACP resource integration", () => {
       ).toBe("queued"),
     );
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await screen.findByRole("region", { name: "Agent settings" });
     expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
     setTurnState("completed");
@@ -778,6 +782,8 @@ describe("ChatSurface ACP resource integration", () => {
       expect.objectContaining({ text: "Follow up", status: "queued" }),
     ]);
     expect(composer).toHaveValue("Follow up");
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveFocus();
     expect(screen.getByText("Saving…")).toBeVisible();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
 
@@ -822,6 +828,8 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveFocus();
     acknowledge();
     await waitFor(() => expect(composer).toHaveValue(""));
     await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
@@ -1317,7 +1325,8 @@ describe("ChatSurface ACP resource integration", () => {
       await waitFor(() => expect(composer).toHaveValue(""));
     }
     expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
-    expect(composer).toBeDisabled();
+    expect(composer).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(screen.getByText("Queue is full (8 messages).")).toBeVisible();
     fireEvent.click(
       screen.getByRole("button", { name: "Delete queued message: Message 1" }),
@@ -1686,8 +1695,8 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(screen.queryByText("Thinking budget")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -2046,7 +2055,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Open Claude sign-in" }),
+      await screen.findByRole("button", { name: "Open Claude sign-in" }),
     );
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
@@ -3208,7 +3217,7 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.cancellableTurnId = null;
     setTurnState("cancelling");
     rerender(<ChatSurface />);
-    expect(composer).toBeDisabled();
+    expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(composer).not.toHaveFocus();
   });
@@ -4157,18 +4166,12 @@ describe("ChatSurface per-chat composer", () => {
     });
     if (!left || !right) throw new Error("Missing mounted Chats");
 
-    fireEvent.click(
-      within(right).getByRole("button", { name: "Composer options" }),
-    );
     fireEvent.click(within(right).getByRole("button", { name: "Harness" }));
     fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
     await waitFor(() =>
       expect(
         within(right).getByRole("button", { name: "Harness" }),
       ).toHaveTextContent("Claude"),
-    );
-    fireEvent.click(
-      within(left).getByRole("button", { name: "Composer options" }),
     );
     expect(
       within(left).getByRole("button", { name: "Harness" }),
@@ -4766,8 +4769,8 @@ describe("ChatSurface composer focus hotkey", () => {
     expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(composer).toHaveAttribute("placeholder", "Do anything");
     composer.blur();
     expect(composer).not.toHaveFocus();
@@ -5139,7 +5142,7 @@ describe("ChatSurface composer context", () => {
     );
     expect(useWorkbenchStore.getState().composerText).toBe(sentDraft);
   });
-  it("shows only the compact plus action when no context chips are attached", () => {
+  it("omits an inert plus action when no context chips are attached", () => {
     const chatId = "chat-empty-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5162,8 +5165,8 @@ describe("ChatSurface composer context", () => {
     expect(document.querySelector(".composer__attachment-row")).toBeNull();
     expect(screen.queryByLabelText("Composer actions")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
   });
 
   it("names the active project in the composer scope control", () => {

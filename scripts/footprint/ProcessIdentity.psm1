@@ -345,7 +345,12 @@ function Get-FootprintTeardownPlan {
   ) { "matching" } else { "reused" }
   $candidates = @()
   $reusedProcessIds = @()
+  $rememberedProcessIds = [Collections.Generic.HashSet[int]]::new()
+  foreach ($rememberedIdentity in $RememberedIdentities.Values) {
+    [void]$rememberedProcessIds.Add([int]$rememberedIdentity.processId)
+  }
   foreach ($row in $ProcessRows) {
+    if (-not $rememberedProcessIds.Contains([int]$row.ProcessId)) { continue }
     $samePid = @($RememberedIdentities.Values | Where-Object { [int]$_.processId -eq [int]$row.ProcessId })
     if ($samePid.Count -eq 0) { continue }
     $match = @($samePid | Where-Object { Test-FootprintProcessIdentity $row $_.executablePath $_.creationDate }) | Select-Object -First 1

@@ -146,10 +146,19 @@
 
 .agent-task-header__harness-icon {
   display: none;
+  width: 16px;
+  height: 16px;
+}
+
+.agent-task-header__harness-icon > :is(svg, img) {
+  width: 100%;
+  height: 100%;
 }
 
 @container chat-center (max-width: 800px) {
-  .agent-task-header__harness-status summary > span {
+  .agent-task-header__harness-status
+    summary
+    > span:not(.agent-task-header__harness-icon) {
     display: none;
   }
 

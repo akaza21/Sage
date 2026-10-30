@@ -5,8 +5,10 @@ import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import { closeTab as closeTabState } from "./tabState";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
-import { errorMessage } from "../domain/errors";
 import { closeBrowser } from "../ports/nativeBrowserPort";
+
+export const BROWSER_CLOSE_ERROR =
+  "Could not close the browser tab. Try again.";
 
 const browserClosesInFlight = new Set<string>();
 const browsersAlreadyClosed = new Set<string>();
@@ -84,15 +86,13 @@ export function closeWorkbenchTab(
         closeWorkbenchTab(set, get, tabId, preferredNextTabId, true);
         browsersAlreadyClosed.delete(tabId);
         set((current) => ({
-          error: current.error?.startsWith("Couldn't close browser — try again")
-            ? null
-            : current.error,
+          error: current.error === BROWSER_CLOSE_ERROR ? null : current.error,
         }));
       })
-      .catch((error) => {
+      .catch(() => {
         browserClosesInFlight.delete(tabId);
         set({
-          error: `Couldn't close browser — try again: ${errorMessage(error)}`,
+          error: BROWSER_CLOSE_ERROR,
         });
       });
     return;

@@ -16,18 +16,14 @@ import { useSideChatState } from "./sideChatState";
 
 const initialState = useWorkbenchStore.getState();
 
-it("draws the Sage leaf mark as an inline shape that inherits the neutral text colour", () => {
+it("keeps brand artwork and the wordmark out of the title bar", () => {
   const { container } = render(
     <TitleBar mode="agent" onModeChange={vi.fn()} />,
   );
-  const mark = container.querySelector("svg.title-bar__mark");
-  expect(mark).not.toBeNull();
-  expect(mark!.getAttribute("fill")).toBe("currentColor");
-  expect(mark!.getAttribute("aria-hidden")).toBe("true");
-  expect(mark!.querySelectorAll("path").length).toBe(2);
-  expect(mark!.outerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}|rgb|green/);
-  expect(screen.getByText("Sage")).toBeTruthy();
-  expect(container.querySelector(".title-bar__logo")).toBeNull();
+  expect(
+    container.querySelector(".title-bar__mark, .title-bar__brand"),
+  ).toBeNull();
+  expect(screen.queryByText("Sage")).toBeNull();
 });
 
 afterEach(() => {
@@ -101,7 +97,7 @@ describe("TitleBar center chrome", () => {
       rerender(<TitleBar mode={mode} onModeChange={vi.fn()} />);
       const modes = screen.getByRole("radiogroup", { name: "Window mode" });
       expect(start()).toContainElement(modes);
-      expect(screen.getByText("Sage")).toBeTruthy();
+      expect(screen.queryByText("Sage")).toBeNull();
     }
 
     rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
@@ -244,7 +240,7 @@ describe("TitleBar center chrome", () => {
     expect(
       screen.queryByRole("button", { name: "Open projects and chats" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "New task" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     titleSearch.focus();
     fireEvent.click(titleSearch);
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
@@ -261,7 +257,7 @@ describe("TitleBar center chrome", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("button", { name: "New task" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
     expect(useWorkbenchStore.getState().sidebarOpen).toBe(false);
   });
 

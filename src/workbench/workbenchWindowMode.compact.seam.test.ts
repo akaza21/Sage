@@ -28,7 +28,7 @@ vi.mock("../features/chat/ChatSurface", () => ({
 let compactViewport = false;
 
 vi.mock("./useCompactWorkbenchLayout", () => ({
-  useCompactWorkbenchLayout: () => compactViewport,
+  useCompactWorkbenchLayout: (query?: string) => !query && compactViewport,
 }));
 
 const initialState = useWorkbenchStore.getState();

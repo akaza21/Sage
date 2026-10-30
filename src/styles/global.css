@@ -586,26 +586,7 @@ textarea:disabled,
 }
 
 .brand-mark {
-  display: grid;
-  width: var(--chrome-row-height);
-  height: var(--chrome-row-height);
-  place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  color: var(--accent-strong);
-  background: var(--accent-muted);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-}
-
-.brand-mark--error {
-  color: var(--danger);
-  border-color: color-mix(
-    in srgb,
-    var(--color-danger) 45%,
-    var(--color-border-subtle)
-  );
-  background: var(--color-danger-muted);
+  color: var(--color-text-muted);
 }
 
 .workbench__body {

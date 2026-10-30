@@ -118,7 +118,7 @@ async function composerControlOrder(page: Page): Promise<string[]> {
 async function anchorScenario(page: Page, scenario: PendingScenario) {
   await expect(page.locator("main.workbench")).toBeVisible();
   await expect(
-    rail(page).getByRole("button", { name: "New task", exact: true }),
+    rail(page).getByRole("button", { name: "New chat", exact: true }),
   ).toBeVisible();
   await expect(composer(page)).toHaveCount(1);
   await expect(
@@ -359,14 +359,14 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toBeLessThan(artifactBox.x);
   });
 
-  test("renders the titlebar brand, and pins the mode segment's current region", async ({
+  test("omits the titlebar brand, and pins the mode segment's current region", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
     const titleBar = page.locator("header.title-bar");
 
-    // T1 — present.
-    await expect(titleBar.getByText("Sage", { exact: true })).toBeVisible();
+    // The reference keeps the app name in navigation, with no title-bar brand.
+    await expect(titleBar.getByText("Sage", { exact: true })).toHaveCount(0);
 
     // T2 — different. The target and the reference's region map both put the
     // mode segment inside the left rail; Sage hosts it in the titlebar. Pinned
@@ -385,7 +385,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // Anchored on the rail having mounted, so the absence is the rail's and
     // not the renderer's.
     await expect(
-      rail(page).getByRole("button", { name: "New task", exact: true }),
+      rail(page).getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
     await expect(
       rail(page).getByRole("radiogroup"),
@@ -412,7 +412,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L2 — the button exists with the right name. Its plate is the gap, and a
     // plate is a style change this structural spec does not adjudicate.
     await expect(
-      sidebar.getByRole("button", { name: "New task", exact: true }),
+      sidebar.getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
 
     const filter = sidebar.getByRole("button", {
@@ -496,7 +496,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     await openScenario(page, "agent-single", "agent");
 
     const newTask = rail(page).getByRole("button", {
-      name: "New task",
+      name: "New chat",
       exact: true,
     });
     await expect(
@@ -629,7 +629,7 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       }),
     ).toBeVisible();
     await expect(
-      rail(page).getByRole("button", { name: "New task", exact: true }),
+      rail(page).getByRole("button", { name: "New chat", exact: true }),
     ).toBeVisible();
   });
 
@@ -986,9 +986,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     // This binding advertises no image input, Goal or session modes, so the
     // Add menu has nothing truthful to offer and no image chooser exists.
-    await expect(options).toBeDisabled();
-    await expect(options).toHaveAttribute("aria-haspopup", "menu");
-    await expect(options).toHaveAttribute("aria-expanded", "false");
+    await expect(options).toHaveCount(0);
     await expect(
       toolbar.getByRole("button", { name: "Add images", exact: true }),
     ).toHaveCount(0);
@@ -1005,7 +1003,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(7);
+    await expect(toolbar.getByRole("button")).toHaveCount(6);
     const [inputBox, toolbarBox] = await Promise.all([
       boundsOf(form.getByRole("textbox", { name: "Message agent" })),
       boundsOf(toolbar),
@@ -1032,7 +1030,6 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     );
     expect(inventory).toEqual([
       "Message agent",
-      "Composer options",
       "Access options",
       "Harness",
       "Model",
@@ -1047,9 +1044,10 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveAttribute("aria-controls", /\S+/);
-    const optionsId = await options.getAttribute("aria-controls");
-    await expect(page.locator(`[id="${optionsId}"]`)).toHaveCount(0);
+    await expect(options).toHaveCount(0);
+    await expect(
+      page.getByRole("menu", { name: "Composer options menu" }),
+    ).toHaveCount(0);
   });
 
   test("orders toolbar actions, harness and model with send trailing", async ({
@@ -1060,7 +1058,6 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
-      "Composer options",
       "Access options",
       "Harness",
       "Model",
@@ -1068,20 +1065,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "Start dictation",
       "Send message",
     ]);
-    const [options, access, harness, send] = await Promise.all([
-      boundsOf(
-        composer(page).getByRole("button", {
-          name: "Composer options",
-          exact: true,
-        }),
-      ),
+    const [access, harness, send] = await Promise.all([
       boundsOf(composer(page).locator(".composer__access-label")),
       boundsOf(
         composer(page).getByRole("button", { name: "Harness", exact: true }),
       ),
       boundsOf(composer(page).getByRole("button", { name: "Send message" })),
     ]);
-    expect(access.x).toBeGreaterThanOrEqual(options.x + options.width - 1);
     expect(access.x + access.width).toBeLessThanOrEqual(harness.x + 1);
     expect(Math.abs(send.width - send.height)).toBeLessThanOrEqual(1);
   });
@@ -1103,7 +1093,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(7);
+    expect(centres).toHaveLength(6);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
@@ -1115,8 +1105,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toBeVisible();
-    await expect(options).toBeDisabled();
+    await expect(options).toHaveCount(0);
     const project = composer(page).getByRole("button", {
       name: "Project: Sage",
       exact: true,
@@ -1131,7 +1120,6 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
-    await expect(options).toHaveAttribute("aria-expanded", "false");
   });
 
   test("keeps reported context in the toolbar without overlapping the prompt", async ({

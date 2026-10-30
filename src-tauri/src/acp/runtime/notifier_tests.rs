@@ -163,21 +163,22 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             Ok(PublishOutcome::Scheduled)
         );
         sink.wait_for_entries(1).await;
-        sink.release(1);
-        tokio::task::yield_now().await;
-        // Only the child epoch moved; the revision is the same.
+        // Keep the original revision in flight so only the newer child epoch
+        // can admit this second event at the unchanged revision.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Scheduled)
         );
-        sink.wait_for_entries(2).await;
         sink.release(1);
-        tokio::task::yield_now().await;
+        sink.wait_for_entries(2).await;
+        // Coalescing applies while this delivery is in flight. Releasing the
+        // sink first races the worker clearing its disposable pending slot.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
         assert_eq!(*lock(&sink.revisions), vec![4, 4]);
+        sink.release(1);
         notifier.shutdown().await;
     });
 }

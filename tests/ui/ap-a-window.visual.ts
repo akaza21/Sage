@@ -56,7 +56,7 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   });
   await page
     .locator(".project-sidebar__actions")
-    .getByRole("button", { name: "New task", exact: true })
+    .getByRole("button", { name: "New chat", exact: true })
     .click();
   await expect(panes).toHaveCount(1);
   await expect(panes.first()).toHaveAttribute("data-chat-id", "ap-a-chat-1");

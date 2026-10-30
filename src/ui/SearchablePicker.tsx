@@ -11,7 +11,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { ChevronDown } from "./leanIcons";
-import { PickerOption } from "./PickerOption";
+import { PickerOption, PickerLogo } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
@@ -267,11 +267,7 @@ export function SearchablePicker({
         }}
       >
         {selected?.logo || selected?.icon ? (
-          <img
-            src={selected.logo ?? `/harness-${selected.icon}.svg`}
-            alt=""
-            aria-hidden="true"
-          />
+          <PickerLogo logo={selected.logo} icon={selected.icon} />
         ) : (
           triggerIcon
         )}

@@ -17,7 +17,7 @@ export async function assertAgentLandmarks(page: Page) {
   });
   await expect(
     projectSidebar.getByRole("button", {
-      name: "New task",
+      name: "New chat",
       exact: true,
     }),
   ).toBeVisible();

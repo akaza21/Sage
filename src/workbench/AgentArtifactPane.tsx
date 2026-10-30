@@ -1,3 +1,4 @@
+import { isTauriRuntime } from "../ports/nativeInvoke";
 import {
   lazy,
   Suspense,
@@ -348,7 +349,7 @@ export function AgentArtifactPane({
           <AgentArtifactPaneControls
             maximized={maximized}
             onMaximizedChange={setMaximized}
-            disabled={!project || projectTransitioning}
+            disabled={!project || projectTransitioning || !isTauriRuntime()}
             onNewTab={() => {
               useAgentChangesState.getState().select(false);
               void openBrowser();

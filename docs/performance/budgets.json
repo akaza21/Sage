@@ -16,6 +16,16 @@
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
+        "maxGzipBytes": 1100,
+        "reason": "Conditional harness build/account notices, deferred unless a harness needs attention; keeps their sign-in actions and copy off the ready first-Chat path. Existing caps unchanged."
+      },
+      {
+        "entry": "src/features/chat/ClaudeAuthActions.tsx",
+        "maxGzipBytes": 520,
+        "reason": "Existing sign-in actions load only after a Claude authentication error; keeps their native actions and copy off the ready first-Chat path."
+      },
+      {
         "entry": "src/workbench/AgentTaskResources.tsx",
         "maxGzipBytes": 907,
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 824 B; cap 907 B."

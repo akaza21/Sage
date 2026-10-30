@@ -75,7 +75,7 @@ for (const collapsed of [false, true]) {
     expect(await savedChats(page)).toEqual(before);
     await page
       .getByRole("button", {
-        name: collapsed ? "New chat" : "New task",
+        name: collapsed ? "New chat" : "New chat",
         exact: true,
       })
       .click();
@@ -134,6 +134,14 @@ for (const owner of ["single", "parent", "side"] as const) {
       }
       const focusedId = useWorkbenchStore.getState().activeTabId!;
       useWorkbenchStore.setState((state) => ({
+        harnesses: [
+          ...state.harnesses,
+          {
+            ...state.harnesses[0]!,
+            id: "fixture-unavailable",
+            installState: "unavailable",
+          },
+        ],
         chatUiById: {
           ...state.chatUiById,
           [parentId]: {
@@ -143,7 +151,7 @@ for (const owner of ["single", "parent", "side"] as const) {
           [focusedId]: {
             ...state.chatUiById[focusedId],
             composerText: "Focused draft",
-            sending: true,
+            harnessId: "fixture-unavailable",
           },
         },
       }));

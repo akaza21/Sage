@@ -491,6 +491,38 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it.each([false, true])(
+    "keeps a failed New chat local when projection recovery is unavailable (committed: %s)",
+    async (committed) => {
+      const creation = vi.spyOn(getWorkbenchPorts().chat, "createChat");
+      if (committed)
+        creation.mockResolvedValueOnce({
+          committed: true,
+          transitionEpoch: 1,
+          snapshot: null,
+          recoveryError: null,
+        });
+      else
+        creation.mockRejectedValueOnce(
+          new TypeError("Cannot read properties of undefined (reading invoke)"),
+        );
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
+        new TypeError("Cannot read properties of undefined (reading invoke)"),
+      );
+      await useWorkbenchStore.getState().createChat();
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        phase: "ready",
+        projectTransitioning: false,
+        activeTabId: chatTab.id,
+        error: expect.stringContaining("Chat creation"),
+      });
+      expect(useWorkbenchStore.getState().tabs).toEqual([chatTab]);
+      expect(useWorkbenchStore.getState().error).not.toMatch(
+        /invoke|undefined|properties/,
+      );
+    },
+  );
+
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
     const newChat: WorkbenchTab = {
       id: "chat:new",

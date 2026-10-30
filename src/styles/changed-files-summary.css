@@ -32,6 +32,10 @@
   background: var(--color-plane-raised);
 }
 
+.acp-file-changes--collapsed .acp-file-changes__header {
+  border-radius: var(--radius-pill);
+}
+
 .acp-editing-files {
   min-height: 28px;
   color: var(--color-text-muted);

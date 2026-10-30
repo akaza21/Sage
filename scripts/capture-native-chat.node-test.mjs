@@ -69,7 +69,7 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
   let paneCount = 1;
   const selectors = [
     'button[aria-label="Open projects and chats"]',
-    'button[aria-label="New task"]',
+    'button[aria-label="New chat"]',
     'button[aria-label="Close projects and chats"]',
     'button[aria-label="Harness"]',
     '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
@@ -167,7 +167,7 @@ for (const [reason, unhydrated] of Object.entries({
   project: { projectId: null },
   projection: { projectionLoaded: false },
 }))
-  test(`capture waits for the previous ${reason} before creating a new task`, async () => {
+  test(`capture waits for the previous ${reason} before creating a new chat`, async () => {
     const boundary = captureChatBoundary(1888, "pi");
     let observations = 0;
     const cdp = {

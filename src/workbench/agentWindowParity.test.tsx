@@ -87,6 +87,60 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
 });
 
+it("toggles Agent navigation with Ctrl+B without creating a Chat", async () => {
+  const { container } = render(<Workbench />);
+  await settleLazyModules();
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+  await settleLazyModules();
+  expect(container.querySelector(".workbench")).toHaveClass(
+    "workbench--navigation-collapsed",
+  );
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+  await settleLazyModules();
+  expect(container.querySelector(".workbench")).not.toHaveClass(
+    "workbench--navigation-collapsed",
+  );
+  expect(useWorkbenchStore.getState().createChat).not.toHaveBeenCalled();
+});
+
+it("collapses on entering a narrow breakpoint after desktop sidebar interaction", async () => {
+  let update = () => {};
+  const media = {
+    matches: false,
+    addEventListener: (_: string, listener: () => void) => {
+      update = listener;
+    },
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) =>
+      query === "(max-width: 600px)"
+        ? media
+        : {
+            matches: false,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+          },
+    ),
+  );
+  const { container } = render(<Workbench />);
+  await settleLazyModules();
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+  fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+  expect(container.querySelector(".workbench")).not.toHaveClass(
+    "workbench--navigation-collapsed",
+  );
+  act(() => {
+    media.matches = true;
+    update();
+  });
+  await settleLazyModules();
+  expect(container.querySelector(".workbench")).toHaveClass(
+    "workbench--navigation-collapsed",
+  );
+});
+
 it.each(["button", "shortcut"])(
   "opens visible Chat search from Agent Settings using the %s",
   async (trigger) => {
@@ -133,7 +187,7 @@ it("starts a fresh profile in Agent, and never adds a chat when resources collap
   );
   resizeCenter(1200);
   expect(visibleChats()).toEqual(["chat:b"]);
-  fireEvent.click(screen.getByRole("button", { name: "New task" }));
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
   expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
   expect(visibleChats()).toEqual(["chat:new"]);
 });

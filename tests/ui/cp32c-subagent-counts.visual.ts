@@ -10,6 +10,7 @@ async function installSubagents(
   kind: "children" | "tasks" | "pi" | "opencode" | "omp",
 ) {
   await openScenario(page, "waiting", "agent");
+  await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async (mode) => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =

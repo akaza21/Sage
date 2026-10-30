@@ -2000,6 +2000,7 @@ describe("Agent artifact file chips", () => {
   });
 
   it("shows browser tabs beside artifacts but keeps them out of Editor", () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
     const openBrowser = vi.fn(async () => undefined);
     const onOpenInEditor = vi.fn();
     useWorkbenchStore.setState((state) => ({

@@ -77,6 +77,10 @@ it("replaces the established empty transcript with the real project home without
   expect(screen.queryByText("No turns in this chat yet.")).toBeNull();
   expect(container.querySelector(".acp-turn")).toBeNull();
   expect(container.querySelector(".chat-transcript-actions")).toBeNull();
+  expect(container.querySelector(".chat-home use")).toHaveAttribute(
+    "href",
+    "/sage-mark.svg#mark",
+  );
 });
 
 it("shows a project name beyond the compact chip limit in full in both home locations", () => {

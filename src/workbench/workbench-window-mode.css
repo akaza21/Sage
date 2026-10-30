@@ -139,6 +139,7 @@
 .agent-chat-center__header--panes > .agent-artifact-header-slot {
   grid-column: -2;
   justify-self: end;
+  align-self: center;
   /* Clear of the side tab's bottom rule, which already spans the cell. */
   border-bottom: 0;
 }
@@ -175,6 +176,8 @@
   min-height: 28px;
   padding: 0;
   place-content: center;
+  align-self: center;
+  background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
 }

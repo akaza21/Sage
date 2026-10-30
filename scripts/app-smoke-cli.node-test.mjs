@@ -207,20 +207,20 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      inertControls(["README.md", "Search files", "Agent", "New task"]),
+      inertControls(["README.md", "Search files", "Agent", "New chat"]),
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
     assert.equal(run.summary.fatal, null);
     assert.deepEqual(
       run.summary.misses.filter((entry) =>
-        ["README.md", "Search files", "Agent", "New task"].includes(entry),
+        ["README.md", "Search files", "Agent", "New chat"].includes(entry),
       ),
       [],
     );
     assert.deepEqual(
       run.summary.requiredMisses.map((entry) => entry.split(" -> ")[0]),
-      ["README.md", "Search files", "Agent", "New task"],
+      ["README.md", "Search files", "Agent", "New chat"],
     );
     assert.equal(run.code, 1);
   },
@@ -232,14 +232,14 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["README.md", "Search files", "Agent", "New task"])}<textarea></textarea>`,
+      `${inertControls(["README.md", "Search files", "Agent", "New chat"])}<textarea></textarea>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);
@@ -253,7 +253,7 @@ test(
     const decoys = '<textarea style="display:none"></textarea>'.repeat(3_000);
     const site = await servePage(
       t,
-      `${inertControls(["README.md", "Search files", "Agent", "New task"])}${decoys}`,
+      `${inertControls(["README.md", "Search files", "Agent", "New chat"])}${decoys}`,
     );
     const started = Date.now();
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
@@ -261,7 +261,7 @@ test(
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);

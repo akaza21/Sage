@@ -1428,11 +1428,10 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     const newBrowser = resources.getByRole("button", {
       name: "New browser tab",
     });
-    await expect(newBrowser).toBeFocused();
+    await expect(newBrowser).toBeDisabled();
     await expect(
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeEnabled();
-    await page.keyboard.press("Tab");
     await expect(
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeFocused();
@@ -1444,7 +1443,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeFocused();
     await page.keyboard.press("Shift+Tab");
-    await expect(newBrowser).toBeFocused();
+    await expect(previewTab).toBeFocused();
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
     await expect(collapse).toBeFocused();

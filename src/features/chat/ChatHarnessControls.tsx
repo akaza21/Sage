@@ -1,3 +1,4 @@
+import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { Plus, Settings } from "../../ui/leanIcons";
 
 import { useLayoutEffect, useRef, useState } from "react";
@@ -28,7 +29,6 @@ import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
 import { useComposerCompaction } from "./useComposerCompaction";
-import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
 import {
   harnessPickerCandidates,
@@ -108,7 +108,7 @@ export function ChatHarnessControls({
     setHarnessOpen,
   } = useComposerPopovers(turnBusy || projectTransitioning);
   const { effort: compactEffort, project: compactProject } =
-    useComposerCompaction(optionsTriggerRef);
+    useComposerCompaction(modelTrigger);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -160,9 +160,8 @@ export function ChatHarnessControls({
     selectedSessionConfig?.confirmedModel,
   );
   const knownModelLabel =
-    !confirmedModelLabel && sessionHarnessId !== selectedHarnessId
-      ? models.find((model) => model.id === selectedModelId)?.name
-      : confirmedModelLabel;
+    confirmedModelLabel ??
+    models.find((model) => model.id === selectedModelId)?.name;
   // A side chat or fork shows its parent's confirmed model and effort until
   // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
@@ -262,22 +261,24 @@ export function ChatHarnessControls({
   };
   return (
     <div className="composer__controls">
-      <button
-        ref={optionsTriggerRef}
-        className="composer__plus"
-        type="button"
-        aria-label="Composer options"
-        aria-controls={optionsId}
-        aria-haspopup="menu"
-        aria-expanded={active === "options"}
-        disabled={turnBusy || projectTransitioning || !hasActions}
-        onClick={(event) => {
-          optionsTriggerRef.current = event.currentTarget;
-          toggle("options");
-        }}
-      >
-        <Plus size={16} aria-hidden="true" />
-      </button>
+      {hasActions ? (
+        <button
+          ref={optionsTriggerRef}
+          className="composer__plus"
+          type="button"
+          aria-label="Composer options"
+          aria-controls={optionsId}
+          aria-haspopup="menu"
+          aria-expanded={active === "options"}
+          disabled={turnBusy || projectTransitioning}
+          onClick={(event) => {
+            optionsTriggerRef.current = event.currentTarget;
+            toggle("options");
+          }}
+        >
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      ) : null}
       {availableBinding && accessHarness?.bindingId ? (
         <ComposerAccessControl
           bindingId={accessHarness.bindingId}

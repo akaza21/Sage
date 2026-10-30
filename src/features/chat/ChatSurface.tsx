@@ -6,10 +6,8 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { SessionWorkingPill } from "./SessionWorkingPill";
-import { ChatHandoffControl } from "./ChatHandoffControl";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 import { ChatTranscript } from "./ChatTranscript";
 import {
   terminalTurnStates,
@@ -22,6 +20,8 @@ import {
 } from "./acp";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { LazyHarnessNotice } from "./lazyParts";
+import { ChatHandoffControl } from "./ChatHandoffControl";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
@@ -102,6 +102,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     sessionPromptUnavailable,
     usage,
     composerEnabled,
+    sendBlocked,
     queueAvailable,
     composerHotkeyEnabled,
     disabledReason,
@@ -290,7 +291,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           </div>
         </header>
       ) : null}
-      <HarnessDiscoveryNotice
+      <LazyHarnessNotice
         harness={selectedHarnessDefinition}
         discoveryPhase={discoveryPhase}
       />
@@ -335,6 +336,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         imageUploading={imageUploading}
         onAddImages={addImages}
         enabled={composerEnabled}
+        sendBlocked={sendBlocked}
         actionBusy={actionBusy}
         activeTurn={Boolean(activeAcpTurn)}
         queueAvailable={queueAvailable}

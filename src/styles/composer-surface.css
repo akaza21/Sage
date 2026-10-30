@@ -42,6 +42,8 @@
   display: block;
   min-height: 0;
   overflow-y: auto;
+  border-start-start-radius: var(--radius-xl);
+  border-start-end-radius: var(--radius-xl);
   overscroll-behavior: contain;
 }
 
@@ -53,9 +55,10 @@
 }
 
 .composer textarea {
+  field-sizing: content;
   display: block;
   width: 100%;
-  min-height: 44px;
+  min-height: calc(2lh + var(--space-3) + var(--space-1));
   max-height: min(180px, 28vh);
   padding: var(--space-3) var(--space-3) var(--space-1);
   resize: none;

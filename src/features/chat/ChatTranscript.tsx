@@ -7,7 +7,8 @@ import {
   type RefObject,
 } from "react";
 import { type AcpChatPage } from "../../domain/acp";
-import { ArrowDown, Folder, MessageCircleQuestion } from "../../ui/leanIcons";
+import { SageMark } from "../../ui/leanIconCore";
+import { ArrowDown, Folder } from "../../ui/leanIcons";
 import { type ChatMessage } from "../../domain/chat";
 import {
   type ProjectRootSummary,
@@ -291,7 +292,7 @@ export function ChatTranscript({
 function ChatHome({ projectName }: { projectName: string | null }) {
   return (
     <section className="chat-home" aria-label="New chat">
-      <MessageCircleQuestion size={40} aria-hidden="true" />
+      <SageMark />
       <h3>What should we work on?</h3>
       {projectName ? <ProjectScopeChip projectName={projectName} /> : null}
     </section>

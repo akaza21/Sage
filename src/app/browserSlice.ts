@@ -1,6 +1,5 @@
 import type { StateCreator } from "zustand";
 
-import { errorMessage } from "../domain/errors";
 import {
   closeBrowser,
   openBrowser,
@@ -18,6 +17,7 @@ import {
 import type { BrowserOperationProjection } from "../domain/browserOperation";
 import { matchesProjectIntent } from "./projectIntent";
 import {
+  BROWSER_CLOSE_ERROR,
   consumeBrowserAlreadyClosed,
   isBrowserCloseInFlight,
   reconcileNativeClosedBrowserTabs,
@@ -44,10 +44,7 @@ export interface BrowserSlice {
   ) => void;
 }
 
-function browserTabTitle(
-  url: string,
-  documentTitle?: string | null,
-): string | null {
+function browserTabTitle(url: string, documentTitle?: string | null) {
   let host: string;
   try {
     host = new URL(url).host.slice(0, 48);
@@ -159,8 +156,8 @@ export const createBrowserSlice: StateCreator<
         const first = finishedPopups.values().next().value;
         if (first !== undefined) finishedPopups.delete(first);
       }
-    } catch (error) {
-      set({ error: `Couldn't open popup: ${errorMessage(error)}` });
+    } catch {
+      set({ error: "Could not open the browser popup. Try again." });
     } finally {
       processingPopups.delete(intent.id);
       if (replayAfterProcessing.delete(intent.id)) replayPopups();
@@ -171,8 +168,8 @@ export const createBrowserSlice: StateCreator<
       .then((pending) => {
         for (const intent of pending) void processPopup(intent);
       })
-      .catch((error) =>
-        set({ error: `Couldn't restore popup: ${errorMessage(error)}` }),
+      .catch(() =>
+        set({ error: "Could not restore browser popups. Try again." }),
       );
   }
   if (nativeRuntime) {
@@ -273,7 +270,9 @@ export const createBrowserSlice: StateCreator<
                     )
                       set({ activeEditor: null });
                   })
-                  .catch((error) => set({ error: errorMessage(error) }));
+                  .catch(() =>
+                    set({ error: "Could not save the editor. Try again." }),
+                  );
               },
             ),
           );
@@ -319,12 +318,12 @@ export const createBrowserSlice: StateCreator<
             faviconRevisions.delete(tab.id);
             clearBrowserAgentPresence(tab.id);
           })
-          .catch((error) => {
+          .catch(() => {
             set((current) => ({
               tabs: current.tabs.some((item) => item.id === tab.id)
                 ? current.tabs
                 : [...current.tabs, tab],
-              error: `Couldn't close browser — try again: ${errorMessage(error)}`,
+              error: BROWSER_CLOSE_ERROR,
             }));
           });
       }
@@ -367,6 +366,10 @@ export const createBrowserSlice: StateCreator<
     openBrowser: async (url) => {
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
+      if (!isTauriRuntime())
+        return set({
+          error: "The in-app browser is available in the desktop app.",
+        });
       const generation = get().projectGeneration;
       try {
         await get().flushActiveEditor();
@@ -392,8 +395,9 @@ export const createBrowserSlice: StateCreator<
           activeEditor: null,
           error: null,
         }));
-      } catch (error) {
-        set({ error: errorMessage(error) });
+      } catch {
+        if (matchesProjectIntent(get(), generation, projectId))
+          set({ error: "Could not open the browser tab. Try again." });
       }
     },
   };
