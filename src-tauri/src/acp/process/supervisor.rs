@@ -220,16 +220,6 @@ pub(crate) struct LaunchSpec {
     pub(crate) test_after_artifact_verified: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TreeState {
-    Starting,
-    Running,
-    Terminating,
-    Exited,
-    ContainmentLost,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TreeExit {
     Exited {
@@ -328,108 +318,6 @@ impl LaunchFailureTracker {
     #[cfg(test)]
     pub(super) fn child_was_created(&self) -> bool {
         self.child_created
-    }
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TeardownAction {
-    CloseStdin,
-    TerminateTree,
-    AwaitChildExit,
-    AwaitZeroProcesses,
-    CloseNativeHandles,
-    ReleaseReservation,
-}
-
-#[cfg(test)]
-pub(crate) struct SupervisorLifecycle {
-    state: TreeState,
-    requested_exit: Option<TreeExit>,
-    observed_exit: Option<TreeExit>,
-    root_alive: bool,
-    descendants: u32,
-    descendant_limit: u32,
-    reservation_owned: bool,
-}
-
-#[cfg(test)]
-impl SupervisorLifecycle {
-    pub(crate) fn starting(descendant_limit: u32) -> Self {
-        Self {
-            state: TreeState::Starting,
-            requested_exit: None,
-            observed_exit: None,
-            root_alive: true,
-            descendants: 0,
-            descendant_limit,
-            reservation_owned: true,
-        }
-    }
-
-    pub(crate) fn mark_running(&mut self) -> bool {
-        if self.state != TreeState::Starting {
-            return false;
-        }
-        self.state = TreeState::Running;
-        true
-    }
-
-    pub(crate) fn request_termination(&mut self, reason: TreeExit) -> bool {
-        if !matches!(self.state, TreeState::Starting | TreeState::Running) {
-            return false;
-        }
-        self.requested_exit = Some(reason);
-        self.state = TreeState::Terminating;
-        true
-    }
-
-    pub(crate) fn observe_processes(&mut self, root_alive: bool, descendants: u32) -> TreeState {
-        self.root_alive = root_alive;
-        self.descendants = descendants;
-        if descendants > self.descendant_limit {
-            self.state = TreeState::ContainmentLost;
-        } else if !root_alive && descendants == 0 {
-            self.state = TreeState::Exited;
-            self.observed_exit = Some(
-                self.requested_exit
-                    .unwrap_or(TreeExit::Exited { code: None }),
-            );
-        }
-        self.state
-    }
-
-    pub(crate) fn mark_containment_deadline(&mut self) {
-        if self.root_alive || self.descendants != 0 {
-            self.state = TreeState::ContainmentLost;
-        }
-    }
-
-    pub(crate) fn release_reservation(&mut self) -> bool {
-        if self.state != TreeState::Exited || !self.reservation_owned {
-            return false;
-        }
-        self.reservation_owned = false;
-        true
-    }
-
-    pub(crate) fn state(&self) -> TreeState {
-        self.state
-    }
-
-    pub(crate) fn exit(&self) -> Option<TreeExit> {
-        self.observed_exit
-    }
-
-    pub(crate) fn teardown_plan(&self) -> [TeardownAction; 6] {
-        [
-            TeardownAction::CloseStdin,
-            TeardownAction::TerminateTree,
-            TeardownAction::AwaitChildExit,
-            TeardownAction::AwaitZeroProcesses,
-            TeardownAction::CloseNativeHandles,
-            TeardownAction::ReleaseReservation,
-        ]
     }
 }
 

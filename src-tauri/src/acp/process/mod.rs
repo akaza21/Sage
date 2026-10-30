@@ -40,9 +40,6 @@ pub(crate) use supervisor::{
     ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, EntryPointKind, LaunchError,
     LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
 };
-#[cfg(test)]
-pub(crate) use supervisor::{SupervisorLifecycle, TeardownAction, TreeState};
-
 #[cfg(all(test, windows))]
 struct FixtureLiveProcess {
     executable: std::path::PathBuf,
