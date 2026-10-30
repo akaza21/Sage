@@ -74,6 +74,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // Explorer's files.exclude matcher loads beside the startup bundle.
+  "src/domain/pathGlobMatcher.ts",
   // The browser downloads popover body loads on its first open.
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.

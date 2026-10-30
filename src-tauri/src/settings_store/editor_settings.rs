@@ -15,18 +15,59 @@ use serde_json::Value;
 
 use super::SettingsStore;
 use crate::error::{AppError, AppResult};
+use crate::workspace::path_glob::valid_path_glob;
 
 /// The row format version. A later format bumps it and converts older rows.
 const ROW_VERSION: i64 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
+/// A registry default, written in the registry itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingValue {
     Bool(bool),
     Int(i64),
     /// One of a `Choice` setting's names.
     Text(&'static str),
+    /// A `Globs` setting's patterns.
+    Globs(&'static [&'static str]),
 }
+
+/// A setting's current value, as stored and sent to the webview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum EditorValue {
+    Bool(bool),
+    Int(i64),
+    Text(&'static str),
+    Globs(Vec<String>),
+}
+
+impl From<SettingValue> for EditorValue {
+    fn from(value: SettingValue) -> Self {
+        match value {
+            SettingValue::Bool(value) => Self::Bool(value),
+            SettingValue::Int(value) => Self::Int(value),
+            SettingValue::Text(value) => Self::Text(value),
+            SettingValue::Globs(patterns) => {
+                Self::Globs(patterns.iter().map(|pattern| (*pattern).into()).collect())
+            }
+        }
+    }
+}
+
+impl PartialEq<SettingValue> for EditorValue {
+    fn eq(&self, other: &SettingValue) -> bool {
+        match (self, other) {
+            (Self::Bool(left), SettingValue::Bool(right)) => left == right,
+            (Self::Int(left), SettingValue::Int(right)) => left == right,
+            (Self::Text(left), SettingValue::Text(right)) => left == right,
+            (Self::Globs(left), SettingValue::Globs(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+/// The most patterns a `Globs` setting holds.
+pub const MAX_GLOBS: usize = 50;
 
 #[derive(Debug, Clone, Copy)]
 pub enum SettingKind {
@@ -42,6 +83,9 @@ pub enum SettingKind {
     Choice {
         choices: &'static [&'static str],
     },
+    /// Up to `MAX_GLOBS` patterns in Sage's path glob dialect
+    /// (`workspace::path_glob`), each valid on its own.
+    Globs,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -143,10 +187,23 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         default: SettingValue::Text("dimmed"),
         ticket: "EP-06",
     },
+    SettingSpec {
+        key: "files.exclude",
+        kind: SettingKind::Globs,
+        default: SettingValue::Globs(&[
+            "**/.git",
+            "**/.svn",
+            "**/.hg",
+            "**/CVS",
+            "**/.DS_Store",
+            "**/Thumbs.db",
+        ]),
+        ticket: "EP-06",
+    },
 ];
 
 /// Every registry key with its current value; keys never go missing.
-pub type EditorSettings = BTreeMap<&'static str, SettingValue>;
+pub type EditorSettings = BTreeMap<&'static str, EditorValue>;
 
 fn spec(key: &str) -> Option<&'static SettingSpec> {
     EDITOR_SETTINGS.iter().find(|spec| spec.key == key)
@@ -155,23 +212,24 @@ fn spec(key: &str) -> Option<&'static SettingSpec> {
 fn defaults() -> EditorSettings {
     EDITOR_SETTINGS
         .iter()
-        .map(|spec| (spec.key, spec.default))
+        .map(|spec| (spec.key, spec.default.into()))
         .collect()
 }
 
 /// The value as the registry allows it: whole numbers are clamped to the
 /// range, then moved to the nearest allowed choice (the lower one on a tie).
 /// `None` means the value has the wrong type.
-fn admit(spec: &SettingSpec, value: &Value) -> Option<SettingValue> {
+fn admit(spec: &SettingSpec, value: &Value) -> Option<EditorValue> {
     match spec.kind {
-        SettingKind::Bool => value.as_bool().map(SettingValue::Bool),
+        SettingKind::Bool => value.as_bool().map(EditorValue::Bool),
         SettingKind::Choice { choices } => value
             .as_str()
             .and_then(|name| choices.iter().find(|choice| **choice == name))
-            .map(|choice| SettingValue::Text(choice)),
+            .map(|choice| EditorValue::Text(choice)),
+        SettingKind::Globs => admit_globs(value).map(EditorValue::Globs),
         SettingKind::Int { min, max, choices } => safe_integer(value).map(|number| {
             let clamped = number.clamp(min, max);
-            SettingValue::Int(
+            EditorValue::Int(
                 choices
                     .iter()
                     .copied()
@@ -179,6 +237,30 @@ fn admit(spec: &SettingSpec, value: &Value) -> Option<SettingValue> {
                     .unwrap_or(clamped),
             )
         }),
+    }
+}
+
+/// A JSON array of at most `MAX_GLOBS` valid path globs; a repeated pattern
+/// keeps its first place.
+fn admit_globs(value: &Value) -> Option<Vec<String>> {
+    let items = value.as_array().filter(|items| items.len() <= MAX_GLOBS)?;
+    let mut patterns: Vec<String> = Vec::with_capacity(items.len());
+    for item in items {
+        let pattern = item.as_str().filter(|pattern| valid_path_glob(pattern))?;
+        if !patterns.iter().any(|kept| kept == pattern) {
+            patterns.push(pattern.to_owned());
+        }
+    }
+    Some(patterns)
+}
+
+/// The `files.exclude` patterns a Search uses when its request names none.
+pub fn default_files_exclude() -> Vec<String> {
+    match spec("files.exclude").map(|spec| spec.default) {
+        Some(SettingValue::Globs(patterns)) => {
+            patterns.iter().map(|pattern| (*pattern).into()).collect()
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -253,11 +335,12 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-fn json(value: SettingValue) -> Value {
+fn json(value: &EditorValue) -> Value {
     match value {
-        SettingValue::Bool(value) => Value::from(value),
-        SettingValue::Int(value) => Value::from(value),
-        SettingValue::Text(value) => Value::from(value),
+        EditorValue::Bool(value) => Value::from(*value),
+        EditorValue::Int(value) => Value::from(*value),
+        EditorValue::Text(value) => Value::from(*value),
+        EditorValue::Globs(patterns) => Value::from(patterns.clone()),
     }
 }
 
@@ -329,7 +412,7 @@ impl SettingsStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let transaction = connection.transaction()?;
         for (key, value) in admitted {
-            upsert(&transaction, key, &json(value))?;
+            upsert(&transaction, key, &json(&value))?;
         }
         transaction.commit()?;
         read(&connection)
@@ -339,6 +422,7 @@ impl SettingsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workspace::path_glob::MAX_PATH_GLOB_BYTES;
     use serde_json::json;
 
     fn temp_store_path(label: &str) -> std::path::PathBuf {
@@ -364,7 +448,7 @@ mod tests {
         for spec in EDITOR_SETTINGS {
             assert!(keys.insert(spec.key), "duplicate key {}", spec.key);
             assert!(
-                ["editor.", "explorer.", "search."]
+                ["editor.", "explorer.", "files.", "search."]
                     .iter()
                     .any(|prefix| spec.key.starts_with(prefix)),
                 "{}",
@@ -375,7 +459,8 @@ mod tests {
                 "{} has no owning ticket",
                 spec.key
             );
-            assert_eq!(admit(spec, &json(spec.default)), Some(spec.default));
+            let default = EditorValue::from(spec.default);
+            assert_eq!(admit(spec, &json(&default)), Some(default));
         }
     }
 
@@ -408,11 +493,11 @@ mod tests {
         // defaults.
         let mut expected = defaults();
         expected.extend([
-            ("editor.fontSize", SettingValue::Int(16)),
-            ("editor.lineNumbers", SettingValue::Bool(false)),
-            ("editor.renderWhitespace", SettingValue::Bool(true)),
-            ("editor.tabSize", SettingValue::Int(8)),
-            ("editor.wordWrap", SettingValue::Bool(true)),
+            ("editor.fontSize", EditorValue::Int(16)),
+            ("editor.lineNumbers", EditorValue::Bool(false)),
+            ("editor.renderWhitespace", EditorValue::Bool(true)),
+            ("editor.tabSize", EditorValue::Int(8)),
+            ("editor.wordWrap", EditorValue::Bool(true)),
         ]);
         assert_eq!(
             SettingsStore::open(&path)
@@ -459,13 +544,13 @@ mod tests {
             .unwrap()
             .editor_settings()
             .unwrap();
-        assert_eq!(settings["editor.fontSize"], SettingValue::Int(14));
-        assert_eq!(settings["editor.tabSize"], SettingValue::Int(4));
-        assert_eq!(settings["editor.wordWrap"], SettingValue::Bool(true));
-        assert_eq!(settings["editor.lineNumbers"], SettingValue::Bool(true));
+        assert_eq!(settings["editor.fontSize"], EditorValue::Int(14));
+        assert_eq!(settings["editor.tabSize"], EditorValue::Int(4));
+        assert_eq!(settings["editor.wordWrap"], EditorValue::Bool(true));
+        assert_eq!(settings["editor.lineNumbers"], EditorValue::Bool(true));
         assert_eq!(
             settings["editor.renderWhitespace"],
-            SettingValue::Bool(false)
+            EditorValue::Bool(false)
         );
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
@@ -487,8 +572,8 @@ mod tests {
             .unwrap()
             .editor_settings()
             .unwrap();
-        assert_eq!(settings["editor.fontSize"], SettingValue::Int(14));
-        assert_eq!(settings["editor.tabSize"], SettingValue::Int(2));
+        assert_eq!(settings["editor.fontSize"], EditorValue::Int(14));
+        assert_eq!(settings["editor.tabSize"], EditorValue::Int(2));
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -505,11 +590,8 @@ mod tests {
             .unwrap()
             .editor_settings()
             .unwrap();
-        assert_eq!(settings["editor.tabSize"], SettingValue::Int(8));
-        assert_eq!(
-            settings["editor.renderWhitespace"],
-            SettingValue::Bool(true)
-        );
+        assert_eq!(settings["editor.tabSize"], EditorValue::Int(8));
+        assert_eq!(settings["editor.renderWhitespace"], EditorValue::Bool(true));
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -520,18 +602,18 @@ mod tests {
             let settings = store
                 .set_editor_settings(&changes(json!({ "editor.fontSize": requested })))
                 .unwrap();
-            assert_eq!(settings["editor.fontSize"], SettingValue::Int(stored));
+            assert_eq!(settings["editor.fontSize"], EditorValue::Int(stored));
         }
         for (requested, stored) in [(3, 2), (6, 4), (7, 8), (100, 8)] {
             let settings = store
                 .set_editor_settings(&changes(json!({ "editor.tabSize": requested })))
                 .unwrap();
-            assert_eq!(settings["editor.tabSize"], SettingValue::Int(stored));
+            assert_eq!(settings["editor.tabSize"], EditorValue::Int(stored));
         }
         let settings = store
             .set_editor_settings(&changes(json!({ "editor.fontSize": 14.0 })))
             .unwrap();
-        assert_eq!(settings["editor.fontSize"], SettingValue::Int(14));
+        assert_eq!(settings["editor.fontSize"], EditorValue::Int(14));
         for unsafe_number in [json!(9_007_199_254_740_992_i64), json!(13.5)] {
             assert!(
                 store
@@ -550,7 +632,7 @@ mod tests {
             ))
             .unwrap();
         assert!(!settings.contains_key("editor.unknown"));
-        assert_eq!(settings["editor.wordWrap"], SettingValue::Bool(true));
+        assert_eq!(settings["editor.wordWrap"], EditorValue::Bool(true));
         upsert(
             &store.0.lock().unwrap(),
             "editor.fromANewerSage",
@@ -558,7 +640,7 @@ mod tests {
         )
         .unwrap();
         let mut expected = defaults();
-        expected.insert("editor.wordWrap", SettingValue::Bool(true));
+        expected.insert("editor.wordWrap", EditorValue::Bool(true));
         assert_eq!(store.editor_settings().unwrap(), expected);
     }
 
@@ -574,12 +656,12 @@ mod tests {
         );
         assert_eq!(
             store.editor_settings().unwrap()["editor.wordWrap"],
-            SettingValue::Bool(false)
+            EditorValue::Bool(false)
         );
         upsert(&store.0.lock().unwrap(), "editor.tabSize", &json!(true)).unwrap();
         assert_eq!(
             store.editor_settings().unwrap()["editor.tabSize"],
-            SettingValue::Int(2)
+            EditorValue::Int(2)
         );
     }
 
@@ -591,7 +673,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             settings["editor.multiCursorModifier"],
-            SettingValue::Text("ctrlCmd")
+            EditorValue::Text("ctrlCmd")
         );
         for bad in [json!("meta"), json!(1), json!(null)] {
             assert!(
@@ -608,7 +690,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             store.editor_settings().unwrap()["editor.multiCursorModifier"],
-            SettingValue::Text("alt")
+            EditorValue::Text("alt")
         );
     }
 
@@ -633,7 +715,77 @@ mod tests {
                 "editor.multiCursorModifier": "alt",
                 "search.useIgnoreFiles": true,
                 "explorer.showIgnored": "dimmed",
+                "files.exclude": [
+                    "**/.git",
+                    "**/.svn",
+                    "**/.hg",
+                    "**/CVS",
+                    "**/.DS_Store",
+                    "**/Thumbs.db",
+                ],
             })
+        );
+    }
+
+    #[test]
+    fn admits_a_bounded_list_of_glob_patterns() {
+        let store = SettingsStore::in_memory().unwrap();
+        let settings = store
+            .set_editor_settings(&changes(json!({ "files.exclude": ["**/dist", "*.log"] })))
+            .unwrap();
+        assert_eq!(
+            settings["files.exclude"],
+            EditorValue::Globs(vec!["**/dist".into(), "*.log".into()])
+        );
+        let repeated = store
+            .set_editor_settings(&changes(
+                json!({ "files.exclude": ["*.log", "**/dist", "*.log"] }),
+            ))
+            .unwrap();
+        assert_eq!(
+            repeated["files.exclude"],
+            EditorValue::Globs(vec!["*.log".into(), "**/dist".into()])
+        );
+        let empty = store
+            .set_editor_settings(&changes(json!({ "files.exclude": [] })))
+            .unwrap();
+        assert_eq!(empty["files.exclude"], EditorValue::Globs(Vec::new()));
+        let longest = "a".repeat(MAX_PATH_GLOB_BYTES);
+        let full: Vec<String> = (0..MAX_GLOBS).map(|index| format!("p{index}")).collect();
+        for good in [json!([longest]), json!(full)] {
+            assert!(
+                store
+                    .set_editor_settings(&changes(json!({ "files.exclude": good })))
+                    .is_ok()
+            );
+        }
+        let mut too_many = full.clone();
+        too_many.push("one more".into());
+        for bad in [
+            json!("**/dist"),
+            json!([""]),
+            json!(["a".repeat(MAX_PATH_GLOB_BYTES + 1)]),
+            json!(["é".repeat(MAX_PATH_GLOB_BYTES / 2 + 1)]),
+            json!(["tab\there"]),
+            json!(["\u{85}"]),
+            json!(["/absolute"]),
+            json!(["dist/"]),
+            json!(["../outside"]),
+            json!([1]),
+            json!(too_many),
+            json!(null),
+        ] {
+            assert!(
+                store
+                    .set_editor_settings(&changes(json!({ "files.exclude": bad.clone() })))
+                    .is_err(),
+                "{bad}"
+            );
+        }
+        upsert(&store.0.lock().unwrap(), "files.exclude", &json!([true])).unwrap();
+        assert_eq!(
+            store.editor_settings().unwrap()["files.exclude"],
+            defaults()["files.exclude"]
         );
     }
 }

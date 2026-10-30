@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -286,4 +287,63 @@ it("dims ignored entries by default and hides them when the setting says so", ()
   expect(
     screen.getByRole("treeitem", { name: "Open file main.ts" }),
   ).toBeInTheDocument();
+});
+
+it("hides what files.exclude names, .DS_Store by default", async () => {
+  const root = childResource("root-a");
+  const entry = (name: string) => ({
+    name,
+    resource: childResource("root-a", name),
+    kind: "file" as const,
+    byteLen: 3,
+  });
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    selectedResource: null,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [entry(".DS_Store"), entry("main.ts"), entry("notes.tmp")],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: {},
+  });
+
+  render(<ExplorerSurface />);
+
+  const shown = () =>
+    screen
+      .getAllByRole("treeitem")
+      .map((row) => row.getAttribute("aria-label"))
+      .filter((label) => label?.startsWith("Open file"));
+  // The matcher loads on its own; the default list then hides .DS_Store.
+  await waitFor(() =>
+    expect(shown()).toEqual(["Open file main.ts", "Open file notes.tmp"]),
+  );
+
+  act(() => {
+    useEditorSettingsStore.setState({
+      settings: {
+        ...useEditorSettingsStore.getState().settings,
+        "files.exclude": ["**/*.tmp"],
+      },
+    });
+  });
+  expect(shown()).toEqual(["Open file .DS_Store", "Open file main.ts"]);
 });

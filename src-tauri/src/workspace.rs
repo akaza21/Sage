@@ -17,6 +17,7 @@ mod git_resource;
 mod identity;
 pub(crate) mod ignore_rules;
 pub(crate) mod notify;
+pub(crate) mod path_glob;
 pub(crate) mod resource_trash;
 pub(crate) mod search;
 mod text_read;
