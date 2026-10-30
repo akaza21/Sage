@@ -353,7 +353,7 @@ fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
         fs::write(root.join("node.exe"), b"node").unwrap();
         let registration = CodexBindingRegistration::unavailable_for_test();
         registration
-            .authenticate_observed(executable, "codex 0.145.0".into())
+            .authenticate_observed_for_test(executable, "codex 0.145.0".into())
             .unwrap();
         let database = Database::open(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();

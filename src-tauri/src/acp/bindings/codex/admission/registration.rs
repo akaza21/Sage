@@ -10,7 +10,7 @@ use super::{
         manifest::MetadataValidatedPacket,
         reproduction::ReproducedPackagePrerequisite,
     },
-    AdmittedCodexBinding, CodexAdmissionUnavailable,
+    AdmittedCodexBinding, CodexAdmissionUnavailable, ObservedLaunchInputs,
 };
 
 #[derive(Debug)]
@@ -57,15 +57,18 @@ impl CodexBindingRegistration {
         }
     }
 
-    pub(crate) fn authenticate_observed(
+    pub(crate) fn authenticate_observed_with_inputs(
         &self,
         executable: PathBuf,
         version: String,
+        inputs: Arc<dyn ObservedLaunchInputs>,
     ) -> Result<Arc<AdmittedCodexBinding>, CodexAdmissionUnavailable> {
         if self.is_fixture_only() {
             return Err(CodexAdmissionUnavailable::IndependentAdmission);
         }
-        let candidate = Arc::new(AdmittedCodexBinding::admit_observed(executable, version)?);
+        let candidate = Arc::new(AdmittedCodexBinding::admit_observed_with_inputs(
+            executable, version, inputs,
+        )?);
         let mut state = self.lock_state();
         match &*state {
             CodexRegistrationState::Unavailable(
