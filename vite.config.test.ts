@@ -100,6 +100,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/diff/DiffSurface.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
+  // Explorer loads on first show, off the Agent startup path.
+  "src/features/files/ExplorerSurface.tsx",
   "src/features/files/FileSurface.tsx",
   // New File hands focus to the editor through this, off the startup path.
   "src/features/files/editorFocusRequest.ts",
