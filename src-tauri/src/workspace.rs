@@ -15,6 +15,7 @@ pub(crate) mod file_rename;
 pub(crate) mod file_walk;
 mod git_resource;
 mod identity;
+pub(crate) mod ignore_rules;
 pub(crate) mod notify;
 pub(crate) mod resource_trash;
 pub(crate) mod search;
@@ -113,7 +114,7 @@ impl Workspace {
         let mut entries = Vec::new();
         let mut truncated = false;
 
-        for entry in fs::read_dir(directory)? {
+        for entry in fs::read_dir(&directory)? {
             let entry = entry?;
             if entry.file_name() == ".git" {
                 continue;
@@ -151,7 +152,25 @@ impl Workspace {
                 resource: self.resource_unchecked(&path),
                 kind: kind.into(),
                 byte_len,
+                ignored: false,
             });
+        }
+        // Explorer dims (or hides) what the ignore files ignore, whatever
+        // `search.useIgnoreFiles` says, as VS Code dims Git-ignored entries.
+        let rules = ignore_rules::IgnoreRules::load(
+            &self.root,
+            true,
+            ignore_rules::global_excludes_path().as_deref(),
+        );
+        let (chain, folder_ignored) =
+            rules.chain_for(&relative_path, ignore_rules::RuleFiles::probe(&directory));
+        for entry in &mut entries {
+            entry.ignored = folder_ignored
+                || rules.is_ignored(
+                    &chain,
+                    &entry.resource.relative_path,
+                    entry.kind == "directory",
+                );
         }
 
         entries.sort_unstable_by(|left, right| {
@@ -449,6 +468,41 @@ mod tests {
         assert_eq!(listing.entries.len(), 1);
         assert_eq!(listing.entries[0].resource.relative_path, "src");
         assert_eq!(listing.entries[0].kind, "directory");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn marks_ignored_entries_and_everything_inside_an_ignored_folder() {
+        let (root, workspace) = fixture_workspace();
+        fs::write(root.join(".gitignore"), "*.log\ntarget/\n").unwrap();
+        fs::write(root.join("debug.log"), "").unwrap();
+        fs::create_dir_all(root.join("target").join("debug")).unwrap();
+        fs::write(root.join("target").join("debug").join("app"), "").unwrap();
+        let ignored = |relative: &str| {
+            workspace
+                .list_directory(&workspace.resource_unchecked(relative))
+                .unwrap()
+                .entries
+                .into_iter()
+                .map(|entry| (entry.name, entry.ignored))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ignored(""),
+            [
+                ("src".to_string(), false),
+                ("target".to_string(), true),
+                (".gitignore".to_string(), false),
+                ("debug.log".to_string(), true),
+            ]
+        );
+        assert_eq!(ignored("target/debug"), [("app".to_string(), true)]);
+        let listing = workspace
+            .list_directory(&workspace.resource_unchecked(""))
+            .unwrap();
+        let json = serde_json::to_value(&listing.entries).unwrap();
+        assert_eq!(json[0].get("ignored"), None);
+        assert_eq!(json[1]["ignored"], true);
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { subscribeWorkspaceNotifySearch } from "../files/workspaceNotifyCompose";
 import type {
   WorkspaceSearchGateway,
@@ -55,6 +56,9 @@ export function useWorkspaceSearch({
   gateway,
 }: UseWorkspaceSearchOptions) {
   const [state, setState] = useState<WorkspaceSearchState>(initialState);
+  const useIgnoreFiles = useEditorSettingsStore(
+    (store) => store.settings["search.useIgnoreFiles"],
+  );
   const active = useRef<AbortController | null>(null);
   const generation = useRef(0);
 
@@ -71,6 +75,25 @@ export function useWorkspaceSearch({
     active.current?.abort();
     active.current = null;
   }, []);
+
+  // Turning `search.useIgnoreFiles` on or off retires results like any other
+  // criterion, so a page from one mode never continues in the other.
+  useEffect(
+    () =>
+      useEditorSettingsStore.subscribe((store, previous) => {
+        const key = "search.useIgnoreFiles";
+        if (store.settings[key] === previous.settings[key]) return;
+        retireCriteria();
+        setState((current) => ({
+          ...current,
+          phase: "idle",
+          response: null,
+          pages: [],
+          error: null,
+        }));
+      }),
+    [retireCriteria],
+  );
 
   const setQuery = useCallback(
     (query: string) => {
@@ -206,6 +229,8 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
+          // Sent only when off, so the native default (on) needs no field.
+          ...(useIgnoreFiles ? {} : { useIgnoreFiles: false }),
         },
         controller.signal,
       );
@@ -255,6 +280,7 @@ export function useWorkspaceSearch({
     state.wholeWord,
     state.includePatternText,
     state.excludePatternText,
+    useIgnoreFiles,
     state.query,
     transitionEpoch,
   ]);
@@ -290,6 +316,8 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
+          // Sent only when off, so the native default (on) needs no field.
+          ...(useIgnoreFiles ? {} : { useIgnoreFiles: false }),
         },
         controller.signal,
       );
@@ -341,6 +369,7 @@ export function useWorkspaceSearch({
     state.wholeWord,
     state.includePatternText,
     state.excludePatternText,
+    useIgnoreFiles,
     state.pages,
     state.query,
     transitionEpoch,

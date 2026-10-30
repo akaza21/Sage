@@ -6,6 +6,7 @@ use crate::workspace::{
         MAX_WORKSPACE_QUEUED_DIRECTORIES, WalkBufferAdmit, admit_queued_directory,
         admit_walk_dirent, walk_buffer_remaining,
     },
+    ignore_rules::{FolderChain, IgnoreRules, RuleFiles},
 };
 
 use super::{
@@ -30,6 +31,7 @@ impl SearchEngine {
         whole_word: bool,
         include_patterns: &[String],
         exclude_patterns: &[String],
+        use_ignore_files: bool,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
         seek: &mut Option<ContinuationSeek>,
@@ -55,9 +57,19 @@ impl SearchEngine {
             error_count: 0,
             partial: false,
         };
-        let mut directories = VecDeque::from([(workspace.root().to_path_buf(), String::new(), 0)]);
+        let rules = IgnoreRules::load(
+            workspace.root(),
+            use_ignore_files,
+            self.global_excludes.as_deref(),
+        );
+        let mut directories = VecDeque::from([(
+            workspace.root().to_path_buf(),
+            String::new(),
+            0,
+            FolderChain::default(),
+        )]);
 
-        while let Some((directory, relative, depth)) = directories.pop_front() {
+        while let Some((directory, relative, depth, parent_rules)) = directories.pop_front() {
             if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                 counters.partial = true;
                 break;
@@ -71,9 +83,12 @@ impl SearchEngine {
                 }
             };
             let mut entries = Vec::new();
+            let mut rule_files = RuleFiles::default();
+            let mut cut_short = false;
             for entry in read_directory {
                 if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
+                    cut_short = true;
                     break;
                 }
                 if let Some(active_seek) = seek.as_mut() {
@@ -85,10 +100,14 @@ impl SearchEngine {
                     if budget.entries_visited == self.limits.max_entries {
                         push_reason(&mut budget.reasons, SearchLimitReason::Entries);
                         counters.partial = true;
+                        cut_short = true;
                         break;
                     }
                     budget.entries_visited += 1;
                     counters.entries_visited += 1;
+                }
+                if let Ok(entry) = &entry {
+                    rule_files.note(&entry.file_name());
                 }
                 match entry {
                     Ok(entry) => match admit_walk_dirent(
@@ -101,6 +120,7 @@ impl SearchEngine {
                         WalkBufferAdmit::Cap => {
                             push_reason(&mut budget.reasons, SearchLimitReason::Entries);
                             counters.partial = true;
+                            cut_short = true;
                             break;
                         }
                     },
@@ -111,6 +131,12 @@ impl SearchEngine {
                 }
             }
             entries.sort_unstable_by_key(|entry| entry.file_name());
+            // A listing cut short may have missed a rule file, so look for
+            // them by name; the same rules apply when a continuation replays.
+            if cut_short {
+                rule_files = RuleFiles::probe(&directory);
+            }
+            let folder_rules = rules.enter(&parent_rules, &relative, rule_files);
 
             let mut charge_remaining_to_page = false;
             for entry in entries {
@@ -155,6 +181,14 @@ impl SearchEngine {
                     counters.skipped_files += 1;
                     continue;
                 }
+                // Ignored folders are not entered, so their contents stay
+                // ignored as in Git.
+                if rules.is_ignored(&folder_rules, &child_relative, file_type.is_dir()) {
+                    if !file_type.is_dir() {
+                        counters.skipped_files += 1;
+                    }
+                    continue;
+                }
                 if file_type.is_dir() {
                     if depth == self.limits.max_depth {
                         push_reason(&mut budget.reasons, SearchLimitReason::Depth);
@@ -166,7 +200,12 @@ impl SearchEngine {
                         push_reason(&mut budget.reasons, SearchLimitReason::Entries);
                         counters.partial = true;
                     } else {
-                        directories.push_back((entry.path(), child_relative, depth + 1));
+                        directories.push_back((
+                            entry.path(),
+                            child_relative,
+                            depth + 1,
+                            folder_rules.clone(),
+                        ));
                     }
                     continue;
                 }

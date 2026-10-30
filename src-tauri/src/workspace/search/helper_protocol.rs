@@ -32,6 +32,10 @@ pub(super) struct HelperRequest {
     version: u8,
     pub(super) request: WorkspaceSearchRequest,
     pub(super) roots: Vec<HelperRoot>,
+    /// Git's global excludes file, resolved by the app because the helper
+    /// runs with an empty environment.
+    #[serde(default)]
+    pub(super) global_excludes: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,11 +55,16 @@ struct HelperReply {
 }
 
 impl HelperRequest {
-    pub(super) fn new(request: WorkspaceSearchRequest, roots: Vec<HelperRoot>) -> Self {
+    pub(super) fn new(
+        request: WorkspaceSearchRequest,
+        roots: Vec<HelperRoot>,
+        global_excludes: Option<PathBuf>,
+    ) -> Self {
         Self {
             version: HELPER_VERSION,
             request,
             roots,
+            global_excludes,
         }
     }
 }
@@ -78,7 +87,9 @@ pub(super) fn execute(request: HelperRequest) -> AppResult<WorkspaceSearchRespon
             }
         })
         .collect();
-    SearchEngine::new(SearchLimits::default()).search(request.request, roots)
+    SearchEngine::new(SearchLimits::default())
+        .with_global_excludes(request.global_excludes)
+        .search(request.request, roots)
 }
 
 fn validate_helper_request(helper: &HelperRequest) -> AppResult<()> {
@@ -91,6 +102,13 @@ fn validate_helper_request(helper: &HelperRequest) -> AppResult<()> {
     if helper.roots.is_empty() || helper.roots.len() > MAX_PROJECT_ROOTS {
         return Err(AppError::ResourceLimit(
             "workspace search root snapshot exceeds its bound".into(),
+        ));
+    }
+    if helper.global_excludes.as_ref().is_some_and(|path| {
+        !path.is_absolute() || path.to_string_lossy().len() > MAX_ABSOLUTE_PATH_BYTES
+    }) {
+        return Err(AppError::InvalidRequest(
+            "workspace search helper excludes path is invalid".into(),
         ));
     }
     let mut root_ids = HashSet::with_capacity(helper.roots.len());
@@ -200,7 +218,7 @@ mod tests {
                 absolute_path: available.clone(),
             },
         ];
-        let response = execute(HelperRequest::new(request("needle"), roots)).unwrap();
+        let response = execute(HelperRequest::new(request("needle"), roots, None)).unwrap();
         assert_eq!(response.matches.len(), 1);
         assert_eq!(
             response.roots[0].state,

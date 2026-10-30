@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,12 +8,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import type { WorkspaceSearchGateway } from "./workspaceSearchDomain";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
+
+const initialSettings = useEditorSettingsStore.getState();
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  useEditorSettingsStore.setState(initialSettings, true);
 });
 
 function submitWorkspaceSearch() {
@@ -409,6 +414,40 @@ describe("Workspace Search view", () => {
     expect(
       await screen.findByText('No matches found for "needle".'),
     ).toBeVisible();
+  });
+
+  it("asks native Search to keep ignored files only when the setting is off", async () => {
+    const search = vi.fn().mockRejectedValue(new Error("stop"));
+    render(
+      <WorkspaceSearchView
+        projectId="project-a"
+        transitionEpoch={4}
+        indexGeneration={0}
+        gateway={{ search }}
+        onOpenMatch={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Search text"), {
+      target: { value: "needle" },
+    });
+    submitWorkspaceSearch();
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    expect(search.mock.calls[0][0]).not.toHaveProperty("useIgnoreFiles");
+    expect(await screen.findByText("stop")).toBeVisible();
+
+    act(() => {
+      useEditorSettingsStore.setState({
+        settings: {
+          ...useEditorSettingsStore.getState().settings,
+          "search.useIgnoreFiles": false,
+        },
+      });
+    });
+    // The setting retires the shown result like any other criterion.
+    expect(screen.queryByText("stop")).toBeNull();
+    submitWorkspaceSearch();
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+    expect(search.mock.calls[1][0]).toMatchObject({ useIgnoreFiles: false });
   });
 
   it("refreshes the current request and collapses a file group without losing it", async () => {

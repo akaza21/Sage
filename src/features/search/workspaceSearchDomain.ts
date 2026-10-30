@@ -38,6 +38,8 @@ export interface WorkspaceSearchRequest {
   wholeWord: boolean;
   includePatterns: string[];
   excludePatterns: string[];
+  /** `search.useIgnoreFiles`; the native default is true. */
+  useIgnoreFiles?: boolean;
 }
 
 export interface WorkspaceSearchMatch {
@@ -234,6 +236,12 @@ export function validateWorkspaceSearchRequest(
   }
   if (typeof request.wholeWord !== "boolean") {
     throw new Error("workspace Search whole-word mode must be a boolean");
+  }
+  if (
+    request.useIgnoreFiles !== undefined &&
+    typeof request.useIgnoreFiles !== "boolean"
+  ) {
+    throw new Error("workspace Search ignore-file choice must be a boolean");
   }
   if (
     !validFilterPatterns(request.includePatterns) ||

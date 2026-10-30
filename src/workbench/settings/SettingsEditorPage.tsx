@@ -2,7 +2,6 @@ import { type ReactNode } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import {
-  EDITOR_SETTING_GROUPS,
   EDITOR_SETTINGS,
   type BooleanSettingSpec,
   type ChoiceSettingSpec,
@@ -10,13 +9,17 @@ import {
   type EditorSettings,
   type IntegerSettingSpec,
 } from "../../domain/editorSettingsCatalogue";
+import {
+  EDITOR_SETTING_COPY,
+  EDITOR_SETTING_GROUPS,
+} from "../../domain/editorSettingsCopy";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 
 /** `editor.fontSize` becomes `editor-font-size`. */
 function controlId(key: EditorSettingKey) {
-  return `editor-${key
-    .slice("editor.".length)
-    .replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+  return key
+    .replace(".", "-")
+    .replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
 function withUnit(value: number, unit: string) {
@@ -76,12 +79,13 @@ function ToggleSetting({
   onChange: (checked: boolean) => void;
 }) {
   const id = controlId(spec.key as EditorSettingKey);
+  const copy = EDITOR_SETTING_COPY[spec.key as EditorSettingKey];
   return (
     <div className="settings-surface__row">
       <SettingCopy
         id={id}
-        label={spec.label}
-        description={spec.description}
+        label={copy.label}
+        description={copy.description}
         defaultLabel={spec.default ? "On" : "Off"}
       />
       <div className="settings-surface__toggle">
@@ -111,16 +115,18 @@ function SelectSetting({
   onChange: (value: string) => void;
 }) {
   const id = controlId(spec.key as EditorSettingKey);
+  const copy = EDITOR_SETTING_COPY[spec.key as EditorSettingKey];
   const label = (choice: number | string) =>
     spec.kind === "choice"
-      ? spec.choiceLabels[choice][usesMetaModifier() ? 1 : 0]
-      : withUnit(Number(choice), spec.unit);
+      ? (copy.choiceLabels?.[choice]?.[usesMetaModifier() ? 1 : 0] ??
+        String(choice))
+      : withUnit(Number(choice), copy.unit ?? "");
   return (
     <div className="settings-surface__row">
       <SettingCopy
         id={id}
-        label={spec.label}
-        description={spec.description}
+        label={copy.label}
+        description={copy.description}
         defaultLabel={label(spec.default)}
       />
       <select
@@ -166,11 +172,13 @@ export function SettingsEditorPage({
     >
       <header className="settings-surface__section-header">
         <h2 id="editor-appearance-heading">Editor Appearance</h2>
-        <p>These choices apply to every file you open.</p>
+        <p>These choices apply to the editor, Explorer and Search.</p>
       </header>
       {EDITOR_SETTING_GROUPS.map((group) => {
         const specs = EDITOR_SETTINGS.filter(
-          (spec) => spec.group === group && visible.has(spec.key),
+          (spec) =>
+            EDITOR_SETTING_COPY[spec.key].group === group &&
+            visible.has(spec.key),
         );
         if (specs.length === 0) return null;
         return (

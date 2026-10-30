@@ -2,6 +2,7 @@ import { resourceKey } from "../domain/resourceIdentity";
 import type { ResourceRef } from "../domain/workbench";
 import {
   acquireNotifyListingSlot,
+  isIgnoreRuleFile,
   releaseNotifyListingSlot,
   WORKSPACE_NOTIFY_EVENT,
   syncLiveProjectWorkspaceNotify,
@@ -169,7 +170,9 @@ export function createWorkspaceNotifyHooks(
       });
     },
     invalidate(notice, listing) {
-      if (notice.kind === "resync") {
+      // A changed ignore file can change what Explorer dims in any listing
+      // below it, so it refreshes the root's listings as a resync does.
+      if (notice.kind === "resync" || isIgnoreRuleFile(notice.relativePath)) {
         return refreshListingsForResync(get, notice);
       }
       const key = resourceKey(listing);

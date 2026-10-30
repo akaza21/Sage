@@ -53,6 +53,8 @@ export interface WorkspaceEntry {
   resource: ResourceRef;
   kind: WorkspaceEntryKind;
   byteLen: number | null;
+  /** An ignore file ignores the entry; sent only when true. */
+  ignored?: boolean;
 }
 
 export interface DirectoryListing {

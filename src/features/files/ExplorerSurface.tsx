@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import {
@@ -26,12 +27,15 @@ const RootTree = memo(function RootTree({
   const selectDirectory = useWorkbenchStore((state) => state.selectDirectory);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
+  const hideIgnored = useEditorSettingsStore(
+    (store) => store.settings["explorer.showIgnored"] === "hidden",
+  );
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const rootSelected = sameResource(rootResource, selected);
   const tree = useMemo(
-    () => flattenFileTree(rootResource, listings, expanded, 500),
-    [expanded, listings, rootResource],
+    () => flattenFileTree(rootResource, listings, expanded, 500, hideIgnored),
+    [expanded, hideIgnored, listings, rootResource],
   );
   const listing = listings[resourceKey(rootResource)];
   const nestedTruncatedResource = tree.entries.find((entry) => {

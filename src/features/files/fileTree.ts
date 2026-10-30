@@ -20,6 +20,7 @@ export function flattenFileTree(
   listings: Record<string, ResourceState<DirectoryListing>>,
   expanded: Record<string, boolean>,
   limit = 600,
+  hideIgnored = false,
 ): FlattenedFileTree {
   const entries: VisibleWorkspaceEntry[] = [];
   let truncated = false;
@@ -31,6 +32,7 @@ export function flattenFileTree(
     }
     truncated ||= listing.value.truncated;
     for (const entry of listing.value.entries) {
+      if (hideIgnored && entry.ignored) continue;
       if (entries.length === limit) {
         truncated = true;
         return;
