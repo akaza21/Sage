@@ -39,9 +39,7 @@ mod terminalize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use crate::acp::contract::SageActivityId;
-#[cfg(test)]
-use crate::acp::lifecycle::{ActivityLifecycle, ItemLifecycle, SessionState, ToolState};
+use crate::acp::lifecycle::SessionState;
 use crate::acp::{
     contract::{
         ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
@@ -101,9 +99,9 @@ pub(crate) use sessions::{
     activate_session, start_session,
 };
 pub(crate) use snapshots::{FilePairCommand, read_snapshot};
-pub(crate) use terminal::apply_turn_terminal;
 #[cfg(test)]
-pub(crate) use terminal::{apply_activity_terminal, apply_item_terminal, apply_session_terminal};
+pub(crate) use terminal::apply_session_terminal;
+pub(crate) use terminal::apply_turn_terminal;
 pub(crate) use terminalize::terminalize_recovery_epoch;
 
 #[derive(Debug, thiserror::Error)]
@@ -210,34 +208,6 @@ pub(crate) struct SessionTerminalCommand {
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
     pub terminal: SessionState,
-    pub now_millis: i64,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ItemTerminalCommand {
-    pub project_id: SageProjectId,
-    pub chat_id: SageChatId,
-    pub session_id: SageAgentSessionId,
-    pub turn_id: SageTurnId,
-    pub runtime_epoch: RuntimeEpoch,
-    pub item_id: SageItemId,
-    pub lifecycle: ItemLifecycle,
-    pub tool_state: Option<ToolState>,
-    pub payload_digest: String,
-    pub now_millis: i64,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivityTerminalCommand {
-    pub project_id: SageProjectId,
-    pub chat_id: SageChatId,
-    pub session_id: SageAgentSessionId,
-    pub turn_id: SageTurnId,
-    pub runtime_epoch: RuntimeEpoch,
-    pub activity_id: SageActivityId,
-    pub lifecycle: ActivityLifecycle,
     pub now_millis: i64,
 }
 

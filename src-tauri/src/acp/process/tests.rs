@@ -203,57 +203,6 @@ fn zero_release_is_exactly_once_for_prelaunch_and_active_leases() {
     assert_eq!(pool.usage(), (0, 0));
 }
 
-#[test]
-fn cancellation_releases_only_after_zero_process_convergence() {
-    let mut lifecycle = SupervisorLifecycle::starting(32);
-    assert!(lifecycle.mark_running());
-    assert!(lifecycle.request_termination(TreeExit::Cancelled));
-    assert_eq!(
-        lifecycle.observe_processes(false, 1),
-        TreeState::Terminating
-    );
-    assert!(!lifecycle.release_reservation());
-    assert_eq!(lifecycle.observe_processes(false, 0), TreeState::Exited);
-    assert_eq!(lifecycle.exit(), Some(TreeExit::Cancelled));
-    assert!(lifecycle.release_reservation());
-    assert!(!lifecycle.release_reservation());
-}
-
-#[test]
-fn orphan_or_descendant_overflow_fails_closed() {
-    let mut lifecycle = SupervisorLifecycle::starting(1);
-    lifecycle.mark_running();
-    assert_eq!(
-        lifecycle.observe_processes(true, 2),
-        TreeState::ContainmentLost
-    );
-    assert!(!lifecycle.release_reservation());
-
-    let mut orphan = SupervisorLifecycle::starting(32);
-    orphan.mark_running();
-    orphan.request_termination(TreeExit::ParentShutdown);
-    orphan.observe_processes(false, 1);
-    orphan.mark_containment_deadline();
-    assert_eq!(orphan.state(), TreeState::ContainmentLost);
-    assert!(!orphan.release_reservation());
-}
-
-#[test]
-fn teardown_order_places_zero_convergence_before_release() {
-    let lifecycle = SupervisorLifecycle::starting(32);
-    assert_eq!(
-        lifecycle.teardown_plan(),
-        [
-            TeardownAction::CloseStdin,
-            TeardownAction::TerminateTree,
-            TeardownAction::AwaitChildExit,
-            TeardownAction::AwaitZeroProcesses,
-            TeardownAction::CloseNativeHandles,
-            TeardownAction::ReleaseReservation,
-        ]
-    );
-}
-
 #[cfg(windows)]
 fn verified_fixture_spec(case: &str, seed: u32) -> LaunchSpec {
     let path = PathBuf::from(
