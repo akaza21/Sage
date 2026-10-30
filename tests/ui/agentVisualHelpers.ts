@@ -306,8 +306,10 @@ export async function runAgentCanonicalTest(
     // by the live child; the plan, error and unsupported cards stay apart.
     const cards = page.locator(".acp-activity-card");
     await expect(cards).toHaveCount(4);
-    const group = page.locator(".acp-tool-rollup");
-    await expect(group).toHaveCount(1);
+    const groups = page.locator(".acp-tool-rollup");
+    await expect(groups).toHaveCount(1);
+    // Opening the outer rollup mounts nested rollups; keep its locator stable.
+    const group = groups.first();
     await expect(group).toHaveAttribute("data-activity-state", "inProgress");
     await expect(
       group.locator(":scope > summary .acp-tool-rollup__label"),

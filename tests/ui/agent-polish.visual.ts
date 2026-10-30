@@ -153,3 +153,35 @@ test("keeps browser creation unavailable without native support", async ({
     page.getByRole("button", { name: "New browser tab", exact: true }),
   ).toBeDisabled();
 });
+
+test("clips the resource tab close hover fill at its rounded corner", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1380, height: 880 });
+  await openScenario(page, "file", "agent");
+  const tab = page.locator(".agent-artifact-pane .tab--active").first();
+  const close = tab.locator(".tab__close");
+  await close.hover();
+  expect(
+    await tab.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return node
+        .querySelector(".tab__close")!
+        .contains(document.elementFromPoint(box.right - 1.5, box.top + 1.5));
+    }),
+  ).toBe(false);
+  await page.keyboard.press("Tab");
+  await close.focus();
+  await expect(close).toBeFocused();
+  const focus = await close.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      visible: node.matches(":focus-visible"),
+      width: parseFloat(style.outlineWidth),
+      offset: parseFloat(style.outlineOffset),
+    };
+  });
+  expect(focus.visible).toBe(true);
+  expect(focus.width).toBeGreaterThan(0);
+  expect(focus.offset).toBeLessThanOrEqual(-focus.width);
+});

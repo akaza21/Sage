@@ -28,7 +28,7 @@ export interface SearchablePickerOption {
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
-  icon?: "claude" | "codex" | "opencode";
+  icon?: "claude" | "codex" | "opencode" | "generic";
   logo?: string;
   /** A secondary action rendered beside the option, e.g. "Sign in". */
   action?: { label: string; accessibleLabel?: string; onAction: () => void };

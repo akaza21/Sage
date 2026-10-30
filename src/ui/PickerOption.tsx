@@ -74,8 +74,9 @@ export const PickerOption = memo(function PickerOption({
 
 /** Official marks use external path data; custom and unavailable marks keep their existing assets. */
 export function PickerLogo({ logo, icon }: { logo?: string; icon?: string }) {
-  const src = logo ?? `/harness-${icon}.svg`;
-  return icon === "claude" || icon === "codex" ? (
+  const builtin = `/harness-${icon}.svg`;
+  const src = logo ?? builtin;
+  return src === builtin && (icon === "claude" || icon === "codex") ? (
     <svg
       className="harness-icon"
       viewBox="0 0 24 24"

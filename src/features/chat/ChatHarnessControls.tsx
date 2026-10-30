@@ -159,20 +159,20 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  const knownModelLabel =
-    confirmedModelLabel ??
-    models.find((model) => model.id === selectedModelId)?.name;
   // A side chat or fork shows its parent's confirmed model and effort until
   // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
-    !knownModelLabel &&
+    !confirmedModelLabel &&
     !selectedSessionConfig?.removed &&
     (!inherited?.id || inherited.id === selectedModelId)
       ? inherited
       : undefined;
   const modelLabel = useComposerModelName(
-    knownModelLabel ?? inheriting?.model ?? "Model",
+    confirmedModelLabel ??
+      inheriting?.model ??
+      models.find((model) => model.id === selectedModelId)?.name ??
+      "Model",
   );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortLabel =

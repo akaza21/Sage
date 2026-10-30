@@ -97,8 +97,12 @@
   gap: 2px;
 }
 .browser-surface__nav-group {
+  overflow: clip;
   border-radius: var(--radius-pill);
   background: var(--browser-control-fill);
+}
+.browser-surface__nav-group button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .browser-surface__right-group {
   position: relative;

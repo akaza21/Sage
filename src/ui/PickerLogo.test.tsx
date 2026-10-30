@@ -33,6 +33,18 @@ it("keeps an existing fallback when no official local mark is available", () => 
   expect(container.querySelector("img")).toHaveAttribute("aria-hidden", "true");
 });
 
+it.each(["/custom-logo.svg", "/custom-logo.png"])(
+  "keeps custom logo %s usable with a built-in icon hint",
+  (logo) => {
+    const { container } = render(<PickerLogo logo={logo} icon="codex" />);
+    expect(container.querySelector("img")).toHaveAttribute("src", logo);
+    expect(container.querySelector("img")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  },
+);
+
 it("shares a 40px decorative outline mark between welcome surfaces", () => {
   const { container } = render(<SageMark />);
   expect(container.querySelector("svg")).toHaveAttribute("fill", "none");

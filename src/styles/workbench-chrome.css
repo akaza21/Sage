@@ -149,6 +149,7 @@
   background: var(--agent-shell-center);
 }
 .workbench--agent .agent-artifact-pane .tab {
+  overflow: clip;
   height: 28px;
   min-width: 96px;
   /* Codex 67: a ~208 px tab that shrinks when many share the strip. */
@@ -160,6 +161,9 @@
 .workbench--agent .agent-artifact-pane .tab__activate {
   gap: 4px;
   padding: 0 4px 0 8px;
+}
+.workbench--agent .agent-artifact-pane .tab button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .workbench--agent .agent-artifact-pane .tab__close {
   display: none;
