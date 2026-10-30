@@ -7,7 +7,8 @@
 //! session. File events aren't used: on macOS and Linux the watcher covers at
 //! most 64 folders and doesn't say which folder an event is in, so it can't
 //! keep a list of every File current. One index exists at a time, and it is
-//! dropped when its Project closes or is switched away from.
+//! dropped when its Project closes or is switched away from. Every walk runs
+//! on one long-lived thread (see `on_walker`).
 
 mod arena;
 mod build;
@@ -20,8 +21,9 @@ mod tests;
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard, TryLockError,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicU64, Ordering},
+        mpsc,
     },
     time::{Duration, Instant},
 };
@@ -31,7 +33,7 @@ use crate::workspace::{
 };
 
 use arena::PathArena;
-use build::{Walk, build_threads};
+use build::Walk;
 
 /// At most this many Files are indexed across a Project's roots.
 const MAX_INDEXED_FILES: usize = MAX_WORKSPACE_FILES as usize;
@@ -75,45 +77,43 @@ impl ProjectIndex {
 }
 
 struct Slot {
-    /// Queries rank a shared handle, so the lock is held only to swap it.
+    /// Queries rank a shared handle, so the lock is held only to look it up
+    /// or swap it.
     index: Option<Arc<ProjectIndex>>,
     /// A background walk is building the next index.
     refreshing: bool,
+    /// Bumped by every forget; a walk started before it keeps nothing.
+    epoch: u64,
 }
 
 static INDEX: Mutex<Slot> = Mutex::new(Slot {
     index: None,
     refreshing: false,
+    epoch: 0,
 });
+/// Held while a first build walks, so a burst of first queries builds once.
+static BUILDING: Mutex<()> = Mutex::new(());
 static LATEST_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
-/// Drops the index of a Project that is closing, freeing its memory. It
-/// never waits: it runs on the command thread, so while a first build holds
-/// the lock, the drop is left to a short-lived thread.
+/// Drops the index of a Project that is closing, freeing its memory. The
+/// lock is only ever held briefly, so this doesn't wait on a walk; a walk
+/// that ends after it sees the bumped epoch and keeps nothing.
 pub(crate) fn forget_project(project_id: &str) {
-    fn forget(slot: &mut Slot, project_id: &str) {
-        if slot
-            .index
-            .as_ref()
-            .is_some_and(|index| index.inputs.project_id == project_id)
-        {
-            slot.index = None;
-        }
+    let mut slot = lock(&INDEX);
+    slot.epoch += 1;
+    if slot
+        .index
+        .as_ref()
+        .is_some_and(|index| index.inputs.project_id == project_id)
+    {
+        slot.index = None;
     }
-    match INDEX.try_lock() {
-        Ok(mut slot) => forget(&mut slot, project_id),
-        Err(TryLockError::Poisoned(poison)) => forget(&mut poison.into_inner(), project_id),
-        Err(TryLockError::WouldBlock) => {
-            let project_id = project_id.to_owned();
-            let _ = std::thread::Builder::new()
-                .name("quick-open-forget".into())
-                .spawn(move || forget(&mut lock(&INDEX), &project_id));
-        }
-    }
+    drop(slot);
+    release_freed_memory();
 }
 
 /// Records `generation` as the newest query and says whether it still is.
@@ -135,61 +135,136 @@ pub(crate) struct Readied {
 }
 
 /// The index to answer `inputs` from. Without one for these inputs, it is
-/// built now, under the lock, so a burst of first queries builds it once.
-/// With one from an earlier Quick Open session, it answers at once and a
-/// fresh one is walked in the background.
+/// built now; queries that arrive meanwhile wait for that build rather than
+/// start another. With one from an earlier Quick Open session, it answers
+/// at once and a fresh one is walked in the background.
 fn ready(inputs: &IndexInputs, session: u64) -> (Arc<ProjectIndex>, Readied) {
     let started = Instant::now();
-    let mut slot = lock(&INDEX);
-    if let Some(index) = slot.index.clone().filter(|index| &index.inputs == inputs) {
-        if index.session != session && !slot.refreshing {
-            slot.refreshing = refresh_in_background(Arc::clone(&index), session);
-        }
-        let refreshing = slot.refreshing;
-        return (
+    let readied = |index, built, refreshing| {
+        let took = started.elapsed();
+        (
             index,
             Readied {
-                built: false,
+                built,
                 refreshing,
-                took: started.elapsed(),
+                took,
             },
-        );
+        )
+    };
+    if let Some((index, refreshing)) = current(inputs, session) {
+        return readied(index, false, refreshing);
     }
-    // Free the old index before building the new one.
-    slot.index = None;
-    let index = Arc::new(build_index(inputs, session, None));
-    slot.index = Some(Arc::clone(&index));
-    (
-        index,
-        Readied {
-            built: true,
-            refreshing: false,
-            took: started.elapsed(),
-        },
-    )
+    let _building = lock(&BUILDING);
+    if let Some((index, refreshing)) = current(inputs, session) {
+        return readied(index, false, refreshing);
+    }
+    let epoch = {
+        let mut slot = lock(&INDEX);
+        // Free the old index before building the new one.
+        slot.index = None;
+        slot.epoch
+    };
+    let index = Arc::new(walk(inputs, session));
+    let mut slot = lock(&INDEX);
+    if slot.epoch == epoch {
+        slot.index = Some(Arc::clone(&index));
+    }
+    readied(index, true, false)
 }
 
-/// Walks the Project on another thread and swaps the result in, unless the
-/// index was dropped or rebuilt for other inputs meanwhile. Returns whether
-/// the thread started.
-fn refresh_in_background(current: Arc<ProjectIndex>, session: u64) -> bool {
-    std::thread::Builder::new()
-        .name("quick-open-refresh".into())
-        .spawn(move || {
-            let inputs = current.inputs.clone();
-            let fresh = build_index(&inputs, session, Some(&current));
-            drop(current);
-            let mut slot = lock(&INDEX);
-            slot.refreshing = false;
-            if slot
+/// The index for `inputs` if there is one, starting a background refresh
+/// when it was built for another session, and whether one is running.
+fn current(inputs: &IndexInputs, session: u64) -> Option<(Arc<ProjectIndex>, bool)> {
+    let mut slot = lock(&INDEX);
+    let index = slot.index.clone().filter(|index| &index.inputs == inputs)?;
+    if index.session != session && !slot.refreshing {
+        slot.refreshing = refresh_in_background(Arc::clone(&index), session, slot.epoch);
+    }
+    Some((index, slot.refreshing))
+}
+
+/// Walks the Project again and swaps the result in, unless the Project was
+/// forgotten or rebuilt for other inputs meanwhile. Returns whether the walk
+/// was queued.
+fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, epoch: u64) -> bool {
+    on_walker(Box::new(move || {
+        let inputs = current.inputs.clone();
+        let fresh = build_index(&inputs, session, Some(&current));
+        drop(current);
+        let mut slot = lock(&INDEX);
+        slot.refreshing = false;
+        if slot.epoch == epoch
+            && slot
                 .index
                 .as_ref()
                 .is_some_and(|index| index.inputs == inputs)
-            {
-                slot.index = Some(Arc::new(fresh));
+        {
+            slot.index = Some(Arc::new(fresh));
+        }
+    }))
+}
+
+/// Builds an index on the walker thread and waits for it, or builds it here
+/// if that thread can't be reached.
+fn walk(inputs: &IndexInputs, session: u64) -> ProjectIndex {
+    let (done, built) = mpsc::sync_channel(1);
+    let queued = {
+        let inputs = inputs.clone();
+        on_walker(Box::new(move || {
+            let _ = done.send(build_index(&inputs, session, None));
+        }))
+    };
+    queued
+        .then(|| built.recv().ok())
+        .flatten()
+        .unwrap_or_else(|| build_index(inputs, session, None))
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// Hands memory freed by a walk or a dropped index back to the system. With
+/// every walk on one thread, glibc's pools hold one walk's worth of freed
+/// memory (about as much again as the index); this returns it. Other
+/// allocators return large freed blocks on their own.
+fn release_freed_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: `malloc_trim` takes no pointers; it only returns free pages
+    // and may be called from any thread.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+/// Runs `job` on the one thread that does every walk. glibc gives each
+/// thread its own memory pool and keeps what is freed there; with walks
+/// spread over many threads the process stayed 50 to 150 MiB larger after
+/// them, while one thread reuses the same memory every time. Returns false
+/// if the thread couldn't be started.
+fn on_walker(job: Job) -> bool {
+    static WALKER: Mutex<Option<mpsc::Sender<Job>>> = Mutex::new(None);
+    let mut walker = lock(&WALKER);
+    let job = match walker.as_ref() {
+        Some(sender) => match sender.send(job) {
+            Ok(()) => return true,
+            // The thread is gone; start another.
+            Err(mpsc::SendError(job)) => job,
+        },
+        None => job,
+    };
+    let (sender, jobs) = mpsc::channel::<Job>();
+    let started = std::thread::Builder::new()
+        .name("quick-open-walk".into())
+        .spawn(move || {
+            for job in jobs {
+                job();
+                release_freed_memory();
             }
-        })
-        .is_ok()
+        });
+    if started.is_err() || sender.send(job).is_err() {
+        return false;
+    }
+    *walker = Some(sender);
+    true
 }
 
 fn build_index(
@@ -210,7 +285,6 @@ fn build_index_within(
     limit: usize,
 ) -> ProjectIndex {
     let excluded = PathGlobs::new(&inputs.files_exclude);
-    let threads = build_threads();
     let count = inputs.roots.len();
     let mut used = 0;
     let mut roots = Vec::with_capacity(count);
@@ -224,7 +298,6 @@ fn build_index_within(
             rules: &rules,
             excluded: &excluded,
             room: (limit - used) / (count - position),
-            threads,
             expect: previous
                 .and_then(|index| index.roots.iter().find(|old| &old.root_id == root_id))
                 .map_or((0, 0), |old| (old.arena.len(), old.arena.text_len())),

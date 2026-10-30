@@ -11,9 +11,9 @@ use std::{
 use crate::{domain::ResourceRef, workspace::search::MAX_SEARCH_DEPTH};
 
 use super::{
-    INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex,
+    BUILDING, INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex,
     arena::PathArena,
-    build_index_within, forget_project, lock,
+    build_index_within, forget_project, lock, on_walker,
     query::{Outcome, QuickOpenQuery, Ranked, rank_in_shares, run},
     score::{Query, positions, score},
 };
@@ -244,7 +244,7 @@ fn a_newer_query_supersedes_an_older_one() {
 }
 
 #[test]
-fn forgetting_the_project_frees_the_index_without_waiting() {
+fn forgetting_the_project_frees_the_index_without_waiting_for_a_walk() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
     let fixture = Fixture::new(&["a.rs"]);
     let inputs = fixture.inputs(&[]);
@@ -258,18 +258,36 @@ fn forgetting_the_project_frees_the_index_without_waiting() {
     forget_project(&fixture.project_id);
     assert!(ask(&inputs, "a", &[]).built);
 
-    // While a build holds the index, forgetting returns at once and the
-    // index goes once the build is done.
-    let held = lock(&INDEX);
+    // A first build doesn't hold the index lock while it walks, so
+    // forgetting never waits for one.
+    let building = lock(&BUILDING);
     let started = Instant::now();
     forget_project(&fixture.project_id);
     assert!(started.elapsed() < Duration::from_millis(500));
-    drop(held);
+    drop(building);
+}
+
+#[test]
+fn a_walk_that_ends_after_a_forget_keeps_nothing() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = Fixture::new(&["a.rs"]);
+    let inputs = fixture.inputs(&[]);
+    assert!(ask_in(&inputs, 1, "a", &[]).built);
+    // The refresh is queued behind a job that holds the walker thread until
+    // the Project has been forgotten.
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    assert!(on_walker(Box::new(move || {
+        let _ = wait.recv();
+    })));
+    assert!(ask_in(&inputs, 2, "a", &[]).refreshing);
+    forget_project(&fixture.project_id);
+    release.send(()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
-    while lock(&INDEX).index.is_some() {
-        assert!(Instant::now() < deadline, "the index was never dropped");
+    while lock(&INDEX).refreshing {
+        assert!(Instant::now() < deadline, "the refresh never finished");
         std::thread::sleep(Duration::from_millis(5));
     }
+    assert!(lock(&INDEX).index.is_none());
 }
 
 #[test]

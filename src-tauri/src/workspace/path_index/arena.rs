@@ -61,16 +61,6 @@ impl PathArena {
         }
     }
 
-    /// Moves every path of `batch` to the end of this arena, leaving `batch`
-    /// empty with its room kept.
-    pub(super) fn take_from(&mut self, batch: &mut PathArena) {
-        for stored in batch.range(0..batch.len()) {
-            self.push(stored.path);
-        }
-        batch.text.clear();
-        batch.entries.clear();
-    }
-
     /// Gives back room beyond an eighth more than the paths need.
     pub(super) fn trim_slack(&mut self) {
         if self.text.capacity() > self.text.len() + self.text.len() / 8 {
@@ -118,11 +108,8 @@ mod tests {
         assert!(whole.push("src/app/main.ts"));
         assert!(!whole.push(""));
         assert!(!whole.push(&"a".repeat(MAX_INDEXED_PATH_BYTES + 1)));
-        let mut batch = PathArena::default();
-        assert!(batch.push("README.md"));
-        assert!(batch.push("docs/étude.md"));
-        whole.take_from(&mut batch);
-        assert_eq!(batch.len(), 0);
+        assert!(whole.push("README.md"));
+        assert!(whole.push("docs/étude.md"));
         whole.trim_slack();
         let stored = whole
             .range(0..whole.len())

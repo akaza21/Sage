@@ -8,9 +8,7 @@ use std::{
 use crate::domain::ResourceRef;
 
 use super::{
-    IndexInputs, ProjectIndex, Readied,
-    build::build_threads,
-    claim_generation, ready,
+    IndexInputs, ProjectIndex, Readied, claim_generation, ready,
     score::{Query, positions, score},
     superseded,
 };
@@ -18,7 +16,8 @@ use super::{
 /// A newer query is checked for after this many paths.
 const CANCEL_CHECK_EVERY: usize = 8192;
 /// Indexes smaller than this are ranked on the calling thread; larger ones
-/// are split across up to four.
+/// are split across up to four. Ranking allocates almost nothing, so the
+/// extra threads leave no memory behind.
 const PARALLEL_FROM: usize = 20_000;
 /// The most recent File gets this much extra; each older one a step less.
 const RECENT_BONUS: i32 = 200;
@@ -188,7 +187,7 @@ impl<'a> Ranking<'a> {
 /// The ranked results, or `None` when a newer query arrived meanwhile.
 fn rank(index: &ProjectIndex, query: &QuickOpenQuery<'_>) -> Option<Vec<Ranked>> {
     let shares = if index.files() >= PARALLEL_FROM {
-        build_threads()
+        std::thread::available_parallelism().map_or(1, |cores| cores.get().min(4))
     } else {
         1
     };
