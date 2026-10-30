@@ -190,7 +190,7 @@ impl StderrRing {
             .unwrap_or_else(empty_stderr_diagnostic)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "acp-fixture"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.bytes.len()
     }

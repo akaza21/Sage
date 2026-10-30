@@ -46,7 +46,7 @@ pub(crate) use completion::CompletedPumpParts;
 pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
 use payload::hex;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use payload::normalized_payload_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

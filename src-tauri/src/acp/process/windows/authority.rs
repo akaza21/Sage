@@ -178,7 +178,7 @@ impl TreeControl {
         self.wait_until(Instant::now() + self.0.terminate_deadline)
     }
 
-    #[cfg(any(test, feature = "acp-fixture"))]
+    #[cfg(feature = "acp-fixture")]
     pub(crate) fn wait_before(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
         self.wait_until(deadline)
     }
