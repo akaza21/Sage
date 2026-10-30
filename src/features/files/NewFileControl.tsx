@@ -8,6 +8,7 @@ import {
 import { FilePlus2, FolderPlus } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
+import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { validateNewFilePath } from "./newFileContract";
@@ -90,7 +91,24 @@ function NewEntryControl({
       return;
     }
     setLocalError(null);
-    if (await createProjectResource(parent, basename)) close();
+    const before = useWorkbenchStore.getState().activeEditor;
+    if (!(await createProjectResource(parent, basename))) return;
+    // A new File that opened in the editor takes focus for typing. A folder,
+    // or a File that did not open, returns focus to the button.
+    const opened = useWorkbenchStore.getState().activeEditor;
+    if (
+      kind === "file" &&
+      opened?.phase === "ready" &&
+      !(before && sameResource(before.resource, opened.resource))
+    ) {
+      close(false);
+      // Loaded with the File surface; kept out of the startup bundle.
+      void import("./editorFocusRequest").then((request) =>
+        request.requestEditorFocus(opened.resource),
+      );
+    } else {
+      close();
+    }
   };
 
   const previewParent = parent?.relativePath
