@@ -74,6 +74,30 @@ async function applyApproval(page: Page, state: "received" | "declinePending") {
       },
       chatPage,
     );
+    // The rail reads Rust-owned attention, not the transcript: stand in for
+    // the native summary the same approval would publish.
+    const [{ chatAttention }, { chatAttentionStore }, { attention }] =
+      await Promise.all([
+        import("/src/services/chatAttention.ts"),
+        import("/src/app/chatAttentionStore.ts"),
+        import("/src/domain/chatAttention.fixture.ts"),
+      ]);
+    const row = attention({
+      projectId: ids.PROJECT_ID,
+      chatId: chatPage.chatId,
+      turnState: "running",
+      running: true,
+      terminalState: null,
+      terminalPosition: null,
+      pendingApprovals: state === "received" ? 1 : 0,
+      revision: state === "received" ? "1" : "2",
+    });
+    chatAttention.get = async () => [row];
+    chatAttention.ack = async () => row;
+    chatAttention.subscribe = async () => () => undefined;
+    await chatAttentionStore.connect([
+      { projectId: ids.PROJECT_ID, chatIds: [chatPage.chatId] },
+    ]);
   }, state);
 }
 

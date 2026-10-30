@@ -7,8 +7,10 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { seedChatAttention } from "../app/chatAttention.fixture";
+import { chatAttentionStore } from "../app/chatAttentionStore";
+import { attention } from "../domain/chatAttention.fixture";
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
@@ -20,9 +22,9 @@ import {
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
+  chatAttentionStore.disconnect();
   resetAgentRailInteractions();
   resetAgentRailViewPrefs();
-  clearSessionRailAcks();
   useWorkbenchStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -79,20 +81,33 @@ it("collapses projects without activating them and reopens the section from the 
 
 it("opens the same chat actions by right click and marks a read chat unread", async () => {
   seed();
+  const fixture = await seedChatAttention([
+    attention({ projectId: "project-a", chatId: "Beta", readPosition: "1" }),
+  ]);
+  const activateTab = vi.fn(async (tabId: string) =>
+    useWorkbenchStore.setState({ activeTabId: tabId }),
+  );
+  useWorkbenchStore.setState({ activateTab });
   render(<LeftSidebar />);
   const projects = screen.getByRole("region", { name: "Projects" });
   const chat = within(projects).getByRole("button", {
-    name: "Open chat Alpha",
+    name: "Open chat Beta",
   });
   fireEvent.contextMenu(chat);
-  const menu = await screen.findByRole("menu", { name: "Actions for Alpha" });
-  fireEvent.click(within(menu).getByRole("menuitem", { name: "Mark unread" }));
+  const menu = await screen.findByRole("menu", { name: "Actions for Beta" });
+  await act(async () =>
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Mark unread" }),
+    ),
+  );
   expect(
     chat
       .closest(".project-chat-row")
       ?.querySelector('[aria-label="Unread updates"]'),
   ).not.toBeNull();
-  fireEvent.click(chat);
+  await act(async () => fireEvent.click(chat));
+  expect(activateTab).toHaveBeenCalledWith("Beta");
+  expect(fixture.ack).not.toHaveBeenCalled();
   expect(
     chat
       .closest(".project-chat-row")

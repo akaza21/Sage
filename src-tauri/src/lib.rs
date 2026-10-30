@@ -8,6 +8,8 @@ mod app_run_events;
 mod browser;
 mod chat_archive;
 mod chat_archive_commands;
+mod chat_attention;
+mod chat_attention_commands;
 mod chat_commands;
 mod chat_fork;
 mod chat_lifecycle;

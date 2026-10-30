@@ -724,6 +724,9 @@ test.describe("AV-03 Agent document ready baselines", () => {
       page.locator(".file-surface .cm-content .cm-line span[class]").first(),
     ).toBeVisible();
     await expectNoViewportOverflow(page);
+    // The latest answer's lazy footer lands inside the 64 px follow-end
+    // threshold, so pin the transcript end rather than racing that chunk.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-file-ready.png");
   });
 

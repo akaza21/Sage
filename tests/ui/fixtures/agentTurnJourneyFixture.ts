@@ -14,11 +14,8 @@ import type {
   AcpCommandFailure,
   AcpProjectionChangedEvent,
 } from "../../../src/domain/acp";
-import {
-  clearUnreadAcks,
-  seenChatUnreadFingerprint,
-} from "../../../src/features/chat/acp/chatUnread";
-import { clearSessionRailAcks } from "../../../src/features/chat/acp/sessionRail";
+import { chatAttentionStore } from "../../../src/app/chatAttentionStore";
+import { publishJourneyAttention } from "./agentTurnJourneyAttention";
 import { AcpDesktopError } from "../../../src/services/acpDesktop";
 import {
   appendTurn,
@@ -58,6 +55,7 @@ function recordEvent(state: FixtureState, event: JourneyEvent): void {
 
 function publish(state: FixtureState, page: AcpChatPage): string {
   state.pages.set(page.chatId, structuredClone(page));
+  publishJourneyAttention(page);
   const rail = journeySnapshot(
     state,
     state.activeProjectId,
@@ -273,7 +271,9 @@ export function journeyAudit() {
             projectionRevision: gammaProjection.page.projectionRevision,
           }
         : null,
-      betaSeenFingerprint: seenChatUnreadFingerprint(JOURNEY_IDS.beta) ?? null,
+      betaReadPosition:
+        chatAttentionStore.getSnapshot().get(JOURNEY_IDS.beta)?.readPosition ??
+        null,
     },
   });
 }
@@ -289,8 +289,7 @@ export async function disposeAgentTurnJourneyFixture(): Promise<void> {
     fixture = null;
   }
   clearAcpProjectionRegistry();
-  clearUnreadAcks();
-  clearSessionRailAcks();
+  chatAttentionStore.disconnect();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   pinAgentChatOwner(null);

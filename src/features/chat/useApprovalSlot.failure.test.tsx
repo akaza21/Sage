@@ -54,7 +54,6 @@ function Pane({ onCancelTurn }: { onCancelTurn: () => void }) {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const approval = useApprovalSlot(
     { id: "turn-1", items: [item] } as unknown as TurnProjection,
-    "chat-1",
     composerRef,
     { onCancelTurn },
   );

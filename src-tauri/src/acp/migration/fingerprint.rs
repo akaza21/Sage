@@ -42,6 +42,7 @@ pub(super) enum SchemaClass {
     CurrentV17,
     CurrentV18,
     CurrentV19,
+    CurrentV20,
 }
 
 impl SchemaClass {
@@ -118,11 +119,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 20")?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 21")?
         .query_map([], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 19
+        || versions.len() > 20
         || versions
             .iter()
             .enumerate()

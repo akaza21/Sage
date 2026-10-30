@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { usePresentedAttention } from "../../../app/chatAttentionPresentation";
 
 import type { AcpChatPage } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
@@ -37,6 +38,19 @@ const loadAcpChatPresentation = () =>
   import("./AcpChatPresentation").then(({ AcpChatPresentation }) => ({
     default: AcpChatPresentation,
   }));
+
+function PresentedEmpty({
+  page,
+  focused,
+  children,
+}: {
+  page: AcpChatPage;
+  focused: boolean;
+  children: ReactNode;
+}) {
+  usePresentedAttention(page, focused);
+  return children;
+}
 
 export function AcpChatProjection({
   page,
@@ -80,7 +94,9 @@ export function AcpChatProjection({
       />
       <h2 className="sr-only">{page.title}</h2>
       {page.turns.length === 0 && emptyState ? (
-        emptyState
+        <PresentedEmpty page={page} focused={focused}>
+          {emptyState}
+        </PresentedEmpty>
       ) : (
         <LazyModuleBoundary
           label="Chat history"
@@ -88,6 +104,7 @@ export function AcpChatProjection({
           render={(AcpChatPresentation) => (
             <AcpChatPresentation
               page={page}
+              focused={focused}
               onOpenResource={onOpenResource}
               hasEarlier={hasEarlier}
               loadingEarlier={loadingEarlier}

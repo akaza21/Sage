@@ -10,6 +10,12 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 
+import {
+  chatAttentionStore,
+  useChatAttention,
+} from "../app/chatAttentionStore";
+import { attentionStatus } from "../domain/chatAttention";
+import { useAttentionDetailVisible } from "../app/chatAttentionPresentation";
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { lazyParts } from "../features/chat/lazyParts";
@@ -23,9 +29,6 @@ import {
   useRailChatId,
 } from "./sideChatState";
 import {
-  ackSessionRailUnread,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
   sessionRailStatusLabel,
@@ -37,14 +40,8 @@ import {
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
-import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
-import {
-  clearAgentRailUnread,
-  markAgentRailUnread,
-  setAgentRailArchiveUndo,
-  useAgentRailInteractions,
-} from "./agentRailInteractions";
+import { setAgentRailArchiveUndo } from "./agentRailInteractions";
 
 export function ProjectChatNavigation({
   projectId,
@@ -83,7 +80,8 @@ export function ProjectChatNavigation({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [actionMenuChatId, setActionMenuChatId] = useState<string | null>(null);
-  const interactions = useAgentRailInteractions();
+  const attention = useChatAttention();
+  const detailVisible = useAttentionDetailVisible();
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusChatId = useRef<string | null>(null);
@@ -112,7 +110,6 @@ export function ProjectChatNavigation({
   // Temporary side chats never list; a parent shows working while one runs.
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
-  const awaitingApprovalIds = useChatsAwaitingApproval();
 
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
@@ -170,19 +167,14 @@ export function ProjectChatNavigation({
           );
         }
         const focused = !suppressActive && selected && tab.id === activeTabId;
-        const status = parentChatStatus(tab.id, tab.status);
-        const fingerprint = sessionRailFingerprint(status, tab.updatedAt);
-        if (focused && fingerprint.length > 0) {
-          ackSessionRailUnread(tab.id, fingerprint);
-        }
-        const unread =
-          interactions.unread.has(tab.id) ||
-          sessionRailUnreadVisible({
-            focused,
-            status: tab.status,
-            updatedAt: tab.updatedAt,
-            seenFingerprint: seenSessionRailFingerprint(tab.id),
-          });
+        const summary = attention.get(tab.id);
+        const status = summary
+          ? attentionStatus(summary).status
+          : parentChatStatus(tab.id, tab.status);
+        const unread = sessionRailUnreadVisible(
+          summary,
+          focused && detailVisible,
+        );
         const branchLabel = showBranch ? gitLabel : "";
         const stamp = showUpdated
           ? agentRailAgeStamp({
@@ -197,8 +189,8 @@ export function ProjectChatNavigation({
           stamp,
         });
         const approvalLabel =
-          awaitingApprovalIds.has(tab.id) || interactions.approval.has(tab.id)
-            ? sessionRailStatusLabel(tab.status, true)
+          summary && attentionStatus(summary).approval
+            ? sessionRailStatusLabel(status, true)
             : "";
         const updatedDateTime =
           tab.updatedAt && Number.isFinite(tab.updatedAt)
@@ -224,8 +216,6 @@ export function ProjectChatNavigation({
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
-                clearAgentRailUnread(tab.id);
-                ackSessionRailUnread(tab.id, fingerprint);
                 if (selected) {
                   void activateTab(tab.id);
                   return;
@@ -300,7 +290,9 @@ export function ProjectChatNavigation({
                   setRenameDraft(displayTitle);
                   setRenamingChatId(tab.id);
                 }}
-                onMarkUnread={() => markAgentRailUnread(tab.id)}
+                onMarkUnread={() =>
+                  void chatAttentionStore.markUnread(projectId, tab.id)
+                }
                 onArchive={() => {
                   void useWorkbenchStore
                     .getState()

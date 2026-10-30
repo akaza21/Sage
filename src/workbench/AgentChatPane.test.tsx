@@ -2,30 +2,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchTab } from "../domain/workbench";
-import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
-import {
-  chatActivityFingerprint,
-  clearUnreadAcks,
-  seenChatUnreadFingerprint,
-} from "../features/chat/acp/chatUnread";
+import { chatAttention } from "../services/chatAttention";
 import { AgentChatPane } from "./AgentChatPane";
 
-const idleSnapshot = {
-  chatId: "chat-2",
-  statusLabel: "Completed",
-  latestText: "Done.",
-  streaming: false,
-  waiting: false,
-  working: false,
-  statusTone: "idle" as const,
-};
-
-let snapshot: ChatLiveSnapshot = { ...idleSnapshot };
 const canvasArgs = vi.fn();
-
-vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
-  useAcpChatLiveSnapshot: () => snapshot,
-}));
 
 vi.mock("./surfaceRegistry", () => ({
   renderRegisteredCanvas: (...args: unknown[]) => {
@@ -35,12 +15,13 @@ vi.mock("./surfaceRegistry", () => ({
 }));
 
 beforeEach(() => {
-  snapshot = { ...idleSnapshot };
-  clearUnreadAcks();
   canvasArgs.mockClear();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const tab: WorkbenchTab = {
   id: "chat-2",
@@ -66,23 +47,15 @@ describe("AgentChatPane", () => {
     expect(canvasArgs).toHaveBeenCalledWith(2);
   });
 
-  it("acks the current activity while focused", () => {
-    render(
-      <AgentChatPane tab={tab} focused={true} onFocus={() => undefined} />,
-    );
-    expect(seenChatUnreadFingerprint("chat-2")).toBe(
-      chatActivityFingerprint(snapshot),
-    );
-  });
-
-  it("acks the current activity when focus enters an unfocused pane", () => {
+  it("pane selection alone does not acknowledge durable attention", () => {
+    const ack = vi.spyOn(chatAttention, "ack");
     const onFocus = vi.fn();
-    render(<AgentChatPane tab={tab} focused={false} onFocus={onFocus} />);
-    expect(seenChatUnreadFingerprint("chat-2")).toBeUndefined();
+    const { rerender } = render(
+      <AgentChatPane tab={tab} focused={false} onFocus={onFocus} />,
+    );
     fireEvent.focus(screen.getByRole("button", { name: "focused chat" }));
     expect(onFocus).toHaveBeenCalledTimes(1);
-    expect(seenChatUnreadFingerprint("chat-2")).toBe(
-      chatActivityFingerprint(snapshot),
-    );
+    rerender(<AgentChatPane tab={tab} focused onFocus={onFocus} />);
+    expect(ack).not.toHaveBeenCalled();
   });
 });

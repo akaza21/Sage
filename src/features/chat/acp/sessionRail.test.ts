@@ -1,28 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { attention } from "../../../domain/chatAttention.fixture";
 import {
-  ackChatUnread,
-  clearUnreadAcks,
-  seenChatUnreadFingerprint,
-} from "./chatUnread";
-
-import {
-  MAX_SESSION_RAIL_ACK_SLOTS,
-  ackSessionRailUnread,
-  clearSessionRailAcks,
-  pinSessionRailIds,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
   sessionRailRelativeTime,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "./sessionRail";
-
-afterEach(() => {
-  clearSessionRailAcks();
-  clearUnreadAcks();
-});
 
 describe("sessionRailStatusLabel", () => {
   it("uses Devin session-card status lines", () => {
@@ -42,61 +26,22 @@ describe("sessionRailStatusLabel", () => {
 });
 
 describe("sessionRailUnreadVisible", () => {
-  it("hides the rail dot on the focused session", () => {
-    expect(
-      sessionRailUnreadVisible({
-        focused: true,
-        status: "working",
-        seenFingerprint: undefined,
-      }),
-    ).toBe(false);
+  it("hides focused detail without acknowledging persistent attention", () => {
+    const summary = attention({ readPosition: "0" });
+    const before = structuredClone(summary);
+    expect(sessionRailUnreadVisible(summary, true)).toBe(false);
+    expect(sessionRailUnreadVisible(summary, false)).toBe(true);
+    expect(summary).toEqual(before);
   });
-
-  it("shows the rail dot on an unfocused working or waiting session", () => {
+  it("does not turn a never-visited completion or a live process into unread", () => {
+    expect(sessionRailUnreadVisible(attention(), false)).toBe(false);
+    expect(
+      sessionRailUnreadVisible(
+        attention({ running: true, terminalPosition: null }),
+        false,
+      ),
+    ).toBe(false);
     expect(sessionRailLive("working")).toBe(true);
-    expect(sessionRailLive("waiting")).toBe(true);
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "working",
-        seenFingerprint: undefined,
-      }),
-    ).toBe(true);
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "waiting",
-        seenFingerprint: "Working…",
-      }),
-    ).toBe(true);
-  });
-
-  it("hides the rail dot on a never-started idle session", () => {
-    expect(sessionRailFingerprint("idle")).toBe("");
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "idle",
-        seenFingerprint: undefined,
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps the rail dot after Done until that session is seen", () => {
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "complete",
-        seenFingerprint: undefined,
-      }),
-    ).toBe(true);
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "complete",
-        seenFingerprint: "Done",
-      }),
-    ).toBe(false);
   });
 });
 
@@ -129,32 +74,4 @@ describe("sessionRailGitLabel", () => {
     expect(sessionRailGitLabel("main (detached)")).toBe("");
     expect(sessionRailGitLabel(null)).toBe("");
   });
-});
-
-describe("session rail ack slots", () => {
-  it("caps rail acks at the attached-chat bound", () => {
-    expect(MAX_SESSION_RAIL_ACK_SLOTS).toBe(64);
-    pinSessionRailIds(["chat-a", "chat-b"]);
-    ackSessionRailUnread("chat-a", "Working…");
-    ackSessionRailUnread("chat-b", "Done");
-    expect(seenSessionRailFingerprint("chat-a")).toBe("Working…");
-    pinSessionRailIds(["chat-b"]);
-    expect(seenSessionRailFingerprint("chat-a")).toBeUndefined();
-    expect(seenSessionRailFingerprint("chat-b")).toBe("Done");
-  });
-});
-
-it("keeps the 64-slot rail registry independent from the two-pane registry", () => {
-  const ids = Array.from({ length: 64 }, (_, index) => `chat-${index}`);
-  pinSessionRailIds(ids);
-  for (const id of ids) ackSessionRailUnread(id, "Done");
-  ackChatUnread(ids[0], "Pane seen");
-  ackSessionRailUnread("overflow", "Waiting");
-  expect(seenSessionRailFingerprint(ids[0])).toBeUndefined();
-  expect(seenSessionRailFingerprint(ids[1])).toBe("Done");
-  expect(seenSessionRailFingerprint(ids[63])).toBe("Done");
-  expect(seenSessionRailFingerprint("overflow")).toBe("Waiting");
-  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
-  clearSessionRailAcks();
-  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
 });

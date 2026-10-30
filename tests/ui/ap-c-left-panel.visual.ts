@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { registerAttentionRailScenarios } from "./fixtures/chatAttentionRailScenarios";
 import {
   openScenario,
   takeCanonicalScreenshot,
@@ -51,6 +52,8 @@ async function installRailBrowseFixture(page: Page) {
     });
   });
 }
+
+registerAttentionRailScenarios();
 
 test("AP-C project disclosure, context actions, and honest project menu", async ({
   page,

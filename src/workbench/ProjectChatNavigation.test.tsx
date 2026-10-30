@@ -7,9 +7,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { seedChatAttention } from "../app/chatAttention.fixture";
+import { chatAttentionStore } from "../app/chatAttentionStore";
+import { attention } from "../domain/chatAttention.fixture";
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
-import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
 import {
@@ -21,7 +22,7 @@ const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  chatAttentionStore.disconnect();
   resetAgentRailViewPrefs();
   useSideChatState.setState({ sides: [] });
   vi.restoreAllMocks();
@@ -89,7 +90,7 @@ function currentChats() {
   return useWorkbenchStore.getState().tabs.filter((tab) => tab.kind === "chat");
 }
 
-it("shows a green Awaiting approval pill only for a chat whose surface awaits approval", () => {
+it("shows a green Awaiting approval pill from durable unmounted request attention", async () => {
   seedChats();
   render(
     <ProjectChatNavigation
@@ -99,7 +100,13 @@ it("shows a green Awaiting approval pill only for a chat whose surface awaits ap
     />,
   );
   expect(screen.queryByText("Awaiting approval")).toBeNull();
-  act(() => setChatAwaitingApproval("chat:b", true));
+  const fixture = await seedChatAttention([
+    attention({
+      projectId: "project-a",
+      chatId: "chat:b",
+      pendingApprovals: 1,
+    }),
+  ]);
   const pill = screen.getByText("Awaiting approval");
   expect(pill).toHaveClass("rail-pill", "rail-pill--approval");
   expect(screen.getByTitle("Open chat Beta")).toContainElement(pill);
@@ -113,7 +120,16 @@ it("shows a green Awaiting approval pill only for a chat whose surface awaits ap
       .getByTitle("Open chat Beta")
       .parentElement?.querySelector(".project-chat__approval-spinner .spinner"),
   ).not.toBeNull();
-  act(() => setChatAwaitingApproval("chat:b", false));
+  await act(() =>
+    fixture.update([
+      attention({
+        projectId: "project-a",
+        chatId: "chat:b",
+        revision: "2",
+        pendingApprovals: 0,
+      }),
+    ]),
+  );
   expect(screen.queryByText("Awaiting approval")).toBeNull();
   expect(document.querySelector(".project-chat__approval-spinner")).toBeNull();
 });
@@ -147,9 +163,12 @@ async function openChatActions(title: string) {
   await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
-it("shows one prioritized trailing state per chat and keeps actions separate", () => {
+it("shows one prioritized trailing state per chat and keeps actions separate", async () => {
   syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
   seedChats();
+  await seedChatAttention([
+    attention({ projectId: "project-a", chatId: "chat:b", readPosition: "0" }),
+  ]);
   render(
     <ProjectChatNavigation
       projectId="project-a"
@@ -540,8 +559,11 @@ it("restores an archived chat that belongs to another project folder", () => {
   ).toHaveAttribute("id", "archived-chat-list-project-a");
 });
 
-it("clears the rail unread dot after an unseen Done session is opened", () => {
+it("hides a focused Done dot without acknowledging selection alone", async () => {
   seedChats();
+  const fixture = await seedChatAttention([
+    attention({ projectId: "project-a", chatId: "chat:b", readPosition: "0" }),
+  ]);
   const activateTab = useWorkbenchStore.getState().activateTab;
   render(
     <ProjectChatNavigation
@@ -553,6 +575,10 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
 
   fireEvent.click(screen.getByTitle("Open chat Beta"));
   expect(activateTab).toHaveBeenCalledWith("chat:b");
+  expect(fixture.ack).not.toHaveBeenCalled();
+  expect(chatAttentionStore.getSnapshot().get("chat:b")?.readPosition).toBe(
+    "0",
+  );
   expect(
     screen
       .getByTitle("Open chat Beta")

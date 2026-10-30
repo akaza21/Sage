@@ -290,16 +290,6 @@ pub(crate) struct DatabaseAcpStore {
     database: crate::persistence::Database,
 }
 
-impl AcpStore for DatabaseAcpStore {
-    fn commit(&mut self, batch: &[StoreMutation]) -> Result<StoreCommit, StoreError> {
-        let mut connection = self
-            .database
-            .write_connection()
-            .map_err(|_| StoreError::Corrupt("storage recovery required"))?;
-        commit_batch(&mut connection, batch)
-    }
-}
-
 fn commit_batch(
     connection: &mut rusqlite::Connection,
     batch: &[StoreMutation],
@@ -417,6 +407,8 @@ fn mutation_shape(mutation: &StoreMutation) -> (&str, &str, bool) {
 
 #[cfg(test)]
 mod adapter_batch_tests;
+#[cfg(test)]
+mod attention_tests;
 #[cfg(test)]
 mod extended_tests;
 #[cfg(test)]

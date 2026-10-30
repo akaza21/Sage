@@ -242,6 +242,7 @@ counter!(ProjectGeneration);
 counter!(RuntimeEpoch);
 counter!(ProjectionRevision);
 counter!(EntityRevision);
+counter!(AttentionPosition);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]

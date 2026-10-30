@@ -1,3 +1,4 @@
+import { usePresentedAttention } from "../../../app/chatAttentionPresentation";
 import { Fragment, memo, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -13,7 +14,6 @@ import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
-import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
@@ -36,7 +36,10 @@ import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { isSideChatId } from "../../../workbench/sideChatState";
 import "./browser-operations.css";
 
-import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
+import type {
+  AcpChatPresentationProps,
+  AcpChatTurnProps,
+} from "./acpChatPresentationTypes";
 export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 
 const Turn = memo(
@@ -50,19 +53,7 @@ const Turn = memo(
     onRetry,
     inherited = false,
     answerActions = inherited,
-  }: {
-    page: AcpChatPage;
-    turn: TurnProjection;
-    /** A fork's read-only parent Turn: never interactive or quotable. */
-    inherited?: boolean;
-    /** Earlier/inherited answers retain Copy (s2/f0066). */
-    answerActions?: boolean;
-    rootLabels?: Readonly<Record<string, string>>;
-    workspaceChanges?: readonly TurnWorkspaceChange[];
-    workspaceIncomplete?: boolean;
-    onOpenResource?: AcpChatPresentationProps["onOpenResource"];
-    onRetry?: () => void;
-  }) {
+  }: AcpChatTurnProps) {
     const primary = turn.items.filter(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );
@@ -292,6 +283,7 @@ const Turn = memo(
 
 export function AcpChatPresentation({
   page,
+  focused = false,
   onOpenResource,
   hasEarlier,
   loadingEarlier,
@@ -302,6 +294,7 @@ export function AcpChatPresentation({
   onRetry,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
+  usePresentedAttention(page, focused);
   const { changes: workspaceChanges, incompleteTurnIds } =
     useTurnWorkspaceChanges(page, isTauriRuntime());
   const navigationRef = useRef<TurnListHost | null>(null);

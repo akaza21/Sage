@@ -59,6 +59,14 @@ pub(super) fn setup() -> Connection {
         )
         .unwrap();
     connection
+        .execute_batch(
+            "CREATE TABLE workbench_tabs(project_id TEXT,id TEXT,kind TEXT,metadata_json TEXT);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../../../migrations/020_chat_attention.sql"))
+        .unwrap();
+    connection
 }
 
 pub(super) fn capabilities() -> String {

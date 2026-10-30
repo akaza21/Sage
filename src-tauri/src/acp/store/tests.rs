@@ -25,7 +25,7 @@ pub(super) fn setup() -> Connection {
         "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, updated_at INTEGER);
-         CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
+         CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, ordinal INTEGER, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
          CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
          CREATE TABLE turns(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, session_id TEXT, runtime_epoch INTEGER, ordinal INTEGER, client_intent_id TEXT, state TEXT, delivery_state TEXT, revision INTEGER, created_at INTEGER, updated_at INTEGER, terminal_at INTEGER, UNIQUE(session_id,client_intent_id));
@@ -37,7 +37,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE acp_project_usage(project_id TEXT PRIMARY KEY, turn_count INTEGER, item_count INTEGER, fact_count INTEGER, payload_bytes INTEGER, revision INTEGER);
          CREATE TABLE acp_store_usage(singleton INTEGER PRIMARY KEY, turn_count INTEGER, item_count INTEGER, item_bytes INTEGER, fact_count INTEGER, fact_bytes INTEGER, shared_payload_bytes INTEGER, revision INTEGER);
          INSERT INTO chats VALUES('chat-one','project-one',0,0,'Chat: Fixture');
-         INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one','ready','hot',0,0,0,NULL);
+         INSERT INTO agent_sessions VALUES('session-one','project-one','chat-one',0,'ready','hot',0,0,0,NULL);
          INSERT INTO chat_session_heads VALUES('session-one');
          INSERT INTO session_runtime_epochs VALUES('session-one',1,'running',NULL,NULL,0);
          INSERT INTO acp_session_usage VALUES('session-one',0,0,0,0,0,0,0);
@@ -64,6 +64,14 @@ pub(super) fn setup() -> Connection {
         .execute_batch(
             "CREATE TABLE acp_turn_terminal_reasons(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,kind TEXT,message TEXT,remediation TEXT,created_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
         )
+        .unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE workbench_tabs(project_id TEXT,id TEXT,kind TEXT,metadata_json TEXT);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../../../migrations/020_chat_attention.sql"))
         .unwrap();
     connection
 }

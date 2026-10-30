@@ -8,6 +8,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { seedChatAttention } from "../app/chatAttention.fixture";
+import { chatAttentionStore } from "../app/chatAttentionStore";
+import { attention } from "../domain/chatAttention.fixture";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
@@ -15,7 +18,6 @@ import {
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
 } from "../features/chatSearch/chatSearchScope";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
@@ -141,10 +143,10 @@ const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
+  chatAttentionStore.disconnect();
   resetAgentRailInteractions();
   useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
-  clearSessionRailAcks();
   resetAgentRailViewPrefs();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
@@ -838,6 +840,9 @@ it("marks visible unread rail chats read from the filter menu", async () => {
     activeTabId: "chat:focus",
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
+  await seedChatAttention([
+    attention({ projectId: "sage", chatId: "chat:done", readPosition: "0" }),
+  ]);
   render(<LeftSidebar />);
   expect(
     screen
@@ -846,8 +851,10 @@ it("marks visible unread rail chats read from the filter menu", async () => {
       ?.querySelector("[aria-label='Unread updates']"),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-  fireEvent.click(
-    await screen.findByRole("menuitem", { name: "Mark All as Read" }),
+  await act(async () =>
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Mark All as Read" }),
+    ),
   );
   expect(
     screen

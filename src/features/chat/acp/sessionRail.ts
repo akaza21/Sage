@@ -1,16 +1,11 @@
 import type { SessionStatus } from "../../../domain/workbench";
 import { currentLocalBranchName } from "../../git/localBranches";
-import { createUnreadAcks, unreadDotVisible } from "./chatUnread";
+import {
+  attentionUnread,
+  type ChatAttentionV1,
+} from "../../../domain/chatAttention";
 
-export const MAX_SESSION_RAIL_ACK_SLOTS = 64;
 export const MAX_SESSION_RAIL_GIT_CHARS = 24;
-
-export const {
-  pin: pinSessionRailIds,
-  ack: ackSessionRailUnread,
-  seen: seenSessionRailFingerprint,
-  clear: clearSessionRailAcks,
-} = createUnreadAcks(MAX_SESSION_RAIL_ACK_SLOTS);
 
 export function sessionRailRelativeTime(
   updatedAtMs: number,
@@ -78,24 +73,9 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
   );
 }
 
-export function sessionRailFingerprint(
-  status: SessionStatus | undefined,
-  updatedAt?: number,
-): string {
-  const label = sessionRailStatusLabel(status);
-  return label && updatedAt ? `${label}:${updatedAt}` : label;
-}
-
-export function sessionRailUnreadVisible(input: {
-  focused: boolean;
-  status: SessionStatus | undefined;
-  updatedAt?: number;
-  seenFingerprint: string | undefined;
-}): boolean {
-  return unreadDotVisible({
-    focused: input.focused,
-    live: sessionRailLive(input.status),
-    activityFingerprint: sessionRailFingerprint(input.status, input.updatedAt),
-    seenFingerprint: input.seenFingerprint,
-  });
+export function sessionRailUnreadVisible(
+  summary: ChatAttentionV1 | undefined,
+  focused: boolean,
+): boolean {
+  return attentionUnread(summary, focused);
 }

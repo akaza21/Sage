@@ -55,6 +55,7 @@ pub struct Database {
     physical_storage: Arc<PhysicalStorage>,
     _live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
+    pub(crate) attention: crate::chat_attention::publisher::AttentionPublisher,
 }
 
 impl Database {
@@ -72,6 +73,7 @@ impl Database {
         connection.pragma_update(None, "busy_timeout", 5_000)?;
         connection.pragma_update(None, "wal_autocheckpoint", 256)?;
         connection.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024)?;
+        crate::chat_attention::publisher::install(&connection)?;
         let physical_storage = Arc::new(PhysicalStorage::new(path, limits));
         physical_storage.configure(&connection)?;
         let image_artifact_root = (path != Path::new(":memory:")).then(|| {
@@ -87,6 +89,7 @@ impl Database {
             physical_storage,
             _live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
+            attention: crate::chat_attention::publisher::AttentionPublisher::default(),
         };
         // Like the exit path: a failed purge never blocks startup; the
         // temporary Chats stay hidden and the purge retries next time.
@@ -140,6 +143,7 @@ impl Database {
         Ok(WriteConnection {
             connection,
             physical_storage: &self.physical_storage,
+            attention: &self.attention,
         })
     }
 
@@ -153,6 +157,7 @@ impl Database {
 pub(crate) struct WriteConnection<'a> {
     connection: std::sync::MutexGuard<'a, Connection>,
     physical_storage: &'a PhysicalStorage,
+    attention: &'a crate::chat_attention::publisher::AttentionPublisher,
 }
 
 impl std::ops::Deref for WriteConnection<'_> {
@@ -171,6 +176,7 @@ impl std::ops::DerefMut for WriteConnection<'_> {
 
 impl Drop for WriteConnection<'_> {
     fn drop(&mut self) {
+        self.attention.collect_committed(&self.connection);
         self.physical_storage.observe_after_write(&self.connection);
     }
 }
@@ -198,7 +204,7 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 19);
+        assert_eq!(migration_count, 20);
         assert_eq!(project_count, 0);
     }
 
