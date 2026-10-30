@@ -81,6 +81,63 @@ fn prompt_error_after_written_user_cancel_is_cancelled_and_next_turn_can_run() {
 }
 
 #[test]
+fn duplicate_aborted_response_after_stop_does_not_fail_the_retry() {
+    let mut runtime = ClaudeRuntime::fixture();
+    ready(&mut runtime);
+    let (id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    let cancel = runtime.command(AdapterCommand::Cancel).unwrap();
+    runtime
+        .resolve_egress(cancel.into_token(), EgressResolution::Written)
+        .unwrap();
+    let aborted = json!({"id":id,"error":{"code":-32603,"message":"Request aborted"}});
+    runtime.ingest(&frame(aborted.clone()), &Mapper).unwrap();
+    let duplicate = runtime
+        .ingest(&frame(aborted.clone()), &Mapper)
+        .expect("identical cancelled response must be idempotent");
+    assert!(matches!(
+        duplicate.events(),
+        [SharedEvent::IgnoredDuplicate]
+    ));
+    let (next_id, token) = prompt(&mut runtime);
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    let duplicate = runtime
+        .ingest(&frame(aborted), &Mapper)
+        .expect("old cancelled response must not kill the next turn");
+    assert!(matches!(
+        duplicate.events(),
+        [SharedEvent::IgnoredDuplicate]
+    ));
+    assert!(
+        matches!(
+            runtime.ingest(
+                &frame(json!({"id":id,"result":{"stopReason":"end_turn"}})),
+                &Mapper
+            ),
+            Err(AdapterRuntimeError::Frame)
+        ),
+        "a conflicting success is still a protocol violation"
+    );
+    let completed = runtime
+        .ingest(
+            &frame(json!({"id":next_id,"result":{"stopReason":"end_turn"}})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(completed.events().iter().any(|event| matches!(
+        event,
+        SharedEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn joined_browser_permissions_reuse_capacity_after_allowed_replies() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
