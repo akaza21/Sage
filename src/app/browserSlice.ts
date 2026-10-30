@@ -23,6 +23,7 @@ import {
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
 import type { WorkbenchState } from "./store";
+import { positionTab } from "./tabState";
 import { popupAdoption, ackPopup } from "./browserPopupNative";
 
 export interface BrowserSlice {
@@ -142,7 +143,7 @@ export const createBrowserSlice: StateCreator<
             openerTabId: opened.openerTabId,
           });
           return {
-            tabs: tabs.map((tab, position) => ({ ...tab, position })),
+            tabs: tabs.map(positionTab),
             activeTabId: opened.tabId,
             activeEditor: null,
           };
@@ -252,7 +253,7 @@ export const createBrowserSlice: StateCreator<
                 try {
                   title = new URL(url).host.slice(0, 48);
                 } catch {
-                  title = "New tab";
+                  // Retain the default title when the native URL is unreadable.
                 }
                 set((state) => ({
                   tabs: [

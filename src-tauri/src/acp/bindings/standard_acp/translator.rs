@@ -173,6 +173,18 @@ impl StandardAcpTranslator {
         Ok(())
     }
 
+    /// Releases concurrency capacity after the runtime wrote an allow reply.
+    /// The runtime owns bounded reply replay; the tool still settles on ingress.
+    pub(crate) fn permission_allow_written(
+        &mut self,
+        request_id: &str,
+    ) -> Result<(), TranslationError> {
+        self.permissions
+            .remove(request_id)
+            .ok_or(TranslationError::ForeignId)?;
+        Ok(())
+    }
+
     pub(crate) fn translate_notification(
         &mut self,
         raw: &[u8],

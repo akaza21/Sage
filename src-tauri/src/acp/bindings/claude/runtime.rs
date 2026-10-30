@@ -80,6 +80,7 @@ struct TurnIntent {
     external_turn_id: ExternalId,
     client_message_id: RequiredText<512>,
     request_id: u64,
+    cancel_written: bool,
 }
 
 enum PendingRequest {

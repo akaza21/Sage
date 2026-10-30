@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Ellipsis,
+  Lock,
   RotateCw,
   X,
 } from "../../ui/leanIcons";
@@ -184,7 +185,7 @@ export function BrowserNavigationControls({
               : "No page"
           }
         >
-          {page?.transport === "secure" ? "⌁" : ""}
+          {page?.transport === "secure" && <Lock size={14} />}
         </span>
         <input
           ref={addressField}

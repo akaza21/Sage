@@ -38,10 +38,8 @@ impl ClaudeRuntime {
         }
         let result = match pending {
             PendingRequest::Initialize => self.initialize_response(value),
-            PendingRequest::NewSession => self.session_response(value, None, false),
-            PendingRequest::ResumeSession(expected) => {
-                self.session_response(value, Some(expected), true)
-            }
+            PendingRequest::NewSession => self.session_response(value, None),
+            PendingRequest::ResumeSession(expected) => self.session_response(value, Some(expected)),
             PendingRequest::CloseSession => {
                 if value.get("error").is_some()
                     || !value.get("result").is_some_and(Value::is_object)
@@ -118,7 +116,6 @@ impl ClaudeRuntime {
         &mut self,
         value: Value,
         expected: Option<ExternalId>,
-        loaded: bool,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let external_id = result_session_id(&value)?;
         if expected
@@ -140,7 +137,8 @@ impl ClaudeRuntime {
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
                 id: self.session_identity(external_id),
-                loaded,
+                // Resume does not replay history; session/load is unsupported.
+                loaded: false,
             }],
             Vec::new(),
         )
@@ -158,11 +156,21 @@ impl ClaudeRuntime {
         self.translate_events(events)
     }
 
-    fn prompt_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+    fn prompt_response(&mut self, mut value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
         let request_id = response_id(&value)?;
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         if active.turn.as_ref().map(|turn| turn.request_id) != Some(request_id) {
             return Err(AdapterRuntimeError::Frame);
+        }
+        // Some ACP hosts report an aborted prompt as an RPC error. Only a
+        // completely written user cancel owns that outcome; a queued or
+        // zero-byte cancel must not hide a genuine prompt failure.
+        if value.get("error").is_some()
+            && active.turn.as_ref().is_some_and(|turn| turn.cancel_written)
+        {
+            let object = value.as_object_mut().ok_or(AdapterRuntimeError::Frame)?;
+            object.remove("error");
+            object.insert("result".into(), json!({"stopReason":"cancelled"}));
         }
         let events = active
             .translator

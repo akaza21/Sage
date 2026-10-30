@@ -106,6 +106,12 @@ impl ClaudeRuntime {
             return Ok(());
         }
         if token.is_notification() {
+            if token.is_cancel()
+                && resolution == EgressResolution::Written
+                && let Some(turn) = self.active.as_mut().and_then(|active| active.turn.as_mut())
+            {
+                turn.cancel_written = true;
+            }
             if resolution == EgressResolution::DeliveryUnknown {
                 self.delivery_unknown = Some(DeliveryUnknown::Notification);
             }
@@ -130,6 +136,7 @@ impl ClaudeRuntime {
                     )
                 })
                 .ok_or(AdapterRuntimeError::EgressIntent)?;
+            let previous = record.state;
             record.state = match (resolution, record.state) {
                 (EgressResolution::Queued, DenialState::Pending | DenialState::Queued) => {
                     DenialState::Queued
@@ -139,6 +146,14 @@ impl ClaudeRuntime {
                 }
                 _ => return Err(AdapterRuntimeError::EgressIntent),
             };
+            if record.state == DenialState::Written && previous != DenialState::Written {
+                self.active
+                    .as_mut()
+                    .ok_or(AdapterRuntimeError::EgressIntent)?
+                    .translator
+                    .permission_allow_written(&record.translator_id)
+                    .map_err(map_translation)?;
+            }
             return Ok(());
         }
         if let Some(request_id) = token.cancelled_permission_request() {

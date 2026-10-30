@@ -130,7 +130,7 @@ fn already_contains(path: &Path, bytes: &[u8]) -> io::Result<bool> {
     Ok(existing == bytes)
 }
 
-fn rename_held(source: &File, target: &Path) -> io::Result<()> {
+fn rename_information(target: &Path) -> io::Result<(Vec<usize>, u32)> {
     let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
     let name_bytes = name
         .len()
@@ -138,9 +138,12 @@ fn rename_held(source: &File, target: &Path) -> io::Result<()> {
         .ok_or_else(refused)?;
     let total = offset_of!(FILE_RENAME_INFO, FileName)
         .checked_add(name_bytes)
+        .and_then(|length| length.checked_add(size_of::<u16>()))
         .ok_or_else(refused)?;
+    // FileNameLength excludes the NUL; the Win32 request must still own it.
     let mut storage = vec![0_usize; total.div_ceil(size_of::<usize>())];
     let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    // SAFETY: aligned, zeroed storage holds the header, UTF-16 name and terminator.
     unsafe {
         // REPLACE_IF_EXISTS | POSIX_SEMANTICS: replace a previously opened
         // target name atomically without writing through its old file handle.
@@ -148,11 +151,19 @@ fn rename_held(source: &File, target: &Path) -> io::Result<()> {
         (*info).RootDirectory = ptr::null_mut();
         (*info).FileNameLength = u32::try_from(name_bytes).map_err(|_| refused())?;
         ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
+    }
+    Ok((storage, u32::try_from(total).map_err(|_| refused())?))
+}
+
+fn rename_held(source: &File, target: &Path) -> io::Result<()> {
+    let (mut storage, total) = rename_information(target)?;
+    // SAFETY: the request owns its aligned header and terminated UTF-16 name.
+    unsafe {
         if SetFileInformationByHandle(
             source.as_raw_handle(),
             FileRenameInfoEx,
-            info.cast(),
-            u32::try_from(total).map_err(|_| refused())?,
+            storage.as_mut_ptr().cast(),
+            total,
         ) == 0
         {
             return Err(io::Error::last_os_error());
@@ -197,6 +208,46 @@ pub(super) fn atomic_write(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rename_information_terminates_every_utf16_alignment() {
+        for suffix in ["", "a", "ab", "abc"] {
+            let path = PathBuf::from(format!(r"C:\fixture\lock-🔒{suffix}.txt"));
+            let expected = path.as_os_str().encode_wide().collect::<Vec<_>>();
+            let (storage, length) = rename_information(&path).unwrap();
+            let end = offset_of!(FILE_RENAME_INFO, FileName) + expected.len() * 2;
+            assert!(
+                length as usize >= end + 2,
+                "request must include its terminator"
+            );
+            assert!(storage.len() * size_of::<usize>() >= length as usize);
+            // SAFETY: the builder owns the header and the bounds above include the terminator.
+            unsafe {
+                let info = storage.as_ptr().cast::<FILE_RENAME_INFO>();
+                assert_eq!((*info).FileNameLength as usize, expected.len() * 2);
+                let name =
+                    std::slice::from_raw_parts((*info).FileName.as_ptr(), expected.len() + 1);
+                assert_eq!(&name[..expected.len()], expected);
+                assert_eq!(name[expected.len()], 0);
+            }
+        }
+    }
+
+    #[test]
+    fn atomic_write_reaches_the_exact_target_for_every_alignment() {
+        let root = std::env::temp_dir().join(format!("sage-write-nul-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let identity = crate::workspace::root_identity_path(&root)
+            .unwrap()
+            .stable_bytes();
+        for suffix in ["", "a", "ab", "abc"] {
+            let target = root.join(format!("after{suffix}.txt"));
+            atomic_write(&root, identity, &target, b"retained").unwrap();
+            assert_eq!(std::fs::read(&target).unwrap(), b"retained");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn held_parent_component_cannot_be_swapped() {
