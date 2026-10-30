@@ -10,10 +10,7 @@ use crate::{acp::limits::LIMITS, project_registry::ProjectRootAuthority};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {
     NativeExecutable,
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only Windows launches batch shims")
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     WindowsBatchLauncher,
 }
 
@@ -40,10 +37,7 @@ pub(crate) enum LaunchError {
 }
 
 pub(crate) struct ArtifactExpectation {
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only the Windows supervisor reads this")
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) artifact_id: Uuid,
     pub(crate) canonical_absolute_path: PathBuf,
     pub(crate) sha256: [u8; 32],
@@ -78,10 +72,7 @@ impl ArtifactExpectation {
         self
     }
 
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only Windows launches batch shims")
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) fn windows_batch_launcher(
         artifact_id: Uuid,
         canonical_absolute_path: PathBuf,
@@ -214,10 +205,7 @@ impl ProcessDeadlines {
 }
 
 pub(crate) struct LaunchSpec {
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only the Windows supervisor reads this")
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) binding_id: Uuid,
     pub(crate) runtime_epoch: u64,
     pub(crate) artifact: ArtifactExpectation,
@@ -300,13 +288,7 @@ impl LaunchFailureTracker {
         }
     }
 
-    #[cfg_attr(
-        not(windows),
-        allow(
-            dead_code,
-            reason = "only the Windows supervisor tracks child creation"
-        )
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(super) fn child_created(runtime_epoch: u64) -> Self {
         Self {
             runtime_epoch,
@@ -338,13 +320,7 @@ impl LaunchFailureTracker {
         Some(ZeroProcessToken::new(self.runtime_epoch))
     }
 
-    #[cfg_attr(
-        not(windows),
-        allow(
-            dead_code,
-            reason = "only the Windows supervisor tracks child creation"
-        )
-    )]
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(super) fn runtime_epoch(&self) -> u64 {
         self.runtime_epoch
     }

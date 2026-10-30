@@ -179,10 +179,7 @@ pub(crate) enum PrepareDriverTurnError {
     Rebind(DriverError),
 }
 
-#[allow(
-    dead_code,
-    reason = "production callers only drop these; tests inspect the fields"
-)]
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct PrepareDriverTurnFailure<P> {
     pub(crate) parts: P,
     pub(crate) recovery: Option<PrepareRecovery>,
@@ -357,10 +354,7 @@ where
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "production callers only drop these; tests inspect the fields"
-)]
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct ZeroProcessHandoff<L, P> {
     pub(crate) lease: L,
     pub(crate) proof: P,
