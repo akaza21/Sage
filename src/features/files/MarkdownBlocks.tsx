@@ -77,11 +77,22 @@ export function MarkdownBlocks({
           ? format
           : "link" in format
             ? createElement(Fragment, { key: index }, renderLink(format.link))
-            : createElement(
-                format.tag,
-                { key: index },
-                render(format.children),
-              ),
+            : format.tag === "a"
+              ? // Not followed in the app; the address shows on hover.
+                createElement(
+                  "span",
+                  {
+                    key: index,
+                    className: "markdown-web-link",
+                    title: format.href,
+                  },
+                  render(format.children),
+                )
+              : createElement(
+                  format.tag,
+                  { key: index },
+                  render(format.children),
+                ),
       );
     return spans.length ? render(spans) : text;
   };
@@ -112,14 +123,67 @@ export function MarkdownBlocks({
         { key: index },
         inline(block.text, index),
       );
-    if (block.kind === "list")
-      return createElement(
-        block.ordered ? "ol" : "ul",
-        { key: index, start: block.start },
-        block.items.map((item, itemIndex) => (
-          <li key={itemIndex}>{inline(item, index, itemIndex)}</li>
-        )),
-      );
+    if (block.kind === "list") {
+      const shape = (at: number) =>
+        block.shape?.[at] ?? { depth: 0, ordered: !!block.ordered };
+      // Items are flat; each run of deeper items nests in the item before it.
+      // The first item of a run is at the run's depth, so `items` is never
+      // empty when a deeper item arrives.
+      const list = (from: number, key: number): [ReactNode, number] => {
+        const { depth, ordered } = shape(from);
+        const items: { task: boolean; children: ReactNode[] }[] = [];
+        let at = from;
+        while (at < block.items.length && shape(at).depth >= depth) {
+          if (shape(at).depth > depth) {
+            const [nested, next] = list(at, at);
+            items[items.length - 1].children.push(nested);
+            at = next;
+            continue;
+          }
+          const checked = shape(at).checked;
+          items.push({
+            task: checked !== undefined,
+            children: [
+              checked === undefined ? null : (
+                <input
+                  key="task"
+                  type="checkbox"
+                  checked={checked}
+                  disabled
+                  aria-label={block.items[at]}
+                />
+              ),
+              <Fragment key="text">
+                {inline(block.items[at], index, at)}
+              </Fragment>,
+            ],
+          });
+          at++;
+        }
+        return [
+          createElement(
+            ordered ? "ol" : "ul",
+            { key, start: depth ? undefined : block.start },
+            items.map((item, itemIndex) => (
+              <li
+                key={itemIndex}
+                className={item.task ? "markdown-task" : undefined}
+              >
+                {item.children}
+              </li>
+            )),
+          ),
+          at,
+        ];
+      };
+      const lists: ReactNode[] = [];
+      for (let at = 0; at < block.items.length;) {
+        const [node, next] = list(at, at);
+        lists.push(node);
+        at = next;
+      }
+      return <Fragment key={index}>{lists}</Fragment>;
+    }
     const row = (cells: string[], rowIndex: number) => (
       <tr key={rowIndex}>
         {cells.map((cell, column) =>
