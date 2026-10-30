@@ -161,22 +161,33 @@ pub(crate) async fn send_acp_turn_inner(
         .map_err(prompt_not_dispatched)?;
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
+    let mut command = PrepareTurnCommand {
+        project_id: project_id.clone(),
+        project_generation,
+        chat_id: chat_id.clone(),
+        session_id,
+        runtime_epoch,
+        expected_projection_revision,
+        client_intent_id,
+        prompt,
+        now_millis: crate::persistence::now_millis(),
+    };
+    crate::acp::store::context_handoff::freeze_prompt(
+        &mut *state.database.write_connection().map_err(|_| {
+            prompt_not_dispatched(AcpIpcError::RecoveryRequired {
+                message: safe_message("Storage recovery is required before sending."),
+            })
+        })?,
+        &mut command,
+    )
+    .map_err(store_error)
+    .map_err(prompt_not_dispatched)?;
     let dispatch = state
         .acp
         .dispatch_session_turn(
             &binding_id,
             crate::acp::runtime::HostPromptIntent {
-                command: PrepareTurnCommand {
-                    project_id: project_id.clone(),
-                    project_generation,
-                    chat_id: chat_id.clone(),
-                    session_id,
-                    runtime_epoch,
-                    expected_projection_revision,
-                    client_intent_id,
-                    prompt,
-                    now_millis: crate::persistence::now_millis(),
-                },
+                command,
                 access_mode,
             },
         )

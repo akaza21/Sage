@@ -364,6 +364,7 @@ pub struct SessionProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
+    pub handoffs: Vec<super::context_handoff::HandoffSummary>,
     pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
     pub(crate) goal: super::goal::GoalState,
     pub project_id: SageProjectId,

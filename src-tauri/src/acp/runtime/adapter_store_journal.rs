@@ -354,6 +354,7 @@ fn store_error_variant(error: &StoreError) -> &'static str {
         StoreError::TerminalConflict { .. } => "terminalConflict",
         StoreError::Corrupt(_) => "corrupt",
         StoreError::PayloadTooLarge => "payloadTooLarge",
+        StoreError::HandoffBudgetExceeded => "handoffBudgetExceeded",
         StoreError::BatchShape => "batchShape",
         StoreError::CommitUnknown => "commitUnknown",
         StoreError::CounterExhausted => "counterExhausted",

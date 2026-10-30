@@ -125,6 +125,9 @@ fn await_client_kind(
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let kind = field_str(step, "kind")?;
+    if kind == "handoffPrompt" {
+        return super::wire_handoff::await_prompt(input);
+    }
     if kind.starts_with("pi") {
         return pi::await_request(input, output, state, kind);
     }

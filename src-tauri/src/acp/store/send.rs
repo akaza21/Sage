@@ -260,6 +260,13 @@ pub(super) fn transition_turn_in(
         )?)?;
     }
     let terminal_at = next_state.is_terminal().then_some(command.now_millis);
+    crate::acp::context_handoff::delivery::observe(
+        transaction,
+        &command,
+        next_state,
+        next_delivery,
+        projection,
+    )?;
     ensure_one(transaction.execute(
         "UPDATE turns SET state=?2, delivery_state=?3, revision=?4, updated_at=?5,
          terminal_at=?6 WHERE id=?1",

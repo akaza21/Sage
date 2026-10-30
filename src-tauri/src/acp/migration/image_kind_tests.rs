@@ -43,10 +43,19 @@ fn populated_v17_image_upgrade_preserves_rows_objects_and_original_backup() {
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
     assert_eq!(item_rows(&upgraded), rows);
-    assert_eq!(item_objects(&upgraded), objects);
+    let upgraded_objects = item_objects(&upgraded);
+    for object in &objects {
+        assert!(upgraded_objects.contains(object));
+    }
+    let additions: Vec<_> = upgraded_objects
+        .iter()
+        .filter(|object| !objects.contains(object))
+        .map(|object| object.0.as_str())
+        .collect();
+    assert_eq!(additions, ["idx_handoff_history", "idx_handoff_text_role"]);
     let foreign_keys: bool = upgraded
         .pragma_query_value(None, "foreign_keys", |row| row.get(0))
         .unwrap();
@@ -136,7 +145,7 @@ fn v17_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), earlier_file);
     assert_eq!(
@@ -165,7 +174,7 @@ fn v18_reopen_verifies_versioned_retained_backup_once() {
     assert_eq!(loads.count(), 1);
     assert_eq!(
         fingerprint::classify_connection(&reopened).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
 }
 
@@ -192,10 +201,19 @@ fn v16_image_upgrade_retains_earlier_backup_and_pins_a_new_original_schema_copy(
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
     assert_eq!(item_rows(&upgraded), rows);
-    assert_eq!(item_objects(&upgraded), objects);
+    let upgraded_objects = item_objects(&upgraded);
+    for object in &objects {
+        assert!(upgraded_objects.contains(object));
+    }
+    let additions: Vec<_> = upgraded_objects
+        .iter()
+        .filter(|object| !objects.contains(object))
+        .map(|object| object.0.as_str())
+        .collect();
+    assert_eq!(additions, ["idx_handoff_history", "idx_handoff_text_role"]);
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), earlier_file);
     assert_eq!(fs::read(&paths.manifest_final).unwrap(), earlier_manifest);
     assert_eq!(
@@ -284,7 +302,7 @@ fn v16_image_upgrade_retries_after_schema_failure_with_original_backup_intact() 
     let retried = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&retried).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
     assert_eq!(
         file_fingerprint(&versioned.backup_final).unwrap(),
@@ -315,7 +333,7 @@ fn v17_image_upgrade_retries_after_marker_failure_with_original_backup_intact() 
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
-        SchemaClass::CurrentV19
+        SchemaClass::CurrentV20
     );
     assert_eq!(file_fingerprint(&paths.backup_final).unwrap(), backup_file);
 }

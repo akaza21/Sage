@@ -18,6 +18,7 @@ import type {
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
+  TransitionAcpSessionRequest,
 } from "../domain/acp";
 import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 import type {
@@ -321,6 +322,12 @@ export const acpDesktop = {
 
   startSession(request: StartAcpSessionRequest): Promise<AcpMutationResult> {
     return invokeAcpMutation("start_acp_session", request);
+  },
+
+  transitionSession(
+    request: TransitionAcpSessionRequest,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("acp_transition_session", request);
   },
 
   activateSession(

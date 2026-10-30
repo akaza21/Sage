@@ -21,6 +21,7 @@ mod request_identity_tests;
 
 pub(super) fn setup() -> Connection {
     let connection = Connection::open_in_memory().unwrap();
+    super::handoff_fixture::create(&connection);
     connection.execute_batch(
         "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
@@ -44,6 +45,9 @@ pub(super) fn setup() -> Connection {
          INSERT INTO acp_project_usage VALUES('project-one',0,0,0,0,0);
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0,0,0,0);",
     ).unwrap();
+    connection
+        .execute_batch("ALTER TABLE agent_sessions ADD COLUMN external_session_id TEXT;")
+        .unwrap();
     connection
         .execute_batch(
             "CREATE UNIQUE INDEX snapshot_fixture_item_owner

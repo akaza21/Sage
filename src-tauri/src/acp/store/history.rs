@@ -81,6 +81,11 @@ pub(crate) fn load_chat_page(
         chat_id.as_str(),
     )?;
     let empty_page = AcpChatPage {
+        handoffs: super::context_handoff::summaries(
+            connection,
+            project_id.as_str(),
+            chat_id.as_str(),
+        )?,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id: project_id.clone(),
@@ -110,6 +115,7 @@ pub(crate) fn load_chat_page(
         base_page_bytes,
     })?;
     let page = AcpChatPage {
+        handoffs: empty_page.handoffs,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id,

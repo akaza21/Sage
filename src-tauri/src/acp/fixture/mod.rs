@@ -19,6 +19,10 @@ mod external_fixture_support;
 #[cfg(all(test, windows))]
 mod external_tests;
 mod generated_cases;
+#[cfg(all(test, windows))]
+mod handoff_external_tests;
+#[cfg(all(test, windows))]
+mod handoff_support;
 #[cfg(test)]
 mod host;
 mod interpreter;
@@ -32,6 +36,7 @@ mod test_support;
 #[cfg(all(test, windows))]
 mod windows_literal_tests;
 mod wire;
+mod wire_handoff;
 mod wire_payload;
 
 use std::ffi::OsString;

@@ -93,7 +93,9 @@ const HISTORY_GUARDS: [&str; 8] = [
     "deny_turn_delete",
 ];
 /// Rows keyed by (project_id, chat_id), deleted while the guards are lifted.
-const CHAT_ROWS: [&str; 14] = [
+const CHAT_ROWS: [&str; 16] = [
+    "acp_context_handoffs",
+    "acp_session_transitions",
     "acp_child_thread_transcripts",
     "acp_child_thread_bindings",
     "acp_child_thread_owners",
@@ -210,7 +212,7 @@ impl Database {
                 params![project, chat],
             )?;
         }
-        let (sessions, turns, facts, bytes): (i64,i64,i64,i64) = transaction.query_row("SELECT COUNT(*),COALESCE(SUM(turn_count),0),COALESCE(SUM(fact_count),0),COALESCE(SUM(fact_bytes),0) FROM acp_session_usage WHERE project_id=?1 AND chat_id=?2", params![project,chat], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))?;
+        let (sessions, turns, facts, fact_bytes, bytes): (i64,i64,i64,i64,i64) = transaction.query_row("SELECT COUNT(*),COALESCE(SUM(turn_count),0),COALESCE(SUM(fact_count),0),COALESCE(SUM(fact_bytes),0),COALESCE(SUM(payload_bytes),0) FROM acp_session_usage WHERE project_id=?1 AND chat_id=?2", params![project,chat], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)))?;
         transaction.execute(
             "DELETE FROM acp_session_usage WHERE project_id=?1 AND chat_id=?2",
             params![project, chat],
@@ -232,7 +234,7 @@ impl Database {
             params![project, chat],
         )?;
         transaction.execute("UPDATE acp_project_usage SET chat_count=chat_count-1,session_count=session_count-?2,turn_count=turn_count-?3,fact_count=fact_count-?4,payload_bytes=payload_bytes-?5,revision=revision+1 WHERE project_id=?1", params![project,sessions,turns,facts,bytes])?;
-        transaction.execute("UPDATE acp_store_usage SET chat_count=chat_count-1,session_count=session_count-?1,turn_count=turn_count-?2,fact_count=fact_count-?3,fact_bytes=fact_bytes-?4,shared_payload_bytes=shared_payload_bytes-?4,revision=revision+1 WHERE singleton=1", params![sessions,turns,facts,bytes])?;
+        transaction.execute("UPDATE acp_store_usage SET chat_count=chat_count-1,session_count=session_count-?1,turn_count=turn_count-?2,fact_count=fact_count-?3,fact_bytes=fact_bytes-?4,shared_payload_bytes=shared_payload_bytes-?5,revision=revision+1 WHERE singleton=1", params![sessions,turns,facts,fact_bytes,bytes])?;
         let fallback: Option<String> = transaction.query_row("SELECT id FROM workbench_tabs WHERE project_id=?1 AND kind='chat' AND id NOT GLOB 'side-*' ORDER BY position LIMIT 1", [project], |row| row.get(0)).optional()?;
         transaction.execute(
             "UPDATE project_layouts SET active_tab_id=?3 WHERE project_id=?1 AND active_tab_id=?2",

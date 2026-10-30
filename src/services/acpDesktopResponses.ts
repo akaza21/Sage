@@ -14,6 +14,7 @@ import {
 import { utf8ByteLength } from "../domain/text";
 import type { AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
+import { decodeHandoffs } from "./acpDesktopHandoff";
 
 const ACP_PAGE_LIMITS = {
   sessions: 32,
@@ -192,6 +193,8 @@ export function safeAcpMutationResponse(
 ): AcpMutationResult | null {
   if (!isRecord(value) || !isRecord(value.projection)) return null;
   const projection = value.projection;
+  const handoffs = decodeHandoffs(projection.handoffs);
+  if (!handoffs) return null;
   const projectId = safeIdentifier(projection.projectId);
   const chatId = safeIdentifier(projection.chatId);
   const title = safeText(projection.title, 8192);
@@ -299,6 +302,7 @@ export function safeAcpMutationResponse(
       projectionRevision:
         projectionRevision as AcpChatPage["projectionRevision"],
       currentSessionId: currentSessionId as AcpChatPage["currentSessionId"],
+      ...(handoffs.length > 0 ? { handoffs } : {}),
       sessions: safeSessions,
       sessionConfig,
       ...(goal ? { goal } : {}),

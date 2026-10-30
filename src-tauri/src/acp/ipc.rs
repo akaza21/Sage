@@ -162,6 +162,21 @@ pub struct StartAcpSessionRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransitionAcpSessionRequest {
+    pub project_id: SageProjectId,
+    pub project_generation: ProjectGeneration,
+    pub chat_id: SageChatId,
+    pub expected_projection_revision: ProjectionRevision,
+    pub expected_head: Option<SageAgentSessionId>,
+    pub client_intent_id: ClientIntentId,
+    pub binding_id: BindingId,
+    pub model_id: Option<ModelId>,
+    #[serde(default)]
+    pub confirm_unknown_delivery: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivateAcpSessionRequest {
     pub project_id: SageProjectId,
     pub project_generation: ProjectGeneration,

@@ -45,6 +45,74 @@ fn side_chats(database: &Database) -> i64 {
 }
 
 #[test]
+fn temporary_chat_purge_removes_transition_receipts_and_their_quota_charge() {
+    use crate::acp::{
+        contract::{ClientIntentId, ProjectionRevision, RequiredText, SageChatId, SageProjectId},
+        store::{
+            StartSessionCommand,
+            session_replace::{ReplaceSessionCommand, replace_session},
+        },
+    };
+    let Fixture {
+        root,
+        database,
+        project,
+        side,
+    } = fixture();
+    let before: i64 = database
+        .connection()
+        .query_row(
+            "SELECT shared_payload_bytes FROM acp_store_usage",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    replace_session(
+        &mut database.connection(),
+        ReplaceSessionCommand {
+            confirm_unknown_delivery: false,
+            start: StartSessionCommand {
+                project_id: SageProjectId::parse(project.clone()).unwrap(),
+                chat_id: SageChatId::parse(side.clone()).unwrap(),
+                expected_projection_revision: ProjectionRevision::ZERO,
+                client_intent_id: ClientIntentId::parse("side-transition").unwrap(),
+                binding_id: RequiredText::new("binding", "fixture").unwrap(),
+                binding_digest: "a".repeat(64),
+                harness_version: None,
+                model_id: None,
+                now_millis: 1,
+            },
+            expected_head: None,
+        },
+    )
+    .unwrap();
+    database.remove_side_chat(&project, &side).unwrap();
+    assert_eq!(side_chats(&database), 0);
+    assert_eq!(
+        database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM acp_session_transitions", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        database
+            .connection()
+            .query_row(
+                "SELECT shared_payload_bytes FROM acp_store_usage",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        before
+    );
+    drop(database);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn a_missing_history_guard_is_named_and_refuses_before_deleting_anything() {
     let Fixture {
         root,

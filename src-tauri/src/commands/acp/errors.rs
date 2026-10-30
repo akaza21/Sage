@@ -227,6 +227,18 @@ pub(super) fn store_error(error: StoreError) -> AcpIpcError {
             limit,
             message: safe_message("Durable ACP history capacity has been reached."),
         },
+        StoreError::HandoffBudgetExceeded => AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "HandoffBudgetExceeded: historical coverage and the complete prompt cannot fit. Your draft is retained.",
+            ),
+        },
+        StoreError::Conflict {
+            resource: "handoffDeliveryUnknown",
+        } => AcpIpcError::RecoveryRequired {
+            message: safe_message(
+                "Historical context delivery is unknown. Replace the native session before retrying; prior execution may have occurred.",
+            ),
+        },
         StoreError::Conflict { .. } => AcpIpcError::Conflict {
             resource: AcpConflictResource::Session,
             message: safe_message("The requested ACP projection is stale or foreign."),

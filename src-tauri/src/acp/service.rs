@@ -53,6 +53,8 @@ pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
 mod permission;
 mod session;
 mod session_close;
+mod session_replace;
+pub(crate) mod session_transition;
 pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;

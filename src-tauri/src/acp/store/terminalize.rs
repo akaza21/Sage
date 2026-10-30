@@ -73,6 +73,13 @@ pub(crate) fn terminalize_epoch(
     transaction.execute("UPDATE turns SET state=?3,delivery_state=CASE WHEN delivery_state='writing' THEN 'possibleBytes' ELSE delivery_state END,revision=revision+1,updated_at=?4,terminal_at=?4 WHERE session_id=?1 AND runtime_epoch=?2 AND state IN ('queued','sending','running','waitingModel','waitingTool','waitingApproval','waitingUser','cancelling')",params![session.as_str(),epoch.get() as i64,turn_state,now])?;
     crate::turn_workspace::settle_terminal(transaction, session.as_str())?;
     terminalize_descendants(transaction, session, epoch, now)?;
+    crate::acp::context_handoff::delivery::recover_epoch(
+        transaction,
+        session.as_str(),
+        epoch.get(),
+        projection,
+        now,
+    )?;
     let payload=serde_json::to_string(&serde_json::json!({"kind":fact_kind,"entityId":session.as_str(),"state":turn_state,"turns":turns,"items":items,"activities":activities,"requests":requests})).map_err(|_|StoreError::Corrupt("terminalization fact"))?;
     append_fact_payload(
         transaction,
@@ -147,6 +154,13 @@ pub(crate) fn terminalize_recovery_epoch(
         )?;
     }
     terminalize_descendants(transaction, session, epoch, now)?;
+    crate::acp::context_handoff::delivery::recover_epoch(
+        transaction,
+        session.as_str(),
+        epoch.get(),
+        projection,
+        now,
+    )?;
     crate::turn_workspace::settle_terminal(transaction, session.as_str())?;
     let payload=serde_json::to_string(&serde_json::json!({"kind":"restartRecovery","entityId":session.as_str(),"state":"sessionFailed","turns":counts.turns,"items":counts.items,"activities":counts.activities,"requests":counts.requests})).map_err(|_|StoreError::Corrupt("recovery fact"))?;
     append_fact_payload(

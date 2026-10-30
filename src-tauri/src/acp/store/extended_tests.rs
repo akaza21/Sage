@@ -16,6 +16,7 @@ use crate::acp::{
 
 pub(super) fn setup() -> Connection {
     let connection = Connection::open_in_memory().unwrap();
+    super::handoff_fixture::create(&connection);
     connection.execute_batch(
         "CREATE TABLE project_roots(id TEXT PRIMARY KEY,project_id TEXT,absolute_path TEXT,canonical_key TEXT,ordinal INTEGER);
          CREATE TABLE chats(id TEXT PRIMARY KEY,project_id TEXT,ordinal INTEGER,title TEXT,projection_revision INTEGER,created_at INTEGER,updated_at INTEGER);

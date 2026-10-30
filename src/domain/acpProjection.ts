@@ -26,6 +26,7 @@ import type {
   AcpCapabilitySet,
   AcpPageCursor,
   AcpItemIdentity,
+  HandoffSummary,
 } from "./acp";
 import type { PermissionState } from "./acpPermission";
 import type { ResourceRef } from "./workbench";
@@ -271,6 +272,7 @@ export interface AgentSessionProjection {
 }
 
 export interface AcpChatPage {
+  handoffs?: readonly HandoffSummary[];
   sessionConfig?: AcpSessionConfig | null;
   goal?: AcpGoalState;
   projectId: SageProjectId;

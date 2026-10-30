@@ -62,6 +62,26 @@ pub(super) async fn prepare_external_case(
     case: ExternalCase,
     deadline: FixtureDeadline,
 ) -> ExternalPrepared {
+    let environment = tokio::time::timeout(
+        deadline.operation_before_cleanup(),
+        prepare_fixture_environment(
+            "sage-fixture-e2e",
+            "fixture-chat",
+            "Fixture",
+            "fixture-start",
+            deadline,
+        ),
+    )
+    .await
+    .expect("fixture environment preparation timed out");
+    prepare_external_environment(case, deadline, environment).await
+}
+
+pub(super) async fn prepare_external_environment(
+    case: ExternalCase,
+    deadline: FixtureDeadline,
+    environment: FixtureEnvironment,
+) -> ExternalPrepared {
     let case_id = case.id();
     let (fixture_path, artifact_digest, fixture_byte_len) = fixture_artifact();
     let artifact_hex = hex(&artifact_digest);
@@ -81,18 +101,7 @@ pub(super) async fn prepare_external_case(
         sessions,
         started,
         ..
-    } = tokio::time::timeout(
-        deadline.operation_before_cleanup(),
-        prepare_fixture_environment(
-            "sage-fixture-e2e",
-            "fixture-chat",
-            "Fixture",
-            "fixture-start",
-            deadline,
-        ),
-    )
-    .await
-    .expect("fixture environment preparation timed out");
+    } = environment;
     let epoch = RuntimeEpoch::new(1).unwrap();
     let lease = tokio::time::timeout(
         deadline.operation_before_cleanup(),
@@ -206,8 +215,8 @@ pub(super) async fn prepare_external_case(
         journal.clone(),
         publisher.clone(),
     );
-    let prompt = Prompt::new("prompt", "read only").unwrap();
-    let prompt_command = PrepareTurnCommand {
+    let mut prompt = Prompt::new("prompt", "read only").unwrap();
+    let mut prompt_command = PrepareTurnCommand {
         project_id: project_id.clone(),
         project_generation: ProjectGeneration::ZERO,
         chat_id: chat_id.clone(),
@@ -218,6 +227,12 @@ pub(super) async fn prepare_external_case(
         prompt: prompt.clone(),
         now_millis: now + 3,
     };
+    crate::acp::store::context_handoff::freeze_prompt(
+        &mut database.connection(),
+        &mut prompt_command,
+    )
+    .unwrap();
+    prompt = prompt_command.prompt.clone();
     let prompt_intent = HostPromptIntent {
         command: prompt_command.clone(),
         access_mode: crate::settings_store::SessionAccessMode::ReadOnly,

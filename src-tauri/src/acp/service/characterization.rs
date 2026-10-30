@@ -2,6 +2,7 @@ mod failure;
 mod observation;
 mod receipt;
 mod support;
+mod transition;
 mod types;
 
 use std::sync::{Arc, atomic::AtomicU64};

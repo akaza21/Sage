@@ -90,6 +90,38 @@ fn binding_unavailable() -> AcpIpcError {
     }
 }
 
+pub(super) fn transition(
+    state: &AppState,
+    request: crate::acp::intent::TransitionAcpSessionRequest,
+) -> Result<AcpMutationResponse, AcpIpcError> {
+    let project = request.project_id.clone();
+    let chat = request.chat_id.clone();
+    state
+        .acp
+        .transition_characterization_session(
+            crate::acp::store::session_replace::ReplaceSessionCommand {
+                expected_head: request.expected_head,
+                confirm_unknown_delivery: request.confirm_unknown_delivery,
+                start: StartSessionCommand {
+                    project_id: request.project_id,
+                    chat_id: request.chat_id,
+                    expected_projection_revision: request.expected_projection_revision,
+                    client_intent_id: request.client_intent_id,
+                    binding_id: request.binding_id,
+                    binding_digest: CHARACTERIZATION_BINDING_DIGEST.to_owned(),
+                    harness_version: Some(
+                        SafeText::new("harnessVersion", "fixture-1")
+                            .expect("static fixture version"),
+                    ),
+                    model_id: request.model_id,
+                    now_millis: crate::persistence::now_millis(),
+                },
+            },
+        )
+        .map_err(map_error)?;
+    mutation_response(state, project, chat)
+}
+
 pub(super) fn send(
     state: &AppState,
     request: SendAcpTurnRequest,
@@ -115,19 +147,30 @@ pub(super) fn send(
             message: safe_message("The prompt and attached context exceed the native byte limit."),
         })
         .map_err(prompt_not_dispatched)?;
+    let mut command = PrepareTurnCommand {
+        project_id: project_id.clone(),
+        project_generation,
+        chat_id: chat_id.clone(),
+        session_id,
+        runtime_epoch,
+        expected_projection_revision,
+        client_intent_id,
+        prompt,
+        now_millis: crate::persistence::now_millis(),
+    };
+    crate::acp::store::context_handoff::freeze_prompt(
+        &mut *state.database.write_connection().map_err(|_| {
+            prompt_not_dispatched(AcpIpcError::RecoveryRequired {
+                message: safe_message("Storage recovery is required before sending."),
+            })
+        })?,
+        &mut command,
+    )
+    .map_err(super::errors::store_error)
+    .map_err(prompt_not_dispatched)?;
     state
         .acp
-        .send_characterization(PrepareTurnCommand {
-            project_id: project_id.clone(),
-            project_generation,
-            chat_id: chat_id.clone(),
-            session_id,
-            runtime_epoch,
-            expected_projection_revision,
-            client_intent_id,
-            prompt,
-            now_millis: crate::persistence::now_millis(),
-        })
+        .send_characterization(command)
         .map_err(|failure| SendAcpTurnFailure {
             failure: map_error(failure.error),
             prompt_dispatch: failure.prompt_dispatch,

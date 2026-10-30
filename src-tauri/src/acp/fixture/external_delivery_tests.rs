@@ -52,7 +52,7 @@ fn run(case: ExternalCase) {
             ExternalCase::CompleteDeliveryExit(_) => {
                 observe_complete_exit(prepared, deadline).await
             }
-            ExternalCase::TurnTextSuccess => unreachable!(),
+            ExternalCase::TurnTextSuccess | ExternalCase::HandoffInline => unreachable!(),
         }
     });
 }

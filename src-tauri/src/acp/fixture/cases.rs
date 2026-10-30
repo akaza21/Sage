@@ -5,7 +5,11 @@ use crate::acp::limits::LIMITS;
 use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase, JOURNEY_CASES};
 
-const CHARACTERIZATION_CASES: [(&str, &str); 9] = [
+const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
+    (
+        "handoff-inline",
+        r#"[{"op":"awaitClient","kind":"handoffPrompt"},{"op":"emitKnownFrame","shape":"textStart","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textDelta","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textComplete","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"turnComplete","delimiter":"lf","split":"none"}]"#,
+    ),
     (
         "characterization-turn-success",
         r#"[{"op":"awaitClient","kind":"initialize"},{"op":"emitKnownFrame","shape":"initializeSuccess","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"newSession"},{"op":"emitKnownFrame","shape":"newSessionSuccess","externalSessionId":"fixture-persisted-session-1","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"prompt"},{"op":"emitKnownFrame","shape":"textStart","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textDelta","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textComplete","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"turnComplete","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"close"}]"#,

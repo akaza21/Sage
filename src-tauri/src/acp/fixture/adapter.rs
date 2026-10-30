@@ -179,11 +179,13 @@ impl HarnessAdapter for FixtureAdapter {
             | AdapterCommand::NewSession { .. }
             | AdapterCommand::ResumeSession { .. }) => self.activation_command(command),
             AdapterCommand::Prompt {
-                client_message_id, ..
+                client_message_id,
+                prompt,
+                ..
             } if self.state == State::Idle => {
                 self.client_message_id = Some(client_message_id);
                 let request = self.request(
-                    br#"{"jsonrpc":"2.0","method":"fixture/prompt","params":{}}"#.to_vec(),
+                    serde_json::to_vec(&serde_json::json!({"jsonrpc":"2.0","method":"fixture/prompt","params":{"text":prompt.as_str()}})).map_err(|_|AdapterRuntimeError::Frame)?,
                 )?;
                 self.state = State::PromptCreated;
                 Ok(request)

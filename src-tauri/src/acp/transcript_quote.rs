@@ -191,6 +191,16 @@ impl Prompt {
         self.context = Some(Box::new((original.as_str().to_owned(), context.clone())));
         self
     }
+    pub(crate) fn with_history(mut self, original: &Prompt) -> Self {
+        self.context = Some(original.context.clone().unwrap_or_else(|| {
+            Box::new((
+                original.as_str().to_owned(),
+                AttachedContexts::new("attachedContext", Vec::new())
+                    .expect("empty context is bounded"),
+            ))
+        }));
+        self
+    }
     pub(crate) fn user_payload(&self) -> serde_json::Value {
         match &self.context {
             Some(context) => {

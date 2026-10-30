@@ -4,6 +4,7 @@ import type { AcpProjectionScope } from "../../../app/acpProjectionStore";
 import type {
   AcpCapabilitySet,
   AcpChatPage,
+  HandoffSummary,
   AgentSessionProjection,
   ClientIntentId,
   CuratedBindingId,
@@ -139,6 +140,7 @@ function harness(
   }> = [];
   let intent = 0;
   const commands = {
+    transitionSession: vi.fn(async () => ({ projection: context!.page })),
     startSession: vi.fn(),
     activateSession: vi.fn(),
     sendTurn: vi.fn(),
@@ -186,6 +188,157 @@ function harness(
 }
 
 describe("ACP action controller", () => {
+  const unknownHandoff: HandoffSummary = {
+    id: "handoff",
+    targetSession: "session-a",
+    turnId: "turn-a",
+    revision: "5",
+    state: "unknown",
+    carriedItems: 2,
+    carriedBytes: 500,
+    omissions: { unsupportedKind: 0, oversize: 0, scanLimit: 0, budget: 0 },
+  };
+
+  it("unknownHandoffDeclinedRetryRetainsDraftWithoutNativeMutation", async () => {
+    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
+    try {
+      const initial = {
+        ...page("5", session("hot", "1", null)),
+        handoffs: [unknownHandoff],
+      };
+      const test = harness(initial);
+      await expect(
+        test.controller.submit("retry request", [], bindingId, modelId),
+      ).resolves.toBe("rejected");
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("Prior execution may have occurred"),
+      );
+      expect(test.commands.transitionSession).not.toHaveBeenCalled();
+      expect(test.commands.sendTurn).not.toHaveBeenCalled();
+      expect(test.restored).toEqual([
+        { prompt: "retry request", attachedContext: [] },
+      ]);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("recoveredUnknownHandoffWithoutHeadStillRequiresExplicitRetry", async () => {
+    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
+    try {
+      const initial = {
+        ...page("5", null),
+        sessions: [session("cold", null, null)],
+        handoffs: [unknownHandoff],
+      };
+      const test = harness(initial);
+      await expect(
+        test.controller.submit("retry request", [], bindingId, modelId),
+      ).resolves.toBe("rejected");
+      expect(warning).toHaveBeenCalledOnce();
+      expect(test.commands.transitionSession).not.toHaveBeenCalled();
+      expect(test.commands.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("confirmedUnknownHandoffReplacesBeforeSendingNewRequest", async () => {
+    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+    try {
+      const test = harness({
+        ...page("5", session("hot", "1", null)),
+        handoffs: [unknownHandoff],
+      });
+      const replacement = {
+        ...session("hot", "1", null),
+        id: "replacement" as SageAgentSessionId,
+      };
+      vi.mocked(test.commands.transitionSession).mockResolvedValue({
+        projection: page("6", replacement),
+      });
+      vi.mocked(test.commands.sendTurn).mockResolvedValue({
+        projection: page("7", replacement),
+      });
+      await expect(
+        test.controller.submit("new request", [], bindingId, modelId),
+      ).resolves.toBe("applied");
+      expect(test.commands.transitionSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedHead: "session-a",
+          confirmUnknownDelivery: true,
+        }),
+      );
+      expect(test.commands.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "replacement",
+          prompt: "new request",
+        }),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
+  it("switchUsesNativeTransitionAuthority", async () => {
+    const current = session("hot", "2", null);
+    const test = harness(page("10", current));
+    const replacement = {
+      ...current,
+      id: "replacement" as SageAgentSessionId,
+      bindingId: "target" as CuratedBindingId,
+      modelId: null,
+    };
+    vi.mocked(test.commands.transitionSession).mockResolvedValue({
+      projection: page("11", replacement),
+    });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("12", replacement),
+    });
+    expect(
+      await test.controller.submit(
+        "continue",
+        [],
+        "target" as CuratedBindingId,
+        null,
+      ),
+    ).toBe("applied");
+    expect(test.commands.transitionSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedHead: current.id,
+        bindingId: "target" as CuratedBindingId,
+        expectedProjectionRevision: "10",
+      }),
+    );
+    expect(test.commands.startSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "replacement", prompt: "continue" }),
+    );
+  });
+
+  it("staleHandoffReplyCannotCrossChatSlots", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    const reply = deferred<{ projection: AcpChatPage }>();
+    vi.mocked(test.commands.transitionSession).mockReturnValue(reply.promise);
+    const sending = test.controller.submit(
+      "continue",
+      [],
+      "target" as CuratedBindingId,
+      null,
+    );
+    await nextMicrotask();
+    const original = test.getContext()!;
+    test.setContext({
+      ...original,
+      scope: { ...scope, chatId: "other" as SageChatId },
+      ownershipEpoch: 2,
+    });
+    reply.resolve({
+      projection: { ...page("11", session("hot", "2", null)), handoffs: [] },
+    });
+    expect(await sending).toBe("ignoredStale");
+    expect(test.applied).toHaveLength(0);
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+  });
   it("sends annotation-only context while clearing the original empty draft", async () => {
     const test = harness(page("10", session("hot", "2", null)));
     vi.mocked(test.commands.sendTurn).mockResolvedValue({
@@ -441,7 +594,7 @@ describe("ACP action controller", () => {
     const sent = page("4", session("hot", "1", null), [
       turn("turn-a", 1, "running"),
     ]);
-    vi.mocked(test.commands.startSession).mockResolvedValue({
+    vi.mocked(test.commands.transitionSession).mockResolvedValue({
       projection: created,
     });
     vi.mocked(test.commands.activateSession).mockResolvedValue({
@@ -453,7 +606,7 @@ describe("ACP action controller", () => {
       test.controller.submit("  hello  ", [], bindingId, modelId),
     ).resolves.toBe("applied");
 
-    expect(test.commands.startSession).toHaveBeenCalledWith(
+    expect(test.commands.transitionSession).toHaveBeenCalledWith(
       expect.objectContaining({
         projectGeneration: commandProjectGeneration,
         expectedProjectionRevision: "1",
@@ -689,7 +842,9 @@ describe("ACP action controller", () => {
   it("retains the source prompt when its Chat changes during session start", async () => {
     const test = harness(page("1", null));
     const starting = deferred<{ projection: AcpChatPage }>();
-    vi.mocked(test.commands.startSession).mockReturnValue(starting.promise);
+    vi.mocked(test.commands.transitionSession).mockReturnValue(
+      starting.promise,
+    );
     const action = test.controller.submit("Keep in A", [], bindingId, modelId);
     await nextMicrotask();
     const nextScope = { ...scope, chatId: "chat-b" as SageChatId };
@@ -759,7 +914,7 @@ describe("ACP action controller", () => {
         runtimeEpoch: "2" as RuntimeEpoch,
         nextRuntimeEpoch: null,
       };
-      vi.mocked(test.commands.startSession).mockResolvedValue({
+      vi.mocked(test.commands.transitionSession).mockResolvedValue({
         projection: page("6", createdSession),
       });
       vi.mocked(test.commands.activateSession).mockResolvedValue({
@@ -772,7 +927,7 @@ describe("ACP action controller", () => {
       await expect(
         test.controller.submit("new attempt", [], nextBinding, nextModel),
       ).resolves.toBe("applied");
-      expect(test.commands.startSession).toHaveBeenCalledWith(
+      expect(test.commands.transitionSession).toHaveBeenCalledWith(
         expect.objectContaining({
           bindingId: nextBinding,
           modelId: nextModel,
@@ -789,7 +944,7 @@ describe("ACP action controller", () => {
 
   it("does not send when session start returns a different binding or model", async () => {
     const test = harness(page("1", null));
-    vi.mocked(test.commands.startSession).mockResolvedValue({
+    vi.mocked(test.commands.transitionSession).mockResolvedValue({
       projection: page("2", {
         ...session("cold", null, "1"),
         bindingId: "binding-other" as CuratedBindingId,

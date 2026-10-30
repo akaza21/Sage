@@ -8,6 +8,7 @@ pub mod browser;
 #[cfg(feature = "acp-fixture")]
 mod characterization_observation;
 pub(crate) mod command_output;
+pub(crate) mod context_handoff;
 pub mod contract;
 pub(crate) mod declared_test;
 pub(crate) mod file_diff;

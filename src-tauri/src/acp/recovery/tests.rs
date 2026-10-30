@@ -42,6 +42,7 @@ fn impossible_recovery_pair_is_corruption() {
 #[test]
 fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime() {
     let mut connection = Connection::open_in_memory().unwrap();
+    crate::acp::store::handoff_fixture::create(&connection);
     connection.execute_batch(
         "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
@@ -205,6 +206,7 @@ fn recovery_connection() -> Connection {
          INSERT INTO acp_project_usage VALUES('project-one',0,0,0);
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0);",
     ).unwrap();
+    crate::acp::store::handoff_fixture::create(&connection);
     connection
 }
 

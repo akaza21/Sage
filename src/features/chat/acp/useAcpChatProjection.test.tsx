@@ -11,6 +11,7 @@ import type {
 } from "../../../domain/acp";
 import { decodeAcpGoal } from "../../../domain/acpGoal";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { decodeHandoffs } from "../../../services/acpDesktopHandoff";
 import { useAcpChatProjection } from "./useAcpChatProjection";
 
 const projection = {
@@ -45,6 +46,61 @@ afterEach(() => {
 });
 
 describe("useAcpChatProjection", () => {
+  it("unmountedChatReloadsHandoffSummary", async () => {
+    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+      () => undefined,
+    );
+    vi.spyOn(acpDesktop, "subscribeSessionConfigChanges").mockResolvedValue(
+      () => undefined,
+    );
+    const durable = {
+      id: "handoff",
+      revision: "4",
+      targetSession: "session",
+      turnId: "turn",
+      state: "pending",
+      carriedItems: 3,
+      carriedBytes: 700,
+      omissions: { unsupportedKind: 2, oversize: 1, scanLimit: 5, budget: 4 },
+    };
+    const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue({
+      ...projection,
+      handoffs: decodeHandoffs([durable])!,
+    });
+    const initial = renderHook(() => useAcpChatProjection());
+    await waitFor(() =>
+      expect(initial.result.current?.handoffs?.[0].state).toBe("pending"),
+    );
+    initial.unmount();
+    load.mockResolvedValue({
+      ...projection,
+      projectionRevision: "5" as AcpChatPage["projectionRevision"],
+      handoffs: decodeHandoffs([
+        { ...durable, revision: "5", state: "inline" },
+      ])!,
+    });
+    const reopened = renderHook(() => useAcpChatProjection());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(reopened.result.current?.handoffs?.[0].state).toBe("inline"),
+    );
+    expect(reopened.result.current?.handoffs?.[0]).toMatchObject({
+      revision: "5",
+      carriedItems: 3,
+      carriedBytes: 700,
+      omissions: durable.omissions,
+    });
+    expect(load).toHaveBeenLastCalledWith(
+      {
+        projectId: "project-1",
+        projectGeneration: "3",
+        chatId: "chat-1",
+        cursor: null,
+      },
+      decodeAcpGoal,
+    );
+  });
+
   it("subscribes config before bootstrap, coalesces reloads and recovers on renderer remount", async () => {
     let onConfig: ((event: AcpSessionConfigChangedV1) => void) | undefined;
     const dispose = vi.fn();

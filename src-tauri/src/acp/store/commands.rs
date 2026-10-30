@@ -177,6 +177,7 @@ pub(super) fn prepare_turn_in(
          VALUES (?1,?2,?3,?4,?5,?6,0,'primary',NULL,'text','completed',NULL,NULL,?7,?8,?9,0,?10,?10,?10)",
         params![item_id.as_str(),command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),turn_id.as_str(),command.runtime_epoch.get() as i64,item_payload,item_bytes,item_digest,command.now_millis],
     )?;
+    super::context_handoff::bind_turn(transaction, &command, turn_id.as_str(), projection)?;
     ensure_one(transaction.execute(
         "UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+1,
          item_bytes=item_bytes+?2,payload_bytes=payload_bytes+?2,revision=revision+1 WHERE session_id=?1",

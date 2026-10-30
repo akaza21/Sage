@@ -165,6 +165,7 @@ mod tests {
     #[test]
     fn max_goal_degrades_when_history_page_has_no_spare_bytes() {
         let mut page = AcpChatPage {
+            handoffs: Vec::new(),
             session_config: None,
             goal: GoalState::Goal {
                 snapshot: GoalSnapshot {

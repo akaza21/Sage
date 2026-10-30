@@ -57,6 +57,19 @@ impl AcpService {
         project_root: &crate::acp::bindings::registry::BindingProjectRoot,
         mut command: StartSessionCommand,
     ) -> Result<SessionMutation, CodexSessionError> {
+        self.admit_session_start(&admitted, project_root, &mut command)?;
+        self.session_starts
+            .start_session(command)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub(super) fn admit_session_start(
+        &self,
+        admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        project_root: &crate::acp::bindings::registry::BindingProjectRoot,
+        command: &mut StartSessionCommand,
+    ) -> Result<(), CodexSessionError> {
         let identity = admitted.identity();
         if command.binding_id.as_str() != admitted.binding_id() {
             return Err(CodexSessionError::Intent);
@@ -86,10 +99,7 @@ impl AcpService {
             SafeText::new("harnessVersion", identity.harness_version)
                 .map_err(|_| CodexSessionError::Intent)?,
         );
-        self.session_starts
-            .start_session(command)
-            .await
-            .map_err(Into::into)
+        Ok(())
     }
 
     pub(super) fn prepare_session_activation(
@@ -233,22 +243,25 @@ fn validate_session_identity(
     binding_digest: &str,
     harness_version: &str,
 ) -> Result<(), CodexSessionError> {
-    if session.binding_id == "codex-app-server"
-        && binding_id == "codex-app-server"
-        && session.harness_version.as_deref() == Some("0.145.0")
-        && harness_version == "0.146.0"
-        && session.state == "ready"
-        && session.external_session_id.is_some()
-    {
-        return Err(CodexSessionError::EarlierCodexVersion);
+    use crate::acp::bindings::continuation::{ContinuationCompatibility, classify};
+    match classify(
+        (
+            &session.binding_id,
+            &session.binding_digest,
+            session.harness_version.as_deref(),
+        ),
+        (binding_id, binding_digest, harness_version),
+    ) {
+        ContinuationCompatibility::Compatible => Ok(()),
+        ContinuationCompatibility::EarlierVersion
+            if session.state == "ready" && session.external_session_id.is_some() =>
+        {
+            Err(CodexSessionError::EarlierCodexVersion)
+        }
+        ContinuationCompatibility::EarlierVersion | ContinuationCompatibility::Fresh => {
+            Err(CodexSessionError::Intent)
+        }
     }
-    if session.binding_id != binding_id
-        || session.binding_digest != binding_digest
-        || session.harness_version.as_deref() != Some(harness_version)
-    {
-        return Err(CodexSessionError::Intent);
-    }
-    Ok(())
 }
 
 #[cfg(test)]

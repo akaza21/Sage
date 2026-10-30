@@ -32,6 +32,7 @@ use crate::{
 #[derive(Clone, Copy)]
 pub(super) enum ExternalCase {
     TurnTextSuccess,
+    HandoffInline,
     ZeroByteFailure,
     CompleteDeliveryExit(&'static str),
 }
@@ -40,6 +41,7 @@ impl ExternalCase {
     pub(super) fn id(&self) -> &'static str {
         match self {
             Self::TurnTextSuccess => "turn-text-success",
+            Self::HandoffInline => "handoff-inline",
             Self::ZeroByteFailure => "send-zero-byte-failure",
             Self::CompleteDeliveryExit(case_id) => case_id,
         }

@@ -108,6 +108,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::claude_auth::get_claude_auth_status,
         commands::acp::claude_auth::start_claude_auth_login,
         commands::acp::start_acp_session,
+        commands::acp::session_transition::acp_transition_session,
         commands::acp::activate_acp_session,
         commands::acp::send_acp_turn,
         image_artifacts::commands::upload_chat_image,

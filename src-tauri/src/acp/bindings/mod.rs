@@ -10,6 +10,7 @@ pub(crate) mod claude;
 #[allow(dead_code, unused_imports)]
 pub(crate) mod codex;
 pub(crate) mod command_summary;
+pub(crate) mod continuation;
 #[allow(dead_code, unused_imports)]
 pub(crate) mod omp;
 #[allow(dead_code, unused_imports)]

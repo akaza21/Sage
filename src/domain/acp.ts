@@ -212,6 +212,27 @@ export interface StartAcpSessionRequest extends AcpMutationIntent {
   modelId: CuratedModelId | null;
 }
 
+export interface TransitionAcpSessionRequest extends StartAcpSessionRequest {
+  confirmUnknownDelivery?: boolean;
+  expectedHead: SageAgentSessionId | null;
+}
+
+export interface HandoffSummary {
+  id: string;
+  revision: string;
+  targetSession: string;
+  turnId: string | null;
+  state: "prepared" | "pending" | "inline" | "unknown";
+  carriedItems: number;
+  carriedBytes: number;
+  omissions: {
+    unsupportedKind: number;
+    oversize: number;
+    scanLimit: number;
+    budget: number;
+  };
+}
+
 interface AcpTurnContent {
   prompt: string;
   attachedContext?: readonly AttachedContext[];

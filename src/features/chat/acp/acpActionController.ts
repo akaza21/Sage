@@ -46,6 +46,7 @@ export interface AcpActionState {
 }
 
 export interface AcpActionCommands {
+  transitionSession: typeof acpDesktop.transitionSession;
   startSession: typeof acpDesktop.startSession;
   activateSession: typeof acpDesktop.activateSession;
   sendTurn: typeof acpDesktop.sendTurn;
@@ -275,18 +276,45 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           }
         }
         let session = currentSession(page);
+        const deliverySession =
+          session ??
+          page.sessions.reduce<AgentSessionProjection | null>(
+            (latest, candidate) =>
+              !latest || candidate.ordinal > latest.ordinal
+                ? candidate
+                : latest,
+            null,
+          );
+        const ambiguous =
+          page.handoffs?.some(
+            (handoff) =>
+              handoff.targetSession === deliverySession?.id &&
+              (handoff.state === "pending" || handoff.state === "unknown"),
+          ) ?? false;
         if (
-          session &&
-          (session.bindingId !== bindingId || session.modelId !== modelId)
+          ambiguous &&
+          !globalThis.confirm(
+            "Prior execution may have occurred. Replace the native session and explicitly retry this request?",
+          )
         ) {
-          session = null;
+          throw localFailure(
+            "Delivery remains unknown. Nothing was resent; draft retained.",
+          );
         }
-        if (!session) {
-          const started = await commands.startSession({
+        if (
+          ambiguous ||
+          !session ||
+          session.bindingId !== bindingId ||
+          session.modelId !== modelId ||
+          session.residency === "cold"
+        ) {
+          const started = await commands.transitionSession({
             ...captured.scope,
             projectGeneration: captured.commandProjectGeneration,
             expectedProjectionRevision: page.projectionRevision,
             clientIntentId: nextIntentId(),
+            expectedHead: session?.id ?? null,
+            confirmUnknownDelivery: ambiguous,
             bindingId,
             modelId,
           });
@@ -295,7 +323,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           page = applied;
           session = currentSession(page);
           if (!session)
-            throw localFailure("Session start returned no session.");
+            throw localFailure("Session transition returned no session.");
           session = requireSelectedSession(session, bindingId, modelId);
         }
 
