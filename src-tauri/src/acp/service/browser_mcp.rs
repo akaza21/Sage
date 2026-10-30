@@ -26,6 +26,18 @@ pub(super) struct BrowserMcpActivationGuard {
 }
 
 impl BrowserMcpActivationGuard {
+    #[cfg(test)]
+    pub(super) fn for_test() -> (Self, Arc<AtomicBool>) {
+        let revoked = Arc::new(AtomicBool::new(false));
+        (
+            Self {
+                revoked: Arc::clone(&revoked),
+                committed: false,
+            },
+            revoked,
+        )
+    }
+
     pub(super) fn commit(&mut self) {
         self.committed = true;
     }

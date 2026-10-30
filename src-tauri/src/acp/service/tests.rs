@@ -1040,7 +1040,7 @@ pub(super) fn seed_codex_discovery(
 }
 
 #[cfg(windows)]
-fn codex_root(
+pub(super) fn codex_root(
     project_id: &SageProjectId,
     root_id: &str,
     root: &std::path::Path,
@@ -1077,7 +1077,7 @@ fn codex_session_setup() -> (
 }
 
 #[cfg(windows)]
-fn codex_start_command(
+pub(super) fn codex_start_command(
     project_id: &SageProjectId,
     chat_id: &SageChatId,
     revision: ProjectionRevision,
