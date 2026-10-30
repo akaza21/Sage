@@ -15,7 +15,7 @@ import {
   useChatAttention,
 } from "../app/chatAttentionStore";
 import { attentionStatus } from "../domain/chatAttention";
-import { useAttentionDetailVisible } from "../app/chatAttentionPresentation";
+import { useAttentionDetailVisible } from "../app/attentionDetailVisible";
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { lazyParts } from "../features/chat/lazyParts";

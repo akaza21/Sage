@@ -1,12 +1,9 @@
-import { createContext, useContext, useEffect } from "react";
+import { useEffect } from "react";
 import type { AcpChatPage } from "../domain/acp";
 import { presentedAttentionPosition } from "../services/chatAttention";
+import { useAttentionDetailVisible } from "./attentionDetailVisible";
 import { chatAttentionStore } from "./chatAttentionStore";
 import { useWorkbenchStore } from "./store";
-
-const DetailVisible = createContext(true);
-export const AttentionDetailVisible = DetailVisible.Provider;
-export const useAttentionDetailVisible = () => useContext(DetailVisible);
 
 export function usePresentedAttention(page: AcpChatPage, focused: boolean) {
   const visible = useAttentionDetailVisible();

@@ -152,10 +152,19 @@ fn attention_unmounted_cross_project_requests_and_terminal() {
 #[test]
 fn attention_streaming_is_quiet_duplicate_terminal_is_idempotent() {
     let (mut connection, _, command) = live();
+    crate::chat_attention::publisher::install(&connection).unwrap();
+    let dirty = |connection: &rusqlite::Connection| -> i64 {
+        connection
+            .query_row("SELECT COUNT(*) FROM attention_dirty", [], |row| row.get(0))
+            .unwrap()
+    };
     let before = summary(&connection);
-    for text in ["first token", "first token and next token"] {
+    let mut text = String::new();
+    // 200 streamed chunks: no summary change and no publication rows.
+    for token in 0..200 {
+        text.push_str(&format!("token {token} "));
         let payload = crate::acp::intent::NormalizedPayload::Text {
-            text: crate::acp::contract::SafeText::new("text", text).unwrap(),
+            text: crate::acp::contract::SafeText::new("text", &text).unwrap(),
         };
         let digest = super::facts::hex_digest(serde_json::to_string(&payload).unwrap().as_bytes());
         apply_item_ingress(
@@ -178,9 +187,11 @@ fn attention_streaming_is_quiet_duplicate_terminal_is_idempotent() {
         .unwrap();
         assert_eq!(summary(&connection), before);
     }
+    assert_eq!(dirty(&connection), 0);
     complete(&mut connection, command.clone());
     let terminal = summary(&connection);
     assert!(terminal.activity_position > before.activity_position);
+    assert_eq!(dirty(&connection), 1);
     complete(&mut connection, command);
     assert_eq!(summary(&connection), terminal);
 }

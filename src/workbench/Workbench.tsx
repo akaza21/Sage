@@ -22,7 +22,7 @@ import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
-import { AttentionDetailVisible } from "../app/chatAttentionPresentation";
+import { AttentionDetailVisible } from "../app/attentionDetailVisible";
 import {
   type AgentCenterDecision,
   agentCenterChatAction,

@@ -128,3 +128,70 @@ it("attention acknowledges a presented page after delayed summary bootstrap", as
   );
   expect(ack).toHaveBeenCalledTimes(1);
 });
+
+it("attention stays quiet while a focused chat streams", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Project", roots: [] },
+    projectTransitioning: false,
+    tabs: [
+      {
+        id: "chat-1",
+        kind: "chat",
+        title: "Durable chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+        updatedAt: 2,
+      },
+    ],
+  });
+  const read = attention({ readPosition: "1", activityPosition: "1" });
+  const get = vi.spyOn(chatAttention, "get").mockResolvedValue([read]);
+  vi.spyOn(chatAttention, "subscribe").mockResolvedValue(() => undefined);
+  const ack = vi.spyOn(chatAttention, "ack").mockResolvedValue(read);
+  const detail = await observeAttentionBeforeDetail(
+    "project-1",
+    "chat-1",
+    async () => page("running"),
+  );
+  await chatAttentionStore.connect([
+    { projectId: "project-1", chatIds: ["chat-1"] },
+  ]);
+  const { rerender } = renderHook(
+    ({ current }) => usePresentedAttention(current, true),
+    { initialProps: { current: detail } },
+  );
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const loadsBefore = get.mock.calls.length;
+  let notices = 0;
+  const unsubscribe = chatAttentionStore.subscribe(() => {
+    notices += 1;
+  });
+  let tabWrites = 0;
+  const unwatch = useWorkbenchStore.subscribe((state, previous) => {
+    if (state.tabs !== previous.tabs) tabWrites += 1;
+  });
+  // 200 streamed projection pages, each a new object as merges produce.
+  for (let token = 0; token < 200; token += 1) {
+    const streamed = {
+      ...detail,
+      projectionRevision: String(13 + token),
+      turns: detail.turns.map((turn) => ({
+        ...turn,
+        items: turn.items.map((item) => ({
+          ...item,
+          payload: { ...item.payload, text: `token ${token}` },
+        })),
+      })),
+    } as unknown as typeof detail;
+    rerender({ current: streamed });
+  }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  unsubscribe();
+  unwatch();
+  expect(get).toHaveBeenCalledTimes(loadsBefore);
+  expect(ack).not.toHaveBeenCalled();
+  expect(notices).toBe(0);
+  expect(tabWrites).toBe(0);
+});
