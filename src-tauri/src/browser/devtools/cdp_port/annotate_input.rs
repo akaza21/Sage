@@ -154,52 +154,58 @@ impl<T: CdpTransport> CdpPort<T> {
         }
         let before = self.stamp()?;
         self.annotation_input_state("pause")?;
-        let read = READ
-            .strip_prefix("export default ")
-            .ok_or(BrowserFailure::Unavailable)?;
-        let expression = format!(
-            "({read})({})",
-            serde_json::to_string(&input).map_err(|_| BrowserFailure::InvalidRequest)?
-        );
-        let value = self.evaluate_in_agent_world(
-            Some(before.navigation_id),
-            &expression,
-            262_144,
-            Instant::now() + TIMEOUT,
-        )?;
-        let page: AreaPage = serde_json::from_value(value).map_err(|_| BrowserFailure::Capacity)?;
-        let rect = Rect {
-            x: input.x + page.viewport.x,
-            y: input.y + page.viewport.y,
-            width: input.width,
-            height: input.height,
-        };
-        let before_coverage = self.annotation_mask_coverage();
-        // Use lossless pixels: JPEG DCT blocks can carry control glyphs
-        // beyond their masks before the crop is redacted and encoded.
-        let frame = self.capture_area_frame()?;
-        let after = self.evaluate_in_agent_world(
-            Some(before.navigation_id),
-            &expression,
-            262_144,
-            Instant::now() + TIMEOUT,
-        )?;
-        let after: AreaPage =
-            serde_json::from_value(after).map_err(|_| BrowserFailure::Capacity)?;
-        if after.viewport != page.viewport || after.masks != page.masks {
-            return Err(BrowserFailure::StaleHandle);
-        }
-        if self.stamp()? != before {
-            return Err(BrowserFailure::StaleHandle);
-        }
-        let coverage = before_coverage && self.annotation_mask_coverage();
-        if self.stamp()? != before {
-            return Err(BrowserFailure::StaleHandle);
-        }
-        Ok((page, rect, frame, coverage))
+        self.with_annotation_capture(|| {
+            let read = READ
+                .strip_prefix("export default ")
+                .ok_or(BrowserFailure::Unavailable)?;
+            let expression = format!(
+                "({read})({})",
+                serde_json::to_string(&input).map_err(|_| BrowserFailure::InvalidRequest)?
+            );
+            let value = self.evaluate_in_agent_world(
+                Some(before.navigation_id),
+                &expression,
+                262_144,
+                Instant::now() + TIMEOUT,
+            )?;
+            let page: AreaPage =
+                serde_json::from_value(value).map_err(|_| BrowserFailure::Capacity)?;
+            let rect = Rect {
+                x: input.x + page.viewport.x,
+                y: input.y + page.viewport.y,
+                width: input.width,
+                height: input.height,
+            };
+            let before_coverage = self.annotation_mask_coverage();
+            // Use lossless pixels: JPEG DCT blocks can carry control glyphs
+            // beyond their masks before the crop is redacted and encoded.
+            let frame = self.capture_area_frame()?;
+            let after = self.evaluate_in_agent_world(
+                Some(before.navigation_id),
+                &expression,
+                262_144,
+                Instant::now() + TIMEOUT,
+            )?;
+            let after: AreaPage =
+                serde_json::from_value(after).map_err(|_| BrowserFailure::Capacity)?;
+            if after.viewport != page.viewport || after.masks != page.masks {
+                return Err(BrowserFailure::StaleHandle);
+            }
+            if self.stamp()? != before {
+                return Err(BrowserFailure::StaleHandle);
+            }
+            let coverage = page.motion_safe
+                && after.motion_safe
+                && before_coverage
+                && self.annotation_mask_coverage();
+            if self.stamp()? != before {
+                return Err(BrowserFailure::StaleHandle);
+            }
+            Ok((page, rect, frame, coverage))
+        })
     }
 
-    fn input_call(&self, method: &str, params: Value) -> Result<Value, BrowserFailure> {
+    pub(super) fn input_call(&self, method: &str, params: Value) -> Result<Value, BrowserFailure> {
         let response = self
             .transport
             .observe(method, &params.to_string(), 4096, TIMEOUT)?;
@@ -245,6 +251,10 @@ impl<T: CdpTransport> CdpPort<T> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "annotate_capture_tests.rs"]
+mod capture_tests;
 
 #[cfg(test)]
 mod tests {

@@ -15,6 +15,12 @@ import {
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { persistQueuedChatPrompt } from "./chatAttachedContextState";
 import { useWorkbenchStore } from "./store";
+import {
+  browserCropPreview,
+  forgetBrowserCrop,
+  rememberBrowserCrop,
+} from "./browserCropPreview";
+import { parseBrowserElementContext } from "../domain/attachedContext";
 
 const projectPort = getWorkbenchPorts().project;
 
@@ -122,6 +128,43 @@ afterEach(() => {
 });
 
 describe("per-Chat disposable ownership", () => {
+  it.each(["remove", "send"])(
+    "frees the area's picture on %s while preserving another chat's preview",
+    (action) => {
+      const store = () => useWorkbenchStore.getState();
+      const first = parseBrowserElementContext({
+        kind: "browserElement",
+        target: "area",
+        ordinal: 1,
+        tabId: "browser-1",
+        url: "https://example.com/",
+        title: "Example",
+        text: "heading: Example",
+        box: { x: 0, y: 0, width: 30, height: 20 },
+        comment: "Simplify",
+      })!;
+      const other = { ...first };
+      const owner = store().captureChatOwnership(chatA.id)!;
+      expect(store().attachChatContext(owner, first)).toBe(true);
+      const otherOwner = store().captureChatOwnership(chatB.id)!;
+      expect(store().attachChatContext(otherOwner, other)).toBe(true);
+      for (const context of [first, other])
+        rememberBrowserCrop(context, {
+          width: 30,
+          height: 20,
+          pngBase64: "iVBORw0KGgo=",
+        });
+      if (action === "remove")
+        expect(
+          store().detachChatContext(owner, attachedContextKey(first)),
+        ).toBe(true);
+      else expect(store().clearChatComposer(owner, "", [first])).toBe(true);
+      expect(browserCropPreview(first)).toBeUndefined();
+      expect(browserCropPreview(other)).toBeDefined();
+      forgetBrowserCrop(other);
+    },
+  );
+
   it("restores each Chat's independent composer across authoritative switches", async () => {
     useWorkbenchStore.getState().setComposerText("Draft A");
 

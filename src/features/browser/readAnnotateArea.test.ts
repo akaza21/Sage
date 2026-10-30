@@ -52,6 +52,30 @@ it("excludes transparent, faint and tiny text from the area summary", () => {
   expect(captured.nodes).toContainEqual({ role: "paragraph", text: "Visible" });
   expect(JSON.stringify(captured)).not.toContain("SECRET");
 });
+
+it("refuses picture coverage for scroll-driven or excessive animations", () => {
+  document.body.innerHTML = "<p>Visible</p>";
+  const animations = vi.fn(() => [{ timeline: document.timeline }]);
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: animations,
+  });
+  try {
+    expect(read({ x: 0, y: 0, width: 300, height: 200 }).motionSafe).toBe(true);
+    animations.mockReturnValue([{ timeline: {} as DocumentTimeline }]);
+    expect(read({ x: 0, y: 0, width: 300, height: 200 }).motionSafe).toBe(
+      false,
+    );
+    animations.mockReturnValue(
+      Array.from({ length: 513 }, () => ({ timeline: document.timeline })),
+    );
+    expect(read({ x: 0, y: 0, width: 300, height: 200 }).motionSafe).toBe(
+      false,
+    );
+  } finally {
+    Reflect.deleteProperty(Element.prototype, "getAnimations");
+  }
+});
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();

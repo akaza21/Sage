@@ -22,7 +22,11 @@ import {
   type BrowserAnnotateCrop,
 } from "../../ports/nativeBrowserAnnotatePort";
 import { BrowserAreaPicture } from "./BrowserAreaPicture";
-import { rememberBrowserCrop } from "./browserCropPreview";
+import {
+  forgetBrowserCrop,
+  rememberBrowserCrop,
+} from "../../app/browserCropPreview";
+import { useBrowserPicturePlacement } from "./useBrowserPicturePlacement";
 
 const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
@@ -52,6 +56,8 @@ export function BrowserAnnotatePopover({
   picture?: ReactNode;
 }) {
   const [comment, setComment] = useState("");
+  const stage = useRef<HTMLDivElement>(null);
+  useBrowserPicturePlacement(stage);
   const { box, viewport } = selection;
   const left = box.x - viewport.x;
   const top = box.y - viewport.y;
@@ -90,6 +96,7 @@ export function BrowserAnnotatePopover({
       }}
     >
       <div
+        ref={stage}
         className="browser-annotate__stage"
         style={
           {
@@ -156,12 +163,21 @@ export function BrowserAnnotatePopover({
             title={reason ?? undefined}
             disabled={Boolean(reason)}
           />
-          {error ? (
+          {error && !picture ? (
             <p className="browser-annotate__error" role="alert">
               {error}
             </p>
           ) : null}
-          {picture}
+          {picture ? (
+            <div className="browser-annotate__details">
+              {error ? (
+                <p className="browser-annotate__error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {picture}
+            </div>
+          ) : null}
         </form>
       </div>
     </div>
@@ -231,10 +247,15 @@ export default function BrowserAnnotateComment({
         confirming.current = true;
         void browserAnnotateConfirm(tabId, ordinal!, comment)
           .then((item) => {
-            if (!handOffBrowserElement(item))
-              return setError("The page element could not be attached");
             const context = parseBrowserElement(item);
-            if (context && crop) rememberBrowserCrop(context, crop);
+            if (context && crop && !rememberBrowserCrop(context, crop))
+              return setError(
+                "Remove a draft picture before adding another (8 picture limit)",
+              );
+            if (!handOffBrowserElement(item)) {
+              if (context) forgetBrowserCrop(context);
+              return setError("The page element could not be attached");
+            }
             return browserControl(tabId, "annotateCancel");
           })
           .catch(fail)

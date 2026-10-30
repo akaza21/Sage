@@ -57,6 +57,8 @@ export default function readAnnotateArea(box) {
   };
   const nodes = [],
     masks = [];
+  let motionSafe = true;
+  let animations = 0;
   const mask = (rect) => {
     if (!intersects(rect)) return true;
     const box = {
@@ -87,6 +89,18 @@ export default function readAnnotateArea(box) {
   for (let node = walk.currentNode; node; node = walk.nextNode()) {
     if (++visited > 20000) return null;
     if (node instanceof Element) {
+      if (motionSafe) {
+        const active = node.getAnimations?.();
+        animations += active?.length ?? 0;
+        motionSafe =
+          Boolean(active) &&
+          animations <= 512 &&
+          active.every(
+            (animation) =>
+              animation.timeline === null ||
+              animation.timeline === document.timeline,
+          );
+      }
       if (
         (node.closest(control) ||
           node.localName === "iframe" ||
@@ -158,6 +172,7 @@ export default function readAnnotateArea(box) {
     title: document.title.slice(0, 1024),
     nodes,
     masks,
+    motionSafe,
     viewport: {
       x: viewport.pageLeft,
       y: viewport.pageTop,

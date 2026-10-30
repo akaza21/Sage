@@ -24,6 +24,7 @@ fn area_capture_bounds_elements_text_and_redacts_at_admission() {
         viewport: viewport(),
         nodes: vec![node; 64],
         masks: vec![],
+        motion_safe: true,
     };
     let picked = pick(
         &page,
@@ -70,6 +71,7 @@ fn area_rejects_nonfinite_outside_or_zero_boxes_and_excess_masks() {
         viewport: viewport(),
         nodes: vec![],
         masks: vec![],
+        motion_safe: true,
     };
     for rect in [
         Rect {

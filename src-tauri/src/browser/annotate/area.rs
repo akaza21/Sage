@@ -20,6 +20,8 @@ pub(crate) struct AreaPage {
     pub viewport: Viewport,
     pub nodes: Vec<AreaNode>,
     pub masks: Vec<Rect>,
+    #[serde(default, rename = "motionSafe")]
+    pub motion_safe: bool,
 }
 
 pub(crate) fn pick(page: &AreaPage, rect: Rect, tab_id: &str, url: &str) -> Result<Picked, String> {

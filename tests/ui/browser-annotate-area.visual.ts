@@ -49,3 +49,41 @@ test("leaving annotate restores trusted page clicks and cancels the drag", async
   expect(await page.evaluate(() => Reflect.get(window, "pageClicks"))).toBe(1);
   expect(await page.evaluate(() => Reflect.get(window, "reports"))).toEqual([]);
 });
+
+test("bottom-edge picture controls and previews stay inside the frozen viewport after resizing", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 1080 });
+  await page.goto("/tests/ui/fixtures/browser-annotate.html?area=1&picture=1");
+  const panel = page.locator(".browser-annotate__picture");
+  const stage = page.locator(".browser-annotate__stage");
+  const inside = async () => {
+    const parent = (await stage.boundingBox())!;
+    const child = (await panel.boundingBox())!;
+    expect(child.y).toBeGreaterThanOrEqual(parent.y);
+    expect(child.y + child.height).toBeLessThanOrEqual(
+      parent.y + parent.height,
+    );
+    expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+  };
+  await expect(panel).toBeVisible();
+  await inside();
+  await page.getByRole("checkbox").check();
+  await expect(
+    page.getByRole("img", { name: "Masked area preview" }),
+  ).toBeVisible();
+  await inside();
+  await page.locator(".browser-surface__frame").evaluate((frame) => {
+    Object.assign((frame as HTMLElement).style, {
+      width: "420px",
+      height: "320px",
+    });
+  });
+  await expect(stage).toHaveCSS("width", "350.312px");
+  await inside();
+  await page.getByRole("button", { name: "Remove picture" }).click();
+  await expect(
+    page.getByRole("img", { name: "Masked area preview" }),
+  ).toHaveCount(0);
+  await inside();
+});

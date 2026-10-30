@@ -16,6 +16,11 @@ import type { BrowserAnnotateSelection } from "../../ports/nativeBrowserPort";
 import BrowserAnnotateComment, {
   BrowserAnnotatePopover,
 } from "./BrowserAnnotatePopover";
+import {
+  browserCropPreview,
+  forgetBrowserCrop,
+  rememberBrowserCrop,
+} from "../../app/browserCropPreview";
 
 const invokeNative = vi.fn();
 vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
@@ -56,11 +61,19 @@ const onCancel = vi.fn();
 let unregister = () => {};
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
   vi.clearAllMocks();
   invokeNative.mockReset();
 });
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   unregister();
 });
 
@@ -157,65 +170,91 @@ it("numbers the badge even when no composer gives the number", () => {
   );
 });
 
-it("uses a dashed area outline and only requests a masked picture after opt-in", async () => {
-  const attach = vi.fn(() => true);
-  unregister = registerBrowserElementSink({ nextOrdinal: () => 2, attach });
-  const area = {
-    kind: "browserElement",
-    target: "area",
-    ordinal: 2,
-    tabId: "browser-1",
-    url: item.url,
-    title: item.title,
-    text: item.text,
-    box: item.box,
-    comment: "Simplify",
-  };
-  invokeNative.mockImplementation(
-    async (_: string, args: { action: string }) =>
-      args.action === "annotateFrame"
-        ? frame
-        : args.action === "annotateCrop"
-          ? { width: 256, height: 36, pngBase64: "iVBORw0KGgo=" }
-          : area,
-  );
-  const { container } = render(
-    <BrowserAnnotateComment
-      tabId="browser-1"
-      selection={{ ...selection, target: "area", label: "area" }}
-    />,
-  );
-  expect(
-    container.querySelector(".browser-annotate__outline--area"),
-  ).not.toBeNull();
-  expect(
-    container.querySelector("form .browser-annotate__badge--area"),
-  ).toHaveTextContent("2");
-  await act(async () => undefined);
-  expect(invokeNative).not.toHaveBeenCalledWith(
-    "browser_control",
-    expect.objectContaining({ action: "annotateCrop" }),
-  );
-  const picture = screen.getByRole("checkbox", {
-    name: "Include a picture of this area",
-  });
-  expect(picture).not.toBeChecked();
-  fireEvent.click(picture);
-  expect(
-    await screen.findByRole("img", { name: "Masked area preview" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText("Pictures can include secrets shown on the page"),
-  ).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), {
-    target: { value: "Simplify" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
-  await waitFor(() => expect(attach).toHaveBeenCalledWith(area));
-  expect(attach).toHaveBeenCalledWith(
-    expect.not.objectContaining({ crop: expect.anything() }),
-  );
-});
+it.each([false, true])(
+  "uses opt-in area pictures and keeps a full preview cache reviewable (%s)",
+  async (full) => {
+    const attach = vi.fn(() => true);
+    unregister = registerBrowserElementSink({ nextOrdinal: () => 2, attach });
+    const area = {
+      kind: "browserElement",
+      target: "area",
+      ordinal: 2,
+      tabId: "browser-1",
+      url: item.url,
+      title: item.title,
+      text: item.text,
+      box: item.box,
+      comment: "Simplify",
+    };
+    invokeNative.mockImplementation(
+      async (_: string, args: { action: string }) =>
+        args.action === "annotateFrame"
+          ? frame
+          : args.action === "annotateCrop"
+            ? { width: 256, height: 36, pngBase64: "iVBORw0KGgo=" }
+            : area,
+    );
+    const { container } = render(
+      <BrowserAnnotateComment
+        tabId="browser-1"
+        selection={{ ...selection, target: "area", label: "area" }}
+      />,
+    );
+    expect(
+      container.querySelector(".browser-annotate__outline--area"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("form .browser-annotate__badge--area"),
+    ).toHaveTextContent("2");
+    await act(async () => undefined);
+    expect(invokeNative).not.toHaveBeenCalledWith(
+      "browser_control",
+      expect.objectContaining({ action: "annotateCrop" }),
+    );
+    const picture = screen.getByRole("checkbox", {
+      name: "Include a picture of this area",
+    });
+    expect(picture).not.toBeChecked();
+    fireEvent.click(picture);
+    expect(
+      await screen.findByRole("img", { name: "Masked area preview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Pictures can include secrets shown on the page"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), {
+      target: { value: "Simplify" },
+    });
+    const existing = full ? Array.from({ length: 8 }, () => ({ ...item })) : [];
+    for (const context of existing)
+      expect(
+        rememberBrowserCrop(context, {
+          width: 1,
+          height: 1,
+          pngBase64: "iVBORw0KGgo=",
+        }),
+      ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+    if (full) {
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "8 picture limit",
+      );
+      expect(attach).not.toHaveBeenCalled();
+      expect(existing.every((context) => browserCropPreview(context))).toBe(
+        true,
+      );
+      forgetBrowserCrop(existing[0]!);
+      await act(async () => undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+    }
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(area));
+    expect(attach).toHaveBeenCalledWith(
+      expect.not.objectContaining({ crop: expect.anything() }),
+    );
+    forgetBrowserCrop(area as BrowserElementContext);
+    existing.forEach(forgetBrowserCrop);
+  },
+);
 
 it("will not confirm when blocked or over 4 KB, and says why", () => {
   const { unmount } = popover({ blocked: "No composer" });

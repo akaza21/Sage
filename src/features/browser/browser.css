@@ -376,11 +376,12 @@
   top: 50%;
   border-radius: var(--radius-annotation-badge);
 }
-.browser-annotate__picture {
+.browser-annotate__details {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
   width: 300px;
+  overflow: auto;
   padding: 8px;
   border-radius: var(--radius-sm);
   color: var(--browser-bright-text);
@@ -391,6 +392,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.browser-annotate__details > .browser-annotate__error {
+  position: static;
+  box-sizing: border-box;
+  margin-bottom: 8px;
 }
 .browser-annotate__picture img {
   max-width: 100%;

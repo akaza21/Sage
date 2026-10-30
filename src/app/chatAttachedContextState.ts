@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 
 import {
   attachedContextKey,
+  isBrowserElement,
   attachContextToDraft,
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   type AttachedContext,
@@ -12,26 +13,29 @@ import {
   MAX_QUEUED_CHAT_PROMPTS,
   validateChatComposerText,
   type ChatOwnershipIntent,
+  type ChatOwnershipEntry,
   type QueuedChatPrompt,
 } from "../domain/chatOwnership";
 import { errorMessage } from "../domain/errors";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { WorkbenchState } from "./store";
 import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
+import { forgetBrowserCrop } from "./browserCropPreview";
+import type { ChatContextAccess } from "./chatContextAccess";
 
-function normalizeEntry(
-  entry: WorkbenchState["chatUiById"][string] | undefined,
+function releasePictures(
+  contexts: readonly AttachedContext[],
+  kept: readonly AttachedContext[],
 ) {
+  for (const context of contexts)
+    if (isBrowserElement(context) && !kept.includes(context))
+      forgetBrowserCrop(context);
+}
+
+function normalizeEntry(entry: ChatOwnershipEntry | undefined) {
   return entry
     ? { ...entry, attachedContext: entry.attachedContext ?? [] }
     : emptyEntry();
-}
-
-interface Dependencies {
-  get: StoreApi<WorkbenchState>["getState"];
-  set: StoreApi<WorkbenchState>["setState"];
-  ownsChat: (state: WorkbenchState, intent: ChatOwnershipIntent) => boolean;
-  activeChatId: (state: WorkbenchState) => string | null;
 }
 
 export function createAttachedContextActions({
@@ -39,7 +43,7 @@ export function createAttachedContextActions({
   set,
   ownsChat,
   activeChatId,
-}: Dependencies) {
+}: ChatContextAccess) {
   return {
     attachChatContext(intent: ChatOwnershipIntent, context: AttachedContext) {
       const state = get();
@@ -82,6 +86,7 @@ export function createAttachedContextActions({
         (context) => attachedContextKey(context) !== contextKey,
       );
       if (attachedContext.length === entry.attachedContext.length) return false;
+      releasePictures(entry.attachedContext, attachedContext);
       set({
         chatUiById: {
           ...state.chatUiById,
@@ -104,6 +109,7 @@ export function createAttachedContextActions({
         (context) => !sentKeys.has(attachedContextKey(context)),
       );
       const updated = { ...entry, composerText: "", attachedContext };
+      releasePictures(entry.attachedContext, attachedContext);
       const active = activeChatId(state) === intent.chatId;
       set({
         chatUiById: { ...state.chatUiById, [intent.chatId]: updated },

@@ -4,7 +4,11 @@ import { parseBrowserElementContext } from "../../domain/attachedContext";
 import BrowserElementChips, {
   browserElementLabel,
 } from "./BrowserElementChips";
-import { browserCropPreview, rememberBrowserCrop } from "./browserCropPreview";
+import {
+  browserCropPreview,
+  forgetBrowserCrop,
+  rememberBrowserCrop,
+} from "../../app/browserCropPreview";
 
 afterEach(cleanup);
 
@@ -80,7 +84,7 @@ it("removes a masked picture independently of its area context", () => {
   expect(browserCropPreview(item)).toBeUndefined();
 });
 
-it("keeps at most eight disposable picture previews", () => {
+it("preserves another chat's active preview when a draft fills its eight slots", () => {
   const entries = Array.from({ length: 9 }, () =>
     parseBrowserElementContext({ ...area })!,
   );
@@ -90,8 +94,18 @@ it("keeps at most eight disposable picture previews", () => {
       height: 1,
       pngBase64: "iVBORw0KGgo=",
     });
-  expect(browserCropPreview(entries[0]!)).toBeUndefined();
-  expect(entries.slice(1).every((entry) => browserCropPreview(entry))).toBe(
+  expect(entries.slice(0, 8).every((entry) => browserCropPreview(entry))).toBe(
     true,
   );
+  expect(browserCropPreview(entries[8]!)).toBeUndefined();
+  forgetBrowserCrop(entries[1]!);
+  expect(
+    rememberBrowserCrop(entries[8]!, {
+      width: 1,
+      height: 1,
+      pngBase64: "iVBORw0KGgo=",
+    }),
+  ).toBe(true);
+  expect(browserCropPreview(entries[0]!)).toBeDefined();
+  entries.forEach(forgetBrowserCrop);
 });

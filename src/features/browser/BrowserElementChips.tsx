@@ -17,7 +17,7 @@ import {
 } from "../../domain/attachedContext";
 import { Globe2, MessageSquare, Trash2, X } from "../../ui/leanIcons";
 import "./browser-element-chips.css";
-import { BrowserCropThumbnail } from "./BrowserAreaPicture";
+import { BrowserCropThumbnail } from "./BrowserCropThumbnail";
 
 const HIDE_MS = 150;
 const CARD_WIDTH = 347;

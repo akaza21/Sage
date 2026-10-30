@@ -21,6 +21,7 @@
       import React from "react";
       import { createRoot } from "react-dom/client";
       import { BrowserAnnotatePopover } from "/src/features/browser/BrowserAnnotatePopover.tsx";
+      import { BrowserAreaPicture } from "/src/features/browser/BrowserAreaPicture.tsx";
       import "/src/styles/global.css";
       import "/src/features/browser/browser.css";
 
@@ -43,6 +44,20 @@
         selection.label = "area";
         selection.box = { x: 541, y: 1645, width: 258, height: 256 };
       }
+      const picture = new URLSearchParams(location.search).has("picture");
+      if (picture) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 256;
+        canvas.height = 160;
+        canvas.getContext("2d").fillRect(0, 0, 256, 160);
+        window.__TAURI_INTERNALS__ = {
+          invoke: async () => ({
+            width: 256,
+            height: 160,
+            pngBase64: canvas.toDataURL("image/png").split(",")[1],
+          }),
+        };
+      }
       createRoot(document.querySelector(".browser-surface__frame")).render(
         React.createElement(BrowserAnnotatePopover, {
           selection,
@@ -52,6 +67,12 @@
           error: null,
           onConfirm: () => {},
           onCancel: () => {},
+          picture: picture
+            ? React.createElement(BrowserAreaPicture, {
+                tabId: "browser-1",
+                onChange: () => {},
+              })
+            : undefined,
         }),
       );
     </script>

@@ -15,6 +15,7 @@ use super::{
 
 mod act;
 pub(super) mod annotate_input;
+mod capture_freeze;
 pub(super) mod highlight;
 pub(super) mod inspect;
 mod mask_coverage;
