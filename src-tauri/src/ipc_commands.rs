@@ -125,6 +125,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::edit_disposition::record_agent_edit_disposition,
         workspace::search::command::search_workspace,
         workspace::search::command::cancel_workspace_search,
+        workspace::path_index::command::quick_open_query,
         app_preview_commands::discover_preview_targets,
         app_preview_commands::get_preview_health,
         app_preview_commands::start_preview_target,

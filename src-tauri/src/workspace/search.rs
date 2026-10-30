@@ -11,6 +11,7 @@ mod path_filter;
 mod types;
 
 pub use helper_protocol::run_stdio_helper_if_requested;
+pub(crate) use types::MAX_SEARCH_DEPTH;
 
 #[cfg(test)]
 mod tests {
