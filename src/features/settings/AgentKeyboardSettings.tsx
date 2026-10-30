@@ -1,3 +1,4 @@
+import type { KeymapScope } from "../../domain/keymapRegistry";
 import { SETTINGS_KEYMAP_BINDINGS } from "../../domain/settingsNavigation";
 import { SettingsKeyboardPage } from "../../workbench/settings/SettingsKeyboardPage";
 import {
@@ -19,16 +20,20 @@ const labels: Record<BrowserShortcut, string> = {
   stop: "Stop loading browser page",
 };
 
-const allShortcuts = new Set(
-  SETTINGS_KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map(
-    (binding) => binding.id,
-  ),
+// Agent Settings lists the shortcuts the Agent window answers; Editor
+// shortcuts stay in Editor Settings.
+const scopes: readonly KeymapScope[] = ["Global", "Agent", "Agent chat"];
+
+const agentShortcuts = new Set(
+  SETTINGS_KEYMAP_BINDINGS.filter(
+    (binding) => !binding.reservedFor && scopes.includes(binding.scope),
+  ).map((binding) => binding.id),
 );
 
 export default function AgentKeyboardSettings() {
   return (
     <>
-      <SettingsKeyboardPage visible={allShortcuts} />
+      <SettingsKeyboardPage scopes={scopes} visible={agentShortcuts} />
       <section
         className="settings-surface__group"
         aria-labelledby="browser-shortcuts-heading"

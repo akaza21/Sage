@@ -20,9 +20,9 @@ afterEach(() => {
 
 it("keeps headless execution loading and failures out of Settings grid placement", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  useAgentSettingsState.getState().open();
+  useAgentSettingsState.getState().open("Chats");
   render(<AgentSettingsSurface />);
-  const settings = screen.getByRole("region", { name: "Agent settings" });
+  const settings = screen.getByRole("dialog", { name: "Agent settings" });
   await waitFor(() => expect(execution.fail).not.toBeNull());
   expect(settings.children).toHaveLength(2);
   expect(settings.children[0]).toHaveAttribute(

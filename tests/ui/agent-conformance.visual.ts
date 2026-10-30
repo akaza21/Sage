@@ -486,7 +486,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
       "G1: the rail gear opens Settings inside the Agent window",
     ).toBeChecked();
     await expect(
-      page.getByRole("region", { name: "Agent settings" }),
+      page.getByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
   });
 

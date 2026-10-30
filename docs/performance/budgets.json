@@ -128,7 +128,7 @@
       {
         "entry": "src/features/settings/AgentKeyboardSettings.tsx",
         "maxGzipBytes": 865,
-        "reason": "AP-G: complete workbench/editor and browser shortcut registry display; loaded only on Settings > Keyboard shortcuts."
+        "reason": "AP-G: Global, Agent and browser shortcut display; loaded only on Settings > Keybindings."
       },
       {
         "entry": "src/features/settings/AgentSettingsExecution.tsx",
@@ -138,8 +138,8 @@
       {
         "entry": "src/features/settings/AgentSettingsSurface.tsx",
         "maxGzipBytes": 3983,
-        "maxCssGzipBytes": 1015,
-        "reason": "AP-G: separate Agent settings navigation and real-backed sections, loaded only by a settings entry. Browser native controls have a second lazy boundary. No existing caps raised."
+        "maxCssGzipBytes": 1240,
+        "reason": "AP-G: Agent settings dialog in T3 Code's layout, loaded only by a settings entry; Browser controls load separately. CSS measured 1158 B plus 7%; startup caps unchanged."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",

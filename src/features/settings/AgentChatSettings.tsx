@@ -4,7 +4,7 @@ import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
 import { SettingsRow } from "./SettingsRow";
 
-export function AgentGeneralSettings() {
+export function AgentChatSettings() {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const harnessId = useWorkbenchStore((state) => state.selectedHarnessId);
   const models = useWorkbenchStore((state) => state.models);
@@ -80,12 +80,6 @@ export function AgentGeneralSettings() {
               </option>
             ))}
           </select>
-        </SettingsRow>
-        <SettingsRow
-          title="Effort defaults unavailable"
-          description="Effort is configured per chat when advertised by its harness. App-wide harness, model and effort defaults require native persistence and new-chat configuration support that Sage does not expose yet."
-        >
-          <span>Unavailable</span>
         </SettingsRow>
         <SettingsRow
           title="Default access"

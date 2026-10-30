@@ -1,14 +1,12 @@
 import { create } from "zustand";
 
 export type AgentSettingsPage =
-  | "General"
-  | "Harnesses"
-  | "Browser"
-  | "Keyboard shortcuts"
-  | "Archived chats"
   | "Appearance"
-  | "Notifications"
-  | "Approvals";
+  | "Keybindings"
+  | "Harnesses"
+  | "Chats"
+  | "Browser"
+  | "Archived chats";
 
 export const useAgentSettingsState = create<{
   page: AgentSettingsPage | null;
@@ -18,7 +16,12 @@ export const useAgentSettingsState = create<{
 }>((set) => ({
   page: null,
   browserTabId: null,
-  open: (page = "General", browserTabId) =>
-    set({ page, browserTabId: browserTabId ?? null }),
+  // Without a page, keeps an open Settings where it is.
+  open: (page, browserTabId) =>
+    set((state) =>
+      page
+        ? { page, browserTabId: browserTabId ?? null }
+        : { page: state.page ?? "Appearance" },
+    ),
   close: () => set({ page: null, browserTabId: null }),
 }));

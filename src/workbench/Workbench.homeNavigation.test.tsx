@@ -355,7 +355,7 @@ it.each([false, true])(
       }),
     );
     await settleLazyModules();
-    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     await settleLazyModules();
     expect(composer).toHaveValue("Keep this unsent text");
     expect(useWorkbenchStore.getState().activeTabId).toBe(before.activeTabId);

@@ -137,7 +137,7 @@ it("opens Agent settings from the rail footer without opening an Editor tab", ()
   render(<LeftSidebar />);
   fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
   expect(openSettings).not.toHaveBeenCalled();
-  expect(useAgentSettingsState.getState().page).toBe("General");
+  expect(useAgentSettingsState.getState().page).toBe("Appearance");
 });
 
 const initialState = useWorkbenchStore.getState();

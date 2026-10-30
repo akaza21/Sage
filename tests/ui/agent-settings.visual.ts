@@ -19,7 +19,7 @@ for (const width of [480, 1380]) {
       return useWorkbenchStore.getState().activeTabId;
     });
     await page.keyboard.press("Control+,");
-    const settings = page.getByRole("region", {
+    const settings = page.getByRole("dialog", {
       name: "Agent settings",
       exact: true,
     });
@@ -31,18 +31,10 @@ for (const width of [480, 1380]) {
       page.getByRole("complementary", { name: "Projects and chats" }),
     ).toHaveCount(0);
     await expect(
-      settings.getByRole("combobox", { name: "Current harness" }),
-    ).toBeVisible();
-    await expect(
-      settings.getByRole("combobox", {
-        name: /Default (harness|model|effort)/,
-      }),
-    ).toHaveCount(0);
-    await expect(
-      settings.getByText("Effort defaults unavailable"),
+      settings.getByRole("heading", { name: "Appearance", exact: true }),
     ).toBeVisible();
     await expect(settings).toHaveScreenshot(
-      `agent-settings-general-${width}.png`,
+      `agent-settings-appearance-${width}.png`,
     );
     const geometry = await settings.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
@@ -62,14 +54,20 @@ for (const width of [480, 1380]) {
     const nav = settings.getByRole("navigation", {
       name: "Agent settings sections",
     });
+    await expect(nav.getByRole("button")).toHaveText([
+      "Appearance",
+      "Keybindings",
+      "Harnesses",
+      "Chats",
+      "Browser",
+      "Archived chats",
+    ]);
     for (const section of [
+      "Keybindings",
       "Harnesses",
       "Browser",
-      "Appearance",
-      "Keyboard shortcuts",
       "Archived chats",
-      "Notifications",
-      "Approvals",
+      "Chats",
     ]) {
       await nav.getByRole("button", { name: section, exact: true }).click();
       await expect(
@@ -78,20 +76,20 @@ for (const width of [480, 1380]) {
       await expectNoViewportOverflow(page);
     }
     await expect(
-      settings.getByRole("button", { name: "Reset Don't ask again" }),
-    ).toHaveCount(0);
-    await expect(
-      settings.getByText(/does not expose a reset command/),
+      settings.getByRole("combobox", { name: "Current harness" }),
     ).toBeVisible();
-    await expect(settings).toHaveScreenshot(
-      `agent-settings-approvals-${width}.png`,
-    );
-    await nav
-      .getByRole("button", { name: "Keyboard shortcuts", exact: true })
-      .click();
     await expect(
-      settings.getByRole("row", { name: /Save file/ }),
-    ).toContainText("Ctrl+S");
+      settings.getByRole("combobox", {
+        name: /Default (harness|model|effort)/,
+      }),
+    ).toHaveCount(0);
+    await expect(settings).toHaveScreenshot(
+      `agent-settings-chats-${width}.png`,
+    );
+    await nav.getByRole("button", { name: "Keybindings", exact: true }).click();
+    await expect(settings.getByRole("row", { name: /Save file/ })).toHaveCount(
+      0,
+    );
     await expect(
       settings.getByRole("row", { name: /Open settings/ }),
     ).toContainText("Ctrl+,");
@@ -107,7 +105,7 @@ for (const width of [480, 1380]) {
     await expect(settings).toHaveScreenshot(
       `agent-settings-keyboard-${width}.png`,
     );
-    await nav.getByRole("button", { name: "Back to chats" }).click();
+    await settings.getByRole("button", { name: "Close settings" }).click();
     await expect(settings).toHaveCount(0);
     expect(
       await page.evaluate(async () => {
@@ -118,7 +116,7 @@ for (const width of [480, 1380]) {
 
     await page.keyboard.press("Control+,");
     await expect(settings).toBeVisible();
-    await settings.getByRole("button", { name: "Back to chats" }).focus();
+    await settings.getByRole("button", { name: "Close settings" }).focus();
     await page.keyboard.press("Escape");
     await expect(settings).toHaveCount(0);
     // The radio is visually hidden inside its label, which takes the click.
@@ -164,11 +162,9 @@ test("Agent settings are loaded on demand rather than with the first chat", asyn
   await openScenario(page, "agent-single", "agent");
   const requestedSettings = () => settingsRequests > 0;
   expect(requestedSettings()).toBe(false);
-  await page
-    .getByRole("button", { name: "Open settings", exact: true })
-    .click();
+  await page.keyboard.press("Control+,");
   await expect(
-    page.getByRole("region", { name: "Agent settings" }),
+    page.getByRole("dialog", { name: "Agent settings" }),
   ).toBeVisible();
   expect(requestedSettings()).toBe(true);
 });
@@ -209,13 +205,13 @@ test("settings preserve the focused chat and split while a shared resource is ac
     }));
   });
   await page.keyboard.press("Control+,");
-  const settings = page.getByRole("region", {
+  const settings = page.getByRole("dialog", {
     name: "Agent settings",
     exact: true,
   });
   await expect(settings).toBeVisible();
   await expect(panes.first()).toBeHidden();
-  await settings.getByRole("button", { name: "Back to chats" }).click();
+  await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
   await expect(page.locator(".agent-chat-pane--focused")).toHaveAttribute(
     "data-chat-id",

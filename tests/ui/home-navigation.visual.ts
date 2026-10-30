@@ -70,7 +70,7 @@ for (const collapsed of [false, true]) {
         exact: true,
       })
       .click();
-    await page.getByRole("button", { name: "Back to chats" }).click();
+    await page.getByRole("button", { name: "Close settings" }).click();
     await expect(composer).toHaveValue("Unsent Home navigation check");
     expect(await savedChats(page)).toEqual(before);
     await page

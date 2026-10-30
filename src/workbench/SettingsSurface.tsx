@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import {
+  EDITOR_KEYMAP_SCOPES,
   SETTINGS_PAGES,
   matchingSettingsEntryIds,
   pagesWithMatches,
@@ -90,7 +91,7 @@ export function SettingsSurface() {
           No matching settings.
         </p>
       ) : activePageId === "keyboard" ? (
-        <SettingsKeyboardPage visible={visible} />
+        <SettingsKeyboardPage scopes={EDITOR_KEYMAP_SCOPES} visible={visible} />
       ) : (
         <SettingsEditorPage
           visible={visible}
