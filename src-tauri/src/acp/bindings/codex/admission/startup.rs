@@ -16,11 +16,19 @@ pub(crate) fn admit_discovered_codex(
     registration: &CodexBindingRegistration,
     candidate: Option<crate::harness_discovery::InstalledHarness>,
 ) -> bool {
+    admit_discovered_codex_with_inputs(registration, candidate, Arc::new(SystemLaunchInputs))
+}
+
+fn admit_discovered_codex_with_inputs(
+    registration: &CodexBindingRegistration,
+    candidate: Option<crate::harness_discovery::InstalledHarness>,
+    inputs: Arc<dyn ObservedLaunchInputs>,
+) -> bool {
     candidate.is_some_and(|candidate| {
         crate::harness_discovery::revalidate_harness_version(candidate.id, &candidate.executable)
             .is_some_and(|version| {
                 registration
-                    .authenticate_observed(candidate.executable, version)
+                    .authenticate_observed_with_inputs(candidate.executable, version, inputs)
                     .is_ok()
             })
     })
@@ -115,13 +123,14 @@ mod tests {
         }
         let registration = CodexBindingRegistration::unavailable_for_test();
 
-        assert!(admit_discovered_codex(
+        assert!(admit_discovered_codex_with_inputs(
             &registration,
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable: executable.clone(),
                 version: Some("0.146.0".into()),
             }),
+            Arc::new(environment_tests::TestLaunchInputs::default()),
         ));
         let binding = registration.refresh().unwrap();
         assert!(binding.is_observed());
@@ -160,13 +169,14 @@ mod tests {
         }
         let registration = CodexBindingRegistration::unavailable_for_test();
 
-        assert!(!admit_discovered_codex(
+        assert!(!admit_discovered_codex_with_inputs(
             &registration,
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable,
                 version: Some("0.146.0".into()),
             }),
+            Arc::new(environment_tests::TestLaunchInputs::default()),
         ));
         assert!(!registration.is_available());
         fs::remove_dir_all(directory).unwrap();
