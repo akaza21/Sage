@@ -101,6 +101,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   "src/features/files/FileSurface.tsx",
+  // New File hands focus to the editor through this, off the startup path.
+  "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.

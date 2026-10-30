@@ -114,8 +114,10 @@ function DiffDocument({
           { additions: 0, deletions: 0 },
         )
       : null;
-  const additions = change?.additions ?? visibleCounts?.additions;
-  const deletions = change?.deletions ?? visibleCounts?.deletions;
+  // A complete diff is what the body shows, so its counts win over Git status,
+  // which can be older than the diff or come from a fixture with no hunks.
+  const additions = visibleCounts?.additions ?? change?.additions;
+  const deletions = visibleCounts?.deletions ?? change?.deletions;
 
   const canComment =
     commentEnabled &&
