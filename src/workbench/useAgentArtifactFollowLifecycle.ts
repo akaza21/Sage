@@ -1,10 +1,14 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type AgentArtifactTarget,
   useAgentArtifactFollowStore,
 } from "../app/agentArtifactFollowStore";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import {
+  agentArtifactOwnerKey,
+  type AgentArtifactOwner,
+} from "../domain/agentArtifact";
+import type { WorkbenchTab } from "../domain/workbench";
 import type { HarnessBrowseSession } from "../features/preview/harnessBrowse";
 import {
   useHarnessBrowseOwner,
@@ -52,4 +56,56 @@ export function useAgentArtifactFollowLifecycle({
       .getState()
       .reconcile(focusedOwner, availableTargets);
   }, [availableTargets, browseSettled, focusedOwner]);
+}
+
+/** Expands a collapsed resource pane when a tab or Preview revision appears. */
+export function useExpandOnNewArtifact({
+  artifacts,
+  previewOpen,
+  browseRevision,
+  focusedOwner,
+  expanded,
+  onExpandedChange,
+}: {
+  artifacts: readonly WorkbenchTab[];
+  previewOpen: boolean;
+  browseRevision: number;
+  focusedOwner: AgentArtifactOwner | null;
+  expanded: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+}): void {
+  const availableResourceKeys = useRef(new Set<string>());
+  const resourceKeys = useMemo(
+    () =>
+      new Set([
+        ...artifacts.map((tab) => tab.id),
+        ...(previewOpen
+          ? [`preview:${agentArtifactOwnerKey(focusedOwner)}:${browseRevision}`]
+          : []),
+      ]),
+    [artifacts, browseRevision, focusedOwner, previewOpen],
+  );
+
+  useEffect(() => {
+    const added = [...resourceKeys].some(
+      (resourceKey) => !availableResourceKeys.current.has(resourceKey),
+    );
+    availableResourceKeys.current = resourceKeys;
+    if (!expanded && added) onExpandedChange?.(true);
+  }, [expanded, onExpandedChange, resourceKeys]);
+}
+
+/** A callback-ref element that survives Activity hiding, which detaches refs but keeps the DOM node connected. */
+export function useRetainedElement<T extends Element>() {
+  const [element, setElement] = useState<T | null>(null);
+  const ref = useCallback((next: T | null) => {
+    if (next) {
+      setElement(next);
+      return;
+    }
+    queueMicrotask(() =>
+      setElement((current) => (current?.isConnected ? current : null)),
+    );
+  }, []);
+  return [element, ref] as const;
 }

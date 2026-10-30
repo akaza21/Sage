@@ -31,15 +31,17 @@ const loadAgentPreviewPresentation = () =>
     default: AgentPreviewPresentation,
   }));
 
-/** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; sleep only the canvas. */
+/** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; a selected preview keeps its canvas while the pane is collapsed. */
 export function AgentPreviewSurface({
   owner,
   browseOwner,
+  selected,
   visible,
   container,
 }: {
   owner: PreviewProjectionOwner | null;
   browseOwner: HarnessBrowseOwner | null;
+  selected: boolean;
   visible: boolean;
   container: HTMLElement | null;
 }) {
@@ -170,7 +172,7 @@ export function AgentPreviewSurface({
     void stopPreviewTarget(target).catch(() => undefined);
   }, []);
 
-  if (!visible || !container) return null;
+  if (!selected || !container) return null;
 
   return createPortal(
     <LazyModuleBoundary

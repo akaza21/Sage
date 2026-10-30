@@ -963,6 +963,27 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
+  it("keeps the same Preview frame asleep across collapse and expand", async () => {
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/",
+    });
+    const view = render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
+    const frame = screen.getByTitle("Sage browser");
+
+    view.rerender(<AgentArtifactPane expanded={false} />);
+    await settleLazyModules();
+    expect(frame.isConnected).toBe(true);
+    expect(frame).not.toBeVisible();
+
+    view.rerender(<AgentArtifactPane expanded />);
+    await settleLazyModules();
+    expect(screen.getByTitle("Sage browser")).toBe(frame);
+    expect(frame).toBeVisible();
+  });
+
   it("keeps the collapsed header waiting without a Preview session", () => {
     const onExpandedChange = vi.fn();
     useWorkbenchStore.setState({
@@ -1997,6 +2018,27 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close app.ts" }));
     expect(screen.queryByRole("tab", { name: /app\.ts/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close Preview" })).toBeNull();
+  });
+
+  it("disables browser creation without the desktop runtime after collapse and expand", async () => {
+    const openBrowser = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ openBrowser });
+    const { rerender } = render(<AgentArtifactPane />);
+    expect(
+      screen.getByRole("button", { name: "New browser tab" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(openBrowser).not.toHaveBeenCalled();
+
+    rerender(<AgentArtifactPane expanded={false} />);
+    await settleLazyModules();
+    rerender(<AgentArtifactPane expanded />);
+    await settleLazyModules();
+    expect(
+      screen.getByRole("button", { name: "New browser tab" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(openBrowser).not.toHaveBeenCalled();
   });
 
   it("shows browser tabs beside artifacts but keeps them out of Editor", () => {

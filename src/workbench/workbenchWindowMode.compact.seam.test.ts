@@ -123,7 +123,9 @@ describe("compact workbench window mode seam", () => {
     expect(
       screen.getByRole("dialog", { name: "Explorer project tools" }),
     ).toBeInTheDocument();
-    const editorCenter = container.querySelector(".center-region");
+    const editorCenter = [...container.querySelectorAll(".center-region")].find(
+      (region) => !region.closest("[style*='display: none']"),
+    );
     expect(editorCenter).toHaveAttribute("inert");
     expect(editorCenter).toHaveAttribute("aria-hidden", "true");
   });
