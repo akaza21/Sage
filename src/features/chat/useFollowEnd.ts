@@ -199,8 +199,10 @@ export function useFollowEnd({
       }
       followedHeightRef.current = current.scrollHeight;
       // Keep stale smooth steps protected until the anchor actually lands.
-      if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
-      if (transcriptIsAtEnd(current)) return;
+      if (distanceFromEnd(current) <= 1) {
+        anchoringRef.current = false;
+        return;
+      }
       anchorToEnd("auto");
     });
     observer.observe(transcript);
