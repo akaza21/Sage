@@ -1,5 +1,6 @@
 import {
   Fragment,
+  memo,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -14,6 +15,7 @@ import {
 import {
   AgentSessionChromeContext,
   pinAgentChatOwner,
+  releaseAgentChatOwner,
   type AgentSessionChrome,
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
@@ -130,7 +132,7 @@ export function AgentChatPanes({
 
   useLayoutEffect(() => {
     pinAgentChatOwner(focusedId);
-    return () => pinAgentChatOwner(null);
+    return releaseAgentChatOwner;
   }, [focusedId]);
 
   const focusedProjectionStore = acpProjectionStoreFor(focusedId);
@@ -254,7 +256,7 @@ export function AgentChatPanes({
                   tab={tab}
                   focused={id === focusedId}
                   snapshot={id === focusedId ? focusedSnapshot : undefined}
-                  onFocus={() => void activateTab(id)}
+                  activateTab={activateTab}
                 />
                 {split && index === 0 ? (
                   <SplitterPart part="AgentChatSplitter" panesRef={panesRef} />
@@ -307,15 +309,16 @@ function useRetainedHarnessBrowse(
   }, [owner, displayedIds, chatIds, ownerLoading]);
 }
 
-function AgentChatPane({
+/** Memoized so pane-host state (session chrome, focus memory) does not re-render the transcript. */
+const AgentChatPane = memo(function AgentChatPane({
   tab,
   focused,
-  onFocus,
+  activateTab,
   snapshot: providedSnapshot,
 }: {
   tab: WorkbenchTab;
   focused: boolean;
-  onFocus: () => void;
+  activateTab: (tabId: string) => Promise<void>;
   snapshot?: ChatLiveSnapshot;
 }) {
   const ownSnapshot = useAcpChatLiveSnapshot(tab.id, !providedSnapshot);
@@ -328,7 +331,7 @@ function AgentChatPane({
 
   function handleFocus() {
     ackChatUnread(tab.id, activityFingerprint);
-    onFocus();
+    void activateTab(tab.id);
   }
 
   // Under Agent chrome the pane has no header of its own: the task header
@@ -345,4 +348,4 @@ function AgentChatPane({
       {renderRegisteredCanvas("chat", tab)}
     </section>
   );
-}
+});

@@ -225,7 +225,7 @@ for (const geometry of geometries) {
           await close.click();
           await expect(
             page.locator(".agent-artifact-pane__canvas"),
-          ).toHaveCount(0);
+          ).toBeHidden();
           await expect(trigger).toBeFocused();
           await expect(center).not.toHaveAttribute("inert");
         } else
@@ -288,7 +288,7 @@ for (const width of [720, 480]) {
         .getByRole("button", { name: /^Show files and preview/ })
         .click();
       await page.mouse.click(16, 200);
-      await expect(pane).toHaveCount(0);
+      await expect(pane).toBeHidden();
     }
   });
 }

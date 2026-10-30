@@ -1,14 +1,7 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
+import { RetainedActivity } from "../ui/LazyModuleBoundary";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
   subagentPaneForPage,
@@ -43,7 +36,9 @@ import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import {
   useAgentArtifactFollowLifecycle,
+  useExpandOnNewArtifact,
   useFocusedBrowse,
+  useRetainedElement,
 } from "./useAgentArtifactFollowLifecycle";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
@@ -52,10 +47,7 @@ import {
   renderFileOrDiffCanvas,
   renderRegisteredCanvas,
 } from "./surfaceRegistry";
-import {
-  agentArtifactOwnerKey,
-  type AgentArtifactOwner,
-} from "../domain/agentArtifact";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { useAgentChangesPane } from "./useAgentChangesPane";
 import { useAgentChangesState } from "./agentChangesState";
@@ -93,9 +85,8 @@ export function AgentArtifactPane({
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
-  const availableResourceKeys = useRef(new Set<string>());
   const paneRef = useRef<HTMLElement | null>(null);
-  const [canvasNode, setCanvasNode] = useState<HTMLElement | null>(null);
+  const [canvasNode, setCanvasNode] = useRetainedElement<HTMLDivElement>();
   const [maximized, setMaximized] = useState(false);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const onPaneKeyDown = useAgentArtifactPaneFocus({
@@ -180,7 +171,6 @@ export function AgentArtifactPane({
     [admissions, focusedOwner, focusedPage, tabs],
   );
   const { browseOwner, browseSession } = useFocusedBrowse(focusedOwner);
-  const browseRevision = browseSession?.revision ?? 0;
   const previewOpen = browseSession !== null;
   const availableTargets = useMemo<AgentArtifactTarget[]>(
     () => [
@@ -225,6 +215,7 @@ export function AgentArtifactPane({
       key={JSON.stringify(Object.values(previewControllerOwner ?? {}))}
       owner={previewControllerOwner}
       browseOwner={browseOwner}
+      selected={previewSelected}
       visible={expanded && previewSelected}
       container={canvasNode}
     />
@@ -261,28 +252,18 @@ export function AgentArtifactPane({
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
-  const resourceKeys = useMemo(
-    () =>
-      new Set([
-        ...artifacts.map((tab) => tab.id),
-        ...(previewOpen
-          ? [`preview:${agentArtifactOwnerKey(focusedOwner)}:${browseRevision}`]
-          : []),
-      ]),
-    [artifacts, browseRevision, focusedOwner, previewOpen],
-  );
+  useExpandOnNewArtifact({
+    artifacts,
+    previewOpen,
+    browseRevision: browseSession?.revision ?? 0,
+    focusedOwner,
+    expanded,
+    onExpandedChange,
+  });
 
-  useEffect(() => {
-    const added = [...resourceKeys].some(
-      (resourceKey) => !availableResourceKeys.current.has(resourceKey),
-    );
-    availableResourceKeys.current = resourceKeys;
-    if (!expanded && added) onExpandedChange?.(true);
-  }, [expanded, onExpandedChange, resourceKeys]);
-
-  if (!expanded) {
-    return (
-      <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
+  return (
+    <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
+      {expanded ? null : (
         <AgentArtifactCollapsedPane
           count={
             artifacts.length + (previewOpen ? 1 : 0) + (changes.open ? 1 : 0)
@@ -295,110 +276,106 @@ export function AgentArtifactPane({
           overlay={overlayOnExpand}
           headerNode={headerNode}
         />
-        {previewController}
-      </div>
-    );
-  }
-
-  return (
-    <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
-      <aside
-        id={paneId}
-        ref={paneRef}
-        role={focusOnExpand ? "dialog" : undefined}
-        aria-modal={modal || undefined}
-        className={`agent-artifact-pane${
-          hasResources ? "" : " agent-artifact-pane--empty"
-        }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
-        aria-label="Agent artifacts"
-        data-owner-project-id={focusedOwner?.projectId}
-        data-owner-chat-id={focusedOwner?.chatId}
-        data-owner-session-id={focusedOwner?.sessionId}
-        data-owner-runtime-epoch={focusedRuntimeEpoch ?? undefined}
-        tabIndex={focusOnExpand ? -1 : undefined}
-      >
-        <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
-        <header className="agent-artifact-pane__header">
-          {hasResources ? (
-            <AgentArtifactTabStrip
-              artifacts={artifacts}
-              selectedTarget={
-                changes.selected || subagentSelected ? null : selectedTarget
-              }
-              changesTab={changes.tab}
-              focusedOwner={focusedOwner}
-              focusedPage={focusedPage}
-              previewSelected={previewSelected}
-              previewOpen={previewOpen}
-              subagentOpen={subagentAvailable}
-              subagentSelected={subagentSelected}
-              onSelectSubagent={() => {
+      )}
+      <RetainedActivity visible={expanded}>
+        <aside
+          id={paneId}
+          ref={paneRef}
+          role={focusOnExpand ? "dialog" : undefined}
+          aria-modal={modal || undefined}
+          className={`agent-artifact-pane${
+            hasResources ? "" : " agent-artifact-pane--empty"
+          }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
+          aria-label="Agent artifacts"
+          data-owner-project-id={focusedOwner?.projectId}
+          data-owner-chat-id={focusedOwner?.chatId}
+          data-owner-session-id={focusedOwner?.sessionId}
+          data-owner-runtime-epoch={focusedRuntimeEpoch ?? undefined}
+          tabIndex={focusOnExpand ? -1 : undefined}
+        >
+          <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
+          <header className="agent-artifact-pane__header">
+            {hasResources ? (
+              <AgentArtifactTabStrip
+                artifacts={artifacts}
+                selectedTarget={
+                  changes.selected || subagentSelected ? null : selectedTarget
+                }
+                changesTab={changes.tab}
+                focusedOwner={focusedOwner}
+                focusedPage={focusedPage}
+                previewSelected={previewSelected}
+                previewOpen={previewOpen}
+                subagentOpen={subagentAvailable}
+                subagentSelected={subagentSelected}
+                onSelectSubagent={() => {
+                  useAgentChangesState.getState().select(false);
+                  if (subagentTarget)
+                    useSubagentPaneStore.getState().show(subagentTarget, true);
+                }}
+                record={record}
+                availableTargets={availableTargets}
+                activateTab={activateTab}
+                closeTab={closeTab}
+              />
+            ) : (
+              <strong>Files, changes, and preview</strong>
+            )}
+            <AgentArtifactPaneControls
+              maximized={maximized}
+              onMaximizedChange={setMaximized}
+              disabled={!project || projectTransitioning}
+              onNewTab={() => {
                 useAgentChangesState.getState().select(false);
-                if (subagentTarget)
-                  useSubagentPaneStore.getState().show(subagentTarget, true);
+                void openBrowser();
               }}
-              record={record}
-              availableTargets={availableTargets}
-              activateTab={activateTab}
-              closeTab={closeTab}
+              onCollapse={() => {
+                setMaximized(false);
+                onExpandedChange?.(false);
+              }}
             />
-          ) : (
-            <strong>Files, changes, and preview</strong>
-          )}
-          <AgentArtifactPaneControls
-            maximized={maximized}
-            onMaximizedChange={setMaximized}
-            disabled={!project || projectTransitioning}
-            onNewTab={() => {
-              useAgentChangesState.getState().select(false);
-              void openBrowser();
-            }}
-            onCollapse={() => {
-              setMaximized(false);
-              onExpandedChange?.(false);
-            }}
-          />
-        </header>
-        {activeArtifact && activeArtifact.kind !== "browser" ? (
-          <Suspense fallback={null}>
-            <AgentArtifactHeader
-              key={activeArtifact.id}
-              tab={activeArtifact}
-              admitted={activeArtifactAdmitted}
-              page={focusedOwner ? focusedPage : null}
-              position={selectedPosition}
-              total={availableTargets.length}
-              onStep={stepArtifact}
-              onOpenInEditor={() => onOpenInEditor?.(activeArtifact.id)}
-            />
-          </Suspense>
-        ) : null}
-        <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
-          {changes.surface}
-          {subagentSelected && focusedPage && subagentTarget ? (
-            <Suspense fallback={<p role="status">Loading subagent view…</p>}>
-              <SubagentSurface
-                page={focusedPage}
-                projectGeneration={String(nativeTransitionEpoch)}
-                itemId={subagentTarget.itemId}
-                agentKey={subagentTarget.agentKey}
+          </header>
+          {activeArtifact && activeArtifact.kind !== "browser" ? (
+            <Suspense fallback={null}>
+              <AgentArtifactHeader
+                key={activeArtifact.id}
+                tab={activeArtifact}
+                admitted={activeArtifactAdmitted}
+                page={focusedOwner ? focusedPage : null}
+                position={selectedPosition}
+                total={availableTargets.length}
+                onStep={stepArtifact}
+                onOpenInEditor={() => onOpenInEditor?.(activeArtifact.id)}
               />
             </Suspense>
           ) : null}
-          {!previewSelected && activeArtifact
-            ? activeArtifact.kind === "browser"
-              ? renderRegisteredCanvas("browser", activeArtifact)
-              : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
-            : null}
-          {!changes.selected &&
-          !subagentSelected &&
-          !previewSelected &&
-          !activeArtifact ? (
-            <AgentArtifactEmptyState titleId={emptyTitleId} />
-          ) : null}
-        </div>
-        <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
-      </aside>
+          <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
+            {changes.surface}
+            {subagentSelected && focusedPage && subagentTarget ? (
+              <Suspense fallback={<p role="status">Loading subagent view…</p>}>
+                <SubagentSurface
+                  page={focusedPage}
+                  projectGeneration={String(nativeTransitionEpoch)}
+                  itemId={subagentTarget.itemId}
+                  agentKey={subagentTarget.agentKey}
+                />
+              </Suspense>
+            ) : null}
+            {!previewSelected && activeArtifact
+              ? activeArtifact.kind === "browser"
+                ? renderRegisteredCanvas("browser", activeArtifact)
+                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+              : null}
+            {!changes.selected &&
+            !subagentSelected &&
+            !previewSelected &&
+            !activeArtifact ? (
+              <AgentArtifactEmptyState titleId={emptyTitleId} />
+            ) : null}
+          </div>
+          <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
+        </aside>
+      </RetainedActivity>
       {previewController}
     </div>
   );

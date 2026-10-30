@@ -229,6 +229,8 @@ export function SearchablePicker({
     }
   };
 
+  const listed = open && !disabled ? rendered : EMPTY_CANDIDATES;
+
   if (invalid) {
     return (
       <ResourceStateNotice
@@ -349,7 +351,7 @@ export function SearchablePicker({
           />
         ) : null}
         <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-          {rendered.map((candidate) => {
+          {listed.map((candidate) => {
             const option = (
               <PickerOption
                 key={candidate.id}

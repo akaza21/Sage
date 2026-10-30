@@ -273,7 +273,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
   it("keeps navigation focused when resizing capped resources into full modality", async () => {
@@ -298,7 +298,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
   it("does not leave a focusless modal open when navigation narrows", async () => {
@@ -313,7 +313,7 @@ describe("compact Workbench project tools", () => {
     expect(document.body).toHaveFocus();
     vi.stubGlobal("innerWidth", 480);
     fireEvent(window, new Event("resize"));
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
     expect(document.body).toHaveFocus();
   });
 
@@ -378,7 +378,7 @@ describe("compact Workbench project tools", () => {
     ).toBeNull();
   });
 
-  it("traps reverse overlay Tab until Escape returns focus and unmounts the canvas", async () => {
+  it("traps reverse overlay Tab until Escape returns focus and sleeps the canvas", async () => {
     seedResourceChat();
     vi.stubGlobal("innerWidth", 720);
     const { container } = render(<Workbench />);
@@ -401,7 +401,9 @@ describe("compact Workbench project tools", () => {
     expect(
       screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     ).toHaveFocus();
-    expect(container.querySelector(".agent-artifact-pane__canvas")).toBeNull();
+    expect(
+      container.querySelector(".agent-artifact-pane__canvas"),
+    ).not.toBeVisible();
   });
 
   it("keeps narrow Agent navigation visible and Chat interactive", async () => {

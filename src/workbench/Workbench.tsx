@@ -1,6 +1,6 @@
 import {
-  Activity,
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -17,7 +17,7 @@ import { mountRendererRecreationPacketCollector } from "../features/chat/acp/ren
 import { DirtyTabDialog } from "./DirtyTabDialog";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
-import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
 import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
@@ -261,17 +261,48 @@ export function Workbench() {
       setWindowMode("editor");
     })();
   }, []);
-  const drawerOpen =
-    isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
-    (windowMode === "agent" && agentLayout.artifactOverlay);
-  const bodyStyle =
-    windowMode === "agent"
-      ? { gridTemplateColumns: agentLayout.gridTemplateColumns }
-      : compact
-        ? undefined
-        : {
-            gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
-          };
+  // Memoized so a sleeping Agent body is not re-rendered by Workbench updates.
+  const agentBody = useMemo(
+    () => (
+      <LazyModuleBoundary
+        label="Agent workspace"
+        load={loadAgentWorkbenchBody}
+        render={(AgentWorkbenchBody) => (
+          <AgentWorkbenchBody
+            layout={agentLayout}
+            style={{ gridTemplateColumns: agentLayout.gridTemplateColumns }}
+            drawerOpen={agentLayout.artifactOverlay}
+            navigationCollapsed={agentNavigationCollapsed}
+            onExpandNavigation={() => setAgentNavigationCollapsed(false)}
+            artifactExpanded={agentArtifactExpanded}
+            onArtifactExpandedChange={changeAgentArtifact}
+            onAgentLeftRailWidthChange={(width) =>
+              changeAgentSidebarWidth("left", width)
+            }
+            onOpenTerminal={() => setTerminalOpen(true)}
+            onAgentArtifactWidthChange={(width) =>
+              changeAgentSidebarWidth("artifact", width)
+            }
+            onOpenArtifactInEditor={openArtifactInEditor}
+          />
+        )}
+      />
+    ),
+    [
+      agentArtifactExpanded,
+      agentLayout,
+      agentNavigationCollapsed,
+      changeAgentArtifact,
+      changeAgentSidebarWidth,
+      openArtifactInEditor,
+    ],
+  );
+  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  const bodyStyle = compact
+    ? undefined
+    : {
+        gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
+      };
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
@@ -289,42 +320,17 @@ export function Workbench() {
       <AgentCenterKeeper windowMode={windowMode} />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
-      {windowMode === "agent" ? (
-        <>
-          <Activity mode={agentSettingsPage ? "hidden" : "visible"}>
-            <LazyModuleBoundary
-              label="Agent workspace"
-              load={loadAgentWorkbenchBody}
-              render={(AgentWorkbenchBody) => (
-                <AgentWorkbenchBody
-                  layout={agentLayout}
-                  style={bodyStyle}
-                  drawerOpen={drawerOpen}
-                  navigationCollapsed={agentNavigationCollapsed}
-                  onExpandNavigation={() => setAgentNavigationCollapsed(false)}
-                  artifactExpanded={agentArtifactExpanded}
-                  onArtifactExpandedChange={changeAgentArtifact}
-                  onAgentLeftRailWidthChange={(width) =>
-                    changeAgentSidebarWidth("left", width)
-                  }
-                  onOpenTerminal={() => setTerminalOpen(true)}
-                  onAgentArtifactWidthChange={(width) =>
-                    changeAgentSidebarWidth("artifact", width)
-                  }
-                  onOpenArtifactInEditor={openArtifactInEditor}
-                />
-              )}
-            />
-          </Activity>
-          {agentSettingsPage ? (
-            <LazyModuleBoundary
-              label="Agent settings"
-              load={loadAgentSettings}
-              render={(AgentSettingsSurface) => <AgentSettingsSurface />}
-            />
-          ) : null}
-        </>
-      ) : (
+      <RetainedActivity visible={windowMode === "agent" && !agentSettingsPage}>
+        {agentBody}
+      </RetainedActivity>
+      {windowMode === "agent" && agentSettingsPage ? (
+        <LazyModuleBoundary
+          label="Agent settings"
+          load={loadAgentSettings}
+          render={(AgentSettingsSurface) => <AgentSettingsSurface />}
+        />
+      ) : null}
+      {windowMode === "editor" ? (
         <div className="workbench__body" style={bodyStyle}>
           <RightSidebar compact={compact} railFirst />
           {!compact ? (
@@ -356,7 +362,7 @@ export function Workbench() {
             />
           </div>
         </div>
-      )}
+      ) : null}
       {terminalOpen ? (
         <LazyModuleBoundary
           label="Terminal"

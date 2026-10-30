@@ -1,4 +1,4 @@
-import { createElement, forwardRef } from "react";
+import { createElement, forwardRef, memo } from "react";
 import type { LucideProps } from "lucide-react";
 
 type IconNode = string | readonly [string, Record<string, string>];
@@ -50,7 +50,7 @@ export function leanIcon(cssClass: string, nodes: readonly IconNode[]) {
       );
     },
   );
-  return Component;
+  return memo(Component);
 }
 
 export function lucideIcon(name: string, nodes: readonly IconNode[]) {

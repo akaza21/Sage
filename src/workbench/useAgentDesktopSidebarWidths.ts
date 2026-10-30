@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type AgentDesktopSidebarPriority,
@@ -74,14 +74,23 @@ export function useAgentDesktopSidebarWidths(
     [requestsForViewport],
   );
 
-  return {
-    changeWidth,
-    layout: agentWorkbenchLayout({
-      viewportWidth,
+  const layout = useMemo(
+    () =>
+      agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded,
+        navigationCollapsed,
+        requestedWidths: widthRequests,
+        prioritize: priority,
+      }),
+    [
       artifactExpanded,
       navigationCollapsed,
-      requestedWidths: widthRequests,
-      prioritize: priority,
-    }),
-  };
+      priority,
+      viewportWidth,
+      widthRequests,
+    ],
+  );
+
+  return { changeWidth, layout };
 }
