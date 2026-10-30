@@ -13,7 +13,7 @@ use crate::{domain::ResourceRef, workspace::search::MAX_SEARCH_DEPTH};
 use super::{
     BUILDING, INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex, WALKER_WAIT,
     arena::PathArena,
-    build_index_within, forget_project, lock, on_walker,
+    build_index_within, focus_project, forget_project, lock, on_walker,
     query::{Outcome, QuickOpenQuery, Ranked, rank_in_shares, run},
     score::{Query, positions, score},
 };
@@ -345,6 +345,56 @@ fn a_first_build_stops_a_stale_refresh_and_outwaits_a_stuck_walker() {
     }
     assert_eq!(ask_in(&excluding, 3, "rs", &[]).paths, ["a.rs"]);
     assert!(lock(&INDEX).walks.is_empty());
+}
+
+#[test]
+fn watching_another_project_drops_this_ones_index() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = Fixture::new(&["a.rs"]);
+    let inputs = fixture.inputs(&[]);
+    assert!(ask(&inputs, "a", &[]).built);
+    focus_project(&fixture.project_id);
+    assert!(!ask(&inputs, "a", &[]).built, "its own Project keeps it");
+    // A query checked before the switch keeps nothing afterwards.
+    let ticket = super::ticket();
+    focus_project("the-next-project");
+    assert!(lock(&INDEX).index.is_none());
+    let query = QuickOpenQuery {
+        text: "a",
+        limit: 5,
+        generation: generation(),
+        session: 1,
+        recent: &[],
+    };
+    assert!(matches!(run(&inputs, &query, ticket), Outcome::Superseded));
+    assert!(lock(&INDEX).index.is_none());
+}
+
+#[test]
+fn a_query_waiting_for_a_build_gives_up_once_superseded() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = Fixture::new(&["a.rs"]);
+    let inputs = fixture.inputs(&[]);
+    let building = lock(&BUILDING);
+    let older = generation();
+    let waiting = std::thread::scope(|scope| {
+        let waiter = scope.spawn(|| {
+            let query = QuickOpenQuery {
+                text: "a",
+                limit: 5,
+                generation: older,
+                session: 1,
+                recent: &[],
+            };
+            run(&inputs, &query, super::ticket())
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        // A newer query arrives; the older one stops waiting.
+        LATEST_GENERATION.fetch_max(generation(), Ordering::AcqRel);
+        waiter.join().unwrap()
+    });
+    drop(building);
+    assert!(matches!(waiting, Outcome::Superseded));
 }
 
 #[test]

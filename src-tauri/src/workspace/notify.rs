@@ -372,6 +372,9 @@ pub fn watch_workspace_notify(
         let _ = apply_unwatch_if_generation(&project_id, generation);
         return Err(error.code().to_string());
     }
+    // A newly watched Project is the active one: Quick Open's index for any
+    // other is no longer needed.
+    crate::workspace::path_index::focus_project(&project_id);
     emit_queued_workspace_notices(&app, &value);
     Ok(WorkspaceNotifyWatchAck { generation })
 }

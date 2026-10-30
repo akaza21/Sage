@@ -21,7 +21,7 @@ mod tests;
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, TryLockError,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
@@ -87,6 +87,9 @@ struct Slot {
     /// The epoch at which each Project closed in this run was last
     /// forgotten, so a query checked before that keeps nothing.
     forgotten: Vec<(String, u64)>,
+    /// The Project last watched, from the epoch it was; every other
+    /// Project counts as forgotten from then on.
+    focus: Option<(String, u64)>,
     /// Walks under way, by Project, each with the flag that stops it.
     walks: Vec<(String, Arc<AtomicBool>)>,
 }
@@ -96,12 +99,16 @@ impl Slot {
         self.forgotten
             .iter()
             .any(|(id, epoch)| id == project_id && *epoch > ticket.0)
+            || self
+                .focus
+                .as_ref()
+                .is_some_and(|(id, epoch)| id != project_id && *epoch > ticket.0)
     }
 
-    /// Stops every walk, or only those of one Project.
-    fn stop_walks(&self, project_id: Option<&str>) {
+    /// Stops the walks `which` picks by Project.
+    fn stop_walks(&self, which: impl Fn(&str) -> bool) {
         for (id, stop) in &self.walks {
-            if project_id.is_none_or(|project_id| project_id == id) {
+            if which(id) {
                 stop.store(true, Ordering::Release);
             }
         }
@@ -145,6 +152,7 @@ static INDEX: Mutex<Slot> = Mutex::new(Slot {
     refreshing: false,
     epoch: 0,
     forgotten: Vec::new(),
+    focus: None,
     walks: Vec::new(),
 });
 /// Held while a first build walks, so a burst of first queries builds once.
@@ -155,6 +163,8 @@ static LATEST_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// walking on the calling thread instead. The walker only falls this far
 /// behind if a folder read hangs, as on an unreachable network drive.
 const WALKER_WAIT: Duration = Duration::from_secs(2);
+/// How often a query waiting on a build checks whether it is still wanted.
+const WAIT_CHECK: Duration = Duration::from_millis(5);
 /// Memory is handed back after walks and drops of indexes at least this
 /// large (about 13,000 paths); below it there is little to return.
 const TRIM_FROM: usize = 1 << 20;
@@ -183,10 +193,27 @@ pub(crate) fn forget_project(project_id: &str) {
         Some(entry) => entry.1 = epoch,
         None => slot.forgotten.push((project_id.to_owned(), epoch)),
     }
-    slot.stop_walks(Some(project_id));
+    slot.stop_walks(|id| id == project_id);
     let dropped = slot
         .index
         .take_if(|index| index.inputs.project_id == project_id);
+    drop(slot);
+    if let Some(index) = dropped {
+        free_on_walker(index);
+    }
+}
+
+/// Forgets every Project but `project_id`, which is now being watched. A
+/// query for the Project being closed can still pass the active-Project
+/// check after its forget and before the switch; this drops what it built.
+pub(crate) fn focus_project(project_id: &str) {
+    let mut slot = lock(&INDEX);
+    slot.epoch += 1;
+    slot.focus = Some((project_id.to_owned(), slot.epoch));
+    slot.stop_walks(|id| id != project_id);
+    let dropped = slot
+        .index
+        .take_if(|index| index.inputs.project_id != project_id);
     drop(slot);
     if let Some(index) = dropped {
         free_on_walker(index);
@@ -215,10 +242,12 @@ pub(crate) struct Readied {
 /// built now; queries that arrive meanwhile wait for that build rather than
 /// start another. With one from an earlier Quick Open session, it answers
 /// at once and a fresh one is walked in the background. `None` when the
-/// Project was forgotten after `ticket`.
+/// Project was forgotten after `ticket`, or a newer query than `generation`
+/// arrived while this one waited for a build.
 fn ready(
     inputs: &IndexInputs,
     session: u64,
+    generation: u64,
     ticket: Ticket,
 ) -> Option<(Arc<ProjectIndex>, Readied)> {
     let started = Instant::now();
@@ -236,28 +265,38 @@ fn ready(
     if let Some((index, refreshing)) = current(inputs, session) {
         return readied(index, false, refreshing);
     }
-    let _building = lock(&BUILDING);
+    let wanted =
+        || !superseded(generation) && !lock(&INDEX).forgotten_since(&inputs.project_id, ticket);
+    let _building = loop {
+        match BUILDING.try_lock() {
+            Ok(building) => break building,
+            Err(TryLockError::Poisoned(poison)) => break poison.into_inner(),
+            Err(TryLockError::WouldBlock) if wanted() => std::thread::sleep(WAIT_CHECK),
+            Err(TryLockError::WouldBlock) => return None,
+        }
+    };
     if let Some((index, refreshing)) = current(inputs, session) {
         return readied(index, false, refreshing);
     }
-    let walking = {
+    let (walking, old) = {
         let mut slot = lock(&INDEX);
         if slot.forgotten_since(&inputs.project_id, ticket) {
             return None;
         }
-        // Free the old index before building the new one, and stop any
-        // refresh of it so this walk isn't queued behind one.
-        if let Some(old) = slot.index.take() {
-            free_on_walker(old);
-        }
-        slot.stop_walks(None);
-        slot.begin(&inputs.project_id, false)
+        // Stop any refresh of the old index so this walk isn't queued
+        // behind one.
+        slot.stop_walks(|_| true);
+        (slot.begin(&inputs.project_id, false), slot.index.take())
     };
-    let index = Arc::new(walk(inputs, session, &walking.stop));
-    let stopped = walking.stopped();
+    // Freed before the new one is built.
+    if let Some(old) = old {
+        free_on_walker(old);
+    }
+    let built = walk(inputs, session, &walking.stop);
     drop(walking);
+    let index = Arc::new(built?);
     let mut slot = lock(&INDEX);
-    if stopped || slot.forgotten_since(&inputs.project_id, ticket) {
+    if slot.forgotten_since(&inputs.project_id, ticket) {
         return None;
     }
     slot.index = Some(Arc::clone(&index));
@@ -309,40 +348,49 @@ fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walk
     }))
 }
 
-/// Builds an index on the walker thread and waits for it. It is built here
-/// instead if that thread can't be reached or doesn't take it up within
-/// `WALKER_WAIT`.
-fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> ProjectIndex {
+/// Builds an index on the walker thread and waits for it, or `None` once
+/// `stop` is raised. If that thread can't be reached or hasn't started the
+/// walk within `WALKER_WAIT`, it walks on a thread of its own instead; once
+/// started, a walk is waited for until it ends or is stopped.
+fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<ProjectIndex> {
     let (done, built) = mpsc::sync_channel(1);
-    let taken = Arc::new(AtomicBool::new(false));
-    let queued = {
-        let (inputs, taken, stop) = (inputs.clone(), Arc::clone(&taken), Arc::clone(stop));
-        on_walker(Box::new(move || {
-            if taken.swap(true, Ordering::AcqRel) {
-                return false;
-            }
+    let build = {
+        let (inputs, stop) = (inputs.clone(), Arc::clone(stop));
+        move || {
             let index = build_index(&inputs, session, None, &stop);
             let large = index.heap_bytes() >= TRIM_FROM;
             let _ = done.send(index);
             large
+        }
+    };
+    // Whichever of the walker and the fallback sets it first walks.
+    let taken = Arc::new(AtomicBool::new(false));
+    let queued = {
+        let (build, taken) = (build.clone(), Arc::clone(&taken));
+        on_walker(Box::new(move || {
+            !taken.swap(true, Ordering::AcqRel) && build()
         }))
     };
-    if queued {
-        match built.recv_timeout(WALKER_WAIT) {
-            Ok(index) => return index,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Started already: wait for it. Not yet: it will see
-                // `taken` and do nothing.
-                if taken.swap(true, Ordering::AcqRel)
-                    && let Ok(index) = built.recv()
-                {
-                    return index;
-                }
+    let fallback_at = Instant::now() + if queued { WALKER_WAIT } else { Duration::ZERO };
+    loop {
+        if let Ok(index) = built.recv_timeout(WAIT_CHECK) {
+            return Some(index);
+        }
+        if stop.load(Ordering::Acquire) {
+            return None;
+        }
+        if Instant::now() >= fallback_at && !taken.swap(true, Ordering::AcqRel) {
+            let build = build.clone();
+            let spawned = std::thread::Builder::new()
+                .name("quick-open-walk-fallback".into())
+                .spawn(move || {
+                    build();
+                });
+            if spawned.is_err() {
+                return Some(build_index(inputs, session, None, stop));
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {}
         }
     }
-    build_index(inputs, session, None, stop)
 }
 
 /// Frees `index` on the walker thread, which then hands the memory back.
@@ -396,11 +444,17 @@ fn on_walker(job: Job) -> bool {
                 }
             }
         });
-    if started.is_err() || sender.send(job).is_err() {
-        return false;
+    let rejected = match started {
+        Ok(_) => sender.send(job).err().map(|mpsc::SendError(job)| job),
+        Err(_) => Some(job),
+    };
+    if rejected.is_none() {
+        *walker = Some(sender);
     }
-    *walker = Some(sender);
-    true
+    // A rejected job may own a `Walking`, which locks `INDEX`; drop it only
+    // after `WALKER` is released, so the lock order stays INDEX then WALKER.
+    drop(walker);
+    rejected.is_none()
 }
 
 fn build_index(

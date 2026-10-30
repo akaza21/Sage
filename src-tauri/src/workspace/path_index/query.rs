@@ -61,7 +61,7 @@ pub(crate) fn run(inputs: &IndexInputs, query: &QuickOpenQuery<'_>, ticket: Tick
     if !claim_generation(query.generation) {
         return Outcome::Superseded;
     }
-    let Some((index, readied)) = ready(inputs, query.session, ticket) else {
+    let Some((index, readied)) = ready(inputs, query.session, query.generation, ticket) else {
         return Outcome::Superseded;
     };
     if superseded(query.generation) {
@@ -119,16 +119,16 @@ impl PartialEq for Candidate<'_> {
 
 impl Eq for Candidate<'_> {}
 
-/// A cheap hash of a path's length and last bytes, for the recent filter.
-fn filter_slot(path: &str) -> usize {
+/// A cheap hash for the recent filter: the path's length, the first two
+/// bytes of its basename (which starts at `base`) and its last byte.
+fn filter_slot(path: &str, base: usize) -> usize {
     let bytes = path.as_bytes();
-    let last = |back: usize| {
-        bytes
-            .len()
-            .checked_sub(back)
-            .map_or(0, |at| bytes[at] as usize)
-    };
-    (bytes.len() * 131 + last(1) * 31 + last(2)) % RECENT_FILTER_BITS
+    let at = |index: usize| bytes.get(index).map_or(0, |byte| *byte as usize);
+    let hash = (bytes.len() * 0x9e37)
+        ^ (at(base) * 0x85eb)
+        ^ (at(base + 1) * 0xc2b3)
+        ^ (at(bytes.len().wrapping_sub(1)) * 0x27d5);
+    (hash ^ (hash >> 13)) % RECENT_FILTER_BITS
 }
 
 /// What every share of a ranking reads.
@@ -148,7 +148,7 @@ impl<'a> Ranking<'a> {
         let mut recent = HashMap::with_capacity(query.recent.len());
         for (rank, resource) in query.recent.iter().enumerate() {
             let path = resource.relative_path.as_str();
-            let slot = filter_slot(path);
+            let slot = filter_slot(path, path.rfind('/').map_or(0, |slash| slash + 1));
             recent_filter[slot / 64] |= 1 << (slot % 64);
             recent
                 .entry((resource.root_id.as_str(), path))
@@ -164,16 +164,16 @@ impl<'a> Ranking<'a> {
     }
 
     /// How recently `path` was opened, 0 for the most recent.
-    fn recent_rank(&self, root_id: &str, path: &str) -> Option<usize> {
-        let slot = filter_slot(path);
+    fn recent_rank(&self, root_id: &str, path: &str, base: usize) -> Option<usize> {
+        let slot = filter_slot(path, base);
         if self.recent_filter[slot / 64] & (1 << (slot % 64)) == 0 {
             return None;
         }
         self.recent.get(&(root_id, path)).copied()
     }
 
-    fn recency(&self, root_id: &str, path: &str) -> i32 {
-        self.recent_rank(root_id, path)
+    fn recency(&self, root_id: &str, path: &str, base: usize) -> i32 {
+        self.recent_rank(root_id, path, base)
             .map_or(0, |rank| RECENT_BONUS - RECENT_STEP * rank as i32)
     }
 
@@ -198,12 +198,14 @@ impl<'a> Ranking<'a> {
                 }
                 let score = match &self.parsed {
                     Some(parsed) => match score(parsed, stored.path, stored.base, stored.ascii) {
-                        Some(score) => score + self.recency(&root.root_id, stored.path),
+                        Some(score) => {
+                            score + self.recency(&root.root_id, stored.path, stored.base)
+                        }
                         None => continue,
                     },
                     // An empty query lists recently opened Files only, as VS
                     // Code does.
-                    None => match self.recent_rank(&root.root_id, stored.path) {
+                    None => match self.recent_rank(&root.root_id, stored.path, stored.base) {
                         Some(rank) => -(rank as i32),
                         None => continue,
                     },
