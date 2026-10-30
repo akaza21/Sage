@@ -8,6 +8,8 @@ import {
   X,
 } from "../ui/leanIcons";
 
+import { useLayoutEffect, useRef, type WheelEvent } from "react";
+
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
@@ -44,6 +46,20 @@ function BrowserTabPresence({
   );
 }
 
+/**
+ * A vertical wheel scrolls the strip sideways, as in VS Code. A trackpad pinch
+ * arrives as a wheel with Ctrl held, and is left alone.
+ */
+function scrollTabsWithWheel(event: WheelEvent<HTMLDivElement>) {
+  const strip = event.currentTarget;
+  if (
+    !event.ctrlKey &&
+    Math.abs(event.deltaY) > Math.abs(event.deltaX) &&
+    strip.scrollWidth > strip.clientWidth
+  )
+    strip.scrollLeft += event.deltaY;
+}
+
 const icons: Record<TabKind, typeof MessageSquare> = {
   chat: MessageSquare,
   file: MessageSquare,
@@ -75,10 +91,27 @@ export function TabStrip({
   const visibleTabs = kinds
     ? orderedTabs(tabs).filter((tab) => kinds.includes(tab.kind))
     : orderedTabs(tabs);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab in view when it changes or tabs open and close.
+  useLayoutEffect(() => {
+    const strip = scrollRef.current;
+    const active = strip?.querySelector(".tab--active");
+    if (!strip || !active) return;
+    const bounds = strip.getBoundingClientRect();
+    const tab = active.getBoundingClientRect();
+    if (tab.left < bounds.left) strip.scrollLeft -= bounds.left - tab.left;
+    else if (tab.right > bounds.right)
+      strip.scrollLeft += tab.right - bounds.right;
+  }, [activeTabId, visibleTabs.length]);
 
   return (
     <nav className="tab-strip" aria-label={label}>
-      <div className="tab-strip__scroll">
+      <div
+        className="tab-strip__scroll"
+        ref={scrollRef}
+        onWheel={scrollTabsWithWheel}
+      >
         {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];
           const active = tab.id === activeTabId;
@@ -94,6 +127,7 @@ export function TabStrip({
                 type="button"
                 role="tab"
                 aria-selected={active}
+                title={tab.resource?.relativePath ?? tab.title}
                 onClick={() => void activateTab(tab.id)}
               >
                 {tab.kind === "browser" ? (
