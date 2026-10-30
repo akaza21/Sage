@@ -245,6 +245,11 @@
   cursor: pointer;
 }
 
+/* Icons keep their size; only the title shrinks. */
+.tab__activate > svg {
+  flex: none;
+}
+
 .tab__favicon {
   width: 16px;
   height: 16px;

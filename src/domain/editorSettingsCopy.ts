@@ -105,4 +105,10 @@ export const EDITOR_SETTING_COPY: Readonly<
       hidden: ["Hidden", "Hidden"],
     },
   },
+  "files.exclude": {
+    group: "Files",
+    label: "Exclude",
+    description:
+      "Glob patterns for files and folders that Explorer and Search leave out, such as **/dist or **/*.log.",
+  },
 };

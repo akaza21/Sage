@@ -124,7 +124,7 @@ fn read_only_uri(path: &Path) -> AppResult<String> {
     let text = path.to_str().ok_or_else(|| {
         AppError::InvalidRequest("SQLite migration path is not valid UTF-8".into())
     })?;
-    let normalized = sqlite_uri_path(text).replace('\\', "/");
+    let normalized = sqlite_uri_path(text);
     let mut encoded = String::with_capacity(normalized.len() + 32);
     for byte in normalized.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b':' | b'-' | b'_' | b'.' | b'~') {
@@ -143,9 +143,11 @@ fn read_only_uri(path: &Path) -> AppResult<String> {
 #[cfg(windows)]
 fn sqlite_uri_path(path: &str) -> String {
     if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{unc}")
+        format!(r"\\{unc}").replace('\\', "/")
     } else {
-        path.strip_prefix(r"\\?\").unwrap_or(path).into()
+        path.strip_prefix(r"\\?\")
+            .unwrap_or(path)
+            .replace('\\', "/")
     }
 }
 
@@ -255,6 +257,7 @@ mod tests {
             Self { directory, path }
         }
 
+        #[cfg(windows)]
         fn unc(&self, verbatim: bool) -> Option<PathBuf> {
             let text = self.path.to_str()?;
             let (drive, rest) = text.split_once(":\\")?;
@@ -294,6 +297,7 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn read_only_uri_opens_unc_and_verbatim_paths() {
         let seeded = SeededDatabase::new();
@@ -304,6 +308,7 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     #[test]
     fn read_only_uri_leaves_a_unc_authority_empty() {
         assert_eq!(
@@ -317,6 +322,22 @@ mod tests {
         assert_eq!(
             read_only_uri(Path::new(r"\\server\share\sage.db")).unwrap(),
             "file:////server/share/sage.db?mode=ro&immutable=1"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_only_uri_preserves_unix_filename_backslashes_and_uri_metacharacters() {
+        let seeded = SeededDatabase::new();
+        let path = seeded.directory.join(r"sage\?#%.db");
+        std::fs::rename(&seeded.path, &path).unwrap();
+        assert_eq!(marker_through_uri(&path), 1);
+        let connection = open_read_only(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row::<i64, _, _>("SELECT id FROM marker", [], |row| row.get(0))
+                .unwrap(),
+            1
         );
     }
 }

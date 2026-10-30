@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { useWorkbenchStore } from "../../app/store";
@@ -8,11 +8,22 @@ import {
   resourceKey,
   sameResource,
 } from "../../domain/resourceIdentity";
+import type * as MatcherModule from "../../domain/pathGlobMatcher";
 import type { ProjectRootSummary } from "../../domain/workbench";
 import { ExplorerActions } from "./ExplorerActions";
 import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
 import { flattenFileTree } from "./fileTree";
+
+// The `files.exclude` matcher loads beside the startup bundle, starting as
+// this module loads, long before the first listing returns.
+let matcherModule: typeof MatcherModule | undefined;
+// A failed load is reported, and Explorer then shows excluded entries.
+const matcherLoaded = import("../../domain/pathGlobMatcher").then(
+  (module) => (matcherModule = module),
+  (error: unknown) =>
+    console.warn("Explorer could not load the files.exclude matcher", error),
+);
 
 const RootTree = memo(function RootTree({
   root,
@@ -30,12 +41,29 @@ const RootTree = memo(function RootTree({
   const hideIgnored = useEditorSettingsStore(
     (store) => store.settings["explorer.showIgnored"] === "hidden",
   );
+  const filesExclude = useEditorSettingsStore(
+    (store) => store.settings["files.exclude"],
+  );
+  const [matcher, setMatcher] = useState(matcherModule);
+  useEffect(() => {
+    if (!matcher) {
+      void matcherLoaded.then((module) => module && setMatcher(module));
+    }
+  }, [matcher]);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const rootSelected = sameResource(rootResource, selected);
   const tree = useMemo(
-    () => flattenFileTree(rootResource, listings, expanded, 500, hideIgnored),
-    [expanded, hideIgnored, listings, rootResource],
+    () =>
+      flattenFileTree(
+        rootResource,
+        listings,
+        expanded,
+        500,
+        hideIgnored,
+        matcher?.pathGlobMatcher(filesExclude),
+      ),
+    [expanded, filesExclude, hideIgnored, listings, matcher, rootResource],
   );
   const listing = listings[resourceKey(rootResource)];
   const nestedTruncatedResource = tree.entries.find((entry) => {

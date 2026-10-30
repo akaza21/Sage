@@ -98,8 +98,14 @@ impl AcpService {
         mut command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(ActivateSessionCommand, PreparedActivation), CodexSessionError> {
-        self.prepare_session_activation_inner(admitted, &mut command, project_root)
-            .map(|prepared| (command, prepared))
+        self.prepare_session_activation_inner(
+            admitted,
+            &mut command,
+            project_root,
+            #[cfg(windows)]
+            |owner| self.prepare_browser_mcp(owner),
+        )
+        .map(|prepared| (command, prepared))
     }
 
     fn prepare_session_activation_inner(
@@ -107,6 +113,12 @@ impl AcpService {
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: &mut ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
+        #[cfg(windows)] prepare_browser: impl FnOnce(
+            &RuntimeOwner,
+        ) -> (
+            crate::acp::mcp::McpAdmission,
+            Option<super::browser_mcp::BrowserMcpActivationGuard>,
+        ),
     ) -> Result<PreparedActivation, CodexSessionError> {
         let registered_binding_id = admitted.binding_id();
         let identity = admitted.identity();
@@ -169,20 +181,27 @@ impl AcpService {
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         let harness_version = identity.harness_version.to_owned();
         #[cfg(windows)]
-        let (mcp, browser_mcp_guard) = self.prepare_browser_mcp(&owner);
+        let (mut mcp, mut browser_mcp_guard) = prepare_browser(&owner);
         #[cfg(windows)]
-        if matches!(
-            &project_root,
-            crate::acp::bindings::registry::BindingProjectRoot::Codex(_)
-        ) && ((browser_mcp_guard.is_some() && identity.harness_version != "0.146.0")
-            || (self
-                .browser_app
-                .lock()
-                .ok()
-                .is_some_and(|slot| slot.is_some())
-                && browser_mcp_guard.is_none()))
         {
-            return Err(CodexSessionError::BrowserToolsUnavailable);
+            let browser_available = browser_mcp_guard.is_some()
+                || self
+                    .browser_app
+                    .lock()
+                    .ok()
+                    .is_some_and(|slot| slot.is_some());
+            if browser_available {
+                let notice = admitted.browser_mcp_version_notice().or_else(|| {
+                    browser_mcp_guard.is_none().then_some(
+                        "Browser tools are unavailable for this chat because the browser helper could not be prepared. You can continue chatting.",
+                    )
+                });
+                if let Some(notice) = notice {
+                    mcp = crate::acp::mcp::McpAdmission::without_browser_tools(notice);
+                    // Revocation must happen before constructing the normal runtime.
+                    drop(browser_mcp_guard.take());
+                }
+            }
         }
         #[cfg(not(windows))]
         let mcp = crate::acp::mcp::McpAdmission::default();
@@ -282,3 +301,6 @@ mod version_tests {
         ));
     }
 }
+
+#[cfg(all(test, windows))]
+mod browser_mcp_tests;

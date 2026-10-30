@@ -1,8 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 
-import { beforeEach } from "vitest";
+import { beforeAll, beforeEach, vi } from "vitest";
 
 import { resetHarnessModelCache } from "../app/harnessModelCache";
+
+// Some modules start a lazy load when they are imported (Explorer starts
+// with the workbench). Let those land before the first test, as they do long
+// before a person can act in the app, so no test depends on test order.
+beforeAll(async () => {
+  await vi.dynamicImportSettled();
+});
 
 beforeEach(() => {
   resetHarnessModelCache();

@@ -40,7 +40,7 @@ export function DiffHunks({
         return hunk.lines.length > 0 ? (
           <div className="diff-hunk" key={`${hunk.header}:${hunkIndex}`}>
             <div className="diff-hunk__header" role="row">
-              {hunk.header}
+              <span role="cell">{hunk.header}</span>
             </div>
             {hunk.lines.map((line, lineIndex) => (
               <div

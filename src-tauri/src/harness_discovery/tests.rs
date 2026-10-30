@@ -108,8 +108,9 @@ fn presence_projection_does_not_wait_for_a_slow_version_command() {
 fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identity() {
     let directory = scratch_dir();
     let marker = directory.join("version-probes.txt");
+    let separator = if cfg!(windows) { "&" } else { ";" };
     let command = format!(
-        "echo codex-cli 0.146.0 & echo probe>>\"{}\"",
+        "echo codex-cli 0.146.0 {separator} echo probe>>\"{}\"",
         marker.display()
     );
     let executable = write_script(
@@ -126,11 +127,12 @@ fn display_version_cache_skips_unchanged_probe_and_rechecks_changed_file_identit
 
     let first = enrich_installed_harness_versions(&present, &cache);
     let second = enrich_installed_harness_versions(&present, &cache);
-    fs::write(
-        &executable,
-        format!("@echo off\r\n{command}\r\nrem changed"),
-    )
-    .unwrap();
+    let comment = if cfg!(windows) { "rem" } else { "#" };
+    write_script(
+        &directory,
+        test_basename(HarnessExecutable::Codex),
+        &format!("{command}\n{comment} changed"),
+    );
     let third = enrich_installed_harness_versions(&present, &cache);
 
     assert_eq!(first[0].version.as_deref(), Some("0.146.0"));

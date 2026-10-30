@@ -2,7 +2,7 @@ use std::{path::PathBuf, time::Instant};
 
 use crate::{
     error::{AppError, AppResult},
-    workspace::file_walk::walk_over_cap,
+    workspace::{file_walk::walk_over_cap, path_glob::PathGlobs},
 };
 
 use super::{
@@ -90,6 +90,7 @@ impl SearchEngine {
             reasons: Vec::new(),
         };
 
+        let excluded = PathGlobs::new(&request.files_exclude());
         for root in roots {
             let SearchRoot {
                 root_id,
@@ -110,6 +111,7 @@ impl SearchEngine {
                     &request.include_patterns,
                     &request.exclude_patterns,
                     request.use_ignore_files,
+                    &excluded,
                     &mut matches,
                     &mut budget,
                     &mut seek,

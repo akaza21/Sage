@@ -7,6 +7,7 @@ use crate::workspace::{
         admit_walk_dirent, walk_buffer_remaining,
     },
     ignore_rules::{FolderChain, IgnoreRules, RuleFiles},
+    path_glob::PathGlobs,
 };
 
 use super::{
@@ -32,6 +33,7 @@ impl SearchEngine {
         include_patterns: &[String],
         exclude_patterns: &[String],
         use_ignore_files: bool,
+        excluded: &PathGlobs,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
         seek: &mut Option<ContinuationSeek>,
@@ -181,9 +183,11 @@ impl SearchEngine {
                     counters.skipped_files += 1;
                     continue;
                 }
-                // Ignored folders are not entered, so their contents stay
-                // ignored as in Git.
-                if rules.is_ignored(&folder_rules, &child_relative, file_type.is_dir()) {
+                // Excluded and ignored folders are not entered, so their
+                // contents stay out as in VS Code and Git.
+                if excluded.matches(&child_relative)
+                    || rules.is_ignored(&folder_rules, &child_relative, file_type.is_dir())
+                {
                     if !file_type.is_dir() {
                         counters.skipped_files += 1;
                     }

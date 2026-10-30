@@ -31,6 +31,7 @@ fn assert_no_backup(paths: &MigrationPaths) {
     assert!(!paths.manifest_final.exists());
 }
 
+#[cfg(windows)]
 fn stage_backup_crash_prefix(paths: &MigrationPaths, prefix: &str) {
     let complete = matches!(
         prefix,
@@ -78,8 +79,10 @@ fn stage_backup_crash_prefix(paths: &MigrationPaths, prefix: &str) {
     source.close().unwrap();
 }
 
+#[cfg(windows)]
 #[test]
 fn v16_image_upgrade_recovers_owned_pre_v5_backup_crash_prefixes() {
+    // Recovering partial stages requires Windows' identity-bound deletion.
     for prefix in [
         "intent",
         "partial-stage",
@@ -122,6 +125,8 @@ fn v16_image_upgrade_recovers_owned_pre_v5_backup_crash_prefixes() {
 fn v16_image_upgrade_reuses_matching_pre_v5_backup_without_a_second_copy() {
     let directory = populated_v16();
     let paths = MigrationPaths::new(&directory.database()).unwrap();
+    #[cfg(not(windows))]
+    seed_retained_backup_pair(&paths);
     let original = ensure(&paths).unwrap();
     let backup_file = file_fingerprint(&paths.backup_final).unwrap();
     let manifest = fs::read(&paths.manifest_final).unwrap();
@@ -170,8 +175,10 @@ fn v16_image_upgrade_preserves_unowned_pre_v5_backup_crash_artifacts() {
     assert_no_backup(&v18_backup::paths_for_v18(&paths));
 }
 
+#[cfg(windows)]
 #[test]
 fn v16_image_upgrade_recovers_versioned_prefix_with_matching_pre_v5_backup() {
+    // Recovering partial stages requires Windows' identity-bound deletion.
     let directory = populated_v16();
     let paths = MigrationPaths::new(&directory.database()).unwrap();
     let original = ensure(&paths).unwrap();

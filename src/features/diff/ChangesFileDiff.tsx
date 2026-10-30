@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { snapshotProjectionRevision } from "../../app/snapshotProjection";
-import { selectedSnapshotIsCurrent } from "../../app/agentDiffAdmission";
 import type { FileDiff } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
@@ -20,13 +19,14 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
   const error = result?.entry === entry ? result.error : "";
   useEffect(() => {
     let cancelled = false;
-    const initial = useWorkbenchStore.getState();
+    const { getState } = useWorkbenchStore;
+    const initial = getState();
     const projectId = initial.project?.id;
     const generation = initial.projectGeneration;
     const ref = entry.diffRef;
     const revision = ref ? snapshotProjectionRevision(initial, ref) : null;
     const current = () => {
-      const state = useWorkbenchStore.getState();
+      const state = getState();
       return (
         !cancelled &&
         !state.projectTransitioning &&
@@ -44,7 +44,12 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
       )
         throw new Error("This resource is no longer in the active project.");
       if (ref) {
-        if (revision === null || !selectedSnapshotIsCurrent(initial, ref))
+        const admission = await import("../../app/agentDiffAdmission");
+        if (!current()) return;
+        if (
+          revision === null ||
+          !admission.selectedSnapshotIsCurrent(getState(), ref)
+        )
           throw new Error(
             "This saved edit is no longer available. Refresh changes.",
           );
@@ -55,9 +60,8 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
         });
         if (!current()) return;
         if (
-          snapshotProjectionRevision(useWorkbenchStore.getState(), ref) !==
-            revision ||
-          !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
+          snapshotProjectionRevision(getState(), ref) !== revision ||
+          !admission.selectedSnapshotIsCurrent(getState(), ref)
         )
           throw new Error(
             "The Chat changed while loading this edit. Refresh changes.",
@@ -76,7 +80,7 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
           entry.gitScope,
         );
         if (!current()) return;
-        if (useWorkbenchStore.getState().repositories !== initial.repositories)
+        if (getState().repositories !== initial.repositories)
           throw new Error(
             "Git status changed while loading this diff. Refresh changes.",
           );

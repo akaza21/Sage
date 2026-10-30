@@ -253,6 +253,37 @@ it("projects repository loading, empty, and error states through ResourceStateNo
   expect(screen.queryByText("No repositories found")).not.toBeInTheDocument();
 });
 
+it("does not say no repositories were found above a listed repository", () => {
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "Root A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: {
+      roots: [{ ...rootStatus, upstream: null, ahead: 0, behind: 0 }],
+      truncated: false,
+      elapsedMs: 1,
+    },
+    repositoryRefs: [],
+    selectedRepository: null,
+    repositoryInventoryPhase: "ready",
+    repositoryStatusPhase: "ready",
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  render(<SourceControlView />);
+  expect(screen.queryByText("No repositories found")).toBeNull();
+  expect(screen.getByTitle("Branch main")).toBeVisible();
+});
+
 it("shows native-proven identity and dispatches the selected publish action", async () => {
   const pushRemote = vi.fn(async () => true);
   useWorkbenchStore.setState({

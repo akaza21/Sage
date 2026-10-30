@@ -165,7 +165,8 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   {
     id: "reset",
     label: "Reset Editor Appearance",
-    description: "Restores every Editor Appearance choice to its default.",
+    description:
+      "Restores every setting on this page, including the Exclude list, to its default.",
     group: "Defaults",
   },
 ]);

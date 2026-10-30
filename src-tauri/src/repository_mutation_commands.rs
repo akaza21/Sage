@@ -803,10 +803,18 @@ mod tests {
 
             for _ in 0..8 {
                 let (policy, reaper) = harness.exhausting_reaper_policy(Duration::ZERO);
-                let error =
-                    mutate_git_file_inner_with_process_policy(&state, request.clone(), 0, policy)
-                        .await
-                        .unwrap_err();
+                // Fill read-only reaper slots without racing staging effects or
+                // leaving an index lock from an interrupted writer. The real
+                // mutation below still proves admission stays blocked.
+                let error = repository::run_git_with_policy(
+                    &root,
+                    &["rev-parse", "--is-inside-work-tree"],
+                    1_024,
+                    policy,
+                )
+                .await
+                .err()
+                .expect("the injected cleanup must quarantine the real Git process");
                 assert!(matches!(
                     error,
                     AppError::GitContainment {

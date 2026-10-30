@@ -49,6 +49,7 @@ function FileEditorNotices({
       previewing
       transitioning={false}
       onCaretOffset={() => {}}
+      onLimitExceeded={() => {}}
       onEditorChange={() => {}}
       onSurfaceKeyDown={() => {}}
       onTogglePreview={() => {}}

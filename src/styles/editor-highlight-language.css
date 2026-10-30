@@ -142,8 +142,7 @@
   }
 
   .workbench--editor .editor-input .cm-editor.cm-focused {
-    outline: 0;
-    box-shadow: var(--editor-focus-frame-shadow);
+    --editor-input-focus-frame: var(--editor-focus-frame-shadow);
   }
 
   .workbench--editor .editor-input .cm-content:focus-visible {

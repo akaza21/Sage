@@ -1785,7 +1785,21 @@ fn admitted_runtime_launch_contract_scopes_state_and_environment() {
         ]
     };
     #[cfg(not(windows))]
-    let expected = Vec::new();
+    let expected = {
+        let home = std::env::var_os("HOME").unwrap();
+        let config = std::env::var_os("CLAUDE_CONFIG_DIR")
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| PathBuf::from(&home).join(".claude").into_os_string());
+        let mut environment = vec![
+            ("CLAUDE_CONFIG_DIR".into(), config),
+            ("HOME".into(), home),
+            ("PATH".into(), std::env::var_os("PATH").unwrap()),
+        ];
+        if let Some(temp) = std::env::var_os("TMPDIR").filter(|value| !value.is_empty()) {
+            environment.push(("TMPDIR".into(), temp));
+        }
+        environment
+    };
     assert_eq!(binding.launch_environment().unwrap(), expected);
     assert_eq!(binding.candidate().runtime_path, node);
     assert_eq!(binding.candidate().artifact_path, adapter);

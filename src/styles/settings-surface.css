@@ -239,6 +239,74 @@
   accent-color: var(--color-accent);
 }
 
+/* A list setting: the control column widens to hold the patterns. */
+.settings-surface__row--list {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  align-items: start;
+}
+
+.settings-surface__list {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-surface__list ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-surface__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 2px 0 8px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-surface__list li:hover,
+.settings-surface__list li:focus-within {
+  background: var(--color-surface-hover);
+}
+
+.settings-surface__list code {
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-surface__list-add {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-surface__list-add .button {
+  flex: 0 0 auto;
+}
+
+.settings-surface__list small,
+.settings-surface__list-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* Empty hints stay in the accessibility tree as a live region. */
+.settings-surface__list small:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .settings-surface__footer {
   display: flex;
   justify-content: flex-end;
@@ -284,7 +352,8 @@
   }
 
   .settings-surface__header,
-  .settings-surface__row {
+  .settings-surface__row,
+  .settings-surface__row--list {
     grid-template-columns: minmax(0, 1fr);
   }
 

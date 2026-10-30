@@ -8,6 +8,7 @@ use crate::{
     error::{AppError, AppResult},
     workspace::Workspace,
     workspace::file_walk::MAX_WORKSPACE_FILES,
+    workspace::path_glob::valid_path_glob,
 };
 
 pub const MAX_QUERY_BYTES: usize = 512;
@@ -25,7 +26,6 @@ pub const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 pub const MAX_SEARCH_DURATION: Duration = Duration::from_secs(2);
 pub const MAX_CONTINUATION_TOKEN_BYTES: usize = 1024;
 pub const MAX_SEARCH_FILTER_PATTERNS: usize = 16;
-pub const MAX_SEARCH_FILTER_PATTERN_BYTES: usize = 256;
 pub const MAX_SEARCH_FILTER_BYTES: usize = 2 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +51,18 @@ pub struct WorkspaceSearchRequest {
     /// (`search.useIgnoreFiles`).
     #[serde(default = "use_ignore_files_default")]
     pub use_ignore_files: bool,
+    /// The `files.exclude` patterns; absent means the registry default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_exclude: Option<Vec<String>>,
+}
+
+impl WorkspaceSearchRequest {
+    /// The `files.exclude` patterns this search leaves out.
+    pub fn files_exclude(&self) -> Vec<String> {
+        self.files_exclude
+            .clone()
+            .unwrap_or_else(crate::settings_store::default_files_exclude)
+    }
 }
 
 fn use_ignore_files_default() -> bool {
@@ -256,6 +268,13 @@ fn search_filter_hash(request: &WorkspaceSearchRequest) -> String {
     if !request.use_ignore_files {
         hasher.update(b"n");
     }
+    if let Some(patterns) = &request.files_exclude {
+        hasher.update(b"e");
+        for pattern in patterns {
+            hasher.update((pattern.len() as u64).to_be_bytes());
+            hasher.update(pattern.as_bytes());
+        }
+    }
     format!("{:x}", hasher.finalize())
 }
 
@@ -335,6 +354,14 @@ pub fn validate_search_request(request: &WorkspaceSearchRequest) -> AppResult<()
         )));
     }
     super::path_filter::validate_patterns(&request.include_patterns, &request.exclude_patterns)?;
+    if let Some(patterns) = &request.files_exclude
+        && (patterns.len() > crate::settings_store::MAX_GLOBS
+            || !patterns.iter().all(|pattern| valid_path_glob(pattern)))
+    {
+        return Err(AppError::InvalidRequest(
+            "workspace search files.exclude patterns are invalid".into(),
+        ));
+    }
     Ok(())
 }
 

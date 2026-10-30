@@ -50,7 +50,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownList|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
   },
   {
     name: "diff-rendering",

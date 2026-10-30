@@ -85,6 +85,25 @@ it("loads a scoped Git section without activating a hidden Diff tab", async () =
   expect(useWorkbenchStore.getState().tabs).toEqual([]);
 });
 
+it("does not request a saved edit after unmounting while admission loads", async () => {
+  const read = vi.spyOn(acpDesktop, "getFileSnapshot");
+  const view = render(
+    <ChangesFileDiff
+      entry={{
+        resource: snapshotResource,
+        diffRef: snapshotRef,
+        additions: 1,
+        deletions: 1,
+      }}
+    />,
+  );
+  view.unmount();
+  await act(async () => {
+    await import("../../app/agentDiffAdmission");
+  });
+  expect(read).not.toHaveBeenCalled();
+});
+
 it("drops a pending Git read after its pane is unmounted", async () => {
   let resolve!: (value: FileDiff) => void;
   const pending = new Promise<FileDiff>((done) => {

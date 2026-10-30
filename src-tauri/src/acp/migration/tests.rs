@@ -43,6 +43,44 @@ impl Drop for TestDir {
 const PENDING_CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"pending\",\"newSession\":false,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":false,\"prompt\":false,\"cancel\":false,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":0,\"configCount\":0}";
 const READY_CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"acp-1\",\"newSession\":true,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":true,\"prompt\":true,\"cancel\":true,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":1,\"configCount\":0}";
 
+fn seed_retained_backup_where_creation_is_unavailable(path: &Path) {
+    // Windows exercises production backup creation, including identity-bound
+    // journal deletion. Unix exercises schema upgrades from a verified pair;
+    // its unsupported creation path is covered separately below.
+    #[cfg(windows)]
+    let _ = path;
+    #[cfg(not(windows))]
+    {
+        let mut paths = MigrationPaths::new(path).unwrap();
+        if matches!(
+            fingerprint::classify_path(path).unwrap(),
+            SchemaClass::CurrentV16 | SchemaClass::CurrentV17
+        ) {
+            paths = v18_backup::paths_for_v18(&paths);
+        }
+        seed_retained_backup_pair(&paths);
+    }
+}
+
+#[cfg(not(windows))]
+fn seed_retained_backup_pair(paths: &MigrationPaths) {
+    let source = open_read_only(&paths.live).unwrap();
+    let source_set = backup::source_set(paths, &source).unwrap();
+    let database = database_fingerprint(&source).unwrap();
+    drop(source);
+    assert!(!paths.backup_final.exists());
+    assert!(!paths.manifest_final.exists());
+    fs::copy(&paths.live, &paths.backup_final).unwrap();
+    let manifest = manifest::BackupManifest::new(
+        source_set,
+        file_fingerprint(&paths.backup_final).unwrap(),
+        database,
+        1,
+    );
+    manifest::write_stage(&paths.manifest_final, &manifest).unwrap();
+    backup::verify_retained_pair(paths).unwrap();
+}
+
 #[test]
 fn populated_v16_item_rebuild_reaches_v18_with_owner_and_triggers_intact() {
     let directory = TestDir::new();
@@ -59,6 +97,7 @@ fn populated_v16_item_rebuild_reaches_v18_with_owner_and_triggers_intact() {
     source.execute("INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,kind,lifecycle,external_item_id,payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at) VALUES('item','project','chat','session','turn',1,0,'primary','text','completed','native-item',?1,?2,?3,0,1,1,1)", params![payload, payload.len() as i64, digest]).unwrap();
     source.close().unwrap();
 
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -126,6 +165,7 @@ fn v14_child_thread_upgrade_reaches_v18_without_losing_the_source() {
         schema_upgrade::build_fresh_v14(&mut connection).unwrap();
         connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Preserved',1,1,1)", []).unwrap();
     }
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -157,6 +197,7 @@ fn v14_child_thread_upgrade_rolls_back_atomically() {
         let mut connection = Connection::open(directory.database()).unwrap();
         schema_upgrade::build_fresh_v14(&mut connection).unwrap();
     }
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     test_failpoint::arm("v14-to-v15-after-schema");
     assert!(open_or_migrate(&directory.database()).is_err());
     assert_eq!(
@@ -179,6 +220,7 @@ fn v13_image_artifact_upgrade_reaches_v14_without_losing_the_source() {
         connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1)", []).unwrap();
         connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1)", []).unwrap();
     }
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -227,6 +269,7 @@ fn v13_image_artifact_upgrade_rolls_back_atomically() {
         let mut connection = Connection::open(directory.database()).unwrap();
         schema_upgrade::build_fresh_v13(&mut connection).unwrap();
     }
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     test_failpoint::arm("v13-to-v14-after-schema");
     assert!(open_or_migrate(&directory.database()).is_err());
     assert_eq!(
@@ -397,6 +440,7 @@ fn populated_v11_tabs_upgrade_to_v12_without_losing_chat_attachment() {
         .unwrap();
     drop(connection);
 
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -506,6 +550,7 @@ fn v10_usage_items_backfill_into_turn_usage_snapshots() {
         )
         .unwrap();
     connection.close().unwrap();
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let migrated = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
@@ -556,6 +601,7 @@ fn v10_with_empty_legacy_session_events_migrates_to_v12() {
     assert!(fingerprint::classify_connection(&connection).is_ok());
     connection.close().unwrap();
 
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let migrated = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&migrated).unwrap(),
@@ -1110,6 +1156,7 @@ fn populated_v9_upgrades_to_v12_without_losing_project_and_tab() {
     ).unwrap();
     source.close().unwrap();
 
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&upgraded).unwrap(),
@@ -1188,6 +1235,7 @@ fn v12_queue_upgrade_adds_only_the_queue_table_and_is_idempotent() {
     ).unwrap();
     source.close().unwrap();
 
+    seed_retained_backup_where_creation_is_unavailable(&directory.database());
     let upgraded = open_or_migrate(&directory.database()).unwrap();
     let project_name: String = upgraded
         .query_row("SELECT name FROM projects WHERE id='project'", [], |row| {
@@ -2747,6 +2795,51 @@ fn identity_bound_sqlite_deletion_fails_closed_without_mutating_stage() {
         matches!(error, crate::error::AppError::InvalidRequest(message) if message == "identity-bound SQLite deletion is not admitted on this platform")
     );
     assert_eq!(before, fs::read(&stage).unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn file_backed_backup_creation_refuses_identity_deletion_and_preserves_source_on_retry() {
+    for version in [4, 13, 16, 17] {
+        let directory = TestDir::new();
+        create_v4(&directory.database(), "unsupported-backup", true);
+        let mut source = Connection::open(directory.database()).unwrap();
+        match version {
+            4 => {}
+            13 => schema_upgrade::apply_through_v13(&mut source).unwrap(),
+            16 => schema_upgrade::apply_through_v16(&mut source).unwrap(),
+            17 => schema_upgrade::apply_through_v17(&mut source).unwrap(),
+            _ => unreachable!(),
+        }
+        source.close().unwrap();
+        let paths = MigrationPaths::new(&directory.database()).unwrap();
+        let before = fixture_sqlite_state(&paths);
+        let snapshot = || {
+            let mut files: Vec<_> = fs::read_dir(&directory.0)
+                .unwrap()
+                .map(|entry| entry.unwrap())
+                .filter(|entry| entry.file_type().unwrap().is_file())
+                .map(|entry| (entry.file_name(), fs::read(entry.path()).unwrap()))
+                .collect();
+            files.sort_by(|left, right| left.0.cmp(&right.0));
+            files
+        };
+        let mut retained = None;
+        for _ in 0..2 {
+            let error = open_or_migrate(&directory.database())
+                .err()
+                .expect("Unix cannot retire the identity-bound backup journal");
+            assert!(
+                matches!(error, AppError::InvalidRequest(message) if message == "identity-bound SQLite deletion is not admitted on this platform")
+            );
+            assert_eq!(fixture_sqlite_state(&paths), before, "source v{version}");
+            let after = snapshot();
+            if let Some(retained) = &retained {
+                assert_eq!(&after, retained, "retry must preserve recovery artifacts");
+            }
+            retained = Some(after);
+        }
+    }
 }
 
 #[cfg(windows)]

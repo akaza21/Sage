@@ -192,7 +192,10 @@ export function SourceControlView() {
             state="loading"
             title="Loading repository status"
           />
-        ) : inventoryPhase === "ready" && repositoryRefs.length === 0 ? (
+        ) : inventoryPhase === "ready" &&
+          repositoryRefs.length === 0 &&
+          // Root status can list a repository the inventory has not.
+          !selectedRepositories.some((root) => root.state === "repository") ? (
           <ResourceStateNotice state="idle" title="No repositories found" />
         ) : null}
         {selectedRepository && !isRootRepository(selectedRepository) ? (

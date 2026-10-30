@@ -16,7 +16,9 @@ pub(crate) mod file_walk;
 mod git_resource;
 mod identity;
 pub(crate) mod ignore_rules;
+pub(crate) mod name_order;
 pub(crate) mod notify;
+pub(crate) mod path_glob;
 pub(crate) mod resource_trash;
 pub(crate) mod search;
 mod text_read;
@@ -176,8 +178,7 @@ impl Workspace {
         entries.sort_unstable_by(|left, right| {
             entry_rank(&left.kind)
                 .cmp(&entry_rank(&right.kind))
-                .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-                .then_with(|| left.name.cmp(&right.name))
+                .then_with(|| name_order::explorer_name_cmp(&left.name, &right.name))
         });
 
         Ok(DirectoryListing {
@@ -391,7 +392,7 @@ pub fn development_workspace_root() -> Option<PathBuf> {
     None
 }
 
-fn entry_rank(kind: &str) -> u8 {
+pub(crate) fn entry_rank(kind: &str) -> u8 {
     match kind {
         "directory" => 0,
         "file" => 1,

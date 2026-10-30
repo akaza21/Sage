@@ -329,13 +329,13 @@
       },
       {
         "entry": "src/workbench/ActiveEditorCanvas.tsx",
-        "maxGzipBytes": 1203,
-        "reason": "Editor-only resource canvas; loads only when switching to Editor mode."
+        "maxGzipBytes": 1401,
+        "reason": "Editor-only resource canvas with main's bounded Explorer focus retry and ap-int's outline welcome mark. Merge measured 1309 B plus 7%; Agent path and core caps unchanged."
       },
       {
         "entry": "src/workbench/SettingsSurface.tsx",
-        "maxGzipBytes": 1674,
-        "reason": "Editor Settings resource surface; loads only when the Settings tab is selected."
+        "maxGzipBytes": 2486,
+        "reason": "Editor Settings with EP-06 files.exclude pattern controls and array-value default checks; loads only for Settings. Merge measured 2323 B plus 7%; Agent path and core caps unchanged."
       },
       {
         "entry": "src/workbench/SourceControlView.tsx",

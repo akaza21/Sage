@@ -16,12 +16,6 @@ pub(crate) enum CodexSessionError {
     Capacity,
     #[error("the harness requires sign-in before it can continue")]
     SignInRequired,
-    #[error("Codex browser tools are unavailable for this session")]
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
-    )]
-    BrowserToolsUnavailable,
     #[error("Codex live runtime requires recovery")]
     Recovery,
     #[error("the Steer acknowledgement timed out; the message may have been delivered")]

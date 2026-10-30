@@ -135,6 +135,84 @@ describe("DiffSurface resource states", () => {
       );
     },
   );
+  it("counts what the body shows when Git status disagrees with a complete diff", () => {
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      repositories: {
+        roots: [
+          {
+            rootId: "root-a",
+            state: "repository",
+            branch: "main",
+            changes: [
+              {
+                resource,
+                indexStatus: "unchanged",
+                worktreeStatus: "modified",
+                additions: 38,
+                deletions: 14,
+              },
+            ],
+            truncated: false,
+            elapsedMs: 0,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 0,
+      },
+      diffs: {
+        [cacheKey]: {
+          phase: "ready",
+          value: { resource, binary: false, truncated: false, hunks: [] },
+        },
+      },
+      loadDiff: vi.fn(async () => undefined),
+    });
+
+    const { container } = render(<DiffSurface tab={tab} />);
+    expect(screen.getByText("No textual changes for this file.")).toBeVisible();
+    expect(container.querySelector(".diff-header__counts")).toHaveTextContent(
+      "+0-0",
+    );
+  });
+  it("keeps Git status counts while the diff is still loading", () => {
+    useWorkbenchStore.setState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      repositories: {
+        roots: [
+          {
+            rootId: "root-a",
+            state: "repository",
+            branch: "main",
+            changes: [
+              {
+                resource,
+                indexStatus: "unchanged",
+                worktreeStatus: "modified",
+                additions: 38,
+                deletions: 14,
+              },
+            ],
+            truncated: false,
+            elapsedMs: 0,
+            message: null,
+          },
+        ],
+        truncated: false,
+        elapsedMs: 0,
+      },
+      diffs: { [cacheKey]: { phase: "loading" } },
+      loadDiff: vi.fn(async () => undefined),
+    });
+
+    const { container } = render(<DiffSurface tab={tab} />);
+    expect(container.querySelector(".diff-header__counts")).toHaveTextContent(
+      "+38-14",
+    );
+  });
   it("moves from an announced load through an alert to a ready read-only diff", () => {
     const loadDiff = vi.fn(async () => undefined);
     useWorkbenchStore.setState({

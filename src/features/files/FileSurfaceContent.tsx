@@ -82,6 +82,7 @@ export function FileSurfaceContent({
   reviewOnly = false,
   agentMarkdown = false,
   onCaretOffset,
+  onLimitExceeded,
   onEditorChange,
   onSurfaceKeyDown,
   onTogglePreview,
@@ -102,6 +103,7 @@ export function FileSurfaceContent({
   reviewOnly?: boolean;
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
+  onLimitExceeded: () => void;
   onEditorChange: (
     content: EditorContent,
     base?: EditorContentBase | null,
@@ -189,6 +191,7 @@ export function FileSurfaceContent({
             readOnly={readOnly || reviewOnly}
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
+            onLimitExceeded={onLimitExceeded}
           />
         </div>
       )}

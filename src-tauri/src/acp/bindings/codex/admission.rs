@@ -1,8 +1,6 @@
 #[cfg(all(test, windows))]
 use std::collections::VecDeque;
 use std::{
-    collections::BTreeSet,
-    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -61,154 +59,16 @@ struct DesktopCodexFixture {
 
 #[derive(Debug)]
 struct ObservedEntrypoint {
+    inputs: Arc<dyn ObservedLaunchInputs>,
     environment: Vec<(String, String)>,
 }
 
-fn observed_environment(
-    entrypoint: &std::path::Path,
-) -> Result<Vec<(String, String)>, CodexAdmissionUnavailable> {
-    #[cfg(not(windows))]
-    {
-        let _ = entrypoint;
-        const KEYS: &[&str] = &[
-            "HOME",
-            "PATH",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-        ];
-        KEYS.iter()
-            .filter_map(|key| {
-                std::env::var(key)
-                    .ok()
-                    .filter(|value| !value.is_empty())
-                    .map(|value| ((*key).to_owned(), value))
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .try_fold(Vec::new(), |mut entries, entry| {
-                if entry.0.len() > 128 || entry.1.len() > 8_192 {
-                    return Err(CodexAdmissionUnavailable::IndependentAdmission);
-                }
-                entries.push(entry);
-                Ok(entries)
-            })
-    }
-    #[cfg(windows)]
-    {
-        const KEYS: &[&str] = &[
-            "APPDATA",
-            "ComSpec",
-            "PATHEXT",
-            "SystemRoot",
-            "TEMP",
-            "TMP",
-            "USERPROFILE",
-            "WINDIR",
-        ];
-        let mut entries = KEYS
-            .iter()
-            .map(|key| {
-                std::env::var(key)
-                    .ok()
-                    .filter(|value| !value.is_empty())
-                    .map(|value| ((*key).to_owned(), value))
-                    .ok_or(CodexAdmissionUnavailable::IndependentAdmission)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let node_directory = entrypoint
-            .parent()
-            .into_iter()
-            .map(std::path::Path::to_path_buf)
-            .chain(std::env::var("PATH").ok().into_iter().flat_map(|path| {
-                path.split(';')
-                    .filter(|value| !value.is_empty())
-                    .map(std::path::PathBuf::from)
-                    .collect::<Vec<_>>()
-            }))
-            .find(|directory| directory.join("node.exe").is_file())
-            .and_then(|directory| directory.to_str().map(str::to_owned))
-            .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
-        entries.insert(0, ("PATH".into(), node_directory));
-        for key in configured_provider_environment_keys()? {
-            if let Some(value) = std::env::var(&key).ok().filter(|value| !value.is_empty()) {
-                entries.push((key, value));
-            }
-        }
-        if entries.len() > 16
-            || entries
-                .iter()
-                .any(|(key, value)| key.len() > 128 || value.len() > 8_192)
-        {
-            return Err(CodexAdmissionUnavailable::IndependentAdmission);
-        }
-        Ok(entries)
-    }
-}
-
-fn configured_provider_environment_keys() -> Result<Vec<String>, CodexAdmissionUnavailable> {
-    let home = std::env::var("USERPROFILE")
-        .map(PathBuf::from)
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let path = home.join(".codex").join("config.toml");
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(_) => return Err(CodexAdmissionUnavailable::IndependentAdmission),
-    };
-    if bytes.len() > 64 * 1024 {
-        return Err(CodexAdmissionUnavailable::IndependentAdmission);
-    }
-    provider_environment_keys(
-        std::str::from_utf8(&bytes).map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?,
-    )
-}
-
-fn provider_environment_keys(config: &str) -> Result<Vec<String>, CodexAdmissionUnavailable> {
-    let config = config
-        .parse::<toml::Value>()
-        .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
-    let provider = match config.get("model_provider").and_then(toml::Value::as_str) {
-        Some(provider) => provider,
-        None => return Ok(Vec::new()),
-    };
-    let provider = config
-        .get("model_providers")
-        .and_then(toml::Value::as_table)
-        .and_then(|providers| providers.get(provider))
-        .and_then(toml::Value::as_table)
-        .ok_or(CodexAdmissionUnavailable::IndependentAdmission)?;
-    let mut keys = BTreeSet::new();
-    if let Some(key) = provider.get("env_key").and_then(toml::Value::as_str) {
-        insert_provider_environment_key(&mut keys, key)?;
-    }
-    if let Some(headers) = provider
-        .get("env_http_headers")
-        .and_then(toml::Value::as_table)
-    {
-        for key in headers.values().filter_map(toml::Value::as_str) {
-            insert_provider_environment_key(&mut keys, key)?;
-        }
-    }
-    Ok(keys.into_iter().collect())
-}
-
-fn insert_provider_environment_key(
-    keys: &mut BTreeSet<String>,
-    key: &str,
-) -> Result<(), CodexAdmissionUnavailable> {
-    if key.is_empty()
-        || key.len() > 128
-        || !key.bytes().enumerate().all(|(index, byte)| {
-            byte == b'_'
-                || byte.is_ascii_alphanumeric() && (index > 0 || byte.is_ascii_alphabetic())
-        })
-    {
-        return Err(CodexAdmissionUnavailable::IndependentAdmission);
-    }
-    keys.insert(key.to_owned());
-    Ok(())
-}
+mod environment;
+#[cfg(test)]
+use environment::provider_environment_keys;
+use environment::{ObservedLaunchInputs, SystemLaunchInputs, observed_environment};
+#[cfg(test)]
+mod environment_tests;
 
 mod record;
 mod report;
@@ -248,13 +108,67 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("sage-observed-codex-{nonce}.bin"));
         fs::write(&path, b"observed-codex").expect("test executable");
-        let binding = AdmittedCodexBinding::admit_observed(path.clone(), "codex 1.2.3".into())
-            .expect("observed executable admission");
+        let binding =
+            AdmittedCodexBinding::admit_observed_for_test(path.clone(), "codex 1.2.3".into())
+                .expect("observed executable admission");
         assert_eq!(binding.entrypoint().path, path.canonicalize().unwrap());
         binding.revalidate().expect("unchanged executable");
         fs::write(&path, b"changed-codex").expect("change test executable");
         assert_eq!(binding.revalidate(), Err(CodexAdmissionUnavailable::Drift));
         fs::remove_file(path).expect("remove test executable");
+    }
+
+    #[test]
+    fn explicit_builtin_openai_without_a_provider_table_is_admitted() {
+        assert_eq!(
+            provider_environment_keys("model_provider = \"openai\""),
+            Ok(Vec::new())
+        );
+    }
+
+    #[test]
+    fn explicit_builtin_openai_table_preserves_its_declared_environment_keys() {
+        assert_eq!(
+            provider_environment_keys(
+                r#"model_provider = "openai"
+[model_providers.openai]
+env_key = "OPENAI_OVERRIDE_KEY"
+env_http_headers = { "X-Extra" = "OPENAI_HEADER_KEY" }
+"#,
+            ),
+            Ok(vec![
+                "OPENAI_HEADER_KEY".into(),
+                "OPENAI_OVERRIDE_KEY".into()
+            ])
+        );
+    }
+
+    #[test]
+    fn undefined_providers_are_rejected() {
+        assert_eq!(
+            provider_environment_keys("model_provider = \"unknown\""),
+            Err(CodexAdmissionUnavailable::IndependentAdmission)
+        );
+    }
+
+    #[test]
+    fn malformed_selected_provider_configuration_is_rejected() {
+        for config in [
+            "model_provider = [",
+            "model_provider = 42",
+            "model_provider = \"openai\"\nmodel_providers = 42",
+            "model_provider = \"openai\"\n[model_providers]\nopenai = 42",
+            "model_provider = \"openai\"\n[model_providers.openai]\nenv_key = 42",
+            "model_provider = \"openai\"\n[model_providers.openai]\nenv_key = \"bad-key\"",
+            "model_provider = \"openai\"\n[model_providers.openai]\nenv_http_headers = 42",
+            "model_provider = \"openai\"\n[model_providers.openai.env_http_headers]\nX = 42",
+        ] {
+            assert_eq!(
+                provider_environment_keys(config),
+                Err(CodexAdmissionUnavailable::IndependentAdmission),
+                "{config}"
+            );
+        }
     }
 
     #[test]
