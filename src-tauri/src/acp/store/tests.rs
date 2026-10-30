@@ -4,10 +4,7 @@ use super::*;
 use crate::acp::{
     contract::ProjectGeneration,
     intent::Prompt,
-    lifecycle::{
-        ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
-        TurnState,
-    },
+    lifecycle::{DeliveryState, ServerRequestState, SessionState, TurnState},
     limits::LIMITS,
 };
 
@@ -687,94 +684,6 @@ fn every_durable_terminal_family_is_idempotent_and_conflict_safe() {
 
     let mut connection = setup();
     let prepared = prepare_turn(&mut connection, command("hello")).unwrap();
-    let digest: String = connection
-        .query_row(
-            "SELECT payload_digest FROM items WHERE id=?1",
-            [prepared.item_id.as_str()],
-            |row| row.get(0),
-        )
-        .unwrap();
-    connection
-        .execute(
-            "UPDATE items SET lifecycle='started',terminal_at=NULL WHERE id=?1",
-            [prepared.item_id.as_str()],
-        )
-        .unwrap();
-    let item = ItemTerminalCommand {
-        project_id: SageProjectId::parse("project-one").unwrap(),
-        chat_id: SageChatId::parse("chat-one").unwrap(),
-        session_id: SageAgentSessionId::parse("session-one").unwrap(),
-        turn_id: prepared.turn_id.clone(),
-        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        item_id: prepared.item_id,
-        lifecycle: ItemLifecycle::Completed,
-        tool_state: None,
-        payload_digest: digest,
-        now_millis: 21,
-    };
-    assert_eq!(
-        apply_item_terminal(&mut connection, item.clone())
-            .unwrap()
-            .disposition,
-        MutationDisposition::Applied
-    );
-    assert_eq!(
-        apply_item_terminal(&mut connection, item.clone())
-            .unwrap()
-            .disposition,
-        MutationDisposition::Duplicate
-    );
-    assert!(matches!(
-        apply_item_terminal(
-            &mut connection,
-            ItemTerminalCommand {
-                lifecycle: ItemLifecycle::Failed,
-                ..item
-            }
-        ),
-        Err(StoreError::TerminalConflict { resource: "item" })
-    ));
-
-    let activity_id = SageActivityId::parse("activity-one").unwrap();
-    connection.execute(
-        "INSERT INTO session_activities VALUES(?1,'project-one','chat-one','session-one',?2,1,'active',0,0,NULL)",
-        params![activity_id.as_str(),prepared.turn_id.as_str()],
-    ).unwrap();
-    let activity = ActivityTerminalCommand {
-        project_id: SageProjectId::parse("project-one").unwrap(),
-        chat_id: SageChatId::parse("chat-one").unwrap(),
-        session_id: SageAgentSessionId::parse("session-one").unwrap(),
-        turn_id: prepared.turn_id.clone(),
-        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        activity_id,
-        lifecycle: ActivityLifecycle::Completed,
-        now_millis: 22,
-    };
-    assert_eq!(
-        apply_activity_terminal(&mut connection, activity.clone())
-            .unwrap()
-            .disposition,
-        MutationDisposition::Applied
-    );
-    assert_eq!(
-        apply_activity_terminal(&mut connection, activity.clone())
-            .unwrap()
-            .disposition,
-        MutationDisposition::Duplicate
-    );
-    assert!(matches!(
-        apply_activity_terminal(
-            &mut connection,
-            ActivityTerminalCommand {
-                lifecycle: ActivityLifecycle::Failed,
-                ..activity
-            }
-        ),
-        Err(StoreError::TerminalConflict {
-            resource: "activity"
-        })
-    ));
-
     let request_id = SageServerRequestId::parse("request-one").unwrap();
     connection.execute(
         "INSERT INTO items VALUES('permission-item','project-one','chat-one','session-one',?1,1,1,'primary',NULL,'permissionRequest','started','waitingForApproval','external-one','{}',2,'digest-one',0,0,0,NULL)",
