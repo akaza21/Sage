@@ -328,7 +328,7 @@ fn a_first_build_stops_a_stale_refresh_and_outwaits_a_stuck_walker() {
         false
     })));
     assert!(ask_in(&inputs, 2, "rs", &[]).refreshing);
-    // New settings rebuild at once: on this thread, since the walker
+    // New settings rebuild at once: on a fallback thread, since the walker
     // doesn't take the build up in time.
     let excluding = fixture.inputs(&["b.rs"]);
     let started = Instant::now();
@@ -388,7 +388,11 @@ fn a_query_waiting_for_a_build_gives_up_once_superseded() {
             };
             run(&inputs, &query, super::ticket())
         });
-        std::thread::sleep(Duration::from_millis(50));
+        // Once it has claimed its generation it is waiting on the build.
+        while LATEST_GENERATION.load(Ordering::Acquire) < older {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        std::thread::sleep(Duration::from_millis(20));
         // A newer query arrives; the older one stops waiting.
         LATEST_GENERATION.fetch_max(generation(), Ordering::AcqRel);
         waiter.join().unwrap()

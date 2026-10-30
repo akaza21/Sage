@@ -159,8 +159,8 @@ static INDEX: Mutex<Slot> = Mutex::new(Slot {
 static BUILDING: Mutex<()> = Mutex::new(());
 static LATEST_GENERATION: AtomicU64 = AtomicU64::new(0);
 
-/// How long a first build waits for the walker thread to take it up before
-/// walking on the calling thread instead. The walker only falls this far
+/// How long a first build waits for the walker thread to start it before
+/// walking on a thread of its own instead. The walker only falls this far
 /// behind if a folder read hangs, as on an unreachable network drive.
 const WALKER_WAIT: Duration = Duration::from_secs(2);
 /// How often a query waiting on a build checks whether it is still wanted.
@@ -353,38 +353,46 @@ fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walk
 /// walk within `WALKER_WAIT`, it walks on a thread of its own instead; once
 /// started, a walk is waited for until it ends or is stopped.
 fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<ProjectIndex> {
-    let (done, built) = mpsc::sync_channel(1);
     let build = {
         let (inputs, stop) = (inputs.clone(), Arc::clone(stop));
-        move || {
+        move |done: mpsc::SyncSender<ProjectIndex>| {
             let index = build_index(&inputs, session, None, &stop);
             let large = index.heap_bytes() >= TRIM_FROM;
             let _ = done.send(index);
             large
         }
     };
+    // Only the walker job and the fallback hold a sender, so a walk that
+    // panics shows here as a disconnect rather than a wait without end.
+    let (done, built) = mpsc::sync_channel(1);
     // Whichever of the walker and the fallback sets it first walks.
     let taken = Arc::new(AtomicBool::new(false));
     let queued = {
-        let (build, taken) = (build.clone(), Arc::clone(&taken));
+        let (build, taken, done) = (build.clone(), Arc::clone(&taken), done.clone());
         on_walker(Box::new(move || {
-            !taken.swap(true, Ordering::AcqRel) && build()
+            !taken.swap(true, Ordering::AcqRel) && build(done)
         }))
     };
+    let mut fallback = Some(done);
     let fallback_at = Instant::now() + if queued { WALKER_WAIT } else { Duration::ZERO };
     loop {
-        if let Ok(index) = built.recv_timeout(WAIT_CHECK) {
-            return Some(index);
+        match built.recv_timeout(WAIT_CHECK) {
+            Ok(index) => return Some(index),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
         if stop.load(Ordering::Acquire) {
             return None;
         }
-        if Instant::now() >= fallback_at && !taken.swap(true, Ordering::AcqRel) {
-            let build = build.clone();
+        if fallback.is_some() && taken.load(Ordering::Acquire) {
+            // The walker started it; the fallback won't be needed.
+            fallback = None;
+        } else if Instant::now() >= fallback_at && !taken.swap(true, Ordering::AcqRel) {
+            let (build, done) = (build.clone(), fallback.take()?);
             let spawned = std::thread::Builder::new()
                 .name("quick-open-walk-fallback".into())
                 .spawn(move || {
-                    build();
+                    build(done);
                 });
             if spawned.is_err() {
                 return Some(build_index(inputs, session, None, stop));
