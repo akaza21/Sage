@@ -20,6 +20,7 @@ mod watch;
 #[cfg(windows)]
 mod windows;
 
+pub(crate) use watch::workspace_notify_bound_roots;
 pub use watch::{deliver_workspace_notify_action, relative_from_notify_name};
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
@@ -296,6 +297,9 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         return Err(reject("notify-substituted"));
     };
     watch.cancelled.store(true, Ordering::Release);
+    drop(registry);
+    // Without events the index would go stale, so its memory is freed.
+    crate::workspace::path_index::forget_project(project_id);
     Ok(())
 }
 
@@ -315,6 +319,8 @@ pub fn apply_unwatch_if_generation(
         .remove(project_id)
         .expect("generation held");
     watch.cancelled.store(true, Ordering::Release);
+    drop(registry);
+    crate::workspace::path_index::forget_project(project_id);
     Ok(())
 }
 
