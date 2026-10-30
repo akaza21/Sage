@@ -24,10 +24,16 @@ interface Sent {
 }
 
 function fakeNative(
-  options: { refreshingFor?: number; delayMs?: number } = {},
+  options: {
+    refreshingFor?: number;
+    delayMs?: number;
+    supersededFor?: number;
+    files?: () => string[];
+  } = {},
 ) {
   const sent: Sent[] = [];
   let refreshing = options.refreshingFor ?? 0;
+  let superseded = options.supersededFor ?? 0;
   setQuickOpenInvoke(async (command, args) => {
     expect(command).toBe("quick_open_query");
     const request = args.request as Sent;
@@ -36,13 +42,25 @@ function fakeNative(
       await new Promise((resolve) => setTimeout(resolve, options.delayMs));
     }
     const letters = request.query.toLowerCase().replace(/\s/g, "");
-    const results = FILES.filter((path) =>
-      path.toLowerCase().includes(letters),
-    ).map((relativePath) => ({
-      rootId: "root-a",
-      relativePath,
-      positions: letters ? [relativePath.toLowerCase().indexOf(letters)] : [],
-    }));
+    if (letters !== "" && superseded-- > 0) {
+      return {
+        state: "superseded",
+        results: [],
+        indexedFiles: 0,
+        truncated: false,
+        built: false,
+        refreshing: false,
+        indexBytes: 0,
+        readyMs: 0,
+      };
+    }
+    const results = (options.files?.() ?? FILES)
+      .filter((path) => path.toLowerCase().includes(letters))
+      .map((relativePath) => ({
+        rootId: "root-a",
+        relativePath,
+        positions: letters ? [relativePath.toLowerCase().indexOf(letters)] : [],
+      }));
     return {
       state: "ready",
       results: letters ? results : [],
@@ -75,6 +93,7 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
   vi.clearAllMocks();
   vi.useRealTimers();
+  Reflect.deleteProperty(Element.prototype, "scrollIntoView");
 });
 
 const input = () =>
@@ -114,11 +133,17 @@ describe("Quick Open", () => {
       "true",
     );
 
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
     fireEvent.keyDown(input(), { key: "ArrowDown" });
     expect(screen.getAllByRole("option")[1]).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
     fireEvent.keyDown(input(), { key: "ArrowDown" });
     expect(screen.getAllByRole("option")[0]).toHaveAttribute(
       "aria-selected",
@@ -151,7 +176,6 @@ describe("Quick Open", () => {
   });
 
   it("goes to a line of the active File for a bare :line", async () => {
-    fakeNative();
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -166,9 +190,13 @@ describe("Quick Open", () => {
       ],
       activeTabId: "file:a",
     });
+    const sent = fakeNative();
     render(<QuickOpen onClose={vi.fn()} />);
+    await waitFor(() => expect(sent).toHaveLength(1));
     fireEvent.change(input(), { target: { value: ":30" } });
     await screen.findByText("Press Enter to go to line 30 in the active File.");
+    // Nothing is asked for a bare line; the opening query was the only one.
+    expect(sent.map((request) => request.query)).toEqual([""]);
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(openFileLocation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -204,6 +232,68 @@ describe("Quick Open", () => {
     );
     await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
     expect(sent.filter((request) => request.query === "api")).toHaveLength(3);
+  });
+
+  it("waits for the current query's answer before Enter opens a File", async () => {
+    fakeNative({ delayMs: 200 });
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "app" } });
+    await waitFor(() => expect(options()).toHaveLength(2), { timeout: 2000 });
+    // Typed and confirmed before "readme"'s answer arrives.
+    fireEvent.change(input(), { target: { value: "readme" } });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(openFile).not.toHaveBeenCalled();
+    await waitFor(
+      () =>
+        expect(openFile).toHaveBeenCalledWith({
+          rootId: "root-a",
+          relativePath: "README.md",
+        }),
+      { timeout: 2000 },
+    );
+    expect(openFile).toHaveBeenCalledOnce();
+  });
+
+  it("asks once more after an interruption, then says so", async () => {
+    const sent = fakeNative({ supersededFor: 1 });
+    const { unmount } = render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "api" } });
+    await waitFor(() => expect(options()).toEqual(["api.mddocs"]));
+    expect(sent.filter((request) => request.query === "api")).toHaveLength(2);
+    unmount();
+
+    fakeNative({ supersededFor: 2 });
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "api" } });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Quick Open was interrupted. Type to try again.",
+    );
+  });
+
+  it("keeps the chosen File selected when a refreshed answer reorders the list", async () => {
+    let files = ["src/app.ts", "src/apple/core.ts"];
+    fakeNative({ refreshingFor: 1, files: () => files });
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "app" } });
+    await waitFor(() => expect(options()).toHaveLength(2));
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    files = ["src/apple/core.ts", "lib/app.ts", "src/app.ts"];
+    await waitFor(() => expect(options()).toHaveLength(3), { timeout: 2000 });
+    expect(screen.getAllByRole("option")[0]).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getAllByRole("option")[0]).toHaveTextContent("core.ts");
+  });
+
+  it("keeps the focus in the input when the list is clicked", async () => {
+    fakeNative();
+    render(<QuickOpen onClose={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Quick Open" });
+    const list = screen.getByRole("listbox");
+    expect(fireEvent.mouseDown(list)).toBe(false);
+    expect(fireEvent.mouseDown(input())).toBe(true);
+    expect(dialog).toBeInTheDocument();
   });
 
   it("closes on Escape and returns focus", async () => {

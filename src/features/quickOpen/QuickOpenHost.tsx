@@ -10,10 +10,27 @@ import {
 } from "./quickOpenState";
 
 const loadQuickOpen = () => import("./QuickOpen");
+/** Loads the chunk once the window is idle, so the first Ctrl/Cmd+P paints at once. */
+const PRELOAD_TIMEOUT_MS = 2000;
+
+function preloadWhenIdle(): () => void {
+  const preload = () => void loadQuickOpen().catch(() => undefined);
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(preload, {
+      timeout: PRELOAD_TIMEOUT_MS,
+    });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const timer = setTimeout(preload, PRELOAD_TIMEOUT_MS);
+  return () => clearTimeout(timer);
+}
 
 /** Mounts Quick Open while it is open and keeps its recent Files. */
 export function QuickOpenHost() {
   const open = useQuickOpenStore((state) => state.open);
+  useEffect(preloadWhenIdle, []);
+  // Leaving the editor closes it, so it doesn't reopen on the way back.
+  useEffect(() => closeQuickOpen, []);
   useEffect(() => {
     const note = (state: ReturnType<typeof useWorkbenchStore.getState>) => {
       const tab = state.tabs.find((item) => item.id === state.activeTabId);

@@ -1,6 +1,8 @@
 // Quick Open's request and response shapes (EP-08), matching the native
 // `quick_open_query` command (EP-07), and the parsing around them.
 
+import { isRecord } from "../../domain/guards";
+import { truncateUtf8 } from "../../domain/text";
 import type { ResourceRef } from "../../domain/workbench";
 
 export const QUICK_OPEN_LIMIT = 50;
@@ -55,10 +57,10 @@ export function parseQuickOpenInput(text: string): {
   column: number | null;
 } {
   const suffix = /:(\d{1,9})(?::(\d{1,9}))?\s*$/u.exec(text);
-  let query = (suffix ? text.slice(0, suffix.index) : text).trim();
-  while (new TextEncoder().encode(query).length > MAX_QUERY_BYTES) {
-    query = query.slice(0, -1);
-  }
+  const query = truncateUtf8(
+    (suffix ? text.slice(0, suffix.index) : text).trim(),
+    MAX_QUERY_BYTES,
+  );
   const line = suffix ? Number(suffix[1]) : null;
   const column = suffix?.[2] ? Number(suffix[2]) : null;
   return {
@@ -66,10 +68,6 @@ export function parseQuickOpenInput(text: string): {
     line: line && line > 0 ? line : null,
     column: column && column > 0 ? column : null,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseMatch(value: unknown): QuickOpenMatch | null {
@@ -128,11 +126,17 @@ export function highlightRuns(
 ): Array<{ text: string; matched: boolean }> {
   const matched = new Set(positions);
   const runs: Array<{ text: string; matched: boolean }> = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const isMatch = matched.has(offset + index);
+  let index = offset;
+  // By code point, so an emoji is never split across two runs.
+  for (const character of text) {
+    let isMatch = false;
+    for (let unit = 0; unit < character.length; unit += 1) {
+      isMatch ||= matched.has(index + unit);
+    }
+    index += character.length;
     const last = runs.at(-1);
-    if (last && last.matched === isMatch) last.text += text[index];
-    else runs.push({ text: text[index], matched: isMatch });
+    if (last && last.matched === isMatch) last.text += character;
+    else runs.push({ text: character, matched: isMatch });
   }
   return runs;
 }

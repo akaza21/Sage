@@ -116,6 +116,17 @@ test.describe("Quick Open", () => {
     await expect(dialog).toBeHidden();
     await expect(page.locator(".cm-activeLine")).toHaveText(lines[lineIndex]);
 
+    // A bare :line goes to a line of the active File.
+    await page.keyboard.press("ControlOrMeta+p");
+    await input.fill(":1");
+    await expect(dialog.getByRole("status")).toHaveText(
+      "Press Enter to go to line 1 in the active File.",
+    );
+    await expect(options).toHaveCount(0);
+    await input.press("Enter");
+    await expect(dialog).toBeHidden();
+    await expect(page.locator(".cm-activeLine")).toHaveText(lines[0]);
+
     // Arrows move the selection; Enter opens the chosen File.
     await page.keyboard.press("ControlOrMeta+p");
     await input.fill("/ap");
