@@ -40,7 +40,6 @@ pub(crate) use supervisor::{
     ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, EntryPointKind, LaunchError,
     LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
 };
-#[cfg(test)]
 #[cfg(all(test, windows))]
 struct FixtureLiveProcess {
     executable: std::path::PathBuf,
