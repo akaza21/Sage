@@ -49,7 +49,7 @@ pub(crate) use types::{
 pub(crate) use worker_command::{ProcessLivePort, WorkerCommand, WorkerEnvelope, WorkerReply};
 use write_fence::{WriteFence, WriteFenceError};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) fn protocol_failure_requests_tree_exit() -> bool {
     matches!(
         types::tree_exit(TeardownCause::ProtocolFailure),
@@ -61,7 +61,7 @@ pub(crate) fn protocol_failure_requests_tree_exit() -> bool {
 mod activation_tests;
 #[cfg(test)]
 mod first_turn_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use first_turn_tests::{
     CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
 };

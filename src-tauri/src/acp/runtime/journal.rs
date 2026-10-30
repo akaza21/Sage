@@ -173,7 +173,7 @@ impl JournalHandle {
         (state.data_count, state.control_count)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "acp-fixture"))]
     pub(crate) fn fixture_mutation_retained_bytes(mutation: &StoreMutation) -> usize {
         mutation_retained_bytes(mutation)
     }

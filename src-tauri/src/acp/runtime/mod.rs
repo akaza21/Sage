@@ -12,7 +12,7 @@ pub(crate) mod host_browse;
 mod journal;
 mod journal_support;
 pub(crate) mod later_permission;
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 mod live_capacity;
 mod live_engine;
 #[cfg(test)]
@@ -32,7 +32,7 @@ pub(crate) use activation_pump::{
 };
 #[cfg(test)]
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use adapter_pump::normalized_payload_bytes;
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
@@ -43,7 +43,7 @@ pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, PumpIntent, T
 pub(crate) use adapter_store_journal::SqliteAdapterBatchJournal;
 pub(crate) use bounded_thread::{BoundedThread, ThreadWaitError};
 mod process_driver;
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use process_driver::{
     CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
     protocol_failure_requests_tree_exit,
@@ -60,24 +60,26 @@ pub(crate) use coordinator::{
 #[cfg(test)]
 pub(crate) use journal::JournalRunner;
 pub(crate) use journal::{JournalError, JournalHandle, JournalLane};
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use live_capacity::{
     CapacityScope, LiveCapacityError, LiveCapacityLease, LiveCapacityPool,
 };
 pub(crate) use live_engine::{LiveRuntimeEngine, LiveRuntimePort, LiveWrite};
 #[cfg(test)]
 pub(crate) use mailbox::{MailboxError, ProjectionMailbox, PublishDisposition};
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use normalizer::{NormalizerInput, normalize};
 pub(crate) use notifier::{
     NotificationError, NotificationRecovery, NotificationSink, NotificationSinkFuture,
     ProjectionNotifier, PublishError, PublishOutcome,
 };
 #[cfg(test)]
+pub(crate) use process_driver::CompletedActivationDriverParts;
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use process_driver::MailboxError as DriverMailboxError;
 #[cfg(any(test, all(windows, feature = "acp-fixture")))]
 pub(crate) use process_driver::StdinTransport;
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 pub(crate) use process_driver::{
     ActivationDriverError, ActiveCloseBeginState, BlockingStdoutReader,
 };
@@ -87,10 +89,8 @@ pub(crate) use process_driver::{
     LiveRunnerExit, LiveRunnerHandle, PreparedProcessWrite, PreparedWriteError, ProcessLivePort,
     ProcessTreeControl, ReaderTerminal, RunnerStartSubstep, SystemDriverClock, TeardownCause,
 };
-#[cfg(test)]
-pub(crate) use process_driver::{
-    CompletedActivationDriverParts, ProcessAdapterDriver, TreeLeaseOwner,
-};
+#[cfg(all(test, feature = "acp-fixture"))]
+pub(crate) use process_driver::{ProcessAdapterDriver, TreeLeaseOwner};
 #[cfg(test)]
 pub(crate) use projection_publisher::ProjectionPublishError;
 pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher};
