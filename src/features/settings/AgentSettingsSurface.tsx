@@ -26,6 +26,7 @@ const loadBrowserSettings = () =>
     default: AgentBrowserSettings,
   }));
 
+const loadExecution = () => import("./AgentSettingsExecution");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
@@ -64,14 +65,9 @@ export function AgentSettingsSurface() {
     }))
     .filter((group) => group.pages.length > 0);
   return (
-    // Over the Agent workspace only, so the title bar and window controls
-    // stay usable as they do while Settings is open in T3 Code.
-    <div
-      className="agent-settings-layer"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
-    >
+    // Takes the Agent workspace's place below the title bar, which stays
+    // usable, with T3 Code's settings dialog centred in it.
+    <div className="agent-settings-layer">
       <section
         className="agent-settings"
         role="dialog"
@@ -82,7 +78,7 @@ export function AgentSettingsSurface() {
           if (
             event.key === "Escape" &&
             !event.defaultPrevented &&
-            !target.closest("select, textarea") &&
+            !target.closest("input:not([type=search]), select, textarea") &&
             target.closest("[role=dialog]") === event.currentTarget &&
             !(target.matches("input[type=search]") && query)
           ) {
@@ -128,6 +124,12 @@ export function AgentSettingsSurface() {
           {!matching.length ? <p role="status">No matching sections.</p> : null}
         </nav>
         <div className="agent-settings__content">
+          <LazyModuleBoundary
+            label="Chat execution"
+            load={loadExecution}
+            fallback={null}
+            render={(Execution) => <Execution />}
+          />
           <header className="agent-settings__header">
             <span>Settings</span>
             <ChevronRight size={14} aria-hidden="true" />

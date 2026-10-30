@@ -39,7 +39,6 @@ export function AgentWorkbenchBody({
   onOpenTerminal?: () => void;
 }) {
   const openSettings = useAgentSettingsState((state) => state.open);
-  const settingsOpen = useAgentSettingsState((state) => state.page !== null);
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
     null,
   );
@@ -59,7 +58,6 @@ export function AgentWorkbenchBody({
     <AgentToolsProvider onOpenTerminal={onOpenTerminal}>
       <div
         className={`workbench__body${layout.artifactOverlay ? " workbench__body--artifact-overlay" : ""}`}
-        inert={settingsOpen}
         style={
           {
             ...style,

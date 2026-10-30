@@ -29,8 +29,9 @@ for (const width of [480, 1380]) {
     await expect(
       page.getByRole("radio", { name: "Agent", exact: true }),
     ).toBeChecked();
-    // The workspace stays behind the dialog, inert, as in T3 Code.
-    await expect(page.locator(".workbench__body")).toHaveAttribute("inert");
+    await expect(
+      page.getByRole("complementary", { name: "Projects and chats" }),
+    ).toHaveCount(0);
     await expect(
       settings.getByRole("heading", { name: "Appearance", exact: true }),
     ).toBeVisible();
@@ -207,7 +208,7 @@ test("settings preserve the focused chat and split while a shared resource is ac
     exact: true,
   });
   await expect(settings).toBeVisible();
-  await expect(page.locator(".workbench__body")).toHaveAttribute("inert");
+  await expect(panes.first()).toBeHidden();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
   await expect(page.locator(".agent-chat-pane--focused")).toHaveAttribute(

@@ -204,8 +204,8 @@ it("does not offer reserved shortcuts", async () => {
   expect(screen.queryByText("Quick Open")).toBeNull();
 });
 
-it("closes from its close button, Escape and the backdrop", () => {
-  const { container } = render(<AgentSettingsSurface />);
+it("closes from its close button and Escape, and Ctrl+, keeps its section", () => {
+  render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   expect(useAgentSettingsState.getState().page).toBeNull();
   useAgentSettingsState.getState().open("Chats");
@@ -213,11 +213,12 @@ it("closes from its close button, Escape and the backdrop", () => {
     key: "Escape",
   });
   expect(useAgentSettingsState.getState().page).toBeNull();
-  useAgentSettingsState.getState().open("Chats");
-  fireEvent.click(screen.getByRole("dialog", { name: "Agent settings" }));
-  expect(useAgentSettingsState.getState().page).toBe("Chats");
-  fireEvent.click(container.querySelector(".agent-settings-layer")!);
-  expect(useAgentSettingsState.getState().page).toBeNull();
+  useAgentSettingsState.getState().open("Browser", "tab-a");
+  useAgentSettingsState.getState().open();
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: "tab-a",
+  });
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {

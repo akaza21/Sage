@@ -958,7 +958,7 @@ describe("compact Workbench project tools", () => {
       expect(focusedPane).toHaveClass("agent-chat-pane--focused");
       fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
       await screen.findByRole("dialog", { name: "Agent settings" });
-      expect(focusedPane.closest(".workbench__body")).toHaveAttribute("inert");
+      expect(screen.queryByRole("region", { name: /^Chat pane / })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
       await settleLazyModules();
       expect(pair()).toEqual(["chat:c", "side-d"]);

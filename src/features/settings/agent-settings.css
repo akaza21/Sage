@@ -1,13 +1,10 @@
 /* T3 Code's settings dialog: a section rail beside a titled, scrolling page,
    floated over the Agent window. */
 .agent-settings-layer {
-  position: fixed;
-  inset: var(--chrome-row-height) 0 24px;
-  z-index: 20;
   display: grid;
   place-items: center;
+  min-height: 0;
   padding: 24px;
-  background: var(--color-overlay);
 }
 .agent-settings {
   display: grid;
@@ -30,6 +27,9 @@
   overflow: auto;
   border-right: 1px solid var(--border);
   background: var(--surface);
+}
+.agent-settings__search:focus-within {
+  border-color: var(--color-accent);
 }
 .agent-settings__search {
   display: flex;
@@ -255,7 +255,7 @@
 .agent-settings .settings-surface__section {
   border: 0;
 }
-.agent-settings .settings-surface__section-header {
+.agent-settings .settings-surface__section-header h2 {
   display: none;
 }
 .agent-settings__page h3 {

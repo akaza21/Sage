@@ -16,7 +16,12 @@ export const useAgentSettingsState = create<{
 }>((set) => ({
   page: null,
   browserTabId: null,
-  open: (page = "Appearance", browserTabId) =>
-    set({ page, browserTabId: browserTabId ?? null }),
+  // Without a page, keeps an open Settings where it is.
+  open: (page, browserTabId) =>
+    set((state) =>
+      page
+        ? { page, browserTabId: browserTabId ?? null }
+        : { page: state.page ?? "Appearance" },
+    ),
   close: () => set({ page: null, browserTabId: null }),
 }));

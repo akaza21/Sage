@@ -96,15 +96,9 @@ it.each(["button", "shortcut"])(
     expect(
       await screen.findByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("textbox", { name: "Composer" }).closest("[inert]"),
-    ).not.toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Composer" })).toBeNull();
     if (trigger === "button")
-      fireEvent.click(
-        screen
-          .getAllByRole("button", { name: "Search chats" })
-          .find((button) => !button.closest("[inert]"))!,
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
     else fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(
       await screen.findByRole("dialog", { name: "Search Chats" }),
