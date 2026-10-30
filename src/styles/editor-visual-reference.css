@@ -212,7 +212,8 @@
 
 .workbench--editor .source-root__summary {
   min-height: 32px;
-  padding: 4px 4px;
+  /* Lines the repository name up with the group labels and changes. */
+  padding: 4px 4px 4px 8px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
@@ -294,11 +295,14 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready. */
 .workbench--editor .repository-commit__actions button:disabled {
-  border-color: transparent;
-  color: var(--color-text-secondary);
-  background: var(--color-accent-muted);
-  opacity: 0.72;
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: default;
+  /* Instead of the global disabled fade, which would make it too faint. */
+  opacity: 1;
 }
 
 .workbench--editor .workspace-search__result,
