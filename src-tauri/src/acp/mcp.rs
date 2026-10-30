@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 use std::fmt;
 
+mod browser_notice;
+
 const MAX_SERVERS: usize = 16;
 const MAX_NAME: usize = 128;
 const MAX_COMMAND: usize = 16_384;
@@ -233,6 +235,7 @@ fn absolute_path(value: &str) -> bool {
 #[derive(Clone)]
 pub(crate) struct McpAdmission {
     servers: Vec<McpServerDescriptor>,
+    browser_unavailable_notice: Option<&'static str>,
 }
 
 impl fmt::Debug for McpAdmission {
@@ -398,7 +401,10 @@ impl McpAdmission {
                 return Err(McpDescriptorError::Invalid);
             }
         }
-        Ok(Self { servers })
+        Ok(Self {
+            servers,
+            browser_unavailable_notice: None,
+        })
     }
 
     #[cfg(test)]
@@ -417,12 +423,6 @@ impl McpAdmission {
             })
             .map(McpServerDescriptor::wire)
             .collect()
-    }
-}
-
-impl Default for McpAdmission {
-    fn default() -> Self {
-        Self::from_trusted_descriptors(Vec::new()).expect("empty MCP admission is valid")
     }
 }
 
