@@ -6,6 +6,7 @@ import {
   type ChatHandoffIntent,
 } from "../../domain/chatHandoff";
 import { chatDisplayTitle } from "../../domain/chatTitle";
+import { errorMessage } from "../../domain/errors";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
@@ -71,7 +72,7 @@ export function ChatHandoffDialog({
     } catch (caught) {
       setSaving(false);
       onIntentChange(null);
-      onError(caught instanceof Error ? caught.message : String(caught));
+      onError(errorMessage(caught));
     }
     restoreFocus();
   };

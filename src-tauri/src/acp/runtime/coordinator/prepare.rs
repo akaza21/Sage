@@ -5,19 +5,13 @@ pub(crate) struct PrepareFailure {
     pub(crate) recovery: Option<PrepareRecovery>,
 }
 
-#[allow(
-    dead_code,
-    reason = "production callers only drop these; tests inspect the fields"
-)]
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) enum PrepareRecovery {
     Ambiguous(AmbiguousTurnReservation),
     Committed(ActiveDispatch),
 }
 
-#[allow(
-    dead_code,
-    reason = "production callers only drop these; tests inspect the fields"
-)]
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct AmbiguousTurnReservation {
     pub(super) reservation: TurnReservation,
     pub(super) journal: JournalHandle,

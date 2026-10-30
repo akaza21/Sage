@@ -96,10 +96,7 @@ where
 
 // The explicit generic states are intentionally verbose: each recovery
 // variant retains exactly one non-replayable operation and its ownership.
-#[allow(
-    dead_code,
-    reason = "production callers only drop these; tests inspect the fields"
-)]
+#[allow(dead_code, reason = "only tests read these fields")]
 #[allow(clippy::type_complexity)]
 pub(crate) enum FirstTurnWorkerRecovery<A, R, T, C>
 where
