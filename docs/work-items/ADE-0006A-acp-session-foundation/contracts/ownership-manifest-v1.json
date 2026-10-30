@@ -220,6 +220,7 @@
         "src-tauri/src/acp/bindings/adapter/model.rs",
         "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",
         "src-tauri/src/acp/bindings/command_summary.rs",
+        "src-tauri/src/acp/bindings/continuation.rs",
         "src-tauri/src/acp/bindings/registry.rs",
         "src-tauri/src/acp/bindings/runtime.rs",
         "src-tauri/src/acp/command_output.rs",
@@ -280,6 +281,7 @@
     {
       "owner": "p2-runtime-store",
       "prefixes": [
+        "src-tauri/src/acp/context_handoff/",
         "src-tauri/src/acp/recovery/",
         "src-tauri/src/acp/runtime/",
         "src-tauri/src/acp/scheduler/",

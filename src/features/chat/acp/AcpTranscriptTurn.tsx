@@ -19,6 +19,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
 import { ContextHandoffIndicator } from "./ContextHandoffIndicator";
+import { sameTurnHandoffs } from "./turnHandoffs";
 import { TurnFailure } from "./TurnFailure";
 import { BrowserOperations } from "./BrowserOperations";
 import { terminalTurnStates } from "./statusSemantics";
@@ -266,7 +267,7 @@ export const AcpTranscriptTurn = memo(
   },
   (left, right) =>
     left.turn === right.turn &&
-    left.page.handoffs === right.page.handoffs &&
+    sameTurnHandoffs(left.page, right.page, left.turn.id) &&
     left.page.sessions.some((session) => session.id === left.turn.sessionId) ===
       right.page.sessions.some(
         (session) => session.id === right.turn.sessionId,

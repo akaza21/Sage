@@ -82,3 +82,35 @@ fn history_byte_limit_preserves_exact_oversize_and_scan_omissions() {
     assert!(!history.items.iter().any(|item| item.id == "item-2"));
     assert_eq!(history.items.first().unwrap().id, "item-1");
 }
+
+#[test]
+fn long_chat_history_read_stays_bounded_off_the_full_scan() {
+    let connection = connection();
+    connection
+        .execute_batch("CREATE INDEX history_role ON items(project_id,chat_id,kind,
+            CASE WHEN json_extract(payload_json,'$.payload.role')='user' THEN 'user' ELSE 'assistant' END);")
+        .unwrap();
+    connection.execute_batch("BEGIN").unwrap();
+    for position in 1..=50_000 {
+        let role = if position % 2 == 0 {
+            "assistant"
+        } else {
+            "user"
+        };
+        insert(&connection, position, "text", role, "long chat message");
+    }
+    connection.execute_batch("COMMIT").unwrap();
+    let started = std::time::Instant::now();
+    let watermark = watermark(&connection, "project", "chat").unwrap();
+    let history = load(&connection, "project", "chat", watermark).unwrap();
+    let plan = super::super::render::select_history(&history, 16_000).unwrap();
+    eprintln!(
+        "handoff selection over 50000 items: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(history.total_items, 50_000);
+    assert_eq!(history.items.len(), 512);
+    assert_eq!(history.omissions.scan_limit, 50_000 - 512);
+    assert!(plan.selected_ids.len() < 512);
+    assert!(plan.rendered_text.len() <= 16_000);
+}
