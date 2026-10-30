@@ -636,7 +636,7 @@ describe("ChatSurface ACP resource integration", () => {
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
   });
 
-  it("drains a queued follow-up while Settings sleeps the real Chat surface", async () => {
+  it("drains a queued follow-up once while Settings is open over the Chat surface", async () => {
     localStorage.clear();
     vi.stubGlobal(
       "matchMedia",
@@ -679,8 +679,10 @@ describe("ChatSurface ACP resource integration", () => {
       ).toBe("queued"),
     );
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-    await screen.findByRole("region", { name: "Agent settings" });
-    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    await screen.findByRole("dialog", { name: "Agent settings" });
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }).closest("[inert]"),
+    ).not.toBeNull();
     setTurnState("completed");
     view.rerender(<Workbench />);
     await waitFor(() =>
@@ -692,9 +694,9 @@ describe("ChatSurface ACP resource integration", () => {
       ),
     );
     expect(
-      screen.getByRole("region", { name: "Agent settings" }),
+      screen.getByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     await screen.findByRole("textbox", { name: "Message agent" });
     expect(hooks.actions.submit).toHaveBeenCalledOnce();
   });

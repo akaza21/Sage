@@ -1,14 +1,12 @@
 import { create } from "zustand";
 
 export type AgentSettingsPage =
-  | "General"
-  | "Harnesses"
-  | "Browser"
-  | "Keyboard shortcuts"
-  | "Archived chats"
   | "Appearance"
-  | "Notifications"
-  | "Approvals";
+  | "Keybindings"
+  | "Harnesses"
+  | "Chats"
+  | "Browser"
+  | "Archived chats";
 
 export const useAgentSettingsState = create<{
   page: AgentSettingsPage | null;
@@ -18,7 +16,7 @@ export const useAgentSettingsState = create<{
 }>((set) => ({
   page: null,
   browserTabId: null,
-  open: (page = "General", browserTabId) =>
+  open: (page = "Appearance", browserTabId) =>
     set({ page, browserTabId: browserTabId ?? null }),
   close: () => set({ page: null, browserTabId: null }),
 }));

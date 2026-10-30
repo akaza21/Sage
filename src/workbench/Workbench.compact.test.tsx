@@ -807,10 +807,10 @@ describe("compact Workbench project tools", () => {
     expect(openSettings).not.toHaveBeenCalled();
     expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
     expect(
-      await screen.findByRole("region", { name: "Agent settings" }),
+      await screen.findByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
-    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
   });
 
   it("guides an empty Editor workbench only through implemented entry points", async () => {
@@ -841,16 +841,16 @@ describe("compact Workbench project tools", () => {
     const tabs = useWorkbenchStore.getState().tabs;
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     expect(
-      await screen.findByRole("region", { name: "Agent settings" }),
+      await screen.findByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
     expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
     expect(useWorkbenchStore.getState().activeTabId).toBe(activeChat);
     expect(useWorkbenchStore.getState().tabs).toEqual(tabs);
     expect(openSettings).not.toHaveBeenCalled();
-    fireEvent.keyDown(screen.getByRole("button", { name: "Back to chats" }), {
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close settings" }), {
       key: "Escape",
     });
-    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
     await selectWindowMode("Editor");
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     expect(openSettings).toHaveBeenCalledOnce();
@@ -957,9 +957,9 @@ describe("compact Workbench project tools", () => {
       }
       expect(focusedPane).toHaveClass("agent-chat-pane--focused");
       fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-      await screen.findByRole("region", { name: "Agent settings" });
-      expect(screen.queryByRole("region", { name: /^Chat pane / })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
+      await screen.findByRole("dialog", { name: "Agent settings" });
+      expect(focusedPane.closest(".workbench__body")).toHaveAttribute("inert");
+      fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
       await settleLazyModules();
       expect(pair()).toEqual(["chat:c", "side-d"]);
       expect(

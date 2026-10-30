@@ -94,17 +94,23 @@ it.each(["button", "shortcut"])(
     await settleLazyModules();
     act(() => useAgentSettingsState.getState().open());
     expect(
-      await screen.findByRole("region", { name: "Agent settings" }),
+      await screen.findByRole("dialog", { name: "Agent settings" }),
     ).toBeVisible();
-    expect(screen.queryByRole("textbox", { name: "Composer" })).toBeNull();
+    expect(
+      screen.getByRole("textbox", { name: "Composer" }).closest("[inert]"),
+    ).not.toBeNull();
     if (trigger === "button")
-      fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+      fireEvent.click(
+        screen
+          .getAllByRole("button", { name: "Search chats" })
+          .find((button) => !button.closest("[inert]"))!,
+      );
     else fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(
       await screen.findByRole("dialog", { name: "Search Chats" }),
     ).toBeVisible();
     expect(useAgentSettingsState.getState().page).toBeNull();
-    expect(screen.queryByRole("region", { name: "Agent settings" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
   },
 );
 

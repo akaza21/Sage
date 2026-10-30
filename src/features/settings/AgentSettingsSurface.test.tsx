@@ -18,7 +18,7 @@ const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
 const appearance = useUiAppearanceStore.getState();
 beforeEach(() => {
-  useAgentSettingsState.getState().open();
+  useAgentSettingsState.getState().open("Chats");
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
     projectTransitioning: false,
@@ -104,25 +104,20 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
   expect(screen.queryByRole("checkbox", { name: "Code folding" })).toBeNull();
 });
 
-it("shares the workbench keymap without pretending approval reset is implemented", async () => {
+it("lists app-wide and Agent shortcuts and leaves Editor shortcuts to Editor settings", async () => {
   render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
   expect(
-    (await screen.findByText("Save file")).closest("tr"),
-  ).toHaveTextContent("Ctrl+S");
-  expect(screen.getByText("Open settings").closest("tr")).toHaveTextContent(
-    "Ctrl+,",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
-  expect(
-    screen.queryByRole("button", { name: /Reset.*ask again/i }),
-  ).toBeNull();
-  expect(screen.getByText(/does not expose a reset command/)).toBeVisible();
+    (await screen.findByText("Open settings")).closest("tr"),
+  ).toHaveTextContent("Ctrl+,");
+  expect(screen.getByText("Find in chat")).toBeVisible();
+  expect(screen.queryByText("Save file")).toBeNull();
+  expect(screen.queryByRole("group", { name: "Editor" })).toBeNull();
 });
 
 it("lists every implemented browser shortcut with its browser-only scope", async () => {
   render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
   await screen.findByText("New browser tab");
   for (const [label, chord] of [
     ["Focus browser address", "Ctrl+L"],
@@ -181,22 +176,48 @@ it("labels transient harness/model selection honestly and exposes only real acce
     screen.queryByRole("combobox", { name: /Default (harness|model|effort)/ }),
   ).toBeNull();
   expect(screen.getByText(/not a saved app-wide default/)).toBeVisible();
-  expect(screen.getByText(/Effort is configured per chat/)).toBeVisible();
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("does not offer reserved shortcuts or pretend notification preferences are available", async () => {
+it("shows only the sections T3 Code's settings also have, in its order", () => {
   render(<AgentSettingsSurface />);
-  fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+  const nav = screen.getByRole("navigation", {
+    name: "Agent settings sections",
+  });
+  expect(
+    Array.from(nav.querySelectorAll("button"), (button) => button.textContent),
+  ).toEqual([
+    "Appearance",
+    "Keybindings",
+    "Harnesses",
+    "Chats",
+    "Browser",
+    "Archived chats",
+  ]);
+  expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
+});
+
+it("does not offer reserved shortcuts", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
   await screen.findByText("New browser tab");
   expect(screen.queryByText("Quick Open")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
-  expect(
-    screen.queryByRole("checkbox", { name: "Desktop notifications" }),
-  ).toBeNull();
-  expect(
-    screen.getByText(/does not expose notification preferences/),
-  ).toBeVisible();
+});
+
+it("closes from its close button, Escape and the backdrop", () => {
+  const { container } = render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+  expect(useAgentSettingsState.getState().page).toBeNull();
+  useAgentSettingsState.getState().open("Chats");
+  fireEvent.keyDown(screen.getByRole("button", { name: "Chats" }), {
+    key: "Escape",
+  });
+  expect(useAgentSettingsState.getState().page).toBeNull();
+  useAgentSettingsState.getState().open("Chats");
+  fireEvent.click(screen.getByRole("dialog", { name: "Agent settings" }));
+  expect(useAgentSettingsState.getState().page).toBe("Chats");
+  fireEvent.click(container.querySelector(".agent-settings-layer")!);
+  expect(useAgentSettingsState.getState().page).toBeNull();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {
@@ -254,7 +275,7 @@ it("filters settings navigation without changing the current section", () => {
   });
   expect(screen.getByRole("button", { name: "Browser" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Harnesses" })).toBeNull();
-  expect(screen.getByRole("heading", { name: "General" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
   fireEvent.change(screen.getByRole("searchbox"), {
     target: { value: "does not match" },
   });
@@ -348,7 +369,7 @@ it("does not apply an obsolete discovery result after leaving and reopening Harn
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
-  fireEvent.click(screen.getByRole("button", { name: "General" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
   await waitFor(() => expect(apply).toHaveBeenCalledWith(newerInventory));

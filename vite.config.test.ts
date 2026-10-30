@@ -126,7 +126,6 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
-  "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",
   "src/features/settings/openEditorSettings.ts",
   "src/workbench/ActiveEditorCanvas.tsx",

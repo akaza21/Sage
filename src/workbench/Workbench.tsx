@@ -1,5 +1,4 @@
 import {
-  Activity,
   useCallback,
   useEffect,
   useRef,
@@ -291,31 +290,29 @@ export function Workbench() {
       <RendererRecreationPacketCollector windowMode={windowMode} />
       {windowMode === "agent" ? (
         <>
-          <Activity mode={agentSettingsPage ? "hidden" : "visible"}>
-            <LazyModuleBoundary
-              label="Agent workspace"
-              load={loadAgentWorkbenchBody}
-              render={(AgentWorkbenchBody) => (
-                <AgentWorkbenchBody
-                  layout={agentLayout}
-                  style={bodyStyle}
-                  drawerOpen={drawerOpen}
-                  navigationCollapsed={agentNavigationCollapsed}
-                  onExpandNavigation={() => setAgentNavigationCollapsed(false)}
-                  artifactExpanded={agentArtifactExpanded}
-                  onArtifactExpandedChange={changeAgentArtifact}
-                  onAgentLeftRailWidthChange={(width) =>
-                    changeAgentSidebarWidth("left", width)
-                  }
-                  onOpenTerminal={() => setTerminalOpen(true)}
-                  onAgentArtifactWidthChange={(width) =>
-                    changeAgentSidebarWidth("artifact", width)
-                  }
-                  onOpenArtifactInEditor={openArtifactInEditor}
-                />
-              )}
-            />
-          </Activity>
+          <LazyModuleBoundary
+            label="Agent workspace"
+            load={loadAgentWorkbenchBody}
+            render={(AgentWorkbenchBody) => (
+              <AgentWorkbenchBody
+                layout={agentLayout}
+                style={bodyStyle}
+                drawerOpen={drawerOpen}
+                navigationCollapsed={agentNavigationCollapsed}
+                onExpandNavigation={() => setAgentNavigationCollapsed(false)}
+                artifactExpanded={agentArtifactExpanded}
+                onArtifactExpandedChange={changeAgentArtifact}
+                onAgentLeftRailWidthChange={(width) =>
+                  changeAgentSidebarWidth("left", width)
+                }
+                onOpenTerminal={() => setTerminalOpen(true)}
+                onAgentArtifactWidthChange={(width) =>
+                  changeAgentSidebarWidth("artifact", width)
+                }
+                onOpenArtifactInEditor={openArtifactInEditor}
+              />
+            )}
+          />
           {agentSettingsPage ? (
             <LazyModuleBoundary
               label="Agent settings"

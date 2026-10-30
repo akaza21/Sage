@@ -66,7 +66,7 @@ it("opens Agent settings from collapsed navigation without opening an Editor tab
   fireEvent.click(
     await screen.findByRole("button", { name: "Open settings from rail" }),
   );
-  expect(useAgentSettingsState.getState().page).toBe("General");
+  expect(useAgentSettingsState.getState().page).toBe("Appearance");
   expect(openSettings).not.toHaveBeenCalled();
 });
 

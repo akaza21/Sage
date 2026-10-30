@@ -1,6 +1,10 @@
 import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
 import { EDITOR_SETTING_COPY } from "./editorSettingsCopy";
-import { KEYMAP_BINDINGS, type KeymapBinding } from "./keymapRegistry";
+import {
+  KEYMAP_BINDINGS,
+  type KeymapBinding,
+  type KeymapScope,
+} from "./keymapRegistry";
 
 /**
  * Shortcuts CodeMirror handles (EP-03), kept out of the startup bundle's
@@ -166,15 +170,22 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
 ]);
 
+/** The Editor's Keyboard page lists app-wide and Editor shortcuts only. */
+export const EDITOR_KEYMAP_SCOPES: readonly KeymapScope[] = [
+  "Global",
+  "Editor",
+];
+
 const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
-  SETTINGS_KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map(
-    (binding) => ({
-      id: binding.id,
-      label: binding.label,
-      description: binding.description,
-      group: binding.scope,
-    }),
-  ),
+  SETTINGS_KEYMAP_BINDINGS.filter(
+    (binding) =>
+      !binding.reservedFor && EDITOR_KEYMAP_SCOPES.includes(binding.scope),
+  ).map((binding) => ({
+    id: binding.id,
+    label: binding.label,
+    description: binding.description,
+    group: binding.scope,
+  })),
 );
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
@@ -187,7 +198,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
   {
     id: "keyboard",
     label: "Keyboard",
-    description: "Every shortcut Sage listens for today.",
+    description: "Shortcuts for the Editor and for all of Sage.",
     entries: KEYBOARD_ENTRIES,
   },
 ]);

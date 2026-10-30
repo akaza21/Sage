@@ -127,6 +127,12 @@
   text-align: left;
 }
 
+/* The cells are a grid and a flex row, so the row lays them out side by side. */
+.settings-surface__keymap tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .settings-surface__keymap th,
 .settings-surface__keymap td {
   padding: 8px 0;
@@ -154,6 +160,7 @@
 .settings-surface__keymap td {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 4px;
   width: 168px;
