@@ -288,7 +288,7 @@ describe("compact Workbench project tools", () => {
       name: "Projects and chats",
     });
     const newChat = within(navigation).getByRole("button", {
-      name: "New chat",
+      name: "New task",
     });
     newChat.focus();
     vi.stubGlobal("innerWidth", 480);

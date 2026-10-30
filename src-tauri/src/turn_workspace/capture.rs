@@ -33,14 +33,46 @@ pub(crate) async fn capture(root: &Path) -> Option<WorkspaceMark> {
 /// HEAD, bounded like the dirty set (overflow marks the result truncated).
 pub(crate) async fn capture_after(root: &Path, before: &WorkspaceMark) -> Option<WorkspaceMark> {
     tokio::time::timeout(CAPTURE_DEADLINE, async {
+        let deadline = Instant::now() + CAPTURE_DEADLINE;
+        if before.entries.len() > MAX_TURN_WORKSPACE_CHANGES {
+            return None;
+        }
+        let anchor = Directory::root(root)?;
+        let identity = anchor.identity()?;
+        if before.root_identity != Some(identity) {
+            return None;
+        }
         let mut mark = capture_with_limit(root, MAX_WORKSPACE_FILES).await?;
+        if mark.root_identity != Some(identity) {
+            return None;
+        }
         if let (Some(before_head), Some(after_head)) = (&before.head, &mark.head) {
             let (committed, truncated) =
                 history::committed_between(root, before_head, after_head).await?;
             mark.committed = committed;
             mark.truncated |= truncated;
         }
-        Some(mark)
+        if !before.truncated && !mark.truncated {
+            for path in before.entries.keys() {
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                if mark.entries.contains_key(path) || mark.committed.contains_key(path) {
+                    continue;
+                }
+                let metadata = anchor.metadata(Path::new(path))?;
+                if metadata
+                    .as_ref()
+                    .is_some_and(|metadata| !metadata.is_file())
+                {
+                    return None;
+                }
+                mark.terminal_presence
+                    .insert(path.clone(), metadata.is_some());
+            }
+        }
+        (Instant::now() < deadline && Directory::root(root)?.identity()? == identity)
+            .then_some(mark)
     })
     .await
     .ok()
@@ -68,14 +100,18 @@ pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<Worksp
         return None;
     }
     let mut tracked = BTreeSet::new();
-    for path in index
+    for (seen, path) in index
         .stdout
         .split(|byte| *byte == 0)
         .filter(|path| !path.is_empty())
+        .enumerate()
     {
-        tracked.insert(std::str::from_utf8(path).ok()?.to_owned());
-        if tracked.len() as u64 > limit {
+        if seen as u64 >= limit {
             return None;
+        }
+        let path = std::str::from_utf8(path).ok()?;
+        if !super::excluded_path(path) {
+            tracked.insert(path.to_owned());
         }
     }
     let status = run_git(
@@ -88,7 +124,6 @@ pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<Worksp
             "--no-renames",
             "--",
             ".",
-            ":(exclude,glob,icase)**/node_modules/**",
         ],
         MAX_STATUS_BYTES,
     )

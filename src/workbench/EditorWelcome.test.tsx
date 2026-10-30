@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { EditorWelcome } from "./EditorWelcome";
+import { ActiveEditorCanvas } from "./ActiveEditorCanvas";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -14,7 +14,7 @@ describe("EditorWelcome", () => {
   it("offers only working Editor and Agent destinations", () => {
     const onOpenAgent = vi.fn();
     useWorkbenchStore.setState({ sidebarOpen: false, sidebarView: "outline" });
-    render(<EditorWelcome onOpenAgent={onOpenAgent} />);
+    render(<ActiveEditorCanvas onOpenAgent={onOpenAgent} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
     expect(useWorkbenchStore.getState()).toMatchObject({

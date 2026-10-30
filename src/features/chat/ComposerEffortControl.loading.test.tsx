@@ -7,7 +7,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { ComposerEffortControl } from "./ComposerEffortControl";
+import { ComposerModelControls } from "./ComposerModelControls";
 
 const loading = vi.hoisted(() => {
   let resolve!: (module: { default: () => ReactElement }) => void;
@@ -23,6 +23,7 @@ it("returns Escape to Add while its effort menu is still loading", async () => {
   const loaded = vi.fn(() => <button autoFocus>Loaded thinking levels</button>);
   function Fixture() {
     const anchorRef = useRef<HTMLButtonElement>(null);
+    const modelTriggerRef = useRef<HTMLButtonElement>(null);
     const [open, setOpen] = useState(false);
     return (
       <>
@@ -30,10 +31,15 @@ it("returns Escape to Add while its effort menu is still loading", async () => {
           Add
         </button>
         <textarea aria-label="Message" />
-        <ComposerEffortControl
-          anchorRef={anchorRef}
-          fallbackRef={anchorRef}
-          option={{
+        <ComposerModelControls
+          triggerRef={modelTriggerRef}
+          panelId="model-menu"
+          choices={[]}
+          selectedId={null}
+          effortLabel="High"
+          contextWindow={null}
+          effortAnchorRef={anchorRef}
+          effortOption={{
             id: "effort",
             name: "Thinking level",
             type: "select",
@@ -41,11 +47,12 @@ it("returns Escape to Add while its effort menu is still loading", async () => {
             options: [{ value: "high", name: "High" }],
           }}
           modelLabel="Actual model"
-          open={open}
-          onToggle={() => setOpen(!open)}
+          effortOpen={open}
+          open={false}
+          onToggleEffort={() => setOpen(!open)}
+          onToggle={() => {}}
           onDismiss={() => setOpen(false)}
-          onOpenModel={() => {}}
-          modelAvailable
+          onSelectModel={() => {}}
           disabled={false}
           pending={false}
           onSetOption={async () => {}}

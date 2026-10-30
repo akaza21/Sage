@@ -1,7 +1,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import type { AcpChatPage, AcpProjectionChangedEvent } from "../domain/acp";
+import type { AcpProjectionChangedEvent } from "../domain/acp";
+import type { AcpChatStatus } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { acpDesktop } from "../services/acpDesktop";
 import {
@@ -18,6 +19,11 @@ afterEach(() => {
   resetAgentRailInteractions();
   useWorkbenchStore.setState(initial, true);
 });
+
+function status(state: Parameters<typeof page>[0]): AcpChatStatus {
+  const current = page(state);
+  return { ...current, latestTurn: current.turns[0] };
+}
 
 function seed() {
   useWorkbenchStore.setState({
@@ -47,15 +53,15 @@ it("updates an unmounted background chat on completion and approval without acti
       return dispose;
     },
   );
-  let current = page("running");
+  let current = status("running");
   const load = vi
-    .spyOn(acpDesktop, "getChatPage")
+    .spyOn(acpDesktop, "getChatStatus")
     .mockImplementation(async (request) => ({
       ...current,
       chatId: request.chatId,
     }));
   const hook = renderHook(() => {
-    useAgentRailStatus();
+    useAgentRailStatus(true);
     return useAgentRailInteractions();
   });
   await waitFor(() =>
@@ -67,10 +73,10 @@ it("updates an unmounted background chat on completion and approval without acti
   const event = {
     projectId: current.projectId,
     chatId: current.chatId,
-    sessionId: current.currentSessionId!,
+    sessionId: "session-1" as never,
     projectionRevision: "2" as never,
   };
-  current = page("waitingApproval");
+  current = status("waitingApproval");
   act(() => {
     for (let index = 0; index < 100; index += 1) notify(event);
   });
@@ -78,7 +84,7 @@ it("updates an unmounted background chat on completion and approval without acti
     expect(hook.result.current.approval.has("chat-1")).toBe(true),
   );
   expect(load).toHaveBeenCalledTimes(3);
-  current = page("completed");
+  current = status("completed");
   act(() => notify(event));
   await waitFor(() =>
     expect(useWorkbenchStore.getState().tabs[0].status).toBe("complete"),
@@ -93,14 +99,14 @@ it("discards in-flight status reads across project generations and unsubscribes"
   seed();
   const dispose = vi.fn();
   vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(dispose);
-  let resolve!: (value: AcpChatPage) => void;
-  vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
+  let resolve!: (value: AcpChatStatus) => void;
+  vi.spyOn(acpDesktop, "getChatStatus").mockImplementation(
     () =>
       new Promise((complete) => {
         resolve = complete;
       }),
   );
-  const hook = renderHook(() => useAgentRailStatus());
+  const hook = renderHook(() => useAgentRailStatus(true));
   await waitFor(() => expect(resolve).toBeDefined());
   act(() =>
     useWorkbenchStore.setState({
@@ -108,7 +114,7 @@ it("discards in-flight status reads across project generations and unsubscribes"
       projectTransitioning: true,
     }),
   );
-  await act(async () => resolve(page("waitingApproval")));
+  await act(async () => resolve(status("waitingApproval")));
   expect(useWorkbenchStore.getState().tabs[0].status).toBeUndefined();
   expect(dispose).toHaveBeenCalledOnce();
   hook.unmount();
@@ -126,17 +132,17 @@ it("retains changes arriving during a read and ignores foreign or absent chats",
       return () => undefined;
     },
   );
-  let complete!: (value: AcpChatPage) => void;
+  let complete!: (value: AcpChatStatus) => void;
   const load = vi
-    .spyOn(acpDesktop, "getChatPage")
+    .spyOn(acpDesktop, "getChatStatus")
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           complete = resolve;
         }),
     )
-    .mockResolvedValue(page("completed"));
-  renderHook(() => useAgentRailStatus());
+    .mockResolvedValue(status("completed"));
+  renderHook(() => useAgentRailStatus(true));
   await waitFor(() => expect(complete).toBeDefined());
   const event = {
     projectId: "project-1",
@@ -149,7 +155,7 @@ it("retains changes arriving during a read and ignores foreign or absent chats",
     notify({ ...event, chatId: "absent" as never });
     notify(event);
   });
-  await act(async () => complete(page("running")));
+  await act(async () => complete(status("running")));
   await waitFor(() =>
     expect(useWorkbenchStore.getState().tabs[0].status).toBe("complete"),
   );
@@ -165,11 +171,50 @@ it("disposes a late event subscription without bootstrapping after unmount", asy
         complete = resolve;
       }),
   );
-  const load = vi.spyOn(acpDesktop, "getChatPage");
-  const hook = renderHook(() => useAgentRailStatus());
+  const load = vi.spyOn(acpDesktop, "getChatStatus");
+  const hook = renderHook(() => useAgentRailStatus(true));
   hook.unmount();
   const dispose = vi.fn();
   await act(async () => complete(dispose));
   expect(dispose).toHaveBeenCalledOnce();
   expect(load).not.toHaveBeenCalled();
+});
+
+it("reads only bounded status during streaming and sleeps with the hidden rail", async () => {
+  seed();
+  let notify!: (event: AcpProjectionChangedEvent) => void;
+  const dispose = vi.fn();
+  const subscribe = vi
+    .spyOn(acpDesktop, "subscribeProjectionChanges")
+    .mockImplementation(async (callback) => {
+      notify = callback;
+      return dispose;
+    });
+  const pages = vi.spyOn(acpDesktop, "getChatPage");
+  const load = vi
+    .spyOn(acpDesktop, "getChatStatus")
+    .mockImplementation(async (request) => ({
+      ...status("running"),
+      chatId: request.chatId,
+    }));
+  const hook = renderHook(({ visible }) => useAgentRailStatus(visible), {
+    initialProps: { visible: false },
+  });
+  expect(subscribe).not.toHaveBeenCalled();
+  hook.rerender({ visible: true });
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  const event = {
+    projectId: "project-1",
+    chatId: "chat-1",
+  } as AcpProjectionChangedEvent;
+  act(() => {
+    for (let index = 0; index < 200; index++) notify(event);
+  });
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+  expect(pages).not.toHaveBeenCalled();
+  act(() => notify(event));
+  hook.rerender({ visible: false });
+  expect(dispose).toHaveBeenCalledOnce();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(load).toHaveBeenCalledTimes(3);
 });

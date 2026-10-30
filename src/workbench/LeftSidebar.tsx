@@ -262,7 +262,7 @@ export function LeftSidebar({
       aria-hidden={inert || undefined}
     >
       <ChatSearchGate triggerRef={searchTriggerRef} />
-      <AgentPrimaryNavigation onNewChat={() => void createChat()} />
+      <AgentPrimaryNavigation />
       {navigation}
     </aside>
   );

@@ -15,6 +15,64 @@ struct CaptureJob {
     ambiguous: bool,
 }
 
+type TerminalScope<'a> = (&'a str, &'a str, &'a str, u64, Option<&'a str>);
+
+pub(crate) fn needs_terminal_capture(mutations: &[StoreMutation]) -> bool {
+    mutations
+        .iter()
+        .any(|mutation| terminal_scope(mutation).is_some())
+}
+
+fn terminal_scope(mutation: &StoreMutation) -> Option<TerminalScope<'_>> {
+    match mutation {
+        StoreMutation::TurnTerminal {
+            command, terminal, ..
+        } if terminal.is_terminal() => Some((
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            command.session_id.as_str(),
+            command.runtime_epoch.get(),
+            Some(command.turn_id.as_str()),
+        )),
+        StoreMutation::ObserveSend {
+            command,
+            observation: SendObservation::PossibleBytes | SendObservation::ProcessLost,
+            ..
+        } => Some((
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            command.session_id.as_str(),
+            command.runtime_epoch.get(),
+            Some(command.turn_id.as_str()),
+        )),
+        StoreMutation::AdapterInboundBatch(command) if command.ends_turn() => {
+            let owner = command.owner();
+            Some((
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                owner.runtime_epoch.get(),
+                Some(owner.turn_id.as_str()),
+            ))
+        }
+        StoreMutation::FinalizeClose(command) => Some((
+            command.request.project_id.as_str(),
+            command.request.chat_id.as_str(),
+            command.request.session_id.as_str(),
+            command.request.runtime_epoch.get(),
+            None,
+        )),
+        StoreMutation::RecoverRuntimeAfterZero(command) => Some((
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            command.session_id.as_str(),
+            command.runtime_epoch.get(),
+            None,
+        )),
+        _ => None,
+    }
+}
+
 pub(crate) fn prepare_terminal(
     database: &Database,
     mutations: &[StoreMutation],
@@ -22,53 +80,7 @@ pub(crate) fn prepare_terminal(
 ) -> Result<(), StoreError> {
     let deadline = std::time::Instant::now() + budget;
     for mutation in mutations {
-        let scope = match mutation {
-            StoreMutation::TurnTerminal {
-                command, terminal, ..
-            } if terminal.is_terminal() => Some((
-                command.project_id.as_str(),
-                command.chat_id.as_str(),
-                command.session_id.as_str(),
-                command.runtime_epoch.get(),
-                Some(command.turn_id.as_str()),
-            )),
-            StoreMutation::ObserveSend {
-                command,
-                observation: SendObservation::PossibleBytes | SendObservation::ProcessLost,
-                ..
-            } => Some((
-                command.project_id.as_str(),
-                command.chat_id.as_str(),
-                command.session_id.as_str(),
-                command.runtime_epoch.get(),
-                Some(command.turn_id.as_str()),
-            )),
-            StoreMutation::AdapterInboundBatch(command) if command.ends_turn() => {
-                let owner = command.owner();
-                Some((
-                    owner.project_id.as_str(),
-                    owner.chat_id.as_str(),
-                    owner.session_id.as_str(),
-                    owner.runtime_epoch.get(),
-                    Some(owner.turn_id.as_str()),
-                ))
-            }
-            StoreMutation::FinalizeClose(command) => Some((
-                command.request.project_id.as_str(),
-                command.request.chat_id.as_str(),
-                command.request.session_id.as_str(),
-                command.request.runtime_epoch.get(),
-                None,
-            )),
-            StoreMutation::RecoverRuntimeAfterZero(command) => Some((
-                command.project_id.as_str(),
-                command.chat_id.as_str(),
-                command.session_id.as_str(),
-                command.runtime_epoch.get(),
-                None,
-            )),
-            _ => None,
-        };
+        let scope = terminal_scope(mutation);
         let Some((project, chat, session, epoch, turn)) = scope else {
             continue;
         };
@@ -185,13 +197,18 @@ fn save(connection: &Connection, job: &CaptureJob, json: &str) -> Result<(), Sto
 
 pub(crate) fn discard_rejected_staging(
     database: Option<&Database>,
+    mutations: &[StoreMutation],
     result: &Result<crate::acp::store::StoreCommit, StoreError>,
 ) {
     if matches!(result,Err(error) if !matches!(error,StoreError::CommitUnknown))
         && let Some(database) = database
         && let Ok(connection) = database.write_connection()
     {
-        let _ = connection.execute("UPDATE acp_turn_workspace_changes SET terminal_json=NULL WHERE result_json IS NULL AND terminal_json IS NOT NULL AND EXISTS(SELECT 1 FROM turns t WHERE t.session_id=acp_turn_workspace_changes.session_id AND t.client_intent_id=acp_turn_workspace_changes.client_intent_id AND t.terminal_at IS NULL)",[]);
+        for mutation in mutations {
+            if let Some((project, chat, session, epoch, turn)) = terminal_scope(mutation) {
+                let _ = connection.execute("UPDATE acp_turn_workspace_changes SET terminal_json=NULL WHERE session_id=?3 AND result_json IS NULL AND terminal_json IS NOT NULL AND EXISTS(SELECT 1 FROM turns t WHERE t.session_id=acp_turn_workspace_changes.session_id AND t.client_intent_id=acp_turn_workspace_changes.client_intent_id AND t.project_id=?1 AND t.chat_id=?2 AND t.runtime_epoch=?4 AND (?5 IS NULL OR t.id=?5) AND t.terminal_at IS NULL)",params![project,chat,session,epoch as i64,turn]);
+            }
+        }
     }
 }
 

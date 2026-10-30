@@ -45,6 +45,7 @@ fn mark(entries: &[(&str, &str, Option<u64>, u64)]) -> WorkspaceMark {
         truncated: false,
         head: None,
         committed: BTreeMap::new(),
+        terminal_presence: BTreeMap::new(),
     }
 }
 
@@ -63,6 +64,166 @@ fn git_in(root: &std::path::Path, args: &[&str]) {
             .unwrap()
             .success()
     );
+}
+
+#[test]
+fn tracked_dependency_changes_do_not_consume_dirty_or_committed_source_capacity() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    let dependencies = root.join("packages/app/node_modules/pkg");
+    std::fs::create_dir_all(&dependencies).unwrap();
+    for index in 0..301 {
+        std::fs::write(dependencies.join(format!("{index}.js")), "before").unwrap();
+    }
+    std::fs::write(root.join("source.rs"), "before").unwrap();
+    git_in(&root, &["add", "."]);
+    git_in(&root, &["commit", "-qm", "baseline"]);
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        for index in 0..301 {
+            std::fs::write(dependencies.join(format!("{index}.js")), "after").unwrap();
+        }
+        std::fs::write(root.join("source.rs"), "source edit").unwrap();
+        let dirty = capture_after(&root, &before).await.unwrap();
+        let changes = diff_marks(&before, &dirty);
+        assert!(changes.tracked && !changes.truncated);
+        assert_eq!(
+            changes
+                .changes
+                .iter()
+                .map(|change| change.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            ["source.rs"]
+        );
+        git_in(&root, &["add", "."]);
+        git_in(&root, &["commit", "-qm", "turn edits"]);
+        let committed = capture_after(&root, &before).await.unwrap();
+        assert_eq!(diff_marks(&before, &committed), changes);
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn deleting_a_baseline_untracked_file_is_a_deleted_turn_change() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    std::fs::create_dir(root.join("scratch")).unwrap();
+    std::fs::write(root.join("scratch/untracked.txt"), "before the turn").unwrap();
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        assert_eq!(before.entries["scratch/untracked.txt"].status, "??");
+        std::fs::remove_file(root.join("scratch/untracked.txt")).unwrap();
+        let after = capture_after(&root, &before).await.unwrap();
+        let changes = diff_marks(&before, &after);
+        assert!(changes.tracked && !changes.truncated);
+        assert_eq!(
+            changes.changes,
+            [TurnWorkspaceChange {
+                relative_path: "scratch/untracked.txt".into(),
+                operation: TurnWorkspaceOperation::Deleted,
+            }]
+        );
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn deleting_an_untracked_parent_directory_is_a_deleted_turn_change() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    std::fs::create_dir(root.join("scratch")).unwrap();
+    std::fs::write(root.join("scratch/untracked.txt"), "before the turn").unwrap();
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        std::fs::remove_dir_all(root.join("scratch")).unwrap();
+        let after = capture_after(&root, &before).await.unwrap();
+        assert_eq!(
+            diff_marks(&before, &after).changes,
+            [TurnWorkspaceChange {
+                relative_path: "scratch/untracked.txt".into(),
+                operation: TurnWorkspaceOperation::Deleted,
+            }]
+        );
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn baseline_files_becoming_clean_or_committed_are_not_deleted() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    git_in(&root, &["init", "-q"]);
+    std::fs::write(root.join("reverted.txt"), "original").unwrap();
+    std::fs::write(root.join("committed.txt"), "original").unwrap();
+    git_in(&root, &["add", "."]);
+    git_in(&root, &["commit", "-q", "-m", "init"]);
+    std::fs::write(root.join("reverted.txt"), "dirty").unwrap();
+    std::fs::write(root.join("committed.txt"), "dirty").unwrap();
+    std::fs::write(root.join("added.txt"), "untracked").unwrap();
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        git_in(&root, &["restore", "reverted.txt"]);
+        git_in(&root, &["add", "committed.txt", "added.txt"]);
+        git_in(&root, &["commit", "-q", "-m", "settle dirty files"]);
+        let after = capture_after(&root, &before).await.unwrap();
+        assert!(after.entries.is_empty());
+        let changes = diff_marks(&before, &after);
+        assert!(changes.tracked && !changes.truncated);
+        assert_eq!(
+            changes.changes,
+            [
+                TurnWorkspaceChange {
+                    relative_path: "added.txt".into(),
+                    operation: TurnWorkspaceOperation::Created,
+                },
+                TurnWorkspaceChange {
+                    relative_path: "committed.txt".into(),
+                    operation: TurnWorkspaceOperation::Updated,
+                },
+                TurnWorkspaceChange {
+                    relative_path: "reverted.txt".into(),
+                    operation: TurnWorkspaceOperation::Updated,
+                },
+            ]
+        );
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn baseline_only_paths_with_substituted_symlinks_fail_closed() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    for replace_parent in [false, true] {
+        let root = temp_root();
+        let outside = temp_root();
+        git_in(&root, &["init", "-q"]);
+        std::fs::create_dir(root.join("scratch")).unwrap();
+        std::fs::write(root.join("scratch/file.txt"), "baseline").unwrap();
+        std::fs::write(outside.join("file.txt"), "external").unwrap();
+        let root = root.canonicalize().unwrap();
+        tauri::async_runtime::block_on(async {
+            let before = capture(&root).await.unwrap();
+            if replace_parent {
+                std::fs::remove_dir_all(root.join("scratch")).unwrap();
+                std::os::unix::fs::symlink(&outside, root.join("scratch")).unwrap();
+            } else {
+                std::fs::remove_file(root.join("scratch/file.txt")).unwrap();
+                std::os::unix::fs::symlink(outside.join("file.txt"), root.join("scratch/file.txt"))
+                    .unwrap();
+            }
+            assert!(capture_after(&root, &before).await.is_none());
+        });
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
 }
 
 #[test]

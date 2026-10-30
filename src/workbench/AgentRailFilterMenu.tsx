@@ -6,23 +6,25 @@ import {
   Search,
   Settings,
 } from "../ui/leanIcons";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useContext, useId, useRef, useState } from "react";
 import { expandAgentRailSection } from "./agentRailViewPrefs";
-import { agentRailSectionSelectors } from "./agentRailNavigation";
+import {
+  agentRailSectionSelectors,
+  AgentHomeNavigationContext,
+} from "./agentRailNavigation";
 
 export function AgentPrimaryNavigation({
-  onNewChat,
   onSearch,
   onSettings,
   searchDisabled,
   onNavigate,
 }: {
-  onNewChat: () => void;
   onSearch?: () => void;
   onSettings?: () => void;
   searchDisabled?: boolean;
   onNavigate?: (target: "Recent" | "Projects") => void;
 }) {
+  const navigateHome = useContext(AgentHomeNavigationContext);
   const scrollToSection =
     (target: "Recent" | "Projects") =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -37,9 +39,9 @@ export function AgentPrimaryNavigation({
     <nav className="project-sidebar__icon-rail" aria-label="Primary navigation">
       <button
         type="button"
-        aria-label="New chat"
-        title="New chat"
-        onClick={onNewChat}
+        aria-label="Home"
+        title="Home"
+        onClick={navigateHome}
       >
         <Home size={18} aria-hidden="true" />
       </button>

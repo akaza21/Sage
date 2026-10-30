@@ -5,8 +5,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { explorerSelectionAction } from "./explorerActionDialogController";
-import { RenameFileControl } from "./RenameFileControl";
-import { RenameFolderControl } from "./RenameFolderControl";
+import { RenameResourceControl } from "./RenameResourceControl";
 import { TrashResourceControl } from "./TrashResourceControl";
 
 export function ExplorerActionMenu() {
@@ -123,7 +122,8 @@ export function ExplorerActionMenu() {
         </button>
         {action.kind === "file" ? (
           <>
-            <RenameFileControl
+            <RenameResourceControl
+              kind="File"
               source={action.source}
               rootName={rootName}
               returnFocusRef={triggerRef}
@@ -139,7 +139,8 @@ export function ExplorerActionMenu() {
           </>
         ) : action.kind === "emptyFolder" ? (
           <>
-            <RenameFolderControl
+            <RenameResourceControl
+              kind="Folder"
               source={action.source}
               rootName={rootName}
               returnFocusRef={triggerRef}

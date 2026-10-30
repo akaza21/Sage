@@ -51,7 +51,7 @@ for (const width of [1888, 720, 480]) {
       await open(page, "running");
       const summary = page.locator(".acp-tool-rollup > summary");
       await expect(summary).toHaveText(
-        "Running git diff --stat -- src/features/chat/acp/ToolActivityRollupView.tsx",
+        "Running git diff --stat -- src/features/chat/acp/PrimaryActivities.tsx",
       );
       await expect(summary.locator(".acp-tool-running")).toHaveCount(0);
       await expect(summary.locator(".acp-live-shimmer")).toHaveCount(1);

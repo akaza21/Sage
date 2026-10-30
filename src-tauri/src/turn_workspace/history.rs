@@ -65,7 +65,6 @@ pub(super) async fn committed_between(
             after,
             "--",
             ".",
-            ":(exclude,glob,icase)**/node_modules/**",
         ],
         MAX_HISTORY_BYTES,
     )
@@ -102,7 +101,7 @@ pub(super) fn parse_name_status(stdout: &[u8]) -> (BTreeMap<String, TurnWorkspac
         let Ok(path) = std::str::from_utf8(path) else {
             continue;
         };
-        if path.is_empty() {
+        if path.is_empty() || super::excluded_path(path) {
             continue;
         }
         if paths.len() == MAX_TURN_WORKSPACE_CHANGES {

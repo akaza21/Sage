@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { createBrowserChatTab } from "../services/browserChat";
+import { compareAgentRailViewChats } from "./agentRailStatusView";
 import {
   mirrorAgentRailProjection,
   railStatusForTurn,
@@ -34,6 +35,27 @@ function seed() {
     ],
   });
 }
+
+it("uses the newest turn for approvals regardless of native page order", () => {
+  seed();
+  const { result } = renderHook(() => useAgentRailInteractions());
+  const current = page("waitingApproval");
+  const older = {
+    ...current.turns[0],
+    id: "older" as never,
+    ordinal: 0,
+    state: "completed" as const,
+  };
+  const newer = { ...current.turns[0], ordinal: 1 };
+  for (const turns of [
+    [newer, older],
+    [older, newer],
+  ]) {
+    act(() => mirrorAgentRailProjection({ ...current, turns }));
+    expect(useWorkbenchStore.getState().tabs[0].status).toBe("waiting");
+    expect(result.current.approval.has("chat-1")).toBe(true);
+  }
+});
 
 it("mirrors real lifecycle status, native first-prompt titles, and approval attention", () => {
   seed();
@@ -67,6 +89,39 @@ it("does not update the rail or recency per streamed token, and rejects foreign 
     projectId: "foreign" as typeof next.projectId,
   };
   mirrorAgentRailProjection(foreign);
+  expect(useWorkbenchStore.getState().tabs).toBe(tabs);
+});
+
+it("refreshes Recents for a coalesced completed turn and keeps unchanged-turn activity stable", () => {
+  seed();
+  mirrorAgentRailProjection(page("completed"));
+  const previous = useWorkbenchStore.getState().tabs[0];
+  const other = { ...previous, id: "chat-2", updatedAt: 10 };
+  useWorkbenchStore.setState({ tabs: [previous, other] });
+  const next = page("completed");
+  next.turns = [
+    {
+      ...next.turns[0],
+      id: "turn-2" as (typeof next.turns)[0]["id"],
+      createdAt: 20,
+      updatedAt: 30,
+      terminalAt: 30,
+    },
+  ];
+  mirrorAgentRailProjection(next);
+  const tabs = useWorkbenchStore.getState().tabs;
+  expect(tabs[0]).toMatchObject({
+    title: previous.title,
+    status: "complete",
+    updatedAt: 30,
+  });
+  expect(
+    [...tabs]
+      .sort((left, right) => compareAgentRailViewChats(left, right, "recency"))
+      .map((tab) => tab.id),
+  ).toEqual(["chat-1", "chat-2"]);
+  next.turns = [{ ...next.turns[0], updatedAt: 999 }];
+  mirrorAgentRailProjection(next);
   expect(useWorkbenchStore.getState().tabs).toBe(tabs);
 });
 

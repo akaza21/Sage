@@ -14,15 +14,13 @@ import {
   Trash2,
   Wrench,
 } from "../../../ui/leanIcons";
-
-import type { AcpItem } from "../../../domain/acp";
-import type { ResourceRef } from "../../../domain/workbench";
+import { type AcpItem } from "../../../domain/acp";
+import { type ResourceRef } from "../../../domain/workbench";
 import { ToolItemDetails } from "./ToolItemDetails";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 import { toolDurationLabel } from "./toolActivityRollup";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
-import { CompactToolItem } from "./CompactToolItem";
 import { ToolCommandFrame } from "./ToolCommandFrame";
 import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
 
@@ -175,6 +173,47 @@ export function ToolItem({
           <p>{detail}</p>
         </details>
       ) : null}
+    </article>
+  );
+}
+
+function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
+  const presentation = item.payload.presentation;
+  const kind = presentation.kind;
+  const label = compactToolLabels[kind];
+  if (label === undefined) return null;
+  const { commandLine, output } = toolCommandContent(item);
+  const exit = presentation.kind === "execute" ? presentation.exitCode : null;
+  const outcome = exit
+    ? `✕ Exit code ${exit}`
+    : item.toolState === "completed"
+      ? "✓ Success"
+      : toolStateLabels[item.toolState];
+  return (
+    <article
+      className="acp-activity-card acp-tool-compact"
+      data-acp-item-id={item.id}
+      data-activity-kind={kind}
+      data-activity-state={item.toolState}
+      role="group"
+      aria-label={presentation.label}
+    >
+      {label ? (
+        <ToolCommandFrame
+          label={label}
+          commandLine={
+            commandLine && kind === "execute" ? `$ ${commandLine}` : commandLine
+          }
+          output={output}
+          outcome={outcome}
+          danger={Boolean(exit)}
+        />
+      ) : null}
+      <ToolItemDetails
+        item={item}
+        browse={null}
+        onOpenResource={onOpenResource}
+      />
     </article>
   );
 }

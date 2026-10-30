@@ -17,7 +17,7 @@ import {
 import {
   renameFolderTargetResource,
   validateFolderRenameResult,
-} from "../features/files/folderRenameContract";
+} from "../features/files/fileRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";

@@ -273,6 +273,15 @@ impl PiTranslator {
         })
     }
 
+    pub(crate) fn sole_thinking_levels_request_id(&self) -> Option<&str> {
+        let mut requests = self
+            .pending
+            .iter()
+            .filter(|(_, kind)| **kind == PendingKind::ThinkingLevels);
+        let (id, _) = requests.next()?;
+        requests.next().is_none().then_some(id.as_str())
+    }
+
     fn is_closed_config_read(&self, id: &str, kind: PendingKind) -> bool {
         matches!(kind, PendingKind::State | PendingKind::ThinkingLevels)
             && self.closed_config_requests.contains(id)

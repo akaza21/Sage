@@ -1,14 +1,13 @@
-import type { StateCreator } from "zustand";
-
+import { type StateCreator } from "zustand";
 import {
   parentResource,
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
-import type {
-  EditorContent,
-  EditorContentBase,
+import { type ResourceRef } from "../domain/workbench";
+import {
+  type EditorContent,
+  type EditorContentBase,
 } from "../features/files/editorContent";
 import {
   getFileEditorController,
@@ -16,14 +15,13 @@ import {
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
 import { errorMessage } from "../domain/errors";
-import { enqueueEditorOperation } from "./editorOperations";
 import {
   matchesActiveTabIntent,
   matchesProjectIntent,
   matchesRequestIntent,
   issueRequestIntent,
 } from "./projectIntent";
-import type { WorkbenchState } from "./store";
+import { type WorkbenchState } from "./store";
 
 export type { ActiveEditorState } from "../features/files/fileEditorController";
 
@@ -280,4 +278,35 @@ export function tabsWithEditorUpdate(
       : { ...tab, dirty, status };
   });
   return next.some((tab, index) => tab !== tabs[index]) ? next : tabs;
+}
+
+const MAX_QUEUED_EDITOR_OPERATIONS = 8;
+
+let editorOperationPipeline: Promise<void> = Promise.resolve();
+
+let queuedEditorOperations = 0;
+
+function enqueueEditorOperation<T>(operation: () => Promise<T>): Promise<T> {
+  if (queuedEditorOperations >= MAX_QUEUED_EDITOR_OPERATIONS) {
+    return Promise.reject(
+      new Error(
+        `editor operation queue reached its ${MAX_QUEUED_EDITOR_OPERATIONS}-operation limit`,
+      ),
+    );
+  }
+  queuedEditorOperations += 1;
+  const result = editorOperationPipeline.then(operation, operation);
+  editorOperationPipeline = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  void result.then(
+    () => {
+      queuedEditorOperations -= 1;
+    },
+    () => {
+      queuedEditorOperations -= 1;
+    },
+  );
+  return result;
 }

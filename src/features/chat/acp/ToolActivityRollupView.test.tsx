@@ -2,7 +2,24 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
-import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { PrimaryActivities } from "./PrimaryActivities";
+import type { ComponentProps } from "react";
+import type { ToolRollup } from "./toolActivityRollup";
+function ToolActivityRollup({
+  rollup,
+  ...props
+}: Pick<
+  ComponentProps<typeof PrimaryActivities>,
+  "interactive" | "onOpenResource"
+> & { rollup: ToolRollup }) {
+  return (
+    <PrimaryActivities
+      {...props}
+      items={rollup.items}
+      renderItem={() => null}
+    />
+  );
+}
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import type { TurnProjection } from "../../../domain/acp";
 import {
@@ -85,6 +102,7 @@ function tool(
   id: string,
   kind: ToolItem["payload"]["presentation"]["kind"],
   resources: readonly SafeResourceLocation[] = [],
+  commandActivity: ToolRollup["commandActivity"] = "ordinary",
 ): ToolItem {
   const presentation =
     kind === "read" || kind === "edit" || kind === "delete"
@@ -106,7 +124,7 @@ function tool(
               outputTail: null,
               outputTruncated: false,
               resources: [],
-              activity: "ordinary" as const,
+              activity: commandActivity,
             }
           : kind === "search"
             ? {
@@ -659,8 +677,11 @@ describe("ToolActivityRollup", () => {
               ? "Running tests"
               : "Running a command"
             : settled;
-        const completed = tool("completed", "execute");
-        const unsettled = { ...tool("unsettled", "execute"), toolState };
+        const completed = tool("completed", "execute", [], commandActivity);
+        const unsettled = {
+          ...tool("unsettled", "execute", [], commandActivity),
+          toolState,
+        };
         const { rerender } = render(
           <ToolActivityRollup
             rollup={{
@@ -691,6 +712,10 @@ describe("ToolActivityRollup", () => {
         expect(
           document.querySelector(".acp-tool-rollup__label")?.textContent,
         ).toBe(count);
+        expect(document.querySelector(".acp-tool-rollup")).toHaveAttribute(
+          "data-activity-state",
+          rowState,
+        );
       },
     );
   });
@@ -966,7 +991,7 @@ describe("ToolActivityRollup", () => {
     render(
       <ToolActivityRollup
         rollup={{
-          kind: "search",
+          kind: "mixed",
           commandActivity: "ordinary",
           items: [live(tool("live-search", "search")), command],
         }}

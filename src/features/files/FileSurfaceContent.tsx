@@ -1,9 +1,8 @@
 import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
-import type { Text } from "@codemirror/state";
-
+import { type Text } from "@codemirror/state";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import type { ActiveEditorState } from "./fileEditorController";
+import { type ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import {
   MAX_EDITABLE_CONTENT_BYTES,
@@ -12,11 +11,12 @@ import {
   type EditorContentBase,
 } from "./editorContent";
 import { FileEditorHeader } from "./FileEditorHeader";
-import { FileEditorNotices } from "./FileEditorNotices";
-import type { FindControl, FindOpenRequest } from "./FileFindBar";
-import { FileGoToLineBar } from "./FileGoToLineBar";
+import { type FindControl, type FindOpenRequest } from "./FileFindBar";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
+import { AlertTriangle, X } from "../../ui/leanIcons";
+import { type EditorConflict } from "../../domain/workbench";
+import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLine";
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
@@ -193,5 +193,86 @@ export function FileSurfaceContent({
         </div>
       )}
     </section>
+  );
+}
+
+interface FileEditorNoticesProps {
+  conflict: EditorConflict | null;
+  message: string | null;
+}
+
+function FileEditorNotices({ conflict, message }: FileEditorNoticesProps) {
+  return (
+    <>
+      {conflict ? (
+        <div className="editor-notice editor-notice--conflict" role="alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>
+            <strong>External change detected.</strong> {conflict.message}
+          </span>
+        </div>
+      ) : null}
+      {message && !conflict ? (
+        <div className="editor-notice editor-notice--error" role="alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>{message}</span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+interface FileGoToLineBarProps {
+  inputRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  status: string;
+  onQueryChange: (query: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}
+
+function FileGoToLineBar({
+  inputRef,
+  query,
+  status,
+  onQueryChange,
+  onSubmit,
+  onClose,
+}: FileGoToLineBarProps) {
+  return (
+    <div className="editor-find" role="search" aria-label="Go to line">
+      <label className="editor-find__query">
+        <span className="sr-only">Go to line</span>
+        <input
+          ref={inputRef}
+          type="text"
+          aria-label="Go to line"
+          maxLength={MAX_GOTO_LINE_INPUT_CHARS}
+          value={query}
+          onChange={(event) =>
+            onQueryChange(
+              event.target.value.slice(0, MAX_GOTO_LINE_INPUT_CHARS),
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onSubmit();
+            }
+          }}
+        />
+      </label>
+      <span className="editor-find__status" role="status">
+        {status}
+      </span>
+      <button
+        className="icon-button editor-find__button"
+        type="button"
+        aria-label="Close go to line"
+        onClick={onClose}
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
+    </div>
   );
 }

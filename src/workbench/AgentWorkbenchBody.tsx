@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
@@ -8,6 +8,10 @@ import { AgentToolsProvider } from "./AgentToolsProvider";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import {
+  AgentHomeNavigationContext,
+  navigateAgentHome,
+} from "./agentRailNavigation";
 
 export function AgentWorkbenchBody({
   layout,
@@ -38,6 +42,18 @@ export function AgentWorkbenchBody({
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
     null,
   );
+  const homeFocusPending = useRef(false);
+  useEffect(() => {
+    if (!homeFocusPending.current || drawerOpen) return;
+    homeFocusPending.current = false;
+    navigateAgentHome();
+  }, [drawerOpen]);
+  const navigateHome = () => {
+    if (layout.artifactOverlay) {
+      homeFocusPending.current = true;
+      onArtifactExpandedChange(false);
+    } else navigateAgentHome();
+  };
   return (
     <AgentToolsProvider onOpenTerminal={onOpenTerminal}>
       <div
@@ -49,16 +65,18 @@ export function AgentWorkbenchBody({
           } as CSSProperties
         }
       >
-        {navigationCollapsed ? (
-          <AgentNavigationPart
-            part="AgentCollapsedNavigation"
-            inert={layout.artifactModal}
-            onOpenSettings={() => openSettings()}
-            onExpand={onExpandNavigation}
-          />
-        ) : (
-          <LeftSidebar inert={layout.artifactModal} />
-        )}
+        <AgentHomeNavigationContext.Provider value={navigateHome}>
+          {navigationCollapsed ? (
+            <AgentNavigationPart
+              part="AgentCollapsedNavigation"
+              inert={layout.artifactModal}
+              onOpenSettings={() => openSettings()}
+              onExpand={onExpandNavigation}
+            />
+          ) : (
+            <LeftSidebar inert={layout.artifactModal} />
+          )}
+        </AgentHomeNavigationContext.Provider>
         {layout.navigationResizable ? (
           <WorkbenchSidebarSplitter
             ariaLabel="Resize project and chat rail"

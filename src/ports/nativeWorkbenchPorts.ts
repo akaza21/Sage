@@ -1,37 +1,43 @@
-import type {
-  ChatPort,
-  EditorPort,
-  ProjectPort,
-  RepositoryPort,
-  WorkbenchPorts,
+import {
+  type ChatPort,
+  type EditorPort,
+  type ProjectPort,
+  type RepositoryPort,
+  type WorkbenchPorts,
+  type SettingsPort,
+  type AgentPort,
+  type SendPromptRequest,
 } from "./workbenchPorts";
 import { invokeNative } from "./nativeInvoke";
-import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
-import { nativeSettingsPort } from "./nativeSettingsPort";
 import { startNativeEditorWatchSession } from "./editorWatchSession";
-import type { EditorWatchSubscription } from "../domain/editorWatch";
-import type {
-  BufferSnapshotAck,
-  BufferSnapshotRequest,
-  CreateProjectFileRequest,
-  CreateProjectFileResult,
-  CreateProjectFolderRequest,
-  CreateProjectFolderResult,
-  DirectoryListing,
-  EditorDocument,
-  EditorSaveResult,
-  ProjectLayoutRequest,
-  ProjectSwitchRequest,
-  ProjectTransitionResult,
-  RenameProjectFileRequest,
-  RenameProjectFileResult,
-  RenameProjectFolderRequest,
-  RenameProjectFolderResult,
-  ResourceRef,
-  TextFile,
-  TrashProjectResourceRequest,
-  TrashProjectResourceResult,
+import { type EditorWatchSubscription } from "../domain/editorWatch";
+import {
+  type BufferSnapshotAck,
+  type BufferSnapshotRequest,
+  type CreateProjectFileRequest,
+  type CreateProjectFileResult,
+  type CreateProjectFolderRequest,
+  type CreateProjectFolderResult,
+  type DirectoryListing,
+  type EditorDocument,
+  type EditorSaveResult,
+  type ProjectLayoutRequest,
+  type ProjectSwitchRequest,
+  type ProjectTransitionResult,
+  type RenameProjectFileRequest,
+  type RenameProjectFileResult,
+  type RenameProjectFolderRequest,
+  type RenameProjectFolderResult,
+  type ResourceRef,
+  type TextFile,
+  type TrashProjectResourceRequest,
+  type TrashProjectResourceResult,
+  type ModelOption,
+  type SimulatorTurnResult,
 } from "../domain/workbench";
+import { type EditorSettings } from "../domain/editorSettingsCatalogue";
+import { type SessionAccessModes } from "../domain/sessionAccessMode";
+import { type UiAppearance } from "../domain/uiAppearance";
 
 const project: ProjectPort = {
   getBootstrapSnapshot() {
@@ -288,3 +294,40 @@ export function createNativeWorkbenchPorts(): WorkbenchPorts {
     settings: nativeSettingsPort,
   };
 }
+
+const nativeSettingsPort: SettingsPort = {
+  getEditorSettings(): Promise<Record<string, unknown>> {
+    return invokeNative("get_editor_settings");
+  },
+  setEditorSettings(
+    changes: Partial<EditorSettings>,
+  ): Promise<Record<string, unknown>> {
+    return invokeNative("set_editor_settings", { changes });
+  },
+  getSessionAccessModes(): Promise<SessionAccessModes> {
+    return invokeNative("get_session_access_modes");
+  },
+  setSessionAccessModes(
+    modes: SessionAccessModes,
+  ): Promise<SessionAccessModes> {
+    return invokeNative("set_session_access_modes", { modes });
+  },
+  getUiAppearance(): Promise<UiAppearance> {
+    return invokeNative("get_ui_appearance");
+  },
+  setUiAppearance(appearance: UiAppearance): Promise<UiAppearance> {
+    return invokeNative("set_ui_appearance", { appearance });
+  },
+};
+
+const nativeWorkbenchAgentPort: AgentPort = {
+  listHarnesses() {
+    return invokeNative("list_harnesses");
+  },
+  listHarnessModels(harnessId: string): Promise<ModelOption[]> {
+    return invokeNative("list_harness_models", { harnessId });
+  },
+  sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult> {
+    return invokeNative("send_simulated_prompt", { ...request });
+  },
+};

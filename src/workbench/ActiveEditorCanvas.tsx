@@ -1,10 +1,8 @@
-import { FileCode2 } from "../ui/leanIcons";
-
-import { useWorkbenchStore } from "../app/store";
-import type { WorkbenchTab } from "../domain/workbench";
+import { FileCode2, Files, MessageSquare, Search } from "../ui/leanIcons";
+import { useWorkbenchStore, type SidebarView } from "../app/store";
+import { type WorkbenchTab } from "../domain/workbench";
 import { sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
-import { EditorWelcome } from "./EditorWelcome";
 import { renderFileOrDiffCanvas } from "./surfaceRegistry";
 import { isAgentArtifactTabKind } from "./workbenchWindowMode";
 
@@ -92,5 +90,34 @@ export function ActiveEditorCanvas({
       ) : null}
       {showEditorEmpty ? <EditorWelcome onOpenAgent={onOpenAgent} /> : null}
     </div>
+  );
+}
+
+function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
+  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
+
+  const openView = (view: SidebarView) => setSidebarView(view);
+
+  return (
+    <section className="editor-welcome" aria-label="Editor welcome">
+      <div className="editor-welcome__mark" aria-hidden="true">
+        S
+      </div>
+      <div className="editor-welcome__actions">
+        <button type="button" onClick={() => openView("explorer")}>
+          <Files size={16} aria-hidden="true" />
+          Browse files
+        </button>
+        <button type="button" onClick={() => openView("search")}>
+          <Search size={16} aria-hidden="true" />
+          Search files
+        </button>
+        <button type="button" onClick={onOpenAgent}>
+          <MessageSquare size={16} aria-hidden="true" />
+          Open Agent
+        </button>
+      </div>
+      <p>Use Settings to tune how every File is displayed.</p>
+    </section>
   );
 }

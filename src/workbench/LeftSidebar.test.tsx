@@ -47,8 +47,10 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
   fireEvent.click(
     within(
       screen.getByRole("navigation", { name: "Primary navigation" }),
-    ).getByRole("button", { name: "New chat" }),
+    ).getByRole("button", { name: "Home" }),
   );
+  expect(createChat).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "New task" }));
   expect(createChat).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();

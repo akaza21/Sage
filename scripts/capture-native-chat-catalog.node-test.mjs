@@ -18,7 +18,7 @@ test("capture accessible selectors stay anchored to product controls", () => {
   const source = (file) =>
     readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const effort = readFileSync(
-    new URL("../src/features/chat/ComposerEffortControl.tsx", import.meta.url),
+    new URL("../src/features/chat/ComposerModelControls.tsx", import.meta.url),
     "utf8",
   );
   assert.ok(effort.includes('title="Select effort"'));

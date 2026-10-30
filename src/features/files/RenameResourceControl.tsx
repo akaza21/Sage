@@ -10,7 +10,7 @@ import type { ResourceRef } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
 import { renameTargetResource } from "./fileRenameContract";
-import { renameFolderTargetResource } from "./folderRenameContract";
+import { renameFolderTargetResource } from "./fileRenameContract";
 import { errorMessage } from "../../domain/errors";
 
 export function RenameResourceControl({

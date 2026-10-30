@@ -29,7 +29,7 @@ import { isTauriRuntime } from "../ports/desktopRuntime";
 import type { ResourceRef } from "../domain/workbench";
 import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
-import { safeProjectionChanged } from "./acpDesktopProjection";
+import { getChatStatus, safeProjectionChanged } from "./acpDesktopProjection";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
 import {
   isOneOf,
@@ -204,6 +204,7 @@ async function invokeAcpMutation<Request extends object>(
 
 import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
 export const acpDesktop = {
+  getChatStatus,
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
   pauseExistingGoal(
     request: AcpSessionMutationIntent,

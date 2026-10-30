@@ -244,7 +244,7 @@ describe("TitleBar center chrome", () => {
     expect(
       screen.queryByRole("button", { name: "Open projects and chats" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New task" })).toBeVisible();
     titleSearch.focus();
     fireEvent.click(titleSearch);
     const dialog = screen.getByRole("dialog", { name: "Search Chats" });
@@ -261,7 +261,7 @@ describe("TitleBar center chrome", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(titleSearch).toHaveFocus());
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("button", { name: "New chat" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New task" })).toBeVisible();
     expect(useWorkbenchStore.getState().sidebarOpen).toBe(false);
   });
 

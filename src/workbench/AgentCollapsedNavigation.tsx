@@ -4,8 +4,7 @@ import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScop
 import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
 import { ChatSearchGate } from "./LeftSidebar";
 import { agentRailSectionSelectors } from "./agentRailNavigation";
-
-export { AgentNewChatButton } from "./AgentNewChatButton";
+import { SquarePen } from "../ui/leanIcons";
 
 export function AgentCollapsedNavigation({
   inert,
@@ -20,7 +19,6 @@ export function AgentCollapsedNavigation({
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const createChat = useWorkbenchStore((state) => state.createChat);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   return (
     <aside
@@ -31,7 +29,6 @@ export function AgentCollapsedNavigation({
     >
       <ChatSearchGate triggerRef={triggerRef} />
       <AgentPrimaryNavigation
-        onNewChat={() => void createChat()}
         onSearch={() => {
           if (project) requestChatSearchInFolder(project.id);
         }}
@@ -54,5 +51,23 @@ export function AgentCollapsedNavigation({
         }}
       />
     </aside>
+  );
+}
+
+export function AgentNewChatButton() {
+  const transitioning = useWorkbenchStore(
+    (state) => state.projectTransitioning,
+  );
+  return (
+    <button
+      className="agent-task-header__pencil"
+      type="button"
+      aria-label="New chat"
+      title="New chat"
+      disabled={transitioning}
+      onClick={() => void useWorkbenchStore.getState().createChat()}
+    >
+      <SquarePen size={15} aria-hidden="true" />
+    </button>
   );
 }

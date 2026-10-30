@@ -12,7 +12,6 @@ use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
 
-#[cfg(test)]
 use super::types::HostState;
 use super::{
     actor::Actor,
@@ -255,7 +254,6 @@ impl RuntimeHost {
         self.outcome_until(HostCommand::ProjectSwitched(project), deadline)
     }
 
-    #[cfg(test)]
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),

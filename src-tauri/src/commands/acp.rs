@@ -1,5 +1,6 @@
 #[cfg(all(windows, feature = "acp-fixture"))]
 mod characterization;
+pub(crate) mod chat_status;
 pub(crate) mod child_transcript;
 pub(crate) mod claude_auth;
 pub(crate) mod codex_auth;
@@ -145,16 +146,7 @@ pub(crate) async fn get_acp_chat_page_inner(
     Ok(page)
 }
 
-#[tauri::command]
-pub async fn get_acp_file_snapshot(
-    state: State<'_, AppState>,
-    request: GetAcpFileSnapshotRequest,
-) -> Result<AcpFileSnapshotResponse, AcpIpcError> {
-    get_acp_file_snapshot_inner(&state, request).await
-}
-
-mod file_snapshot;
-pub(crate) use file_snapshot::get_acp_file_snapshot_inner;
+pub(crate) mod file_snapshot;
 
 #[tauri::command]
 pub async fn start_acp_session(

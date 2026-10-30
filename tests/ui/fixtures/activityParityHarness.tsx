@@ -61,7 +61,7 @@ if (
 }
 if (running && command.payload.presentation.kind === "execute") {
   command.payload.presentation.summary =
-    "git diff --stat -- src/features/chat/acp/ToolActivityRollupView.tsx";
+    "git diff --stat -- src/features/chat/acp/PrimaryActivities.tsx";
 }
 const notice = {
   ...textItem(),

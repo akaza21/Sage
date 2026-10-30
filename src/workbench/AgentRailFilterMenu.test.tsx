@@ -13,10 +13,8 @@ afterEach(() => {
 });
 
 it("keeps expanded navigation free of duplicate search and settings controls", () => {
-  const onNewChat = vi.fn();
-  render(<AgentPrimaryNavigation onNewChat={onNewChat} />);
-  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-  expect(onNewChat).toHaveBeenCalledOnce();
+  render(<AgentPrimaryNavigation />);
+  expect(screen.getByRole("button", { name: "Home" })).toBeVisible();
   expect(screen.getAllByRole("button")).toHaveLength(3);
   expect(screen.queryByRole("button", { name: "Search chats" })).toBeNull();
 });
@@ -27,9 +25,7 @@ it("expands each section before delegating collapsed-rail navigation", () => {
   const onNavigate = vi.fn((target: "Recent" | "Projects") => {
     expect(agentRailSectionCollapsed(target.toLowerCase())).toBe(false);
   });
-  render(
-    <AgentPrimaryNavigation onNewChat={vi.fn()} onNavigate={onNavigate} />,
-  );
+  render(<AgentPrimaryNavigation onNavigate={onNavigate} />);
   fireEvent.click(screen.getByRole("button", { name: "Go to recent chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Go to projects" }));
   expect(onNavigate.mock.calls).toEqual([["Recent"], ["Projects"]]);
@@ -40,7 +36,6 @@ it("retains search and settings actions for the collapsed rail", () => {
   const onSettings = vi.fn();
   const mounted = render(
     <AgentPrimaryNavigation
-      onNewChat={vi.fn()}
       onSearch={onSearch}
       onSettings={onSettings}
       searchDisabled
@@ -52,7 +47,6 @@ it("retains search and settings actions for the collapsed rail", () => {
   expect(onSearch).not.toHaveBeenCalled();
   mounted.rerender(
     <AgentPrimaryNavigation
-      onNewChat={vi.fn()}
       onSearch={onSearch}
       onSettings={onSettings}
       searchDisabled={false}

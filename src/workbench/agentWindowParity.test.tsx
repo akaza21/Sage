@@ -133,7 +133,7 @@ it("starts a fresh profile in Agent, and never adds a chat when resources collap
   );
   resizeCenter(1200);
   expect(visibleChats()).toEqual(["chat:b"]);
-  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  fireEvent.click(screen.getByRole("button", { name: "New task" }));
   expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
   expect(visibleChats()).toEqual(["chat:new"]);
 });

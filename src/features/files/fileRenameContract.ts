@@ -3,9 +3,10 @@ import {
   sameOrDescendantResource,
   sameResource,
 } from "../../domain/resourceIdentity";
-import type {
-  RenameProjectFileResult,
-  ResourceRef,
+import {
+  type RenameProjectFileResult,
+  type ResourceRef,
+  type RenameProjectFolderResult,
 } from "../../domain/workbench";
 import { newFileResource, validateNewFilePath } from "./newFileContract";
 
@@ -107,4 +108,18 @@ export function validateResourceRenameResult(
     );
   }
   return result.resourceConfirmed;
+}
+
+export function renameFolderTargetResource(
+  source: ResourceRef,
+  basename: string,
+): ResourceRef {
+  return renameTargetResource(source, basename);
+}
+
+export function validateFolderRenameResult(
+  result: RenameProjectFolderResult,
+  expected: RenameExpectation,
+): boolean {
+  return validateResourceRenameResult(result, expected, "directory");
 }

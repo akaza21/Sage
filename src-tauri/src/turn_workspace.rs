@@ -24,7 +24,7 @@ pub(crate) use ledger::{
 pub(crate) use terminal_capture::discard_rejected_staging;
 #[cfg(test)]
 pub(crate) use terminal_capture::freeze_session_for_test;
-pub(crate) use terminal_capture::prepare_terminal;
+pub(crate) use terminal_capture::{needs_terminal_capture, prepare_terminal};
 
 #[cfg(test)]
 pub(crate) fn capture_test_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -52,6 +52,8 @@ pub(crate) struct WorkspaceMark {
     /// Paths committed since the baseline HEAD (terminal marks only).
     #[serde(default)]
     committed: BTreeMap<String, TurnWorkspaceOperation>,
+    #[serde(default)]
+    terminal_presence: BTreeMap<String, bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -102,6 +104,9 @@ fn parse_mark(
         let Ok(path) = std::str::from_utf8(&record[3..]) else {
             continue;
         };
+        if excluded_path(path) {
+            continue;
+        }
         if entries.len() == MAX_TURN_WORKSPACE_CHANGES {
             truncated = true;
             break;
@@ -126,7 +131,15 @@ fn parse_mark(
         truncated,
         head: None,
         committed: BTreeMap::new(),
+        terminal_presence: BTreeMap::new(),
     })
+}
+
+/// The Git runner treats all pathspecs literally. Apply directory exclusions
+/// to its bounded output before paths consume the 300-change budget.
+fn excluded_path(path: &str) -> bool {
+    path.split('/')
+        .any(|part| part.eq_ignore_ascii_case("node_modules") || part.eq_ignore_ascii_case(".git"))
 }
 
 /// Paths that appeared, disappeared, or changed between two marks.
@@ -167,11 +180,19 @@ pub(crate) fn diff_marks(before: &WorkspaceMark, after: &WorkspaceMark) -> TurnW
     }
     for path in before.entries.keys() {
         if !after.entries.contains_key(path) {
-            // Dirty before, clean now: the turn reverted or committed it.
             let operation = after
                 .committed
                 .get(path)
                 .copied()
+                .or_else(|| {
+                    after.terminal_presence.get(path).map(|present| {
+                        if *present {
+                            TurnWorkspaceOperation::Updated
+                        } else {
+                            TurnWorkspaceOperation::Deleted
+                        }
+                    })
+                })
                 .unwrap_or(TurnWorkspaceOperation::Updated);
             push(path, operation);
         }

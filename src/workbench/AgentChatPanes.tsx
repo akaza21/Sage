@@ -7,7 +7,6 @@ import {
   useState,
 } from "react";
 import { useStore } from "zustand";
-
 import {
   acpProjectionStoreFor,
   pinAcpProjectionIds,
@@ -19,12 +18,17 @@ import {
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
-import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
-import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
+import {
+  pinUnreadAckIds,
+  ackChatUnread,
+  chatActivityFingerprint,
+} from "../features/chat/acp/chatUnread";
+import {
+  type HarnessBrowseOwner,
+  setHarnessBrowseOwner,
+} from "../features/preview/harnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
-import { AgentChatPane } from "./AgentChatPane";
 import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
@@ -32,6 +36,10 @@ import { lazyParts } from "../features/chat/lazyParts";
 import type * as SplitterChunk from "./AgentChatSplitter";
 import { AGENT_CHAT_SPLIT_MIN_CONTAINER } from "./agentChatSplit";
 import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
+import { chatDisplayTitle } from "../domain/chatTitle";
+import { type WorkbenchTab } from "../domain/workbench";
+import { type ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import { renderRegisteredCanvas } from "./surfaceRegistry";
 
 const SplitterPart = lazyParts<typeof SplitterChunk>(
   () => import("./AgentChatSplitter"),
@@ -260,5 +268,81 @@ export function AgentChatPanes({
         <TranscriptPart part="SideChatDialogs" />
       ) : null}
     </AgentSessionChromeContext.Provider>
+  );
+}
+
+/** Recently focused Chats whose harness Preview session survives a switch. */
+const MAX_RETAINED_BROWSE_CHATS = 2;
+
+/**
+ * AP-A1 shows one Chat in the centre, so "displayed" alone would drop a
+ * Chat's harness Preview the moment another Chat is selected. Retain the two
+ * most recently focused Chats instead (an explicit side split keeps its two
+ * panes), and keep the current owner while the next Chat's projection loads.
+ */
+function useRetainedHarnessBrowse(
+  owner: HarnessBrowseOwner | null,
+  displayedIds: readonly string[],
+  chatIds: readonly string[],
+  ownerLoading: boolean,
+): void {
+  const recent = useRef<string[]>([]);
+  useLayoutEffect(() => {
+    if (!owner) {
+      if (ownerLoading) return;
+      recent.current = [];
+      setHarnessBrowseOwner(null);
+      return;
+    }
+    recent.current = [
+      owner.chatId,
+      ...recent.current.filter(
+        (id) => id !== owner.chatId && chatIds.includes(id),
+      ),
+    ].slice(0, MAX_RETAINED_BROWSE_CHATS);
+    setHarnessBrowseOwner(
+      owner,
+      displayedIds.length > 1 ? displayedIds : recent.current,
+    );
+  }, [owner, displayedIds, chatIds, ownerLoading]);
+}
+
+function AgentChatPane({
+  tab,
+  focused,
+  onFocus,
+  snapshot: providedSnapshot,
+}: {
+  tab: WorkbenchTab;
+  focused: boolean;
+  onFocus: () => void;
+  snapshot?: ChatLiveSnapshot;
+}) {
+  const ownSnapshot = useAcpChatLiveSnapshot(tab.id, !providedSnapshot);
+  const snapshot = providedSnapshot ?? ownSnapshot;
+  const title = chatDisplayTitle(tab.title);
+  const activityFingerprint = chatActivityFingerprint(snapshot);
+  if (focused && activityFingerprint.length > 0) {
+    ackChatUnread(tab.id, activityFingerprint);
+  }
+
+  function handleFocus() {
+    ackChatUnread(tab.id, activityFingerprint);
+    onFocus();
+  }
+
+  // Under Agent chrome the pane has no header of its own: the task header
+  // names the focused Chat, and a side chat's tab sits in the center
+  // header row (Codex s2/f0244).
+  return (
+    <section
+      className={`agent-chat-pane${focused ? " agent-chat-pane--focused" : ""}`}
+      aria-label={`Chat pane ${title}`}
+      data-chat-id={tab.id}
+      tabIndex={-1}
+      onFocus={handleFocus}
+    >
+      {renderRegisteredCanvas("chat", tab)}
+    </section>
   );
 }

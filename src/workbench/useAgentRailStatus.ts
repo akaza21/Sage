@@ -7,9 +7,9 @@ import type {
 } from "../domain/acp";
 import { isTauriRuntime } from "../ports/desktopRuntime";
 import { acpDesktop } from "../services/acpDesktop";
-import { mirrorAgentRailProjection } from "./useAgentRailProjection";
+import { mirrorAgentRailStatus } from "./useAgentRailProjection";
 
-export function useAgentRailStatus() {
+export function useAgentRailStatus(visible: boolean) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.projectGeneration);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -17,7 +17,7 @@ export function useAgentRailStatus() {
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (!isTauriRuntime() || !projectId || transitioning) return;
+    if (!visible || !isTauriRuntime() || !projectId || transitioning) return;
     let disposed = false;
     let pending = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -40,15 +40,14 @@ export function useAgentRailStatus() {
       if (chatId) {
         dirty.delete(chatId);
         const page = await acpDesktop
-          .getChatPage({
+          .getChatStatus({
             projectId: projectId as SageProjectId,
             projectGeneration: String(epoch) as ProjectGeneration,
             chatId: chatId as SageChatId,
-            cursor: null,
           })
           .catch(() => null);
         if (page && current() && page.chatId === chatId)
-          mirrorAgentRailProjection(page);
+          mirrorAgentRailStatus(page);
       }
       pending = false;
       schedule();
@@ -92,5 +91,5 @@ export function useAgentRailStatus() {
       dirty.clear();
       unlisten?.();
     };
-  }, [projectId, generation, epoch, transitioning]);
+  }, [visible, projectId, generation, epoch, transitioning]);
 }

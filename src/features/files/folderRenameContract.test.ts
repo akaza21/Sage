@@ -7,7 +7,7 @@ import type {
 import {
   renameFolderTargetResource,
   validateFolderRenameResult,
-} from "./folderRenameContract";
+} from "./fileRenameContract";
 
 const source: ResourceRef = { rootId: "root-a", relativePath: "src/empty" };
 const target: ResourceRef = {

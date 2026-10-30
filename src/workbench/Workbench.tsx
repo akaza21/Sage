@@ -180,7 +180,6 @@ function RendererRecreationPacketCollector({
 }
 
 export function Workbench() {
-  useAgentRailStatus();
   const agentSettingsPage = useAgentSettingsState(
     (state) => state.page !== null,
   );
@@ -194,6 +193,9 @@ export function Workbench() {
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const [agentNavigationCollapsed, setAgentNavigationCollapsed] =
     useState(false);
+  useAgentRailStatus(
+    windowMode === "agent" && !agentSettingsPage && !agentNavigationCollapsed,
+  );
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
     useAgentDesktopSidebarWidths(
       agentArtifactExpanded,

@@ -1,8 +1,4 @@
-import type { GitRecentCommit } from "../domain/workbench";
-import {
-  shortCommitSha,
-  visibleRecentCommits,
-} from "../features/git/recentCommits";
+import { type GitRecentCommit } from "../domain/workbench";
 
 interface Props {
   rootLabel: string;
@@ -50,4 +46,42 @@ export function SourceCommitList({
       ) : null}
     </>
   );
+}
+
+const MAX_RECENT_COMMITS = 64;
+
+const SHORT_COMMIT_SHA_CHARS = 7;
+
+const FULL_SHA = /^[0-9a-f]{40}$/u;
+
+interface RecentCommit {
+  sha: string;
+  subject: string;
+}
+
+function admitRecentCommitSha(sha: string): string | null {
+  const normalized = sha.trim().toLowerCase();
+  return FULL_SHA.test(normalized) ? normalized : null;
+}
+
+function shortCommitSha(sha: string): string | null {
+  const admitted = admitRecentCommitSha(sha);
+  return admitted ? admitted.slice(0, SHORT_COMMIT_SHA_CHARS) : null;
+}
+
+function visibleRecentCommits(
+  commits: readonly RecentCommit[] | undefined,
+): RecentCommit[] {
+  const visible: RecentCommit[] = [];
+  for (const commit of commits ?? []) {
+    const sha = admitRecentCommitSha(commit.sha);
+    if (!sha) {
+      continue;
+    }
+    visible.push({ sha, subject: commit.subject });
+    if (visible.length === MAX_RECENT_COMMITS) {
+      break;
+    }
+  }
+  return visible;
 }

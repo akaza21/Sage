@@ -172,6 +172,11 @@
   outline-offset: -1px;
 }
 
+.agent-chat-pane:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
 .agent-chat-pane__title {
   min-width: 0;
   overflow: hidden;

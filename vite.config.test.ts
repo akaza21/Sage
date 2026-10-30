@@ -176,7 +176,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
   "src/workbench/AgentArtifactTabStrip.tsx",
-  "src/workbench/AgentChatPane.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
   "src/workbench/AgentRailFilterMenu.tsx",
@@ -555,7 +554,7 @@ describe("desktop-native chunk topology", () => {
     const groupedGraph = graphInventory(grouped);
     const files = [
       "src/features/chat/acp/TurnActivityItem.tsx",
-      "src/features/chat/acp/ToolActivityRollupView.tsx",
+      "src/features/chat/acp/PrimaryActivities.tsx",
       "src/features/chat/acp/ChatCodeBlock.tsx",
     ].map((id) => groupedGraph.moduleFiles.get(id));
     expect(files.every((file) => typeof file === "string")).toBe(true);
