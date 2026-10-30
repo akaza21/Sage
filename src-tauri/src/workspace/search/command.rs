@@ -132,7 +132,11 @@ async fn prepare_request(
             absolute_path: root.absolute_path,
         })
         .collect();
-    Ok(HelperRequest::new(request.clone(), roots))
+    Ok(HelperRequest::new(
+        request.clone(),
+        roots,
+        crate::workspace::ignore_rules::global_excludes_path(),
+    ))
 }
 
 fn validate_active_project(

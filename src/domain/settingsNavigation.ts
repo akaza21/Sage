@@ -1,4 +1,5 @@
 import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
+import { EDITOR_SETTING_COPY } from "./editorSettingsCopy";
 import { KEYMAP_BINDINGS, type KeymapBinding } from "./keymapRegistry";
 
 /**
@@ -153,9 +154,9 @@ export interface SettingsPage {
 const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   ...EDITOR_SETTINGS.map((spec) => ({
     id: spec.key,
-    label: spec.label,
-    description: spec.description,
-    group: spec.group,
+    label: EDITOR_SETTING_COPY[spec.key].label,
+    description: EDITOR_SETTING_COPY[spec.key].description,
+    group: EDITOR_SETTING_COPY[spec.key].group,
   })),
   {
     id: "reset",

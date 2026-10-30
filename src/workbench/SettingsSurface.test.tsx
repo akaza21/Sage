@@ -98,9 +98,19 @@ describe("SettingsSurface", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
-    expect(screen.getAllByText("Default: On")).toHaveLength(5);
+    expect(screen.getAllByText("Default: On")).toHaveLength(6);
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
     expect(screen.getByText("Default: Alt")).toBeInTheDocument();
+    expect(screen.getByText("Default: Dimmed")).toBeInTheDocument();
+    const files = screen.getByRole("group", { name: "Files" });
+    const search = screen.getByRole("group", { name: "Search" });
+    expect(within(search).getByLabelText("Use ignore files")).toBeChecked();
+    const ignored = within(files).getByLabelText("Ignored files in Explorer");
+    expect(
+      within(ignored)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Dimmed", "Hidden"]);
     expect(screen.getByRole("searchbox")).toHaveClass("input");
     const display = screen.getByRole("group", { name: "Text" });
     const indentation = screen.getByRole("group", { name: "Editing" });
@@ -152,8 +162,12 @@ describe("SettingsSurface", () => {
     fireEvent.click(screen.getByLabelText("Show whitespace"));
     fireEvent.click(screen.getByLabelText("Code folding"));
     fireEvent.change(modifier, { target: { value: "ctrlCmd" } });
+    fireEvent.click(within(search).getByLabelText("Use ignore files"));
+    fireEvent.change(ignored, { target: { value: "hidden" } });
     expect(useEditorSettingsStore.getState().settings).toEqual({
       ...DEFAULT_EDITOR_SETTINGS,
+      "search.useIgnoreFiles": false,
+      "explorer.showIgnored": "hidden",
       "editor.folding": false,
       "editor.multiCursorModifier": "ctrlCmd",
       "editor.fontSize": 16,

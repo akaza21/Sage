@@ -16,6 +16,8 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 base64 = "=0.22.1"
+# Gitignore rules for workspace walks (EDIT-0005 AD-3); only its matcher is used.
+ignore = "=0.4.34"
 png = "=0.17.16"
 jpeg-decoder = { version = "=0.3.2", default-features = false }
 agent-client-protocol-schema = { version = "=1.4.0", optional = true, default-features = false }

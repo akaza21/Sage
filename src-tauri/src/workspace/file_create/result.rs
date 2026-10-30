@@ -95,6 +95,9 @@ fn reconciled_listing(
         resource,
         kind: kind.label().into(),
         byte_len: kind.byte_len(),
+        // Used only when the fresh listing failed; the next listing brings
+        // the ignore state.
+        ignored: false,
     });
     before.entries.sort_unstable_by(|left, right| {
         let rank = |kind: &str| u8::from(kind != "directory");

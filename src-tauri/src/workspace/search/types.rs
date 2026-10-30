@@ -47,6 +47,14 @@ pub struct WorkspaceSearchRequest {
     pub include_patterns: Vec<String>,
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
+    /// Skip what `.gitignore`, `.ignore` and Git's exclude files ignore
+    /// (`search.useIgnoreFiles`).
+    #[serde(default = "use_ignore_files_default")]
+    pub use_ignore_files: bool,
+}
+
+fn use_ignore_files_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,6 +251,10 @@ fn search_filter_hash(request: &WorkspaceSearchRequest) -> String {
             hasher.update((pattern.len() as u64).to_be_bytes());
             hasher.update(pattern.as_bytes());
         }
+    }
+    // Only the non-default choice is hashed, so earlier tokens stay valid.
+    if !request.use_ignore_files {
+        hasher.update(b"n");
     }
     format!("{:x}", hasher.finalize())
 }

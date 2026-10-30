@@ -9,10 +9,13 @@ import {
   admitEditorSetting,
   admitEditorSettings,
   DEFAULT_EDITOR_SETTINGS,
-  EDITOR_SETTING_GROUPS,
   EDITOR_SETTINGS,
   type EditorSettingSpec,
 } from "./editorSettingsCatalogue";
+import {
+  EDITOR_SETTING_COPY,
+  EDITOR_SETTING_GROUPS,
+} from "./editorSettingsCopy";
 
 const spec = (key: string): EditorSettingSpec => {
   const found = EDITOR_SETTINGS.find((entry) => entry.key === key);
@@ -130,18 +133,24 @@ describe("editor settings catalogue", () => {
     expect(EDITOR_SETTINGS.map(storedShape)).toEqual(rust);
   });
 
-  it("gives every entry a unique key, a known group and a default it admits", () => {
+  it("gives every entry a unique key, words in a known group and a default it admits", () => {
     expect(new Set(EDITOR_SETTINGS.map((entry) => entry.key)).size).toBe(
       EDITOR_SETTINGS.length,
     );
+    expect(Object.keys(EDITOR_SETTING_COPY).sort()).toEqual(
+      EDITOR_SETTINGS.map((entry) => entry.key).sort(),
+    );
     for (const entry of EDITOR_SETTINGS) {
-      expect(EDITOR_SETTING_GROUPS).toContain(entry.group);
+      const copy = EDITOR_SETTING_COPY[entry.key];
+      expect(EDITOR_SETTING_GROUPS).toContain(copy.group);
       expect(admitEditorSetting(entry, entry.default)).toBe(entry.default);
-      expect(entry.label).not.toBe("");
-      expect(entry.description).not.toBe("");
+      expect(copy.label).not.toBe("");
+      expect(copy.description).not.toBe("");
+      expect(copy.unit !== undefined).toBe(entry.kind === "integer");
+      expect(copy.choiceLabels !== undefined).toBe(entry.kind === "choice");
       if (entry.kind === "choice") {
         for (const choice of entry.choices) {
-          expect(entry.choiceLabels[choice]).toHaveLength(2);
+          expect(copy.choiceLabels?.[choice]).toHaveLength(2);
         }
       }
     }

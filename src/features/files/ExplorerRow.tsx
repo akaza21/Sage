@@ -36,7 +36,7 @@ export const ExplorerRow = memo(
       <button
         className={`tree__row ${directory ? "tree__row--folder" : ""} ${
           selected ? "tree__row--selected" : ""
-        }`}
+        } ${entry.ignored ? "tree__row--ignored" : ""}`}
         data-resource-key={key}
         ref={ref}
         type="button"

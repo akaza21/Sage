@@ -65,7 +65,64 @@ mod tests {
             whole_word: false,
             include_patterns: Vec::new(),
             exclude_patterns: Vec::new(),
+            use_ignore_files: true,
         }
+    }
+
+    #[test]
+    fn skips_what_ignore_files_ignore_unless_asked_not_to() {
+        let (path, root) = fixture_root();
+        fs::write(path.join(".gitignore"), "*.log\nbuild/\n!keep.log\n").unwrap();
+        fs::create_dir_all(path.join("build")).unwrap();
+        fs::create_dir_all(path.join("src")).unwrap();
+        fs::write(path.join("src").join(".ignore"), "scratch.txt\n").unwrap();
+        for file in [
+            "kept.txt",
+            "debug.log",
+            "keep.log",
+            "build/out.txt",
+            "src/scratch.txt",
+            "src/lib.txt",
+        ] {
+            fs::write(path.join(file), "needle\n").unwrap();
+        }
+        let found = |use_ignore_files: bool, root| {
+            let mut paths = SearchEngine::new(test_limits())
+                .search(
+                    WorkspaceSearchRequest {
+                        use_ignore_files,
+                        ..request("needle")
+                    },
+                    vec![root],
+                )
+                .unwrap()
+                .matches
+                .into_iter()
+                .map(|found| found.resource.relative_path)
+                .collect::<Vec<_>>();
+            paths.sort();
+            paths
+        };
+        assert_eq!(found(true, root), ["keep.log", "kept.txt", "src/lib.txt"]);
+        let root = SearchRoot {
+            root_id: "root-test".into(),
+            root_name: "fixture".into(),
+            source: SearchRootSource::Available(
+                Workspace::open("project-test", "root-test", &path).unwrap(),
+            ),
+        };
+        assert_eq!(
+            found(false, root),
+            [
+                "build/out.txt",
+                "debug.log",
+                "keep.log",
+                "kept.txt",
+                "src/lib.txt",
+                "src/scratch.txt"
+            ]
+        );
+        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -431,6 +488,39 @@ mod tests {
             .search(
                 WorkspaceSearchRequest {
                     continuation_token: first.continuation_token,
+                    ..request("needle")
+                },
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(workspace),
+                }],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("workspace search continuation is stale")
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn continuation_with_a_different_ignore_file_choice_is_stale() {
+        let (path, root) = fixture_root();
+        fs::write(path.join("another.txt"), "needle needle\n").unwrap();
+        let first = SearchEngine::new(SearchLimits {
+            max_results: 1,
+            ..test_limits()
+        })
+        .search(request("needle"), vec![root])
+        .unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
+        let error = SearchEngine::new(test_limits())
+            .search(
+                WorkspaceSearchRequest {
+                    continuation_token: first.continuation_token,
+                    use_ignore_files: false,
                     ..request("needle")
                 },
                 vec![SearchRoot {

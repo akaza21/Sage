@@ -58,6 +58,10 @@ pub struct WorkspaceEntry {
     pub resource: ResourceRef,
     pub kind: String,
     pub byte_len: Option<u64>,
+    /// An ignore file ignores the entry, so Explorer dims or hides it. Sent
+    /// only when true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignored: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

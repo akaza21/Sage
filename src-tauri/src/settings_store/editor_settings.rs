@@ -129,6 +129,20 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         default: SettingValue::Text("alt"),
         ticket: "EP-03",
     },
+    SettingSpec {
+        key: "search.useIgnoreFiles",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-06",
+    },
+    SettingSpec {
+        key: "explorer.showIgnored",
+        kind: SettingKind::Choice {
+            choices: &["dimmed", "hidden"],
+        },
+        default: SettingValue::Text("dimmed"),
+        ticket: "EP-06",
+    },
 ];
 
 /// Every registry key with its current value; keys never go missing.
@@ -349,7 +363,13 @@ mod tests {
         let mut keys = HashSet::new();
         for spec in EDITOR_SETTINGS {
             assert!(keys.insert(spec.key), "duplicate key {}", spec.key);
-            assert!(spec.key.starts_with("editor."), "{}", spec.key);
+            assert!(
+                ["editor.", "explorer.", "search."]
+                    .iter()
+                    .any(|prefix| spec.key.starts_with(prefix)),
+                "{}",
+                spec.key
+            );
             assert!(
                 spec.ticket.len() == 5 && spec.ticket.starts_with("EP-"),
                 "{} has no owning ticket",
@@ -611,6 +631,8 @@ mod tests {
                 "editor.folding": true,
                 "editor.occurrencesHighlight": true,
                 "editor.multiCursorModifier": "alt",
+                "search.useIgnoreFiles": true,
+                "explorer.showIgnored": "dimmed",
             })
         );
     }
