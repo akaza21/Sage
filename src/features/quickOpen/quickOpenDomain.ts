@@ -56,12 +56,13 @@ export function parseQuickOpenInput(text: string): {
   line: number | null;
   column: number | null;
 } {
-  const suffix = /:(\d{1,9})(?::(\d{1,9}))?\s*$/u.exec(text);
+  // A ":" being typed is already a suffix, so `name:` asks for `name`.
+  const suffix = /:(\d{0,9})(?::(\d{0,9}))?\s*$/u.exec(text);
   const query = truncateUtf8(
     (suffix ? text.slice(0, suffix.index) : text).trim(),
     MAX_QUERY_BYTES,
   );
-  const line = suffix ? Number(suffix[1]) : null;
+  const line = suffix?.[1] ? Number(suffix[1]) : null;
   const column = suffix?.[2] ? Number(suffix[2]) : null;
   return {
     query,

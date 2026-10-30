@@ -29,6 +29,12 @@ describe("Quick Open input", () => {
       query: "a:b",
       line: null,
     });
+    // A ":" being typed already counts as the suffix.
+    expect(parseQuickOpenInput("app:")).toEqual({
+      query: "app",
+      line: null,
+      column: null,
+    });
     expect(parseQuickOpenInput("app:0")).toMatchObject({
       query: "app",
       line: null,

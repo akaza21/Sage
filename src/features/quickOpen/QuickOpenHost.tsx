@@ -10,7 +10,10 @@ import {
 } from "./quickOpenState";
 
 const loadQuickOpen = () => import("./QuickOpen");
-/** Loads the chunk once the window is idle, so the first Ctrl/Cmd+P paints at once. */
+/**
+ * Fetches the chunk once the window is idle. The first open then only waits
+ * a microtask for the already-loaded module, not for the network or disk.
+ */
 const PRELOAD_TIMEOUT_MS = 2000;
 
 function preloadWhenIdle(): () => void {

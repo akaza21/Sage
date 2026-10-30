@@ -152,5 +152,13 @@ test.describe("Quick Open", () => {
 
     await input.press("Escape");
     await expect(dialog).toBeHidden();
+
+    // A click outside closes it and gives the focus back to the editor.
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+p");
+    await expect(input).toBeFocused();
+    await page.mouse.click(1300, 860);
+    await expect(dialog).toBeHidden();
+    await expect(page.locator(".cm-content")).toBeFocused();
   });
 });

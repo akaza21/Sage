@@ -20,8 +20,12 @@ const MAX_REFRESH_RETRIES = 40;
 /** "Indexing…" shows only if the first answer takes longer than this. */
 const INDEXING_DELAY_MS = 120;
 
-/** An answer, with the query it answers. */
-type Answer = QuickOpenResponse & { query: string };
+/** An answer or a failure, with the request it answers. */
+type Answer = QuickOpenResponse & { key: string };
+type Failure = { key: string; message: string };
+
+const requestKey = (projectId: string, epoch: number, query: string) =>
+  `${projectId}\u0000${epoch}\u0000${query}`;
 
 const matchKey = (match: QuickOpenMatch) =>
   `${match.rootId}:${match.relativePath}`;
@@ -58,10 +62,10 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
   const listId = useId();
   const [text, setText] = useState("");
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [indexing, setIndexing] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const session = useRef(nextQuickOpenStamp());
+  const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
   /** Enter pressed before the answer for the current query arrived. */
@@ -71,6 +75,9 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
   const { query, line, column } = parseQuickOpenInput(text);
   // `:12` alone goes to a line of the active File; nothing is asked.
   const bareLine = query === "" && line !== null;
+  const key = projectId ? requestKey(projectId, epoch, query) : "";
+  // A failure counts only for the request it answered.
+  const error = failure?.key === key ? failure.message : null;
 
   const close = (restoreFocus: boolean) => {
     if (closed.current) return;
@@ -122,11 +129,12 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
       () => setIndexing(true),
       INDEXING_DELAY_MS,
     );
+    const asked = requestKey(projectId, epoch, query);
     const fail = (message: string) => {
       clearTimeout(indexingTimer);
       setIndexing(false);
       pendingEnter.current = false;
-      setError(message);
+      setFailure({ key: asked, message });
     };
     const ask = (attempt: number, supersededOnce: boolean) => {
       queryQuickOpen({
@@ -135,7 +143,7 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
         query,
         limit: QUICK_OPEN_LIMIT,
         generation: nextQuickOpenStamp(),
-        session: session.current,
+        session,
         recent: recentFiles(projectId),
       }).then(
         (response) => {
@@ -149,8 +157,8 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
           }
           clearTimeout(indexingTimer);
           setIndexing(false);
-          setError(null);
-          setAnswer({ ...response, query });
+          setFailure(null);
+          setAnswer({ ...response, key: asked });
           if (pendingEnter.current) {
             pendingEnter.current = false;
             openLatest.current(response.results[0]);
@@ -173,7 +181,7 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
       clearTimeout(indexingTimer);
       clearTimeout(retry);
     };
-  }, [bareLine, epoch, projectId, query]);
+  }, [bareLine, epoch, projectId, query, session]);
 
   const results = bareLine ? [] : (answer?.results ?? []);
   // The selection follows its File when a refreshed answer reorders the list.
@@ -185,10 +193,15 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
     list.current
       ?.querySelector('[aria-selected="true"]')
       ?.scrollIntoView?.({ block: "nearest" });
-  }, [activeKey]);
+    // A refreshed answer can move the selected File without changing it.
+  }, [activeKey, active]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing) return;
+    // keyCode 229 is the key that ends a composition, which WebKit (macOS)
+    // reports after `compositionend`.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       close(true);
@@ -202,8 +215,8 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
       // Ctrl/Cmd+Enter opens to the side where there is a split; there
       // isn't yet, so it opens in place too.
       event.preventDefault();
-      if (bareLine || answer?.query === query) open(results[active]);
-      // The list on screen answers an earlier query: open the first match
+      if (bareLine || answer?.key === key) open(results[active]);
+      // The list on screen answers an earlier request: open the first match
       // for this one once it arrives.
       else if (!error) pendingEnter.current = true;
     }
@@ -226,12 +239,16 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
     <div
       className="quick-open-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close(true);
+        if (event.target !== event.currentTarget) return;
+        // Otherwise the click would move the focus back off the editor.
+        event.preventDefault();
+        close(true);
       }}
     >
       <div
         className="quick-open"
         role="dialog"
+        aria-modal="true"
         aria-label="Quick Open"
         onMouseDown={(event) => {
           // Clicks inside keep the focus, and so the keys, in the input.
@@ -256,8 +273,10 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
           placeholder="Search Files by name (append :line to go to a line)"
           value={text}
           onChange={(event) => {
-            setText(event.target.value);
-            setSelectedKey(null);
+            const next = event.target.value;
+            setText(next);
+            // Typing a :line suffix keeps the chosen File.
+            if (parseQuickOpenInput(next).query !== query) setSelectedKey(null);
             pendingEnter.current = false;
           }}
           onKeyDown={onKeyDown}

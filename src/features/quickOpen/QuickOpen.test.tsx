@@ -262,11 +262,28 @@ describe("Quick Open", () => {
     expect(sent.filter((request) => request.query === "api")).toHaveLength(2);
     unmount();
 
-    fakeNative({ supersededFor: 2 });
+    fakeNative({ supersededFor: 2, delayMs: 100 });
     render(<QuickOpen onClose={vi.fn()} />);
     fireEvent.change(input(), { target: { value: "api" } });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Quick Open was interrupted. Type to try again.",
+    await waitFor(
+      () =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Quick Open was interrupted. Type to try again.",
+        ),
+      { timeout: 2000 },
+    );
+    // The failure belongs to "api": a new query clears it, and Enter
+    // waits for that query's answer.
+    fireEvent.change(input(), { target: { value: "readme" } });
+    expect(screen.getByRole("status")).not.toHaveTextContent("interrupted");
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await waitFor(
+      () =>
+        expect(openFile).toHaveBeenCalledWith({
+          rootId: "root-a",
+          relativePath: "README.md",
+        }),
+      { timeout: 2000 },
     );
   });
 
@@ -277,13 +294,39 @@ describe("Quick Open", () => {
     fireEvent.change(input(), { target: { value: "app" } });
     await waitFor(() => expect(options()).toHaveLength(2));
     fireEvent.keyDown(input(), { key: "ArrowDown" });
-    files = ["src/apple/core.ts", "lib/app.ts", "src/app.ts"];
+    files = ["lib/app.ts", "src/apple/core.ts", "src/app.ts"];
     await waitFor(() => expect(options()).toHaveLength(3), { timeout: 2000 });
-    expect(screen.getAllByRole("option")[0]).toHaveAttribute(
+    expect(screen.getAllByRole("option")[1]).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getAllByRole("option")[0]).toHaveTextContent("core.ts");
+    expect(screen.getAllByRole("option")[1]).toHaveTextContent("core.ts");
+    // Typing a :line suffix keeps it too.
+    fireEvent.change(input(), { target: { value: "app:" } });
+    fireEvent.change(input(), { target: { value: "app:9" } });
+    expect(screen.getAllByRole("option")[1]).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(openFileLocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: { rootId: "root-a", relativePath: "src/apple/core.ts" },
+        lineNumber: 9,
+      }),
+    );
+  });
+
+  it("ignores the Enter that ends an IME composition", async () => {
+    fakeNative();
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.change(input(), { target: { value: "readme" } });
+    await waitFor(() => expect(options()).toEqual(["README.md"]));
+    fireEvent.keyDown(input(), { key: "Enter", keyCode: 229 });
+    fireEvent.keyDown(input(), { key: "Enter", isComposing: true });
+    expect(openFile).not.toHaveBeenCalled();
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(openFile).toHaveBeenCalledOnce();
   });
 
   it("keeps the focus in the input when the list is clicked", async () => {
