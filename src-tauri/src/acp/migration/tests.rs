@@ -2183,6 +2183,7 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
     assert!(!paths.replacement_stage_owner.exists());
 }
 
+#[cfg(feature = "acp-fixture")]
 #[cfg(windows)]
 pub(crate) struct FixtureBackupFailpointObservation {
     pub(crate) old_schema_readable: bool,
@@ -2191,6 +2192,7 @@ pub(crate) struct FixtureBackupFailpointObservation {
     pub(crate) partial_rows: u64,
 }
 
+#[cfg(feature = "acp-fixture")]
 #[cfg(windows)]
 pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointObservation {
     let directory = TestDir::new();
@@ -2306,6 +2308,7 @@ fn insufficient_space_preflight_preserves_v4_sqlite_and_creates_no_backup() {
     assert!(!observed.backup_created);
 }
 
+#[cfg(feature = "acp-fixture")]
 #[cfg(windows)]
 pub(crate) struct FixtureRetirementObservation {
     pub(crate) verified_source_or_v5: bool,
@@ -2314,6 +2317,7 @@ pub(crate) struct FixtureRetirementObservation {
     pub(crate) unlisted_prefix: bool,
 }
 
+#[cfg(feature = "acp-fixture")]
 #[cfg(windows)]
 pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
     "replacement-manifest-fsync",
@@ -2329,6 +2333,7 @@ pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
     "cleanup-replacement-manifest-remove-or-parent-fsync",
 ];
 
+#[cfg(feature = "acp-fixture")]
 #[cfg(windows)]
 pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
     for failpoint in FIXTURE_RETIREMENT_FAILPOINTS {

@@ -1,4 +1,4 @@
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 use std::time::Duration;
 use std::time::Instant;
 
@@ -236,7 +236,7 @@ where
         self.take_zero_process_handoff_after(|control| control.wait_zero_before(deadline))
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(all(test, windows, feature = "acp-fixture"))]
     pub(crate) fn take_zero_process_handoff_within(
         self,
         timeout: Duration,

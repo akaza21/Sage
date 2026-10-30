@@ -1,8 +1,8 @@
 use std::sync::Arc;
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 use std::time::Duration;
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 use crate::acp::process::ZeroProcessToken;
 
 use crate::acp::{
@@ -116,7 +116,7 @@ where
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 impl<A, J, R, T, L> ProcessAdapterDriver<A, J, R, T, crate::acp::process::TreeControl, L>
 where
     A: HarnessAdapter,

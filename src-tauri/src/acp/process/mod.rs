@@ -11,7 +11,7 @@ mod unix;
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::TerminalJobBoundary;
-#[cfg(all(windows, any(test, feature = "acp-fixture")))]
+#[cfg(all(windows, feature = "acp-fixture"))]
 pub(crate) use windows::monotonic_tick;
 #[cfg(windows)]
 pub(crate) use windows::{PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess};

@@ -305,7 +305,7 @@ fn validate_path_bytes(path: &str, root: bool) -> Result<(), ResourceMapError> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) fn validate_native_path_bytes(path: &str) -> Result<(), ResourceMapError> {
     validate_path_bytes(path, false)
 }
